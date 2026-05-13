@@ -1,6 +1,6 @@
 # Brand Management
 
-**Status:** Draft v0.2
+**Status:** Draft v0.3
 **Scope:** How the productized plugin discovers, onboards, stores, and manages a user's portfolio of Amazon advertising brands.
 **Out of scope:** Renderer rewrite, AuthProvider interface, telemetry transport, write-MCP design. Each gets its own doc.
 
@@ -257,11 +257,29 @@ client42      SC       ✓    —           —        —                      
 3 active · 1 pending · 8 available (not activated)
 ```
 
-### Local Flask UI (non-technical users)
+### Conversational editing (universal — works in every Claude surface)
 
-`mixshift ui` (or `/mixshift-ui-start`) launches a local Flask app on `localhost:8080`. Serves a form-based interface over the same `~/.mixshift/clients/` files.
+This is the primary non-technical edit path because it works the same way in Cowork (no terminal, no localhost), Claude Code, and eventually Claude.ai chat:
 
-**Pages:**
+```
+User: /mixshift-brand-edit hydrapak
+
+Claude: Reads ~/.mixshift/clients/hydrapak/context.yaml.
+        Presents the editable fields as a markdown table.
+        "What would you like to change?"
+
+User: "Set ACOS target to 22% and add a price test on B000XXX
+       from May 14 to May 28."
+
+Claude: [validates inputs, writes context.yaml, runs schema check]
+        Confirms the diff in chat. "Applied. Anything else?"
+```
+
+Same harness writes the file regardless of where the conversation runs. No external UI to host or maintain.
+
+### Local Flask UI (Claude Code only — richer experience for technical users)
+
+When the user is on Claude Code (terminal available, localhost works), they can opt into a richer form-based UI. `mixshift ui` (or `/mixshift-ui-start`) launches a local Node/Express + Vite server on `localhost:8080`, serving:
 
 - `/` — portfolio dashboard mirroring `index.yaml`, click-through to each brand
 - `/brand/<slug>` — view + edit form for one brand's `context.yaml`
@@ -272,10 +290,11 @@ client42      SC       ✓    —           —        —                      
 
 **Properties:**
 
-- No network calls except to the user's own MySQL (the Flask app reads/writes local files only)
+- No network calls except to the user's own MySQL (the local server reads/writes local files only)
 - No persistent process — runs only while user has it open; `mixshift ui stop` kills it
 - Optional password gate via `profile.yaml.ui_password` so a shared laptop doesn't leak context
-- Same validation as slash commands — bad input gets a form error, not a corrupt file
+- Same validation as conversational editing — bad input gets a form error, not a corrupt file
+- **Not available in Cowork** — sandbox doesn't allow localhost servers. Cowork users use conversational editing.
 
 ### Direct YAML editing (power users)
 
@@ -285,26 +304,32 @@ Always works. `~/.mixshift/clients/<slug>/context.yaml` is plain YAML. Schema do
 
 ## Per-skill output adapter
 
-Output destination is per-skill, not global. Different skills produce different artifacts that suit different channels.
+Output destination is per-skill AND per-surface — different skills produce different artifacts, and the right destination shifts depending on whether the user is in Cowork (no localhost), Claude Code (local files OK), or eventually Claude.ai chat. The per-skill best default is TBD until we see how each skill actually performs in real use; we ship safe surface-aware fallbacks and tune them based on beta feedback.
 
 `profile.yaml`:
 
 ```yaml
 output:
-  default: local-html
+  # Surface-aware defaults — used when a skill doesn't specify
+  default_by_surface:
+    claude_code: local-html         # local file:// link, opens in browser
+    cowork: inline-markdown         # rendered in chat
+    chat: inline-markdown           # rendered in chat (when chat support lands)
+
+  # Per-skill overrides — explicit destination for specific skills
+  # All fields optional; falls back to default_by_surface
   per_skill:
-    daily-health-check: local-html
-    keyword-bid-health: local-html
-    runaway-spend-check: local-html
-    portfolio-quick-scan: terminal
-    monthly-performance-report: google-doc
-    search-term-negation: csv
-    search-term-harvest: csv
-    asin-target-negation: csv
-    competitive-analysis: markdown
-    phrase-negative-discovery: csv
-    ppc-relevance-check: markdown
+    monthly-performance-report:
+      claude_code: google-doc       # narrative report, user wants to edit
+      cowork: google-doc
+    search-term-negation:
+      claude_code: csv              # imported into Amazon
+      cowork: csv
+    # daily-health-check, portfolio-quick-scan, etc. → TBD per surface;
+    # use default_by_surface until we've tuned them with beta data
 ```
+
+We'll lock per-skill defaults skill-by-skill as we optimize each one (see "Iteration loop" in the testing plan). Until then, surface-aware fallback is the safe baseline.
 
 ### Adapter catalog
 
@@ -537,16 +562,24 @@ The plugin's read path should already abstract storage behind an interface (`Bra
 
 ---
 
-## Resolved decisions (from v0.1 → v0.2)
+## Resolved decisions (cumulative)
+
+**v0.1 → v0.2:**
 
 - **Harness language**: Node/TypeScript. No Python required for default install. Specific skills may declare Python dep via `uv` if they need real statistical work; most won't.
-- **Local UI**: Node/Express + Vite-built frontend, launched by `mixshift ui`. No Python interpreter dependency.
 - **Slug mutability**: slugs are user-facing labels, fully mutable. `SellerID` is canonical identity. Rename/split/merge are first-class operations.
 - **Credentials at rest**: plaintext file at 0600 (or Windows ACL equivalent) is the v1 default. Trust boundary = user's home directory; IP whitelist is the second factor. OS keychain available as opt-in via `profile.yaml: { credential_store: keychain }` for users who want it.
 - **Multi-account brands**: one brand folder can hold N entries in `accounts[]` (SC + VC, multiple marketplaces). User can split into separate brands if they want separate operational treatment.
 - **Telemetry posture**: aggressive in beta — plaintext brand slugs, full payloads, friction signals, recommendation reactions, manual edit deltas. Existing user agreements cover this. Promoted to GA with narrower defaults once we know what we actually use.
 - **Skill shaping**: overlay (`skill_config` in context.yaml) for v1. Skill forking via `~/.mixshift/skills/custom/` is the v1.5+ escape hatch when overlay is insufficient.
 - **Execution engines**: post-v1 layer that consumes structured skill signals. v1 signal format must anticipate downstream execution (magnitude, confidence, reversal plan).
+
+**v0.2 → v0.3:**
+
+- **Cross-surface architecture**: Plugin must work in Cowork (no localhost, no terminal-as-user) and Claude Code (full terminal, localhost OK), and be ready to bridge to Claude.ai chat later. See "Surface compatibility" section.
+- **Two UIs for editing brand context**: (a) **Conversational editing** via slash commands — universal across all surfaces, primary path for non-technical Cowork users; (b) **Local Flask/Node UI** — Claude Code only, richer form-based experience for technical users. Both write to the same `~/.mixshift/clients/` files.
+- **Per-skill output adapter is surface-aware**: defaults route to `local-html` in Claude Code, `inline-markdown` in Cowork, with per-skill overrides. Specific per-skill defaults are TBD until beta data tells us what works.
+- **Harness as internal Node CLI**: Claude invokes harness commands via Bash tool inside skill execution. Not user-facing. Eventually mirrored as an MCP server when chat surface support lands. See HARNESS-REWRITE.md.
 
 ## Open questions
 
