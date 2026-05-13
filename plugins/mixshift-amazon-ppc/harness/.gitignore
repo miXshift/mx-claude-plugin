@@ -14,5 +14,9 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Local developer-only test inputs (auth fixtures, brand fixtures, etc.).
+# Files matching *.local.* are never committed.
+*.local.*
+
 # Note: dist/ is committed. The plugin runtime invokes the built JS
 # directly; users should not need to npm install to run the harness.
