@@ -1,0 +1,129 @@
+# JSON-Schema-style spec for skill run sidecars.
+# Validated by scripts/validate-sidecar.py before commit / archive.
+#
+# Purpose: every skill run emits one sidecar JSON capturing the structured
+# inputs and headline outputs of that run. Next run reads the prior sidecar
+# to detect cross-run drift (e.g., spend doubled MoM, attribution window
+# changed, context.yaml field flipped) without re-parsing prior HTML.
+#
+# This replaces the "scrape prior report HTML for trend signals" pattern,
+# which is brittle to format changes. Sidecars are append-only and
+# format-stable.
+
+schema_version: 1
+
+# Emit one sidecar per skill run. File path:
+#   <plugin>/runs/<brand-slug>/<skill-name>/<YYYY-MM-DD>-<run-id>.json
+# Where:
+#   - brand-slug matches shared/clients/<brand-slug>/
+#   - skill-name is the skill directory name (e.g., daily-health-check)
+#   - YYYY-MM-DD is the data date the run covers (NOT the wall-clock run time)
+#   - run-id is a 6-char hash for disambiguating same-day reruns
+#
+
+required_top_level:
+  - schema_version
+  - skill
+  - skill_version
+  - brand_slug
+  - run_kind            # per_account | portfolio  (discriminator)
+  - run_at_utc          # ISO-8601 timestamp the skill ran (wall clock)
+  - data_date           # the date the analysis covers (T-1 for daily-* skills)
+  - context_snapshot    # subset of context.yaml that drove this run
+  - sql_calls           # list of library query IDs invoked
+  - headline_metrics    # the numbers a downstream run cares about
+  - verdict             # one of: GREEN | YELLOW | RED | OBSERVATIONAL
+  - artifacts           # paths to generated outputs (HTML, deploy URL)
+
+optional_top_level:
+  - structural_events_active   # array of event IDs that influenced interpretation
+  - posture_at_run             # snapshot of posture (stance + multiplier)
+  - data_lag_pct               # campaign vs keyword spend gap, if computed
+  - history_tier               # provisional | tier-14 | tier-30
+  - notes                      # short prose for follow-up reviewers
+
+shapes:
+  run_kind:
+    enum: [per_account, portfolio]
+    note: |
+      Discriminator for context_snapshot validation.
+      - per_account: standard skill run against one client. context_snapshot
+        requires account_type, seller_id, primary_metric, acos_target_pct,
+        attribution_window_days. brand_slug = the client slug.
+      - portfolio: cross-account scan (e.g., portfolio-quick-scan). The
+        per-account fields are NOT required; instead, portfolio_account_count
+        and portfolio_config_path become required. brand_slug = "portfolio"
+        or a portfolio identifier.
+
+  context_snapshot:
+    note: |
+      Frozen subset of context.yaml at run time. Skills should record only
+      the fields they actually consumed (not the full file). This makes
+      cross-run drift detection trivial: if last run had acos_target_pct=20
+      and this run has 18, surface it.
+
+      Required fields depend on run_kind (see below). Validators must
+      branch on run_kind before enforcing required keys.
+    required_when_per_account:
+      - account_type            # SC | VC
+      - seller_id               # primary account
+      - primary_metric          # ACOS | TACOS
+      - acos_target_pct
+      - attribution_window_days
+    required_when_portfolio:
+      - portfolio_account_count # int — accounts the scan covered
+      - portfolio_config_path   # path to portfolio config (e.g., shared/portfolio.yaml)
+    optional_when_portfolio:
+      - account_type_mix        # e.g., {SC: 3, VC: 4}
+      - flagged_account_slugs   # for cross-run drift on which accounts trip
+
+  headline_metrics:
+    note: |
+      Numbers the next run wants to compare against. All currency in account
+      currency (no symbols), all percentages as numeric pct (e.g., 22.4 not
+      "22.4%"). Skills emit only metrics they computed — no nulls/zeros for
+      uncomputed values.
+    examples:
+      - spend_t1
+      - spend_t7_avg
+      - spend_t30_avg
+      - adsales_t1
+      - acos_t1
+      - acos_t30
+      - acos_mtd
+      - tacos_t30
+      - tacos_mtd
+      - pacing_total_sales
+      - pacing_acos
+      - pacing_gap_pct
+      - upper_ci_spend
+      - lower_ci_spend
+
+  sql_calls:
+    note: |
+      Array of {id, params_hash}. id is the canonical library ID
+      (DHC-01, MPR-02, etc.). params_hash is sha1 of sorted JSON
+      params — lets us detect "same query, different params" reruns.
+    item_required: [id, params_hash]
+
+  artifacts:
+    required: [report_html_path]
+    optional:
+      - report_html_archive_path
+      - block_html_path
+
+# Drift detection rules (applied by scripts/compare-sidecars.py):
+#
+# 1. context_snapshot field changed between runs → emit "config drift"
+#    warning. This catches accidental edits to acos_target_pct, etc.
+# 2. sql_calls list changed (query added/removed/different ID) → emit
+#    "query inventory drift". This catches a skill silently dropping a
+#    query batch.
+# 3. headline_metrics delta exceeds threshold (default 25% MoM, 50% WoW)
+#    → emit "metric jump" warning. Surfaces real anomalies that survived
+#    CI bounds (e.g., a multi-day catastrophic shift that warps the CI).
+# 4. verdict regressed (GREEN→RED in <3 days) → emit "verdict regression".
+#
+# Skills do NOT consume sidecars during a run — they emit them. The
+# compare-sidecars.py script runs as a post-step (or weekly audit) and
+# emails/notifies. Keeps the skill loop deterministic.

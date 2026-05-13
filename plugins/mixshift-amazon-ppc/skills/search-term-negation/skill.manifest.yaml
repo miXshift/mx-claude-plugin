@@ -1,0 +1,75 @@
+schema_version: 1
+skill_id: search-term-negation
+display_name: Search Term Negation Analysis
+version: "1.1.1"
+description: >
+  Universal workflow for Amazon PPC search term irrelevance analysis and negative keyword
+  strategy. Conducts systematic review of search term performance to identify irrelevant
+  traffic, applies tiered routing (Tier A keep, Tier B negate, Tier C review), and
+  implements surgical negative keywords at exact and phrase levels.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - negation.lane_rules absent (cannot classify without lane boundaries)
+  - Tier A keep candidate volume > 80% of corpus (likely context misconfiguration)
+sql_ids:
+  - STN-01
+  - STN-02
+  - STN-03
+  - STN-04
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel: [STN-01]
+      notes: "STN-01 is the primary window search-term pull. Pre-fetch this before skill execution."
+    - round: 2
+      model_executed: [STN-02, STN-03, STN-04]
+      notes: >
+        STN-02 is a scratch-table operative query (operates on caller scratch table — not pre-fetchable;
+        run inline during execution). STN-03 and STN-04 are on-demand lookups for borderline-term
+        historical review and theme analysis — run inline during analysis as needed.
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - sub_brands
+  - brand_terms
+  - negation.protected_terms
+  - negation.lane_rules
+  - negation.asin_negation.pre_check_lifetime_orders_threshold
+  - campaign_structure.naming_pattern
+  - campaign_structure.objectives
+  - campaign_structure.campaign_types_active
+  - structural_events
+  - posture.stance
+optional_context_fields:
+  - corpora   # ASIN-level corpora for ASIN discovery review
+  - paused_campaigns   # explicit [] means no known paused campaigns
+upstream_skills:
+  - search-term-data-pull
+artifacts:
+  - name: search-term-negation.html
+    type: report_html
+verdict_range: [OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - run search term negation
+  - st negation review
+  - search term analysis
+  - negative keyword review
+notes: >
+  STN-01 is the window search-term performance pull.
+  STN-02 operates on a caller-prepared scratch table (not in tables.yaml); drift checker
+  should treat this as a scratch-table operative query.
+  STN-03 is used for borderline-term historical review (T-30/T-60).
+  STN-04 is the theme analysis pull for phrase-negative assessment.
+  This skill typically consumes the search-term-data-pull JSON artifact for the ST corpus
+  and issues the STN-* queries for additional tier-classification and historical context.

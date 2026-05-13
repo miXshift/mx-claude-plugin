@@ -1,0 +1,78 @@
+schema_version: 1
+skill_id: monthly-performance-report
+display_name: Monthly Performance Report
+version: "1.3.1"
+description: >
+  Generates and publishes a monthly Amazon advertising performance report in canonical analytical
+  voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis, item group highlights,
+  forecast beat/miss, and a Looking Ahead section. Saves report as local HTML.
+run_kind: per_account
+cadence: monthly
+risk_tier: 2
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: artifact_write
+review_required: always
+sql_ids:
+  - MPR-01   # VC accounts only (sellermonthmetric)
+  - MPR-02   # SC accounts only (campaignmetric with attribution CASE block)
+  - LIB-PT-01   # conditional: when structural_events includes an active price_test
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel:
+        - id: MPR-01
+          account_type: VC
+        - id: MPR-02
+          account_type: SC
+      notes: >
+        MPR-01 applies to VC accounts; MPR-02 applies to SC accounts. Pre-fetch script
+        runs only the query matching the account's type (account_type from context.yaml).
+    - round: 2
+      parallel:
+        - id: LIB-PT-01
+          requires_event: price_test
+      notes: "Conditional: only when structural_events includes an active price_test."
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.primary_metric
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - management.tacos_in_bottom_line
+  - goals.monthly_revenue_target
+  - goals.quarterly_revenue_target
+  - goals.forecast_tracking
+  - goals.report_quarterly_pacing
+  - sub_brands
+  - brand_terms
+  - structural_events
+  - delivery.reports_local_dir
+  - delivery.archive_dir
+  - reporting.audience
+  - reporting.voice_lint
+optional_context_fields:
+  - capture_rate_calibration   # required for VC Adj. ACOS in monthly read
+  - attribution_rule           # per campaign type window (SC vs VC)
+artifacts:
+  - name: monthly-report.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
+pricing_tier: enterprise
+trigger_phrases:
+  - write monthly report
+  - build monthly report
+  - monthly performance report
+  - run monthly report
+  - generate monthly report
+notes: >
+  MPR-01 applies to VC accounts (sellermonthmetric); MPR-02 applies to SC accounts.
+  Never use both in one run. Use sellermonthmetric for VC account-level ACOS -- do not
+  aggregate raw campaignmetric for VC.
+  OBSERVATIONAL verdict applies for VC accounts without ACOS targets or first-month runs
+  without MoM comparison data.
+  LIB-PT-01 fires only when structural_events includes an active price_test.
+  TACOS-primary accounts do not require implied/reference TACOS fields; use
+  management.tacos_target_pct/tacos_goal_pct when present and treat forecast/bridge
+  artifacts as runtime inputs until DB-integrated.

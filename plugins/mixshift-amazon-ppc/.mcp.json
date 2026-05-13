@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mysql-ads": {
+      "command": "npx",
+      "args": ["-y", "mysql-mcp-server"],
+      "env": {
+        "MYSQL_HOST": "${MIXSHIFT_MYSQL_HOST}",
+        "MYSQL_PORT": "${MIXSHIFT_MYSQL_PORT}",
+        "MYSQL_USER": "${MIXSHIFT_MYSQL_USER}",
+        "MYSQL_PASSWORD": "${MIXSHIFT_MYSQL_PASSWORD}",
+        "MYSQL_DATABASE": "${MIXSHIFT_MYSQL_DATABASE}"
+      }
+    }
+  }
+}

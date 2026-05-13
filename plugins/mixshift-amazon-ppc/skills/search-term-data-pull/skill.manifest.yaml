@@ -1,0 +1,62 @@
+schema_version: 1
+skill_id: search-term-data-pull
+display_name: ST Data Pull
+version: "1.1.1"
+description: >
+  Pure data extraction layer for search term analysis. Pulls the window search term report,
+  lifetime performance at three granularity levels, existing negatives, and manual ASIN
+  targets. Outputs a structured JSON artifact for downstream negation and harvest skills.
+  No judgment, no LLM analysis -- data only.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [db_read, file_read, file_write, prefetch]
+side_effect_policy: artifact_write
+review_required: never
+sql_ids:
+  - STDP-01
+  - STDP-02
+  - STDP-03
+  - STDP-04
+  - STDP-05
+  - STDP-06
+  - STDP-07
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel: [STDP-01, STDP-02, STDP-03, STDP-04, STDP-05, STDP-06, STDP-07]
+      notes: >
+        All 7 queries are independent. STDP-01 and STDP-02 build exclusion/dedup masks;
+        STDP-03 is the window pull; STDP-04 through STDP-07 are lifetime granularity pulls.
+        Pre-fetch runs all in parallel since joining happens in the model layer.
+required_context_fields:
+  - accounts[*].seller_id
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - sub_brands
+  - campaign_structure.naming_pattern
+  - negation.protected_terms
+  - attribution_rule
+optional_context_fields:
+  - paused_campaigns   # explicit [] means no known paused campaigns
+artifacts:
+  - name: st-data.json
+    type: json_artifact
+verdict_range: [OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - pull search term data
+  - run data pull
+  - search term data pull
+  - st data pull
+notes: >
+  STDP-01 builds the existing-negatives exclusion mask.
+  STDP-02 builds the manual-ASIN-targets dedup mask.
+  STDP-03 is the window ST pull (partitioned into Stream 1 and Stream 2 post-query).
+  STDP-04 through STDP-06 are the three lifetime granularity levels for Stream 1.
+  STDP-07 is the ASIN-stream lifetime aggregate for Stream 2.
+  All 7 queries must succeed before the artifact is considered complete.
+  Downstream skills (phrase-negative-discovery, search-term-harvest, search-term-negation,
+  ppc-relevance-check) consume this artifact rather than querying DB directly.

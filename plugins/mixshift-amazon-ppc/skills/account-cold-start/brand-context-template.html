@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>[Brand] -- Brand Context -- [YYYY-MM-DD]</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-size: 13px; color: #222; background: #f5f5f5; padding: 20px; }
+  .report-wrap { max-width: 1500px; margin: 0 auto; background: #fff;
+                  border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.12); padding: 24px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  h2 { font-size: 15px; font-weight: 700; margin: 4px 0; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 6px; }
+  .persona { font-size: 13px; color: #444; margin-bottom: 18px;
+              padding: 8px 12px; background: #f3f6fb; border: 1px solid #d0dcea;
+              border-radius: 4px; line-height: 1.5; }
+  .persona .brain { font-size: 16px; margin-right: 6px; }
+  .verdict-badge { display:inline-block; padding: 3px 10px; border-radius: 4px;
+                    color: #fff; font-weight: 700; font-size: 12px;
+                    background: #cc2200; margin-left: 8px; vertical-align: middle; }
+  .freshness { display: inline-block; font-size: 11px; color: #888; margin-left: 8px; }
+  .freshness.stale { color: #cc8800; font-weight: 600; }
+  .card-row { display: grid; grid-template-columns: repeat(3, 1fr);
+               gap: 16px; margin-bottom: 20px; }
+  .card { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 5px;
+           padding: 12px 16px; }
+  @media (max-width: 720px) { .card-row { grid-template-columns: 1fr; } }
+  .card-label { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+  .card-value { font-size: 18px; font-weight: 700; color: #222; }
+  .card-sub { font-size: 11px; color: #666; margin-top: 2px; }
+  .section-title { font-size: 15px; font-weight: 700; margin: 24px 0 6px; padding-bottom: 4px;
+                    border-bottom: 2px solid #e0e0e0; }
+  .section-lead { font-size: 12px; color: #555; font-style: italic; margin-bottom: 8px; }
+  .prose { font-size: 13px; color: #333; line-height: 1.55; margin-bottom: 12px; }
+  .prose p { margin-bottom: 8px; }
+  .prose-stub { font-size: 12px; color: #888; font-style: italic;
+                background: #fffbe6; border: 1px solid #ffe58f;
+                padding: 8px 12px; border-radius: 4px; }
+
+  /* -- Brand Summary (top of page) ----------------------------------- */
+  .summary-prose { font-size: 14px; color: #222; line-height: 1.65;
+                    padding: 14px 18px; background: #fafbfd;
+                    border-left: 4px solid #4c6fa6; border-radius: 4px;
+                    margin-bottom: 14px; }
+  .summary-prose p { margin-bottom: 10px; }
+  .summary-prose p:last-child { margin-bottom: 0; }
+  .summary-prose b { color: #1a3a6e; }
+  .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+                gap: 10px; margin: 12px 0 14px; }
+  @media (max-width: 960px) { .proof-grid { grid-template-columns: 1fr; } }
+  .proof-card { background: #fff; border: 1px solid #dce6f4;
+                border-radius: 8px; padding: 10px 12px;
+                box-shadow: 0 1px 2px rgba(26,58,110,.06); }
+  .proof-top { display: flex; justify-content: space-between; gap: 8px;
+               align-items: flex-start; margin-bottom: 6px; }
+  .proof-title { font-weight: 800; color: #1a3a6e; }
+  .proof-card p { color: #333; font-size: 12.5px; line-height: 1.45;
+                  margin-bottom: 8px; }
+  .source-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .source-chip { display: inline-block; padding: 2px 7px; border-radius: 999px;
+                 background: #edf3fb; color: #315989; font-size: 10px;
+                 font-weight: 700; text-decoration: none; }
+  .source-chip:hover { background: #dce9f8; color: #1a3a6e; }
+
+  /* -- Review surface ------------------------------------------------ */
+  .review-grid { display: grid; grid-template-columns: repeat(4, 1fr);
+                 gap: 12px; margin: 10px 0 18px; }
+  .review-card { background: linear-gradient(180deg, #fbfcf8, #f4f7ed);
+                 border: 1px solid #dfe8cb; border-radius: 8px;
+                 padding: 12px 14px; }
+  @media (max-width: 960px) { .review-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 620px) { .review-grid { grid-template-columns: 1fr; } }
+  .bucket-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+                 gap: 12px; margin-bottom: 16px; }
+  .runtime-grid { display: grid; grid-template-columns: repeat(2, 1fr);
+                  gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 960px) {
+    .bucket-grid, .runtime-grid { grid-template-columns: 1fr; }
+  }
+  .bucket-card, .runtime-card { border: 1px solid #e0e0e0; border-radius: 8px;
+                                padding: 12px 14px; background: #fcfcfb; }
+  .bucket-card.complete { border-left: 4px solid #2a7d2a; }
+  .bucket-card.partial { border-left: 4px solid #cc8800; }
+  .bucket-card.missing { border-left: 4px solid #cc2200; }
+  .runtime-card { border-left: 4px solid #4c6fa6; background: #f8fbff; }
+  .runtime-card p { color: #444; line-height: 1.5; margin: 8px 0; }
+  .bucket-top { display: flex; justify-content: space-between; gap: 8px;
+                align-items: flex-start; margin-bottom: 4px; }
+  .bucket-title { font-weight: 700; font-size: 13px; color: #222; }
+  .bucket-desc { color: #666; font-size: 11.5px; line-height: 1.45; margin-bottom: 8px; }
+  .bucket-summary { color: #333; font-size: 12px; line-height: 1.45; }
+  .bucket-details { margin-top: 8px; }
+  .bucket-details > summary { cursor: pointer; color: #4c6fa6; font-size: 11.5px;
+                              font-weight: 700; }
+  .detail-list { margin: 8px 0 0 16px; color: #444; font-size: 11.5px;
+                 line-height: 1.45; }
+  .detail-list li { margin-bottom: 5px; }
+  .status-pill { display: inline-block; border-radius: 999px; padding: 2px 8px;
+                 font-size: 10px; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: .25px; white-space: nowrap; }
+  .status-pill.complete { background: #e9f6e9; color: #236b23; }
+  .status-pill.partial { background: #fff4d6; color: #9a6500; }
+  .status-pill.missing { background: #ffe6df; color: #a32914; }
+  .status-pill.runtime { background: #e8f0fb; color: #315989; }
+  .readiness-table td:nth-child(2) { width: 190px; }
+
+  /* -- Active Conditions prose blocks -------------------------------- */
+  .condition-block { margin-bottom: 12px; padding: 10px 14px;
+                      background: #fafafa; border: 1px solid #e0e0e0;
+                      border-left: 3px solid #cc8800; border-radius: 4px; }
+  .condition-block.event { border-left-color: #4c6fa6; }
+  .condition-title { font-weight: 700; font-size: 13px; color: #222;
+                      margin-bottom: 4px; }
+  .condition-title .pill { margin-left: 6px; vertical-align: middle; }
+  .condition-body { font-size: 12.5px; color: #444; line-height: 1.55; }
+
+  /* -- ASIN corpora lane blocks -------------------------------------- */
+  .lane-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+                gap: 10px; }
+  @media (max-width: 900px) { .lane-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .lane-grid { grid-template-columns: 1fr; } }
+  .lane-card { background: #f9f9f9; border: 1px solid #e0e0e0;
+                border-radius: 4px; padding: 8px 12px; }
+  .lane-name { font-weight: 700; font-size: 12px; color: #222; }
+  .lane-sub  { font-size: 11px; color: #666; }
+  .lane-count { float: right; font-family: ui-monospace, "Cascadia Mono", monospace;
+                 font-size: 12px; color: #4c6fa6; font-weight: 700; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #e0e0e0; padding: 5px 8px; text-align: left;
+            vertical-align: top; font-size: 12px; }
+  th { background: #f0f0f0; font-weight: 700; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .3px; color: #444; }
+  .empty-state { font-size: 12px; color: #888; font-style: italic;
+                  padding: 8px 12px; background: #f9f9f9;
+                  border: 1px dashed #ccc; border-radius: 4px; }
+
+  /* -- Audit Checklist styles (now collapsed at bottom) -------------- */
+  details.audit-section { margin-top: 8px; }
+  details.audit-section > summary { cursor: pointer; padding: 8px 12px;
+       background: #f3f6fb; border: 1px solid #d0dcea; border-radius: 4px;
+       font-size: 12px; color: #555; font-weight: 600; list-style: none; }
+  details.audit-section > summary::-webkit-details-marker { display: none; }
+  details.audit-section > summary::before { content: "\25B8 ";
+       display: inline-block; transition: transform .15s; }
+  details.audit-section[open] > summary::before { transform: rotate(90deg); }
+  .audit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+                 margin-top: 10px; }
+  .audit-block { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 5px;
+                  padding: 10px 14px; }
+  .audit-block-title { font-size: 11px; font-weight: 700; color: #444;
+                       text-transform: uppercase; letter-spacing: .4px;
+                       margin-bottom: 6px; padding-bottom: 4px;
+                       border-bottom: 1px solid #ddd; }
+  .audit-row { display: grid; grid-template-columns: 22px 1fr 1.5fr;
+                gap: 8px; align-items: baseline; padding: 3px 0;
+                font-size: 12px; line-height: 1.4; }
+  .audit-icon { font-weight: 700; text-align: center; font-size: 12px; }
+  .audit-icon.ok      { color: #2a7d2a; }
+  .audit-icon.warn    { color: #cc8800; }
+  .audit-icon.miss    { color: #cc2200; }
+  .audit-icon.muted   { color: #bbb; }
+  .audit-label { color: #333; }
+  .audit-desc { color: #888; font-size: 10.5px; font-style: italic;
+                 line-height: 1.35; margin-top: 1px; }
+  .audit-value { color: #555; font-family: ui-monospace, "Cascadia Mono", monospace;
+                  font-size: 11.5px; word-break: break-word; }
+  .audit-value.missing { color: #cc2200; font-style: italic; font-family: inherit; }
+  .audit-value.stale   { color: #cc8800; font-style: italic; font-family: inherit; }
+  .audit-summary { display: flex; gap: 18px; font-size: 12px; color: #555;
+                   margin: 10px 0 0; padding: 8px 12px; background: #f3f6fb;
+                   border: 1px solid #d0dcea; border-radius: 4px; }
+  .audit-summary b { color: #222; }
+
+  /* -- Bullet lists / open gaps -------------------------------------- */
+  ul.gap-list, ul.bullet-list { list-style: none; padding: 0; margin: 0; }
+  ul.gap-list li, ul.bullet-list li { padding: 6px 10px; margin-bottom: 4px;
+                                       background: #fffbe6; border: 1px solid #ffe58f;
+                                       border-radius: 4px; font-size: 12px; line-height: 1.5; }
+  ul.bullet-list li { background: #f9f9f9; border-color: #e0e0e0; }
+  .tell-ai { font-weight: 600; color: #c17800; }
+  .tell-ai-block { margin-top: 8px; padding: 8px 10px; background: #fffbe6;
+                   border: 1px solid #ffe58f; border-radius: 4px;
+                   font-size: 12px; line-height: 1.5; }
+  .anomaly-block { margin-top: 12px; padding: 10px 12px; background: #fafafa;
+                   border: 1px solid #e0e0e0; border-radius: 4px; }
+  .anomaly-block h4 { font-size: 13px; color: #222; }
+
+  /* -- Misc ---------------------------------------------------------- */
+  .pill { display:inline-block; padding: 1px 7px; border-radius: 9px;
+           font-size: 10px; font-weight: 700; letter-spacing: .3px;
+           text-transform: uppercase; }
+  .pill.active   { background: #2a7d2a; color: #fff; }
+  .pill.legacy   { background: #888;    color: #fff; }
+  .pill.winddown { background: #cc8800; color: #fff; }
+  .pill.inactive { background: #bbb;    color: #fff; }
+  .pill.media    { background: #4c6fa6; color: #fff; }
+  .pill.promo    { background: #7a4ca6; color: #fff; }
+  .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e0e0e0;
+             font-size: 11px; color: #888; line-height: 1.5; }
+  code { font-family: ui-monospace, "Cascadia Mono", monospace; font-size: 11.5px;
+          background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="report-wrap">
+
+<!-- HEADER -->
+
+<!-- BRAND_SUMMARY -->
+<div class="section-title">What I Know About This Brand</div>
+<div class="summary-prose"></div>
+
+<!-- REVIEW_AT_A_GLANCE -->
+<div class="section-title">Review At A Glance</div>
+<div class="review-grid"></div>
+
+<!-- RUNTIME_INPUTS -->
+<div class="section-title">Runtime Inputs Required</div>
+<div class="runtime-grid"></div>
+
+<!-- SKILL_READINESS -->
+<div class="section-title">Skill Readiness</div>
+<table></table>
+
+<!-- ACTIVE_CONDITIONS -->
+<div class="section-title">What I'm Watching Right Now</div>
+<div class="section-lead"></div>
+
+<!-- ACCOUNT_SNAPSHOT -->
+<div class="section-title">Account Snapshot</div>
+<div class="card-row"></div>
+<table></table>
+
+<!-- SUB_BRANDS -->
+<div class="section-title">Sub-Brand Structure</div>
+<table></table>
+
+<!-- ITEM_GROUPS -->
+<div class="section-title">Item Groups by Sub-Brand</div>
+<table></table>
+
+<!-- BRAND_TERMS -->
+<div class="section-title">Brand Term Dictionary</div>
+<table></table>
+
+<!-- ASIN_CORPORA -->
+<div class="section-title">ASIN Negation Corpora</div>
+<div class="lane-grid"></div>
+
+<!-- SEASONALITY -->
+<div class="section-title">Seasonality &amp; Tentpole Calendar</div>
+<table></table>
+
+<!-- CALIBRATION -->
+<div class="section-title">Attribution Backfill Calibration</div>
+<table></table>
+
+<!-- DETECTED_ANOMALIES -->
+<div class="section-title">Detected Anomalies (Advisory)</div>
+<div class="anomalies"></div>
+
+<!-- BRAND_IDENTITY -->
+<div class="section-title">Brand Identity (prose context)</div>
+<div class="prose"></div>
+
+<!-- OPEN_GAPS -->
+<div class="section-title">Missing Context Buckets</div>
+<div class="bucket-grid"></div>
+
+<!-- AUDIT_CHECKLIST -->
+<div class="section-title">Schema Coverage Audit</div>
+<details class="audit-section">
+  <summary>Reviewer view &mdash; expand to see field-by-field schema status</summary>
+  <div class="audit-grid"></div>
+</details>
+
+<!-- FOOTER -->
+<div class="footer">
+  Generated by <code>render-brand-context.py</code> from
+  <code>shared/clients/[brand]/context.yaml</code> and
+  <code>shared/clients/[brand]/narrative.md</code>.
+  This is a read-only audit view &mdash; update <code>context.yaml</code> directly,
+  or use the steering UI in any downstream skill.
+</div>
+
+</div><!-- /report-wrap -->
+</body>
+</html>

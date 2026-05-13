@@ -1,0 +1,54 @@
+schema_version: 1
+skill_id: runaway-spend-check
+display_name: Runaway Spend Check
+version: "0.1.1"
+description: >
+  Daily keyword-level acute runaway spend detection. Flags keywords where T-1 spend
+  spiked materially versus the T-30 baseline, or where high-spend keywords generated
+  zero conversions against their historical performance. Second step in the keyword
+  bid management workflow after the daily health check.
+run_kind: per_account
+cadence: daily
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - anomaly_detection_settings row absent for SellerID (HARD GATE)
+  - data freshness > 2 days (acute check — stale data produces false negatives)
+  - prior-run sidecar absent
+sql_ids: []
+  # RSC SQL IDs not yet promoted to the shared library.
+  # Queries currently executed are skill-local keyword-level pulls against
+  # keywordtargetingmetric and anomaly_detection_settings.
+  # Wire RSC-01 and RSC-02 to catalog.yaml when SQL is stabilized.
+  # DHC-04 (anomaly_detection_settings) may be reused here as a shared query.
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - posture.stance
+  - posture.multiplier
+  - bid_health.pullback_threshold_pct
+  - structural_events
+  - attribution_rule
+optional_context_fields:
+  - paused_campaigns   # explicit [] means no known paused campaigns
+artifacts:
+  - name: runaway-spend.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED]
+pricing_tier: pro
+trigger_phrases:
+  - run runaway spend check
+  - check for runaway keywords
+  - identify overspending keywords
+  - runaway spend
+notes: >
+  RSC SQL IDs are not yet registered in shared/sql-library/catalog.yaml.
+  sql_ids is intentionally empty until the queries are promoted to the library.
+  When RSC-* queries are stabilized, add them here and register them in catalog.yaml.
+  DHC-04 (anomaly_detection_settings) may be shared with daily-health-check to avoid
+  duplicate query definitions. Update this manifest and catalog.yaml together.

@@ -1,0 +1,62 @@
+schema_version: 1
+skill_id: keyword-bid-health
+display_name: Keyword Bid Health Review
+version: "0.2.0"
+description: >
+  Weekly keyword-level bid optimization analysis surfacing high-ACOS bid reduction candidates
+  and scale opportunities with proven conversion volume. Uses the Excess Spend formula to
+  compute bid-cut ceilings and triangulates against account posture from brand context.
+run_kind: per_account
+cadence: weekly
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - objective_calibration absent (bid recs will fall back to global threshold)
+  - verdict regresses GREEN→RED without structural_events explanation
+  - prior-run sidecar absent
+sql_ids:
+  - KBH-01
+  - KBH-01a
+  - KBH-02
+  - KBH-03
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel: [KBH-01, KBH-01a]
+    - round: 2
+      parallel: [KBH-02, KBH-03]
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - bid_health.scale_threshold_pct
+  - bid_health.pullback_threshold_pct
+  - bid_health.re_entry_rule
+  - posture.stance
+  - posture.multiplier
+  - brand_terms
+  - campaign_structure.naming_pattern
+  - objective_calibration
+optional_context_fields:
+  - structural_events          # price tests, promos, or bid changes that explain ACOS distortion
+artifacts:
+  - name: keyword-bid-health.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED]
+pricing_tier: pro
+trigger_phrases:
+  - run keyword bid review
+  - bid health
+  - weekly bid check
+  - bid optimization
+notes: >
+  KBH-01 pulls T-30 keyword performance (filtered to costType IN ('cpc', '') at the SQL layer,
+  so VCPM placements never reach the skill). KBH-02 pulls current bid and Amazon bid guidance.
+  Structural events (price tests, recent bid actions) must be checked before finalizing
+  any recommendation.

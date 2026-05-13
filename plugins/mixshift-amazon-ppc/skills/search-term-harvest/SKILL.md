@@ -1,0 +1,277 @@
+---
+name: search-term-harvest
+description: "Identify search terms and ASIN targets converting efficiently under auto or broad match that are not yet in explicit keyword targeting. Promotes high-performing auto terms to explicit campaigns. Pure harvest logic — no negation, no relevance judgment."
+---
+
+# ST Harvest Extraction
+
+## Hard Rules
+
+These rules supersede any other instruction. Violating them produces inconsistent output across runs.
+
+- **Do NOT read the `references/` folder during execution.** Brand context comes exclusively from `context.yaml` and `narrative.md`.
+- **Do NOT supplement with general Amazon or e-commerce knowledge**, industry benchmarks, or assumed platform dynamics not present in the data.
+- **Do NOT echo full data tables or raw query output** in your model response. The harvest output is the deliverable.
+- **Begin output immediately.** Do not restate these instructions, summarize what you are about to do, or ask clarifying questions.
+
+---
+
+## Preflight — Risk Tier 3 (Required)
+
+Complete this checklist before Step 0. Stop and surface the failure if any item cannot be checked off.
+
+```
+PREFLIGHT — search-term-harvest — <brand> — <date>
+[ ] context.yaml loaded from shared/clients/<brand>/context.yaml
+[ ] Required fields present and non-null:
+      accounts[*].seller_id
+      management.acos_target_pct
+      sub_brands, campaign_structure.naming_pattern
+      campaign_structure.account_codes, campaign_structure.objectives
+      brand_terms, negation.lane_rules
+      paused_campaigns (list — may be empty)
+      posture.stance
+[ ] Upstream search-term-data-pull artifact present
+    *** HARD GATE: if absent, STOP. Cannot run harvest without ST corpus. ***
+[ ] STH-01 pre-fetch artifact present: tmp/<brand>-search-term-harvest-<date>.data.json
+    (if absent: run pre-fetch-data.py — see Step 1)
+[ ] Prior-run sidecar loaded: runs/<brand>/search-term-harvest/ (most recent)
+    (if absent: continue — no baseline yet)
+[ ] Confirm no harvest candidate is in negation.lane_rules mismatch list before promoting
+```
+
+---
+
+The auto campaigns are your market research engine. When a search term is converting efficiently there, you're leaving money on the table by not targeting it explicitly.
+
+This skill finds those terms and recommends promotion to explicit targeting.
+
+---
+
+## Core Principle
+
+The original monolithic negation skill buried harvest as an afterthought. Harvest is the primary signal. A converting term discovered in auto/broad at 0.9% ACOS is a far higher-value finding than a non-converting term to negate. The negation action saves wasted spend. The harvest action grows revenue.
+
+---
+
+## Execution
+
+**Step 0 — Load inputs:**
+- Data artifact: ST data pull output (JSON)
+- **Tier-3 brand context** at `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clients/_schema/context.schema.yaml`). Extract mechanically:
+  - `accounts[].seller_id`
+  - `management.acos_target_pct` — drives Tier S thresholds (`acos_target * 0.75` and `<= acos_target`)
+  - `sub_brands[]` and `campaign_structure.naming_pattern`, `campaign_structure.account_codes`, `campaign_structure.objectives` — drive item-group taxonomy mapping and placement campaign naming
+  - `brand_terms` — for brand-adjacent term routing (BRAND vs RSCH-NONBRAND placement)
+  - `negation.lane_rules` — confirm harvest candidates are not in a `mismatch` list before promoting
+  - `paused_campaigns` — exclude from harvest recommendations and starting-bid CPC math
+  - `posture.stance` — informs starting-bid conservatism
+- `shared/clients/<brand-slug>/narrative.md` — prose interpretation only (account norms for "unusual bid" sanity check). Do not extract numbers from this file.
+
+ASIN harvest cross-references manual conquest lists in `shared/clients/<brand-slug>/corpora/*.csv` when available.
+
+**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer ACOS target or item-group taxonomy from prose.
+
+**Paused campaign rule (mandatory):** A ST converting in a paused campaign is valid signal for the corpus and lifetime data — include it. But never recommend promoting a ST to explicit targeting inside a paused campaign. Do not credit a paused campaign's CPC data for starting bid calculations. Filter paused campaign rows from harvest recommendations.
+
+**Granularity slices from the artifact:**
+- `lifetime_keyword_aggregate` — confirm account-wide conversion before promoting
+- `lifetime_keyword_by_item_group` — determine which item group the ST is performing in
+- `lifetime_keyword_by_location` — identify which specific ad group is capturing the converting traffic
+- `stream1_keyword` — window location data for CPC calculation
+
+**Step 1 — Query explicit keyword targeting:**
+
+[SQL-LIBRARY: STH-01]
+
+Parameters:
+- `:seller_id` from `context.yaml::accounts[0].seller_id`
+
+Build: `explicit_keywords = {KeywordText.lower()}`
+
+---
+
+## Phase 1 — Tier S Classification (Keyword Stream)
+
+From the data artifact Stream 1, classify as Tier S:
+
+```
+lifetime_orders >= min_keep_orders
+AND lifetime_acos <= acos_target * 0.75
+AND SearchTerm.lower() NOT IN explicit_keywords
+```
+
+The `acos_target * 0.75` threshold identifies terms performing well below the account target — these are the highest-priority extraction candidates. They have proven efficiency and unexploited scale potential.
+
+**Secondary Tier S (converting but not exceptional):**
+```
+lifetime_orders >= min_keep_orders
+AND lifetime_acos <= acos_target
+AND SearchTerm.lower() NOT IN explicit_keywords
+```
+
+Label these as `harvest_tier: primary` vs `harvest_tier: secondary` in output.
+
+---
+
+## Phase 2 — ASIN Harvest Classification
+
+From the data artifact Stream 2, classify ASIN targets as harvest candidates:
+
+```
+lifetime_orders >= min_keep_orders
+AND lifetime_acos <= acos_target
+AND bare_asin NOT IN manual_targets (from data artifact)
+```
+
+These are competitor ASINs or adjacent ASINs that are converting on conquest placement in auto campaigns — not yet explicitly targeted.
+
+---
+
+## Phase 3 — Campaign Placement Recommendation
+
+For each harvest candidate, recommend the specific campaign and match type to add it to:
+
+**Keyword stream placement logic:**
+- Non-brand term, proven conversion → `RSCH-NONBRAND-EXACT-[ItemGroup]` (exact match)
+- If no exact campaign exists for the item group → `RSCH-NONBRAND-PHRASE-[ItemGroup]`
+- Brand-adjacent term (check brand term dictionary) → `BRAND-[ItemGroup]`
+- Determine item group from campaign name where ST was discovered (use item group taxonomy from brand context)
+
+**ASIN stream placement logic:**
+- ASIN is a competitor product → `CONQ-NONBRAND-ASIN-[ItemGroup]`
+- ASIN is an adjacent product (same buyer, different category) → `PROF-[ItemGroup]` or new conquest ad group
+- If campaign structure unclear → flag as "placement TBD — needs AM review"
+
+---
+
+## Phase 4 — Bid Recommendation
+
+For each harvest candidate, surface the observed CPC from window data as a bid starting point:
+
+```
+observed_cpc = window_spend / window_clicks (if window_clicks > 0)
+recommended_starting_bid = observed_cpc * 1.1  (10% above observed to ensure delivery)
+```
+
+Flag if `recommended_starting_bid` would be unusual given account norms (from brand context).
+Do not recommend bids outside the account's typical range without flagging.
+
+---
+
+## Output Structure
+
+### Section 1: Keyword Harvest Candidates
+
+Sorted by lifetime conversion count DESC (most proven performers first), then by ACOS ASC.
+
+Columns:
+```
+Search Term | Harvest Tier | Lifetime Spend | Lifetime Orders | Lifetime ACOS |
+vs ACOS Target | Current Capture (Campaign/Ad Group) | Recommended Campaign |
+Recommended Match Type | Suggested Starting Bid
+```
+
+### Section 2: ASIN Harvest Candidates
+
+Sorted by lifetime conversion count DESC.
+
+Columns:
+```
+ASIN | Product Title (from data artifact or TBD) | Lifetime Spend | Lifetime Orders |
+Lifetime ACOS | Already in Manual? | Recommended Campaign | Placement Rationale
+```
+
+### Footer
+
+```
+Keyword harvest candidates: [N] primary | [N] secondary
+ASIN harvest candidates: [N]
+Note: [N] terms are already in explicit targeting — excluded
+```
+
+---
+
+## Brand Context Feedback Loop
+
+Every harvest candidate that is confirmed by the account manager and added to explicit targeting should be added to the brand context file's `known_converting_adjacencies` list. This prevents future relevance check runs from mis-classifying them as BORDERLINE.
+
+After AM approves extractions, flag the following for brand context update:
+- Any ST not already in `known_converting_adjacencies` that is being promoted
+- Any ASIN not already in `known_competitor_asins` that is being targeted
+
+---
+
+## Delivery
+
+Append to negation report (Section 4) or deliver as standalone output if run independently.
+Write to runs archive with timestamp: `YYYY-MM-DD-harvest.json`
+
+---
+
+## Step: Emit Run Sidecar (canonical, drift-detection input)
+
+After delivery (harvest output written to runs archive as `YYYY-MM-DD-harvest.json`), write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to `acos_target_pct` driving Tier S thresholds, dropped queries, candidate-volume collapse signaling auto campaigns aren't running, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/search-term-harvest/<data-date>-<run-id>.json`.
+
+Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+
+```bash
+python3 <plugin>/scripts/write-sidecar.py \
+  --skill search-term-harvest \
+  --skill-version 1.0 \
+  --brand-slug [brand-slug] \
+  --data-date YYYY-MM-DD \
+  --metrics-json /tmp/sth-headline.json \
+  --context-snapshot-json /tmp/sth-context-snapshot.json \
+  --sql-calls-json /tmp/sth-sql-calls.json \
+  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
+  --report-html /tmp/[brand]-reports/search-term-harvest.html
+```
+
+Use the **window end date** of the upstream search-term-data-pull artifact for `--data-date`, not the run wall-clock date.
+
+**Required JSON inputs:**
+
+- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
+  ```json
+  {"harvest_candidates_count": 22, "auto_to_phrase_count": 9,
+   "auto_to_exact_count": 13, "expected_keep_acos": 14.8,
+   "keywords_already_explicit_excluded": 41}
+  ```
+
+- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
+  ```json
+  {"account_type": "VC", "seller_id": "113",
+   "primary_metric": "ACOS", "acos_target_pct": 20,
+   "attribution_window_days": 14,
+   "campaign_naming_pattern_present": true,
+   "brand_terms_count": 8,
+   "lane_rules_present": true,
+   "paused_campaigns_count": 3}
+  ```
+
+- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity). Harvest reuses upstream `STDP-*` results via the data-pull artifact and runs `STH-01` for the harvest-specific aggregation:
+  ```json
+  [{"id": "STH-01", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25", "acos_target_pct": 20}},
+   {"id": "STDP-CONSUMED", "params": {"upstream_artifact": "/tmp/[brand]-st-data-pull.json"}}]
+  ```
+
+**Verdict rule:** `GREEN` = balanced harvest mix (candidates split between auto-to-phrase and auto-to-exact; conversion-rich auto traffic is being captured). `YELLOW` = many candidates already explicit (corpus saturation — auto campaigns are doing their discovery job but explicit campaigns may be over-built; reduce harvest cadence). `RED` = zero candidates (auto campaigns are not running or not generating measurable conversion volume — escalate to campaign structure review). `OBSERVATIONAL` = window too short or first run after cold-start; no historical band yet.
+
+After writing, run the comparator to surface drift against the prior run:
+
+```bash
+# Post-delivery: drift check against prior sidecar
+python3 scripts/compare-sidecars.py \
+    --brand-slug [brand-slug] \
+    --skill search-term-harvest
+# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
+# Review drift output before closing the run. Drift is not blocking by default.
+```
+
+Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, candidate-volume jump, verdict regression). Surface drift findings in the next run's report header, not silently.
+
+---
+
+*Skill version: 1.0 — focused harvest extraction*
+*Ported from upstream with full domain logic preserved*

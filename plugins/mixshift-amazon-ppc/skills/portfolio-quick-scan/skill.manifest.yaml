@@ -1,0 +1,52 @@
+schema_version: 1
+skill_id: portfolio-quick-scan
+display_name: Portfolio Quick Scan
+version: "1.0.1"
+description: >
+  Multi-account daily triage producing one status card per account answering whether
+  platform login is required today. Aggregates daily-health-check sidecars across all
+  configured accounts and emits a GREEN, YELLOW, or RED verdict per account plus a
+  portfolio-level verdict.
+run_kind: portfolio
+cadence: daily
+risk_tier: 2
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write
+review_required: on_non_green
+sql_ids:
+  - UPSTREAM:daily-health-check
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.primary_metric
+  - management.acos_target_pct
+  - management.tacos_in_bottom_line
+  - goals.monthly_revenue_target
+  - goals.quarterly_revenue_target
+  - goals.report_quarterly_pacing
+  - posture.stance
+  - posture.multiplier
+  - structural_events
+  - delivery.reports_local_dir
+optional_context_fields:
+  - capture_rate_calibration   # VC accounts only, for Adj. ACOS card line
+upstream_skills:
+  - daily-health-check
+artifacts:
+  - name: portfolio-scan.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED]
+pricing_tier: enterprise
+trigger_phrases:
+  - run portfolio scan
+  - quick check all accounts
+  - triage all accounts
+  - multi-account check
+notes: >
+  This skill is a pure consumer of per-account daily-health-check sidecars; it runs no
+  DB queries of its own. The UPSTREAM:daily-health-check entry in sql_ids records the
+  sidecar consumption pattern for drift-chain detection.
+  Sidecar is written with --brand-slug portfolio and --run-kind portfolio.
+  Per-account sidecars belong to the per-account daily-health-check skill, not here.
+  TACOS-primary accounts do not require a legacy tacos_reference_line; use
+  management.tacos_target_pct/tacos_goal_pct from the per-account context.

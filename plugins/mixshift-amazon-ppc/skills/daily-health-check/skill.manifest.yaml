@@ -1,0 +1,80 @@
+schema_version: 1
+skill_id: daily-health-check
+display_name: Daily Advertising Performance Health Check
+version: "0.1.1"
+description: >
+  Comprehensive daily exception-based analysis of advertising account performance across
+  campaign types, objectives, and item groups. Uses percentile-based confidence intervals
+  to detect spend and ACOS anomalies. Produces an HTML report with a GREEN, YELLOW, or RED
+  verdict and a structured sidecar for drift detection.
+run_kind: per_account
+cadence: daily
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: recommendation_only
+review_required: on_non_green
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - data freshness > 7 days
+  - verdict regresses from prior run without structural_events explanation
+  - prior-run sidecar absent
+sql_ids:
+  - DHC-01
+  - DHC-02
+  - DHC-03
+  - DHC-04
+  - DHC-05
+  - DHC-06
+  - DHC-07
+  - DHC-08
+  - DHC-09
+  - DHC-10
+  - DHC-11
+  - DHC-12
+  - LIB-PT-01   # conditional: only when context.yaml::structural_events includes an active price_test
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel: [DHC-01, DHC-02, DHC-03, DHC-04, DHC-05, DHC-06, DHC-07, DHC-08, DHC-09, DHC-10, DHC-11, DHC-12]
+      notes: >
+        DHC-02 applies to SC accounts; DHC-03 applies to VC accounts. Pre-fetch both;
+        skill model uses whichever applies. DHC-09 conditional on sub-brand segmentation.
+    - round: 2
+      parallel: [LIB-PT-01]
+      notes: "Conditional: only when structural_events includes an active price_test."
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.primary_metric
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - posture.stance
+  - posture.multiplier
+  - sub_brands
+  - campaign_structure.naming_pattern
+  - delivery.reports_local_dir
+  - delivery.archive_dir
+optional_context_fields:
+  - capture_rate_calibration   # required for VC Adj. ACOS computation
+  - structural_events          # active events downgrade severity or modify interpretation
+  - objective_calibration      # per-objective CI thresholds when present
+artifacts:
+  - name: health-check.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED]
+pricing_tier: pro
+trigger_phrases:
+  - run daily health check
+  - check account status
+  - how is the account
+  - daily performance check
+notes: >
+  DHC-02 applies to SC accounts; DHC-03 applies to VC accounts (never both in one run).
+  DHC-09 fires only when brand context documents sub-brand segmentation.
+  LIB-PT-01 fires only when structural_events includes an active price_test entry.
+  CI thresholds are always read dynamically from anomaly_detection_settings (DHC-04/DHC-05);
+  never hardcode percentiles.
+  Sales targets are not required for TACOS-primary accounts; the daily check evaluates
+  spend/ACOS/TACOS posture against management fields and context events.

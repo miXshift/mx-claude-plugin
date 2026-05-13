@@ -1,0 +1,52 @@
+schema_version: 1
+skill_id: search-term-harvest
+display_name: ST Harvest Extraction
+version: "1.0.1"
+description: >
+  Identifies search terms and ASIN targets converting efficiently under auto or broad match
+  that are not yet in explicit keyword targeting. Promotes high-performing auto terms to
+  explicit campaigns with bid recommendations and campaign placement guidance. Pure harvest
+  logic with no negation or relevance judgment.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - search-term-data-pull artifact absent (upstream dependency not met)
+  - harvest candidate matches a negation.protected_term (suppress and surface)
+sql_ids:
+  - STH-01
+required_context_fields:
+  - accounts[*].seller_id
+  - management.acos_target_pct
+  - sub_brands
+  - campaign_structure.naming_pattern
+  - campaign_structure.account_codes
+  - campaign_structure.objectives
+  - brand_terms
+  - negation.lane_rules
+  - posture.stance
+optional_context_fields:
+  - corpora   # manual conquest ASIN lists for ASIN harvest cross-reference
+  - paused_campaigns   # explicit [] means no known paused campaigns
+upstream_skills:
+  - search-term-data-pull
+artifacts:
+  - name: search-term-harvest.html
+    type: report_html
+verdict_range: [OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - run harvest
+  - search term harvest
+  - keyword harvest
+  - auto to explicit
+notes: >
+  STH-01 pulls the explicit-keyword exclusion mask (all enabled positive keyword targeting
+  rows). The skill consumes the search-term-data-pull JSON artifact for the ST corpus and
+  lifetime performance slices; it does not run STDP-* queries directly.
+  Harvest candidates must be checked against negation.lane_rules mismatch lists before
+  promotion to ensure irrelevant terms are not added to explicit campaigns.

@@ -1,0 +1,186 @@
+# JSON-Schema-compatible structural schema for client context.yaml files.
+# Validated by scripts/validate-context.py before any skill consumes the file.
+#
+# Drift policy: this schema is conservative — required fields fail closed.
+# To add an optional field, add to `optional:`. To add a new required field,
+# add to `required:` AND backfill it in every client file in the same PR.
+
+schema_version: 1
+
+required_top_level:
+  - schema_version
+  - brand_slug
+  - brand_name
+  - last_updated
+  - accounts
+  - sources
+  - management
+
+optional_top_level:
+  - capture_rate_calibration
+  - sub_brands
+  - brand_terms
+  - bid_health
+  - goals
+  - active_watch
+  - structural_events
+  - objective_calibration
+  - delivery
+  - open_gaps
+  - posture                 # bid-health, runaway-spend, monthly-report consume
+  - paused_campaigns        # search-term-harvest, asin-target-negation
+  - campaign_structure      # search-term-harvest, daily-health-check
+  - attribution_rule        # monthly-performance-report (per-account override)
+  - negation                # phrase-negative-discovery, search-term-negation,
+                            # ppc-relevance-check, asin-target-negation
+  - reporting               # monthly-performance-report (audience, voice flags)
+  - thresholds              # generic numeric knobs not tied to a single skill
+  - detected_anomalies      # cold-start v2.3 — advisory findings from automated
+                            # enrichment; rewritten on each delta-mode run
+
+shapes:
+  account:
+    required: [seller_id, seller_name, account_type, status, role]
+    enums:
+      account_type: [SC, VC]
+      status: [active, wind_down, inactive]
+      role: [primary, legacy, secondary]
+
+  sources:
+    required:
+      - ad_metrics
+      - ops_revenue
+      - ops_revenue_field
+      - ops_units_field
+      - ops_date_field
+
+  management:
+    required: [primary_metric, acos_target_pct, attribution_window_days]
+    optional: [tacos_target_pct, tacos_goal_pct, tacos_in_bottom_line,
+               implied_tacos_pct, tacos_reference_line]
+    enums:
+      primary_metric: [ACOS, TACOS]
+    note: |
+      TACOS-primary accounts must define either tacos_target_pct or
+      tacos_goal_pct, and should set tacos_in_bottom_line explicitly. ACOS target
+      remains the bid-math proxy; TACOS is the managed account-level goal.
+      implied_tacos_pct and tacos_reference_line are legacy/ACOS-primary helper
+      fields and must not be required for TACOS-primary accounts.
+
+  capture_rate_calibration:
+    required: [enabled, capture_rate_pct, fresh_day_acos_improvement_pts,
+               settlement_application_rule]
+    optional: [daily_settlement_curve, last_calibrated, stability_score]
+    note: |
+      daily_settlement_curve (cold-start v2.3+): nested map produced by
+      enrich-context.py. Shape:
+        daily_settlement_curve:
+          by_campaign_type:
+            sponsoredProducts: { acos_1day, acos_7day, acos_14day,
+                                  improvement_pts_1_to_7,
+                                  improvement_pts_1_to_14, settled_pct_at_1day }
+            sponsoredBrands:    {...}     # same fields
+            sponsoredDisplay:   {...}     # same fields
+          dow_offset_pts:                 # additive offsets to base curve
+            monday: <float>               # signed; positive = settles slower
+            tuesday: <float>
+            ...
+            sunday: <float>
+      stability_score: high | medium | low — based on std-dev of settlement %
+      across the trailing-12-month window. Skills should derate confidence
+      when stability_score=low.
+
+  detected_anomalies:
+    optional: [stockout_candidates, brand_term_typo_candidates]
+    note: |
+      Advisory findings produced by enrich-context.py during cold-start v2.3+.
+      Distinct from typed structural_events[] / brand_terms — those require AM
+      confirmation before promotion. detected_anomalies is rewritten on every
+      delta-mode run and is treated as transient AI output. Lives in
+      tmp/<brand>-account-cold-start-<date>.enrichment.json (NOT in
+      context.yaml directly), so the AM-curated context.yaml stays clean.
+
+      stockout_candidates[]: list of {asin, item_name, started, ended,
+        days_in_window, days_at_zero, impacted_revenue_usd, signal_source} —
+        pulled from mws_inventory_health snapshots (CS-29). signal_source in
+        {sellable_zero, alert_active, days_of_supply_low, multi}. Limitation:
+        ASIN-suppression-for-profitability events are NOT detected here (no
+        inventory zero) — those still require AM input.
+      brand_term_typo_candidates[]: clustered list of typo findings (v2.3.1+).
+        Each cluster: {canonical_match, root_token, distance, match_type,
+        variant_count, total_orders, total_sales, total_spend, top_variants[],
+        all_variants[]}. Members share the same canonical_match and
+        root_token, so the AM gets one decision per cluster (e.g.
+        "hydropack" cluster covers 30 phrase variants — one confirm action
+        adds them all to brand_terms.variants).
+        match_type (v2.3.2+) is one of:
+          "levenshtein"       — root_token is within edit distance N of
+                                canonical (distance > 0). Classic typo.
+          "token_membership"  — multi-token term contains a known single-word
+                                variant as a token (distance == 0). E.g.
+                                "water bottle polar" hits because "polar"
+                                is in example_brand.variants. Trusts the AM's
+                                single-word variant curation as ground truth
+                                for branded intent.
+      Removed in v2.3.1: unexplained_changepoints[] — retroactive change-point
+        listing produced too much noise. Forward-looking change-point capture
+        is a candidate for a separate per-run skill.
+
+  bid_health:
+    required: [scale_threshold_pct, pullback_threshold_pct]
+
+  structural_event:
+    required: [id, type, affects, interpretation]
+    enums:
+      type:
+        - brand_migration
+        - media_spike
+        - media_spike_recurring
+        - portfolio_decision
+        - promotional_window
+        - promotional_window_recurring
+        - stockout
+        - price_test
+        - launch
+
+  posture:
+    required: [stance, multiplier]
+    enums:
+      stance: [scale, efficiency, defend, clear_bleed]
+    note: |
+      Drives bid-adjustment magnitude in keyword-bid-health and
+      runaway-spend-check. multiplier ∈ [0.0, 1.0] — fraction of computed
+      excess-spend bid cut to apply. 1.0 = full cut (clear_bleed),
+      0.5 = half (efficiency), 0.2 = light (scale).
+
+  campaign_structure:
+    required: [naming_pattern, account_codes]
+    note: |
+      naming_pattern uses {Token} placeholders, e.g.
+      "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}".
+      Skills that parse CampaignName (search-term-harvest, daily-health-check
+      dimensional tables) must use this pattern, not hardcoded splits.
+
+  negation:
+    required: [protected_terms, lane_rules]
+    optional: [competitor_brands, asin_negation]
+    note: |
+      protected_terms: list of substrings that must NEVER be exact-negated
+      (general anchors like "flask", "bottle", "example-brand"). Used by
+      search-term-negation and phrase-negative-discovery to fail closed.
+      lane_rules: per-item-group relevant/mismatch term dictionaries; drives
+      BORDERLINE classification in search-term-negation and conflict detection
+      in phrase-negative-discovery. Keyed by item-group slug.
+      competitor_brands (cold-start v2.4.6+): source-backed competitor or
+      reference brand names/prefixes. Used by the renderer as the Competitive /
+      Reference Brand Dictionary, and by enrich-context.py to suppress
+      false-positive brand-misspelling collisions when a competitor shares a
+      close root with our canonical brand_terms (e.g. "competitor-brand-1", "competitor-brand-2"
+      for example brand).
+
+  reporting:
+    note: |
+      audience: {executive | account_manager | analyst} — drives narrative
+      depth and acronym density in monthly-performance-report.
+      voice_lint: list of regex patterns that fail the pre-publication gate
+      (em-dash, hedging adverbs, MoM/YoY label absence on a percentage).

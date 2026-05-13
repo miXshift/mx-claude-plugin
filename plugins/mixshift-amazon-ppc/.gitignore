@@ -1,0 +1,12 @@
+# Skill run outputs — sidecars, archives, and local temp reports. Generated, not source.
+runs/
+tmp/
+
+# Local Python artifacts
+__pycache__/
+*.pyc
+
+# Editor + OS noise
+.DS_Store
+*.swp
+.vscode/

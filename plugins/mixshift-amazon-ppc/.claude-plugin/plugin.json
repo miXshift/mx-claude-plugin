@@ -1,0 +1,9 @@
+{
+  "name": "mixshift-amazon-ppc",
+  "version": "0.1.0",
+  "description": "Amazon PPC optimization toolkit for MixShift — daily health checks, keyword bid management, search term negation workflows, harvest extraction, and monthly performance reporting.",
+  "author": {
+    "name": "MixShift"
+  },
+  "keywords": ["amazon", "ppc", "advertising", "acos", "keywords", "negation"]
+}

@@ -1,0 +1,251 @@
+# Audit labels for the brand-context.html "AI Knowledge Audit" checklist.
+# Each entry maps a context.yaml field path to display metadata.
+#
+# Tier semantics (drives the icon shown in the audit checklist):
+#   required    -> [X] when missing -- blocks accurate analysis (RED verdict)
+#   recommended -> [!] when missing -- analysis incomplete (YELLOW verdict)
+#   optional    -> [ok] or muted when present, omitted from missing tally
+#
+# Path syntax:
+#   foo.bar           dotted nested key
+#   foo[].bar         array of objects, value extracted from each entry
+#   foo[]             array as a whole (counted, never expanded inline)
+#
+# Display flags:
+#   aggregate: true     -- show as "v1/v2/..." across an array (e.g. SellerIDs)
+#   list_count: true    -- show "{N} entries" instead of expanding the list
+#   dict_count: true    -- show "{N} entries" instead of expanding the dict
+#   fresh_check: true   -- also flag stale if older than 30 days
+#   display_as: status  -- show "configured" / "not set" only (no value preview)
+#                          for long-text or AI-internal values
+#   description: "..."  -- small subtext rendered under the label, used to
+#                          clarify technical terms for human readers
+#
+# Note: source-routing fields (sources.*) are intentionally absent from this
+# file. They are AI-internal SQL config -- a human reviewing this page does
+# not need to verify table names. The schema validator still requires them.
+
+schema_version: 1
+
+categories:
+  - id: identity
+    label: "Account Identity"
+    order: 1
+  - id: targets
+    label: "Management & Targets"
+    order: 2
+  - id: calibration
+    label: "Attribution Backfill Calibration"
+    order: 3
+  - id: brand_structure
+    label: "Brand & Sub-Brand Structure"
+    order: 4
+  - id: bid_posture
+    label: "Bid Health & Posture"
+    order: 5
+  - id: campaign
+    label: "Campaign Structure & Events"
+    order: 6
+  - id: negation
+    label: "Negation Rules"
+    order: 7
+  - id: reporting
+    label: "Reporting & Delivery"
+    order: 8
+  - id: gaps
+    label: "Open Gaps & TODOs"
+    order: 9
+
+fields:
+  # -- Account Identity ----------------------------------------------------
+  - path: brand_slug
+    label: "Brand slug"
+    category: identity
+    tier: required
+  - path: brand_name
+    label: "Brand display name"
+    category: identity
+    tier: required
+  - path: last_updated
+    label: "Context last updated"
+    category: identity
+    tier: required
+    fresh_check: true
+  - path: accounts[].seller_id
+    label: "SellerIDs"
+    category: identity
+    tier: required
+    aggregate: true
+  - path: accounts[].account_type
+    label: "Account types (SC/VC)"
+    category: identity
+    tier: required
+    aggregate: true
+  - path: accounts[].status
+    label: "Account statuses"
+    category: identity
+    tier: required
+    aggregate: true
+  - path: accounts[].role
+    label: "Account roles"
+    category: identity
+    tier: required
+    aggregate: true
+
+  # -- Management & Targets ------------------------------------------------
+  - path: management.primary_metric
+    label: "Primary metric"
+    description: "ACOS = ad-only efficiency; TACOS = total-sales efficiency"
+    category: targets
+    tier: required
+  - path: management.acos_target_pct
+    label: "ACOS target %"
+    description: "Blended account-level efficiency target"
+    category: targets
+    tier: required
+  - path: management.attribution_window_days
+    label: "Attribution window (days)"
+    description: "How many days post-click Amazon credits to the ad"
+    category: targets
+    tier: required
+  - path: goals.monthly_revenue_target
+    label: "Monthly revenue target"
+    category: targets
+    tier: optional
+  - path: goals.quarterly_revenue_target
+    label: "Quarterly revenue target"
+    category: targets
+    tier: optional
+
+  # -- Attribution Backfill Calibration ------------------------------------
+  - path: capture_rate_calibration.enabled
+    label: "Calibration enabled"
+    description: "Whether AI applies fresh-day ACOS correction"
+    category: calibration
+    tier: recommended
+  - path: capture_rate_calibration.capture_rate_pct
+    label: "Capture rate %"
+    description: "Share of attribution captured at T-1 vs settled (T-14)"
+    category: calibration
+    tier: recommended
+  - path: capture_rate_calibration.fresh_day_acos_improvement_pts
+    label: "Fresh-day ACOS lift"
+    description: "How many points ACOS improves once attribution settles"
+    category: calibration
+    tier: recommended
+  - path: capture_rate_calibration.settlement_application_rule
+    label: "Settlement rule"
+    description: "How AI weights fresh vs settled days for MTD"
+    category: calibration
+    tier: recommended
+    display_as: status
+  - path: capture_rate_calibration.per_subbrand
+    label: "Per sub-brand calibration"
+    category: calibration
+    tier: optional
+    dict_count: true
+
+  # -- Brand & Sub-Brand Structure -----------------------------------------
+  - path: sub_brands
+    label: "Sub-brand structure"
+    category: brand_structure
+    tier: recommended
+    list_count: true
+  - path: brand_terms
+    label: "Brand term dictionary"
+    category: brand_structure
+    tier: recommended
+    dict_count: true
+
+  # -- Bid Health & Posture ------------------------------------------------
+  - path: bid_health.scale_threshold_pct
+    label: "Scale-up ACOS threshold"
+    description: "Below this ACOS, lean into bids"
+    category: bid_posture
+    tier: recommended
+  - path: bid_health.pullback_threshold_pct
+    label: "Pull-back ACOS threshold"
+    description: "Above this ACOS, cut bids"
+    category: bid_posture
+    tier: recommended
+  - path: bid_health.re_entry_rule
+    label: "Re-entry condition"
+    description: "When pulled-back keywords are allowed back in"
+    category: bid_posture
+    tier: optional
+    display_as: status
+  - path: posture.stance
+    label: "Posture stance"
+    description: "scale = lean into growth; efficiency = tighten; defend = hold; clear_bleed = cut hard"
+    category: bid_posture
+    tier: recommended
+  - path: posture.multiplier
+    label: "Bid-cut intensity"
+    description: "0.0 = no cuts, 1.0 = full cuts (e.g. 0.2 = light, 0.5 = half)"
+    category: bid_posture
+    tier: recommended
+  - path: objective_calibration
+    label: "Per-objective expected ACOS"
+    description: "What ACOS each campaign type is expected to run at"
+    category: bid_posture
+    tier: optional
+    dict_count: true
+
+  # -- Campaign Structure & Events -----------------------------------------
+  - path: campaign_structure.naming_pattern
+    label: "Campaign naming pattern"
+    description: "How AI parses campaign names into objective, brand-type, item-group"
+    category: campaign
+    tier: recommended
+    display_as: status
+  - path: structural_events
+    label: "Structural events log"
+    description: "One-time events AI must remember (launches, migrations, media spikes)"
+    category: campaign
+    tier: recommended
+    list_count: true
+  - path: active_watch
+    label: "Active watch items"
+    description: "Things AI is currently tracking as open questions"
+    category: campaign
+    tier: optional
+    list_count: true
+  - path: paused_campaigns
+    label: "Paused campaigns"
+    category: campaign
+    tier: optional
+    list_count: true
+
+  # -- Negation Rules ------------------------------------------------------
+  - path: negation.protected_terms
+    label: "Protected terms"
+    description: "Words AI must never exact-negate (e.g. 'flask', 'bottle')"
+    category: negation
+    tier: recommended
+    list_count: true
+  - path: negation.lane_rules
+    label: "Lane-based negation rules"
+    description: "Per item-group rules for which search terms are relevant"
+    category: negation
+    tier: optional
+    dict_count: true
+  - path: negation.asin_negation
+    label: "ASIN-negation pre-check"
+    description: "Lifetime-orders threshold before negating an ASIN target"
+    category: negation
+    tier: optional
+    display_as: status
+
+  # -- Reporting & Delivery ------------------------------------------------
+  - path: reporting.audience
+    label: "Reporting audience"
+    description: "executive | account_manager | analyst -- drives narrative depth"
+    category: reporting
+    tier: recommended
+
+  # -- Open Gaps -----------------------------------------------------------
+  - path: open_gaps
+    label: "Acknowledged open gaps"
+    category: gaps
+    tier: optional
+    list_count: true

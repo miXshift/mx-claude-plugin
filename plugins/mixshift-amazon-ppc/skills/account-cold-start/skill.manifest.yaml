@@ -1,0 +1,138 @@
+schema_version: 1
+skill_id: account-cold-start
+display_name: Account Cold Start -- Tier 3 Context Builder
+version: "2.4.12"
+description: >
+  Builds a Tier 3 brand context directory for a new Amazon PPC account from scratch.
+  Runs structured Phase 0 through Phase 5 collection (web scrub, DB queries, AM intake,
+  typed YAML output, deterministic renderer, validator). Produces context.yaml,
+  narrative.md, corpora/, and a human-reviewable brand-context.html ("Brand Context
+  page") that summarizes what AI knows about the brand, what's missing, and what may
+  be stale.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [db_read, file_read, file_write, renderer, validator, web_search, prefetch]
+side_effect_policy: context_write
+review_required: always
+sql_ids:
+  - CS-01
+  - CS-02
+  - CS-03
+  - CS-04
+  - CS-05
+  - CS-06
+  - CS-07
+  - CS-08
+  - CS-09
+  - CS-10
+  - CS-11
+  - CS-12
+  - CS-13
+  - CS-14
+  - CS-15
+  - CS-16
+  - CS-17
+  - CS-18
+  - CS-19
+  - CS-20
+  - CS-21
+  - CS-22
+  - CS-23
+  - CS-24
+  - CS-25
+  - CS-26
+  - CS-27
+  - CS-28
+  - CS-29
+  - CS-30
+  - CS-31
+pre_execution:
+  enabled: true
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  batch_plan:
+    - round: 1
+      parallel: [CS-01]
+      notes: "CS-01 (identity check) must confirm SellerID before any other queries proceed."
+    - round: 2
+      parallel: [CS-02, CS-03, CS-04, CS-05, CS-06, CS-07, CS-08, CS-09, CS-10, CS-11, CS-12, CS-13, CS-14, CS-15]
+      notes: >
+        CS-02 applies to SC accounts; CS-03 applies to VC accounts (pre-fetch both; model uses whichever applies).
+        CS-06/CS-07 are attribution-window calibration queries (SC vs VC respectively).
+        CS-09/CS-11/CS-12/CS-13 apply to VC accounts only. CS-10 applies to SC accounts only.
+        CS-16 is a known stub (mws_inventory_history confirmed empty-column stub 2026-04-27) -- included for schema awareness.
+    - round: 3
+      parallel:
+        - CS-16
+        - CS-17
+        - CS-18
+        - CS-19
+        - CS-20
+        - CS-21
+        - CS-22
+        - CS-23
+        - CS-24
+        - CS-25
+        - CS-26
+        - CS-27
+        - { id: CS-28, enrichment: true }
+        - { id: CS-29, enrichment: true }
+        - { id: CS-30, enrichment: true }
+        - { id: CS-31, enrichment: true }
+      notes: >
+        CS-16 through CS-27 are independent structure and calibration queries. CS-19/CS-25 apply to
+        VC accounts only; CS-20 applies to SC accounts only. CS-16 stub noted -- include for completeness.
+        CS-28/29/30/31 are v2.3 enrichment queries (tagged enrichment: true so delta-mode runs
+        can filter to them): CS-28 daily attribution settlement curve (campaign type x DOW),
+        CS-29 inventory-health historical snapshots for stockout window detection (FBA-only;
+        pre-filtered to in-trouble rows), CS-30 daily account ad metrics over trailing 365 days
+        for stockout-window impact scoring, CS-31 trailing-90-day converting search-term corpus for
+        brand-name typo detection.
+post_execution:
+  enabled: true
+  renderer: scripts/render-brand-context.py
+  args: ["--brand", "{brand_slug}", "--date", "{run_date}"]
+  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.html"
+  headline_path: "tmp/{brand_slug}-{skill_id}-{run_date}.headline.json"
+  review_path: "tmp/{brand_slug}-{skill_id}-{run_date}.review.json"
+  notes: >
+    Reads shared/clients/<brand>/{context.yaml, narrative.md, corpora/*.csv} plus
+    the schema and audit-labels map. Writes the Brand Context HTML, a compact
+    headline.json (~500 tokens), review.json for targeted machine consumption,
+    and the run sidecar. The renderer is the single writer of these artifacts --
+    the model never edits them manually.
+required_context_fields: []  # this skill creates context, not consumes it
+artifacts:
+  - name: context.yaml
+    type: context_yaml
+  - name: narrative.md
+    type: narrative_md
+  - name: brand-intelligence.yaml
+    type: source_backed_brand_research
+  - name: brand-context.html
+    type: report_html
+  - name: brand-context.headline.json
+    type: headline_json
+  - name: brand-context.review.json
+    type: review_json
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - cold start
+  - new account setup
+  - build brand context
+  - account onboarding
+  - run cold start
+upstream_skills: []
+notes: >
+  CS-02 applies to SC accounts; CS-03 applies to VC accounts.
+  CS-06/CS-07 are attribution-window calibration queries (SC vs VC respectively).
+  CS-09/CS-11/CS-12/CS-13/CS-19/CS-25 apply to VC accounts only.
+  CS-10/CS-20 apply to SC accounts only.
+  CS-16 notes that mws_inventory_history is a confirmed empty-column stub (verified 2026-04-27).
+  Run validate-context.py and check-sql-drift.py before declaring complete.
+  brand-context.html is the human review artifact; headline.json is the model
+  summary; review.json separates missing context, runtime inputs, skill readiness,
+  and the Brand Context page source map so downstream skills can consume targeted
+  context without reading the full HTML.
+  Renderer auto-emits the sidecar (no manual write-sidecar.py call needed).
