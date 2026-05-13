@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Test output
+coverage/
+.vitest/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Note: dist/ is committed. The plugin runtime invokes the built JS
+# directly; users should not need to npm install to run the harness.
