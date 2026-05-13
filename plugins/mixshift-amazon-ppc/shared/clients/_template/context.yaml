@@ -1,0 +1,185 @@
+# Brand context template — schema-conforming example.
+#
+# This file is a STARTER, not a runtime context. Real per-brand contexts live at
+# ~/.mixshift/clients/<brand-slug>/context.yaml on the user's machine.
+#
+# Run `account-cold-start` to generate a populated context.yaml for a real brand.
+# This template exists so that:
+#   1. Schema validators have a known-good reference
+#   2. Users can read a complete example before running cold-start
+#   3. SKILL.md files can point at "shared/clients/_template/context.yaml" for
+#      structural illustration
+#
+# Schema source of truth: shared/clients/_schema/context.schema.yaml
+# Schema validator: scripts/validate-context.py (to be ported to TS)
+# ----------------------------------------------------------------------
+
+schema_version: 1
+brand_slug: <your-brand-slug>            # lowercase, hyphenated; used as folder name
+brand_name: "<Your Brand Name>"          # human-friendly display name
+last_updated: 2026-05-13                 # ISO date of last edit to this file
+
+# accounts[]
+#   One entry per SellerID. A single brand can own multiple accounts:
+#   SC + VC for the same legal brand, or multiple marketplaces (US, CA, MX, UK).
+#   account_type ∈ {SC, VC}.  status ∈ {active, wind_down, inactive}.
+#   role ∈ {primary, legacy, secondary}.
+accounts:
+  - seller_id: <integer-seller-id>
+    seller_name: "<Display name in seller table>"
+    account_type: SC
+    status: active
+    role: primary
+
+# sources
+#   Tells skills which warehouse tables to use for ad metrics vs operational
+#   revenue. Set by account_type:
+#     SC: ops_revenue = business_reports_dpst_date, ops_revenue_field = SalesAmount
+#     VC: ops_revenue = vendor_sales_manufacturing_asin, ops_revenue_field = OrderedRevenue
+sources:
+  ad_metrics: campaignmetric
+  ops_revenue: business_reports_dpst_date
+  ops_revenue_field: SalesAmount
+  ops_units_field: UnitsOrdered
+  ops_date_field: DateTime
+
+# management
+#   Account-level operational targets. ACOS target drives bid math.
+#   primary_metric ∈ {ACOS, TACOS} — selects the headline metric for reports.
+#   TACOS-primary accounts must populate tacos_target_pct or tacos_goal_pct.
+management:
+  primary_metric: ACOS
+  acos_target_pct: 20.0
+  attribution_window_days: 14
+  tacos_goal_pct: 10.0                   # optional; required for TACOS-primary
+  tacos_in_bottom_line: true             # surface TACOS in skill Bottom Lines
+
+# posture
+#   Drives bid-adjustment magnitude in keyword-bid-health and runaway-spend-check.
+#   stance ∈ {scale, efficiency, defend, clear_bleed}.
+#   multiplier ∈ [0.0, 1.0] — fraction of computed excess-spend bid cut to apply.
+posture:
+  stance: efficiency
+  multiplier: 0.5
+
+# goals
+#   Monthly / quarterly sales targets. Drives pacing math in daily-health-check
+#   and monthly-performance-report.
+goals:
+  monthly_total_sales_target: 100000     # USD
+  quarterly_total_sales_target: 300000   # USD
+  tacos_goal_pct: 10.0
+
+# campaign_structure
+#   How the user's campaign names encode meaning. Skills parse CampaignName
+#   using this pattern, not hardcoded splits.
+campaign_structure:
+  naming_pattern: "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}"
+  account_codes:
+    - YBR                                 # short code for this brand's primary account
+  objectives:                             # optional: list of valid Objective tokens
+    - PROSPECT
+    - DEFEND
+    - SCALE
+
+# bid_health
+#   Thresholds for keyword-bid-health.
+bid_health:
+  scale_threshold_pct: 50                 # ACOS below target by this % → scale bid up
+  pullback_threshold_pct: 50              # ACOS above target by this % → reduce bid
+
+# sub_brands (optional)
+#   Used when the parent brand has distinguishable sub-brands.
+#   Example: parent brand owns both "Brand A" and "Brand B" SKU lines.
+# sub_brands:
+#   - slug: sub-brand-a
+#     name: "Sub-Brand A"
+#     item_groups: [hydration, accessories]
+#   - slug: sub-brand-b
+#     name: "Sub-Brand B"
+#     item_groups: [apparel]
+
+# brand_terms (optional, populated by cold-start enrichment)
+#   Canonical brand spellings and known variants. Drives brand-vs-non-brand
+#   classification in search-term-negation, phrase-negative-discovery.
+# brand_terms:
+#   canonical:
+#     - your-brand
+#   variants:
+#     - your brand
+#     - yourbrand
+#     - yourbrand co
+
+# structural_events (optional)
+#   Known operational events that explain anomalies in skill output.
+#   Skills cross-reference these to downgrade severity (e.g. RED → YELLOW
+#   when explained by a price test).
+# structural_events:
+#   - id: 2026-q2-price-test
+#     type: price_test
+#     affects:
+#       - asin: B000XXXXX
+#         pre_price: 19.99
+#         test_price: 17.99
+#     start: 2026-05-10
+#     end: 2026-05-24
+#     interpretation: |
+#       ACOS distorted for affected ASINs during the test window. Ad-attributed
+#       sales credit is reliable; profitability calculations are not.
+
+# negation (optional, used by negation skills)
+#   protected_terms: substrings that must NEVER be exact-negated.
+#   lane_rules: per-item-group dictionaries driving BORDERLINE classification.
+#   competitor_brands: known competitor names; suppresses false-positive
+#   brand-misspelling collisions.
+# negation:
+#   protected_terms:
+#     - <general anchor like "bottle">
+#     - <your brand>
+#   lane_rules:
+#     <item-group-slug>:
+#       relevant_terms: [...]
+#       mismatch_terms: [...]
+#   competitor_brands:
+#     - <competitor brand 1>
+#     - <competitor brand 2>
+
+# delivery (optional, set during user onboarding)
+#   Where skill outputs land. Overridden per-skill in profile.yaml's
+#   output.per_skill[<skill_id>] adapter selection.
+# delivery:
+#   reports_local_dir: "~/.mixshift/output/<your-brand-slug>"
+#   archive_dir: "~/.mixshift/clients/<your-brand-slug>/runs"
+
+# reporting (optional, drives monthly-performance-report)
+# reporting:
+#   audience: account_manager           # executive | account_manager | analyst
+#   voice_lint:                          # regex patterns that fail the pre-publication gate
+#     - "—"                              # em-dash
+#     - "\\bmodestly\\b"                 # hedging adverb
+
+# open_gaps (optional, populated by cold-start and skill preflight)
+#   Lists context fields that are missing or unconfirmed. Skills surface
+#   these in their preflight output.
+# open_gaps:
+#   - field: management.tacos_goal_pct
+#     status: unconfirmed
+#     note: "Derived from Q1 actuals; awaiting AM confirmation."
+
+# ----------------------------------------------------------------------
+# Cold-start enrichment fields (populated by enrich-context.py — leave
+# empty in this template; they get filled at run time)
+# ----------------------------------------------------------------------
+
+# capture_rate_calibration:
+#   enabled: true
+#   capture_rate_pct: <derived>
+#   fresh_day_acos_improvement_pts: <derived>
+#   settlement_application_rule: <enum>
+#   daily_settlement_curve:
+#     ... (populated by enrich-context)
+#   stability_score: high                 # high | medium | low
+
+# detected_anomalies:
+#   stockout_candidates: []
+#   brand_term_typo_candidates: []

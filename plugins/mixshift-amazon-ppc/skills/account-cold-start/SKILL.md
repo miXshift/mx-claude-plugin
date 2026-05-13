@@ -46,7 +46,7 @@ runs/<brand>/account-cold-start/<date>-<run-id>.json   # sidecar (auto-emitted b
 ```
 
 **Schema source of truth:** `shared/clients/_schema/context.schema.yaml`.
-Reference example (read this before starting): `shared/clients/example-brand/context.yaml`.
+Reference example (read this before starting): `shared/clients/_template/context.yaml`.
 
 **Execution root:** Run all shell commands from the plugin root (`plugins/mixshift-amazon-ppc/`). Command examples below assume that working directory and use `python scripts/...`.
 

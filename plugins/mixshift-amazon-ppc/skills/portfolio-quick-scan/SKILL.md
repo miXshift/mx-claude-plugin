@@ -214,20 +214,20 @@ Location: portfolio account configuration file.
 
 ```yaml
 accounts:
-  - slug: example-brand
-    seller_id: 300
+  - slug: <brand-slug-1>
+    seller_id: <integer-seller-id>
     account_type: SC
-    display_name: example brand
+    display_name: <Brand 1 Display Name>
 
-  - slug: example-brand
-    seller_id: [example-brand_seller_id]
+  - slug: <brand-slug-2>
+    seller_id: <integer-seller-id>
     account_type: SC
-    display_name: example brand
+    display_name: <Brand 2 Display Name>
 
-  - slug: example-brand
-    seller_id: 113
+  - slug: <brand-slug-3>
+    seller_id: <integer-seller-id>
     account_type: VC
-    display_name: example brand
+    display_name: <Brand 3 Display Name>
 ```
 
 **Adding a new account:** Add an entry here. Ensure brand context file exists with at minimum: acos_target, tacos_goal, account_type. Skill will error-fail that account gracefully if missing — other accounts still run.
@@ -280,8 +280,8 @@ python3 scripts/compare-sidecars.py \
   "data_date": "YYYY-MM-DD",
   "run_date": "YYYY-MM-DD",
   "accounts": [
-    { "slug": "example-brand", "status": "GREEN", "flags": [], "watch_item": "..." },
-    { "slug": "example-brand", "status": "YELLOW", "flags": ["tacos_approaching_target"], "watch_item": "..." }
+    { "slug": "<brand-slug-1>", "status": "GREEN", "flags": [], "watch_item": "..." },
+    { "slug": "<brand-slug-2>", "status": "YELLOW", "flags": ["tacos_approaching_target"], "watch_item": "..." }
   ]
 }
 ```
