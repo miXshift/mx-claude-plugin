@@ -1,5 +1,12 @@
 import type { Command } from 'commander';
 import { notYetImplemented } from '../lib/stub.js';
+import { validateBrandContext } from '../lib/context/load.js';
+import { renderValidationResult } from './_render-validation.js';
+
+interface RootOptions {
+  json?: boolean;
+  dataDir?: string;
+}
 
 export function registerBrandCommands(program: Command): void {
   const brand = program
@@ -66,7 +73,10 @@ export function registerBrandCommands(program: Command): void {
   brand
     .command('validate <slug>')
     .description('Schema-check one brand context.yaml (post manual edit)')
-    .action((slug: string) => {
-      notYetImplemented('brand validate', { slug });
+    .action(async (slug: string, _opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const result = await validateBrandContext(slug, root.dataDir);
+      renderValidationResult(slug, result, !!root.json);
+      process.exit(result.ok ? 0 : 1);
     });
 }

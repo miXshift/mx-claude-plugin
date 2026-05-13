@@ -29822,6 +29822,15 @@ function authDir(dataDirOverride) {
 function credentialsPath(dataDirOverride) {
   return join(authDir(dataDirOverride), "credentials");
 }
+function clientsDir(dataDirOverride) {
+  return join(resolveDataDir(dataDirOverride), "clients");
+}
+function brandDir(brandSlug, dataDirOverride) {
+  return join(clientsDir(dataDirOverride), brandSlug);
+}
+function contextPath(brandSlug, dataDirOverride) {
+  return join(brandDir(brandSlug, dataDirOverride), "context.yaml");
+}
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -44588,6 +44597,261 @@ function notYetImplemented(command, args) {
   process.exit(2);
 }
 
+// src/lib/context/load.ts
+var import_yaml4 = __toESM(require_dist(), 1);
+import { readFile as readFile2 } from "node:fs/promises";
+
+// src/lib/context/schema.ts
+var accountSchema = external_exports.object({
+  seller_id: external_exports.number().int().positive(),
+  seller_name: external_exports.string().min(1),
+  account_type: external_exports.enum(["SC", "VC"]),
+  status: external_exports.enum(["active", "wind_down", "inactive"]),
+  role: external_exports.enum(["primary", "legacy", "secondary"]),
+  amazon_seller_id: external_exports.string().optional(),
+  marketplace: external_exports.string().optional(),
+  merchant_type: external_exports.enum(["seller", "vendor"]).optional(),
+  ads_active: external_exports.boolean().optional(),
+  retail_active: external_exports.boolean().optional()
+});
+var sourcesSchema = external_exports.object({
+  ad_metrics: external_exports.string().min(1),
+  ops_revenue: external_exports.string().min(1),
+  ops_revenue_field: external_exports.string().min(1),
+  ops_units_field: external_exports.string().min(1),
+  ops_date_field: external_exports.string().min(1)
+});
+var managementSchema = external_exports.object({
+  primary_metric: external_exports.enum(["ACOS", "TACOS"]),
+  acos_target_pct: external_exports.number().positive(),
+  attribution_window_days: external_exports.number().int().positive(),
+  tacos_target_pct: external_exports.number().positive().optional(),
+  tacos_goal_pct: external_exports.number().positive().optional(),
+  tacos_in_bottom_line: external_exports.boolean().optional(),
+  implied_tacos_pct: external_exports.number().positive().optional(),
+  tacos_reference_line: external_exports.string().optional()
+});
+var postureSchema = external_exports.object({
+  stance: external_exports.enum(["scale", "efficiency", "defend", "clear_bleed"]),
+  multiplier: external_exports.number().min(0).max(1)
+});
+var bidHealthSchema = external_exports.object({
+  scale_threshold_pct: external_exports.number().positive(),
+  pullback_threshold_pct: external_exports.number().positive()
+});
+var goalsSchema = external_exports.object({
+  monthly_total_sales_target: external_exports.number().nonnegative().optional(),
+  quarterly_total_sales_target: external_exports.number().nonnegative().optional(),
+  tacos_goal_pct: external_exports.number().positive().optional()
+});
+var structuralEventTypes = [
+  "brand_migration",
+  "media_spike",
+  "media_spike_recurring",
+  "portfolio_decision",
+  "promotional_window",
+  "promotional_window_recurring",
+  "stockout",
+  "price_test",
+  "launch"
+];
+var structuralEventSchema = external_exports.object({
+  id: external_exports.string().min(1),
+  type: external_exports.enum(structuralEventTypes),
+  affects: external_exports.array(external_exports.unknown()).default([]),
+  interpretation: external_exports.string().min(1),
+  start: external_exports.string().optional(),
+  end: external_exports.string().optional(),
+  active_through: external_exports.string().optional()
+});
+var campaignStructureSchema = external_exports.object({
+  naming_pattern: external_exports.string().min(1),
+  account_codes: external_exports.array(external_exports.string()).default([]),
+  objectives: external_exports.array(external_exports.string()).optional()
+});
+var negationSchema = external_exports.object({
+  protected_terms: external_exports.array(external_exports.string()).default([]),
+  lane_rules: external_exports.record(external_exports.string(), external_exports.unknown()).default({}),
+  competitor_brands: external_exports.array(external_exports.string()).optional(),
+  asin_negation: external_exports.unknown().optional()
+});
+var subBrandSchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  name: external_exports.string().min(1),
+  item_groups: external_exports.array(external_exports.string()).optional()
+});
+var captureRateCalibrationSchema = external_exports.object({
+  enabled: external_exports.boolean(),
+  capture_rate_pct: external_exports.number().optional(),
+  fresh_day_acos_improvement_pts: external_exports.number().optional(),
+  settlement_application_rule: external_exports.string().optional(),
+  daily_settlement_curve: external_exports.unknown().optional(),
+  last_calibrated: external_exports.string().optional(),
+  stability_score: external_exports.enum(["high", "medium", "low"]).optional()
+});
+var skillConfigSchema = external_exports.record(
+  external_exports.string(),
+  external_exports.record(external_exports.string(), external_exports.unknown())
+);
+var contextSchema = external_exports.object({
+  // Required
+  schema_version: external_exports.literal(1),
+  brand_slug: external_exports.string().min(1).regex(
+    /^[a-z][a-z0-9-]*$/,
+    "brand_slug must be lowercase, start with a letter, and contain only letters / digits / hyphens"
+  ),
+  brand_name: external_exports.string().min(1),
+  last_updated: external_exports.iso.date(),
+  accounts: external_exports.array(accountSchema).min(1, "At least one account is required"),
+  sources: sourcesSchema,
+  management: managementSchema,
+  // Optional
+  capture_rate_calibration: captureRateCalibrationSchema.optional(),
+  sub_brands: external_exports.array(subBrandSchema).optional(),
+  brand_terms: external_exports.unknown().optional(),
+  bid_health: bidHealthSchema.optional(),
+  goals: goalsSchema.optional(),
+  active_watch: external_exports.unknown().optional(),
+  structural_events: external_exports.array(structuralEventSchema).optional(),
+  objective_calibration: external_exports.unknown().optional(),
+  delivery: external_exports.unknown().optional(),
+  open_gaps: external_exports.array(external_exports.unknown()).optional(),
+  posture: postureSchema.optional(),
+  paused_campaigns: external_exports.array(external_exports.string()).optional(),
+  campaign_structure: campaignStructureSchema.optional(),
+  attribution_rule: external_exports.unknown().optional(),
+  negation: negationSchema.optional(),
+  reporting: external_exports.unknown().optional(),
+  thresholds: external_exports.record(external_exports.string(), external_exports.unknown()).optional(),
+  detected_anomalies: external_exports.unknown().optional(),
+  skill_config: skillConfigSchema.optional()
+}).refine(
+  (ctx) => {
+    if (ctx.management.primary_metric !== "TACOS") return true;
+    return ctx.management.tacos_target_pct !== void 0 || ctx.management.tacos_goal_pct !== void 0;
+  },
+  {
+    message: "TACOS-primary accounts must define management.tacos_target_pct or management.tacos_goal_pct",
+    path: ["management"]
+  }
+);
+
+// src/lib/context/load.ts
+async function validateBrandContext(brandSlug, dataDirOverride) {
+  const path2 = contextPath(brandSlug, dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile2(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError2(err)) {
+      return {
+        ok: false,
+        path: path2,
+        kind: "file_missing",
+        errors: [
+          `No brand context found at ${path2}.`,
+          `Run \`mixshift brand add ${brandSlug}\` to onboard this brand.`
+        ]
+      };
+    }
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml4.parse)(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      path: path2,
+      kind: "malformed_yaml",
+      errors: [`Malformed YAML: ${message}`]
+    };
+  }
+  const result = contextSchema.safeParse(parsed);
+  if (!result.success) {
+    const errors = result.error.issues.map((i) => {
+      const p = i.path.length > 0 ? i.path.join(".") : "(root)";
+      return `${p}: ${i.message}`;
+    });
+    return {
+      ok: false,
+      path: path2,
+      kind: "schema_violation",
+      errors
+    };
+  }
+  return { ok: true, path: path2, context: result.data };
+}
+function isFileNotFoundError2(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/commands/_render-validation.ts
+function renderValidationResult(brandSlug, result, json2) {
+  if (json2) {
+    if (result.ok) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            brand_slug: brandSlug,
+            path: result.path,
+            schema_version: result.context.schema_version,
+            account_count: result.context.accounts.length,
+            last_updated: result.context.last_updated
+          },
+          null,
+          2
+        ) + "\n"
+      );
+    } else {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "error",
+            brand_slug: brandSlug,
+            path: result.path,
+            kind: result.kind,
+            errors: result.errors
+          },
+          null,
+          2
+        ) + "\n"
+      );
+    }
+    return;
+  }
+  if (result.ok) {
+    process.stderr.write(
+      `
+\u2713 ${result.path} is valid
+    schema version: ${result.context.schema_version}
+    accounts: ${result.context.accounts.length}
+    last updated: ${result.context.last_updated}
+`
+    );
+    return;
+  }
+  const heading = (() => {
+    switch (result.kind) {
+      case "file_missing":
+        return `Brand "${brandSlug}" has no context file`;
+      case "malformed_yaml":
+        return `${result.path} has malformed YAML`;
+      case "schema_violation":
+        return `${result.path} has ${result.errors.length} schema error${result.errors.length === 1 ? "" : "s"}`;
+    }
+  })();
+  process.stderr.write(`
+\u2717 ${heading}:
+`);
+  for (const err of result.errors) {
+    process.stderr.write(`    - ${err}
+`);
+  }
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
@@ -44615,14 +44879,17 @@ function registerBrandCommands(program3) {
   brand.command("discover").description("Re-query the seller table and surface new brands").action(() => {
     notYetImplemented("brand discover", {});
   });
-  brand.command("validate <slug>").description("Schema-check one brand context.yaml (post manual edit)").action((slug) => {
-    notYetImplemented("brand validate", { slug });
+  brand.command("validate <slug>").description("Schema-check one brand context.yaml (post manual edit)").action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await validateBrandContext(slug, root.dataDir);
+    renderValidationResult(slug, result, !!root.json);
+    process.exit(result.ok ? 0 : 1);
   });
 }
 
 // src/commands/auth.ts
-var import_yaml5 = __toESM(require_dist(), 1);
-import { readFile as readFile4 } from "node:fs/promises";
+var import_yaml6 = __toESM(require_dist(), 1);
+import { readFile as readFile5 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -46190,8 +46457,8 @@ var dist_default6 = createPrompt((config2, done) => {
 });
 
 // src/lib/defaults/load.ts
-var import_yaml4 = __toESM(require_dist(), 1);
-import { readFile as readFile2 } from "node:fs/promises";
+var import_yaml5 = __toESM(require_dist(), 1);
+import { readFile as readFile3 } from "node:fs/promises";
 import { dirname as dirname2, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46221,8 +46488,8 @@ async function loadPluginDefaults(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile2(path2, "utf-8");
-      const parsed = (0, import_yaml4.parse)(raw);
+      const raw = await readFile3(path2, "utf-8");
+      const parsed = (0, import_yaml5.parse)(raw);
       const result = defaultsSchema.safeParse(parsed);
       if (!result.success) {
         throw new Error(
@@ -46231,7 +46498,7 @@ async function loadPluginDefaults(overridePath) {
       }
       return result.data;
     } catch (err) {
-      if (isFileNotFoundError2(err)) continue;
+      if (isFileNotFoundError3(err)) continue;
       throw err;
     }
   }
@@ -46249,7 +46516,7 @@ function candidatePaths() {
   }
   return candidates;
 }
-function isFileNotFoundError2(err) {
+function isFileNotFoundError3(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46258,7 +46525,7 @@ import { randomUUID } from "node:crypto";
 import { platform, release } from "node:os";
 
 // src/lib/auth/credentials.ts
-import { mkdir as mkdir2, readFile as readFile3, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
+import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
 import { dirname as dirname3 } from "node:path";
 
 // src/lib/auth/schema.ts
@@ -46288,9 +46555,9 @@ async function loadCredentials(dataDirOverride) {
   const path2 = credentialsPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile3(path2, "utf-8");
+    raw = await readFile4(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError3(err)) return { credentials: null, path: path2 };
+    if (isFileNotFoundError4(err)) return { credentials: null, path: path2 };
     throw err;
   }
   let parsed;
@@ -46329,7 +46596,7 @@ async function loadOrInit(dataDirOverride) {
   const { credentials } = await loadCredentials(dataDirOverride);
   return credentials ?? newCredentials();
 }
-function isFileNotFoundError3(err) {
+function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46618,10 +46885,10 @@ async function gatherInputs(opts) {
   return promptInputs(opts);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile4(path2, "utf-8");
+  const raw = await readFile5(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml5.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml6.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -46766,8 +47033,11 @@ function todayISO() {
 
 // src/commands/validate.ts
 function registerValidateCommand(program3) {
-  program3.command("validate").description("Validate a brand context.yaml against the schema").requiredOption("--brand <slug>", "brand slug").option("--strict", "fail on warnings, not just errors", false).action((opts) => {
-    notYetImplemented("validate", opts);
+  program3.command("validate").description("Validate a brand context.yaml against the schema").requiredOption("--brand <slug>", "brand slug").option("--strict", "fail on warnings, not just errors", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await validateBrandContext(opts.brand, root.dataDir);
+    renderValidationResult(opts.brand, result, !!root.json);
+    process.exit(result.ok ? 0 : 1);
   });
 }
 
