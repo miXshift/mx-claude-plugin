@@ -44,6 +44,17 @@ const __dirname = (await import('node:path')).dirname(__filename);
 // Make it executable so `./dist/cli.js` works in addition to `node dist/cli.js`
 await chmod(outFile, 0o755);
 
+// Also chmod the bin/mixshift wrapper so the plugin-runtime PATH-registered
+// entry stays executable across rebuilds. On Windows the mode is informational
+// (Bash on Windows reads the shebang directly), but on POSIX it matters.
+const binPath = join(rootDir, '..', 'bin', 'mixshift');
+try {
+  await chmod(binPath, 0o755);
+} catch (err) {
+  // bin/mixshift might not exist yet during the very first build
+  if (err && err.code !== 'ENOENT') throw err;
+}
+
 // Write a tiny metadata snapshot for build-time auditing
 await writeFile(
   join(outDir, 'build-meta.json'),
