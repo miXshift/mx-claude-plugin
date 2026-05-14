@@ -38,10 +38,25 @@ export interface PrefetchOptions {
 
 export interface PrefetchQueryResult {
   id: string;
-  status: 'ok' | 'failed' | 'missing_params';
+  /**
+   * Status:
+   *   - ok:        query ran, rows captured
+   *   - failed:    query ran but errored (SQL syntax, access denied, etc.)
+   *   - deferred:  query references params the runner couldn't fill (e.g.
+   *                cross-query dependencies like ANEG-04's :window_asin_set
+   *                that comes from ANEG-02's output, or conditional params
+   *                like LIB-PT-01's price-test windows). The skill model
+   *                is expected to provide these via paramOverrides on a
+   *                follow-up prefetch, or run the query inline via
+   *                `mixshift data query`.
+   *   - failed:    everything else (real errors).
+   */
+  status: 'ok' | 'failed' | 'deferred';
   rowCount?: number;
   durationMs?: number;
-  /** Friendly error message on failure / missing-params. */
+  /** Names of missing params (deferred status only). */
+  missing_params?: string[];
+  /** Friendly error message on failure / deferred. */
   error?: string;
 }
 
@@ -56,8 +71,14 @@ export interface PrefetchResult {
   };
   queries: PrefetchQueryResult[];
   total_duration_ms: number;
-  /** True when at least one query failed. The skill decides how to react. */
+  /**
+   * True when at least one query ACTUALLY failed (status='failed').
+   * Queries with status='deferred' do NOT set this — deferred is an
+   * expected outcome for cross-query-dependent SQL.
+   */
   partial_failure: boolean;
+  /** True when at least one query was deferred (skill must handle it). */
+  has_deferred: boolean;
 }
 
 export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult> {
@@ -78,11 +99,23 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map((id) =>
-        executeOne(id, params, opts.dataDirOverride).catch((err) => ({
-          id,
-          ok: false as const,
-          error: err instanceof Error ? err.message : String(err),
-        })),
+        executeOne(id, params, opts.dataDirOverride).catch((err) => {
+          // Carry missing_params through so the classifier below can flag
+          // this as `deferred` instead of `failed`.
+          if (err instanceof MissingParamsError) {
+            return {
+              id,
+              ok: false as const,
+              error: err.message,
+              missing_params: err.missing_params,
+            };
+          }
+          return {
+            id,
+            ok: false as const,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }),
       ),
     );
 
@@ -103,12 +136,27 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
           error: r.queryResult.friendly,
         });
       } else if ('error' in r) {
-        // Param-substitution / setup failure
-        perQueryResults.push({
-          id: r.id,
-          status: r.error.includes('missing param') ? 'missing_params' : 'failed',
-          error: r.error,
-        });
+        // Param-substitution / setup failure. Missing-params errors are
+        // common for queries that depend on the output of another query
+        // (ANEG-04 needs ANEG-02's ASIN set; STDP-04..07 need STDP-03's
+        // search-term list; LIB-PT-01 needs structural_events.price_test
+        // dates). These are *deferred*, not failed — the skill model is
+        // expected to supply the params via paramOverrides on a follow-up
+        // call (or run the query inline via `mixshift data query`).
+        if ('missing_params' in r && r.missing_params) {
+          perQueryResults.push({
+            id: r.id,
+            status: 'deferred',
+            missing_params: r.missing_params,
+            error: r.error,
+          });
+        } else {
+          perQueryResults.push({
+            id: r.id,
+            status: 'failed',
+            error: r.error,
+          });
+        }
       }
     }
   }
@@ -128,7 +176,8 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     dataDirOverride: opts.dataDirOverride,
   });
 
-  const partial_failure = perQueryResults.some((r) => r.status !== 'ok');
+  const partial_failure = perQueryResults.some((r) => r.status === 'failed');
+  const has_deferred = perQueryResults.some((r) => r.status === 'deferred');
 
   return {
     brand_slug: context.brand_slug,
@@ -138,6 +187,7 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     queries: perQueryResults,
     total_duration_ms: Date.now() - t0,
     partial_failure,
+    has_deferred,
   };
 }
 
@@ -149,6 +199,26 @@ type ExecuteResult =
   | { id: string; ok: true; output: QueryRunOutput }
   | { id: string; ok: false; queryResult: DataQueryResult<Record<string, unknown>> & { ok: false } };
 
+/**
+ * Thrown when a query references params we couldn't compute. Carries
+ * the list of missing names so the runner can classify the outcome as
+ * `deferred` (skill provides them) vs. `failed` (real misconfiguration).
+ */
+class MissingParamsError extends Error {
+  missing_params: string[];
+  constructor(id: string, missing: string[]) {
+    super(
+      `Query ${id} references missing param(s): ${missing.join(', ')}. ` +
+        `The skill must provide these via paramOverrides on a follow-up ` +
+        `prefetch, or run the query inline via \`mixshift data query\`. ` +
+        `Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ` +
+        `ASIN set), or a conditional query (LIB-PT-01 only applies during ` +
+        `an active price_test event).`,
+    );
+    this.missing_params = missing;
+  }
+}
+
 async function executeOne(
   id: string,
   allParams: Record<string, unknown>,
@@ -156,17 +226,13 @@ async function executeOne(
 ): Promise<ExecuteResult> {
   const { sql: rawSql } = await readQuerySql(id);
 
-  // Validate: every param referenced in the SQL must be defined (after
-  // substitution + scalar fallback). We do this BEFORE running so the
-  // skill gets a clean error rather than a mysql "missing key" complaint.
+  // Validate: every param referenced in the SQL must be defined.
+  // Missing params throw a specially-typed error so the caller can
+  // classify the outcome as `deferred` rather than `failed`.
   const referenced = findReferencedParams(rawSql);
   const missing = referenced.filter((p) => !(p in allParams));
   if (missing.length > 0) {
-    throw new Error(
-      `Query ${id} references missing param(s): ${missing.join(', ')}. ` +
-        `Either the brand context is incomplete (re-check context.yaml) ` +
-        `or the skill needs paramOverrides for these values.`,
-    );
+    throw new MissingParamsError(id, missing);
   }
 
   const { sql, params } = substituteParams(rawSql, allParams);

@@ -10,8 +10,11 @@
 -- CRITICAL: Manual CONQ/PROF asinSameAs targets only record performance in
 -- targetexpressionsmetric. Querying keywordtargetingmetric alone undercounts
 -- lifetime conversions and produces false negate recommendations.
--- :window_asin_set / :window_asin_set_lower are runtime IN-list expansions
--- of the Phase 0 target ASIN set.
+--
+-- :window_asin_set / :window_asin_set_lower are list params populated by the
+-- skill model from ANEG-02 output. Prefetch skips this query unless the
+-- skill provides both lists via paramOverrides (or runs it inline via
+-- `mixshift data query` after building the set).
 
 SELECT
     target_asin, CampaignName, AdGroupName,
@@ -32,7 +35,7 @@ FROM (
     FROM keywordtargetingmetric
     WHERE SellerID = :seller_id
       AND recordType = 'Product Attribute Targeting'
-      AND SearchTerm IN ([window_asin_set])
+      AND SearchTerm IN (:window_asin_set)
     GROUP BY SearchTerm, CampaignName, AdGroupName
 
     UNION ALL
@@ -45,7 +48,7 @@ FROM (
         SUM(Clicks)                     AS lt_clicks
     FROM targetexpressionsmetric
     WHERE SellerID = :seller_id
-      AND LOWER(SearchTerm) IN ([window_asin_set_lower])
+      AND LOWER(SearchTerm) IN (:window_asin_set_lower)
     GROUP BY SearchTerm, CampaignName, AdGroupName
 ) combined
 GROUP BY target_asin, CampaignName, AdGroupName

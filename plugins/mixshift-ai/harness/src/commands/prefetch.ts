@@ -107,30 +107,48 @@ function renderResult(result: PrefetchResult, json: boolean): void {
   }
 
   const okCount = result.queries.filter((q) => q.status === 'ok').length;
-  const failedCount = result.queries.filter((q) => q.status !== 'ok').length;
+  const failedCount = result.queries.filter((q) => q.status === 'failed').length;
+  const deferredCount = result.queries.filter((q) => q.status === 'deferred').length;
+
+  const countsLine =
+    `${okCount} ok` +
+    (failedCount > 0 ? `, ${failedCount} failed` : '') +
+    (deferredCount > 0 ? `, ${deferredCount} deferred` : '');
 
   process.stdout.write(
     `\n✓ Prefetch complete — ${result.skill_id} for ${result.brand_slug} (${result.run_date})\n` +
-      `  - queries: ${okCount} ok, ${failedCount} failed\n` +
+      `  - queries: ${countsLine}\n` +
       `  - duration: ${result.total_duration_ms} ms\n` +
       `  - data.json: ${result.artifact_paths.data_json_path}\n` +
       `  - data.md:   ${result.artifact_paths.data_md_path}\n`,
   );
 
-  // List failed queries explicitly — skill needs to know what's missing
+  // List failed queries explicitly — skill needs to know what's broken
   // before composing the report.
-  const failures = result.queries.filter((q) => q.status !== 'ok');
+  const failures = result.queries.filter((q) => q.status === 'failed');
   if (failures.length > 0) {
     process.stdout.write('\n  Failed queries:\n');
     for (const f of failures) {
-      process.stdout.write(`    ✗ ${f.id} (${f.status}): ${f.error ?? 'unknown'}\n`);
+      process.stdout.write(`    ✗ ${f.id}: ${f.error ?? 'unknown'}\n`);
+    }
+  }
+
+  // List deferred queries — these aren't broken, they need the skill model
+  // to supply cross-query / conditional params on a follow-up call.
+  const deferrals = result.queries.filter((q) => q.status === 'deferred');
+  if (deferrals.length > 0) {
+    process.stdout.write('\n  Deferred queries (skill provides params on follow-up):\n');
+    for (const d of deferrals) {
+      const missing = d.missing_params?.join(', ') ?? '(unknown)';
+      process.stdout.write(`    ⊘ ${d.id}: needs ${missing}\n`);
     }
   }
   process.stdout.write('\n');
 }
 
 function exitCodeFor(result: PrefetchResult): number {
-  // 0 = all queries succeeded
-  // 2 = at least one query failed (artifacts still written for inspection)
+  // 0 = all queries succeeded (deferred queries are not failures)
+  // 2 = at least one real query failed (artifacts still written for inspection)
+  // Deferred-only runs exit 0 since the skill knows how to handle them.
   return result.partial_failure ? 2 : 0;
 }

@@ -134,4 +134,110 @@ describe('buildStandardParams', () => {
       buildStandardParams({ context: ctx, runDate: '2026-04-25' }),
     ).toThrow(/no accounts/i);
   });
+
+  it('derives window_start/window_end/current_month_end from run_date + lookback_days', () => {
+    const params = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-15',
+    });
+    // window_end = yesterday (T-1)
+    expect(params.window_end).toBe('2026-04-14');
+    // window_start = run_date - lookback_days (default 30)
+    expect(params.window_start).toBe('2026-03-16');
+    // current_month_end = last day of run_date's month
+    expect(params.current_month_end).toBe('2026-04-30');
+    // Legacy aliases match the canonical fields
+    expect(params.start_date).toBe(params.window_start);
+    expect(params.end_date).toBe(params.window_end);
+    expect(params.prior_month_start).toBe(params.prior_month);
+  });
+
+  it('shrinks window_start when paramOverrides reduces lookback_days', () => {
+    const params = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-15',
+      paramOverrides: { lookback_days: 7 },
+    });
+    // 2026-04-15 - 7 days = 2026-04-08
+    expect(params.window_start).toBe('2026-04-08');
+    expect(params.window_end).toBe('2026-04-14');
+  });
+
+  it('current_month_end handles February in a leap year', () => {
+    const leap = buildStandardParams({
+      context: makeContext(),
+      runDate: '2024-02-15',
+    });
+    expect(leap.current_month_end).toBe('2024-02-29');
+  });
+
+  it('current_month_end handles 30-day and 31-day months', () => {
+    const april = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-15',
+    });
+    expect(april.current_month_end).toBe('2026-04-30');
+    const december = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-12-15',
+    });
+    expect(december.current_month_end).toBe('2026-12-31');
+  });
+
+  it('reads lifetime_orders_threshold from context.negation.asin_negation', () => {
+    const ctx = makeContext({
+      negation: {
+        protected_terms: [],
+        lane_rules: {},
+        asin_negation: { pre_check_lifetime_orders_threshold: 5 },
+      },
+    });
+    const params = buildStandardParams({ context: ctx, runDate: '2026-04-25' });
+    expect(params.lifetime_orders_threshold).toBe(5);
+  });
+
+  it('falls back to default lifetime_orders_threshold when context lacks it', () => {
+    const params = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-25',
+    });
+    expect(params.lifetime_orders_threshold).toBe(3);
+  });
+
+  it('sets vc_lag=2 when primary is VC, vc_lag=1 when primary is SC', () => {
+    const sc = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-25',
+    });
+    expect(sc.vc_lag).toBe(1);
+    const vc = buildStandardParams({
+      context: makeContext({
+        accounts: [
+          {
+            seller_id: 555,
+            seller_name: 'Vendor Co',
+            account_type: 'VC',
+            status: 'active',
+            role: 'primary',
+          },
+        ],
+      }),
+      runDate: '2026-04-25',
+    });
+    expect(vc.vc_lag).toBe(2);
+  });
+
+  it('utilization_threshold defaults to 0.9 and is overridable', () => {
+    const a = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-25',
+    });
+    expect(a.utilization_threshold).toBe(0.9);
+    const b = buildStandardParams({
+      context: makeContext(),
+      runDate: '2026-04-25',
+      paramOverrides: { utilization_threshold: 0.75 },
+    });
+    expect(b.utilization_threshold).toBe(0.75);
+  });
 });

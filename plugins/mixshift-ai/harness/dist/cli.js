@@ -47878,27 +47878,50 @@ function buildStandardParams(opts) {
   }
   const primary = context.accounts.find((a) => a.role === "primary") ?? context.accounts[0];
   const sellerIdList = context.accounts.map((a) => Number(a.seller_id));
+  const lookbackDays = typeof paramOverrides.lookback_days === "number" ? paramOverrides.lookback_days : 30;
   const runDateD = isoToDate(runDate);
   const yesterday = isoFromDate(addDays(runDateD, -1));
+  const windowStart = isoFromDate(
+    addDays(runDateD, -1 * Math.max(lookbackDays, 1))
+  );
   const monthStart = isoFromDate(firstOfMonth(runDateD));
   const priorMonthStart = isoFromDate(firstOfMonth(addMonths(runDateD, -1)));
   const priorYearMonthStart = isoFromDate(
     firstOfMonth(addMonths(runDateD, -12))
   );
+  const currentMonthEnd = isoFromDate(lastOfMonth(runDateD));
+  const lifetimeOrdersThreshold = readNumberFromUnknownObject(
+    context.negation?.asin_negation,
+    "pre_check_lifetime_orders_threshold",
+    3
+  );
+  const vcLag = primary.account_type === "VC" ? 2 : 1;
   const standard = {
+    // Account identity
     seller_id: Number(primary.seller_id),
     seller_id_list: sellerIdList,
+    // Date axes (canonical names)
     run_date: runDate,
     yesterday,
-    lookback_days: 30,
-    limit: 1e3,
-    spend_floor: 5,
+    window_start: windowStart,
+    window_end: yesterday,
     month_start: monthStart,
-    curr_month: monthStart,
-    // legacy alias
     prior_month: priorMonthStart,
     prior_year_month: priorYearMonthStart,
-    days_of_supply_threshold: 14
+    current_month_end: currentMonthEnd,
+    // Legacy aliases (for queries that haven't standardized yet)
+    start_date: windowStart,
+    end_date: yesterday,
+    curr_month: monthStart,
+    prior_month_start: priorMonthStart,
+    // Tunables
+    lookback_days: lookbackDays,
+    limit: 1e3,
+    spend_floor: 5,
+    days_of_supply_threshold: 14,
+    lifetime_orders_threshold: lifetimeOrdersThreshold,
+    utilization_threshold: 0.9,
+    vc_lag: vcLag
   };
   return { ...standard, ...paramOverrides };
 }
@@ -47925,6 +47948,15 @@ function firstOfMonth(d) {
   const out = new Date(d.getTime());
   out.setUTCDate(1);
   return out;
+}
+function lastOfMonth(d) {
+  const next = firstOfMonth(addMonths(d, 1));
+  return addDays(next, -1);
+}
+function readNumberFromUnknownObject(obj, key, fallback) {
+  if (typeof obj !== "object" || obj === null) return fallback;
+  const value = obj[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 // src/lib/prefetch/sql-library.ts
@@ -48378,11 +48410,21 @@ async function runPrefetch(opts) {
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map(
-        (id) => executeOne(id, params, opts.dataDirOverride).catch((err) => ({
-          id,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err)
-        }))
+        (id) => executeOne(id, params, opts.dataDirOverride).catch((err) => {
+          if (err instanceof MissingParamsError) {
+            return {
+              id,
+              ok: false,
+              error: err.message,
+              missing_params: err.missing_params
+            };
+          }
+          return {
+            id,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err)
+          };
+        })
       )
     );
     for (const r of settled) {
@@ -48401,11 +48443,20 @@ async function runPrefetch(opts) {
           error: r.queryResult.friendly
         });
       } else if ("error" in r) {
-        perQueryResults.push({
-          id: r.id,
-          status: r.error.includes("missing param") ? "missing_params" : "failed",
-          error: r.error
-        });
+        if ("missing_params" in r && r.missing_params) {
+          perQueryResults.push({
+            id: r.id,
+            status: "deferred",
+            missing_params: r.missing_params,
+            error: r.error
+          });
+        } else {
+          perQueryResults.push({
+            id: r.id,
+            status: "failed",
+            error: r.error
+          });
+        }
       }
     }
   }
@@ -48423,7 +48474,8 @@ async function runPrefetch(opts) {
     },
     dataDirOverride: opts.dataDirOverride
   });
-  const partial_failure = perQueryResults.some((r) => r.status !== "ok");
+  const partial_failure = perQueryResults.some((r) => r.status === "failed");
+  const has_deferred = perQueryResults.some((r) => r.status === "deferred");
   return {
     brand_slug: context.brand_slug,
     skill_id: manifest.skill_id,
@@ -48431,17 +48483,25 @@ async function runPrefetch(opts) {
     artifact_paths,
     queries: perQueryResults,
     total_duration_ms: Date.now() - t0,
-    partial_failure
+    partial_failure,
+    has_deferred
   };
 }
+var MissingParamsError = class extends Error {
+  missing_params;
+  constructor(id, missing) {
+    super(
+      `Query ${id} references missing param(s): ${missing.join(", ")}. The skill must provide these via paramOverrides on a follow-up prefetch, or run the query inline via \`mixshift data query\`. Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ASIN set), or a conditional query (LIB-PT-01 only applies during an active price_test event).`
+    );
+    this.missing_params = missing;
+  }
+};
 async function executeOne(id, allParams, dataDirOverride) {
   const { sql: rawSql } = await readQuerySql(id);
   const referenced = findReferencedParams(rawSql);
   const missing = referenced.filter((p) => !(p in allParams));
   if (missing.length > 0) {
-    throw new Error(
-      `Query ${id} references missing param(s): ${missing.join(", ")}. Either the brand context is incomplete (re-check context.yaml) or the skill needs paramOverrides for these values.`
-    );
+    throw new MissingParamsError(id, missing);
   }
   const { sql, params } = substituteParams(rawSql, allParams);
   const result = await runQuery(sql, params, {
@@ -48530,21 +48590,32 @@ function renderResult2(result, json2) {
     return;
   }
   const okCount = result.queries.filter((q) => q.status === "ok").length;
-  const failedCount = result.queries.filter((q) => q.status !== "ok").length;
+  const failedCount = result.queries.filter((q) => q.status === "failed").length;
+  const deferredCount = result.queries.filter((q) => q.status === "deferred").length;
+  const countsLine = `${okCount} ok` + (failedCount > 0 ? `, ${failedCount} failed` : "") + (deferredCount > 0 ? `, ${deferredCount} deferred` : "");
   process.stdout.write(
     `
 \u2713 Prefetch complete \u2014 ${result.skill_id} for ${result.brand_slug} (${result.run_date})
-  - queries: ${okCount} ok, ${failedCount} failed
+  - queries: ${countsLine}
   - duration: ${result.total_duration_ms} ms
   - data.json: ${result.artifact_paths.data_json_path}
   - data.md:   ${result.artifact_paths.data_md_path}
 `
   );
-  const failures = result.queries.filter((q) => q.status !== "ok");
+  const failures = result.queries.filter((q) => q.status === "failed");
   if (failures.length > 0) {
     process.stdout.write("\n  Failed queries:\n");
     for (const f of failures) {
-      process.stdout.write(`    \u2717 ${f.id} (${f.status}): ${f.error ?? "unknown"}
+      process.stdout.write(`    \u2717 ${f.id}: ${f.error ?? "unknown"}
+`);
+    }
+  }
+  const deferrals = result.queries.filter((q) => q.status === "deferred");
+  if (deferrals.length > 0) {
+    process.stdout.write("\n  Deferred queries (skill provides params on follow-up):\n");
+    for (const d of deferrals) {
+      const missing = d.missing_params?.join(", ") ?? "(unknown)";
+      process.stdout.write(`    \u2298 ${d.id}: needs ${missing}
 `);
     }
   }
