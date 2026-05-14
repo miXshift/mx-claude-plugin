@@ -101,14 +101,27 @@ async function gatherInputs(
     if (opts.passwordFile) {
       // Read password from a separate file so it doesn't appear in the
       // --from-file YAML (which gets shown in bash command previews and
-      // chat history). Strip trailing newlines so editors that always
-      // append one don't break the auth.
-      const passwordRaw = await readFile(opts.passwordFile, 'utf-8');
-      const password = passwordRaw.replace(/\r?\n$/, '');
+      // chat history).
+      //
+      // Normalize aggressively because text editors do annoying things:
+      //   - Notepad always appends CRLF on save (no way to disable)
+      //   - Users pressing Enter after typing the password add another CRLF
+      //   - VS Code / Sublime may prepend a UTF-8 BOM (0xEF 0xBB 0xBF)
+      //   - Some editors append trailing newlines on every save
+      //
+      // What we DON'T strip: leading whitespace inside the password (rare
+      // but legitimate) or anything mid-string. Just leading BOM + all
+      // trailing CR/LF.
+      let passwordRaw = await readFile(opts.passwordFile, 'utf-8');
+      // Strip UTF-8 BOM if present
+      passwordRaw = passwordRaw.replace(/^﻿/, '');
+      // Strip ALL trailing CR/LF chars (not just one — Notepad+Enter gives \r\n\r\n)
+      const password = passwordRaw.replace(/[\r\n]+$/, '');
       if (password.length === 0) {
         throw new Error(
-          `--password-file ${opts.passwordFile} is empty. The file should ` +
-            `contain just your MySQL password text, no quotes / labels / extra lines.`,
+          `--password-file ${opts.passwordFile} is empty (after stripping ` +
+            `BOM and trailing newlines). The file should contain just your ` +
+            `MySQL password text — no quotes / labels.`,
         );
       }
       inputs.mysql = { ...inputs.mysql, password };

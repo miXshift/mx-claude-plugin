@@ -47495,11 +47495,12 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      const passwordRaw = await readFile5(opts.passwordFile, "utf-8");
-      const password = passwordRaw.replace(/\r?\n$/, "");
+      let passwordRaw = await readFile5(opts.passwordFile, "utf-8");
+      passwordRaw = passwordRaw.replace(/^﻿/, "");
+      const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
         throw new Error(
-          `--password-file ${opts.passwordFile} is empty. The file should contain just your MySQL password text, no quotes / labels / extra lines.`
+          `--password-file ${opts.passwordFile} is empty (after stripping BOM and trailing newlines). The file should contain just your MySQL password text \u2014 no quotes / labels.`
         );
       }
       inputs.mysql = { ...inputs.mysql, password };
