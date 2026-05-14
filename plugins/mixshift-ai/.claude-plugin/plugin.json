@@ -1,7 +1,7 @@
 {
   "name": "mixshift-ai",
-  "version": "0.1.0",
-  "description": "MixShift AI skills for Amazon advertising and retail operations. Initial release: PPC optimization (daily health checks, keyword bid management, search term negation, harvest, monthly reporting). Built against the MixShift warehouse via MCP.",
+  "version": "0.1.1",
+  "description": "MixShift AI skills for Amazon advertising and retail operations. PPC optimization (daily health checks, keyword bid management, search term negation, harvest, monthly reporting) plus data-explore (ad-hoc warehouse querying + CSV export) and welcome / brand-discover / brand-add commands. Warehouse access via the bundled harness; credentials read from ~/.mixshift/auth/credentials.json.",
   "author": {
     "name": "MixShift"
   },
