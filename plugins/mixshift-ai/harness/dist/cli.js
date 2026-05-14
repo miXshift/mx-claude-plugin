@@ -47948,10 +47948,11 @@ async function sampleTable(opts) {
   const limit = opts.limit ?? 10;
   const metadata = await describeTable(opts.table);
   const tableRef = "`" + opts.table.replace(/`/g, "") + "`";
+  const orderBy = metadata?.time_series && metadata.date_column ? ` ORDER BY \`${metadata.date_column.replace(/`/g, "")}\` DESC` : "";
   let sql;
   const params = [];
   if (opts.sellerId !== void 0) {
-    sql = `SELECT * FROM ${tableRef} WHERE SellerID = ? LIMIT ${Number(limit)}`;
+    sql = `SELECT * FROM ${tableRef} WHERE SellerID = ?${orderBy} LIMIT ${Number(limit)}`;
     params.push(opts.sellerId);
   } else if (metadata?.requires_seller_id) {
     return {
@@ -47961,17 +47962,17 @@ async function sampleTable(opts) {
         message: `Table ${opts.table} is time-series scoped. Pass --seller-id to filter.`,
         friendly: `Table \`${opts.table}\` requires a seller-id filter (it's a large time-series table). Pass --seller-id <N> to scope your sample.`
       },
-      display_sql: `SELECT * FROM ${tableRef} WHERE SellerID = <required> LIMIT ${limit}`
+      display_sql: `SELECT * FROM ${tableRef} WHERE SellerID = <required>${orderBy} LIMIT ${limit}`
     };
   } else {
-    sql = `SELECT * FROM ${tableRef} LIMIT ${Number(limit)}`;
+    sql = `SELECT * FROM ${tableRef}${orderBy} LIMIT ${Number(limit)}`;
   }
   const result = await runQuery(sql, params, {
     dataDirOverride: opts.dataDirOverride
   });
   return {
     query_result: result,
-    display_sql: opts.sellerId !== void 0 ? `SELECT * FROM ${tableRef} WHERE SellerID = ${opts.sellerId} LIMIT ${limit}` : sql
+    display_sql: opts.sellerId !== void 0 ? `SELECT * FROM ${tableRef} WHERE SellerID = ${opts.sellerId}${orderBy} LIMIT ${limit}` : sql
   };
 }
 
