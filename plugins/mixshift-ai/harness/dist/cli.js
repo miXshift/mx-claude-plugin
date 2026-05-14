@@ -29808,10 +29808,10 @@ import { readFile } from "node:fs/promises";
 
 // src/lib/paths/resolve.ts
 import { homedir } from "node:os";
-import { join, resolve, isAbsolute } from "node:path";
+import { join, resolve } from "node:path";
 function resolveDataDir(dataDirOverride) {
   const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join(homedir(), ".mixshift");
-  return isAbsolute(candidate) ? candidate : resolve(candidate);
+  return resolve(candidate);
 }
 function profilePath(dataDirOverride) {
   return join(resolveDataDir(dataDirOverride), "profile.yaml");

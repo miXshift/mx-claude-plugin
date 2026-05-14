@@ -7,7 +7,7 @@
  */
 
 import { homedir } from 'node:os';
-import { join, resolve, isAbsolute } from 'node:path';
+import { join, resolve } from 'node:path';
 
 /**
  * Resolve the data directory root. Precedence:
@@ -15,11 +15,15 @@ import { join, resolve, isAbsolute } from 'node:path';
  *   2. `MIXSHIFT_DATA_DIR` env var
  *   3. `~/.mixshift/` (default)
  *
- * Always returns an absolute path.
+ * Always returns a normalized absolute path. On Windows, this attaches a
+ * drive letter to drive-relative absolute paths like `/tmp/x` →
+ * `C:\tmp\x`. That matters because the resolved path appears in error
+ * messages, telemetry, and the Discord webhook — an ambiguous
+ * `\tmp\...` prefix reads as a bug to Windows users.
  */
 export function resolveDataDir(dataDirOverride?: string): string {
   const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join(homedir(), '.mixshift');
-  return isAbsolute(candidate) ? candidate : resolve(candidate);
+  return resolve(candidate);
 }
 
 /**
