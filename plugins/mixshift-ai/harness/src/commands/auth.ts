@@ -6,6 +6,7 @@ import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { runAuthSetup, type SetupInputs, type SetupResult } from '../lib/auth/setup-flow.js';
 import { mysqlCredsSchema } from '../lib/auth/schema.js';
 import { formatZodError } from '../lib/profile/format-error.js';
+import type { PluginDefaults } from '../lib/defaults/schema.js';
 
 interface RootOptions {
   json?: boolean;
@@ -17,6 +18,9 @@ interface SetupOptions {
   fromFile?: string;
   skipConnectionTest: boolean;
   requestWhitelist: boolean;
+  host?: string;
+  port?: string;
+  database?: string;
 }
 
 const PLUGIN_VERSION = '0.0.1';
@@ -45,11 +49,20 @@ export function registerAuthCommands(program: Command): void {
         'fails with "host not allowed"',
       false,
     )
+    .option(
+      '--host <host>',
+      'MySQL host override (default: db.mydashapplications.studio from plugin defaults)',
+    )
+    .option('--port <port>', 'MySQL port override (default: 3306)')
+    .option(
+      '--database <name>',
+      'MySQL database/schema override (default: dashamazon)',
+    )
     .action(async (opts: SetupOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       try {
-        const inputs = await gatherInputs(opts);
         const defaults = await loadPluginDefaults();
+        const inputs = await gatherInputs(opts, defaults);
         const result = await runAuthSetup(inputs, {
           defaults,
           plugin_version: PLUGIN_VERSION,
@@ -71,7 +84,10 @@ export function registerAuthCommands(program: Command): void {
     });
 }
 
-async function gatherInputs(opts: SetupOptions): Promise<SetupInputs> {
+async function gatherInputs(
+  opts: SetupOptions,
+  defaults: PluginDefaults,
+): Promise<SetupInputs> {
   if (opts.fromFile) {
     return loadInputsFromFile(opts.fromFile, opts);
   }
@@ -80,7 +96,7 @@ async function gatherInputs(opts: SetupOptions): Promise<SetupInputs> {
       '--non-interactive requires --from-file <path> with inputs filled in.',
     );
   }
-  return promptInputs(opts);
+  return promptInputs(opts, defaults);
 }
 
 async function loadInputsFromFile(
@@ -120,22 +136,51 @@ async function loadInputsFromFile(
   };
 }
 
-async function promptInputs(opts: SetupOptions): Promise<SetupInputs> {
+async function promptInputs(
+  opts: SetupOptions,
+  defaults: PluginDefaults,
+): Promise<SetupInputs> {
+  const cr = defaults.auth.credential_retrieval;
+  const dbDefaults = defaults.auth.mysql;
+
+  // Credential-retrieval instructions — show before any prompts so the
+  // user knows where to find the values they're about to enter.
   process.stderr.write(
     '\n# MixShift plugin auth setup\n' +
-      '# This is a one-time step. You can re-run later if anything changes.\n\n',
+      '# One-time step. You can re-run later if anything changes.\n' +
+      '\n' +
+      '# To connect, you need your MySQL credentials from MixShift:\n' +
+      `#   1. Open  ${cr.url_default}\n` +
+      `#      (or your tenant: ${cr.url_tenant_pattern})\n` +
+      (cr.master_password
+        ? `#   2. Enter the master password when prompted:\n` +
+          `#        ${cr.master_password}\n`
+        : '#   2. Sign in if prompted.\n') +
+      `#   3. Copy HostName, Username, Port, Schema, and Password from the page.\n` +
+      '\n' +
+      (cr.notes ? `# ${cr.notes.replace(/\n/g, '\n# ')}\n\n` : '\n'),
   );
 
   const email = await input({
-    message: 'Your email (used for telemetry + IP whitelist requests):',
+    message: 'Your email (for telemetry + IP whitelist requests):',
     required: true,
   });
 
-  process.stderr.write('\n# MySQL warehouse credentials\n');
-  const host = await input({ message: 'MySQL host:', required: true });
+  // Ask username first so we can default the database to match (most
+  // accounts have username == schema). Sam's `dash` account is the
+  // outlier — he edits the database default.
+  const user = await input({ message: 'MySQL Username:', required: true });
+  const passwd = await password({ message: 'MySQL Password:', mask: '*' });
+
+  const host = await input({
+    message: 'MySQL HostName:',
+    default: opts.host ?? dbDefaults.host,
+    required: true,
+  });
+
   const portStr = await input({
-    message: 'MySQL port:',
-    default: '3306',
+    message: 'MySQL Port:',
+    default: String(opts.port ?? dbDefaults.port),
     required: true,
   });
   const port = Number.parseInt(portStr, 10);
@@ -143,10 +188,12 @@ async function promptInputs(opts: SetupOptions): Promise<SetupInputs> {
     throw new Error(`Port must be an integer in 1..65535, got "${portStr}".`);
   }
 
-  const user = await input({ message: 'MySQL user:', required: true });
-  const passwd = await password({ message: 'MySQL password:', mask: '*' });
   const database = await input({
-    message: 'MySQL database name:',
+    message: 'MySQL Schema (database name):',
+    // Default to the username (typical case); falls back to plugin
+    // default only if user gave an empty username (which would have
+    // failed the required check above, so this is defensive).
+    default: opts.database ?? user ?? dbDefaults.database,
     required: true,
   });
 

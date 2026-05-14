@@ -15,10 +15,50 @@ schema_version: 1
 # Discord webhook used by `mixshift auth setup` when a user's IP needs to be
 # whitelisted on the MixShift warehouse. The webhook posts a structured
 # message to the MixShift ops channel; an operator manually grants access
-# (or — future — an automated approver runs against this channel).
+# (or — future — an automated approver runs against this channel). The same
+# webhook receives `mixshift feedback` submissions and table-access requests.
 auth:
   ip_whitelist_webhook: https://discordapp.com/api/webhooks/1504152069857349722/p5eAbkyhIVFGRr9YAScYb8O82OwdqRITwsWaLx7XVgo-eMfMwyB3HtYnRhgCixyc52ZQ
   public_ip_lookup_url: https://api.ipify.org?format=json
+
+  # MySQL connection defaults — used as suggested values in the auth-setup
+  # prompts. The credentials page on mydashapplications.com is the source
+  # of truth: the user copies the actual values from there.
+  #
+  # Host: most users get db.mydashapplications.studio, but some tenants
+  # have a tenant-specific subdomain like marpartners.mydashapplications.studio.
+  # The credentials page shows the actual host for the user's account.
+  #
+  # Port: 3306 is universal.
+  #
+  # Database: typically matches the user's MySQL username (e.g. user
+  # "marpartners" → schema "marpartners"). The harness pre-fills the
+  # database prompt with whatever the user typed for username, which is
+  # correct for most accounts. Users with a different schema (Sam's `dash`
+  # user → `dashamazon` schema is the canonical outlier) override at the
+  # prompt.
+  mysql:
+    host: db.mydashapplications.studio
+    port: 3306
+    database: dashamazon
+
+  # How the user retrieves their MySQL credentials. The plugin surfaces this
+  # in `mixshift auth setup` and `mixshift welcome` so users see the URL
+  # and master password right when they need them.
+  #
+  # The master password is "same for everyone" — it's a soft second blocker
+  # so logged-in MixShift users don't accidentally see DB creds, not a real
+  # secret. Customers find the same value if they navigate to the page
+  # directly; shipping it in the plugin defaults saves a step.
+  credential_retrieval:
+    url_default: https://www.mydashapplications.com/database-admin
+    url_tenant_pattern: https://<your-company>.mydashapplications.com/database-admin
+    master_password: Dash!applications4you
+    notes: |
+      The `www` URL works for most users via the wildcard SSL on
+      mydashapplications.com. If it doesn't recognize your logged-in
+      session, use your tenant subdomain instead (e.g.
+      marpartners.mydashapplications.com/database-admin).
 
 # Telemetry destination (Supabase endpoint, populated once the project is set
 # up). When empty, telemetry events are buffered locally but not flushed.

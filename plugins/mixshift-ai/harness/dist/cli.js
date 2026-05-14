@@ -47069,14 +47069,47 @@ import { dirname as dirname4, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/defaults/schema.ts
+var mysqlDefaults = external_exports.object({
+  host: external_exports.string().default("db.mydashapplications.studio"),
+  port: external_exports.number().int().min(1).max(65535).default(3306),
+  database: external_exports.string().default("dashamazon")
+});
+var credentialRetrieval = external_exports.object({
+  url_default: external_exports.string().default("https://www.mydashapplications.com/database-admin"),
+  url_tenant_pattern: external_exports.string().default("https://<your-company>.mydashapplications.com/database-admin"),
+  master_password: external_exports.string().default(""),
+  notes: external_exports.string().default("")
+});
 var defaultsSchema = external_exports.object({
   schema_version: external_exports.literal(1),
   auth: external_exports.object({
     ip_whitelist_webhook: external_exports.url().or(external_exports.literal("")).default(""),
-    public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json")
+    public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
+    mysql: mysqlDefaults.default({
+      host: "db.mydashapplications.studio",
+      port: 3306,
+      database: "dashamazon"
+    }),
+    credential_retrieval: credentialRetrieval.default({
+      url_default: "https://www.mydashapplications.com/database-admin",
+      url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
+      master_password: "",
+      notes: ""
+    })
   }).default({
     ip_whitelist_webhook: "",
-    public_ip_lookup_url: "https://api.ipify.org?format=json"
+    public_ip_lookup_url: "https://api.ipify.org?format=json",
+    mysql: {
+      host: "db.mydashapplications.studio",
+      port: 3306,
+      database: "dashamazon"
+    },
+    credential_retrieval: {
+      url_default: "https://www.mydashapplications.com/database-admin",
+      url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
+      master_password: "",
+      notes: ""
+    }
   }),
   telemetry: external_exports.object({
     endpoint: external_exports.string().default(""),
@@ -47423,11 +47456,17 @@ function registerAuthCommands(program3) {
     "--request-whitelist",
     'automatically POST to the IP whitelist webhook if the connection test fails with "host not allowed"',
     false
+  ).option(
+    "--host <host>",
+    "MySQL host override (default: db.mydashapplications.studio from plugin defaults)"
+  ).option("--port <port>", "MySQL port override (default: 3306)").option(
+    "--database <name>",
+    "MySQL database/schema override (default: dashamazon)"
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const inputs = await gatherInputs(opts);
       const defaults = await loadPluginDefaults();
+      const inputs = await gatherInputs(opts, defaults);
       const result = await runAuthSetup(inputs, {
         defaults,
         plugin_version: PLUGIN_VERSION,
@@ -47449,7 +47488,7 @@ function registerAuthCommands(program3) {
     }
   });
 }
-async function gatherInputs(opts) {
+async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     return loadInputsFromFile(opts.fromFile, opts);
   }
@@ -47458,7 +47497,7 @@ async function gatherInputs(opts) {
       "--non-interactive requires --from-file <path> with inputs filled in."
     );
   }
-  return promptInputs(opts);
+  return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
   const raw = await readFile5(path2, "utf-8");
@@ -47489,29 +47528,51 @@ async function loadInputsFromFile(path2, opts) {
     skip_connection_test: opts.skipConnectionTest
   };
 }
-async function promptInputs(opts) {
+async function promptInputs(opts, defaults) {
+  const cr = defaults.auth.credential_retrieval;
+  const dbDefaults = defaults.auth.mysql;
   process.stderr.write(
-    "\n# MixShift plugin auth setup\n# This is a one-time step. You can re-run later if anything changes.\n\n"
+    `
+# MixShift plugin auth setup
+# One-time step. You can re-run later if anything changes.
+
+# To connect, you need your MySQL credentials from MixShift:
+#   1. Open  ${cr.url_default}
+#      (or your tenant: ${cr.url_tenant_pattern})
+` + (cr.master_password ? `#   2. Enter the master password when prompted:
+#        ${cr.master_password}
+` : "#   2. Sign in if prompted.\n") + `#   3. Copy HostName, Username, Port, Schema, and Password from the page.
+
+` + (cr.notes ? `# ${cr.notes.replace(/\n/g, "\n# ")}
+
+` : "\n")
   );
   const email3 = await dist_default5({
-    message: "Your email (used for telemetry + IP whitelist requests):",
+    message: "Your email (for telemetry + IP whitelist requests):",
     required: true
   });
-  process.stderr.write("\n# MySQL warehouse credentials\n");
-  const host = await dist_default5({ message: "MySQL host:", required: true });
+  const user = await dist_default5({ message: "MySQL Username:", required: true });
+  const passwd = await dist_default6({ message: "MySQL Password:", mask: "*" });
+  const host = await dist_default5({
+    message: "MySQL HostName:",
+    default: opts.host ?? dbDefaults.host,
+    required: true
+  });
   const portStr = await dist_default5({
-    message: "MySQL port:",
-    default: "3306",
+    message: "MySQL Port:",
+    default: String(opts.port ?? dbDefaults.port),
     required: true
   });
   const port = Number.parseInt(portStr, 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Port must be an integer in 1..65535, got "${portStr}".`);
   }
-  const user = await dist_default5({ message: "MySQL user:", required: true });
-  const passwd = await dist_default6({ message: "MySQL password:", mask: "*" });
   const database = await dist_default5({
-    message: "MySQL database name:",
+    message: "MySQL Schema (database name):",
+    // Default to the username (typical case); falls back to plugin
+    // default only if user gave an empty username (which would have
+    // failed the required check above, so this is defensive).
+    default: opts.database ?? user ?? dbDefaults.database,
     required: true
   });
   const requestWhitelist = opts.requestWhitelist || await dist_default4({
@@ -48432,6 +48493,129 @@ function registerFeedbackCommand(program3) {
   );
 }
 
+// src/commands/welcome.ts
+function registerWelcomeCommand(program3) {
+  program3.command("welcome").description(
+    "Show the first-run welcome and quick-start (URL to retrieve your credentials, what commands to run, where to get help)."
+  ).action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const defaults = await loadPluginDefaults();
+    const { profile, source: profileSource } = await loadProfile(root.dataDir);
+    const { credentials } = await loadCredentials(root.dataDir);
+    const cr = defaults.auth.credential_retrieval;
+    const authReady = !!credentials?.mysql;
+    const profileReady = profileSource === "file" && !!profile.user?.email;
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            auth_ready: authReady,
+            profile_ready: profileReady,
+            credential_retrieval: {
+              url_default: cr.url_default,
+              url_tenant_pattern: cr.url_tenant_pattern,
+              master_password: cr.master_password
+            },
+            next_step: authReady ? "mixshift brand discover" : "mixshift auth setup"
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      process.exit(0);
+    }
+    process.stderr.write(renderWelcome({ authReady, profileReady, cr }));
+    process.exit(0);
+  });
+}
+function renderWelcome(args) {
+  const { authReady, profileReady, cr } = args;
+  const lines = [];
+  lines.push("");
+  lines.push("Welcome to the MixShift plugin");
+  lines.push("\u2501".repeat(60));
+  lines.push("");
+  if (authReady && profileReady) {
+    lines.push("\u2713 You are already set up. You can:");
+    lines.push("");
+    lines.push("    \u2022 Discover your brands:");
+    lines.push("        mixshift brand discover");
+    lines.push("");
+    lines.push("    \u2022 Explore + export your data (no brand onboarding needed):");
+    lines.push('        Type "explore my data" in chat, or run');
+    lines.push("        mixshift data list-tables");
+    lines.push("");
+    lines.push("    \u2022 Onboard a specific brand for analytical skills:");
+    lines.push("        mixshift brand add <slug>");
+    lines.push("        /account-cold-start <slug>     (in Claude)");
+    lines.push("");
+    lines.push("    \u2022 Re-run auth setup (new credentials / different account):");
+    lines.push("        mixshift auth setup");
+    lines.push("");
+    lines.push("    \u2022 Send feedback / report bugs:");
+    lines.push('        mixshift feedback "<your message>"');
+    lines.push("");
+    return lines.join("\n");
+  }
+  lines.push("This is the MixShift Amazon plugin. Three quick steps to get going:");
+  lines.push("");
+  lines.push("\u2501\u2501 Step 1 \u2014 Get your warehouse credentials \u2501\u2501");
+  lines.push("");
+  lines.push("  Open this URL in a browser (where you sign in to MixShift):");
+  lines.push(`    ${cr.url_default}`);
+  lines.push("");
+  lines.push("  If that page does not recognize your session, use your tenant URL:");
+  lines.push(`    ${cr.url_tenant_pattern}`);
+  if (cr.master_password) {
+    lines.push("");
+    lines.push('  When prompted for "Master password", enter:');
+    lines.push(`    ${cr.master_password}`);
+    lines.push("");
+    lines.push("  This is the same value for all MixShift customers \u2014 it just");
+    lines.push("  prevents accidental credential exposure to other logged-in users.");
+  }
+  lines.push("");
+  lines.push("  The credentials page shows:");
+  lines.push("    HostName, Username, Port, Schema, and Password \u2014 copy them.");
+  if (cr.notes) {
+    lines.push("");
+    cr.notes.split("\n").forEach((l) => {
+      if (l.trim()) lines.push(`  ${l}`);
+    });
+  }
+  lines.push("");
+  lines.push("\u2501\u2501 Step 2 \u2014 Run auth setup \u2501\u2501");
+  lines.push("");
+  lines.push("    mixshift auth setup");
+  lines.push("");
+  lines.push("  Paste the credentials when prompted. We test the connection and");
+  lines.push("  request an IP whitelist automatically if your IP is not approved.");
+  lines.push("");
+  lines.push("\u2501\u2501 Step 3 \u2014 Try something \u2501\u2501");
+  lines.push("");
+  lines.push("  Discover the brands you have access to:");
+  lines.push("    mixshift brand discover");
+  lines.push("");
+  lines.push("  See what data tables you can query:");
+  lines.push("    mixshift data list-tables");
+  lines.push("");
+  lines.push('  Or just say "explore my data" in chat \u2014 Claude will guide you.');
+  lines.push("");
+  lines.push("\u2501".repeat(60));
+  lines.push("");
+  lines.push('Need help? Run `mixshift feedback "<your question>"` and we will');
+  lines.push("reach out. Issues, requests, comments \u2014 all welcome.");
+  lines.push("");
+  if (authReady) {
+    lines.push("Current state: \u2713 auth credentials saved, " + (profileReady ? "\u2713 profile saved" : "\u2717 profile incomplete") + ".");
+  } else {
+    lines.push("Current state: \u2717 no credentials yet. Start with Step 1 above.");
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 // src/cli.ts
 var program2 = new Command();
 program2.name("mixshift").description(
@@ -48454,6 +48638,7 @@ registerSidecarCommands(program2);
 registerUiCommand(program2);
 registerDataCommands(program2);
 registerFeedbackCommand(program2);
+registerWelcomeCommand(program2);
 program2.parseAsync(process.argv).catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}

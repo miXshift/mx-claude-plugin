@@ -19,6 +19,7 @@ import { registerSidecarCommands } from './commands/sidecar.js';
 import { registerUiCommand } from './commands/ui.js';
 import { registerDataCommands } from './commands/data.js';
 import { registerFeedbackCommand } from './commands/feedback.js';
+import { registerWelcomeCommand } from './commands/welcome.js';
 
 const program = new Command();
 
@@ -53,6 +54,7 @@ registerSidecarCommands(program);
 registerUiCommand(program);
 registerDataCommands(program);
 registerFeedbackCommand(program);
+registerWelcomeCommand(program);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
