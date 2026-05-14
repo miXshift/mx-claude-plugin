@@ -43,12 +43,28 @@ Ask the user for each field. Show suggested defaults where applicable but don't 
 |---|---|---|
 | Email | (none — ask) | For telemetry + IP whitelist requests |
 | MySQL Username | (none — ask) | From the credentials page; e.g. "marpartners", "dash" |
-| MySQL Password | (none — ask) | Masked; **never echo this back to the user in chat** |
+| MySQL Password | (none — ask) | **See "Password input handling" below — DO NOT just say "paste the password"** |
 | MySQL HostName | `db.mydashapplications.studio` | Most users; tenant subdomains override (e.g. `marpartners.mydashapplications.studio`) |
 | MySQL Port | `3306` | Universal |
 | MySQL Schema (database) | (same as Username they just gave) | Typical case — username "marpartners" → schema "marpartners". Sam's `dash` user is an outlier with schema `dashamazon` |
 
 Confirm each field with the user before moving on. If they're unsure, refer them back to the URL from `mixshift welcome`.
+
+### Password input handling — IMPORTANT
+
+Claude Code interprets messages starting with `!` as Bash commands. If the user just pastes their password and it happens to start with `!`, or they hit `!` before pasting, the password will be executed as a shell command — leaking it to a "command not found" error AND leaving it in chat history AND bash logs.
+
+**Always ask the user for the password using one of these safer patterns:**
+
+> "What's your MySQL password? Please paste it in the format `password is: YOUR_PASSWORD_HERE` (not just the bare password — Claude Code can interpret messages starting with `!` as bash commands)."
+
+Or:
+
+> "Paste your MySQL password wrapped in backticks, like \`your_password\` — that way special characters don't get interpreted by Claude Code's input parser."
+
+Then parse the actual password value out of their reply. **Never echo the password back to the user in chat**, even when confirming inputs. When confirming, mask it as `********` or omit it entirely.
+
+If the user's password DID appear bare in chat (e.g., they ignored the format guidance and Claude Code ran it as bash), gently note that the password has been logged and they may want to rotate it on the credentials page after setup.
 
 ## Step 3 — Write to a temp file
 
