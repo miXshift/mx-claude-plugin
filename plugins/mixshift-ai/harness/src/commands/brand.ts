@@ -2,6 +2,9 @@ import type { Command } from 'commander';
 import { notYetImplemented } from '../lib/stub.js';
 import { validateBrandContext } from '../lib/context/load.js';
 import { renderValidationResult } from './_render-validation.js';
+import { discoverSellers } from '../lib/discovery/seller-query.js';
+import { groupIntoBrands } from '../lib/discovery/brand-grouping.js';
+import { renderDiscoveryTable } from './_render-discovery.js';
 
 interface RootOptions {
   json?: boolean;
@@ -65,9 +68,63 @@ export function registerBrandCommands(program: Command): void {
 
   brand
     .command('discover')
-    .description('Re-query the seller table and surface new brands')
-    .action(() => {
-      notYetImplemented('brand discover', {});
+    .description('Query the seller table and surface all brands you have access to')
+    .option(
+      '--include-inactive',
+      'include brands where both ads and retail access are lost',
+      false,
+    )
+    .action(async (opts: { includeInactive: boolean }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      try {
+        const sellers = await discoverSellers({
+          dataDirOverride: root.dataDir,
+          includeInactive: opts.includeInactive,
+        });
+        const suggestions = groupIntoBrands(sellers);
+
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: 'ok',
+                seller_count: sellers.length,
+                brand_count: suggestions.length,
+                brands: suggestions.map((s) => ({
+                  slug: s.slug,
+                  display_name: s.display_name,
+                  group_signal: s.group_signal,
+                  ads_active: s.ads_active,
+                  retail_active: s.retail_active,
+                  accounts: s.accounts.map((a) => ({
+                    seller_id: a.seller_id,
+                    seller_name: a.seller_name,
+                    account_type: a.account_type,
+                    marketplace: a.marketplace,
+                    ads_active: a.ads_active,
+                    retail_active: a.retail_active,
+                  })),
+                })),
+              },
+              null,
+              2,
+            ) + '\n',
+          );
+        } else {
+          process.stderr.write(renderDiscoveryTable(suggestions) + '\n');
+        }
+        process.exit(0);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: 'error', message }, null, 2) + '\n',
+          );
+        } else {
+          process.stderr.write(`error: ${message}\n`);
+        }
+        process.exit(1);
+      }
     });
 
   brand
