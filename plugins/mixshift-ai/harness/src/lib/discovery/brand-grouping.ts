@@ -1,22 +1,24 @@
 /**
  * Group discovered seller rows into proposed brand entries.
  *
- * One brand can hold multiple (SellerID, marketplace, account_type) rows
- * — e.g. SC US + VC US + SC CA all belong to one brand legally. The
- * grouping heuristic here is:
+ * Grouping signal: the warehouse `Name` column (exposed as `seller_name`
+ * in SellerRow). `Name` is the canonical brand label — initially copied
+ * from the Amazon storefront (`MerchantAlias`), but user-editable for
+ * curated entries like "American Outdoor Products" overriding the
+ * default storefront name "Backpacker's Pantry".
  *
- *   1. Primary signal: `MerchantAlias` (warehouse-curated label for
- *      "this is the same brand even across SC/VC/marketplaces"). Rows
- *      with the same non-empty alias group together.
+ * Rows sharing the same `Name` belong to the same logical brand
+ * regardless of marketplace or account type. Rows with unique names
+ * are their own brand. `MerchantAlias` is preserved on each account
+ * row for reference but not used for grouping.
  *
- *   2. Fallback: `seller_name` exact-match for rows with no alias.
+ * Future: a `mixshift brand merge <slug1> <slug2>` command will let
+ * users consolidate brands that the warehouse hasn't aligned yet
+ * (e.g. seven Hydrapak rows that have distinct per-marketplace
+ * Names but represent one legal brand).
  *
- *   3. Anything still ungrouped becomes its own single-seller brand.
- *
- * Slug suggestions are derived from the alias / name via slugify().
- * Suggestions are starting points — the user can rename at brand-add
- * time. Slug uniqueness within the suggestion set is enforced; collisions
- * get numeric suffixes.
+ * Slug suggestions come from slugify(display_name). Collisions get
+ * numeric suffixes.
  */
 
 import type { SellerRow } from './seller-query.js';
@@ -24,7 +26,7 @@ import type { SellerRow } from './seller-query.js';
 export interface BrandSuggestion {
   /** Proposed slug — lowercase, hyphenated, unique within the suggestion set. */
   slug: string;
-  /** Human-friendly display name (from MerchantAlias when present, else seller_name). */
+  /** Human-friendly display name (always seller_name = warehouse `Name`). */
   display_name: string;
   /** All seller rows that group under this brand. */
   accounts: SellerRow[];
@@ -32,90 +34,39 @@ export interface BrandSuggestion {
   ads_active: boolean;
   /** Whether any account in the group has retail_active. */
   retail_active: boolean;
-  /** Confidence in the grouping ("alias" is strongest; "name_match" is medium; "singleton" means no grouping signal). */
-  group_signal: 'alias' | 'name_match' | 'singleton';
 }
 
 export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
-  // First pass: bucket by alias (when present).
-  const byAlias = new Map<string, SellerRow[]>();
-  const noAlias: SellerRow[] = [];
-
-  for (const r of rows) {
-    if (r.merchant_alias) {
-      const key = r.merchant_alias.toLowerCase();
-      const bucket = byAlias.get(key) ?? [];
-      bucket.push(r);
-      byAlias.set(key, bucket);
-    } else {
-      noAlias.push(r);
-    }
-  }
-
-  // Second pass: bucket non-aliased rows by exact seller_name match.
+  // Bucket rows by canonical Name (case-insensitive). Preserves insertion
+  // order via a Map so the first display capitalization wins.
   const byName = new Map<string, SellerRow[]>();
-  const singletons: SellerRow[] = [];
-
-  for (const r of noAlias) {
+  for (const r of rows) {
     const key = r.seller_name.toLowerCase();
-    const bucket = byName.get(key);
-    if (bucket) {
-      bucket.push(r);
-    } else {
-      // Tentatively a singleton — promote to a bucket only if we see another match.
-      byName.set(key, [r]);
-    }
+    const bucket = byName.get(key) ?? [];
+    bucket.push(r);
+    byName.set(key, bucket);
   }
 
-  for (const [, bucket] of byName) {
-    if (bucket.length === 1) singletons.push(bucket[0]!);
-  }
-
-  // Build suggestions
   const suggestions: BrandSuggestion[] = [];
   const usedSlugs = new Set<string>();
 
-  const aliasGroups = [...byAlias.entries()].sort(([a], [b]) => a.localeCompare(b));
-  for (const [alias, accounts] of aliasGroups) {
-    const baseSlug = slugify(alias);
-    suggestions.push(buildSuggestion(baseSlug, alias, accounts, 'alias', usedSlugs));
-  }
-
-  const nameGroups = [...byName.entries()]
-    .filter(([, bucket]) => bucket.length > 1)
-    .sort(([a], [b]) => a.localeCompare(b));
-  for (const [name, accounts] of nameGroups) {
+  // Stable alpha order by display name
+  const entries = [...byName.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [, accounts] of entries) {
     const display = accounts[0]!.seller_name;
-    const baseSlug = slugify(name);
-    suggestions.push(buildSuggestion(baseSlug, display, accounts, 'name_match', usedSlugs));
-  }
-
-  for (const account of singletons) {
-    const display = account.seller_name;
     const baseSlug = slugify(display);
-    suggestions.push(buildSuggestion(baseSlug, display, [account], 'singleton', usedSlugs));
+    const slug = ensureUniqueSlug(baseSlug, usedSlugs);
+    usedSlugs.add(slug);
+    suggestions.push({
+      slug,
+      display_name: display,
+      accounts,
+      ads_active: accounts.some((a) => a.ads_active),
+      retail_active: accounts.some((a) => a.retail_active),
+    });
   }
 
   return suggestions;
-}
-
-function buildSuggestion(
-  baseSlug: string,
-  display: string,
-  accounts: SellerRow[],
-  signal: BrandSuggestion['group_signal'],
-  usedSlugs: Set<string>,
-): BrandSuggestion {
-  const slug = ensureUniqueSlug(baseSlug, usedSlugs);
-  usedSlugs.add(slug);
-  return {
-    slug,
-    display_name: display,
-    accounts,
-    ads_active: accounts.some((a) => a.ads_active),
-    retail_active: accounts.some((a) => a.retail_active),
-    group_signal: signal,
-  };
 }
 
 /**

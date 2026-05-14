@@ -45047,63 +45047,30 @@ function toIso(v) {
 
 // src/lib/discovery/brand-grouping.ts
 function groupIntoBrands(rows) {
-  const byAlias = /* @__PURE__ */ new Map();
-  const noAlias = [];
-  for (const r of rows) {
-    if (r.merchant_alias) {
-      const key = r.merchant_alias.toLowerCase();
-      const bucket = byAlias.get(key) ?? [];
-      bucket.push(r);
-      byAlias.set(key, bucket);
-    } else {
-      noAlias.push(r);
-    }
-  }
   const byName = /* @__PURE__ */ new Map();
-  const singletons = [];
-  for (const r of noAlias) {
+  for (const r of rows) {
     const key = r.seller_name.toLowerCase();
-    const bucket = byName.get(key);
-    if (bucket) {
-      bucket.push(r);
-    } else {
-      byName.set(key, [r]);
-    }
-  }
-  for (const [, bucket] of byName) {
-    if (bucket.length === 1) singletons.push(bucket[0]);
+    const bucket = byName.get(key) ?? [];
+    bucket.push(r);
+    byName.set(key, bucket);
   }
   const suggestions = [];
   const usedSlugs = /* @__PURE__ */ new Set();
-  const aliasGroups = [...byAlias.entries()].sort(([a], [b]) => a.localeCompare(b));
-  for (const [alias, accounts] of aliasGroups) {
-    const baseSlug = slugify2(alias);
-    suggestions.push(buildSuggestion(baseSlug, alias, accounts, "alias", usedSlugs));
-  }
-  const nameGroups = [...byName.entries()].filter(([, bucket]) => bucket.length > 1).sort(([a], [b]) => a.localeCompare(b));
-  for (const [name, accounts] of nameGroups) {
+  const entries = [...byName.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [, accounts] of entries) {
     const display = accounts[0].seller_name;
-    const baseSlug = slugify2(name);
-    suggestions.push(buildSuggestion(baseSlug, display, accounts, "name_match", usedSlugs));
-  }
-  for (const account of singletons) {
-    const display = account.seller_name;
     const baseSlug = slugify2(display);
-    suggestions.push(buildSuggestion(baseSlug, display, [account], "singleton", usedSlugs));
+    const slug = ensureUniqueSlug(baseSlug, usedSlugs);
+    usedSlugs.add(slug);
+    suggestions.push({
+      slug,
+      display_name: display,
+      accounts,
+      ads_active: accounts.some((a) => a.ads_active),
+      retail_active: accounts.some((a) => a.retail_active)
+    });
   }
   return suggestions;
-}
-function buildSuggestion(baseSlug, display, accounts, signal, usedSlugs) {
-  const slug = ensureUniqueSlug(baseSlug, usedSlugs);
-  usedSlugs.add(slug);
-  return {
-    slug,
-    display_name: display,
-    accounts,
-    ads_active: accounts.some((a) => a.ads_active),
-    retail_active: accounts.some((a) => a.retail_active),
-    group_signal: signal
-  };
 }
 function slugify2(input) {
   let s = input.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -45131,8 +45098,7 @@ function renderDiscoveryTable(suggestions) {
     types: summarizeAccountTypes(s.accounts.map((a) => a.account_type)),
     markets: summarizeMarketplaces(s.accounts.map((a) => a.marketplace)),
     ads: s.ads_active ? "\u2713" : "\u2717",
-    retail: s.retail_active ? "\u2713" : "\u2717",
-    signal: s.group_signal
+    retail: s.retail_active ? "\u2713" : "\u2717"
   }));
   const headers = {
     slug: "SLUG",
@@ -45141,8 +45107,7 @@ function renderDiscoveryTable(suggestions) {
     types: "TYPES",
     markets: "MARKETS",
     ads: "ADS",
-    retail: "RETAIL",
-    signal: "GROUPING"
+    retail: "RETAIL"
   };
   const widths = Object.fromEntries(
     Object.keys(headers).map((k) => [
@@ -45234,12 +45199,12 @@ function registerBrandCommands(program3) {
               brands: suggestions.map((s) => ({
                 slug: s.slug,
                 display_name: s.display_name,
-                group_signal: s.group_signal,
                 ads_active: s.ads_active,
                 retail_active: s.retail_active,
                 accounts: s.accounts.map((a) => ({
                   seller_id: a.seller_id,
                   seller_name: a.seller_name,
+                  merchant_alias: a.merchant_alias,
                   account_type: a.account_type,
                   marketplace: a.marketplace,
                   ads_active: a.ads_active,

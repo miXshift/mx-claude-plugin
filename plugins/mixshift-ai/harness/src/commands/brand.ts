@@ -93,12 +93,12 @@ export function registerBrandCommands(program: Command): void {
                 brands: suggestions.map((s) => ({
                   slug: s.slug,
                   display_name: s.display_name,
-                  group_signal: s.group_signal,
                   ads_active: s.ads_active,
                   retail_active: s.retail_active,
                   accounts: s.accounts.map((a) => ({
                     seller_id: a.seller_id,
                     seller_name: a.seller_name,
+                    merchant_alias: a.merchant_alias,
                     account_type: a.account_type,
                     marketplace: a.marketplace,
                     ads_active: a.ads_active,

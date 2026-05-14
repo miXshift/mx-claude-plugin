@@ -22,7 +22,6 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
     markets: summarizeMarketplaces(s.accounts.map((a) => a.marketplace)),
     ads: s.ads_active ? '✓' : '✗',
     retail: s.retail_active ? '✓' : '✗',
-    signal: s.group_signal,
   }));
 
   const headers = {
@@ -33,7 +32,6 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
     markets: 'MARKETS',
     ads: 'ADS',
     retail: 'RETAIL',
-    signal: 'GROUPING',
   };
 
   const widths = Object.fromEntries(
