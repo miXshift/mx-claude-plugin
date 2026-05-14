@@ -1,0 +1,37 @@
+schema_version: 1
+skill_id: welcome
+display_name: Welcome / Quick Start
+version: "0.1.0"
+description: >
+  First-run welcome and quick-start orientation. Renders the warehouse
+  credential URL, master password, and the recommended next commands.
+
+# Tier 1 = informational only. No file writes, no DB calls.
+run_kind: per_user
+cadence: ad_hoc
+risk_tier: 1
+allowed_tools: [bash]
+side_effect_policy: read_only
+
+harness_commands:
+  - mixshift welcome
+
+required_state: []
+optional_state: []
+artifacts: []
+
+pricing_tier: free
+trigger_phrases:
+  - welcome
+  - mixshift welcome
+  - run welcome
+  - what is mixshift
+  - how do I get started
+  - first time setup
+  - quick start
+
+notes: >
+  Thin skill wrapping the `mixshift welcome` CLI command. Used as the
+  natural-language entry point for new users who don't yet know they
+  should run `auth setup`. The CLI itself handles rendering (first-run
+  view vs. returning-user view) based on detected state.
