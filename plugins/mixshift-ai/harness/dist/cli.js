@@ -47529,9 +47529,20 @@ async function loadInputsFromFile(path2, opts) {
   };
 }
 async function promptInputs(opts, defaults) {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Interactive prompts require a TTY (a real terminal). It looks like stdin isn't a terminal here \u2014 common when running through the Claude Code Bash tool.
+
+Two options:
+  1. Run "mixshift auth setup" in your own terminal (Git Bash, PowerShell, etc.) where TTY prompts work.
+  2. In Claude chat, ask "run auth setup" \u2014 the auth-setup skill collects inputs in chat and routes them through --from-file.
+
+For scripted / CI use, pass --from-file <path> with a YAML/JSON file containing email + mysql fields.`
+    );
+  }
   const cr = defaults.auth.credential_retrieval;
   const dbDefaults = defaults.auth.mysql;
-  process.stderr.write(
+  process.stdout.write(
     `
 # MixShift plugin auth setup
 # One-time step. You can re-run later if anything changes.
@@ -47593,7 +47604,7 @@ function renderResult(result, json2) {
   }
   switch (result.status) {
     case "ok":
-      process.stderr.write(
+      process.stdout.write(
         `
 \u2713 Auth setup complete.
   - profile:     ${result.profile_path}
@@ -47603,7 +47614,7 @@ function renderResult(result, json2) {
       );
       return;
     case "pending_whitelist":
-      process.stderr.write(
+      process.stdout.write(
         `
 \u2022 Connection refused: your IP is not whitelisted on the warehouse.
   - profile:     ${result.profile_path}
@@ -47612,11 +47623,11 @@ function renderResult(result, json2) {
 `
       );
       if (result.whitelist_request_sent) {
-        process.stderr.write(
+        process.stdout.write(
           "\n  \u2713 Whitelist request sent to MixShift ops.\n    You will hear back via email (typically within a few hours)\n    once your IP is granted access. Re-run any skill afterwards.\n"
         );
       } else {
-        process.stderr.write(
+        process.stdout.write(
           `
   \u2717 Whitelist request was NOT sent automatically.
     Reason: ${result.whitelist_request_error ?? "unknown"}
@@ -48525,7 +48536,7 @@ function registerWelcomeCommand(program3) {
       );
       process.exit(0);
     }
-    process.stderr.write(renderWelcome({ authReady, profileReady, cr }));
+    process.stdout.write(renderWelcome({ authReady, profileReady, cr }));
     process.exit(0);
   });
 }

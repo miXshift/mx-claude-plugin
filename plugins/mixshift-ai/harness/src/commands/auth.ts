@@ -140,12 +140,33 @@ async function promptInputs(
   opts: SetupOptions,
   defaults: PluginDefaults,
 ): Promise<SetupInputs> {
+  // Interactive prompts require a TTY. Claude Code's Bash tool doesn't
+  // pass one through, so we'd fail with "User force closed the prompt"
+  // a few prompts in. Detect early and give a clear error pointing at
+  // the right path (auth-setup skill orchestrates --from-file in chat).
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'Interactive prompts require a TTY (a real terminal). It looks like ' +
+        'stdin isn\'t a terminal here — common when running through the ' +
+        'Claude Code Bash tool.\n\n' +
+        'Two options:\n' +
+        '  1. Run "mixshift auth setup" in your own terminal (Git Bash, ' +
+        'PowerShell, etc.) where TTY prompts work.\n' +
+        '  2. In Claude chat, ask "run auth setup" — the auth-setup skill ' +
+        'collects inputs in chat and routes them through --from-file.\n\n' +
+        'For scripted / CI use, pass --from-file <path> with a YAML/JSON ' +
+        'file containing email + mysql fields.',
+    );
+  }
+
   const cr = defaults.auth.credential_retrieval;
   const dbDefaults = defaults.auth.mysql;
 
   // Credential-retrieval instructions — show before any prompts so the
   // user knows where to find the values they're about to enter.
-  process.stderr.write(
+  // Written to stdout (not stderr) so it doesn't render as an error in
+  // tools that style stderr red (like the Claude Code Bash tool output).
+  process.stdout.write(
     '\n# MixShift plugin auth setup\n' +
       '# One-time step. You can re-run later if anything changes.\n' +
       '\n' +
@@ -220,9 +241,11 @@ function renderResult(result: SetupResult, json: boolean): void {
     return;
   }
 
+  // Success and info messages go to stdout so they don't render as errors
+  // in tools that style stderr red. Only actual failures stay on stderr.
   switch (result.status) {
     case 'ok':
-      process.stderr.write(
+      process.stdout.write(
         '\n✓ Auth setup complete.\n' +
           `  - profile:     ${result.profile_path}\n` +
           `  - credentials: ${result.credentials_path}\n` +
@@ -231,20 +254,20 @@ function renderResult(result: SetupResult, json: boolean): void {
       return;
 
     case 'pending_whitelist':
-      process.stderr.write(
+      process.stdout.write(
         '\n• Connection refused: your IP is not whitelisted on the warehouse.\n' +
           `  - profile:     ${result.profile_path}\n` +
           `  - credentials: ${result.credentials_path}\n` +
           `  - public IP:   ${result.public_ip ?? '(could not detect)'}\n`,
       );
       if (result.whitelist_request_sent) {
-        process.stderr.write(
+        process.stdout.write(
           '\n  ✓ Whitelist request sent to MixShift ops.\n' +
             '    You will hear back via email (typically within a few hours)\n' +
             '    once your IP is granted access. Re-run any skill afterwards.\n',
         );
       } else {
-        process.stderr.write(
+        process.stdout.write(
           '\n  ✗ Whitelist request was NOT sent automatically.\n' +
             `    Reason: ${result.whitelist_request_error ?? 'unknown'}\n` +
             '    Email your MixShift contact with your public IP to request access.\n',

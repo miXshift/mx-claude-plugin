@@ -1,0 +1,44 @@
+schema_version: 1
+skill_id: auth-setup
+display_name: MixShift Auth Setup
+version: "0.1.0"
+description: >
+  Walk the user through one-time warehouse auth setup in Claude chat
+  (since Claude Code's Bash tool can't drive interactive TTY prompts).
+  Collects credentials in chat, writes to a temp file, runs the harness's
+  non-interactive auth setup, cleans up.
+
+run_kind: per_user
+cadence: one_time
+risk_tier: 2
+allowed_tools: [bash, file_write, file_delete]
+side_effect_policy: writes_credentials
+
+harness_commands:
+  - mixshift welcome
+  - mixshift auth setup --from-file <tempfile> --request-whitelist
+
+required_state: []
+optional_state: []
+
+artifacts:
+  - name: "credentials file"
+    type: "json"
+    location: "~/.mixshift/auth/credentials"
+  - name: "profile file"
+    type: "yaml"
+    location: "~/.mixshift/profile.yaml"
+
+pricing_tier: free
+trigger_phrases:
+  - auth setup
+  - set up auth
+  - set up my credentials
+  - configure mixshift
+  - connect to warehouse
+
+notes: >
+  The harness CLI supports interactive TTY prompts for terminal users, but
+  Claude Code's Bash tool doesn't pass a TTY, so prompts fail with "User
+  force closed." This skill bridges the gap by collecting inputs in chat
+  and routing them through the existing --from-file mode.

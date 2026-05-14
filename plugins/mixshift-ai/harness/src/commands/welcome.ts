@@ -46,7 +46,9 @@ export function registerWelcomeCommand(program: Command): void {
         process.exit(0);
       }
 
-      process.stderr.write(renderWelcome({ authReady, profileReady, cr }));
+      // Welcome is informational, not an error — route to stdout so it
+      // doesn't render red in tools that style stderr as error.
+      process.stdout.write(renderWelcome({ authReady, profileReady, cr }));
       process.exit(0);
     });
 }
