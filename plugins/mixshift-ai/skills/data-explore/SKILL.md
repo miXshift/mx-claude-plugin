@@ -1,27 +1,63 @@
 ---
 name: data-explore
 description: >
-  Help the user query, sample, and export their MixShift warehouse data
-  ad-hoc. Use when the user wants to see what's in their data, sample a
-  table, export to CSV for use in other tools, or run a custom query.
-  Does NOT require brand cold-start — only auth setup + (optionally)
-  knowing a SellerID or brand slug.
+  Ad-hoc query, sample, and CSV export against MixShift's MySQL warehouse
+  (legacy schema: dashamazon). Covers Amazon Sponsored Ads (SP/SB/SD), DSP,
+  Seller Central + Vendor Central operational revenue and orders,
+  inventory, and dimensional catalog tables — not just PPC. Read-only,
+  routes through the bundled harness CLI. Use when the user wants to see
+  what's in their data, sample a table, export to CSV for use in other
+  tools, or run a custom SQL query. Does NOT require brand cold-start —
+  only auth setup + (optionally) knowing a SellerID or brand slug.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - explore my data
   - show me my data
   - what tables can I query
+  - what tables are available
   - export data
   - export to CSV
   - sample data
   - run a query
   - query my warehouse
+  - query mixshift
   - what brands do I have
 ---
 
 # Data Explore
+
+## About the MixShift warehouse (authoritative — don't guess)
+
+When characterizing the data source to the user (e.g. in a multi-source
+disambiguation), use these facts:
+
+- **Technology:** MySQL (NOT BigQuery, Snowflake, Postgres, or any cloud
+  warehouse — Claude has guessed BigQuery before; that's wrong)
+- **Schema:** `dashamazon` is the canonical legacy database name; some
+  tenants have tenant-specific schemas (typically matching their MySQL
+  username)
+- **Access:** Read-only credentials. Destructive writes are impossible at
+  the DB level — no need to defensively SQL-parse.
+- **Scope:** Amazon advertising + retail. Specifically:
+    - Sponsored Ads (Sponsored Products, Sponsored Brands, Sponsored Display)
+    - Amazon DSP (display campaigns, separate from sponsored)
+    - Seller Central operational revenue (sales, orders, units, sessions,
+      page views, buy box, returns, settlements)
+    - Vendor Central operational revenue (ordered/shipped revenue, units,
+      COGS, page views via glance views)
+    - Inventory (FBA + vendor)
+    - Catalog metadata (mws_items with Brand / ItemGroup / Tags / TargetACOS,
+      vendor_items with CustomBrand)
+- **Routing:** All queries flow through the harness CLI (`mixshift data ...`),
+  which connects via `mysql2` with creds from `~/.mixshift/auth/credentials.json`.
+  There is NO MCP server registered for the warehouse — `.mcp.json` is
+  intentionally empty.
+
+If the user asks "what kind of database is this" or you need to pick
+between multiple data sources, lead with "MixShift's MySQL warehouse"
+rather than guessing technology.
 
 You help the user query, sample, and export MixShift warehouse data. This is a **low-friction, read-only** skill — partners can use it without doing a full brand cold-start, as long as they've completed auth setup.
 

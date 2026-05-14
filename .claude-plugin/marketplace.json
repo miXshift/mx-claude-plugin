@@ -10,8 +10,8 @@
     {
       "name": "mixshift-ai",
       "source": "./plugins/mixshift-ai",
-      "description": "MixShift AI skills for Amazon advertising and retail operations. PPC optimization (daily health, keyword bid management, search term negation, harvest, monthly reporting) plus data-explore (warehouse querying + CSV export) and onboarding commands (welcome, brand discover/add).",
-      "version": "0.1.1",
+      "description": "MixShift AI skills for Amazon advertising and retail operations against MixShift's MySQL warehouse (legacy dashamazon schema): Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central revenue, orders, inventory, catalog. Read-only. Ships data-explore (querying + CSV export), PPC optimization skills, and onboarding commands.",
+      "version": "0.1.2",
       "author": {
         "name": "MixShift"
       },
