@@ -1,15 +1,32 @@
 {
-  "mcpServers": {
-    "mysql-ads": {
-      "command": "npx",
-      "args": ["-y", "mysql-mcp-server"],
-      "env": {
-        "MYSQL_HOST": "${MIXSHIFT_MYSQL_HOST}",
-        "MYSQL_PORT": "${MIXSHIFT_MYSQL_PORT}",
-        "MYSQL_USER": "${MIXSHIFT_MYSQL_USER}",
-        "MYSQL_PASSWORD": "${MIXSHIFT_MYSQL_PASSWORD}",
-        "MYSQL_DATABASE": "${MIXSHIFT_MYSQL_DATABASE}"
-      }
-    }
-  }
+  "$comment": [
+    "MCP server registration for the mixshift-ai plugin.",
+    "",
+    "Empty for now — the harness owns all warehouse access via mysql2 with",
+    "credentials loaded from ~/.mixshift/auth/credentials.json. Skills route",
+    "data queries through `mixshift data ...` CLI commands, not MCP tools.",
+    "",
+    "Why no generic MCP server here:",
+    "  - The third-party `mysql-mcp-server` package we previously registered",
+    "    needed env vars at spawn time (${MIXSHIFT_MYSQL_HOST} etc.) which",
+    "    aren't set in the plugin runtime — credentials live in the auth",
+    "    file the harness reads, not in shell env.",
+    "  - Even with creds, it would expose generic `list_tables` /",
+    "    `execute_query` MCP tools that bypass our curated catalog, friendly",
+    "    error classification, CSV export, and access-denied → Discord",
+    "    webhook flow. Claude would naturally pick the MCP path over the",
+    "    skill path because it's one fewer tool call, defeating the value",
+    "    of the data-explore skill.",
+    "",
+    "Future: register a MixShift-built MCP server that:",
+    "  - Reads creds from ~/.mixshift/auth/credentials.json",
+    "  - Exposes catalog-aware tools (list_curated_tables, sample,",
+    "    export_csv) matching the harness command surface",
+    "  - Routes access-denied through the same Discord webhook",
+    "  - Emits telemetry events",
+    "",
+    "Until then, all data access flows: user → SKILL.md → Bash → mixshift",
+    "(bin wrapper) → harness/dist/cli.js → mysql2 → warehouse."
+  ],
+  "mcpServers": {}
 }
