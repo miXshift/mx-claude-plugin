@@ -16,6 +16,7 @@ interface RootOptions {
 interface SetupOptions {
   nonInteractive: boolean;
   fromFile?: string;
+  passwordFile?: string;
   skipConnectionTest: boolean;
   requestWhitelist: boolean;
   host?: string;
@@ -37,6 +38,13 @@ export function registerAuthCommands(program: Command): void {
     .option(
       '--from-file <path>',
       'read inputs from a YAML / JSON file instead of prompting',
+    )
+    .option(
+      '--password-file <path>',
+      'read MySQL password from this file (overrides any password in ' +
+        '--from-file YAML). Use when you want to keep the password out of ' +
+        'chat history / bash command previews — the password is read from ' +
+        'disk and never echoed.',
     )
     .option(
       '--skip-connection-test',
@@ -89,7 +97,23 @@ async function gatherInputs(
   defaults: PluginDefaults,
 ): Promise<SetupInputs> {
   if (opts.fromFile) {
-    return loadInputsFromFile(opts.fromFile, opts);
+    const inputs = await loadInputsFromFile(opts.fromFile, opts);
+    if (opts.passwordFile) {
+      // Read password from a separate file so it doesn't appear in the
+      // --from-file YAML (which gets shown in bash command previews and
+      // chat history). Strip trailing newlines so editors that always
+      // append one don't break the auth.
+      const passwordRaw = await readFile(opts.passwordFile, 'utf-8');
+      const password = passwordRaw.replace(/\r?\n$/, '');
+      if (password.length === 0) {
+        throw new Error(
+          `--password-file ${opts.passwordFile} is empty. The file should ` +
+            `contain just your MySQL password text, no quotes / labels / extra lines.`,
+        );
+      }
+      inputs.mysql = { ...inputs.mysql, password };
+    }
+    return inputs;
   }
   if (opts.nonInteractive) {
     throw new Error(
@@ -121,7 +145,15 @@ async function loadInputsFromFile(
     throw new Error(`${path} is missing a top-level "email" string.`);
   }
 
-  const mysqlParse = mysqlCredsSchema.safeParse(obj.mysql);
+  // When --password-file is provided, the password in YAML can be an empty
+  // placeholder string (the file value will override it). Inject "" if the
+  // YAML omits the field entirely so schema parsing succeeds.
+  const mysqlInput = (obj.mysql ?? {}) as Record<string, unknown>;
+  if (opts.passwordFile && mysqlInput.password === undefined) {
+    mysqlInput.password = '';
+  }
+
+  const mysqlParse = mysqlCredsSchema.safeParse(mysqlInput);
   if (!mysqlParse.success) {
     throw new Error(
       formatZodError(mysqlParse.error, `MySQL credentials in ${path} are invalid`),

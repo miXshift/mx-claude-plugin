@@ -35,40 +35,47 @@ That command renders the URL + master password the user needs to retrieve their 
 
 If they've already run `welcome` and have the credentials in hand, skip ahead.
 
-## Step 2 — Collect inputs in chat (ask one at a time)
+## Step 2 — Collect non-password inputs in chat
 
-Ask the user for each field. Show suggested defaults where applicable but don't assume — the credentials page is the source of truth.
+Ask the user for each field below, **one at a time**, EXCEPT the password (which has its own step — see Step 2b). Show suggested defaults where applicable.
 
 | Field | Suggested default | Notes |
 |---|---|---|
 | Email | (none — ask) | For telemetry + IP whitelist requests |
 | MySQL Username | (none — ask) | From the credentials page; e.g. "marpartners", "dash" |
-| MySQL Password | (none — ask) | **See "Password input handling" below — DO NOT just say "paste the password"** |
 | MySQL HostName | `db.mydashapplications.studio` | Most users; tenant subdomains override (e.g. `marpartners.mydashapplications.studio`) |
 | MySQL Port | `3306` | Universal |
 | MySQL Schema (database) | (same as Username they just gave) | Typical case — username "marpartners" → schema "marpartners". Sam's `dash` user is an outlier with schema `dashamazon` |
 
 Confirm each field with the user before moving on. If they're unsure, refer them back to the URL from `mixshift welcome`.
 
-### Password input handling — IMPORTANT
+## Step 2b — Password handling (CRITICAL)
 
-Claude Code interprets messages starting with `!` as Bash commands. If the user just pastes their password and it happens to start with `!`, or they hit `!` before pasting, the password will be executed as a shell command — leaking it to a "command not found" error AND leaving it in chat history AND bash logs.
+**Never ask the user to paste the password into chat.** MixShift has no password-rotation feature for these credentials — many external integrations rely on this password being stable. If the password appears in chat history (or worse, gets interpreted by Claude Code's `!` prefix and routed to bash where it lands in error logs), the user has no clean recovery path.
 
-**Always ask the user for the password using one of these safer patterns:**
+Instead, walk them through this **safer file-based pattern**:
 
-> "What's your MySQL password? Please paste it in the format `password is: YOUR_PASSWORD_HERE` (not just the bare password — Claude Code can interpret messages starting with `!` as bash commands)."
+> "MixShift's MySQL passwords can't be rotated without breaking other integrations, so I won't ask you to paste it in chat. Instead, please save it to a text file:
+>
+> **On Windows:**
+> 1. Open Notepad
+> 2. Paste your password (only the password — no quotes, no labels, no extra characters or newlines)
+> 3. Save as `C:\Users\<your-username>\AppData\Local\Temp\mxpw.txt` (or anywhere convenient — just tell me the exact path)
+>
+> **On macOS / Linux:**
+> 1. Open any text editor
+> 2. Paste your password
+> 3. Save as `/tmp/mxpw.txt` (or any path you prefer)
+>
+> Once saved, tell me the path and I'll continue."
 
-Or:
+When the user gives you the path, use it as the `--password-file` argument to the harness. The harness reads the file directly — the password never appears in chat or in a bash command preview.
 
-> "Paste your MySQL password wrapped in backticks, like \`your_password\` — that way special characters don't get interpreted by Claude Code's input parser."
+**Never echo the password back to the user in chat**, even when confirming inputs. When confirming, mask it as `********` or omit it entirely.
 
-Then parse the actual password value out of their reply. **Never echo the password back to the user in chat**, even when confirming inputs. When confirming, mask it as `********` or omit it entirely.
+## Step 3 — Write the non-password fields to a temp YAML
 
-If the user's password DID appear bare in chat (e.g., they ignored the format guidance and Claude Code ran it as bash), gently note that the password has been logged and they may want to rotate it on the credentials page after setup.
-
-## Step 3 — Write to a temp file
-
-Construct a YAML payload with this exact shape:
+Construct a YAML payload **without** the password (just an empty placeholder; the harness reads the real value from `--password-file`):
 
 ```yaml
 email: <email>
@@ -76,15 +83,11 @@ mysql:
   host: <host>
   port: <port>
   user: <user>
-  password: <password>
+  password: ""           # empty placeholder — --password-file supplies the real value
   database: <database>
 ```
 
-Write to a temp file:
-- Windows: `$env:TEMP\mixshift-auth-input.yaml` (via PowerShell) or `%TEMP%\mixshift-auth-input.yaml` (cmd) — in practice `C:\Users\<user>\AppData\Local\Temp\mixshift-auth-input.yaml`
-- POSIX: `/tmp/mixshift-auth-input.yaml`
-
-Use Bash's heredoc pattern so multi-line YAML writes correctly:
+Write to a temp file via heredoc (no password = safe to show in command preview):
 
 ```bash
 cat > /tmp/mixshift-auth-input.yaml <<'EOF'
@@ -93,12 +96,12 @@ mysql:
   host: db.mydashapplications.studio
   port: 3306
   user: marpartners
-  password: <their password — keep this line verbatim>
+  password: ""
   database: marpartners
 EOF
 ```
 
-On Windows / PowerShell, use `Set-Content` with `-Encoding utf8`:
+On Windows / PowerShell:
 
 ```powershell
 $content = @"
@@ -107,19 +110,24 @@ mysql:
   host: db.mydashapplications.studio
   port: 3306
   user: marpartners
-  password: <their password>
+  password: ""
   database: marpartners
 "@
 Set-Content -Path "$env:TEMP\mixshift-auth-input.yaml" -Value $content -Encoding utf8
 ```
 
-## Step 4 — Run the CLI
+## Step 4 — Run the CLI with `--password-file`
 
 ```bash
-mixshift auth setup --from-file /tmp/mixshift-auth-input.yaml --request-whitelist
+mixshift auth setup \
+  --from-file /tmp/mixshift-auth-input.yaml \
+  --password-file /tmp/mxpw.txt \
+  --request-whitelist
 ```
 
-The `--request-whitelist` flag tells the harness to auto-POST to the Discord ops channel if the connection test fails with "host not allowed" — saves a step.
+(Use the actual path the user gave you for `--password-file`.)
+
+The harness reads the password from the file directly — it never appears in the command line, chat, or bash command preview. The `--request-whitelist` flag auto-POSTs to the Discord ops channel if the connection test fails with "host not allowed."
 
 ## Step 5 — Interpret the exit code
 
@@ -129,22 +137,28 @@ The `--request-whitelist` flag tells the harness to auto-POST to the Discord ops
 | 1 | Hard failure (bad creds, schema mismatch, etc.) | Pass the friendly error message through |
 | 3 | Pending IP whitelist — request sent to MixShift ops | "✓ Credentials saved. Your IP isn't whitelisted yet — we sent a request to MixShift ops. You'll get an email when access is granted (usually within a few hours). Re-run any skill afterwards." |
 
-## Step 6 — Clean up the temp file
+## Step 6 — Clean up both temp files
 
-**Always** delete the temp file after the command finishes, regardless of outcome — it contains the user's plaintext password.
+**Always** delete BOTH temp files after the command finishes, regardless of outcome:
+- The YAML temp file (no password in it now, but still scratch state)
+- The password file (contains the plaintext password — most important to delete)
 
 ```bash
-rm /tmp/mixshift-auth-input.yaml      # POSIX
+rm /tmp/mixshift-auth-input.yaml /tmp/mxpw.txt      # POSIX
 ```
 
 ```powershell
-Remove-Item "$env:TEMP\mixshift-auth-input.yaml" -ErrorAction SilentlyContinue   # Windows
+Remove-Item "$env:TEMP\mixshift-auth-input.yaml" -ErrorAction SilentlyContinue
+Remove-Item "$env:TEMP\mxpw.txt" -ErrorAction SilentlyContinue
 ```
+
+If the user gave you a non-standard path for the password file, delete that path specifically.
 
 ## Hard rules
 
-- **Never echo the password** back to the user in chat — even when confirming inputs
-- **Always delete the temp file** — failure cleanup matters too
-- **Use heredoc / here-string syntax** so YAML special characters (`:`, `#`, quotes) in the password don't break the file
-- If `--from-file` somehow fails, fall back to: "Open a terminal and run `mixshift auth setup` directly — TTY prompts work there"
-- Don't proceed to other skills until exit code 0 or 3 is reached
+- **Never ask the user to paste the password into chat** — always use the file-based pattern in Step 2b. MixShift can't easily rotate these passwords, so a leak is a meaningful cost.
+- **Never echo the password** back to the user, even when confirming inputs. Mask as `********` or omit.
+- **Always delete BOTH temp files** — the password file especially.
+- **Never put the password on the command line** (e.g., `--password=...`). It appears in bash command previews + process lists. Use `--password-file` instead.
+- If `--from-file` / `--password-file` somehow fail, fall back to: "Open a terminal and run `mixshift auth setup` directly — TTY prompts work there and the password is hidden by the prompt's masking."
+- Don't proceed to other skills until exit code 0 or 3 is reached.

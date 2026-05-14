@@ -47449,6 +47449,9 @@ function registerAuthCommands(program3) {
     "--from-file <path>",
     "read inputs from a YAML / JSON file instead of prompting"
   ).option(
+    "--password-file <path>",
+    "read MySQL password from this file (overrides any password in --from-file YAML). Use when you want to keep the password out of chat history / bash command previews \u2014 the password is read from disk and never echoed."
+  ).option(
     "--skip-connection-test",
     "save credentials without verifying they work (CI / dry-run)",
     false
@@ -47490,7 +47493,18 @@ function registerAuthCommands(program3) {
 }
 async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
-    return loadInputsFromFile(opts.fromFile, opts);
+    const inputs = await loadInputsFromFile(opts.fromFile, opts);
+    if (opts.passwordFile) {
+      const passwordRaw = await readFile5(opts.passwordFile, "utf-8");
+      const password = passwordRaw.replace(/\r?\n$/, "");
+      if (password.length === 0) {
+        throw new Error(
+          `--password-file ${opts.passwordFile} is empty. The file should contain just your MySQL password text, no quotes / labels / extra lines.`
+        );
+      }
+      inputs.mysql = { ...inputs.mysql, password };
+    }
+    return inputs;
   }
   if (opts.nonInteractive) {
     throw new Error(
@@ -47515,7 +47529,11 @@ async function loadInputsFromFile(path2, opts) {
   if (typeof obj.email !== "string") {
     throw new Error(`${path2} is missing a top-level "email" string.`);
   }
-  const mysqlParse = mysqlCredsSchema.safeParse(obj.mysql);
+  const mysqlInput = obj.mysql ?? {};
+  if (opts.passwordFile && mysqlInput.password === void 0) {
+    mysqlInput.password = "";
+  }
+  const mysqlParse = mysqlCredsSchema.safeParse(mysqlInput);
   if (!mysqlParse.success) {
     throw new Error(
       formatZodError(mysqlParse.error, `MySQL credentials in ${path2} are invalid`)
