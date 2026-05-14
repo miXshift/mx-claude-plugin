@@ -1,0 +1,119 @@
+# Curated catalog of warehouse tables that the `data-explore` skill knows
+# how to talk to. This is a subset of `shared/tables.yaml` — the latter is
+# the full schema dump used for drift checking; this file annotates the
+# subset that's useful to end users with descriptions, categories, and
+# scoping hints (seller-id requirement, time-series flag, etc.).
+#
+# Adding a table: pick a category, write a one-line description, mark
+# whether it requires a seller-id filter (most large tables do), and
+# whether it's time-series. The skill uses these flags to nudge users
+# toward filtered queries on big tables.
+
+schema_version: 1
+
+tables:
+  # ---------------- Ad metrics ----------------
+
+  campaignmetric:
+    description: "Campaign-level daily metrics: spend, sales, orders, ACOS. Source of truth for ad performance."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  keywordtargetingmetric:
+    description: "Keyword-level daily metrics: spend, clicks, impressions, conversions per keyword."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  asinmetric:
+    description: "ASIN-level ad performance daily metrics."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  searchtermmetric:
+    description: "Search-term level daily performance (what customers actually typed)."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  # ---------------- Ops revenue ----------------
+
+  business_reports_dpst_date:
+    description: "Daily total sales by day for Seller Central accounts (SC). Includes B2B breakouts."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  vendor_sales_manufacturing_asin:
+    description: "Daily ordered revenue + units for Vendor Central accounts (VC), per ASIN."
+    category: ops_revenue
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  # ---------------- Dimensional (metadata) ----------------
+
+  seller:
+    description: "Seller account metadata: SellerID, Name (canonical brand), MerchantAlias (storefront), MerchantType, marketplace, access flags."
+    category: dimensional
+    time_series: false
+    requires_seller_id: false
+
+  campaign:
+    description: "Campaign metadata: name, type, objective, item group, status."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  adgroup:
+    description: "Ad-group metadata under each campaign."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  keywordtargeting:
+    description: "Keyword + targeting state, including negation entries."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  # ---------------- Inventory ----------------
+
+  mws_inventory_health:
+    description: "Inventory health snapshots: sellable qty, days of supply, alert flags."
+    category: inventory
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  business_reports_dpst_sku:
+    description: "ASIN/SKU-level daily sales (organic + ad combined)."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  # ---------------- Anomaly detection (read-mostly) ----------------
+
+  anomaly_detection_settings:
+    description: "Per-seller CI thresholds (upper/lower sensitivity limits) for spend, sales, ACOS."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  anomaly_detection_MV:
+    description: "Pre-computed T-30 daily actuals + means used for percentile-based CI computation."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: Date

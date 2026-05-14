@@ -36,7 +36,7 @@ function makeDeps(overrides: Partial<SetupDeps>): SetupDeps {
   return {
     testConnection: vi.fn().mockResolvedValue({ ok: true }),
     fetchPublicIp: vi.fn().mockResolvedValue('1.2.3.4'),
-    postIpWhitelistRequest: vi.fn().mockResolvedValue({ ok: true, status: 204 }),
+    postWebhook: vi.fn().mockResolvedValue({ ok: true, status: 204 }),
     ...overrides,
   };
 }
@@ -62,7 +62,7 @@ describe('runAuthSetup', () => {
     expect(result.status).toBe('ok');
     expect(deps.testConnection).toHaveBeenCalledOnce();
     expect(deps.fetchPublicIp).not.toHaveBeenCalled();
-    expect(deps.postIpWhitelistRequest).not.toHaveBeenCalled();
+    expect(deps.postWebhook).not.toHaveBeenCalled();
 
     // Files were written
     const profileRaw = await readFile(join(testDir, 'profile.yaml'), 'utf-8');
@@ -155,10 +155,10 @@ describe('runAuthSetup', () => {
     if (result.status !== 'pending_whitelist') throw new Error('unreachable');
     expect(result.whitelist_request_sent).toBe(true);
     expect(result.public_ip).toBe('1.2.3.4');
-    expect(deps.postIpWhitelistRequest).toHaveBeenCalledOnce();
+    expect(deps.postWebhook).toHaveBeenCalledOnce();
 
     // The webhook URL passed to the dep is the one from defaults
-    expect(deps.postIpWhitelistRequest).toHaveBeenCalledWith(
+    expect(deps.postWebhook).toHaveBeenCalledWith(
       'https://example.com/webhook',
       expect.objectContaining({
         user_email: 'sam@example.com',
@@ -174,7 +174,7 @@ describe('runAuthSetup', () => {
         kind: 'ip_not_allowed',
         message: 'blocked',
       }),
-      postIpWhitelistRequest: vi
+      postWebhook: vi
         .fn()
         .mockResolvedValue({ ok: false, error: 'network down' }),
     });
@@ -229,7 +229,7 @@ describe('runAuthSetup', () => {
     if (result.status !== 'pending_whitelist') throw new Error('unreachable');
     expect(result.whitelist_request_sent).toBe(false);
     expect(result.public_ip).toBeUndefined();
-    expect(deps.postIpWhitelistRequest).not.toHaveBeenCalled();
+    expect(deps.postWebhook).not.toHaveBeenCalled();
   });
 
   it('reports access_denied with friendly message', async () => {

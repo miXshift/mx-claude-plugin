@@ -21,11 +21,8 @@ import {
   type FailureKind,
 } from './test-connection.js';
 import { fetchPublicIp as defaultFetchPublicIp } from './public-ip.js';
-import {
-  postIpWhitelistRequest as defaultPostWhitelist,
-  type PostResult,
-  type WhitelistRequest,
-} from './ip-whitelist.js';
+import { postWebhook as defaultPostWebhook } from '../webhook/discord.js';
+import type { PostResult, WebhookRequest } from '../webhook/types.js';
 
 export interface SetupInputs {
   email: string;
@@ -76,16 +73,13 @@ export interface SetupContext {
 export interface SetupDeps {
   testConnection: (creds: MysqlCreds) => Promise<TestResult>;
   fetchPublicIp: (endpoint: string) => Promise<string | null>;
-  postIpWhitelistRequest: (
-    url: string,
-    request: WhitelistRequest,
-  ) => Promise<PostResult>;
+  postWebhook: (url: string, request: WebhookRequest) => Promise<PostResult>;
 }
 
 const defaultDeps: SetupDeps = {
   testConnection: defaultTestConnection,
   fetchPublicIp: defaultFetchPublicIp,
-  postIpWhitelistRequest: defaultPostWhitelist,
+  postWebhook: defaultPostWebhook,
 };
 
 /**
@@ -186,9 +180,10 @@ async function sendWhitelistRequest(args: {
         'Visit https://api.ipify.org and email the result to your MixShift contact.',
     };
   } else {
-    webhookResult = await args.deps.postIpWhitelistRequest(
+    webhookResult = await args.deps.postWebhook(
       args.ctx.defaults.auth.ip_whitelist_webhook,
       {
+        kind: 'ip_whitelist_request',
         user_email: args.email,
         public_ip: publicIp,
         plugin_version: args.ctx.plugin_version,

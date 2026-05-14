@@ -9035,9 +9035,9 @@ var require_lexer = __commonJS({
         }
       }
       *parseQuotedScalar() {
-        const quote = this.charAt(0);
-        let end = this.buffer.indexOf(quote, this.pos + 1);
-        if (quote === "'") {
+        const quote2 = this.charAt(0);
+        let end = this.buffer.indexOf(quote2, this.pos + 1);
+        if (quote2 === "'") {
           while (end !== -1 && this.buffer[end + 1] === "'")
             end = this.buffer.indexOf("'", end + 2);
         } else {
@@ -27151,7 +27151,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join3(tree) {
+      function join4(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -27177,7 +27177,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join3(parse3(query2));
+        tree = join4(parse3(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -29833,6 +29833,9 @@ function contextPath(brandSlug, dataDirOverride) {
 }
 function narrativePath(brandSlug, dataDirOverride) {
   return join(brandDir(brandSlug, dataDirOverride), "narrative.md");
+}
+function outputDir(dataDirOverride) {
+  return join(resolveDataDir(dataDirOverride), "output");
 }
 
 // node_modules/zod/v4/classic/external.js
@@ -47195,34 +47198,31 @@ async function fetchPublicIp(endpoint, timeoutMs = 5e3) {
   }
 }
 
-// src/lib/auth/ip-whitelist.ts
-async function postIpWhitelistRequest(webhookUrl, request, timeoutMs = 1e4) {
+// src/lib/webhook/discord.ts
+var COLOR = {
+  ip_whitelist_request: 5195493,
+  // indigo
+  table_access_request: 16096779,
+  // amber
+  user_feedback: 1096065
+  // emerald
+};
+var TITLE = {
+  ip_whitelist_request: "IP Whitelist Request",
+  table_access_request: "Table Access Request",
+  user_feedback: "User Feedback"
+};
+async function postWebhook(webhookUrl, request, timeoutMs = 1e4) {
   if (!webhookUrl) {
     return { ok: false, error: "No webhook URL configured." };
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const embed = formatEmbed(request);
   const payload = {
     username: "mx-claude-plugin",
-    content: `New IP whitelist request from \`${request.user_email}\``,
-    embeds: [
-      {
-        title: "IP Whitelist Request",
-        color: 5195493,
-        fields: [
-          { name: "Email", value: request.user_email, inline: true },
-          { name: "IP Address", value: `\`${request.public_ip}\``, inline: true },
-          { name: "Time (UTC)", value: (/* @__PURE__ */ new Date()).toISOString(), inline: false },
-          { name: "Plugin", value: request.plugin_version, inline: true },
-          { name: "OS", value: request.os, inline: true },
-          ...request.brand_slug ? [{ name: "Brand", value: request.brand_slug, inline: true }] : [],
-          ...request.note ? [{ name: "Note", value: request.note, inline: false }] : []
-        ],
-        footer: {
-          text: "Reply via email or run GRANT on the warehouse to approve."
-        }
-      }
-    ]
+    content: `${TITLE[request.kind]} from \`${request.user_email}\``,
+    embeds: [embed]
   };
   try {
     const res = await fetch(webhookUrl, {
@@ -47247,12 +47247,60 @@ async function postIpWhitelistRequest(webhookUrl, request, timeoutMs = 1e4) {
     clearTimeout(timer);
   }
 }
+function formatEmbed(request) {
+  const baseFields = [
+    { name: "Email", value: request.user_email, inline: true },
+    { name: "Time (UTC)", value: (/* @__PURE__ */ new Date()).toISOString(), inline: false },
+    { name: "Plugin", value: request.plugin_version, inline: true },
+    { name: "OS", value: request.os, inline: true }
+  ];
+  switch (request.kind) {
+    case "ip_whitelist_request":
+      return embedFor(request, [
+        { name: "IP Address", value: `\`${request.public_ip}\``, inline: true },
+        ...baseFields,
+        ...request.brand_slug ? [{ name: "Brand", value: request.brand_slug, inline: true }] : [],
+        ...request.note ? [{ name: "Note", value: request.note }] : []
+      ], "Reply via email or run GRANT on the warehouse to approve.");
+    case "table_access_request":
+      return embedFor(request, [
+        { name: "Table", value: `\`${request.table_name}\``, inline: true },
+        ...baseFields,
+        ...request.seller_ids && request.seller_ids.length > 0 ? [
+          {
+            name: "Seller IDs attempted",
+            value: request.seller_ids.join(", "),
+            inline: false
+          }
+        ] : [],
+        ...request.note ? [{ name: "Note", value: request.note }] : []
+      ], "Grant SELECT on this table to the user, or reply with rationale for denial.");
+    case "user_feedback":
+      return embedFor(request, [
+        ...request.category ? [{ name: "Category", value: request.category, inline: true }] : [],
+        ...baseFields,
+        ...request.context?.skill_id ? [{ name: "Skill", value: request.context.skill_id, inline: true }] : [],
+        ...request.context?.command ? [{ name: "Command", value: `\`${request.context.command}\``, inline: true }] : [],
+        ...request.context?.brand_slug ? [{ name: "Brand", value: request.context.brand_slug, inline: true }] : [],
+        // Message rendered last so it has full width
+        { name: "Message", value: request.message.slice(0, 1900) }
+      ], "Reply via email or log in the feedback tracker.");
+  }
+}
+function embedFor(request, fields, footer) {
+  return {
+    title: TITLE[request.kind],
+    color: COLOR[request.kind],
+    fields,
+    footer: { text: footer }
+  };
+}
 
 // src/lib/auth/setup-flow.ts
 var defaultDeps = {
   testConnection,
   fetchPublicIp,
-  postIpWhitelistRequest
+  postWebhook
 };
 async function runAuthSetup(inputs, ctx, deps = defaultDeps) {
   const credsObj = await loadOrInit(ctx.data_dir_override);
@@ -47323,9 +47371,10 @@ async function sendWhitelistRequest(args) {
       error: "Could not determine your public IP automatically. Visit https://api.ipify.org and email the result to your MixShift contact."
     };
   } else {
-    webhookResult = await args.deps.postIpWhitelistRequest(
+    webhookResult = await args.deps.postWebhook(
       args.ctx.defaults.auth.ip_whitelist_webhook,
       {
+        kind: "ip_whitelist_request",
         user_email: args.email,
         public_ip: publicIp,
         plugin_version: args.ctx.plugin_version,
@@ -47624,6 +47673,756 @@ function registerUiCommand(program3) {
   });
 }
 
+// src/commands/data.ts
+import { resolve as resolvePath } from "node:path";
+
+// src/lib/data/tables-catalog.ts
+var import_yaml8 = __toESM(require_dist(), 1);
+import { readFile as readFile6 } from "node:fs/promises";
+import { dirname as dirname5, join as join3 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+async function loadTablesCatalog(overridePath) {
+  const candidates = overridePath ? [overridePath] : candidatePaths2();
+  for (const path2 of candidates) {
+    try {
+      const raw = await readFile6(path2, "utf-8");
+      const parsed = (0, import_yaml8.parse)(raw);
+      if (!parsed?.tables) continue;
+      return Object.entries(parsed.tables).map(
+        ([name, meta3]) => normalize(name, meta3)
+      );
+    } catch (err) {
+      if (isFileNotFoundError6(err)) continue;
+      throw err;
+    }
+  }
+  return [];
+}
+async function describeTable(tableName, overridePath) {
+  const all = await loadTablesCatalog(overridePath);
+  return all.find((t) => t.name === tableName) ?? null;
+}
+function normalize(name, raw) {
+  return {
+    name,
+    description: raw.description ?? "",
+    category: raw.category ?? "other",
+    account_types: raw.account_types,
+    time_series: !!raw.time_series,
+    requires_seller_id: !!raw.requires_seller_id,
+    date_column: raw.date_column
+  };
+}
+function candidatePaths2() {
+  const here = dirname5(fileURLToPath2(import.meta.url));
+  const candidates = [];
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    candidates.push(join3(dir, "shared", "data-tables.yaml"));
+    const parent = dirname5(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return candidates;
+}
+function isFileNotFoundError6(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/data/query-runner.ts
+var import_promise3 = __toESM(require_promise(), 1);
+async function runQuery(sql, params = [], options = {}) {
+  const t0 = Date.now();
+  let conn;
+  try {
+    const creds = await resolveCreds2(options);
+    conn = await import_promise3.default.createConnection({
+      host: creds.host,
+      port: creds.port,
+      user: creds.user,
+      password: creds.password,
+      database: creds.database,
+      connectTimeout: options.connectTimeoutMs ?? 1e4
+    });
+    const timeoutMs = options.queryTimeoutMs ?? 6e4;
+    await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
+    const [rows] = await conn.query(sql, params);
+    return {
+      ok: true,
+      rows,
+      rowCount: rows.length,
+      durationMs: Date.now() - t0
+    };
+  } catch (err) {
+    return classify2(err);
+  } finally {
+    if (conn) {
+      try {
+        await conn.end();
+      } catch {
+      }
+    }
+  }
+}
+function classify2(err) {
+  const e = err;
+  const message = e.sqlMessage ?? e.message ?? String(err);
+  const code = e.code;
+  if (code === "ER_TABLEACCESS_DENIED_ERROR") {
+    const tableName = extractTableFromAccessDenied(message);
+    return {
+      ok: false,
+      kind: "access_denied_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Your MySQL user does not have SELECT permission on \`${tableName}\`. Send a table-access request to MixShift ops to be granted access.` : `Your MySQL user does not have SELECT permission on a table referenced in this query.`
+    };
+  }
+  if (code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_ACCESS_DENIED_ERROR") {
+    return {
+      ok: false,
+      kind: "access_denied_db",
+      raw_code: code,
+      message,
+      friendly: "Your MySQL user is not authorized for this database. Re-run `mixshift auth setup` to fix the credentials, or contact MixShift ops."
+    };
+  }
+  if (code === "ER_NO_SUCH_TABLE") {
+    const tableName = extractTableFromNoSuchTable(message);
+    return {
+      ok: false,
+      kind: "unknown_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Table \`${tableName}\` does not exist in the warehouse. Run \`mixshift data list-tables\` to see what's available.` : `One of the tables in this query does not exist. Run \`mixshift data list-tables\` to see available tables.`
+    };
+  }
+  if (code === "ER_PARSE_ERROR" || code === "ER_BAD_FIELD_ERROR") {
+    return {
+      ok: false,
+      kind: "syntax_error",
+      raw_code: code,
+      message,
+      friendly: `SQL error: ${message}`
+    };
+  }
+  if (code === "ER_QUERY_TIMEOUT" || code === "PROTOCOL_SEQUENCE_TIMEOUT" || /max_execution_time/i.test(message)) {
+    return {
+      ok: false,
+      kind: "timeout",
+      raw_code: code,
+      message,
+      friendly: "Query exceeded the 60s timeout. Try narrowing the date range or filtering by seller_id."
+    };
+  }
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
+    return {
+      ok: false,
+      kind: "host_unreachable",
+      raw_code: code,
+      message,
+      friendly: "Could not reach the warehouse host. Check your network."
+    };
+  }
+  return {
+    ok: false,
+    kind: "unknown",
+    raw_code: code,
+    message,
+    friendly: `Query failed: ${message}`
+  };
+}
+function extractTableFromAccessDenied(message) {
+  const m = /for table '([^']+)'/.exec(message);
+  return m?.[1];
+}
+function extractTableFromNoSuchTable(message) {
+  const m = /Table '([^']+)' doesn't exist/.exec(message);
+  if (!m) return void 0;
+  const full = m[1];
+  return full.includes(".") ? full.split(".").pop() : full;
+}
+async function resolveCreds2(options) {
+  if (options.creds) return options.creds;
+  const { credentials } = await loadCredentials(options.dataDirOverride);
+  if (!credentials || !credentials.mysql) {
+    throw new Error("No MySQL credentials configured. Run `mixshift auth setup` first.");
+  }
+  return credentials.mysql;
+}
+
+// src/lib/data/sample.ts
+async function sampleTable(opts) {
+  const limit = opts.limit ?? 10;
+  const metadata = await describeTable(opts.table);
+  const tableRef = "`" + opts.table.replace(/`/g, "") + "`";
+  let sql;
+  const params = [];
+  if (opts.sellerId !== void 0) {
+    sql = `SELECT * FROM ${tableRef} WHERE SellerID = ? LIMIT ${Number(limit)}`;
+    params.push(opts.sellerId);
+  } else if (metadata?.requires_seller_id) {
+    return {
+      query_result: {
+        ok: false,
+        kind: "unknown",
+        message: `Table ${opts.table} is time-series scoped. Pass --seller-id to filter.`,
+        friendly: `Table \`${opts.table}\` requires a seller-id filter (it's a large time-series table). Pass --seller-id <N> to scope your sample.`
+      },
+      display_sql: `SELECT * FROM ${tableRef} WHERE SellerID = <required> LIMIT ${limit}`
+    };
+  } else {
+    sql = `SELECT * FROM ${tableRef} LIMIT ${Number(limit)}`;
+  }
+  const result = await runQuery(sql, params, {
+    dataDirOverride: opts.dataDirOverride
+  });
+  return {
+    query_result: result,
+    display_sql: opts.sellerId !== void 0 ? `SELECT * FROM ${tableRef} WHERE SellerID = ${opts.sellerId} LIMIT ${limit}` : sql
+  };
+}
+
+// src/lib/data/export.ts
+import { createWriteStream } from "node:fs";
+import { mkdir as mkdir4 } from "node:fs/promises";
+import { dirname as dirname6 } from "node:path";
+
+// src/lib/output/csv.ts
+function rowsToCsv(rows, columns) {
+  const lines = [];
+  lines.push(columns.map((c) => quote(c.header ?? c.name)).join(","));
+  for (const row of rows) {
+    lines.push(columns.map((c) => formatCell(row[c.name])).join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+function createCsvWriter(stream, columns) {
+  let written = 0;
+  let headerWritten = false;
+  return {
+    writeHeader() {
+      if (headerWritten) return;
+      stream.write(columns.map((c) => quote(c.header ?? c.name)).join(",") + "\n");
+      headerWritten = true;
+    },
+    writeRow(row) {
+      if (!headerWritten) this.writeHeader();
+      stream.write(columns.map((c) => formatCell(row[c.name])).join(",") + "\n");
+      written++;
+    },
+    end() {
+    },
+    rowsWritten() {
+      return written;
+    }
+  };
+}
+function formatCell(value) {
+  if (value === null || value === void 0) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (value instanceof Date) return formatDate(value);
+  if (typeof value === "string") return quote(value);
+  return quote(JSON.stringify(value));
+}
+function quote(value) {
+  if (/["\n,\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+function formatDate(d) {
+  if (!Number.isFinite(d.getTime())) return "";
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// src/lib/data/export.ts
+async function exportTable(opts) {
+  const metadata = await describeTable(opts.table);
+  const tableRef = "`" + opts.table.replace(/`/g, "") + "`";
+  const where = [];
+  const params = [];
+  if (opts.sellerId !== void 0) {
+    where.push("SellerID = ?");
+    params.push(opts.sellerId);
+  } else if (metadata?.requires_seller_id) {
+    return synthFailure(
+      opts,
+      `Table \`${opts.table}\` requires a seller-id filter. Pass --seller-id <N>.`
+    );
+  }
+  const dateCol = metadata?.date_column;
+  if (opts.startDate || opts.endDate) {
+    if (!dateCol) {
+      return synthFailure(
+        opts,
+        `Cannot filter \`${opts.table}\` by date range \u2014 the catalog does not record a date column for this table.`
+      );
+    }
+    if (opts.startDate) {
+      where.push(`\`${dateCol}\` >= ?`);
+      params.push(opts.startDate);
+    }
+    if (opts.endDate) {
+      where.push(`\`${dateCol}\` <= ?`);
+      params.push(opts.endDate);
+    }
+  }
+  const whereClause = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+  const limitClause = opts.maxRows ? ` LIMIT ${Number(opts.maxRows)}` : "";
+  const sql = `SELECT * FROM ${tableRef}${whereClause}${limitClause}`;
+  let displaySql = sql;
+  let paramIdx = 0;
+  displaySql = displaySql.replace(/\?/g, () => {
+    const v = params[paramIdx++];
+    return typeof v === "string" ? `'${v}'` : String(v);
+  });
+  const queryResult = await runQuery(sql, params, {
+    dataDirOverride: opts.dataDirOverride
+  });
+  if (!queryResult.ok) {
+    return {
+      out_path: opts.outPath,
+      rows_written: 0,
+      duration_ms: queryResult.durationMs ?? 0,
+      query_result: queryResult,
+      display_sql: displaySql
+    };
+  }
+  await mkdir4(dirname6(opts.outPath), { recursive: true });
+  const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
+  const rows = queryResult.rows;
+  let rowsWritten = 0;
+  if (rows.length > 0) {
+    const columns = Object.keys(rows[0]).map((name) => ({ name }));
+    const csvWriter = createCsvWriter(stream, columns);
+    csvWriter.writeHeader();
+    for (const row of rows) {
+      csvWriter.writeRow(row);
+    }
+    rowsWritten = csvWriter.rowsWritten();
+  }
+  await new Promise((resolve2, reject) => {
+    stream.end((err) => err ? reject(err) : resolve2());
+  });
+  return {
+    out_path: opts.outPath,
+    rows_written: rowsWritten,
+    duration_ms: queryResult.durationMs,
+    query_result: queryResult,
+    display_sql: displaySql
+  };
+}
+function synthFailure(opts, message) {
+  return {
+    out_path: opts.outPath,
+    rows_written: 0,
+    duration_ms: 0,
+    query_result: {
+      ok: false,
+      kind: "unknown",
+      message,
+      friendly: message
+    },
+    display_sql: "(query not run \u2014 preflight failed)"
+  };
+}
+
+// src/commands/data.ts
+import { writeFile as writeFile4 } from "node:fs/promises";
+import { mkdir as mkdir5 } from "node:fs/promises";
+import { dirname as dirname7 } from "node:path";
+function registerDataCommands(program3) {
+  const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
+  data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const all = await loadTablesCatalog();
+      const tables = opts.category ? all.filter((t) => t.category === opts.category) : all;
+      if (root.json) {
+        process.stdout.write(JSON.stringify({ status: "ok", tables }, null, 2) + "\n");
+      } else {
+        process.stderr.write(renderTableList(tables) + "\n");
+      }
+      process.exit(0);
+    } catch (err) {
+      emitError2(err, !!root.json);
+    }
+  });
+  data.command("describe <table>").description("Show description + scoping hints for one table").action(async (table, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const meta3 = await describeTable(table);
+      if (!meta3) {
+        throw new Error(
+          `Table "${table}" is not in the curated catalog. Run \`mixshift data list-tables\` to see what's documented.`
+        );
+      }
+      if (root.json) {
+        process.stdout.write(JSON.stringify({ status: "ok", table: meta3 }, null, 2) + "\n");
+      } else {
+        process.stderr.write(renderTableDetail(meta3) + "\n");
+      }
+      process.exit(0);
+    } catch (err) {
+      emitError2(err, !!root.json);
+    }
+  });
+  data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const result = await sampleTable({
+          table: opts.table,
+          sellerId: opts.sellerId,
+          limit: opts.limit,
+          dataDirOverride: root.dataDir
+        });
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: result.query_result.ok ? "ok" : "error",
+                table: opts.table,
+                seller_id: opts.sellerId,
+                limit: opts.limit,
+                display_sql: result.display_sql,
+                ...result.query_result.ok ? {
+                  row_count: result.query_result.rowCount,
+                  rows: result.query_result.rows
+                } : {
+                  failure_kind: result.query_result.kind,
+                  table_name: result.query_result.table_name,
+                  message: result.query_result.friendly
+                }
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          if (!result.query_result.ok) {
+            process.stderr.write(`
+\u2717 ${result.query_result.friendly}
+`);
+            process.exit(handleAccessDeniedExit(result.query_result.kind));
+          }
+          process.stderr.write(
+            `
+\u2713 ${result.query_result.rowCount} rows from \`${opts.table}\`` + (opts.sellerId !== void 0 ? ` (seller ${opts.sellerId})` : "") + `
+  ${result.display_sql}
+
+`
+          );
+          process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
+        }
+        process.exit(0);
+      } catch (err) {
+        emitError2(err, !!root.json);
+      }
+    }
+  );
+  data.command("export").description("Bulk export a table (or filtered subset) to CSV").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller", parseInt10).option("--start <YYYY-MM-DD>", "inclusive start date (uses table date_column)").option("--end <YYYY-MM-DD>", "inclusive end date").option("--out <path>", "output CSV file path (default ~/.mixshift/output/<table>-<date>.csv)").option("--max-rows <n>", "cap row count", parseInt10).action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const outPath = resolvePath(
+          opts.out ?? `${outputDir(root.dataDir)}/${opts.table}-${todayISO5()}.csv`
+        );
+        const result = await exportTable({
+          table: opts.table,
+          sellerId: opts.sellerId,
+          startDate: opts.start,
+          endDate: opts.end,
+          outPath,
+          maxRows: opts.maxRows,
+          dataDirOverride: root.dataDir
+        });
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: result.query_result.ok ? "ok" : "error",
+                out_path: result.out_path,
+                rows_written: result.rows_written,
+                duration_ms: result.duration_ms,
+                display_sql: result.display_sql,
+                ...result.query_result.ok ? {} : {
+                  failure_kind: result.query_result.kind,
+                  table_name: result.query_result.table_name,
+                  message: result.query_result.friendly
+                }
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          if (!result.query_result.ok) {
+            process.stderr.write(`
+\u2717 ${result.query_result.friendly}
+`);
+            process.exit(handleAccessDeniedExit(result.query_result.kind));
+          }
+          process.stderr.write(
+            `
+\u2713 Exported ${result.rows_written} rows to ${result.out_path}
+  duration: ${result.duration_ms}ms
+  query:    ${result.display_sql}
+`
+          );
+        }
+        process.exit(0);
+      } catch (err) {
+        emitError2(err, !!root.json);
+      }
+    }
+  );
+  data.command("query").description(
+    "Run a custom SQL query (read-only creds enforce SELECT). Use --out to write large results to CSV."
+  ).requiredOption("--sql <sql>", "the SQL to run").option("--out <path>", "write results to CSV instead of stdout").action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const result = await runQuery(opts.sql, [], {
+          dataDirOverride: root.dataDir
+        });
+        if (!result.ok) {
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify(
+                {
+                  status: "error",
+                  failure_kind: result.kind,
+                  table_name: result.table_name,
+                  message: result.friendly
+                },
+                null,
+                2
+              ) + "\n"
+            );
+          } else {
+            process.stderr.write(`
+\u2717 ${result.friendly}
+`);
+          }
+          process.exit(handleAccessDeniedExit(result.kind));
+        }
+        if (opts.out) {
+          const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
+          const csv = rowsToCsv(result.rows, columns);
+          await mkdir5(dirname7(opts.out), { recursive: true });
+          await writeFile4(opts.out, csv, "utf-8");
+        }
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                row_count: result.rowCount,
+                duration_ms: result.durationMs,
+                ...opts.out ? { out_path: opts.out } : { rows: result.rows }
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          process.stderr.write(
+            `
+\u2713 ${result.rowCount} rows (${result.durationMs}ms)
+`
+          );
+          if (opts.out) {
+            process.stderr.write(`  written to ${opts.out}
+`);
+          } else {
+            process.stdout.write(
+              renderRowsAsMarkdown(result.rows) + "\n"
+            );
+          }
+        }
+        process.exit(0);
+      } catch (err) {
+        emitError2(err, !!root.json);
+      }
+    }
+  );
+}
+function renderTableList(tables) {
+  if (tables.length === 0) {
+    return "\nNo tables in catalog. Check shared/data-tables.yaml.\n";
+  }
+  const lines = [];
+  let lastCategory = "";
+  for (const t of tables) {
+    if (t.category !== lastCategory) {
+      lines.push("");
+      lines.push(`## ${t.category}`);
+      lastCategory = t.category;
+    }
+    const scoping = [
+      t.requires_seller_id ? "needs --seller-id" : "",
+      t.time_series ? "time-series" : ""
+    ].filter(Boolean).join(", ");
+    lines.push(`- \`${t.name}\`  \u2014  ${t.description}` + (scoping ? `  *(${scoping})*` : ""));
+  }
+  return lines.join("\n");
+}
+function renderTableDetail(t) {
+  const lines = [];
+  lines.push("");
+  lines.push(`# \`${t.name}\``);
+  lines.push("");
+  lines.push(t.description);
+  lines.push("");
+  lines.push(`- **category**: ${t.category}`);
+  lines.push(`- **time-series**: ${t.time_series ? "yes" : "no"}`);
+  lines.push(`- **seller-id filter required**: ${t.requires_seller_id ? "yes" : "no"}`);
+  if (t.date_column) lines.push(`- **date column**: \`${t.date_column}\``);
+  if (t.account_types && t.account_types.length > 0) {
+    lines.push(`- **account types**: ${t.account_types.join(", ")}`);
+  }
+  return lines.join("\n");
+}
+function renderRowsAsMarkdown(rows) {
+  if (rows.length === 0) return "_(no rows)_";
+  const columns = Object.keys(rows[0]);
+  const headerRow = "| " + columns.join(" | ") + " |";
+  const sepRow = "| " + columns.map(() => "---").join(" | ") + " |";
+  const dataRows = rows.map(
+    (r) => "| " + columns.map((c) => formatCellForMd(r[c])).join(" | ") + " |"
+  );
+  return [headerRow, sepRow, ...dataRows].join("\n");
+}
+function formatCellForMd(v) {
+  if (v === null || v === void 0) return "";
+  if (v instanceof Date) {
+    const d = v;
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  const s = String(v);
+  return s.replace(/\|/g, "\\|");
+}
+function handleAccessDeniedExit(kind) {
+  if (kind === "access_denied_table") return 4;
+  return 1;
+}
+function emitError2(err, json2) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json2) {
+    process.stdout.write(
+      JSON.stringify({ status: "error", message }, null, 2) + "\n"
+    );
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exit(1);
+}
+function parseInt10(v) {
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n)) throw new Error(`Expected integer, got "${v}"`);
+  return n;
+}
+function todayISO5() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+
+// src/commands/feedback.ts
+import { platform as platform2, release as release2 } from "node:os";
+var PLUGIN_VERSION2 = "0.0.1";
+function registerFeedbackCommand(program3) {
+  program3.command("feedback <message>").description(
+    "Send feedback to MixShift ops via the Discord webhook (bug reports, feature requests, comments)."
+  ).option(
+    "--category <cat>",
+    "bug | feature_request | comment | other",
+    "comment"
+  ).option("--skill <id>", "which skill triggered this (context)").option("--command <cmd>", "which command triggered this (context)").option("--brand <slug>", "which brand was involved (context)").action(
+    async (message, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const { profile } = await loadProfile(root.dataDir);
+        const defaults = await loadPluginDefaults();
+        const userEmail = profile.user?.email;
+        if (!userEmail) {
+          throw new Error(
+            "No user email on file. Run `mixshift auth setup` first so we can attach an identity to your feedback."
+          );
+        }
+        const result = await postWebhook(
+          defaults.auth.ip_whitelist_webhook,
+          {
+            kind: "user_feedback",
+            user_email: userEmail,
+            plugin_version: PLUGIN_VERSION2,
+            os: `${platform2()} ${release2()}`,
+            message,
+            category: opts.category,
+            ...opts.skill || opts.command || opts.brand ? {
+              context: {
+                ...opts.skill ? { skill_id: opts.skill } : {},
+                ...opts.command ? { command: opts.command } : {},
+                ...opts.brand ? { brand_slug: opts.brand } : {}
+              }
+            } : {}
+          }
+        );
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: result.ok ? "ok" : "error",
+                ...result.ok ? {} : { message: result.error }
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          if (result.ok) {
+            process.stderr.write(
+              `
+\u2713 Feedback sent to MixShift ops. Thanks!
+`
+            );
+          } else {
+            process.stderr.write(
+              `
+\u2717 Could not send feedback: ${result.error ?? "unknown error"}
+  Save your message locally and email it to MixShift if you want to be sure it gets to us.
+`
+            );
+            process.exit(1);
+          }
+        }
+        process.exit(result.ok ? 0 : 1);
+      } catch (err) {
+        const message_ = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message: message_ }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message_}
+`);
+        }
+        process.exit(1);
+      }
+    }
+  );
+}
+
 // src/cli.ts
 var program2 = new Command();
 program2.name("mixshift").description(
@@ -47644,6 +48443,8 @@ registerPrefetchCommand(program2);
 registerRenderCommand(program2);
 registerSidecarCommands(program2);
 registerUiCommand(program2);
+registerDataCommands(program2);
+registerFeedbackCommand(program2);
 program2.parseAsync(process.argv).catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}

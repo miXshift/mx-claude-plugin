@@ -17,6 +17,8 @@ import { registerPrefetchCommand } from './commands/prefetch.js';
 import { registerRenderCommand } from './commands/render.js';
 import { registerSidecarCommands } from './commands/sidecar.js';
 import { registerUiCommand } from './commands/ui.js';
+import { registerDataCommands } from './commands/data.js';
+import { registerFeedbackCommand } from './commands/feedback.js';
 
 const program = new Command();
 
@@ -49,6 +51,8 @@ registerPrefetchCommand(program);
 registerRenderCommand(program);
 registerSidecarCommands(program);
 registerUiCommand(program);
+registerDataCommands(program);
+registerFeedbackCommand(program);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
