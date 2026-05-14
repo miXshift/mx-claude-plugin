@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: monthly-performance-report
 display_name: Monthly Performance Report
-version: "1.3.1"
+version: "1.4.0"
 description: >
   Generates and publishes a monthly Amazon advertising performance report in canonical analytical
   voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis, item group highlights,
@@ -18,22 +18,22 @@ sql_ids:
   - LIB-PT-01   # conditional: when structural_events includes an active price_test
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
-      parallel:
-        - id: MPR-01
-          account_type: VC
-        - id: MPR-02
-          account_type: SC
+      parallel: [MPR-01, MPR-02]
       notes: >
-        MPR-01 applies to VC accounts; MPR-02 applies to SC accounts. Pre-fetch script
-        runs only the query matching the account's type (account_type from context.yaml).
+        Both queries run; the skill model uses whichever applies to the account's
+        type (MPR-01 for VC sellermonthmetric, MPR-02 for SC campaignmetric).
+        The non-matching query returns empty / wrong-shape data and is discarded
+        by the skill. Future: extend batch_plan to support per-entry account_type
+        filtering so we don't waste a round trip.
     - round: 2
-      parallel:
-        - id: LIB-PT-01
-          requires_event: price_test
-      notes: "Conditional: only when structural_events includes an active price_test."
+      parallel: [LIB-PT-01]
+      notes: >
+        Conditional: only when structural_events includes an active price_test.
+        Returns empty when no event is active; skill discards. Future: extend
+        batch_plan to support per-entry requires_event filtering.
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type

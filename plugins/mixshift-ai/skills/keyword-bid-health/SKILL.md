@@ -6,9 +6,14 @@ description: >
   keyword-level bid optimization review. Surfaces high-ACOS bid reduction
   candidates and scale opportunities with proven conversion volume.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   author: "MixShift"
-  ported-from: "upstream/keyword-bid-health-review"
+trigger_phrases:
+  - run keyword bid review
+  - bid health
+  - weekly bid check
+  - bid optimization
+  - check keyword bids
 ---
 
 # Keyword Bid Health Review
@@ -17,37 +22,35 @@ metadata:
 
 These rules supersede any other instruction. Violating them produces inconsistent output across runs.
 
-- **Do NOT read the `references/` folder during execution.** Brand context comes exclusively from the context snapshot (or `context.yaml` fallback) and `narrative.md`.
-- **Do NOT read SQL library files. Do NOT execute queries.** All query results are pre-computed before this skill runs.
-- **Do NOT read `.data.md` or `.data.json` directly.** The renderer (Step 2) consumes the data artifact. The model reads only `headline.json`.
-- **Do NOT supplement with general Amazon or e-commerce knowledge**, industry benchmarks, or assumed platform dynamics not present in the data.
-- **Do NOT call Write or Edit tools. Do NOT echo HTML or CSV content.** The renderer is the single writer of all artifacts.
-- **Begin output immediately.** Do not restate these instructions, summarize what you are about to do, or ask clarifying questions.
+- **Do NOT read the `references/` folder during execution.** Brand context comes exclusively from `context.yaml` and `narrative.md`.
+- **Do NOT supplement with general Amazon or e-commerce knowledge** or industry benchmarks not present in the data.
+- **Do NOT echo full data tables or raw query output** in your model response. The markdown summary tables (top 20 each bucket) are the deliverable; full row data lives in the prefetch `data.json`.
+- **Begin output immediately.** Do not restate these instructions or ask clarifying questions.
+- **All warehouse queries go through `mixshift prefetch`** — never inline SQL.
 
 ---
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 0. Stop and surface the failure if any item cannot be checked off.
+Complete this checklist before Step 1. Stop and surface the failure if any item cannot be checked off.
 
 ```
 PREFLIGHT — keyword-bid-health — <brand> — <date>
-[ ] Context snapshot loaded: tmp/<brand>-keyword-bid-health-<date>.context.md
-    (fallback: shared/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       management.acos_target_pct, management.attribution_window_days
-      bid_health.scale_threshold_pct, bid_health.pullback_threshold_pct, bid_health.re_entry_rule
+      bid_health.scale_threshold_pct, bid_health.pullback_threshold_pct
       posture.stance, posture.multiplier
       brand_terms, campaign_structure.naming_pattern
-[ ] objective_calibration present (if absent: note in Bottom Line — health-check will use global thresholds)
-[ ] Pre-fetch artifact present: tmp/<brand>-keyword-bid-health-<date>.data.json
-    (if absent: run pre-fetch-data.py — see Step 1)
-[ ] Prior-run sidecar loaded: tmp/<brand>-keyword-bid-health-prior-run.json
-    (if absent: continue — no week-over-week baseline yet; note in Bottom Line)
+[ ] objective_calibration present (if absent: note in Bottom Line — global thresholds used)
+[ ] Prior-run sidecar loaded from ~/.mixshift/clients/<brand>/runs/keyword-bid-health/
+    (most recent <date>-<run-id>.json; if absent, continue and note "no week-over-week baseline yet")
 [ ] No active escalation conditions:
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
 ```
+
+If any HARD GATE fails, surface the failure clearly and stop.
 
 ---
 
@@ -60,118 +63,233 @@ Run this skill to get a weekly keyword-level bid optimization analysis. Two exce
 
 Output tells you which keywords to cut, which to grow, and which to evaluate for pause.
 
-**Render and write are handled by `scripts/render-keyword-bid-health.py`.** The model's job is to run the renderer, read the compact `headline.json` it produces, and deliver a short Bottom Line plus a `file://` link. The model does not read the `.data.md` artifact, does not call Write/Edit, and does not touch the HTML or CSV files.
-
-## Prerequisites
-
-1. **Tier-3 brand context directory** at `shared/clients/<brand-slug>/`:
-   - `context.yaml` — mechanical truth (validated against `shared/clients/_schema/context.schema.yaml`)
-   - `narrative.md` — interpretive prose (do not extract numbers from this file)
-   - `corpora/` — ASIN lists if needed
-2. **Access to MySQL database** for keyword-level metrics (keywordtargetingmetric table)
-3. **Pre-fetch artifact present** at `tmp/<brand-slug>-keyword-bid-health-<run_date>.data.json`. If absent, run `pre-fetch-data.py` first (Step 1 below).
-
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer fields from prose.
+---
 
 ## Execution Steps
 
-### Step 0: Bootstrap (Parallel Reads)
+### Step 1 — Load brand context
 
-Fire simultaneously — read ONLY these sources:
-1. This SKILL.md
-2. **`plugins/mixshift-ai/tmp/<brand-slug>-keyword-bid-health-<run_date>.context.md`** — compact context snapshot. Confirms `seller_id`, `account_type`, `acos_target_pct`, `posture.stance`, `posture.multiplier`, and the bid-health thresholds are present. The renderer reads `context.yaml` directly for the full set of fields it needs (including `brand_terms` and `structural_events`); the snapshot is for the model's situational awareness only.
-3. **`plugins/mixshift-ai/tmp/<brand-slug>-keyword-bid-health-prior-run.json`** — prior run sidecar (~65 lines). If present, use for week-over-week drift framing. If absent, skip — no baseline yet.
-4. `shared/clients/<brand-slug>/narrative.md` — prose context only (interpretation rules, per-skill guidance). Used to color the Bottom Line.
+Read `~/.mixshift/clients/<brand-slug>/context.yaml` (or validate via `mixshift brand validate <brand-slug> --json`). Extract mechanically:
+- `accounts[*].seller_id`, `accounts[*].account_type`
+- `management.acos_target_pct`, `management.attribution_window_days`
+- `bid_health.scale_threshold_pct`, `bid_health.pullback_threshold_pct`
+- `posture.stance`, `posture.multiplier`
+- `brand_terms` (canonical + variants, for brand vs nonbrand classification)
+- `campaign_structure.naming_pattern`
+- `structural_events[]` filtered to currently active
 
-Emit a one-line bootstrap summary before continuing: `Bootstrap OK — seller_id [X], posture [stance] × [multiplier], pullback [value]%, scale [value]%`
+Read `narrative.md` for prose context only.
 
-### Step 1: Ensure Pre-Fetch Artifact Exists
+Fail closed: if `context.yaml` is absent or fails schema validation, stop and direct the user to run `account-cold-start`.
 
-**Do NOT read SQL library files. Do NOT execute queries.** Verify the pre-fetch artifact:
+### Step 2 — Run prefetch
 
-```
-plugins/mixshift-ai/tmp/<brand-slug>-keyword-bid-health-<run_date>.data.json
-```
-
-If it is missing, run the pre-fetch script and wait for it to complete:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill keyword-bid-health --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill keyword-bid-health
 ```
 
-The script prints "Ready. Run the skill now." when it finishes. **Do not read the resulting `.data.md` or `.data.json` files** — the renderer in Step 2 consumes them directly.
+Executes:
+- **KBH-01** — T-30 keyword performance (spend, ad sales, ACOS, conversions, clicks, cpc_t30)
+- **KBH-01a** — T-7 keyword performance (same columns, _t7 suffix)
+- **KBH-02** — Current bid + Amazon bid guidance (SuggestedBid, BidRangeStart, BidRangeEnd) per enabled keyword
+- **KBH-03** — Lifetime keyword performance
 
-### Step 2: Render Report (Deterministic)
+Artifacts:
+- `~/.mixshift/clients/<brand-slug>/runs/keyword-bid-health/<date>/data.json` — full machine-readable
+- `~/.mixshift/clients/<brand-slug>/runs/keyword-bid-health/<date>/data.md` — capped markdown summary
 
-Run the renderer:
+Read `data.md` for analysis. If any query failed (exit code 2), surface the failing IDs + friendly errors and stop.
+
+### Step 3 — Classify keywords
+
+For each keyword, join the four query outputs on `(KeywordText, MatchType, CampaignName, AdGroupName)` and classify.
+
+**Excess Spend formula:**
+```
+excess_spend = spend_t30 - (adsales_t30 × acos_target_pct / 100)
+if adsales_t30 == 0: excess_spend = spend_t30
+```
+
+**High ACOS bucket — bid CUT candidates:**
+```
+Flag if: spend_t30 ≥ p25(spend_t30)         (only material-spend keywords)
+     AND acos_t30 > bid_health.pullback_threshold_pct
+```
+Sort by `excess_spend DESC`. Top 20 to summary table.
+
+**Scale Opportunity bucket — bid RAISE candidates:**
+```
+Flag if: acos_t30 < bid_health.scale_threshold_pct
+     AND conversions_t30 ≥ 3
+     AND spend_t30 ≥ p25(spend_t30)
+```
+Sort by `adsales_t30 DESC`. Top 20 to summary table.
+
+**Dormant bucket — pause/evaluate candidates:**
+```
+Flag if: spend_t7 == 0 (or null)
+     AND spend_t30 > spend_floor (default $5)
+```
+Sort by `spend_t30 DESC`. Top 20 to summary table. **Routing rule: any keyword with spend_t7==0 goes here regardless of T-30 ACOS.**
+
+### Step 4 — Compute recommended bids
+
+**Rec Bid (High ACOS — cut):**
+```
+cut_ratio = clamp(excess_spend / spend_t30, 0, 1) × posture.multiplier
+rec_bid   = current_bid × (1 - cut_ratio)
+```
+
+**Rec Bid (Scale — raise):**
+```
+rec_bid = current_bid × (1 + 0.20 × posture.multiplier)
+```
+
+**Headroom rule for nonbrand keywords at the bid range ceiling:**
+```
+if NOT brand_match(KeywordText, brand_terms):
+    headroom_pct = (current_bid - cpc_t7) / current_bid
+    if headroom_pct > 0.15:
+        hold (do not raise — headroom is the constraint, not the bid)
+```
+
+Brand keywords ignore Amazon's suggested range as a floor/ceiling.
+
+**Brand classification:** case-insensitive substring match of KeywordText against the canonical + variant strings in `brand_terms`.
+
+### Step 5 — Apply structural events
+
+For each flagged keyword, check `structural_events[]` for currently-active entries that overlap the keyword's campaign / item group:
+- Active price test → annotate "(price test active)" on High-ACOS rows; do NOT suppress
+- Recent bid change → annotate "(attribution settling)" on scale rows
+- Active promotion → annotate on High-ACOS rows
+- Stockout → annotate on Scale rows (conversions may be artificially low)
+
+Annotations color the recommendation; they do not zero it out.
+
+### Step 6 — Compose output
+
+Three tables, each capped at top 20 by sort key. Show all columns; right-align numerics.
+
+**Table 1 — High ACOS (bid cut candidates):**
+
+| Keyword | Match | Campaign | Ad Group | Spend T-30 | Sales T-30 | ACOS T-30 | Conv T-30 | Current Bid | Rec Bid | Excess Spend | Note |
+
+**Table 2 — Scale Opportunities (bid raise candidates):**
+
+| Keyword | Match | Campaign | Ad Group | Spend T-30 | Sales T-30 | ACOS T-30 | Conv T-30 | Current Bid | Rec Bid | Headroom % | Note |
+
+**Table 3 — Dormant Keywords:**
+
+| Keyword | Match | Campaign | Ad Group | Spend T-30 | Spend T-7 | ACOS T-30 | Conv T-30 | Days Since Last Spend | Note |
+
+### Step 7 — Compute verdict
+
+```
+total = pullback_count + scale_count
+if keywords_reviewed < 5:           verdict = OBSERVATIONAL
+elif pullback_count > total × 0.50: verdict = RED
+elif pullback_count > scale_count:  verdict = YELLOW
+else:                               verdict = GREEN
+```
+
+### Step 8 — Bottom Line
+
+Three sentences:
+1. **Bid cut totals** — "X keywords flagged for bid cuts. $Y in excess spend at risk."
+2. **Scale opportunities** — "Z keywords with proven efficiency available for bid raises ($W ad sales)."
+3. **Dormant counsel** — "K keywords went dark in T-7 with prior material spend — review for pause."
+
+Add up to two sentences referencing:
+- Week-over-week drift if prior-run sidecar exists (e.g., "Pullback count up from 12 last week to 18.")
+- Active structural events that should temper interpretation
+- Narrative.md cues (current quarter posture, etc.)
+
+### Step 9 — Self-Review
+
+- [ ] All three buckets surfaced (or explicitly noted empty)
+- [ ] Excess Spend formula applied with brand's acos_target_pct
+- [ ] Pullback / scale thresholds from bid_health (not hardcoded)
+- [ ] Headroom rule applied to nonbrand scale candidates
+- [ ] Brand keywords classified using brand_terms (not hardcoded brand strings)
+- [ ] Structural events annotated, not used to suppress
+- [ ] Dormant routing: spend_t7==0 with material T-30 spend
+- [ ] No em dashes in output
+
+### Step 10 — Emit Run Sidecar
+
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/keyword-bid-health/<data-date>-<run-id>.json`.
+
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/kbh-sidecar-input.json
+{
+  "skill": "keyword-bid-health",
+  "skill_version": "0.3.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",   // T-1 (yesterday) for daily-recency analyses
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS|TACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "posture_stance": "scale|efficiency|defend|clear_bleed",
+    "posture_multiplier": 0,
+    "bid_health_pullback_threshold_pct": 30,
+    "bid_health_scale_threshold_pct": 15
+  },
+  "headline_metrics": {
+    "keywords_reviewed": 0,
+    "pullback_count": 0,
+    "scale_count": 0,
+    "dormant_count": 0,
+    "total_excess_spend": 0,
+    "scale_adsales_t30": 0,
+    "dormant_spend_t30": 0
+  },
+  "sql_calls": [
+    {"id": "KBH-01",  "params": {"seller_id": 0, "run_date": "YYYY-MM-DD", "lookback_days": 30}},
+    {"id": "KBH-01a", "params": {"seller_id": 0, "run_date": "YYYY-MM-DD"}},
+    {"id": "KBH-02",  "params": {"seller_id": 0}},
+    {"id": "KBH-03",  "params": {"seller_id": 0}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
+```
+
+Then write it:
+
 ```bash
-python3 plugins/mixshift-ai/scripts/render-keyword-bid-health.py \
-  --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift sidecar write --input-file /tmp/kbh-sidecar-input.json
 ```
 
-The renderer reads `data.json` + `context.yaml` + `report-template.html`, classifies keywords (high ACOS / scale / dormant), computes Excess Spend and Rec Bid per row, populates the HTML, writes three full-untruncated CSVs, emits a compact `headline.json`, and writes the run sidecar. Top-20 cap per rendered HTML table; CSVs are unbounded.
+**Verdict rule:** see Step 7.
 
-Exit codes:
-- `0` — success, all artifacts written
-- `1` — input missing or malformed (stop and surface to user)
-- `2` — self-validation failed (stop and surface to user)
-- `3` — unexpected exception
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
-If the renderer exits non-zero, surface the stderr to the user and stop. Do not attempt to render manually.
-
-### Step 3: Read the Headline
-
-Read the compact headline (~500 tokens):
-```
-plugins/mixshift-ai/tmp/<brand-slug>-keyword-bid-health-<run_date>.headline.json
-```
-
-It contains: `verdict`, `verdict_reason`, `counts` (keywords_reviewed, high_acos, scale, dormant), `totals` (excess spend, T-30 ad sales, dormant T-30 spend), `draft_bottom_line`, `drift_vs_prior`, `structural_events_active`, and the artifact paths.
-
-Optionally also read:
-- `tmp/<brand-slug>-keyword-bid-health-prior-run.json` — prior sidecar for richer week-over-week framing
-- `shared/clients/<brand-slug>/narrative.md` — interpretive cues to weave into the Bottom Line
-
-### Step 4: Deliver
-
-Emit the Bottom Line and the report link in a single response. Output budget: **~1K tokens of prose**. Format:
-
-1. Echo the `draft_bottom_line` from `headline.json` (verbatim or lightly tightened — keep the dollar figures and counts as written).
-2. Optionally append **up to two sentences** that:
-   - Reference week-over-week drift if `drift_vs_prior` is non-null and meaningful.
-   - Ground the verdict in narrative-md context (e.g., "Aligns with the Q2 efficiency posture in narrative.md.").
-   - Note any active structural events listed in `structural_events_active` that should temper interpretation.
-3. Surface the report link using the absolute path from `artifacts.report_html_path`:
-   ```
-   Report: file:///<absolute-path-to-html>
-   ```
-
-**Hard rules for this step:**
-- Do **NOT** call the Write or Edit tool.
-- Do **NOT** read `.data.md` or `.data.json` artifacts.
-- Do **NOT** echo HTML or CSV content inline.
-- Do **NOT** restate the data in tables — the HTML is the deliverable.
-- The renderer is the single writer of all artifacts. Your output is prose + a link.
+---
 
 ## Key Constraints
 
-- **Pre-fetch is the only data path** — do not run SQL or supplement with general Amazon knowledge.
-- **Renderer is the only writer** — model output is bounded to Bottom Line + link, regardless of keyword count.
-- **Annotate-only structural events** — the renderer appends short markers (e.g., "price test active") to rationale cells when an active `structural_events` entry overlaps a keyword's classification. It never suppresses or zeros out a recommendation. Confirm with account context before applying any cut on an annotated row.
-- **Sidecar drift is not blocking** — `compare-sidecars.py` runs inside the renderer; any drift is captured in `headline.drift_vs_prior` and surfaced in your Bottom Line, never in a hard stop.
+- **Prefetch is the only data path** — no inline SQL, no general Amazon knowledge supplements
+- **Excess Spend uses brand's `acos_target_pct`** — not hardcoded
+- **Pullback and scale thresholds from `bid_health`** — never hardcode percentiles
+- **Brand keywords ignore Amazon range constraints**
+- **Structural events annotate, never suppress**
+- **Dormant routing is absolute** — spend_t7==0 with material T-30 spend always routes here regardless of T-30 ACOS
+- **Top 20 per bucket in output** — full row data lives in `data.json`
 
-## Renderer Reference (informational)
+## Output Format
 
-The renderer's logic ports the previous in-skill computation byte-for-byte:
-
-- **Excess Spend:** `spend_t30 − (adsales_t30 × acos_target_pct/100)`; if `adsales_t30 == 0`, excess = full `spend_t30`.
-- **High ACOS filter:** `spend_t30 ≥ p25` (from `data.json.post_processing.p25_spend_t30`) AND `acos_t30 > pullback_threshold_pct`. Sort by Excess Spend DESC.
-- **Scale filter:** `acos_t30 < scale_threshold_pct` AND `conversions_t30 ≥ 3` AND `spend_t30 ≥ p25`. Sort by `adsales_t30` DESC.
-- **Dormant routing:** any row with `spend_t7 == 0` (or null) routes to the Dormant table regardless of T-30 ACOS.
-- **Rec Bid (high ACOS):** `(excess_spend / spend_t30) × current_bid × posture.multiplier`, clamped to [0, 1] cut ratio.
-- **Rec Bid (scale):** `current_bid × (1 + 0.20 × posture.multiplier)`. Headroom rule for nonbrand at ceiling: if `(current_bid − cpc_t7) / current_bid > 0.15` → hold; else increase. Never renders downward in the scale table.
-- **Brand classification:** case-insensitive substring match of the keyword text against the canonical+variant strings in `context.yaml.brand_terms`. Brand keywords ignore Amazon range as a floor/ceiling.
-- **Verdict:** `OBSERVATIONAL` if `keywords_reviewed < 5`; `RED` if pullback > 50% of (pullback + scale); `YELLOW` if pullback > scale; else `GREEN`.
-- **VCPM:** filtered out at the SQL layer (`KBH-01.sql` line 30: `AND ktm.costType IN ('cpc', '')`). VCPM keywords never reach the skill.
-
-If you need to adjust any of the above, edit `scripts/render-keyword-bid-health.py` — do not patch the model's behavior in this SKILL.md.
+1. Header (account, run date, posture, pullback/scale thresholds)
+2. Table 1: High ACOS (bid cuts, top 20)
+3. Table 2: Scale Opportunities (bid raises, top 20)
+4. Table 3: Dormant Keywords (top 20)
+5. Summary metrics + verdict
+6. Bottom Line with structural-event and WoW drift context

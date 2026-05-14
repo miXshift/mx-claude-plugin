@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: asin-target-negation
 display_name: ASIN Target Negation Review
-version: "1.5.0"
+version: "1.6.0"
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Suppresses ASINs already under manual targeting,
@@ -24,7 +24,7 @@ sql_ids:
   - ANEG-04
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
       parallel: [ANEG-01, ANEG-02, ANEG-03, ANEG-04]

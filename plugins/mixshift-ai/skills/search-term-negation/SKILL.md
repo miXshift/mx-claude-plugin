@@ -25,8 +25,8 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — search-term-negation — <brand> — <date>
-[ ] Context snapshot loaded: tmp/<brand>-search-term-negation-<date>.context.md
-    (fallback: shared/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
+    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       management.acos_target_pct, management.attribution_window_days
@@ -38,7 +38,7 @@ PREFLIGHT — search-term-negation — <brand> — <date>
       campaign_structure.naming_pattern, campaign_structure.objectives
       paused_campaigns (list — may be empty)
       posture.stance
-[ ] Pre-fetch artifact present: tmp/<brand>-search-term-negation-<date>.data.md (or .data.json)
+[ ] Pre-fetch artifact present: ~/.mixshift/clients/<brand>/runs/search-term-negation/<date>/data.md (or data.json)
     (if absent: run pre-fetch-data.py — see Step 1)
 [ ] Prior-run sidecar loaded: runs/<brand>/search-term-negation/ (most recent)
     (if absent: continue — no baseline yet; note in output)
@@ -56,10 +56,10 @@ Before starting the negation workflow, load Tier-3 brand context. Insufficient p
 ### Step 0 — Load Tier-3 brand context
 
 Read the context snapshot, prior run, and narrative:
-- **`plugins/mixshift-ai/tmp/<brand-slug>-search-term-negation-<run_date>.context.md`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `acos_target_pct`, `attribution_window_days`, `sub_brands`, `brand_terms`, `negation.protected_terms`, `negation.lane_rules`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `campaign_structure.naming_pattern`, `campaign_structure.objectives`, `campaign_structure.campaign_types_active`, `paused_campaigns`, `structural_events`, `posture.stance`. If absent, fall back to reading `shared/clients/<brand-slug>/context.yaml` directly.
-- **`plugins/mixshift-ai/tmp/<brand-slug>-search-term-negation-prior-run.json`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
-- `shared/clients/<brand-slug>/narrative.md` — prose only (brand positioning, partnerships, lifestyle context, judgment guidance for borderline cases). Do not extract numbers from this file.
-- ASIN-level corpora (manual conquest lists, competitor ASIN lists) at `shared/clients/<brand-slug>/corpora/*.csv`.
+- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `acos_target_pct`, `attribution_window_days`, `sub_brands`, `brand_terms`, `negation.protected_terms`, `negation.lane_rules`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `campaign_structure.naming_pattern`, `campaign_structure.objectives`, `campaign_structure.campaign_types_active`, `paused_campaigns`, `structural_events`, `posture.stance`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+- **`~/.mixshift/clients/<brand-slug>/runs/search-term-negation/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
+- `~/.mixshift/clients/<brand-slug>/narrative.md` — prose only (brand positioning, partnerships, lifestyle context, judgment guidance for borderline cases). Do not extract numbers from this file.
+- ASIN-level corpora (manual conquest lists, competitor ASIN lists) at `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
 **Fail closed:** if the context snapshot is absent AND `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer brand portfolio, lane rules, or ACOS targets from prose.
 
@@ -79,7 +79,7 @@ Read the context snapshot, prior run, and narrative:
 
 Read the data artifact — **prefer the `.md` file** (pre-formatted markdown tables, no parsing overhead):
 ```
-plugins/mixshift-ai/tmp/<brand-slug>-search-term-negation-<run_date>.data.md
+~/.mixshift/clients/<brand-slug>/runs/search-term-negation/<run_date>/data.md
 ```
 Fallback to `.data.json` only if the `.md` file is absent.
 
@@ -93,12 +93,11 @@ STN-03 and STN-04 are on-demand lookups for borderline and theme terms — they 
 
 All queries share the join key: `(SellerID, SearchTerm, MatchType, CampaignName, AdGroupName)`.
 
-**If the artifact is missing:** Run the pre-fetch script now — do not stop and ask the user:
+**If the artifact is missing:** Run prefetch now — do not stop and ask the user:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill search-term-negation --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill search-term-negation --date <YYYY-MM-DD>
 ```
-Use brand-slug derived from the brand context path and today's date as run_date. Wait for it to complete (it will print "Ready. Run the skill now."), then read the artifact and continue.
+Use brand-slug derived from the brand context path and today's date as run_date. Wait for completion, then read the artifact and continue.
 
 ### Step 1a: Data Preparation and Filtering
 
@@ -239,69 +238,64 @@ All SQL queries are pre-fetched before skill execution. Do not read the referenc
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (edits to `negation.protected_terms` or `negation.lane_rules`, dropped queries, sudden tier-mix shifts, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/search-term-negation/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/search-term-negation/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **window end date** of the upstream search-term-data-pull artifact for `data_date`, not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill search-term-negation \
-  --skill-version 1.1 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/stn-headline.json \
-  --context-snapshot-json /tmp/stn-context-snapshot.json \
-  --sql-calls-json /tmp/stn-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/search-term-negation.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/stn-sidecar-input.json
+{
+  "skill": "search-term-negation",
+  "skill_version": "1.2.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "protected_terms_count": 0,
+    "lane_rules_present": true,
+    "asin_negation_lifetime_orders_threshold": 3,
+    "paused_campaigns_count": 0
+  },
+  "headline_metrics": {
+    "phase1_negate_count": 0,
+    "phase2_keep_count": 0,
+    "tier_a_keep": 0,
+    "tier_b_negate": 0,
+    "tier_c_review": 0,
+    "total_zero_conv_spend": 0,
+    "protected_terms_held_back": 0
+  },
+  "sql_calls": [
+    {"id": "STN-01", "params": {"seller_id": 0, "window_start": "YYYY-MM-DD", "window_end": "YYYY-MM-DD"}},
+    {"id": "STN-02", "params": {"seller_id": 0}},
+    {"id": "STN-03", "params": {"seller_id": 0}},
+    {"id": "STN-04", "params": {"seller_id": 0}},
+    {"id": "UPSTREAM:search-term-data-pull",
+     "params": {"sidecar_path": "runs/<brand-slug>/search-term-data-pull/<latest>.json"}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-Use the **window end date** of the upstream search-term-data-pull artifact for `--data-date`, not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"phase1_negate_count": 28, "phase2_keep_count": 14,
-   "tier_a_keep": 9, "tier_b_negate": 17, "tier_c_review": 11,
-   "total_zero_conv_spend": 1820,
-   "protected_terms_held_back": 3}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "protected_terms_count": 12,
-   "lane_rules_present": true,
-   "asin_negation_lifetime_orders_threshold": 3,
-   "paused_campaigns_count": 3}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity). Search-term-negation typically reuses the upstream STDP artifact plus the STN-* tier-classification queries:
-  ```json
-  [{"id": "STN-01", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25"}},
-   {"id": "STN-02", "params": {"seller_id": "113"}},
-   {"id": "STN-03", "params": {"seller_id": "113"}},
-   {"id": "STN-04", "params": {"seller_id": "113"}},
-   {"id": "STDP-CONSUMED", "params": {"upstream_artifact": "/tmp/[brand]-st-data-pull.json"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/stn-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = balanced tier mix (most terms cleanly fall into Tier A keep or Tier B negate; Tier C review burden is small). `YELLOW` = many Tier C terms (review burden is high — lane rules or brand context may be underspecified for this corpus). `RED` = a `negation.protected_terms` breach was attempted (a protected term was a candidate for exact negation — held back, but the attempt itself is a context-integrity signal that requires investigation before next run). `OBSERVATIONAL` = first negation pass for the account or insufficient lifetime corpus to evaluate Tier A confidently.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill search-term-negation
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, tier-mix jump, protected-term breach, verdict regression). Surface drift findings in the next run's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 ---
 

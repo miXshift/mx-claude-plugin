@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: search-term-harvest
 display_name: ST Harvest Extraction
-version: "1.0.1"
+version: "1.1.0"
 description: >
   Identifies search terms and ASIN targets converting efficiently under auto or broad match
   that are not yet in explicit keyword targeting. Promotes high-performing auto terms to
@@ -19,6 +19,16 @@ escalation_conditions:
   - harvest candidate matches a negation.protected_term (suppress and surface)
 sql_ids:
   - STH-01
+pre_execution:
+  enabled: true
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
+  batch_plan:
+    - round: 1
+      parallel: [STH-01]
+      notes: >
+        STH-01 returns the explicit-keyword exclusion mask. The ST corpus and
+        lifetime performance slices come from the upstream search-term-data-pull
+        artifact (consumed via upstream_skills, not prefetched here).
 required_context_fields:
   - accounts[*].seller_id
   - management.acos_target_pct

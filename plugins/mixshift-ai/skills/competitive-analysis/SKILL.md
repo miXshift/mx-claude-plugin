@@ -132,9 +132,9 @@ Adjust axes per analysis need (price/features, SMB/Enterprise, self-serve/manage
 
 ## Step 6: Save Output
 
-Structure:
+Structure (user-machine local, shared across all brands the user works on):
 ```
-shared/domain/competitors/
+~/.mixshift/competitors/
 ├── landscape-overview.md   ← Master map
 ├── helium-10.md
 ├── pacvue.md
@@ -142,6 +142,8 @@ shared/domain/competitors/
 ├── perpetua.md
 └── _template.md
 ```
+
+This skill is not brand-scoped — competitive intel is portfolio-wide and shared across every brand the user manages. Create the directory if it does not exist.
 
 After saving: update the knowledge index.
 Refresh every 90 days (staleness rule).
@@ -162,7 +164,7 @@ Refresh every 90 days (staleness rule).
 - Flag immediately if a competitor ships something on roadmap
 - Data sources: G2, Capterra, Product Hunt, LinkedIn (hiring signals), Crunchbase (funding)
 - Update frequency: 90 days recommended
-- Archive prior versions in shared/domain/competitors/archive/
+- Archive prior versions in ~/.mixshift/competitors/archive/
 
 ---
 

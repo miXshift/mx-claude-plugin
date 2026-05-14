@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: competitive-analysis
 display_name: Competitive Analysis
-version: "1.0.0"
+version: "1.1.0"
 description: >
   Structured competitive analysis framework for market positioning. Produces SWOT analysis,
   feature comparison matrices, pricing tier breakdowns, and market positioning maps.
@@ -30,5 +30,5 @@ trigger_phrases:
 notes: >
   This skill requires no account connection and no database access.
   All research is conducted via web search and public sources.
-  Output is saved to shared/domain/competitors/ for reference.
+  Output is saved to ~/.mixshift/competitors/ (user-machine local, portfolio-wide).
   Refresh frequency: 90 days recommended.

@@ -22,7 +22,7 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — search-term-harvest — <brand> — <date>
-[ ] context.yaml loaded from shared/clients/<brand>/context.yaml
+[ ] context.yaml loaded from ~/.mixshift/clients/<brand>/context.yaml
 [ ] Required fields present and non-null:
       accounts[*].seller_id
       management.acos_target_pct
@@ -33,9 +33,9 @@ PREFLIGHT — search-term-harvest — <brand> — <date>
       posture.stance
 [ ] Upstream search-term-data-pull artifact present
     *** HARD GATE: if absent, STOP. Cannot run harvest without ST corpus. ***
-[ ] STH-01 pre-fetch artifact present: tmp/<brand>-search-term-harvest-<date>.data.json
-    (if absent: run pre-fetch-data.py — see Step 1)
-[ ] Prior-run sidecar loaded: runs/<brand>/search-term-harvest/ (most recent)
+[ ] STH-01 prefetch artifact present: ~/.mixshift/clients/<brand>/runs/search-term-harvest/<date>/data.json
+    (if absent: run `mixshift prefetch --brand <brand> --skill search-term-harvest` — see Step 1)
+[ ] Prior-run sidecar loaded from ~/.mixshift/clients/<brand>/runs/search-term-harvest/ (most recent)
     (if absent: continue — no baseline yet)
 [ ] Confirm no harvest candidate is in negation.lane_rules mismatch list before promoting
 ```
@@ -58,17 +58,17 @@ The original monolithic negation skill buried harvest as an afterthought. Harves
 
 **Step 0 — Load inputs:**
 - Data artifact: ST data pull output (JSON)
-- **Tier-3 brand context** at `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clients/_schema/context.schema.yaml`). Extract mechanically:
+- **Tier-3 brand context** at `~/.mixshift/clients/<brand-slug>/context.yaml`. Extract mechanically:
   - `accounts[].seller_id`
   - `management.acos_target_pct` — drives Tier S thresholds (`acos_target * 0.75` and `<= acos_target`)
   - `sub_brands[]` and `campaign_structure.naming_pattern`, `campaign_structure.account_codes`, `campaign_structure.objectives` — drive item-group taxonomy mapping and placement campaign naming
   - `brand_terms` — for brand-adjacent term routing (BRAND vs RSCH-NONBRAND placement)
-  - `negation.lane_rules` — confirm harvest candidates are not in a `mismatch` list before promoting
+  - `negation.lane_rules` — confirm harvest candidates are not in a `mismatch` list before promoting (schema-validated by `mixshift brand validate <brand-slug>`)
   - `paused_campaigns` — exclude from harvest recommendations and starting-bid CPC math
   - `posture.stance` — informs starting-bid conservatism
-- `shared/clients/<brand-slug>/narrative.md` — prose interpretation only (account norms for "unusual bid" sanity check). Do not extract numbers from this file.
+- `~/.mixshift/clients/<brand-slug>/narrative.md` — prose interpretation only (account norms for "unusual bid" sanity check). Do not extract numbers from this file.
 
-ASIN harvest cross-references manual conquest lists in `shared/clients/<brand-slug>/corpora/*.csv` when available.
+ASIN harvest cross-references manual conquest lists in `~/.mixshift/clients/<brand-slug>/corpora/*.csv` when available.
 
 **Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer ACOS target or item-group taxonomy from prose.
 
@@ -80,14 +80,21 @@ ASIN harvest cross-references manual conquest lists in `shared/clients/<brand-sl
 - `lifetime_keyword_by_location` — identify which specific ad group is capturing the converting traffic
 - `stream1_keyword` — window location data for CPC calculation
 
-**Step 1 — Query explicit keyword targeting:**
+**Step 1 — Run prefetch:**
 
-[SQL-LIBRARY: STH-01]
+```bash
+mixshift prefetch --brand <brand-slug> --skill search-term-harvest
+```
 
-Parameters:
-- `:seller_id` from `context.yaml::accounts[0].seller_id`
+This executes **STH-01** (explicit keyword inventory — the mask used to filter out already-targeted terms). Read the resulting `data.md` (or `data.json` for full rows) at:
 
-Build: `explicit_keywords = {KeywordText.lower()}`
+```
+~/.mixshift/clients/<brand-slug>/runs/search-term-harvest/<date>/data.md
+```
+
+Build: `explicit_keywords = {row.KeywordText.lower() for row in STH-01.rows}`
+
+The lifetime/window search-term corpus itself comes from the upstream `search-term-data-pull` artifact at `~/.mixshift/clients/<brand-slug>/runs/search-term-data-pull/<latest-date>/data.json`. If absent, run that skill first.
 
 ---
 
@@ -211,65 +218,59 @@ Write to runs archive with timestamp: `YYYY-MM-DD-harvest.json`
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery (harvest output written to runs archive as `YYYY-MM-DD-harvest.json`), write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to `acos_target_pct` driving Tier S thresholds, dropped queries, candidate-volume collapse signaling auto campaigns aren't running, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/search-term-harvest/<data-date>-<run-id>.json`.
+After delivery (harvest output written to runs archive as `YYYY-MM-DD-harvest.json`), write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/search-term-harvest/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **window end date** of the upstream search-term-data-pull artifact for `data_date`, not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill search-term-harvest \
-  --skill-version 1.0 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/sth-headline.json \
-  --context-snapshot-json /tmp/sth-context-snapshot.json \
-  --sql-calls-json /tmp/sth-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/search-term-harvest.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/sth-sidecar-input.json
+{
+  "skill": "search-term-harvest",
+  "skill_version": "1.1.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "campaign_naming_pattern_present": true,
+    "brand_terms_count": 0,
+    "lane_rules_present": true,
+    "paused_campaigns_count": 0
+  },
+  "headline_metrics": {
+    "harvest_candidates_count": 0,
+    "auto_to_phrase_count": 0,
+    "auto_to_exact_count": 0,
+    "expected_keep_acos": 0,
+    "keywords_already_explicit_excluded": 0
+  },
+  "sql_calls": [
+    {"id": "STH-01", "params": {"seller_id": 0, "window_start": "YYYY-MM-DD", "window_end": "YYYY-MM-DD", "acos_target_pct": 20}},
+    {"id": "UPSTREAM:search-term-data-pull",
+     "params": {"sidecar_path": "runs/<brand-slug>/search-term-data-pull/<latest>.json"}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-Use the **window end date** of the upstream search-term-data-pull artifact for `--data-date`, not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"harvest_candidates_count": 22, "auto_to_phrase_count": 9,
-   "auto_to_exact_count": 13, "expected_keep_acos": 14.8,
-   "keywords_already_explicit_excluded": 41}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "campaign_naming_pattern_present": true,
-   "brand_terms_count": 8,
-   "lane_rules_present": true,
-   "paused_campaigns_count": 3}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity). Harvest reuses upstream `STDP-*` results via the data-pull artifact and runs `STH-01` for the harvest-specific aggregation:
-  ```json
-  [{"id": "STH-01", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25", "acos_target_pct": 20}},
-   {"id": "STDP-CONSUMED", "params": {"upstream_artifact": "/tmp/[brand]-st-data-pull.json"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/sth-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = balanced harvest mix (candidates split between auto-to-phrase and auto-to-exact; conversion-rich auto traffic is being captured). `YELLOW` = many candidates already explicit (corpus saturation — auto campaigns are doing their discovery job but explicit campaigns may be over-built; reduce harvest cadence). `RED` = zero candidates (auto campaigns are not running or not generating measurable conversion volume — escalate to campaign structure review). `OBSERVATIONAL` = window too short or first run after cold-start; no historical band yet.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill search-term-harvest
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, candidate-volume jump, verdict regression). Surface drift findings in the next run's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 ---
 

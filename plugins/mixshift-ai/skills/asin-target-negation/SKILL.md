@@ -66,8 +66,8 @@ Complete this checklist before Step 0a. Stop and surface the failure if any item
 
 ```
 PREFLIGHT — asin-target-negation — <brand> — <date>
-[ ] Context snapshot loaded: tmp/<brand>-asin-target-negation-<date>.context.md
-    (fallback: shared/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
+    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       negation.lane_rules, negation.protected_terms
@@ -77,11 +77,11 @@ PREFLIGHT — asin-target-negation — <brand> — <date>
       posture.stance, structural_events
 [ ] negation.asin_negation.pre_check_lifetime_orders_threshold present and numeric
     *** HARD GATE: if absent, STOP. Cannot compute Corpus Layer 2 without lifetime orders threshold. ***
-[ ] corpora/conq_asins.csv present at shared/clients/<brand>/corpora/
+[ ] corpora/conq_asins.csv present at ~/.mixshift/clients/<brand>/corpora/
     (if absent: surface warning — Layer 1 suppression mask unavailable; continue with Layer 2 only)
-[ ] Data artifact present: tmp/<brand>-asin-target-negation-<date>.data.md (or .data.json)
+[ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/asin-target-negation/<date>/data.md (or data.json)
     (if absent: run pre-fetch-data.py — see Step 1)
-[ ] Prior-run sidecar loaded: tmp/<brand>-asin-target-negation-prior-run.json
+[ ] Prior-run sidecar loaded: ~/.mixshift/clients/<brand>/runs/asin-target-negation/<latest>.json
     (if absent: continue — no baseline yet)
 [ ] No active escalation conditions:
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
@@ -93,13 +93,13 @@ PREFLIGHT — asin-target-negation — <brand> — <date>
 
 **Step 0a — Read this SKILL.md.** Already done.
 
-**Step 0b — Load brand context (from pre-fetched snapshot):** Read `plugins/mixshift-ai/tmp/<brand-slug>-asin-target-negation-<run_date>.context.md` — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `negation.lane_rules`, `negation.protected_terms`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `sub_brands`, `campaign_structure.naming_pattern`, `acos_target_pct`, `attribution_window_days`, `posture.stance`, `structural_events`. If absent, fall back to reading `shared/clients/<brand-slug>/context.yaml` directly.
+**Step 0b — Load brand context (from pre-fetched snapshot):** Read `~/.mixshift/clients/<brand-slug>/context.yaml (direct read, OR run `mixshift brand validate <brand-slug> --json` for a parsed JSON view)` — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `negation.lane_rules`, `negation.protected_terms`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `sub_brands`, `campaign_structure.naming_pattern`, `acos_target_pct`, `attribution_window_days`, `posture.stance`, `structural_events`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
 
-Read **`plugins/mixshift-ai/tmp/<brand-slug>-asin-target-negation-prior-run.json`** — prior run sidecar (~65 lines). If present, use for drift context. If absent, skip.
+Read **`~/.mixshift/clients/<brand-slug>/runs/asin-target-negation/ (pick the most recent `<date>-<run-id>.json` sidecar)`** — prior run sidecar (~65 lines). If present, use for drift context. If absent, skip.
 
-Also read `shared/clients/<brand-slug>/narrative.md` for prose interpretation only (PAT route guidance, lane judgment notes). Do not extract numbers from this file.
+Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose interpretation only (PAT route guidance, lane judgment notes). Do not extract numbers from this file.
 
-If the skill consumes manual conquest ASIN lists, read `shared/clients/<brand-slug>/corpora/*.csv`.
+If the skill consumes manual conquest ASIN lists, read `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
 **Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer fields from prose.
 
@@ -145,7 +145,7 @@ Do not let poor performance override a clear manual-target suppression. Do not l
 
 Read the data artifact — **prefer the `.md` file** (pre-formatted markdown tables, no parsing overhead):
 ```
-plugins/mixshift-ai/tmp/<brand-slug>-asin-target-negation-<run_date>.data.md
+~/.mixshift/clients/<brand-slug>/runs/asin-target-negation/<run_date>/data.md
 ```
 Fallback to `.data.json` only if the `.md` file is absent.
 
@@ -157,12 +157,11 @@ This file contains pre-executed results for all queries, keyed by query ID:
 
 All queries share the join key: `(SellerID, normalized_asin_target, CampaignName, AdGroupName)`.
 
-**If the artifact is missing:** Run the pre-fetch script now — do not stop and ask the user:
+**If the artifact is missing:** Run prefetch now — do not stop and ask the user:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill asin-target-negation --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill asin-target-negation --date <YYYY-MM-DD>
 ```
-Use brand-slug derived from the brand context path and today's date as run_date. Wait for it to complete (it will print "Ready. Run the skill now."), then read the artifact and continue.
+Use brand-slug derived from the brand context path and today's date as run_date. Wait for completion, then read the artifact and continue.
 
 ### Step 1a: Join Pre-Fetched Query Results
 
@@ -369,63 +368,56 @@ The manual targeting list IS the positive training set. Before Phase 2 PDP revie
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to `negation.asin_negation` thresholds, dropped queries, recommendation-volume jumps signaling broader targeting issues, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/asin-target-negation/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/asin-target-negation/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **window end date** (last day of the analysis window) for `data_date`, not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill asin-target-negation \
-  --skill-version 1.5.0 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/aneg-headline.json \
-  --context-snapshot-json /tmp/aneg-context-snapshot.json \
-  --sql-calls-json /tmp/aneg-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/asin-target-negation.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/aneg-sidecar-input.json
+{
+  "skill": "asin-target-negation",
+  "skill_version": "1.5.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "asin_negation_lifetime_orders_threshold": 3,
+    "posture_stance": "scale"
+  },
+  "headline_metrics": {
+    "negate_recommended_count": 0,
+    "keep_count": 0,
+    "total_spend_reviewed": 0,
+    "total_orders_reviewed": 0,
+    "expected_monthly_savings": 0
+  },
+  "sql_calls": [
+    {"id": "ANEG-01", "params": {"seller_id": 0, "window_start": "YYYY-MM-DD", "window_end": "YYYY-MM-DD"}},
+    {"id": "ANEG-02", "params": {"seller_id": 0, "window_start": "YYYY-MM-DD", "window_end": "YYYY-MM-DD"}},
+    {"id": "ANEG-03", "params": {"seller_id": 0}},
+    {"id": "ANEG-04", "params": {"seller_id": 0}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-Use the **window end date** (last day of the analysis window) for `--data-date`, not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"negate_recommended_count": 3, "keep_count": 41,
-   "total_spend_reviewed": 4820, "total_orders_reviewed": 312,
-   "expected_monthly_savings": 280}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "asin_negation_lifetime_orders_threshold": 3,
-   "posture_stance": "scale"}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity):
-  ```json
-  [{"id": "ANEG-01", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25"}},
-   {"id": "ANEG-02", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25"}},
-   {"id": "ANEG-03", "params": {"seller_id": "113"}},
-   {"id": "ANEG-04", "params": {"seller_id": "113"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/aneg-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = ≤5 negation recommendations (routine cleanup). `YELLOW` = 5–25 negations (worth a review pass, may signal a category-targeting drift). `RED` = >25 negations (signal of broader targeting problem upstream — escalate to relevance check or campaign structure review before applying). `OBSERVATIONAL` = window too short or insufficient lifetime data; recommendations held back.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill asin-target-negation
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, recommendation-volume jump, verdict regression). Surface drift findings in the next run's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 

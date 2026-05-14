@@ -22,7 +22,7 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — phrase-negative-discovery — <brand> — <date>
-[ ] context.yaml loaded from shared/clients/<brand>/context.yaml
+[ ] context.yaml loaded from ~/.mixshift/clients/<brand>/context.yaml
 [ ] Required fields present and non-null:
       accounts[*].seller_id
       management.acos_target_pct
@@ -32,7 +32,7 @@ PREFLIGHT — phrase-negative-discovery — <brand> — <date>
       paused_campaigns (list — may be empty)
 [ ] Upstream search-term-data-pull artifact present
     *** HARD GATE: if absent, STOP. Cannot build n-gram corpus without ST data pull. ***
-[ ] Prior-run sidecar loaded: runs/<brand>/phrase-negative-discovery/ (most recent)
+[ ] Prior-run sidecar loaded: ~/.mixshift/clients/<brand>/runs/phrase-negative-discovery/ (most recent)
     (if absent: continue — no baseline yet)
 [ ] No active escalation conditions:
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
@@ -71,7 +71,7 @@ A phrase negative recommendation must never be issued without:
 
 **Step 0 — Load inputs:**
 - Data artifact: ST data pull output (JSON)
-- **Tier-3 brand context** at `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clients/_schema/context.schema.yaml`). Extract:
+- **Tier-3 brand context** at `~/.mixshift/clients/<brand-slug>/context.yaml` (schema-validated by `mixshift brand validate <brand-slug>`). Extract:
   - `accounts[].seller_id`
   - `management.acos_target_pct`
   - `negation.protected_terms` — anchors that must never be exact- or phrase-negated
@@ -80,7 +80,7 @@ A phrase negative recommendation must never be issued without:
   - `sub_brands[]` and `campaign_structure.naming_pattern` — for item-group conflict checks
   - `structural_events[]` — flag candidates that overlap an active event window
   - `paused_campaigns` — exclude from recommendations and blast-radius counts
-- `shared/clients/<brand-slug>/narrative.md` — prose interpretation only (lane judgment, blast-radius philosophy). Do not extract numbers from this file.
+- `~/.mixshift/clients/<brand-slug>/narrative.md` — prose interpretation only (lane judgment, blast-radius philosophy). Do not extract numbers from this file.
 
 **Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer fields from prose.
 
@@ -311,61 +311,57 @@ Total execution time (all phases): 30 seconds to 2 minutes depending on account 
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to `negation.protected_terms`, dropped queries, candidate-volume jumps signaling corpus saturation, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/phrase-negative-discovery/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/phrase-negative-discovery/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **window end date** of the upstream search-term data pull for `data_date`, not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill phrase-negative-discovery \
-  --skill-version 1.1 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/pnd-headline.json \
-  --context-snapshot-json /tmp/pnd-context-snapshot.json \
-  --sql-calls-json /tmp/pnd-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/phrase-negative-discovery.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/pnd-sidecar-input.json
+{
+  "skill": "phrase-negative-discovery",
+  "skill_version": "1.2.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "protected_terms_count": 0,
+    "lane_rules_present": true,
+    "brand_terms_count": 0
+  },
+  "headline_metrics": {
+    "candidates_surfaced": 0,
+    "candidates_above_threshold": 0,
+    "total_zero_conv_spend_protected": 0,
+    "protected_terms_blocked": 0
+  },
+  "sql_calls": [
+    {"id": "UPSTREAM:search-term-data-pull",
+     "params": {"sidecar_path": "runs/<brand-slug>/search-term-data-pull/<latest>.json",
+                "ngram_min": 2, "ngram_max": 4, "min_spend": 50}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-Use the **window end date** of the upstream search-term data pull for `--data-date`, not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"candidates_surfaced": 18, "candidates_above_threshold": 7,
-   "total_zero_conv_spend_protected": 1240,
-   "protected_terms_blocked": 2}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "protected_terms_count": 12,
-   "lane_rules_present": true,
-   "brand_terms_count": 8}
-  ```
-
-- **`sql-calls-json`** — phrase-negative-discovery is a pure consumer of the upstream `search-term-data-pull` sidecar; it does not run SQL. Record the consumption as a structured `UPSTREAM:<skill-name>` pseudo-call so the comparator can chain drift detection across skills (if STDP's query inventory changes, PND inherits the signal).
-  ```json
-  [{"id": "UPSTREAM:search-term-data-pull",
-    "params": {"sidecar_path": "runs/[brand-slug]/search-term-data-pull/<latest>.json",
-               "consumed_metrics": ["terms_pulled_window", "ngram_corpus_size"],
-               "ngram_min": 2, "ngram_max": 4, "min_spend": 50}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/pnd-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = <10 candidates surfaced (routine maintenance pass). `YELLOW` = 10–50 candidates (worth a careful review pass; phrase-negatives have blast radius). `RED` = >50 candidates (corpus saturation — likely a campaign-targeting drift upstream; do not bulk-apply without an upstream relevance/structure review). `OBSERVATIONAL` = corpus too small or window too short to produce stable n-gram aggregates.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-python3 <plugin>/scripts/compare-sidecars.py --brand-slug [brand-slug] --skill phrase-negative-discovery
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, candidate-volume jump, protected-terms list changed, verdict regression). Surface drift findings in the next run's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 ---
 

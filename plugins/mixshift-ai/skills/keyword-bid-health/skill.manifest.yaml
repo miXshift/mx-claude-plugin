@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: keyword-bid-health
 display_name: Keyword Bid Health Review
-version: "0.2.0"
+version: "0.3.0"
 description: >
   Weekly keyword-level bid optimization analysis surfacing high-ACOS bid reduction candidates
   and scale opportunities with proven conversion volume. Uses the Excess Spend formula to
@@ -24,7 +24,7 @@ sql_ids:
   - KBH-03
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
       parallel: [KBH-01, KBH-01a]

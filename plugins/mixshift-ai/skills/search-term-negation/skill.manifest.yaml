@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: search-term-negation
 display_name: Search Term Negation Analysis
-version: "1.1.1"
+version: "1.2.0"
 description: >
   Universal workflow for Amazon PPC search term irrelevance analysis and negative keyword
   strategy. Conducts systematic review of search term performance to identify irrelevant
@@ -24,17 +24,15 @@ sql_ids:
   - STN-04
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
       parallel: [STN-01]
-      notes: "STN-01 is the primary window search-term pull. Pre-fetch this before skill execution."
-    - round: 2
-      model_executed: [STN-02, STN-03, STN-04]
       notes: >
-        STN-02 is a scratch-table operative query (operates on caller scratch table — not pre-fetchable;
-        run inline during execution). STN-03 and STN-04 are on-demand lookups for borderline-term
-        historical review and theme analysis — run inline during analysis as needed.
+        STN-01 (primary window search-term pull) is the only prefetched query.
+        STN-02 (scratch-table operative), STN-03 (borderline-term T-30/T-60 review),
+        and STN-04 (theme analysis) are model-executed on demand via the data-explore
+        skill or `mixshift data query` — never prefetched.
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type

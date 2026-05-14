@@ -1,19 +1,23 @@
 schema_version: 1
 skill_id: data-explore
 display_name: Explore + Export Your Warehouse Data
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Conversational data exploration and CSV export over the MixShift
-  warehouse. Read-only. Does not require brand cold-start — only auth
+  warehouse. Read-only. Does not require brand cold-start -- only auth
   setup and (optionally) brand discovery to find SellerIDs.
 
 # Tier 1 = informational, read-only. No durable production artifacts.
-# (See shared/skill-runtime-contract.md.)
-run_kind: per_user
-cadence: ad_hoc
+# Modeled as per_account because the user is exploring data for an account
+# they have warehouse access to; not strictly tied to a specific brand
+# context.
+run_kind: per_account
+cadence: on_demand
 risk_tier: 1
 allowed_tools: [db_read, file_read, file_write]
-side_effect_policy: read_only
+side_effect_policy: artifact_write   # writes CSV exports to ~/.mixshift/output/
+review_required: never
+sql_ids: []   # ad-hoc queries; no library SQL
 
 # Harness commands the skill calls
 harness_commands:
@@ -25,20 +29,12 @@ harness_commands:
   - mixshift brand discover
   - mixshift feedback
 
-# Required prerequisites
-required_state:
-  - "~/.mixshift/auth/credentials must exist (run `mixshift auth setup` if not)"
-  - "~/.mixshift/profile.yaml with user.email (created by auth setup)"
-
-# Optional but commonly used
-optional_state:
-  - "~/.mixshift/clients/<slug>/context.yaml — when the user references a brand by slug rather than SellerID"
-
+required_context_fields: []
+optional_context_fields: []
 artifacts:
-  - name: "CSV exports"
-    type: "csv_file"
-    location: "~/.mixshift/output/<table>-<date>.csv or user-specified path"
-
+  - name: csv-export
+    type: json_artifact   # CSVs are user-facing exports; closest schema type
+verdict_range: [OBSERVATIONAL]
 pricing_tier: free
 trigger_phrases:
   - explore my data
@@ -50,13 +46,21 @@ trigger_phrases:
   - run a query
   - query my warehouse
   - what brands do I have access to
-
 notes: >
-  The data-explore skill is the lowest-friction entry point in the plugin.
-  Partners who haven't onboarded specific brands can still use it as long
-  as their MySQL credentials work and they know (or can discover) a
-  SellerID.
+  Lowest-friction entry point in the plugin. Partners who haven't onboarded
+  specific brands can still use it as long as their MySQL credentials work
+  and they know (or can discover) a SellerID.
 
   Access errors on specific tables (ER_TABLEACCESS_DENIED_ERROR) classify
-  as exit code 4 and surface a "send access request to MixShift ops"
-  prompt via the feedback webhook.
+  as exit code 4 and surface a "send access request to MixShift ops" prompt
+  via the feedback webhook.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth setup` if not)
+    - ~/.mixshift/profile.yaml with user.email (created by auth setup)
+  Optional state:
+    - ~/.mixshift/clients/<slug>/context.yaml -- when the user references a brand
+      by slug rather than SellerID.
+
+  CSV exports land at ~/.mixshift/output/<table>-<date>.csv (or a user-specified
+  path).

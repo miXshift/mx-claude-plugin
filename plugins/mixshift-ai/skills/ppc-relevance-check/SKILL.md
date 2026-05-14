@@ -51,7 +51,7 @@ needs to know which force is driving the recommendation.
 ## Execution
 
 **Step 0 — Load Tier-3 brand context (mandatory):**
-Read `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clients/_schema/context.schema.yaml`) and extract mechanically:
+Read `~/.mixshift/clients/<brand-slug>/context.yaml` (schema-validated by `mixshift brand validate <brand-slug>`) and extract mechanically:
 
 - `accounts[].seller_id`
 - `sub_brands[]` — product descriptions, item groups, custom brand labels per sub-brand
@@ -60,9 +60,9 @@ Read `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clien
 - `negation.lane_rules` — per-lane `relevant` (known converting adjacencies) and `mismatch` (known irrelevant themes) dictionaries
 - `negation.asin_negation.pre_check_lifetime_orders_threshold` — for ASIN relevance phase
 
-Also read `shared/clients/<brand-slug>/narrative.md` for prose positioning, borderline-theme judgment, and competitive context. Do not extract numbers from this file.
+Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose positioning, borderline-theme judgment, and competitive context. Do not extract numbers from this file.
 
-ASIN corpora used for the ASIN relevance phase live at `shared/clients/<brand-slug>/corpora/*.csv`.
+ASIN corpora used for the ASIN relevance phase live at `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
 **Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill. Do not infer lane rules or brand terms from prose.
 
@@ -202,59 +202,54 @@ This skill applies the classification framework; the brand file supplies the fac
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to `negation.lane_rules` or `negation.protected_terms`, classification-mix shift, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/ppc-relevance-check/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/ppc-relevance-check/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Compose the input JSON (write to a temp file, then invoke the harness):
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill ppc-relevance-check \
-  --skill-version 1.0.0 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/prc-headline.json \
-  --context-snapshot-json /tmp/prc-context-snapshot.json \
-  --sql-calls-json /tmp/prc-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/ppc-relevance-check.html
+```jsonc
+// /tmp/prc-sidecar-input.json — use the upstream search-term window end date for data_date
+{
+  "skill": "ppc-relevance-check",
+  "skill_version": "1.1.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "lane_rules_present": true,
+    "protected_terms_count": 0,
+    "brand_terms_count": 0
+  },
+  "headline_metrics": {
+    "terms_classified": 0,
+    "relevant_count": 0,
+    "irrelevant_count": 0,
+    "ambiguous_count": 0,
+    "protected_terms_held_back": 0
+  },
+  "sql_calls": [
+    {"id": "UPSTREAM:search-term-negation",
+     "params": {"sidecar_path": "runs/<brand-slug>/search-term-negation/<latest>.json",
+                "input_term_count": 0, "tier_filter": "B,C"}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-Use the **window end date** of the upstream search-term batch being classified for `--data-date`, not the run wall-clock date.
-
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"terms_classified": 142, "relevant_count": 88,
-   "irrelevant_count": 31, "ambiguous_count": 23,
-   "protected_terms_held_back": 4}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "lane_rules_present": true,
-   "protected_terms_count": 12,
-   "brand_terms_count": 8}
-  ```
-
-- **`sql-calls-json`** — ppc-relevance-check is a pure consumer; it operates on a provided list (typically the Tier B/C set from upstream `search-term-negation` Phase 1) and runs no SQL. Record the consumption as a structured `UPSTREAM:<skill-name>` pseudo-call so the comparator can chain drift detection across skills.
-  ```json
-  [{"id": "UPSTREAM:search-term-negation",
-    "params": {"sidecar_path": "runs/[brand-slug]/search-term-negation/<latest>.json",
-               "consumed_metrics": ["tier_b_count", "tier_c_count"],
-               "input_term_count": 142, "tier_filter": "B,C"}}]
-  ```
-
-**Verdict rule:** `GREEN` = clean classification (most terms land in RELEVANT or IRRELEVANT, ambiguous share is small). `YELLOW` = >30% of terms classified AMBIGUOUS (lane rules underspecified for this corpus — calibration candidates require AM review). `RED` = `lane_rules` conflict detected (a term matches both `relevant` and `mismatch` lanes for the same item group, indicating a context.yaml integrity issue). `OBSERVATIONAL` = brand-context lane_rules incomplete; classification advisory only.
-
-After writing, run the comparator to surface drift against the prior run:
+Then write it:
 
 ```bash
-python3 <plugin>/scripts/compare-sidecars.py --brand-slug [brand-slug] --skill ppc-relevance-check
+mixshift sidecar write --input-file /tmp/prc-sidecar-input.json
 ```
 
-Exit 0 = no drift. Exit 1 = drift detected (lane_rules edit, classification-mix shift, verdict regression). Surface drift findings in the next run's report header, not silently.
+**Verdict rule:** `GREEN` = clean classification (most terms land in RELEVANT or IRRELEVANT, ambiguous share is small). `YELLOW` = >30% of terms classified AMBIGUOUS (lane rules underspecified — calibration candidates require AM review). `RED` = `lane_rules` conflict detected (a term matches both `relevant` and `mismatch` lanes for the same item group, indicating a context.yaml integrity issue). `OBSERVATIONAL` = brand-context lane_rules incomplete; classification advisory only.
+
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 

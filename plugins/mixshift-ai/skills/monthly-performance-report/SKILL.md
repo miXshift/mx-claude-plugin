@@ -27,9 +27,9 @@ handoff_optional: true
 ## Before You Start
 
 Read these files:
-- **`plugins/mixshift-ai/tmp/<brand-slug>-monthly-performance-report-<run_date>.context.md`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `primary_metric`, `acos_target_pct`, `implied_tacos_pct`, `attribution_window_days`, `tacos_in_bottom_line`, `tacos_reference_line`, `goals.*`, `capture_rate_calibration`, `sub_brands`, `brand_terms`, `structural_events`, `delivery.reports_local_dir`, `delivery.archive_dir`, `reporting.audience`, `reporting.voice_lint`, `attribution_rule`. If absent, fall back to reading `shared/clients/<brand-slug>/context.yaml` directly.
-- **`plugins/mixshift-ai/tmp/<brand-slug>-monthly-performance-report-prior-run.json`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
-- `shared/clients/<brand-slug>/narrative.md` — interpretive prose only (positioning, MoM/YoY narrative cues, per-skill guidance). Do not extract numbers from this file.
+- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `primary_metric`, `acos_target_pct`, `implied_tacos_pct`, `attribution_window_days`, `tacos_in_bottom_line`, `tacos_reference_line`, `goals.*`, `capture_rate_calibration`, `sub_brands`, `brand_terms`, `structural_events`, `delivery.reports_local_dir`, `delivery.archive_dir`, `reporting.audience`, `reporting.voice_lint`, `attribution_rule`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+- **`~/.mixshift/clients/<brand-slug>/runs/monthly-performance-report/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
+- `~/.mixshift/clients/<brand-slug>/narrative.md` — interpretive prose only (positioning, MoM/YoY narrative cues, per-skill guidance). Do not extract numbers from this file.
 
 **Do NOT read the references/ folder.** Brand context comes exclusively from context.yaml and narrative.md above. The references/ folder contains cross-brand architecture documents that are not inputs to skill execution.
 
@@ -111,9 +111,9 @@ When audience=client: strip nav, strip prior-month section. Save to same local r
 
 Read the data artifact — **prefer the `.md` file** (pre-formatted markdown tables, no parsing overhead):
 ```
-plugins/mixshift-ai/tmp/<brand-slug>-monthly-performance-report-<run_date>.data.md
+~/.mixshift/clients/<brand-slug>/runs/monthly-performance-report/<run_date>/data.md
 ```
-Fallback to `.data.json` only if the `.md` file is absent.
+Fallback to `data.json` only if the `data.md` file is absent or capped.
 
 This file contains pre-executed results for all queries, keyed by query ID:
 - `MPR-01` — VC account-level monthly metrics (sellermonthmetric): `ad_spend, ad_sales, orders, acos, ops` for curr_month, prior_month, and prior_year_month
@@ -124,12 +124,11 @@ Only one of MPR-01 or MPR-02 will be populated per run. The pre-fetch script run
 
 All queries share the join key: `(SellerID, month)` at account level.
 
-**If the artifact is missing:** Run the pre-fetch script now — do not stop and ask the user:
+**If the artifact is missing:** Run prefetch now — do not stop and ask the user:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill monthly-performance-report --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill monthly-performance-report --date <YYYY-MM-DD>
 ```
-Use brand-slug derived from the brand context path and today's date as run_date. Wait for it to complete (it will print "Ready. Run the skill now."), then read the artifact and continue.
+Use brand-slug derived from the brand context path and today's date as run_date. Wait for completion, then read the artifact and continue.
 
 ### Step 1a: Join Pre-Fetched Query Results
 
@@ -217,28 +216,22 @@ This two-pass gate is a hard requirement before Step 6.
 
 ---
 
-## Step 6 — Build and Deliver HTML
+## Step 6 — Build and Deliver the Report
 
-Use the Write tool to create the HTML file (never shell heredoc).
+Compose the report as **markdown** (default) or HTML (if the user explicitly requests HTML).
 
-Write the report and archive it:
-```bash
-python3 scripts/report-append.py \
-  --report-html /tmp/[brand]-reports/monthly-report.html \
-  --skill monthly-performance-report \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD
+Save the report to the brand's local reports directory using the Write tool:
+```
+~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md
 ```
 
+(For HTML: same path with `.html` extension.)
 
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill monthly-performance-report
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
+The `<YYYY-MM>` segment is the reported month, not the run wall-clock date — e.g., the March 2026 report lives under `reports/2026-03/`.
+
+If `context.yaml::delivery.reports_local_dir` is set, save there instead. Honor that override.
+
+Drift comparison against the prior sidecar is handled by `mixshift sidecar compare` (not yet implemented). For now, you can manually inspect prior sidecars under `~/.mixshift/clients/<brand-slug>/runs/monthly-performance-report/` to spot config / verdict drift before publishing.
 
 ---
 
@@ -274,62 +267,61 @@ After report is published, append to the brand's monthly_report_outs section:
 
 ## Step 8 — Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to context.yaml, dropped queries, metric jumps, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/monthly-performance-report/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/monthly-performance-report/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **last day of the reported month** for `data_date` (e.g., `2026-03-31` for the March report), not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill monthly-performance-report \
-  --skill-version 1.3.0 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/mpr-headline.json \
-  --context-snapshot-json /tmp/mpr-context-snapshot.json \
-  --sql-calls-json /tmp/mpr-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/monthly-report.html
+Compose the input JSON (write to a temp file, then invoke the harness). Pick MPR-01 for VC or MPR-02 for SC — never both:
+
+```jsonc
+// /tmp/mpr-sidecar-input.json
+{
+  "skill": "monthly-performance-report",
+  "skill_version": "1.4.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS|TACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "tacos_goal_pct": 8,
+    "reporting_audience": "client|internal"
+  },
+  "headline_metrics": {
+    "total_spend_curr_month": 0,
+    "total_ad_sales_curr_month": 0,
+    "total_ops_curr_month": 0,
+    "acos_blended": 0,
+    "acos_mom_pct_delta": 0,
+    "acos_yoy_pct_delta": 0,
+    "tacos_blended": 0,
+    "ops_mom_pct_delta": 0,
+    "ops_yoy_pct_delta": 0,
+    "forecast_beat_pct": 0
+  },
+  "sql_calls": [
+    // VC: MPR-01 only
+    {"id": "MPR-01", "params": {"seller_id": 0, "curr_month": "YYYY-MM-01", "prior_month": "YYYY-MM-01", "prior_year_month": "YYYY-MM-01"}}
+    // SC alternate (replace MPR-01 entry):
+    // {"id": "MPR-02", "params": {"seller_id": 0, "prior_month_start": "YYYY-MM-01", "current_month_end": "YYYY-MM-DD"}}
+  ],
+  "artifacts": {
+    "report_html_path": "~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md"
+  }
+}
 ```
 
-Use the **last day of the reported month** for `--data-date` (e.g., `2026-03-31` for the March report), not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"total_spend_curr_month": 48210, "total_ad_sales_curr_month": 243800,
-   "total_ops_curr_month": 612400, "acos_blended": 19.8,
-   "acos_mom_pct_delta": -1.4, "acos_yoy_pct_delta": -3.2,
-   "tacos_blended": 7.9, "ops_mom_pct_delta": 6.1,
-   "ops_yoy_pct_delta": 14.3, "forecast_beat_pct": 2.7}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "tacos_goal_pct": 8,
-   "reporting_audience": "client",
-   "reporting_voice_lint": "canonical-analytical"}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity). Caller picks `MPR-01` for VC or `MPR-02` for SC — never both:
-  ```json
-  [{"id": "MPR-01", "params": {"seller_id": "113", "curr_month": "2026-03-01", "prior_month": "2026-02-01", "prior_year_month": "2025-03-01"}}]
-  ```
-  ```json
-  // SC alternate (when account_type = SC):
-  [{"id": "MPR-02", "params": {"seller_id": "113", "prior_month_start": "2026-02-01", "current_month_end": "2026-03-31"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/mpr-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = on or ahead of pace (vs forecast / monthly target). `YELLOW` = pacing within 10% of target. `RED` = pacing >10% behind target. `OBSERVATIONAL` = first month for a new account or insufficient prior-year data; no MoM/YoY claims made.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-python3 <plugin>/scripts/compare-sidecars.py --brand-slug [brand-slug] --skill monthly-performance-report
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, metric jump, verdict regression). Surface drift findings in the next month's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
