@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: daily-health-check
 display_name: Daily Advertising Performance Health Check
-version: "0.1.1"
+version: "0.2.0"
 description: >
   Comprehensive daily exception-based analysis of advertising account performance across
   campaign types, objectives, and item groups. Uses percentile-based confidence intervals
@@ -34,7 +34,7 @@ sql_ids:
   - LIB-PT-01   # conditional: only when context.yaml::structural_events includes an active price_test
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
       parallel: [DHC-01, DHC-02, DHC-03, DHC-04, DHC-05, DHC-06, DHC-07, DHC-08, DHC-09, DHC-10, DHC-11, DHC-12]

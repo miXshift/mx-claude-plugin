@@ -246,6 +246,48 @@ queries:
     consumers: [account-cold-start]
     tier: 1
 
+  - id: CS-28
+    file: CS-28.sql
+    purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for cold-start v2.3 enrichment.
+    consumers: [account-cold-start]
+    tier: 1
+    notes: |
+      Expands the CS-06/CS-07 single improvement_pts number into a daily curve
+      shape. Output is reshaped by the cold-start renderer into
+      capture_rate_calibration.daily_settlement_curve.by_campaign_type[CT] and
+      .dow_offset_pts[DOW]. DAYOFWEEK convention: 1=Sun..7=Sat.
+
+  - id: CS-29
+    file: CS-29.sql
+    purpose: Inventory-health historical snapshots for stockout-window detection (trailing 365d, FBA-only).
+    consumers: [account-cold-start]
+    tier: 1
+    notes: |
+      Pre-filtered to "in trouble" rows so the enrichment step only has to group
+      consecutive dates per ASIN to form contiguous OOS windows. Pattern mirrors
+      DHC-12 (live stockout follow-up) with an added historical date range.
+      VC limitation: FBA-only; MFN inventory not tracked.
+
+  - id: CS-30
+    file: CS-30.sql
+    purpose: Daily account-level ad metrics (spend, sales, ACOS, clicks, orders, CVR, CTR) over trailing 365 days.
+    consumers: [account-cold-start]
+    tier: 1
+    notes: |
+      Drives change-point detection on revenue / ACOS / CVR series during
+      cold-start enrichment. Account-type-agnostic (campaignmetric works for
+      both SC and VC).
+
+  - id: CS-31
+    file: CS-31.sql
+    purpose: Account-level converting search-term corpus (trailing 90d) for brand-name typo detection.
+    consumers: [account-cold-start]
+    tier: 1
+    notes: |
+      Cold-start enrichment uses this for Levenshtein 1-2 hits vs brand_terms
+      canonicals/variants. Aggregated to SearchTerm grain; filtered to terms
+      with >=1 attributed order.
+
   - id: ANEG-01
     file: ANEG-01.sql
     purpose: ASIN-target candidates for negation review (lifetime + recent window).

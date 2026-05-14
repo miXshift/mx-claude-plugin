@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: search-term-data-pull
 display_name: ST Data Pull
-version: "1.1.1"
+version: "1.2.0"
 description: >
   Pure data extraction layer for search term analysis. Pulls the window search term report,
   lifetime performance at three granularity levels, existing negatives, and manual ASIN
@@ -23,7 +23,7 @@ sql_ids:
   - STDP-07
 pre_execution:
   enabled: true
-  artifact_path: "tmp/{brand_slug}-{skill_id}-{run_date}.data.json"
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
       parallel: [STDP-01, STDP-02, STDP-03, STDP-04, STDP-05, STDP-06, STDP-07]

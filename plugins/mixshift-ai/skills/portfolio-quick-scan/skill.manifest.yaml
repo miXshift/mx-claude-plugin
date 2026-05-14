@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: portfolio-quick-scan
 display_name: Portfolio Quick Scan
-version: "1.0.1"
+version: "1.1.0"
 description: >
   Multi-account daily triage producing one status card per account answering whether
   platform login is required today. Aggregates daily-health-check sidecars across all
@@ -13,8 +13,7 @@ risk_tier: 2
 allowed_tools: [file_read, file_write]
 side_effect_policy: artifact_write
 review_required: on_non_green
-sql_ids:
-  - UPSTREAM:daily-health-check
+sql_ids: []   # pure aggregator; consumes daily-health-check sidecars via upstream_skills
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type
@@ -43,10 +42,14 @@ trigger_phrases:
   - triage all accounts
   - multi-account check
 notes: >
-  This skill is a pure consumer of per-account daily-health-check sidecars; it runs no
-  DB queries of its own. The UPSTREAM:daily-health-check entry in sql_ids records the
-  sidecar consumption pattern for drift-chain detection.
-  Sidecar is written with --brand-slug portfolio and --run-kind portfolio.
+  This skill is a pure aggregator of per-account daily-health-check sidecars; it runs no
+  DB queries of its own. Drift-chain detection records the consumption as an
+  UPSTREAM:daily-health-check pseudo-entry in the emitted sidecar's sql_calls.
+  Sidecar is written with brand_slug=portfolio and run_kind=portfolio.
+  If a per-account daily-health-check sidecar is missing or stale (>24h), this skill
+  triggers `mixshift prefetch --brand <slug> --skill daily-health-check` in parallel
+  across the affected accounts and then runs the per-account skill model to compose
+  the sidecar before reading it back here.
   Per-account sidecars belong to the per-account daily-health-check skill, not here.
   TACOS-primary accounts do not require a legacy tacos_reference_line; use
   management.tacos_target_pct/tacos_goal_pct from the per-account context.

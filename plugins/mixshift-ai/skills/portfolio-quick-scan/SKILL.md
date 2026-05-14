@@ -46,7 +46,7 @@ Triage check across all configured accounts. One card per account, one verdict p
 Extract the account list. Each entry provides: slug, seller_id, account_type (SC/VC), display_name.
 
 **Step 0c — Load Tier-3 brand context in parallel:**
-For each account in the config, read `shared/clients/<brand-slug>/context.yaml` (validated against `shared/clients/_schema/context.schema.yaml`). Extract per-account, mechanically:
+For each account in the config, read `~/.mixshift/clients/<brand-slug>/context.yaml` (schema-validated via `mixshift brand validate <brand-slug>`). Extract per-account, mechanically:
 - `accounts[].seller_id`, `accounts[].account_type`
 - `management.primary_metric`, `management.acos_target_pct`, `management.tacos_in_bottom_line`, `management.tacos_reference_line`
 - `goals.monthly_revenue_target`, `goals.quarterly_revenue_target`, `goals.report_quarterly_pacing`
@@ -55,28 +55,31 @@ For each account in the config, read `shared/clients/<brand-slug>/context.yaml` 
 - `capture_rate_calibration` (VC accounts only — for Adj. ACOS card line)
 - `delivery.reports_local_dir`
 
-Also read `shared/clients/<brand-slug>/narrative.md` for prose card-line guidance only. Do not extract numbers from this file.
+Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose card-line guidance only. Do not extract numbers from this file.
 
 **Fail closed (per account):** if a given account's `context.yaml` is absent or fails schema validation, render that account's card as an explicit "context missing — run account-cold-start" error card. Do not infer fields from prose. Other accounts continue.
 
 ---
 
-## Parallel Execution Rule (MANDATORY)
+## Data Source: per-account daily-health-check sidecars
 
-This skill covers multiple accounts. All independent queries must fire simultaneously.
+This skill is a **pure aggregator** of per-account `daily-health-check` runs. It does not query the warehouse directly. The per-account skill (daily-health-check) does the heavy lifting via `mixshift prefetch` + the skill model's classification; portfolio-quick-scan reads the resulting sidecars and composes the cross-account view.
 
-**Round 1 — fire all simultaneously:**
-For every account in the config, in a single invocation block:
-- Batch A (campaignmetric: T-1/T-7/T-30 spend, ad sales, ACOS)
-- Batch B (total sales or ordered revenue: T-1/T-7/T-30/MTD)
-- Batch C (anomaly_detection_settings: CI thresholds + pre-computed pacing)
+For each account in the portfolio config (today's data_date = T-1):
 
-If there are 3 accounts, fire 9 queries simultaneously.
+1. Look for the day's daily-health-check sidecar at:
+   ```
+   ~/.mixshift/clients/<brand-slug>/runs/daily-health-check/<data-date>-*.json
+   ```
+   - If multiple exist for the same date (reruns), use the most recent by file mtime.
+2. **If a sidecar for today is missing or older than 24 hours**, trigger the per-account skill via:
+   ```bash
+   mixshift prefetch --brand <brand-slug> --skill daily-health-check --date <YYYY-MM-DD>
+   ```
+   Then run the daily-health-check skill model on that account to compose its sidecar. Only after the per-account sidecar is on disk should you read it from this skill.
+3. **Trigger per-account runs in parallel** — fire all `mixshift prefetch` invocations simultaneously for accounts missing today's sidecar, rather than serializing.
 
-**Round 2 — fire all simultaneously after Round 1 completes:**
-For every account: Batch D (anomaly_detection_MV T-30 daily actuals for CI percentile computation).
-
-Two round trips total, regardless of account count.
+The per-account DHC sidecar carries everything portfolio-quick-scan needs: `verdict`, `headline_metrics` (spend_t1, acos_t1, tacos_t30, pacing_*), `context_snapshot` (account_type, posture, primary_metric), and `structural_events_active`.
 
 ---
 
@@ -234,47 +237,28 @@ accounts:
 
 ---
 
-## SQL Query Patterns
+## No SQL of its own
 
-All queries are parameterized by [SELLER_ID] and [YESTERDAY]. Identical to the daily health check batches — no new queries, reduced scope.
+Portfolio-quick-scan emits no library-SQL itself. All warehouse access happens via per-account `mixshift prefetch --brand <slug> --skill daily-health-check`. Each account's sidecar is the canonical input.
 
-**Batch A:** campaignmetric, all time windows (T-1, T-7, T-30, MTD)
-**Batch B:** business_reports_dpst_date for SC; vendor_sales_manufacturing_asin for VC
-**Batch C:** anomaly_detection_settings
-**Batch D:** anomaly_detection_MV, T-30 daily actuals
-
-Reference: daily health check skill for full query patterns.
-
-No Batch E/F/G (dimensional queries — not needed for triage).
-No keyword-level queries (health check drill-down handles that).
+If you find yourself wanting to query the warehouse directly inside portfolio-quick-scan, that signal probably belongs in the daily-health-check skill instead — adding it there keeps the per-account drill-down and the portfolio view in lockstep.
 
 ---
 
 ## Delivery
 
-**Deploy pattern:** Prepend newest run at top, preserve all prior runs below (accumulating log, NOT full-replace).
+Compose the report as **markdown** (default) or HTML (if the user explicitly requests HTML).
 
-Write the report and archive it:
-```bash
-python3 scripts/report-append.py \
-  --report-html /tmp/portfolio-reports/portfolio-scan.html \
-  --skill portfolio-quick-scan \
-  --brand-slug portfolio \
-  --data-date YYYY-MM-DD \
-  --mode prepend
+Save to:
+```
+~/.mixshift/portfolio/reports/<YYYY-MM-DD>/portfolio-scan.md
 ```
 
+If the portfolio config provides `delivery.reports_local_dir`, honor that override. Newer scans are written as new files (one per day); the prior day's scan remains on disk for retrospective comparison.
 
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug portfolio \
-    --skill portfolio-quick-scan
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
+Drift comparison against the prior portfolio sidecar will be handled by `mixshift sidecar compare` (not yet implemented). For now, manually inspect prior sidecars under `~/.mixshift/clients/portfolio/runs/portfolio-quick-scan/` before delivery if you suspect roster or verdict drift.
 
-**Run archive:** Write summary JSON to runs archive:
+**Per-account summary JSON** (optional, alongside the report):
 ```json
 {
   "data_date": "YYYY-MM-DD",
@@ -344,61 +328,53 @@ This skill does not replace the daily health check. It replaces manual scanning 
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's portfolio-level inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift at the portfolio level (account roster changed, systemic shift toward RED, verdict regression). Sidecars live at `<plugin>/runs/portfolio/portfolio-quick-scan/<data-date>-<run-id>.json`. Use the literal slug `portfolio` for `--brand-slug` (this skill is the only one that emits a portfolio-level sidecar; per-account sidecars belong to the per-account skills it triggers).
+After delivery, write a portfolio-level sidecar capturing this run's roster, verdict counts, and flagged accounts. Sidecars live at `~/.mixshift/clients/portfolio/runs/portfolio-quick-scan/<data-date>-<run-id>.json`. Use the literal slug `portfolio` for `brand_slug` — this is the only skill that emits a portfolio-level sidecar; per-account sidecars belong to the per-account skills it triggers. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **data date** (T-1; the day the scan answers "do I need to log in today?") for `data_date`, not the wall-clock run time.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill portfolio-quick-scan \
-  --skill-version 1.0.0 \
-  --brand-slug portfolio \
-  --run-kind portfolio \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/pqs-headline.json \
-  --context-snapshot-json /tmp/pqs-context-snapshot.json \
-  --sql-calls-json /tmp/pqs-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/portfolio-reports/portfolio-scan.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/pqs-sidecar-input.json
+{
+  "skill": "portfolio-quick-scan",
+  "skill_version": "1.1.0",
+  "brand_slug": "portfolio",
+  "run_kind": "portfolio",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "portfolio_account_count": 0,
+    "portfolio_config_path": "~/.mixshift/portfolio.yaml",
+    "account_type_mix": {"SC": 0, "VC": 0},
+    "flagged_account_slugs": []
+  },
+  "headline_metrics": {
+    "accounts_scanned": 0,
+    "green_count": 0,
+    "yellow_count": 0,
+    "red_count": 0,
+    "total_spend_today": 0
+  },
+  "sql_calls": [
+    {"id": "UPSTREAM:daily-health-check",
+     "params": {"sidecar_glob": "runs/*/daily-health-check/YYYY-MM-DD-*.json",
+                "consumed_metrics": ["verdict", "spend_t1", "acos_t1", "tacos_t30", "data_lag_pct"],
+                "accounts_in_scope": 0, "data_date": "YYYY-MM-DD"}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-**`--run-kind portfolio` is required** for this skill. It tells `write-sidecar.py` to validate the portfolio-shape `context-snapshot-json` (no per-account sentinel hacks) and downstream comparators to apply portfolio drift rules.
+Then write it:
 
-Use the run wall-clock date (the day the scan answers "do I need to log into the platform today?") for `--data-date`.
-
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`). `flagged_accounts` is a JSON array of brand slugs that came back YELLOW or RED:
-  ```json
-  {"accounts_scanned": 7, "green_count": 4,
-   "yellow_count": 2, "red_count": 1,
-   "total_spend_today": 8420,
-   "flagged_accounts": ["example-brand", "acme-foods", "northwind"]}
-  ```
-
-- **`context-snapshot-json`** — portfolio scan does not have a single per-account context.yaml; it iterates. With `--run-kind portfolio`, the schema requires `portfolio_account_count` and `portfolio_config_path`. Optional but recommended: `account_type_mix` (so cross-run drift surfaces a SC↔VC roster shift) and `flagged_account_slugs` (so cross-run drift surfaces *which* accounts trip):
-  ```json
-  {"portfolio_account_count": 7,
-   "portfolio_config_path": "shared/portfolio.yaml",
-   "account_type_mix": {"SC": 3, "VC": 4},
-   "flagged_account_slugs": ["example-brand", "acme-foods"]}
-  ```
-
-- **`sql-calls-json`** — portfolio-quick-scan is a pure consumer; it aggregates per-account `daily-health-check` sidecars and runs no SQL itself. Record the consumption as a structured `UPSTREAM:<skill-name>` pseudo-call so the comparator can chain drift detection across skills (if DHC's query inventory or verdict logic shifts, the portfolio scan inherits the signal).
-  ```json
-  [{"id": "UPSTREAM:daily-health-check",
-    "params": {"sidecar_glob": "runs/*/daily-health-check/2026-04-25-*.json",
-               "consumed_metrics": ["verdict", "spend_t1", "acos_t1", "data_lag_pct"],
-               "accounts_in_scope": 7, "data_date": "2026-04-25"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/pqs-sidecar-input.json
+```
 
 **Verdict rule (portfolio-level):** `GREEN` = all accounts GREEN or YELLOW (no intervention required at the portfolio level today). `YELLOW` = 1–2 accounts RED (per-account drill-downs required, but not a systemic issue). `RED` = ≥3 accounts RED, or a systemic issue spans multiple accounts (e.g., a shared structural event, a vendor-wide data lag). `OBSERVATIONAL` = portfolio config incomplete or several accounts in provisional history tier — verdict suspended.
 
-After writing, run the comparator to surface drift against the prior portfolio scan:
-
-```bash
-python3 <plugin>/scripts/compare-sidecars.py --brand-slug portfolio --skill portfolio-quick-scan
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (account roster changed, RED count jumped, flagged-accounts list changed materially, verdict regression). Surface drift findings on the portfolio scan header tomorrow, not silently.
+`mixshift sidecar compare` will surface drift against the prior portfolio scan once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 

@@ -32,18 +32,18 @@ Complete this checklist before Step 1. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — daily-health-check — <brand> — <date>
-[ ] context snapshot loaded: tmp/<brand>-daily-health-check-<date>.context.md
-    (fallback: shared/clients/<brand>/context.yaml — extract required fields manually)
+[ ] context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (via `mixshift brand validate <brand>`)
+    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       management.primary_metric, management.acos_target_pct, management.attribution_window_days
       goals.monthly_total_sales_target, goals.tacos_goal_pct
       posture.stance, posture.multiplier
       sub_brands, campaign_structure.naming_pattern
-[ ] Data artifact present: tmp/<brand>-daily-health-check-<date>.data.md (or .data.json)
+[ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/daily-health-check/<date>/data.md (or data.json)
 [ ] DHC-04 (anomaly_detection_settings) present in artifact with non-null thresholds
     *** HARD GATE: if absent or thresholds null, STOP. Cannot compute CI. ***
-[ ] Prior-run sidecar loaded: tmp/<brand>-daily-health-check-prior-run.json
+[ ] Prior-run sidecar loaded: ~/.mixshift/clients/<brand>/runs/daily-health-check/<latest>.json
     (if absent: continue — no baseline yet; note in report header)
 [ ] No active escalation conditions:
       - context stale > 7 days → surface warning, do not block
@@ -60,11 +60,11 @@ Run this skill to get a comprehensive daily exception-based analysis of advertis
 
 Before executing, you need:
 
-1. **Tier-3 brand context directory** at `<plugin>/shared/clients/<brand-slug>/`:
+1. **Tier-3 brand context directory** at `~/.mixshift/clients/<brand-slug>/`:
    - `context.yaml` — mechanical truth (SellerIDs, account_type, ACOS/TACOS targets, capture-rate calibration, structural events, posture, campaign_structure, sub-brands, goals)
    - `narrative.md` — interpretive prose (positioning, management history, per-skill guidance)
    - `corpora/` — ASIN lists if needed
-   - Schema source of truth: `shared/clients/_schema/context.schema.yaml`. Validate with `scripts/validate-context.py` before any skill run.
+   - Schema source of truth: the Zod schema in the harness. Validate with `mixshift brand validate <brand-slug>` before any skill run.
 2. **Access to MySQL database** with advertising metrics tables (campaignmetric, business_reports_dpst_date for SC; vendor_sales_manufacturing_asin for VC; anomaly_detection_settings; anomaly_detection_MV)
 3. **Account configuration** drawn from `context.yaml` — never hardcode
 
@@ -76,9 +76,9 @@ If `context.yaml` is missing or fails validation, run the account-cold-start ski
 
 Read these sources simultaneously:
 1. This SKILL.md (you are reading now)
-2. **`plugins/mixshift-ai/tmp/<brand-slug>-daily-health-check-<run_date>.context.md`** — compact context snapshot pre-extracted by the pre-fetch script. Contains only the fields this skill consumes: `seller_id`, `account_type`, `primary_metric`, `acos_target_pct`, `attribution_window_days`, `capture_rate_calibration`, `goals`, `structural_events`, `posture.stance`, `posture.multiplier`, `sub_brands`, `campaign_structure.naming_pattern`, `delivery.report_url`, `delivery.archive_dir`. If absent, fall back to reading `shared/clients/<brand-slug>/context.yaml` directly and extracting those fields.
-3. **`plugins/mixshift-ai/tmp/<brand-slug>-daily-health-check-prior-run.json`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip — no baseline yet.
-4. `shared/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
+2. **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Contains only the fields this skill consumes: `seller_id`, `account_type`, `primary_metric`, `acos_target_pct`, `attribution_window_days`, `capture_rate_calibration`, `goals`, `structural_events`, `posture.stance`, `posture.multiplier`, `sub_brands`, `campaign_structure.naming_pattern`, `delivery.report_url`, `delivery.archive_dir`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly and extracting those fields.
+3. **`~/.mixshift/clients/<brand-slug>/runs/daily-health-check/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip — no baseline yet.
+4. `~/.mixshift/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
 
 **Fail closed:** if the context snapshot is absent AND `context.yaml` is absent or missing `account_type`/`acos_target_pct`, stop and direct user to cold-start. Do not infer from prose.
 
@@ -111,7 +111,7 @@ Do not mix sources or discover the path mid-run. If account type is missing, sto
 
 Read the data artifact — **prefer the `.md` file** (pre-formatted markdown tables, no parsing overhead):
 ```
-plugins/mixshift-ai/tmp/<brand-slug>-daily-health-check-<run_date>.data.md
+~/.mixshift/clients/<brand-slug>/runs/daily-health-check/<run_date>/data.md
 ```
 Fallback to `.data.json` only if the `.md` file is absent.
 
@@ -132,12 +132,11 @@ This file contains pre-executed results for all queries, keyed by query ID:
 
 All queries share the join key: `(SellerID, date)` at account level; dimensional queries use `(SellerID, CampaignName/Objective/ItemGroup, date)` as appropriate.
 
-**If the artifact is missing:** Run the pre-fetch script now — do not stop and ask the user:
+**If the artifact is missing:** Run prefetch now — do not stop and ask the user:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill daily-health-check --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill daily-health-check --date <YYYY-MM-DD>
 ```
-Use brand-slug derived from the brand context path and today's date as run_date. Wait for it to complete (it will print "Ready. Run the skill now."), then read the artifact and continue.
+Use brand-slug derived from the brand context path and today's date as run_date. Wait for completion, then read the artifact and continue.
 
 **Critical:** If DHC-04 (Anomaly Detection Settings) is absent or thresholds are null, stop immediately. Log the error and do not proceed. You cannot compute CI without these thresholds.
 
@@ -388,87 +387,86 @@ Before delivering output:
 
 ### Step 13: Deliver Output
 
-Write the report HTML and archive it:
-```bash
-python3 scripts/report-append.py \
-  --report-html /tmp/[brand]-reports/health-check.html \
-  --skill daily-health-check \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD
+Compose the report as **markdown** (default) or HTML (if the user explicitly requests HTML).
+
+Save the report to the brand's local reports directory using the Write tool:
 ```
-
-The script writes the file in place and archives a dated copy to `runs/[brand-slug]/daily-health-check/`.
-
-
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill daily-health-check
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
+~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM-DD>/health-check.md
 ```
+(or `.html` if HTML was requested.) If `context.yaml::delivery.reports_local_dir` is set, save there instead — honor that override.
+
+Drift comparison against the prior sidecar will be handled by `mixshift sidecar compare` (not yet implemented). For now, you can manually inspect prior sidecars under `~/.mixshift/clients/<brand-slug>/runs/daily-health-check/` to spot config / verdict drift before delivering.
 
 ### Step 14: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to context.yaml, dropped queries, metric jumps, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/daily-health-check/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline outputs. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/daily-health-check/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Compose the input JSON (write to a temp file, then invoke the harness). Pick DHC-02 for SC OR DHC-03 for VC in sql_calls — never both. DHC-09 (sub-brand) is conditional on `sub_brands` segmentation. LIB-PT-01 is conditional on an active price_test in `structural_events`:
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill daily-health-check \
-  --skill-version 1.4.0 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/dhc-headline.json \
-  --context-snapshot-json /tmp/dhc-context-snapshot.json \
-  --sql-calls-json /tmp/dhc-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/health-check.html \
-  --history-tier tier-30
+```jsonc
+// /tmp/dhc-sidecar-input.json
+{
+  "skill": "daily-health-check",
+  "skill_version": "0.2.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",   // T-1 (yesterday)
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "history_tier": "provisional|tier-14|tier-30",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS|TACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "tacos_goal_pct": 5,
+    "posture_stance": "scale|efficiency|defend|clear_bleed",
+    "posture_multiplier": 0
+  },
+  "headline_metrics": {
+    "spend_t1": 0,
+    "spend_t7_avg": 0,
+    "spend_t30_avg": 0,
+    "adsales_t1": 0,
+    "acos_t1": 0,
+    "acos_t30": 0,
+    "tacos_t30": 0,
+    "pacing_total_sales": 0,
+    "pacing_acos": 0,
+    "pacing_gap_pct": 0,
+    "upper_ci_spend": 0,
+    "lower_ci_spend": 0
+  },
+  "sql_calls": [
+    {"id": "DHC-01", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD", "month_start": "YYYY-MM-01"}},
+    // Pick ONE: DHC-02 (SC) or DHC-03 (VC) -- never both
+    {"id": "DHC-02", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD"}},
+    {"id": "DHC-04", "params": {"seller_id": 0}},
+    {"id": "DHC-05", "params": {"seller_id": 0, "lookback_days": 30}},
+    {"id": "DHC-06", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD"}},
+    {"id": "DHC-07", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD"}},
+    {"id": "DHC-08", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD"}},
+    {"id": "DHC-10", "params": {"seller_id": 0, "yesterday": "YYYY-MM-DD"}},
+    {"id": "DHC-11", "params": {"seller_id": 0}},
+    {"id": "DHC-12", "params": {"seller_id": 0}}
+    // Optional: DHC-09 when sub_brands segmentation is active
+    // Optional: LIB-PT-01 when structural_events includes an active price_test
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-rendered-output>"
+  }
+}
 ```
 
-**Required JSON inputs:**
+Then write it:
 
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`):
-  ```json
-  {"spend_t1": 412, "spend_t7_avg": 387, "spend_t30_avg": 401,
-   "adsales_t1": 1845, "acos_t1": 22.3, "acos_t30": 19.8,
-   "tacos_t30": 4.2, "pacing_total_sales": 53400,
-   "pacing_acos": 20.1, "pacing_gap_pct": -2.3,
-   "upper_ci_spend": 510, "lower_ci_spend": 280}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "tacos_goal_pct": 5,
-   "posture_stance": "scale", "posture_multiplier": 0.2}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity):
-  ```json
-  [{"id": "DHC-01", "params": {"seller_id": "113", "yesterday": "2026-04-25", "month_start": "2026-04-01"}},
-   {"id": "DHC-03", "params": {"seller_id": "113", "yesterday": "2026-04-25"}},
-   {"id": "DHC-04", "params": {"seller_id": "113"}},
-   {"id": "DHC-05", "params": {"seller_id": "113", "lookback_days": 30}},
-   {"id": "DHC-06", "params": {"seller_id": "113", "yesterday": "2026-04-25"}},
-   {"id": "DHC-07", "params": {"seller_id": "113", "yesterday": "2026-04-25"}},
-   {"id": "DHC-08", "params": {"seller_id": "113", "yesterday": "2026-04-25"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/dhc-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = no intervention required. `YELLOW` = approaching threshold or structural-event-explained anomaly. `RED` = intervention required. `OBSERVATIONAL` = history tier <14 days; no claims made.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-python3 <plugin>/scripts/compare-sidecars.py --brand-slug [brand-slug] --skill daily-health-check
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, metric jump, verdict regression). Surface drift findings in the next day's report header, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 ## Writing Rules
 

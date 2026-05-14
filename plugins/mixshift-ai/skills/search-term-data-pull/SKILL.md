@@ -27,9 +27,9 @@ Pure data extraction. No recommendations, no LLM, no judgment calls. Output is a
 **Step 0 — Load Tier-3 brand context:**
 
 Read the context snapshot, prior run, and narrative:
-- **`plugins/mixshift-ai/tmp/<brand-slug>-search-term-data-pull-<run_date>.context.md`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `acos_target_pct`, `attribution_window_days`, `sub_brands`, `campaign_structure.naming_pattern`, `negation.protected_terms`, `attribution_rule`, `paused_campaigns`. If absent, fall back to reading `shared/clients/<brand-slug>/context.yaml` directly.
-- **`plugins/mixshift-ai/tmp/<brand-slug>-search-term-data-pull-prior-run.json`** — prior run sidecar (~65 lines). If present, use for drift context. If absent, skip.
-- `shared/clients/<brand-slug>/narrative.md` — prose context only. Do not extract numbers from this file. Spend floors and order thresholds come from context.yaml (or downstream-skill defaults), never from prose.
+- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `acos_target_pct`, `attribution_window_days`, `sub_brands`, `campaign_structure.naming_pattern`, `negation.protected_terms`, `attribution_rule`, `paused_campaigns`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+- **`~/.mixshift/clients/<brand-slug>/runs/search-term-data-pull/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context. If absent, skip.
+- `~/.mixshift/clients/<brand-slug>/narrative.md` — prose context only. Do not extract numbers from this file. Spend floors and order thresholds come from context.yaml (or downstream-skill defaults), never from prose.
 
 **Fail closed:** if the context snapshot is absent AND `context.yaml` is absent or fails schema validation, stop and direct user to run the `account-cold-start` skill.
 
@@ -39,7 +39,7 @@ Read the context snapshot, prior run, and narrative:
 
 Read the data artifact — **prefer the `.md` file** (pre-formatted markdown tables, no parsing overhead):
 ```
-plugins/mixshift-ai/tmp/<brand-slug>-search-term-data-pull-<run_date>.data.md
+~/.mixshift/clients/<brand-slug>/runs/search-term-data-pull/<run_date>/data.md
 ```
 Fallback to `.data.json` only if the `.md` file is absent.
 
@@ -54,12 +54,11 @@ This file contains pre-executed results for all queries, keyed by query ID:
 
 All queries share the join key: `(SellerID, SearchTerm/KeywordText, MatchType, CampaignName, AdGroupName)` as appropriate per query.
 
-**If the artifact is missing:** Run the pre-fetch script now — do not stop and ask the user:
+**If the artifact is missing:** Run prefetch now — do not stop and ask the user:
 ```bash
-python3 plugins/mixshift-ai/scripts/pre-fetch-data.py \
-  --skill search-term-data-pull --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill search-term-data-pull --date <YYYY-MM-DD>
 ```
-Use brand-slug derived from the brand context path and today's date as run_date. Wait for it to complete (it will print "Ready. Run the skill now."), then read the artifact and continue.
+Use brand-slug derived from the brand context path and today's date as run_date. Wait for completion, then read the artifact and continue.
 
 ### Step 1a: Apply Masks and Partition Streams
 
@@ -186,68 +185,61 @@ Total execution time (all 5 queries + masking logic): 2-5 minutes depending on a
 
 ## Step: Emit Run Sidecar (canonical, drift-detection input)
 
-After delivery (JSON artifact written to `/tmp/[brand]-st-data-pull.json` or runs archive), write a structured JSON sidecar capturing this run's inputs and headline output counts. This is the input to `scripts/compare-sidecars.py`, which surfaces cross-run drift (config edits to attribution window, dropped queries, sudden row-count drop signaling a query failure or a data-pipeline regression, verdict regression). Sidecars live at `<plugin>/runs/<brand-slug>/search-term-data-pull/<data-date>-<run-id>.json`.
+After delivery, write a structured JSON sidecar capturing this run's inputs and headline output counts. Sidecars live at `~/.mixshift/clients/<brand-slug>/runs/search-term-data-pull/<data-date>-<run-id>.json`. Schema source of truth: `plugins/mixshift-ai/shared/run-sidecar.schema.yaml`.
 
-Schema source of truth: `<plugin>/shared/run-sidecar.schema.yaml`.
+Use the **window end date** for `data_date`, not the run wall-clock date.
 
-```bash
-python3 <plugin>/scripts/write-sidecar.py \
-  --skill search-term-data-pull \
-  --skill-version 1.1 \
-  --brand-slug [brand-slug] \
-  --data-date YYYY-MM-DD \
-  --metrics-json /tmp/stdp-headline.json \
-  --context-snapshot-json /tmp/stdp-context-snapshot.json \
-  --sql-calls-json /tmp/stdp-sql-calls.json \
-  --verdict GREEN|YELLOW|RED|OBSERVATIONAL \
-  --report-html /tmp/[brand]-reports/st-data-pull-summary.html
+Compose the input JSON (write to a temp file, then invoke the harness):
+
+```jsonc
+// /tmp/stdp-sidecar-input.json
+{
+  "skill": "search-term-data-pull",
+  "skill_version": "1.2.0",
+  "brand_slug": "<brand-slug>",
+  "run_kind": "per_account",
+  "data_date": "YYYY-MM-DD",
+  "verdict": "GREEN|YELLOW|RED|OBSERVATIONAL",
+  "context_snapshot": {
+    "account_type": "SC|VC",
+    "seller_id": 0,
+    "primary_metric": "ACOS",
+    "acos_target_pct": 20,
+    "attribution_window_days": 14,
+    "campaign_naming_pattern_present": true,
+    "sub_brands_count": 0
+  },
+  "headline_metrics": {
+    "terms_pulled_window": 0,
+    "terms_pulled_lifetime": 0,
+    "existing_negatives_count": 0,
+    "manual_asin_targets_count": 0,
+    "dedup_ratio": 0
+  },
+  "sql_calls": [
+    {"id": "STDP-01", "params": {"seller_id": 0, "window_start": "YYYY-MM-DD", "window_end": "YYYY-MM-DD"}},
+    {"id": "STDP-02", "params": {"seller_id": 0}},
+    {"id": "STDP-03", "params": {"seller_id": 0}},
+    {"id": "STDP-04", "params": {"seller_id": 0}},
+    {"id": "STDP-05", "params": {"seller_id": 0}},
+    {"id": "STDP-06", "params": {"seller_id": 0}},
+    {"id": "STDP-07", "params": {"seller_id": 0}}
+  ],
+  "artifacts": {
+    "report_html_path": "<path-to-data.md-or-rendered-summary>"
+  }
+}
 ```
 
-Use the **window end date** for `--data-date`, not the run wall-clock date.
+Then write it:
 
-**Required JSON inputs:**
-
-- **`metrics-json`** — emit numeric values only (no `$`, no `%`). `dedup_ratio` is the share of stream2 rows suppressed by the manual-targets dedup mask:
-  ```json
-  {"terms_pulled_window": 4820, "terms_pulled_lifetime": 18240,
-   "existing_negatives_count": 312, "manual_asin_targets_count": 84,
-   "dedup_ratio": 0.041}
-  ```
-
-- **`context-snapshot-json`** — record only the `context.yaml` fields you actually consumed in this run:
-  ```json
-  {"account_type": "VC", "seller_id": "113",
-   "primary_metric": "ACOS", "acos_target_pct": 20,
-   "attribution_window_days": 14,
-   "campaign_naming_pattern_present": true,
-   "sub_brands_count": 4}
-  ```
-
-- **`sql-calls-json`** — list every library query invoked, with the exact params used (params get hashed for cross-run identity). The full STDP-01..07 inventory is the canonical batch for this skill:
-  ```json
-  [{"id": "STDP-01", "params": {"seller_id": "113", "window_start": "2026-03-26", "window_end": "2026-04-25"}},
-   {"id": "STDP-02", "params": {"seller_id": "113"}},
-   {"id": "STDP-03", "params": {"seller_id": "113"}},
-   {"id": "STDP-04", "params": {"seller_id": "113"}},
-   {"id": "STDP-05", "params": {"seller_id": "113"}},
-   {"id": "STDP-06", "params": {"seller_id": "113"}},
-   {"id": "STDP-07", "params": {"seller_id": "113"}}]
-  ```
+```bash
+mixshift sidecar write --input-file /tmp/stdp-sidecar-input.json
+```
 
 **Verdict rule:** `GREEN` = successful pull, all 7 queries returned, row counts in expected band for this account. `YELLOW` = row counts <10% of typical for this account (data lag suspected; downstream skills should hold). `RED` = a query failed or returned empty when prior runs were non-empty (pipeline regression — escalate before downstream skills run on a partial dataset). `OBSERVATIONAL` = first pull for the account; no historical band yet.
 
-After writing, run the comparator to surface drift against the prior run:
-
-```bash
-# Post-delivery: drift check against prior sidecar
-python3 scripts/compare-sidecars.py \
-    --brand-slug [brand-slug] \
-    --skill search-term-data-pull
-# Exits 0 if clean, 1 if drift detected (config change, metric jump, verdict regression).
-# Review drift output before closing the run. Drift is not blocking by default.
-```
-
-Exit 0 = no drift. Exit 1 = drift detected (config edit, query dropped, row-count jump, verdict regression). Surface drift findings before downstream skills consume the artifact, not silently.
+`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 ---
 
