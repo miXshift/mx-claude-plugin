@@ -67,7 +67,7 @@ Same functions, two transports. CLI for today (Bash-invokable). MCP for the futu
 ## Directory layout
 
 ```
-plugins/mixshift-amazon-ppc/
+plugins/mixshift-ai/
   harness/                              ← new top-level
     package.json                        ← workspace, scripts, deps
     tsconfig.json

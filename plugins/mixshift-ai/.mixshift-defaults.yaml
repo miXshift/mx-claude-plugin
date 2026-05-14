@@ -1,0 +1,28 @@
+# Plugin-shipped defaults for the mixshift-ai plugin.
+#
+# These are MixShift deployment values that every user gets out of the box.
+# They are committed to the repository and ship with plugin releases.
+#
+# Users can override any value:
+#   - Via env var (e.g. MIXSHIFT_IP_WHITELIST_WEBHOOK)
+#   - In ~/.mixshift/profile.yaml (auth.ip_whitelist_webhook, etc.)
+#   - Via CLI flag (--webhook-url, ...)
+#
+# Resolution priority: CLI flag > env var > profile > this file.
+
+schema_version: 1
+
+# Discord webhook used by `mixshift auth setup` when a user's IP needs to be
+# whitelisted on the MixShift warehouse. The webhook posts a structured
+# message to the MixShift ops channel; an operator manually grants access
+# (or — future — an automated approver runs against this channel).
+auth:
+  ip_whitelist_webhook: https://discordapp.com/api/webhooks/1504152069857349722/p5eAbkyhIVFGRr9YAScYb8O82OwdqRITwsWaLx7XVgo-eMfMwyB3HtYnRhgCixyc52ZQ
+  public_ip_lookup_url: https://api.ipify.org?format=json
+
+# Telemetry destination (Supabase endpoint, populated once the project is set
+# up). When empty, telemetry events are buffered locally but not flushed.
+telemetry:
+  endpoint: ""
+  batch_size: 50
+  flush_interval_ms: 60000

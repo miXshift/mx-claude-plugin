@@ -1,6 +1,6 @@
 # mx-claude-plugin
 
-A Claude Code plugin for Amazon PPC account management, built by [MixShift](https://mixshift.ai).
+A Claude Code + Cowork plugin for MixShift customers — analytical skills for Amazon advertising and retail operations, built by [MixShift](https://mixshift.ai).
 
 **Status:** Pre-beta. Active productization. Not yet ready for general install.
 
@@ -8,7 +8,7 @@ A Claude Code plugin for Amazon PPC account management, built by [MixShift](http
 
 ## What this is
 
-A Claude Code plugin (`mixshift-amazon-ppc`) that adds 13 skills for managing Amazon Sponsored Products, Sponsored Brands, and Vendor Central advertising accounts:
+A plugin (`mixshift-ai`) that ships analytical skills for MixShift customers. The initial release covers Amazon advertising — 13 skills for managing Amazon Sponsored Products, Sponsored Brands, and Vendor Central accounts:
 
 - **Daily** — `daily-health-check`, `runaway-spend-check`, `portfolio-quick-scan`
 - **Bid management** — `keyword-bid-health`

@@ -8,14 +8,14 @@
   },
   "plugins": [
     {
-      "name": "mixshift-amazon-ppc",
-      "source": "./plugins/mixshift-amazon-ppc",
-      "description": "Amazon PPC optimization toolkit — daily health checks, keyword bid management, search term negation, harvest extraction, and monthly reporting.",
+      "name": "mixshift-ai",
+      "source": "./plugins/mixshift-ai",
+      "description": "MixShift AI skills for Amazon advertising and retail operations. Initial release: PPC optimization (daily health, keyword bid management, search term negation, harvest, monthly reporting).",
       "version": "0.1.0",
       "author": {
         "name": "MixShift"
       },
-      "keywords": ["amazon", "ppc", "advertising", "acos", "keywords", "negation"],
+      "keywords": ["mixshift", "ai", "amazon", "ppc", "advertising", "acos", "retail", "ads"],
       "category": "Advertising"
     }
   ]
