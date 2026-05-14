@@ -312,21 +312,32 @@ function renderTableList(
   if (tables.length === 0) {
     return '\nNo tables in catalog. Check shared/data-tables.yaml.\n';
   }
-  const lines: string[] = [];
-  let lastCategory = '';
+  // Group tables by category, preserving insertion order within each group.
+  const order = ['ad_metrics', 'ops_revenue', 'inventory', 'dimensional', 'other'];
+  const byCategory = new Map<string, typeof tables>();
   for (const t of tables) {
-    if (t.category !== lastCategory) {
-      lines.push('');
-      lines.push(`## ${t.category}`);
-      lastCategory = t.category;
+    const list = byCategory.get(t.category) ?? [];
+    list.push(t);
+    byCategory.set(t.category, list);
+  }
+  const sortedCategories = [
+    ...order.filter((c) => byCategory.has(c)),
+    ...[...byCategory.keys()].filter((c) => !order.includes(c)),
+  ];
+
+  const lines: string[] = [];
+  for (const cat of sortedCategories) {
+    lines.push('');
+    lines.push(`## ${cat}`);
+    for (const t of byCategory.get(cat)!) {
+      const scoping = [
+        t.requires_seller_id ? 'needs --seller-id' : '',
+        t.time_series ? 'time-series' : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
+      lines.push(`- \`${t.name}\`  —  ${t.description}` + (scoping ? `  *(${scoping})*` : ''));
     }
-    const scoping = [
-      t.requires_seller_id ? 'needs --seller-id' : '',
-      t.time_series ? 'time-series' : '',
-    ]
-      .filter(Boolean)
-      .join(', ');
-    lines.push(`- \`${t.name}\`  —  ${t.description}` + (scoping ? `  *(${scoping})*` : ''));
   }
   return lines.join('\n');
 }

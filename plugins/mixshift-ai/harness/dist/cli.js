@@ -48259,19 +48259,28 @@ function renderTableList(tables) {
   if (tables.length === 0) {
     return "\nNo tables in catalog. Check shared/data-tables.yaml.\n";
   }
-  const lines = [];
-  let lastCategory = "";
+  const order = ["ad_metrics", "ops_revenue", "inventory", "dimensional", "other"];
+  const byCategory = /* @__PURE__ */ new Map();
   for (const t of tables) {
-    if (t.category !== lastCategory) {
-      lines.push("");
-      lines.push(`## ${t.category}`);
-      lastCategory = t.category;
+    const list = byCategory.get(t.category) ?? [];
+    list.push(t);
+    byCategory.set(t.category, list);
+  }
+  const sortedCategories = [
+    ...order.filter((c) => byCategory.has(c)),
+    ...[...byCategory.keys()].filter((c) => !order.includes(c))
+  ];
+  const lines = [];
+  for (const cat of sortedCategories) {
+    lines.push("");
+    lines.push(`## ${cat}`);
+    for (const t of byCategory.get(cat)) {
+      const scoping = [
+        t.requires_seller_id ? "needs --seller-id" : "",
+        t.time_series ? "time-series" : ""
+      ].filter(Boolean).join(", ");
+      lines.push(`- \`${t.name}\`  \u2014  ${t.description}` + (scoping ? `  *(${scoping})*` : ""));
     }
-    const scoping = [
-      t.requires_seller_id ? "needs --seller-id" : "",
-      t.time_series ? "time-series" : ""
-    ].filter(Boolean).join(", ");
-    lines.push(`- \`${t.name}\`  \u2014  ${t.description}` + (scoping ? `  *(${scoping})*` : ""));
   }
   return lines.join("\n");
 }

@@ -1,119 +1,353 @@
 # Curated catalog of warehouse tables that the `data-explore` skill knows
-# how to talk to. This is a subset of `shared/tables.yaml` — the latter is
-# the full schema dump used for drift checking; this file annotates the
-# subset that's useful to end users with descriptions, categories, and
-# scoping hints (seller-id requirement, time-series flag, etc.).
+# how to talk to. This is a subset of `shared/tables.yaml` (the full
+# schema dump used for drift checking); this file annotates each table
+# with a description, category, and scoping hints (seller-id requirement,
+# time-series flag, date column).
 #
-# Adding a table: pick a category, write a one-line description, mark
-# whether it requires a seller-id filter (most large tables do), and
-# whether it's time-series. The skill uses these flags to nudge users
-# toward filtered queries on big tables.
+# Source of truth for canonical tables: "MixShift Data Dictionary v1.1"
+# (sheets: Ad API tables, Retail tables, Table Definitions). Tables added
+# here have been cross-referenced against real sample queries.
+#
+# `_3mo` and `_archive` variants exist for most metric tables (see the
+# data dictionary). They're not surfaced here by default — users who
+# need historical data over the last 90 days hit `_3mo`; archive is
+# typically not user-accessible. Add them to the catalog if a user
+# workflow needs them.
 
 schema_version: 1
 
 tables:
-  # ---------------- Ad metrics ----------------
+  # ---------------------------------------------------------------------
+  # Ad metrics — Sponsored Ads (SP, SB, SD)
+  # ---------------------------------------------------------------------
 
   campaignmetric:
-    description: "Campaign-level daily metrics: spend, sales, orders, ACOS. Source of truth for ad performance."
+    description: "Campaign-level daily ad metrics: spend, sales, orders, ACOS, impressions, clicks. Source of truth for ad performance reporting. Spans Sponsored Products, Sponsored Brands, Sponsored Display."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  adgroupmetric:
+    description: "Ad-group-level daily ad metrics. Same fields as campaignmetric, one level deeper. Joins to adgroup for DefaultBid + naming."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  keywordmetric:
+    description: "Keyword-level daily metrics including SearchTerm. Spans Sponsored Products + Sponsored Brands keywords (not product attribute targets — see targetexpressionsmetric for those)."
     category: ad_metrics
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
   keywordtargetingmetric:
-    description: "Keyword-level daily metrics: spend, clicks, impressions, conversions per keyword."
+    description: "Proprietary MixShift table stacking keyword + product attribute target data. Single source for all PPC targeting across SP, SB, SD at search-term level. Use this when you want a unified view of keywords and targets together."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  targetexpressionsmetric:
+    description: "Product-attribute-target metrics including SearchTerm. SP + SB + SD product targeting. Counterpart to keywordmetric for non-keyword targeting."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  productadmetric:
+    description: "Product-ad-level (ASIN/SKU) metrics for Sponsored Products + Sponsored Display. Equivalent to Amazon's 'Advertised Product' report. Includes attributed sales for the advertised ASIN. Use this for ASIN-level ad reporting."
     category: ad_metrics
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
   asinmetric:
-    description: "ASIN-level ad performance daily metrics."
+    description: "Product-ad-level (ASIN/SKU) metrics including SD remarketing tactic. Counterpart to productadmetric — Amazon's 'Purchased Product' report. Includes attributed sales for purchased ASIN, not just advertised."
     category: ad_metrics
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
-  searchtermmetric:
-    description: "Search-term level daily performance (what customers actually typed)."
+  sponsoredbrandsmetric:
+    description: "Sponsored-Brands-specific fields at keyword/target level: new-to-brand (NTB) orders/sales/units, detail page views. Pair with campaignmetric where CampaignType='headlineSearch'."
     category: ad_metrics
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
-  # ---------------- Ops revenue ----------------
+  sellermonthmetric:
+    description: "Monthly-rolled-up performance across SP, SB, SD per seller. US and CA marketplaces only. Use for fast month-level reporting without aggregating campaignmetric."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: true
+
+  # ---------------------------------------------------------------------
+  # Ad dimensional (metadata)
+  # ---------------------------------------------------------------------
+
+  campaign:
+    description: "Campaign metadata: CampaignName, CampaignType (sponsoredProducts | headlineSearch | sponsoredDisplay | sponsoredTelevision), TargetingType, Objective, ItemGroup, Strategy, PortfolioName, Tag1..Tag4. Join to campaignmetric on ID."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  adgroup:
+    description: "Ad-group metadata: AdGroupName, DefaultBid, BidOptimization, CreativeType. Joins to campaign on CampaignID."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  keyword:
+    description: "Keyword record table: Bid, MatchType, State. Joins to keywordmetric."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  keywordtargeting:
+    description: "Unified keyword + product-target record table including negation entries. Use this to see current targeting state alongside performance."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  targetexpressions:
+    description: "Product-attribute-target record table. Pair with targetexpressionsmetric for performance."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  productad:
+    description: "Product-ad (ASIN/SKU) record table. State, ad SKU, ad ASIN."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  portfolio:
+    description: "Campaign portfolio metadata. PortfolioName, BudgetAmount, BudgetPolicy. Surfaced on campaignmetric via PortfolioID."
+    category: dimensional
+    time_series: false
+    requires_seller_id: true
+
+  seller:
+    description: "Seller account metadata: SellerID, Name (canonical brand), MerchantAlias (Amazon storefront), MerchantType, marketplace, access flags. Drives `mixshift brand discover`."
+    category: dimensional
+    time_series: false
+    requires_seller_id: false
+
+  marketplace:
+    description: "Marketplace ID-to-name mapping (US, CA, UK, etc.) including AmazonMarketPlaceId. Useful for joins when reports include AmazonMarketplaceId only."
+    category: dimensional
+    time_series: false
+    requires_seller_id: false
+
+  currency:
+    description: "FX conversion rates per marketplace (USD, GBP, etc.). Multiply native-currency amounts to normalize multi-marketplace reports."
+    category: dimensional
+    time_series: false
+    requires_seller_id: false
+
+  # ---------------------------------------------------------------------
+  # DSP (Display) advertising
+  # ---------------------------------------------------------------------
+
+  dsp_campaigns_metric:
+    description: "DSP (Display) campaign-level metrics: totalCost, sales14d, purchases14d, unitsSold14d, impressions, click-throughs, dpv14d. Separate from sponsored ads. Filter by advertiserId."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: false
+    date_column: DateTime
+
+  dsp_audience_metric:
+    description: "DSP audience-segment performance."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: false
+    date_column: DateTime
+
+  dsp_products_metric:
+    description: "DSP product-level performance (per-ASIN within DSP campaigns)."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: false
+    date_column: DateTime
+
+  dsp_geography_metric:
+    description: "DSP performance by geography (state / country)."
+    category: ad_metrics
+    time_series: true
+    requires_seller_id: false
+    date_column: DateTime
+
+  # ---------------------------------------------------------------------
+  # Retail revenue (Seller Central — SP-API / MWS)
+  # ---------------------------------------------------------------------
 
   business_reports_dpst_date:
-    description: "Daily total sales by day for Seller Central accounts (SC). Includes B2B breakouts."
+    description: "Daily total sales by day for Seller Central. SalesAmount, UnitsOrdered, Sessions, PageViews, BuyBoxPercentage. Includes B2B breakouts. The canonical SC ops-revenue table."
     category: ops_revenue
     account_types: [SC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
+  business_reports_dpst_sku:
+    description: "Daily SKU/ASIN-level sales for Seller Central. Amount, UnitsOrdered, Sessions, PageViews, BuyBoxPercentage. Join to mws_items for catalog metadata (Brand, ItemGroup, Tags)."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  business_reports_dpst_total:
+    description: "Daily total sales aggregated across all SKUs. Coarsest granularity. Use for portfolio-level dashboards."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  business_reports_dpst_item:
+    description: "Daily item-level sales report (parent-item granularity, distinct from SKU)."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  mws_orders_metric:
+    description: "Order-level data with PurchaseDate, ASIN, SKU, Quantity, ItemPrice, ItemPromotionDiscount, PromotionIds, BuyerEmail, IsRepeatCustomer, OrderStatus, SalesChannel. Filter OrderStatus NOT LIKE 'Cancel%' and SalesChannel NOT LIKE 'Non%' for clean revenue."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: PurchaseDate
+
+  mws_orders_list:
+    description: "Full order list (more detailed than mws_orders_metric). Order-level detail."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+
+  mws_returns_metric:
+    description: "Returns data per order/ASIN."
+    category: ops_revenue
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+
+  # ---------------------------------------------------------------------
+  # Retail revenue (Vendor Central)
+  # ---------------------------------------------------------------------
+
   vendor_sales_manufacturing_asin:
-    description: "Daily ordered revenue + units for Vendor Central accounts (VC), per ASIN."
+    description: "Daily ordered revenue + units for Vendor Central per ASIN (manufacturing view). OrderedRevenueAmount, OrderedUnits, ShippedRevenueAmount, ShippedCogsAmount, ShippedUnits, CustomerReturns. The canonical VC ops-revenue table."
     category: ops_revenue
     account_types: [VC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
-  # ---------------- Dimensional (metadata) ----------------
-
-  seller:
-    description: "Seller account metadata: SellerID, Name (canonical brand), MerchantAlias (storefront), MerchantType, marketplace, access flags."
-    category: dimensional
-    time_series: false
-    requires_seller_id: false
-
-  campaign:
-    description: "Campaign metadata: name, type, objective, item group, status."
-    category: dimensional
-    time_series: false
-    requires_seller_id: true
-
-  adgroup:
-    description: "Ad-group metadata under each campaign."
-    category: dimensional
-    time_series: false
-    requires_seller_id: true
-
-  keywordtargeting:
-    description: "Keyword + targeting state, including negation entries."
-    category: dimensional
-    time_series: false
-    requires_seller_id: true
-
-  # ---------------- Inventory ----------------
-
-  mws_inventory_health:
-    description: "Inventory health snapshots: sellable qty, days of supply, alert flags."
-    category: inventory
+  vendor_sales_sourcing_asin:
+    description: "Daily sales per ASIN (sourcing view — what Amazon shipped to customers). ShippedUnits, ShippedRevenue. Use when you care about what was actually delivered (vs. ordered)."
+    category: ops_revenue
+    account_types: [VC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
-  business_reports_dpst_sku:
-    description: "ASIN/SKU-level daily sales (organic + ad combined)."
+  vendor_traffic_asin_daily:
+    description: "Vendor Central traffic per ASIN per day: GlanceViews (Amazon's page-view equivalent for VC). Use as VC's PageViews proxy."
     category: ops_revenue
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  vendor_inventory_sourcing_asin_daily:
+    description: "Daily Vendor Central inventory: SellableOnHandInventoryUnits, UnsellableOnHandInventoryUnits, OpenPurchaseOrderUnits. For VC replenishment workflows."
+    category: inventory
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  vendor_inventory_manufacturing_asin_daily:
+    description: "Daily Vendor Central inventory (manufacturing view). Counterpart to vendor_inventory_sourcing_asin_daily."
+    category: inventory
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  vendor_demandforecast:
+    description: "Amazon's vendor demand forecast for replenishment planning."
+    category: inventory
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+
+  vendor_netpureproductmargin_asin_daily:
+    description: "Vendor Central margin data per ASIN per day."
+    category: ops_revenue
+    account_types: [VC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+
+  # ---------------------------------------------------------------------
+  # Catalog metadata
+  # ---------------------------------------------------------------------
+
+  mws_items:
+    description: "Seller Central catalog: ASIN, SKU, ItemName, Brand, ItemGroup, ItemNickname, ItemLabel1, ItemLabel2, Tag1..Tag4, ItemCost, LeadTime, TargetACOS, TargetTACOS, FulfillmentChannel, InCatalog. Join business_reports_dpst_sku.ChildASIN to mws_items.ASIN for branded SKU reporting. The 'rich' catalog table."
+    category: dimensional
+    account_types: [SC]
+    time_series: false
+    requires_seller_id: true
+
+  vendor_items:
+    description: "Vendor Central catalog: ASIN, ItemName, ItemGroup, Brand (Amazon's label), CustomBrand (your override), ItemNickname, ItemCost, ItemLabel1..2. Counterpart to mws_items for VC accounts."
+    category: dimensional
+    account_types: [VC]
+    time_series: false
+    requires_seller_id: true
+
+  # ---------------------------------------------------------------------
+  # Inventory (Seller Central)
+  # ---------------------------------------------------------------------
+
+  mws_inventory_history:
+    description: "Daily Seller Central inventory snapshots: FulfillableQuantity, Quantity, InboundShippedQuantity, InboundWorkingQuantity, InboundReceivingQuantity, TotalReservedQuantity, TotalUnfulfillableQuantity, DetailedDisposition (e.g. 'OUT_OF_STOCK'). Use for OOS analysis and replenishment."
+    category: inventory
     account_types: [SC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
 
-  # ---------------- Anomaly detection (read-mostly) ----------------
+  mws_inventory_health:
+    description: "Inventory health snapshots: SellableQuantity, days of supply, alert flags. Roll-up view of mws_inventory_history."
+    category: inventory
+    account_types: [SC]
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
 
-  anomaly_detection_settings:
-    description: "Per-seller CI thresholds (upper/lower sensitivity limits) for spend, sales, ACOS."
-    category: dimensional
+  mws_inventory_fba_estimated_fees:
+    description: "Estimated FBA fees per ASIN."
+    category: inventory
+    account_types: [SC]
     time_series: false
     requires_seller_id: true
 
-  anomaly_detection_MV:
-    description: "Pre-computed T-30 daily actuals + means used for percentile-based CI computation."
-    category: ad_metrics
+  # ---------------------------------------------------------------------
+  # Financial / settlements
+  # ---------------------------------------------------------------------
+
+  spapi_settlement:
+    description: "Amazon settlement reports — deposits, charges, refunds, reimbursements. Use for cash-flow reconciliation."
+    category: ops_revenue
+    account_types: [SC]
     time_series: true
     requires_seller_id: true
-    date_column: Date

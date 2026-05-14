@@ -90,12 +90,36 @@ You:  1. Find Hydrapak's SellerID — either from
 ```
 User: "Export Hydrapak's keyword performance for last week to CSV"
 You:  1. Find SellerID (as above).
-      2. Run `mixshift data export --table keywordtargetingmetric
+      2. Pick the right table:
+         - keywordmetric (SP + SB keywords only)
+         - keywordtargetingmetric (keywords + product targets, unified)
+         - targetexpressionsmetric (product targets only)
+         Default to keywordtargetingmetric for "keyword performance"
+         because it's the unified view.
+      3. Run `mixshift data export --table keywordtargetingmetric
                                    --seller-id <N>
                                    --start <date>
                                    --end <date>
                                    --out <path>`.
-      3. Report the file path + row count.
+      4. Report the file path + row count.
+```
+
+### Pattern 3b — ASIN-level ad performance
+```
+User: "What's spending on Hydrapak's ASINs last 30 days?"
+You:  Use `productadmetric` (Amazon's "Advertised Product" report) or
+      `asinmetric` (Amazon's "Purchased Product" report). The former is
+      more common for "what we spent on these ASINs"; the latter for
+      "what was actually purchased after seeing the ad."
+```
+
+### Pattern 3c — Branded sales reporting
+```
+User: "Show me sales by Brand for Hydrapak last month"
+You:  business_reports_dpst_sku + mws_items join (SC) or
+      vendor_sales_manufacturing_asin + vendor_items join (VC).
+      mws_items.Brand is the canonical brand label. Pattern matches
+      the "Business Reports by SKU with Labels" sample query.
 ```
 
 ### Pattern 4 — Custom query
@@ -160,7 +184,7 @@ These supersede other instructions:
 
 - **Read-only only.** The harness uses read-only MySQL creds; you could not write even if you tried. Don't suggest workflows that require writes.
 - **Never invent SQL syntax for tables you don't see in `mixshift data list-tables`.** If the user asks about a table you don't know, run list-tables first to confirm what's available.
-- **Always pass `--seller-id` for time-series tables** (campaignmetric, keywordtargetingmetric, business_reports_dpst_date, vendor_sales_manufacturing_asin, mws_inventory_health, anomaly_detection_MV). Without it the harness rejects the query because the table is huge.
+- **Always pass `--seller-id` for time-series tables** (campaignmetric, keywordmetric, keywordtargetingmetric, targetexpressionsmetric, productadmetric, asinmetric, business_reports_dpst_date, business_reports_dpst_sku, vendor_sales_manufacturing_asin, vendor_sales_sourcing_asin, mws_orders_metric, mws_inventory_history, mws_inventory_health, etc.). Without it the harness rejects the query because the table is huge.
 - **Don't dump 100-column tables inline.** Always offer a CSV export or column selection.
 - **Don't fake data.** If a query fails, surface the failure. Don't generate plausible-looking rows.
 - **Don't assume timezone.** All dates in CSVs are UTC `YYYY-MM-DD`. Warehouse date columns are interpreted in MySQL's session timezone.
