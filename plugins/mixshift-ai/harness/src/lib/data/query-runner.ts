@@ -64,13 +64,20 @@ export interface RunQueryOptions {
 
 export async function runQuery<Row = Record<string, unknown>>(
   sql: string,
-  params: unknown[] = [],
+  params: unknown[] | Record<string, unknown> = [],
   options: RunQueryOptions = {},
 ): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
   let conn: mysql.Connection | undefined;
   try {
     const creds = await resolveCreds(options);
+
+    // If params is an object (not an array), flip on mysql2's
+    // namedPlaceholders mode so `:name` in SQL gets bound to params[name].
+    // Lists are inlined upstream (see lib/prefetch/substitute.ts), so we
+    // never need positional-mode array expansion here.
+    const useNamed = !Array.isArray(params) && params !== null && typeof params === 'object';
+
     conn = await mysql.createConnection({
       host: creds.host,
       port: creds.port,
@@ -78,12 +85,19 @@ export async function runQuery<Row = Record<string, unknown>>(
       password: creds.password,
       database: creds.database,
       connectTimeout: options.connectTimeoutMs ?? 10_000,
+      namedPlaceholders: useNamed,
     });
     // Statement-level timeout via SET so it applies to this query only.
     const timeoutMs = options.queryTimeoutMs ?? 60_000;
     await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
 
-    const [rows] = await conn.query<RowDataPacket[]>(sql, params);
+    // mysql2's QueryValues type doesn't model object-form params even when
+    // namedPlaceholders is on. Cast through unknown — the runtime accepts
+    // either shape, and we've already verified the shape above.
+    const [rows] = await conn.query<RowDataPacket[]>(
+      sql,
+      params as unknown as unknown[],
+    );
     return {
       ok: true,
       rows: rows as unknown as Row[],

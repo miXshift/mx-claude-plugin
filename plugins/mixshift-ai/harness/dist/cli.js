@@ -508,7 +508,7 @@ var require_help = __commonJS({
           }
           return term;
         }
-        function formatList(textArray) {
+        function formatList2(textArray) {
           return textArray.join("\n").replace(/^/gm, " ".repeat(itemIndentWidth));
         }
         let output = [`Usage: ${helper.commandUsage(cmd)}`, ""];
@@ -526,7 +526,7 @@ var require_help = __commonJS({
           );
         });
         if (argumentList.length > 0) {
-          output = output.concat(["Arguments:", formatList(argumentList), ""]);
+          output = output.concat(["Arguments:", formatList2(argumentList), ""]);
         }
         const optionList = helper.visibleOptions(cmd).map((option) => {
           return formatItem(
@@ -535,7 +535,7 @@ var require_help = __commonJS({
           );
         });
         if (optionList.length > 0) {
-          output = output.concat(["Options:", formatList(optionList), ""]);
+          output = output.concat(["Options:", formatList2(optionList), ""]);
         }
         if (this.showGlobalOptions) {
           const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
@@ -547,7 +547,7 @@ var require_help = __commonJS({
           if (globalOptionList.length > 0) {
             output = output.concat([
               "Global Options:",
-              formatList(globalOptionList),
+              formatList2(globalOptionList),
               ""
             ]);
           }
@@ -559,7 +559,7 @@ var require_help = __commonJS({
           );
         });
         if (commandList.length > 0) {
-          output = output.concat(["Commands:", formatList(commandList), ""]);
+          output = output.concat(["Commands:", formatList2(commandList), ""]);
         }
         return output.join("\n");
       }
@@ -27151,7 +27151,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join4(tree) {
+      function join7(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -27177,7 +27177,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join4(parse3(query2));
+        tree = join7(parse3(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -44794,6 +44794,16 @@ async function validateBrandContext(brandSlug, dataDirOverride) {
   }
   return { ok: true, path: path2, context: result.data };
 }
+async function loadBrandContext(brandSlug, dataDirOverride) {
+  const result = await validateBrandContext(brandSlug, dataDirOverride);
+  if (!result.ok) {
+    throw new Error(
+      `Brand context for "${brandSlug}" failed validation (${result.kind}):
+` + result.errors.map((e) => `  - ${e}`).join("\n")
+    );
+  }
+  return { context: result.context, path: result.path };
+}
 function isFileNotFoundError2(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
@@ -47708,116 +47718,384 @@ function registerValidateCommand(program3) {
   });
 }
 
-// src/commands/prefetch.ts
-function registerPrefetchCommand(program3) {
-  program3.command("prefetch").description("Run SQL batches for a skill and write the data artifact").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier from manifest").option("--date <yyyy-mm-dd>", "data date", todayISO3()).action((opts) => {
-    notYetImplemented("prefetch", opts);
-  });
-}
-function todayISO3() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-}
-
-// src/commands/render.ts
-function registerRenderCommand(program3) {
-  program3.command("render").description("Render skill output via the configured adapter").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier from manifest").requiredOption(
-    "--sidecar-path <path>",
-    "path to the structured sidecar JSON the skill produced"
-  ).option(
-    "--adapter <name>",
-    "override profile default: local-html | inline-markdown | google-doc | csv | terminal"
-  ).option("--date <yyyy-mm-dd>", "data date", todayISO4()).action(
-    (opts) => {
-      notYetImplemented("render", opts);
-    }
-  );
-}
-function todayISO4() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-}
-
-// src/commands/sidecar.ts
-function registerSidecarCommands(program3) {
-  const sidecar = program3.command("sidecar").description("Run sidecar write + drift comparison");
-  sidecar.command("write").description("Write a run sidecar after a skill completes").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier").requiredOption(
-    "--headline-json <path>",
-    "path to the headline JSON the skill produced"
-  ).action(
-    (opts) => {
-      notYetImplemented("sidecar write", opts);
-    }
-  );
-  sidecar.command("compare").description("Drift check this run against the prior run sidecar").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier").action((opts) => {
-    notYetImplemented("sidecar compare", opts);
-  });
-}
-
-// src/commands/ui.ts
-function registerUiCommand(program3) {
-  program3.command("ui").description(
-    "Launch the local web UI for brand management (Claude Code only).\nCowork users should use conversational editing via /mixshift-brand-update."
-  ).option("--port <port>", "local port to bind", "8080").option(
-    "--password <password>",
-    "one-time password (stored in profile.ui_password)"
-  ).action((opts) => {
-    notYetImplemented("ui", opts);
-  });
-}
-
-// src/commands/data.ts
-import { resolve as resolvePath } from "node:path";
-
-// src/lib/data/tables-catalog.ts
-var import_yaml8 = __toESM(require_dist(), 1);
+// src/lib/prefetch/manifest.ts
 import { readFile as readFile6 } from "node:fs/promises";
+var import_yaml8 = __toESM(require_dist(), 1);
+
+// src/lib/prefetch/plugin-root.ts
+import { existsSync, statSync } from "node:fs";
 import { dirname as dirname5, join as join3 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-async function loadTablesCatalog(overridePath) {
-  const candidates = overridePath ? [overridePath] : candidatePaths2();
-  for (const path2 of candidates) {
-    try {
-      const raw = await readFile6(path2, "utf-8");
-      const parsed = (0, import_yaml8.parse)(raw);
-      if (!parsed?.tables) continue;
-      return Object.entries(parsed.tables).map(
-        ([name, meta3]) => normalize(name, meta3)
-      );
-    } catch (err) {
-      if (isFileNotFoundError6(err)) continue;
-      throw err;
-    }
+var cached2;
+function resolvePluginRoot() {
+  if (cached2) return cached2;
+  const envOverride = process.env.MIXSHIFT_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+  if (envOverride && isPluginRoot(envOverride)) {
+    cached2 = envOverride;
+    return envOverride;
   }
-  return [];
-}
-async function describeTable(tableName, overridePath) {
-  const all = await loadTablesCatalog(overridePath);
-  return all.find((t) => t.name === tableName) ?? null;
-}
-function normalize(name, raw) {
-  return {
-    name,
-    description: raw.description ?? "",
-    category: raw.category ?? "other",
-    account_types: raw.account_types,
-    time_series: !!raw.time_series,
-    requires_seller_id: !!raw.requires_seller_id,
-    date_column: raw.date_column
-  };
-}
-function candidatePaths2() {
   const here = dirname5(fileURLToPath2(import.meta.url));
-  const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join3(dir, "shared", "data-tables.yaml"));
+    if (isPluginRoot(dir)) {
+      cached2 = dir;
+      return dir;
+    }
     const parent = dirname5(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  return candidates;
+  throw new Error(
+    `Could not locate the mixshift-ai plugin root (looked for shared/sql-library/catalog.yaml). Walked up from ${here}. If you're running tests, set MIXSHIFT_PLUGIN_ROOT.`
+  );
+}
+function isPluginRoot(dir) {
+  try {
+    const marker = join3(dir, "shared", "sql-library", "catalog.yaml");
+    return existsSync(marker) && statSync(marker).isFile();
+  } catch {
+    return false;
+  }
+}
+function pluginPath(...segments) {
+  return join3(resolvePluginRoot(), ...segments);
+}
+
+// src/lib/prefetch/manifest.ts
+var allowedToolEnum = external_exports.enum([
+  "db_read",
+  "file_read",
+  "file_write",
+  "renderer",
+  "validator",
+  "web_search",
+  "prefetch"
+]);
+var artifactSchema = external_exports.object({
+  name: external_exports.string().min(1),
+  type: external_exports.enum([
+    "report_html",
+    "context_yaml",
+    "narrative_md",
+    "json_artifact",
+    "block_html"
+  ])
+});
+var batchRoundSchema = external_exports.object({
+  round: external_exports.number().int().positive(),
+  parallel: external_exports.array(external_exports.string().min(1)).min(1),
+  notes: external_exports.string().optional()
+});
+var preExecutionSchema = external_exports.object({
+  enabled: external_exports.boolean(),
+  // Default artifact_path uses tokens we substitute at runtime:
+  //   {brand_slug}, {skill_id}, {run_date}
+  artifact_path: external_exports.string().min(1).default("tmp/{brand_slug}-{skill_id}-{run_date}.data.json"),
+  batch_plan: external_exports.array(batchRoundSchema).default([])
+});
+var skillManifestSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  skill_id: external_exports.string().min(1),
+  display_name: external_exports.string().min(1),
+  version: external_exports.string().min(1),
+  description: external_exports.string().min(1),
+  run_kind: external_exports.enum(["per_account", "portfolio"]),
+  cadence: external_exports.enum(["daily", "weekly", "monthly", "on_demand"]),
+  risk_tier: external_exports.union([external_exports.literal(1), external_exports.literal(2), external_exports.literal(3)]),
+  allowed_tools: external_exports.array(allowedToolEnum).default([]),
+  side_effect_policy: external_exports.enum([
+    "none",
+    "artifact_write",
+    "context_write",
+    "recommendation_only"
+  ]),
+  review_required: external_exports.enum(["never", "on_non_green", "always"]),
+  sql_ids: external_exports.array(external_exports.string()).default([]),
+  pre_execution: preExecutionSchema.optional(),
+  required_context_fields: external_exports.array(external_exports.string()).default([]),
+  optional_context_fields: external_exports.array(external_exports.string()).default([]),
+  artifacts: external_exports.array(artifactSchema).default([]),
+  verdict_range: external_exports.array(external_exports.enum(["GREEN", "YELLOW", "RED", "OBSERVATIONAL"])).default([]),
+  pricing_tier: external_exports.enum(["free", "pro", "enterprise"]),
+  trigger_phrases: external_exports.array(external_exports.string()).optional(),
+  upstream_skills: external_exports.array(external_exports.string()).optional(),
+  escalation_conditions: external_exports.array(external_exports.string()).optional(),
+  notes: external_exports.string().optional()
+});
+async function loadSkillManifest(skillId) {
+  const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
+  let raw;
+  try {
+    raw = await readFile6(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError6(err)) {
+      throw new Error(
+        `Skill manifest not found at ${path2}. Known skill IDs are subdirectories under skills/. Check the skill name and try again.`
+      );
+    }
+    throw err;
+  }
+  const parsed = (0, import_yaml8.parse)(raw);
+  const result = skillManifestSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      formatZodError(
+        result.error,
+        `Skill manifest at ${path2} failed schema validation`
+      )
+    );
+  }
+  return result.data;
+}
+function resolveBatchPlan(manifest) {
+  const plan = manifest.pre_execution?.batch_plan ?? [];
+  if (plan.length > 0) {
+    return [...plan].sort((a, b) => a.round - b.round);
+  }
+  if (manifest.sql_ids.length === 0) {
+    return [];
+  }
+  return [
+    { round: 1, parallel: [...manifest.sql_ids], notes: "Default single-round plan" }
+  ];
 }
 function isFileNotFoundError6(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/prefetch/params.ts
+function buildStandardParams(opts) {
+  const { context, runDate, paramOverrides = {} } = opts;
+  if (!isIsoDate(runDate)) {
+    throw new Error(
+      `runDate must be a YYYY-MM-DD string, got "${runDate}".`
+    );
+  }
+  if (context.accounts.length === 0) {
+    throw new Error(
+      `Brand "${context.brand_slug}" has no accounts in context.yaml. Re-run brand discovery / bootstrap.`
+    );
+  }
+  const primary = context.accounts.find((a) => a.role === "primary") ?? context.accounts[0];
+  const sellerIdList = context.accounts.map((a) => Number(a.seller_id));
+  const runDateD = isoToDate(runDate);
+  const yesterday = isoFromDate(addDays(runDateD, -1));
+  const monthStart = isoFromDate(firstOfMonth(runDateD));
+  const priorMonthStart = isoFromDate(firstOfMonth(addMonths(runDateD, -1)));
+  const priorYearMonthStart = isoFromDate(
+    firstOfMonth(addMonths(runDateD, -12))
+  );
+  const standard = {
+    seller_id: Number(primary.seller_id),
+    seller_id_list: sellerIdList,
+    run_date: runDate,
+    yesterday,
+    lookback_days: 30,
+    limit: 1e3,
+    spend_floor: 5,
+    month_start: monthStart,
+    curr_month: monthStart,
+    // legacy alias
+    prior_month: priorMonthStart,
+    prior_year_month: priorYearMonthStart,
+    days_of_supply_threshold: 14
+  };
+  return { ...standard, ...paramOverrides };
+}
+function isIsoDate(s) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+function isoToDate(s) {
+  return /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
+}
+function isoFromDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+function addDays(d, days) {
+  const out = new Date(d.getTime());
+  out.setUTCDate(out.getUTCDate() + days);
+  return out;
+}
+function addMonths(d, months) {
+  const out = new Date(d.getTime());
+  out.setUTCMonth(out.getUTCMonth() + months);
+  return out;
+}
+function firstOfMonth(d) {
+  const out = new Date(d.getTime());
+  out.setUTCDate(1);
+  return out;
+}
+
+// src/lib/prefetch/sql-library.ts
+import { readFile as readFile7 } from "node:fs/promises";
+var import_yaml9 = __toESM(require_dist(), 1);
+var queryEntrySchema = external_exports.object({
+  id: external_exports.string().min(1),
+  file: external_exports.string().min(1),
+  purpose: external_exports.string().min(1),
+  consumers: external_exports.array(external_exports.string()).default([]),
+  tier: external_exports.number().int().min(1).max(3).default(1),
+  notes: external_exports.string().optional()
+});
+var catalogSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  last_updated: external_exports.string().optional(),
+  queries: external_exports.array(queryEntrySchema).min(1)
+});
+var catalogCache;
+async function loadCatalog() {
+  if (catalogCache) return catalogCache;
+  const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
+  let raw;
+  try {
+    raw = await readFile7(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError7(err)) {
+      throw new Error(
+        `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
+      );
+    }
+    throw err;
+  }
+  const parsed = (0, import_yaml9.parse)(raw);
+  const result = catalogSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      formatZodError(result.error, `SQL library catalog at ${path2} is invalid`)
+    );
+  }
+  catalogCache = result.data;
+  return result.data;
+}
+async function getQueryEntry(id) {
+  const cat = await loadCatalog();
+  const entry = cat.queries.find((q) => q.id === id);
+  if (!entry) {
+    throw new Error(
+      `SQL library has no entry for "${id}". Known IDs: ${cat.queries.slice(0, 8).map((q) => q.id).join(", ")}... (${cat.queries.length} total)`
+    );
+  }
+  return entry;
+}
+async function readQuerySql(id) {
+  const entry = await getQueryEntry(id);
+  const path2 = pluginPath("shared", "sql-library", entry.file);
+  let raw;
+  try {
+    raw = await readFile7(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError7(err)) {
+      throw new Error(
+        `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
+      );
+    }
+    throw err;
+  }
+  const lines = raw.split(/\r?\n/);
+  let headerEnd = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line.startsWith("--") || line.trim() === "") {
+      headerEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  const header = lines.slice(0, headerEnd).join("\n");
+  const sql = lines.slice(headerEnd).join("\n").trim();
+  return { id, sql, header };
+}
+function isFileNotFoundError7(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/prefetch/substitute.ts
+function substituteParams(sql, allParams) {
+  let out = sql;
+  const scalarParams = {};
+  for (const [key, value] of Object.entries(allParams)) {
+    if (Array.isArray(value)) {
+      const csv = formatList(key, value);
+      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`, "g");
+      out = out.replace(re, csv);
+    } else {
+      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`);
+      if (re.test(out)) {
+        scalarParams[key] = value;
+      }
+    }
+  }
+  return { sql: out, params: scalarParams };
+}
+function formatList(paramName, values) {
+  if (values.length === 0) {
+    throw new Error(
+      `Param :${paramName} is an empty list. SQL would emit "IN ()", which MySQL rejects. Caller must populate the list or skip the query.`
+    );
+  }
+  const parts = values.map((v, i) => {
+    if (typeof v === "number") {
+      if (!Number.isFinite(v)) {
+        throw new Error(
+          `Param :${paramName}[${i}] is non-finite (${v}). Refusing to inline into SQL.`
+        );
+      }
+      return String(v);
+    }
+    if (typeof v === "string") {
+      return `'${v.replace(/'/g, "''")}'`;
+    }
+    if (typeof v === "bigint") {
+      return v.toString();
+    }
+    throw new Error(
+      `Param :${paramName}[${i}] has unsupported type ${typeof v} (value: ${JSON.stringify(v)}). Lists must be numeric or string.`
+    );
+  });
+  return parts.join(", ");
+}
+function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function findReferencedParams(sql) {
+  const result = /* @__PURE__ */ new Set();
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'" || ch === '"') {
+      const quote2 = ch;
+      i++;
+      while (i < sql.length && sql[i] !== quote2) {
+        if (sql[i] === "\\" && i + 1 < sql.length) {
+          i += 2;
+          continue;
+        }
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === ":" && sql[i + 1] === ":") {
+      i += 2;
+      continue;
+    }
+    if (ch === ":") {
+      let j = i + 1;
+      while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j] ?? "")) j++;
+      if (j > i + 1) {
+        result.add(sql.slice(i + 1, j));
+        i = j;
+        continue;
+      }
+    }
+    i++;
+  }
+  return [...result];
 }
 
 // src/lib/data/query-runner.ts
@@ -47827,17 +48105,22 @@ async function runQuery(sql, params = [], options = {}) {
   let conn;
   try {
     const creds = await resolveCreds2(options);
+    const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
     conn = await import_promise3.default.createConnection({
       host: creds.host,
       port: creds.port,
       user: creds.user,
       password: creds.password,
       database: creds.database,
-      connectTimeout: options.connectTimeoutMs ?? 1e4
+      connectTimeout: options.connectTimeoutMs ?? 1e4,
+      namedPlaceholders: useNamed
     });
     const timeoutMs = options.queryTimeoutMs ?? 6e4;
     await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
-    const [rows] = await conn.query(sql, params);
+    const [rows] = await conn.query(
+      sql,
+      params
+    );
     return {
       ok: true,
       rows,
@@ -47944,6 +48227,650 @@ async function resolveCreds2(options) {
   return credentials.mysql;
 }
 
+// src/lib/prefetch/artifacts.ts
+import { mkdir as mkdir4, writeFile as writeFile4, rename as rename4 } from "node:fs/promises";
+import { dirname as dirname6, join as join4 } from "node:path";
+var DATA_MD_BYTE_CAP = 48 * 1024;
+async function writePrefetchArtifacts(input) {
+  const runDir = resolveRunDir(input);
+  await mkdir4(runDir, { recursive: true });
+  const dataJsonPath = join4(runDir, "data.json");
+  const dataMdPath = join4(runDir, "data.md");
+  const jsonBody = JSON.stringify(
+    {
+      brand_slug: input.brand_slug,
+      skill_id: input.skill_id,
+      run_date: input.run_date,
+      generated_at_utc: (/* @__PURE__ */ new Date()).toISOString(),
+      meta: input.meta ?? {},
+      queries: input.query_outputs.map((q) => ({
+        id: q.id,
+        params: q.params,
+        display_sql: q.display_sql,
+        duration_ms: q.duration_ms,
+        row_count: q.rows.length,
+        rows: q.rows
+      }))
+    },
+    null,
+    2
+  );
+  await writeAtomic2(dataJsonPath, jsonBody);
+  const md = renderDataMarkdown(input);
+  await writeAtomic2(dataMdPath, md);
+  return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
+}
+function resolveRunDir(input) {
+  return join4(
+    resolveDataDir(input.dataDirOverride),
+    "clients",
+    input.brand_slug,
+    "runs",
+    input.skill_id,
+    input.run_date
+  );
+}
+function renderDataMarkdown(input) {
+  const header = [
+    `# Prefetch \u2014 ${input.skill_id} \u2014 ${input.brand_slug}`,
+    "",
+    `- **Run date**: ${input.run_date}`,
+    `- **Generated**: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+    `- **Queries**: ${input.query_outputs.length}`,
+    "",
+    `> Full machine-readable results live alongside this file at \`data.json\`.`,
+    "",
+    "---",
+    ""
+  ].join("\n");
+  let body = "";
+  let truncated = false;
+  for (const q of input.query_outputs) {
+    const section = renderQuerySection(q);
+    if (!truncated && Buffer.byteLength(header + body + section, "utf-8") <= DATA_MD_BYTE_CAP) {
+      body += section;
+    } else {
+      truncated = true;
+      body += `## ${q.id}
+
+_Row data omitted (markdown cap exceeded \u2014 see data.json)._
+
+`;
+    }
+  }
+  if (truncated) {
+    body += `
+> \u26A0\uFE0F Markdown output truncated at ${(DATA_MD_BYTE_CAP / 1024).toFixed(0)} KB. The full row data is available in \`data.json\` \u2014 load that file directly if you need rows that did not fit here.
+`;
+  }
+  return header + body;
+}
+function renderQuerySection(q) {
+  const lines = [];
+  lines.push(`## ${q.id}`);
+  lines.push("");
+  lines.push(`- **Rows**: ${q.rows.length}`);
+  lines.push(`- **Duration**: ${q.duration_ms} ms`);
+  if (Object.keys(q.params).length > 0) {
+    lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
+  }
+  lines.push("");
+  if (q.rows.length === 0) {
+    lines.push("_No rows returned._");
+    lines.push("");
+  } else {
+    lines.push(renderRowsTable(q.rows));
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function renderRowsTable(rows) {
+  if (rows.length === 0) return "";
+  const cols = Array.from(
+    rows.reduce((acc, r) => {
+      for (const k of Object.keys(r)) acc.add(k);
+      return acc;
+    }, /* @__PURE__ */ new Set())
+  );
+  const ROW_LIMIT = 100;
+  const shown = rows.slice(0, ROW_LIMIT);
+  const out = [];
+  out.push(`| ${cols.join(" | ")} |`);
+  out.push(`| ${cols.map(() => "---").join(" | ")} |`);
+  for (const r of shown) {
+    out.push(`| ${cols.map((c) => formatCell(r[c])).join(" | ")} |`);
+  }
+  if (rows.length > ROW_LIMIT) {
+    out.push("");
+    out.push(`_\u2026and ${rows.length - ROW_LIMIT} more rows (see data.json)._`);
+  }
+  return out.join("\n");
+}
+function formatCell(v) {
+  if (v === null || v === void 0) return "";
+  if (typeof v === "object") {
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    return JSON.stringify(v);
+  }
+  const s = String(v);
+  return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+async function writeAtomic2(path2, content) {
+  await mkdir4(dirname6(path2), { recursive: true });
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile4(tmpPath, content, { encoding: "utf-8" });
+  await rename4(tmpPath, path2);
+}
+
+// src/lib/prefetch/runner.ts
+async function runPrefetch(opts) {
+  const t0 = Date.now();
+  const manifest = await loadSkillManifest(opts.skill);
+  const { context } = await loadBrandContext(opts.brand, opts.dataDirOverride);
+  const params = buildStandardParams({
+    context,
+    runDate: opts.runDate,
+    paramOverrides: opts.paramOverrides
+  });
+  const rounds = resolveBatchPlan(manifest);
+  const queryOutputs = [];
+  const perQueryResults = [];
+  for (const round of rounds) {
+    const settled = await Promise.all(
+      round.parallel.map(
+        (id) => executeOne(id, params, opts.dataDirOverride).catch((err) => ({
+          id,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        }))
+      )
+    );
+    for (const r of settled) {
+      if ("ok" in r && r.ok) {
+        queryOutputs.push(r.output);
+        perQueryResults.push({
+          id: r.output.id,
+          status: "ok",
+          rowCount: r.output.rows.length,
+          durationMs: r.output.duration_ms
+        });
+      } else if ("ok" in r && !r.ok && "queryResult" in r) {
+        perQueryResults.push({
+          id: r.id,
+          status: "failed",
+          error: r.queryResult.friendly
+        });
+      } else if ("error" in r) {
+        perQueryResults.push({
+          id: r.id,
+          status: r.error.includes("missing param") ? "missing_params" : "failed",
+          error: r.error
+        });
+      }
+    }
+  }
+  const artifact_paths = await writePrefetchArtifacts({
+    brand_slug: context.brand_slug,
+    skill_id: manifest.skill_id,
+    run_date: opts.runDate,
+    query_outputs: queryOutputs,
+    meta: {
+      skill_version: manifest.version,
+      schema_version: manifest.schema_version,
+      run_kind: manifest.run_kind,
+      account_count: context.accounts.length,
+      primary_metric: context.management.primary_metric
+    },
+    dataDirOverride: opts.dataDirOverride
+  });
+  const partial_failure = perQueryResults.some((r) => r.status !== "ok");
+  return {
+    brand_slug: context.brand_slug,
+    skill_id: manifest.skill_id,
+    run_date: opts.runDate,
+    artifact_paths,
+    queries: perQueryResults,
+    total_duration_ms: Date.now() - t0,
+    partial_failure
+  };
+}
+async function executeOne(id, allParams, dataDirOverride) {
+  const { sql: rawSql } = await readQuerySql(id);
+  const referenced = findReferencedParams(rawSql);
+  const missing = referenced.filter((p) => !(p in allParams));
+  if (missing.length > 0) {
+    throw new Error(
+      `Query ${id} references missing param(s): ${missing.join(", ")}. Either the brand context is incomplete (re-check context.yaml) or the skill needs paramOverrides for these values.`
+    );
+  }
+  const { sql, params } = substituteParams(rawSql, allParams);
+  const result = await runQuery(sql, params, {
+    dataDirOverride
+  });
+  if (!result.ok) {
+    return { id, ok: false, queryResult: result };
+  }
+  return {
+    id,
+    ok: true,
+    output: {
+      id,
+      rows: result.rows,
+      duration_ms: result.durationMs,
+      params,
+      display_sql: sql
+    }
+  };
+}
+
+// src/commands/prefetch.ts
+function registerPrefetchCommand(program3) {
+  program3.command("prefetch").description(
+    "Run a skill's SQL batches against the warehouse and write data artifacts."
+  ).requiredOption("--brand <slug>", "brand slug (must be onboarded)").requiredOption("--skill <skill-id>", "skill ID (subdirectory under skills/)").option("--date <yyyy-mm-dd>", "run date (default: today)", todayISO3()).option(
+    "--param <name=value>",
+    "override a standard param (repeatable). Values are JSON-parsed if possible \u2014 pass `--param lookback_days=7` for an int.",
+    collectParam,
+    []
+  ).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const paramOverrides = parseParamOverrides(opts.param ?? []);
+      const result = await runPrefetch({
+        brand: opts.brand,
+        skill: opts.skill,
+        runDate: opts.date,
+        dataDirOverride: root.dataDir,
+        paramOverrides
+      });
+      renderResult2(result, !!root.json);
+      process.exit(exitCodeFor2(result));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({ status: "error", message }, null, 2) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exit(1);
+    }
+  });
+}
+function todayISO3() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function collectParam(value, prev) {
+  return prev.concat([value]);
+}
+function parseParamOverrides(pairs) {
+  const out = {};
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) {
+      throw new Error(
+        `--param expects name=value, got "${pair}". Example: --param lookback_days=7`
+      );
+    }
+    const name = pair.slice(0, eq);
+    const rawVal = pair.slice(eq + 1);
+    try {
+      out[name] = JSON.parse(rawVal);
+    } catch {
+      out[name] = rawVal;
+    }
+  }
+  return out;
+}
+function renderResult2(result, json2) {
+  if (json2) {
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    return;
+  }
+  const okCount = result.queries.filter((q) => q.status === "ok").length;
+  const failedCount = result.queries.filter((q) => q.status !== "ok").length;
+  process.stdout.write(
+    `
+\u2713 Prefetch complete \u2014 ${result.skill_id} for ${result.brand_slug} (${result.run_date})
+  - queries: ${okCount} ok, ${failedCount} failed
+  - duration: ${result.total_duration_ms} ms
+  - data.json: ${result.artifact_paths.data_json_path}
+  - data.md:   ${result.artifact_paths.data_md_path}
+`
+  );
+  const failures = result.queries.filter((q) => q.status !== "ok");
+  if (failures.length > 0) {
+    process.stdout.write("\n  Failed queries:\n");
+    for (const f of failures) {
+      process.stdout.write(`    \u2717 ${f.id} (${f.status}): ${f.error ?? "unknown"}
+`);
+    }
+  }
+  process.stdout.write("\n");
+}
+function exitCodeFor2(result) {
+  return result.partial_failure ? 2 : 0;
+}
+
+// src/commands/render.ts
+function registerRenderCommand(program3) {
+  program3.command("render").description("Render skill output via the configured adapter").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier from manifest").requiredOption(
+    "--sidecar-path <path>",
+    "path to the structured sidecar JSON the skill produced"
+  ).option(
+    "--adapter <name>",
+    "override profile default: local-html | inline-markdown | google-doc | csv | terminal"
+  ).option("--date <yyyy-mm-dd>", "data date", todayISO4()).action(
+    (opts) => {
+      notYetImplemented("render", opts);
+    }
+  );
+}
+function todayISO4() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+
+// src/commands/sidecar.ts
+import { readFile as readFile8 } from "node:fs/promises";
+
+// src/lib/sidecar/write.ts
+import { mkdir as mkdir5, writeFile as writeFile5, rename as rename5 } from "node:fs/promises";
+import { join as join5, dirname as dirname7 } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+
+// src/lib/sidecar/schema.ts
+var verdictSchema = external_exports.enum(["GREEN", "YELLOW", "RED", "OBSERVATIONAL"]);
+var runKindSchema = external_exports.enum(["per_account", "portfolio"]);
+var sqlCallSchema = external_exports.object({
+  id: external_exports.string().min(1),
+  params_hash: external_exports.string().min(1)
+});
+var artifactsSchema = external_exports.object({
+  report_html_path: external_exports.string().min(1),
+  report_html_archive_path: external_exports.string().optional(),
+  block_html_path: external_exports.string().optional()
+});
+var postureSchema2 = external_exports.object({
+  stance: external_exports.string().min(1),
+  multiplier: external_exports.number()
+});
+var contextSnapshotSchema = external_exports.record(external_exports.string(), external_exports.unknown());
+var sidecarSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  skill: external_exports.string().min(1),
+  skill_version: external_exports.string().min(1),
+  brand_slug: external_exports.string().min(1),
+  run_kind: runKindSchema,
+  run_at_utc: external_exports.iso.datetime(),
+  data_date: external_exports.iso.date(),
+  run_id: external_exports.string().regex(/^[0-9a-f]{6}$/i, "run_id must be 6 lowercase hex chars"),
+  context_snapshot: contextSnapshotSchema,
+  sql_calls: external_exports.array(sqlCallSchema).default([]),
+  headline_metrics: external_exports.record(external_exports.string(), external_exports.number()),
+  verdict: verdictSchema,
+  artifacts: artifactsSchema,
+  // Optional fields
+  structural_events_active: external_exports.array(external_exports.string()).optional(),
+  posture_at_run: postureSchema2.optional(),
+  data_lag_pct: external_exports.number().optional(),
+  history_tier: external_exports.enum(["provisional", "tier-14", "tier-30"]).optional(),
+  notes: external_exports.string().optional()
+}).superRefine((s, ctx) => {
+  if (s.run_kind === "per_account") {
+    const required2 = [
+      "account_type",
+      "seller_id",
+      "primary_metric",
+      "acos_target_pct",
+      "attribution_window_days"
+    ];
+    for (const key of required2) {
+      if (s.context_snapshot[key] === void 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["context_snapshot", key],
+          message: `Sidecar with run_kind=per_account must include context_snapshot.${key}. The skill should snapshot every context.yaml field it consumed.`
+        });
+      }
+    }
+  } else if (s.run_kind === "portfolio") {
+    const required2 = ["portfolio_account_count", "portfolio_config_path"];
+    for (const key of required2) {
+      if (s.context_snapshot[key] === void 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["context_snapshot", key],
+          message: `Sidecar with run_kind=portfolio must include context_snapshot.${key}.`
+        });
+      }
+    }
+  }
+});
+
+// src/lib/sidecar/write.ts
+async function writeSidecar(input) {
+  const runId = input.run_id ?? generateRunId();
+  const runAtUtc = input.run_at_utc ?? (/* @__PURE__ */ new Date()).toISOString();
+  const sqlCalls = normalizeSqlCalls(input.sql_calls ?? []);
+  const candidate = {
+    schema_version: 1,
+    skill: input.skill,
+    skill_version: input.skill_version,
+    brand_slug: input.brand_slug,
+    run_kind: input.run_kind,
+    run_at_utc: runAtUtc,
+    data_date: input.data_date,
+    run_id: runId,
+    context_snapshot: input.context_snapshot,
+    sql_calls: sqlCalls,
+    headline_metrics: input.headline_metrics,
+    verdict: input.verdict,
+    artifacts: input.artifacts,
+    ...input.structural_events_active ? { structural_events_active: input.structural_events_active } : {},
+    ...input.posture_at_run ? { posture_at_run: input.posture_at_run } : {},
+    ...input.data_lag_pct !== void 0 ? { data_lag_pct: input.data_lag_pct } : {},
+    ...input.history_tier ? { history_tier: input.history_tier } : {},
+    ...input.notes ? { notes: input.notes } : {}
+  };
+  const parsed = sidecarSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(formatZodError(parsed.error, `Sidecar payload is invalid`));
+  }
+  const path2 = sidecarPath({
+    brand_slug: input.brand_slug,
+    skill: input.skill,
+    data_date: input.data_date,
+    run_id: runId,
+    dataDirOverride: input.dataDirOverride
+  });
+  await mkdir5(dirname7(path2), { recursive: true });
+  await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
+  return {
+    sidecar_path: path2,
+    run_id: runId,
+    data_date: input.data_date,
+    brand_slug: input.brand_slug,
+    skill: input.skill
+  };
+}
+function sidecarPath(args) {
+  return join5(
+    resolveDataDir(args.dataDirOverride),
+    "clients",
+    args.brand_slug,
+    "runs",
+    args.skill,
+    `${args.data_date}-${args.run_id}.json`
+  );
+}
+function generateRunId() {
+  return randomBytes(3).toString("hex");
+}
+function normalizeSqlCalls(calls) {
+  return calls.map((c) => ({
+    id: c.id,
+    params_hash: c.params_hash ?? hashParams(c.params ?? {})
+  }));
+}
+function hashParams(params) {
+  const sortedKeys = Object.keys(params).sort();
+  const canonical = JSON.stringify(
+    sortedKeys.reduce((acc, k) => {
+      acc[k] = params[k];
+      return acc;
+    }, {})
+  );
+  return createHash("sha1").update(canonical).digest("hex");
+}
+async function writeAtomic3(path2, content) {
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile5(tmpPath, content, { encoding: "utf-8" });
+  await rename5(tmpPath, path2);
+}
+
+// src/commands/sidecar.ts
+function registerSidecarCommands(program3) {
+  const sidecar = program3.command("sidecar").description(
+    "Write run sidecars after skill execution + (future) drift comparison."
+  );
+  sidecar.command("write").description(
+    "Write a run sidecar from a skill-produced JSON input. The input file must match the schema in shared/run-sidecar.schema.yaml."
+  ).requiredOption(
+    "--input-file <path>",
+    "path to JSON file with sidecar fields (see docs / schema)"
+  ).option(
+    "--run-id <hex>",
+    "override the generated 6-char hex run_id (for deterministic tests)"
+  ).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const raw = await readFile8(opts.inputFile, "utf-8");
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Failed to parse ${opts.inputFile} as JSON: ${message}`
+        );
+      }
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error(
+          `${opts.inputFile} must contain a JSON object at the top level.`
+        );
+      }
+      const input = {
+        ...parsed,
+        dataDirOverride: root.dataDir,
+        ...opts.runId ? { run_id: opts.runId } : {}
+      };
+      const result = await writeSidecar(input);
+      if (root.json) {
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      } else {
+        process.stdout.write(
+          `
+\u2713 Sidecar written.
+  - skill:     ${result.skill}
+  - brand:     ${result.brand_slug}
+  - data_date: ${result.data_date}
+  - run_id:    ${result.run_id}
+  - path:      ${result.sidecar_path}
+
+`
+        );
+      }
+      process.exit(0);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({ status: "error", message }, null, 2) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exit(1);
+    }
+  });
+  sidecar.command("compare").description(
+    "Drift check this run against the prior run sidecar (NOT YET IMPLEMENTED)."
+  ).requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier").action((opts) => {
+    notYetImplemented("sidecar compare", opts);
+  });
+}
+
+// src/commands/ui.ts
+function registerUiCommand(program3) {
+  program3.command("ui").description(
+    "Launch the local web UI for brand management (Claude Code only).\nCowork users should use conversational editing via /mixshift-brand-update."
+  ).option("--port <port>", "local port to bind", "8080").option(
+    "--password <password>",
+    "one-time password (stored in profile.ui_password)"
+  ).action((opts) => {
+    notYetImplemented("ui", opts);
+  });
+}
+
+// src/commands/data.ts
+import { resolve as resolvePath } from "node:path";
+
+// src/lib/data/tables-catalog.ts
+var import_yaml10 = __toESM(require_dist(), 1);
+import { readFile as readFile9 } from "node:fs/promises";
+import { dirname as dirname8, join as join6 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+async function loadTablesCatalog(overridePath) {
+  const candidates = overridePath ? [overridePath] : candidatePaths2();
+  for (const path2 of candidates) {
+    try {
+      const raw = await readFile9(path2, "utf-8");
+      const parsed = (0, import_yaml10.parse)(raw);
+      if (!parsed?.tables) continue;
+      return Object.entries(parsed.tables).map(
+        ([name, meta3]) => normalize(name, meta3)
+      );
+    } catch (err) {
+      if (isFileNotFoundError8(err)) continue;
+      throw err;
+    }
+  }
+  return [];
+}
+async function describeTable(tableName, overridePath) {
+  const all = await loadTablesCatalog(overridePath);
+  return all.find((t) => t.name === tableName) ?? null;
+}
+function normalize(name, raw) {
+  return {
+    name,
+    description: raw.description ?? "",
+    category: raw.category ?? "other",
+    account_types: raw.account_types,
+    time_series: !!raw.time_series,
+    requires_seller_id: !!raw.requires_seller_id,
+    date_column: raw.date_column
+  };
+}
+function candidatePaths2() {
+  const here = dirname8(fileURLToPath3(import.meta.url));
+  const candidates = [];
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    candidates.push(join6(dir, "shared", "data-tables.yaml"));
+    const parent = dirname8(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return candidates;
+}
+function isFileNotFoundError8(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
 // src/lib/data/sample.ts
 async function sampleTable(opts) {
   const limit = opts.limit ?? 10;
@@ -47979,15 +48906,15 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir4 } from "node:fs/promises";
-import { dirname as dirname6 } from "node:path";
+import { mkdir as mkdir6 } from "node:fs/promises";
+import { dirname as dirname9 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
   const lines = [];
   lines.push(columns.map((c) => quote(c.header ?? c.name)).join(","));
   for (const row of rows) {
-    lines.push(columns.map((c) => formatCell(row[c.name])).join(","));
+    lines.push(columns.map((c) => formatCell2(row[c.name])).join(","));
   }
   return lines.join("\n") + "\n";
 }
@@ -48002,7 +48929,7 @@ function createCsvWriter(stream, columns) {
     },
     writeRow(row) {
       if (!headerWritten) this.writeHeader();
-      stream.write(columns.map((c) => formatCell(row[c.name])).join(",") + "\n");
+      stream.write(columns.map((c) => formatCell2(row[c.name])).join(",") + "\n");
       written++;
     },
     end() {
@@ -48012,7 +48939,7 @@ function createCsvWriter(stream, columns) {
     }
   };
 }
-function formatCell(value) {
+function formatCell2(value) {
   if (value === null || value === void 0) return "";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
@@ -48087,7 +49014,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir4(dirname6(opts.outPath), { recursive: true });
+  await mkdir6(dirname9(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -48127,9 +49054,9 @@ function synthFailure(opts, message) {
 }
 
 // src/commands/data.ts
-import { writeFile as writeFile4 } from "node:fs/promises";
-import { mkdir as mkdir5 } from "node:fs/promises";
-import { dirname as dirname7 } from "node:path";
+import { writeFile as writeFile6 } from "node:fs/promises";
+import { mkdir as mkdir7 } from "node:fs/promises";
+import { dirname as dirname10 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
@@ -48309,8 +49236,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir5(dirname7(opts.out), { recursive: true });
-          await writeFile4(opts.out, csv, "utf-8");
+          await mkdir7(dirname10(opts.out), { recursive: true });
+          await writeFile6(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(

@@ -1,18 +1,136 @@
+/**
+ * `mixshift prefetch --brand <slug> --skill <id> [--date <yyyy-mm-dd>]`
+ *
+ * Runs the SQL batches declared in `skills/<id>/skill.manifest.yaml`
+ * against the warehouse and writes the data artifacts under
+ * `~/.mixshift/clients/<brand>/runs/<skill>/<date>/`.
+ *
+ * Outputs (chat-friendly text by default, JSON when `--json` is set):
+ *   - The artifact directory path
+ *   - Per-query status (ok / failed / missing_params)
+ *   - Total duration
+ */
+
 import type { Command } from 'commander';
-import { notYetImplemented } from '../lib/stub.js';
+import { runPrefetch, type PrefetchResult } from '../lib/prefetch/runner.js';
+
+interface RootOptions {
+  json?: boolean;
+  dataDir?: string;
+}
+
+interface PrefetchCommandOptions {
+  brand: string;
+  skill: string;
+  date: string;
+  param?: string[];
+}
 
 export function registerPrefetchCommand(program: Command): void {
   program
     .command('prefetch')
-    .description('Run SQL batches for a skill and write the data artifact')
-    .requiredOption('--brand <slug>', 'brand slug')
-    .requiredOption('--skill <skill-id>', 'skill identifier from manifest')
-    .option('--date <yyyy-mm-dd>', 'data date', todayISO())
-    .action((opts: { brand: string; skill: string; date: string }) => {
-      notYetImplemented('prefetch', opts);
+    .description(
+      'Run a skill\'s SQL batches against the warehouse and write data artifacts.',
+    )
+    .requiredOption('--brand <slug>', 'brand slug (must be onboarded)')
+    .requiredOption('--skill <skill-id>', 'skill ID (subdirectory under skills/)')
+    .option('--date <yyyy-mm-dd>', 'run date (default: today)', todayISO())
+    .option(
+      '--param <name=value>',
+      'override a standard param (repeatable). Values are JSON-parsed if ' +
+        'possible — pass `--param lookback_days=7` for an int.',
+      collectParam,
+      [] as string[],
+    )
+    .action(async (opts: PrefetchCommandOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      try {
+        const paramOverrides = parseParamOverrides(opts.param ?? []);
+        const result = await runPrefetch({
+          brand: opts.brand,
+          skill: opts.skill,
+          runDate: opts.date,
+          dataDirOverride: root.dataDir,
+          paramOverrides,
+        });
+        renderResult(result, !!root.json);
+        process.exit(exitCodeFor(result));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: 'error', message }, null, 2) + '\n',
+          );
+        } else {
+          process.stderr.write(`error: ${message}\n`);
+        }
+        process.exit(1);
+      }
     });
 }
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function collectParam(value: string, prev: string[]): string[] {
+  return prev.concat([value]);
+}
+
+function parseParamOverrides(pairs: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    if (eq <= 0) {
+      throw new Error(
+        `--param expects name=value, got "${pair}". Example: --param lookback_days=7`,
+      );
+    }
+    const name = pair.slice(0, eq);
+    const rawVal = pair.slice(eq + 1);
+    // Try JSON first so `--param lookback_days=7` becomes int 7, then
+    // `--param seller_id_list=[1,2,3]` becomes a number array. Fall back
+    // to raw string.
+    try {
+      out[name] = JSON.parse(rawVal);
+    } catch {
+      out[name] = rawVal;
+    }
+  }
+  return out;
+}
+
+function renderResult(result: PrefetchResult, json: boolean): void {
+  if (json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    return;
+  }
+
+  const okCount = result.queries.filter((q) => q.status === 'ok').length;
+  const failedCount = result.queries.filter((q) => q.status !== 'ok').length;
+
+  process.stdout.write(
+    `\n✓ Prefetch complete — ${result.skill_id} for ${result.brand_slug} (${result.run_date})\n` +
+      `  - queries: ${okCount} ok, ${failedCount} failed\n` +
+      `  - duration: ${result.total_duration_ms} ms\n` +
+      `  - data.json: ${result.artifact_paths.data_json_path}\n` +
+      `  - data.md:   ${result.artifact_paths.data_md_path}\n`,
+  );
+
+  // List failed queries explicitly — skill needs to know what's missing
+  // before composing the report.
+  const failures = result.queries.filter((q) => q.status !== 'ok');
+  if (failures.length > 0) {
+    process.stdout.write('\n  Failed queries:\n');
+    for (const f of failures) {
+      process.stdout.write(`    ✗ ${f.id} (${f.status}): ${f.error ?? 'unknown'}\n`);
+    }
+  }
+  process.stdout.write('\n');
+}
+
+function exitCodeFor(result: PrefetchResult): number {
+  // 0 = all queries succeeded
+  // 2 = at least one query failed (artifacts still written for inspection)
+  return result.partial_failure ? 2 : 0;
 }

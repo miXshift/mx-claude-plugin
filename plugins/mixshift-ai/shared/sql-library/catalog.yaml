@@ -24,7 +24,7 @@ queries:
   - id: DHC-04
     file: DHC-04.sql
     purpose: CI thresholds and pre-computed pacing/MTD per metric (anomaly_detection_settings).
-    consumers: [daily-health-check]
+    consumers: [daily-health-check, runaway-spend-check]
     tier: 1
 
   - id: DHC-05
@@ -390,3 +390,14 @@ queries:
     notes: |
       Cross-skill query. Use when context.yaml::structural_events includes an
       active price_test event. Filter by Title LIKE pattern from event metadata.
+
+  - id: RSC-01
+    file: RSC-01.sql
+    purpose: Acute keyword runaway detection -- T-1 keyword performance with T-30 baseline in one query.
+    consumers: [runaway-spend-check]
+    tier: 1
+    notes: |
+      Returns one row per (KeywordText, MatchType, CampaignName, AdGroupName) tuple
+      with T-1 and T-30 metrics side-by-side. Used by runaway-spend-check Step 2-3 to
+      identify CI breaches and zero-conversion flags. Pair with DHC-04 for the
+      account-level CI thresholds.
