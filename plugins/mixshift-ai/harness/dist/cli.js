@@ -29831,6 +29831,9 @@ function brandDir(brandSlug, dataDirOverride) {
 function contextPath(brandSlug, dataDirOverride) {
   return join(brandDir(brandSlug, dataDirOverride), "context.yaml");
 }
+function narrativePath(brandSlug, dataDirOverride) {
+  return join(brandDir(brandSlug, dataDirOverride), "narrative.md");
+}
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -44611,6 +44614,11 @@ var accountSchema = external_exports.object({
   amazon_seller_id: external_exports.string().optional(),
   marketplace: external_exports.string().optional(),
   merchant_type: external_exports.enum(["seller", "vendor"]).optional(),
+  // MerchantAlias from the warehouse seller table — the Amazon storefront
+  // label. Preserved here for reference; not used by grouping (Name is
+  // canonical, see brand-grouping.ts). User shouldn't edit this manually.
+  merchant_alias: external_exports.string().nullable().optional(),
+  region: external_exports.string().nullable().optional(),
   ads_active: external_exports.boolean().optional(),
   retail_active: external_exports.boolean().optional()
 });
@@ -45153,15 +45161,256 @@ function countBy(arr) {
   );
 }
 
+// src/lib/clients/bootstrap.ts
+var import_yaml5 = __toESM(require_dist(), 1);
+import { mkdir as mkdir3, rename as rename3, writeFile as writeFile3, access } from "node:fs/promises";
+import { dirname as dirname3 } from "node:path";
+async function bootstrapBrand(suggestion, options = {}) {
+  const dir = brandDir(suggestion.slug, options.dataDirOverride);
+  const ctxPath = contextPath(suggestion.slug, options.dataDirOverride);
+  const narrPath = narrativePath(suggestion.slug, options.dataDirOverride);
+  const validAccounts = suggestion.accounts.filter((a) => a.account_type !== "unknown");
+  if (validAccounts.length === 0) {
+    throw new Error(
+      `Cannot bootstrap "${suggestion.slug}": all ${suggestion.accounts.length} accounts have MerchantType outside SC / VC. Fix the warehouse seller table first, then re-run \`mixshift brand discover\`.`
+    );
+  }
+  if (!options.force) {
+    try {
+      await access(dir);
+      throw new Error(
+        `Brand directory already exists at ${dir}.
+Either pick a different slug, delete the existing directory, or pass --force to overwrite.`
+      );
+    } catch (err) {
+      if (!isFileNotFoundError4(err)) throw err;
+    }
+  }
+  const context = buildContext(suggestion, validAccounts, options.asOfDate);
+  const parsed = contextSchema.safeParse(context);
+  if (!parsed.success) {
+    throw new Error(
+      `Bootstrap produced an invalid context.yaml for "${suggestion.slug}". This is a bug in the harness; please report it.
+` + formatZodError(parsed.error)
+    );
+  }
+  await mkdir3(dir, { recursive: true });
+  await mkdir3(`${dir}/corpora`, { recursive: true });
+  const yaml = (0, import_yaml5.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
+  await writeAtomic(ctxPath, yaml);
+  await writeAtomic(narrPath, narrativeTemplate(suggestion));
+  const readmePath = `${dir}/README.md`;
+  await writeAtomic(readmePath, readmeTemplate(suggestion));
+  return {
+    brand_dir: dir,
+    context_path: ctxPath,
+    narrative_path: narrPath,
+    context: parsed.data,
+    written_files: [ctxPath, narrPath, readmePath, `${dir}/corpora/`]
+  };
+}
+function buildContext(suggestion, accounts, asOfDate) {
+  const sorted = sortAccountsForPrimary(accounts);
+  const primaryAccount = sorted[0];
+  const primaryType = primaryAccount.account_type;
+  const acosFromWarehouse = accounts.map((a) => a.acos_target).find((v) => typeof v === "number" && v > 0);
+  const acosTargetPct = acosFromWarehouse ?? 20;
+  return {
+    schema_version: 1,
+    brand_slug: suggestion.slug,
+    brand_name: suggestion.display_name,
+    last_updated: asOfDate ?? todayISO(),
+    accounts: sorted.map((a, i) => buildAccountEntry(a, i === 0)),
+    sources: sourcesFor(primaryType),
+    management: {
+      primary_metric: "ACOS",
+      acos_target_pct: acosTargetPct,
+      attribution_window_days: 14
+    }
+  };
+}
+function buildAccountEntry(row, isPrimary) {
+  const account_type = row.account_type;
+  return {
+    seller_id: row.seller_id,
+    seller_name: row.seller_name,
+    account_type,
+    status: row.is_active ? "active" : "inactive",
+    role: isPrimary ? "primary" : "secondary",
+    ...row.amazon_seller_id ? { amazon_seller_id: row.amazon_seller_id } : {},
+    ...row.marketplace ? { marketplace: row.marketplace } : {},
+    merchant_type: account_type === "SC" ? "seller" : "vendor",
+    ...row.merchant_alias ? { merchant_alias: row.merchant_alias } : {},
+    ...row.region ? { region: row.region } : {},
+    ads_active: row.ads_active,
+    retail_active: row.retail_active
+  };
+}
+function sourcesFor(primaryType) {
+  if (primaryType === "SC") {
+    return {
+      ad_metrics: "campaignmetric",
+      ops_revenue: "business_reports_dpst_date",
+      ops_revenue_field: "SalesAmount",
+      ops_units_field: "UnitsOrdered",
+      ops_date_field: "DateTime"
+    };
+  }
+  return {
+    ad_metrics: "campaignmetric",
+    ops_revenue: "vendor_sales_manufacturing_asin",
+    ops_revenue_field: "OrderedRevenueAmount",
+    ops_units_field: "OrderedUnits",
+    ops_date_field: "DateTime"
+  };
+}
+function sortAccountsForPrimary(accounts) {
+  return [...accounts].sort((a, b) => {
+    if (a.account_type !== b.account_type) {
+      if (a.account_type === "SC") return -1;
+      if (b.account_type === "SC") return 1;
+    }
+    const aFull = a.ads_active && a.retail_active;
+    const bFull = b.ads_active && b.retail_active;
+    if (aFull !== bFull) return aFull ? -1 : 1;
+    const aUs = (a.marketplace ?? "").toLowerCase().includes("united states");
+    const bUs = (b.marketplace ?? "").toLowerCase().includes("united states");
+    if (aUs !== bUs) return aUs ? -1 : 1;
+    return (a.marketplace ?? "").localeCompare(b.marketplace ?? "");
+  });
+}
+function narrativeTemplate(suggestion) {
+  return `# ${suggestion.display_name}
+
+*Generated by \`mixshift brand add ${suggestion.slug}\` on ${todayISO()}.*
+*Run \`/account-cold-start ${suggestion.slug}\` in Claude to complete AM intake (positioning, goals, structural events).*
+
+---
+
+## Brand Identity
+
+_To be populated by AM intake._
+
+## Current Quarter Context
+
+_To be populated by AM intake._
+
+## Historical Notes
+
+_To be populated by AM intake._
+`;
+}
+function readmeTemplate(suggestion) {
+  return `# ${suggestion.display_name} brand context
+
+Generated by \`mixshift brand add ${suggestion.slug}\`.
+
+| File | Purpose |
+|---|---|
+| \`context.yaml\` | Mechanical truth: SellerIDs, account types, sources, management thresholds. Schema-validated. |
+| \`narrative.md\` | Prose context: positioning, history, interpretation rules. Filled by the cold-start skill. |
+| \`corpora/\` | Lists referenced by skills (manual-targeting ASINs, conquest sets, etc.). Empty at bootstrap. |
+| \`runs/\` | Per-skill run sidecars accumulate here over time. Created by the runner; do not edit. |
+
+**Next step:** run \`/account-cold-start ${suggestion.slug}\` in Claude. The skill walks you through AM intake and fills in everything the bootstrap couldn't derive from the warehouse.
+`;
+}
+async function writeAtomic(path2, content) {
+  await mkdir3(dirname3(path2), { recursive: true });
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile3(tmpPath, content, { encoding: "utf-8" });
+  await rename3(tmpPath, path2);
+}
+function todayISO() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function isFileNotFoundError4(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
   brand.command("list").description("Show the portfolio table (mirrors index.yaml)").action(() => {
     notYetImplemented("brand list", {});
   });
-  brand.command("add <slug>").description("Trigger account-cold-start for a new brand").option("--from-file <path>", "bulk-import config file (YAML list)").action((slug, opts) => {
-    notYetImplemented("brand add", { slug, ...opts });
-  });
+  brand.command("add <slug>").description(
+    "Bootstrap a brand context directory from warehouse data. Run /account-cold-start <slug> in Claude afterwards to complete AM intake."
+  ).option("--force", "overwrite an existing brand directory", false).option(
+    "--include-inactive",
+    "allow brands where both ads and retail access are lost",
+    false
+  ).action(
+    async (slug, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const sellers = await discoverSellers({
+          dataDirOverride: root.dataDir,
+          includeInactive: opts.includeInactive
+        });
+        const suggestions = groupIntoBrands(sellers);
+        const match = suggestions.find((s) => s.slug === slug);
+        if (!match) {
+          const close = suggestions.filter((s) => s.slug.startsWith(slug.slice(0, 3))).slice(0, 5).map((s) => `  - ${s.slug}  (${s.display_name})`).join("\n");
+          throw new Error(
+            `No brand "${slug}" found in warehouse discovery.
+` + (close ? `Close matches:
+${close}
+
+` : "") + `Run \`mixshift brand discover\` to list all available brands.`
+          );
+        }
+        const result = await bootstrapBrand(match, {
+          dataDirOverride: root.dataDir,
+          force: opts.force
+        });
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                slug: match.slug,
+                brand_dir: result.brand_dir,
+                context_path: result.context_path,
+                narrative_path: result.narrative_path,
+                written_files: result.written_files,
+                account_count: result.context.accounts.length,
+                next_step: `Run /account-cold-start ${match.slug} in Claude to complete AM intake.`
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          process.stderr.write(
+            `
+\u2713 Bootstrapped "${match.slug}" (${match.display_name})
+    accounts:  ${result.context.accounts.length}
+    context:   ${result.context_path}
+    narrative: ${result.narrative_path}
+
+Next: run \`/account-cold-start ${match.slug}\` in Claude.
+      The skill walks you through AM intake (positioning,
+      goals, structural events) and fills in everything
+      the bootstrap couldn't derive from the warehouse.
+`
+          );
+        }
+        process.exit(0);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
+`);
+        }
+        process.exit(1);
+      }
+    }
+  );
   brand.command("status <slug>").description("Show full context + freshness + recent runs for one brand").action((slug) => {
     notYetImplemented("brand status", { slug });
   });
@@ -45242,7 +45491,7 @@ function registerBrandCommands(program3) {
 }
 
 // src/commands/auth.ts
-var import_yaml6 = __toESM(require_dist(), 1);
+var import_yaml7 = __toESM(require_dist(), 1);
 import { readFile as readFile5 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
@@ -46811,9 +47060,9 @@ var dist_default6 = createPrompt((config2, done) => {
 });
 
 // src/lib/defaults/load.ts
-var import_yaml5 = __toESM(require_dist(), 1);
+var import_yaml6 = __toESM(require_dist(), 1);
 import { readFile as readFile4 } from "node:fs/promises";
-import { dirname as dirname3, join as join2 } from "node:path";
+import { dirname as dirname4, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/defaults/schema.ts
@@ -46843,7 +47092,7 @@ async function loadPluginDefaults(overridePath) {
   for (const path2 of candidates) {
     try {
       const raw = await readFile4(path2, "utf-8");
-      const parsed = (0, import_yaml5.parse)(raw);
+      const parsed = (0, import_yaml6.parse)(raw);
       const result = defaultsSchema.safeParse(parsed);
       if (!result.success) {
         throw new Error(
@@ -46852,25 +47101,25 @@ async function loadPluginDefaults(overridePath) {
       }
       return result.data;
     } catch (err) {
-      if (isFileNotFoundError4(err)) continue;
+      if (isFileNotFoundError5(err)) continue;
       throw err;
     }
   }
   return defaultsSchema.parse({ schema_version: 1 });
 }
 function candidatePaths() {
-  const here = dirname3(fileURLToPath(import.meta.url));
+  const here = dirname4(fileURLToPath(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 6; i++) {
     candidates.push(join2(dir, ".mixshift-defaults.yaml"));
-    const parent = dirname3(dir);
+    const parent = dirname4(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError4(err) {
+function isFileNotFoundError5(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -47166,7 +47415,7 @@ async function loadInputsFromFile(path2, opts) {
   const raw = await readFile5(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml6.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml7.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -47296,7 +47545,7 @@ function registerBootstrapCommand(program3) {
     "SC or VC; matches each --seller-id positionally",
     collect,
     []
-  ).option("--date <yyyy-mm-dd>", "cold-start data date", todayISO()).action(
+  ).option("--date <yyyy-mm-dd>", "cold-start data date", todayISO2()).action(
     (opts) => {
       notYetImplemented("bootstrap", opts);
     }
@@ -47305,7 +47554,7 @@ function registerBootstrapCommand(program3) {
 function collect(value, prev) {
   return [...prev, value];
 }
-function todayISO() {
+function todayISO2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -47321,11 +47570,11 @@ function registerValidateCommand(program3) {
 
 // src/commands/prefetch.ts
 function registerPrefetchCommand(program3) {
-  program3.command("prefetch").description("Run SQL batches for a skill and write the data artifact").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier from manifest").option("--date <yyyy-mm-dd>", "data date", todayISO2()).action((opts) => {
+  program3.command("prefetch").description("Run SQL batches for a skill and write the data artifact").requiredOption("--brand <slug>", "brand slug").requiredOption("--skill <skill-id>", "skill identifier from manifest").option("--date <yyyy-mm-dd>", "data date", todayISO3()).action((opts) => {
     notYetImplemented("prefetch", opts);
   });
 }
-function todayISO2() {
+function todayISO3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -47337,13 +47586,13 @@ function registerRenderCommand(program3) {
   ).option(
     "--adapter <name>",
     "override profile default: local-html | inline-markdown | google-doc | csv | terminal"
-  ).option("--date <yyyy-mm-dd>", "data date", todayISO3()).action(
+  ).option("--date <yyyy-mm-dd>", "data date", todayISO4()).action(
     (opts) => {
       notYetImplemented("render", opts);
     }
   );
 }
-function todayISO3() {
+function todayISO4() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 

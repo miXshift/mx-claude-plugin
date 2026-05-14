@@ -33,6 +33,11 @@ const accountSchema = z.object({
   amazon_seller_id: z.string().optional(),
   marketplace: z.string().optional(),
   merchant_type: z.enum(['seller', 'vendor']).optional(),
+  // MerchantAlias from the warehouse seller table — the Amazon storefront
+  // label. Preserved here for reference; not used by grouping (Name is
+  // canonical, see brand-grouping.ts). User shouldn't edit this manually.
+  merchant_alias: z.string().nullable().optional(),
+  region: z.string().nullable().optional(),
   ads_active: z.boolean().optional(),
   retail_active: z.boolean().optional(),
 });
