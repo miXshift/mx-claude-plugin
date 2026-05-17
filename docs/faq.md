@@ -211,6 +211,20 @@ Your MySQL user doesn't have SELECT on that table. The plugin can request access
 
 In chat: "request access to table `<name>`" — Claude runs `mixshift feedback ... --category feature_request` with the table name + your SellerID context. MixShift ops grants the additional grant manually.
 
+### How do I send feedback / report a bug / request a feature?
+
+Three equally-good ways, depending on where you are:
+
+| Path | Use |
+|---|---|
+| **In chat** (Cowork / Claude Code) | `/feedback` slash command — Claude walks you through it. Or just say things like "send feedback to mixshift: the export is slow", "report a bug: X is broken", "feature request: I wish this could Y". |
+| **Mid-skill** | If you're using `data-explore` (or any skill) and hit a pain, just say "this is frustrating because..." or "I wish this did..." — Claude will offer to file feedback without making you leave the session. |
+| **Terminal** | `mixshift feedback "your message" --category bug` (or `feature_request`, `comment`). |
+
+Feedback routes to two places: a real-time post to MixShift's Discord ops channel (so a human sees it quickly) and the telemetry events table (so engineering can analyze patterns across customers). Both happen automatically — you don't pick.
+
+We read every piece during beta. Bugs typically get a response within a couple business days; feature requests get triaged into the roadmap.
+
 ### Plugin update available — how do I install it?
 
 - **Cowork personal install:** Customize → find `mixshift-ai` → check for updates.

@@ -50782,9 +50782,14 @@ function renderWelcome(args) {
     lines.push('        In chat:    "set up my credentials" / "run auth setup"');
     lines.push("        Terminal:   mixshift auth setup");
     lines.push("");
-    lines.push("    \u2022 Send feedback / report bugs:");
-    lines.push('        In chat:    "send feedback to mixshift: <your message>"');
-    lines.push('        Terminal:   mixshift feedback "<your message>"');
+    lines.push("    \u2022 Send feedback / report bugs / request features:");
+    lines.push("        In chat:    /feedback");
+    lines.push('                    or "send feedback to mixshift: <your message>"');
+    lines.push('                    or "report a bug: <description>"');
+    lines.push('        Terminal:   mixshift feedback "<msg>" [--category bug|feature_request|comment]');
+    lines.push("");
+    lines.push('  We read every piece of feedback. Bugs, "this is broken", "I wish');
+    lines.push('  this could\u2026", general comments \u2014 all of it helps us iterate.');
     lines.push("");
     return lines.join("\n");
   }
@@ -50845,9 +50850,12 @@ function renderWelcome(args) {
   lines.push("");
   lines.push("\u2501".repeat(60));
   lines.push("");
-  lines.push('Need help? In chat: "send feedback to mixshift: <your question>"');
-  lines.push('         In terminal: mixshift feedback "<your question>"');
-  lines.push("Bugs, requests, comments \u2014 all welcome.");
+  lines.push('Got feedback? Bugs, "this is broken", "I wish this could\u2026",');
+  lines.push("feature requests, comments \u2014 all of it helps us iterate the");
+  lines.push("plugin during beta. We read every piece.");
+  lines.push("  In chat:     /feedback");
+  lines.push('               or "send feedback to mixshift: <your message>"');
+  lines.push('  Terminal:    mixshift feedback "<your message>"');
   lines.push("");
   if (authReady) {
     lines.push("Current state: \u2713 auth credentials saved, " + (profileReady ? "\u2713 profile saved" : "\u2717 profile incomplete") + ".");
