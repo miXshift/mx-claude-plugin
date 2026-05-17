@@ -36,7 +36,7 @@ export async function loadPluginDefaults(
           formatZodError(result.error, `Plugin defaults at ${path} are invalid`),
         );
       }
-      return result.data;
+      return applyEnvOverrides(result.data);
     } catch (err) {
       if (isFileNotFoundError(err)) continue;
       throw err;
@@ -45,7 +45,50 @@ export async function loadPluginDefaults(
 
   // No defaults file found — return schema defaults so the harness still
   // works for development / tests with no real deployment config.
-  return defaultsSchema.parse({ schema_version: 1 });
+  return applyEnvOverrides(defaultsSchema.parse({ schema_version: 1 }));
+}
+
+/**
+ * Layer environment-variable overrides on top of the parsed defaults.
+ *
+ * Why this exists: some defaults are MixShift-deployment-specific (the
+ * Discord webhook URL, the Supabase telemetry endpoint) but shouldn't be
+ * committed to a public repo as plaintext credentials. We ship empty
+ * placeholders in `.mixshift-defaults.yaml` and let env vars carry the
+ * real values at runtime. This keeps the public repo free of secret-
+ * shaped strings while preserving the "plugin just works" UX for
+ * customers running through MixShift's deployment pipeline.
+ *
+ * Recognized env vars (all optional):
+ *   MIXSHIFT_IP_WHITELIST_WEBHOOK   Discord webhook for auth + feedback flows.
+ *                                   Until Supabase fan-out is live (Option 3
+ *                                   architecture), this is how MixShift's
+ *                                   internal team gets real-time alerts.
+ *   MIXSHIFT_TELEMETRY_ENDPOINT     Supabase REST endpoint for events.
+ *   MIXSHIFT_TELEMETRY_APIKEY       Supabase anon key (safe to embed —
+ *                                   designed for client embedding, RLS does
+ *                                   the security work).
+ */
+function applyEnvOverrides(defaults: PluginDefaults): PluginDefaults {
+  const env = process.env;
+
+  // Webhook override (Discord URLs are secrets — never ship in repo).
+  if (env.MIXSHIFT_IP_WHITELIST_WEBHOOK) {
+    defaults.auth.ip_whitelist_webhook = env.MIXSHIFT_IP_WHITELIST_WEBHOOK;
+  }
+
+  // Telemetry endpoint + apikey overrides. Useful for local Supabase
+  // testing without bumping a plugin version. Also covers the scenario
+  // where the shipped defaults ship empty (telemetry "configured off")
+  // and a tester wants to point at a sandbox project.
+  if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
+    defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
+  }
+  if (env.MIXSHIFT_TELEMETRY_APIKEY) {
+    defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
+  }
+
+  return defaults;
 }
 
 /**

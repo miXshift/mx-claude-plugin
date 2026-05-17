@@ -44987,13 +44987,26 @@ async function loadPluginDefaults(overridePath) {
           formatZodError(result.error, `Plugin defaults at ${path2} are invalid`)
         );
       }
-      return result.data;
+      return applyEnvOverrides(result.data);
     } catch (err) {
       if (isFileNotFoundError5(err)) continue;
       throw err;
     }
   }
-  return defaultsSchema.parse({ schema_version: 1 });
+  return applyEnvOverrides(defaultsSchema.parse({ schema_version: 1 }));
+}
+function applyEnvOverrides(defaults) {
+  const env = process.env;
+  if (env.MIXSHIFT_IP_WHITELIST_WEBHOOK) {
+    defaults.auth.ip_whitelist_webhook = env.MIXSHIFT_IP_WHITELIST_WEBHOOK;
+  }
+  if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
+    defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
+  }
+  if (env.MIXSHIFT_TELEMETRY_APIKEY) {
+    defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
+  }
+  return defaults;
 }
 function candidatePaths() {
   const here = dirname4(fileURLToPath(import.meta.url));
@@ -48289,7 +48302,7 @@ var TITLE = {
 };
 async function postWebhook(webhookUrl, request, timeoutMs = 1e4) {
   if (!webhookUrl) {
-    return { ok: false, error: "No webhook URL configured." };
+    return { ok: true, skipped: "no_webhook_configured" };
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

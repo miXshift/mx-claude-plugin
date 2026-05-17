@@ -60,4 +60,12 @@ export interface PostResult {
   ok: boolean;
   status?: number;
   error?: string;
+  /**
+   * Set when the post was skipped because no webhook URL is configured.
+   * Distinct from `ok: false` — skipped means "this is expected, not a
+   * failure". Used by the Supabase-fan-out architecture: the plugin no
+   * longer ships a webhook URL; Supabase posts to Discord server-side.
+   * Callers should treat `skipped` as success.
+   */
+  skipped?: 'no_webhook_configured';
 }

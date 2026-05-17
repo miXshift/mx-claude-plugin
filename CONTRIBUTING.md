@@ -51,3 +51,24 @@ For security-sensitive issues, do not open a public issue. Email security@mixshi
 - SQL files declare their purpose, parameters, and consumers in a header comment.
 - Manifests are valid against the schema in `shared/skill-manifest.schema.yaml` — bad manifests will not load.
 - No emojis in skill output. The skill format conventions are part of the product.
+
+## Secrets / committed credentials
+
+This repo is **public**. Anything you commit is forever visible in git history regardless of later deletes. Before pushing, scan locally:
+
+```bash
+# Install gitleaks once: https://github.com/gitleaks/gitleaks#installing
+# Then in the repo root:
+gitleaks detect --no-banner --redact --source .
+```
+
+The repo's `.gitleaks.toml` config defines what counts as a leaked secret and what's allowlisted (the customer-facing master password is intentional, for example). The CI workflow at `.github/workflows/gitleaks.yml` re-runs the same check on every push + PR — a finding fails the build.
+
+Things that **never** belong in commits:
+
+- Discord webhook URLs (any kind — they grant write access to channels)
+- MySQL passwords, OAuth client secrets, AWS / GCP / Azure keys, GitHub PATs
+- Supabase `service_role` keys (the `anon` key is fine — designed for client embedding)
+- Customer email addresses or other PII
+
+If you accidentally commit a secret: do **not** just `git revert` (history retains it). Rotate the secret immediately at its source (Discord settings, DB password reset, etc.). See `internal/SECRETS.md` for the incident-response playbook (gitignored — for MixShift internal use; the policy itself is enforced by the gitleaks config above).

@@ -20,10 +20,13 @@ function ok(): Response {
 }
 
 describe('postWebhook', () => {
-  it('returns ok=false when no webhook URL configured', async () => {
+  it('returns ok=true with skipped=no_webhook_configured when URL is empty', async () => {
+    // After the Option 3 migration, an empty webhook URL is the expected
+    // state (Supabase fan-out replaces client-side Discord posts). Callers
+    // treat `skipped: 'no_webhook_configured'` as success, not failure.
     const result = await postWebhook('', sampleIp());
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/no webhook url/i);
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBe('no_webhook_configured');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

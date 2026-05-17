@@ -1,0 +1,59 @@
+# gitleaks config for mx-claude-plugin.
+#
+# Layered on top of gitleaks' default rule set (we extend via [extend]
+# below). This file defines:
+#   - allowlist entries for values that look secret-shaped but are
+#     intentional (master password, Supabase anon key when scoped to
+#     defaults file)
+#   - custom rules for things specific to our domain (Discord webhook URLs)
+#
+# See https://github.com/gitleaks/gitleaks for full config reference.
+#
+# Run locally before push:
+#   gitleaks detect --no-banner --redact --source .
+#
+# Run via CI: .github/workflows/gitleaks.yml fires on every push + PR.
+
+[extend]
+useDefault = true
+
+# -----------------------------------------------------------------------
+# Custom rules
+# -----------------------------------------------------------------------
+
+[[rules]]
+id = "discord-webhook-url"
+description = "Discord webhook URL (write access to a channel — treat as a secret)"
+regex = '''https:\/\/(?:discord(?:app)?\.com|discord\.com)\/api\/webhooks\/\d{15,21}\/[A-Za-z0-9_-]{40,100}'''
+tags = ["secret", "discord"]
+
+# -----------------------------------------------------------------------
+# Allowlists (array form — each entry is an independent allowlist)
+# -----------------------------------------------------------------------
+
+[[allowlists]]
+description = "Master password — shared across customers, intentionally public"
+regexes = ['''Dash!applications4you''']
+
+[[allowlists]]
+description = "Supabase anon key in plugin defaults (safe by design — client-embeddable per Supabase's security model; RLS does the auth on the database side)"
+paths = ['''plugins/mixshift-ai/\.mixshift-defaults\.yaml''']
+regexes = ['''eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+''']
+
+[[allowlists]]
+description = "Webhook template URLs / examples in docs are placeholders, not real secrets"
+paths = [
+  '''internal/SUPABASE-SETUP\.md''',
+  '''internal/SECRETS\.md''',
+  '''docs/privacy\.md''',
+  '''CONTRIBUTING\.md''',
+]
+regexes = [
+  '''<new-id>''',
+  '''<new-token>''',
+  '''<your-(?:project-ref|company)>''',
+]
+
+[[allowlists]]
+description = "Dist build artifacts contain bundled code that may match generic patterns; the source files are scanned separately"
+paths = ['''plugins/mixshift-ai/harness/dist/.*''']

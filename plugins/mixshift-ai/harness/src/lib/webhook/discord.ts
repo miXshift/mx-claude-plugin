@@ -29,7 +29,13 @@ export async function postWebhook(
   timeoutMs = 10_000,
 ): Promise<PostResult> {
   if (!webhookUrl) {
-    return { ok: false, error: 'No webhook URL configured.' };
+    // Webhook URL is intentionally empty in the shipped defaults (Option 3
+    // architecture: Supabase fan-out replaces client-side Discord posts).
+    // Callers should treat this as success — the event still went to
+    // Supabase via the telemetry pipeline; the Edge Function will route
+    // it to Discord server-side. `skipped` lets callers distinguish this
+    // from a real network failure.
+    return { ok: true, skipped: 'no_webhook_configured' };
   }
 
   const controller = new AbortController();

@@ -12,13 +12,26 @@
 
 schema_version: 1
 
-# Discord webhook used by `mixshift auth setup` when a user's IP needs to be
-# whitelisted on the MixShift warehouse. The webhook posts a structured
-# message to the MixShift ops channel; an operator manually grants access
-# (or — future — an automated approver runs against this channel). The same
-# webhook receives `mixshift feedback` submissions and table-access requests.
+# Discord routing for IP whitelist / feedback / table-access requests.
+#
+# As of plugin v0.4.0 the Discord webhook URL is NOT shipped in this file
+# (Discord webhook URLs are credentials — anyone with the URL can post to
+# the channel, so we treat them as secrets and keep them out of git).
+# Routing happens via Supabase fan-out: the plugin POSTs the event to the
+# telemetry events table, and a Supabase Edge Function + DB trigger reads
+# the row and posts to Discord using a URL stored in Supabase Vault
+# (encrypted at rest, accessible only to server-side functions).
+#
+# For local development / MixShift-internal testing before Supabase
+# fan-out is wired, set the env var:
+#   MIXSHIFT_IP_WHITELIST_WEBHOOK=https://...
+# The plugin honors this override at runtime.
+#
+# Setup: internal/SUPABASE-SETUP.md documents the Edge Function template,
+# DB trigger, and Vault secret pattern. internal/SECRETS.md documents
+# which fields are secrets and which aren't.
 auth:
-  ip_whitelist_webhook: https://discordapp.com/api/webhooks/1504152069857349722/p5eAbkyhIVFGRr9YAScYb8O82OwdqRITwsWaLx7XVgo-eMfMwyB3HtYnRhgCixyc52ZQ
+  ip_whitelist_webhook: ""
   public_ip_lookup_url: https://api.ipify.org?format=json
 
   # MySQL connection defaults — used as suggested values in the auth-setup

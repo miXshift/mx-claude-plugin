@@ -1,0 +1,42 @@
+name: gitleaks
+
+# Scan every push + PR for committed secrets.
+#
+# Why: GitGuardian gave us one warning about a leaked Discord webhook in
+# May 2026. Belt-and-suspenders defense: GitHub-side scanning (GitGuardian)
+# alerts within minutes of push, but we want our OWN check that fails the
+# CI build BEFORE merge so unreviewed commits don't get the public stamp
+# of an auto-merged PR.
+#
+# Local equivalent: developers can run `gitleaks detect` before pushing
+# (see CONTRIBUTING.md). The config at `.gitleaks.toml` defines our
+# allowlist + custom rules (Discord webhooks, etc.).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan for committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so gitleaks can scan all commits
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Use the config in the repo so allowlist / custom rules apply.
+          # `--no-banner` and `--redact` keep the log clean and avoid
+          # echoing secrets if any are found.
+          config-path: .gitleaks.toml
