@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { loadProfile } from '../lib/profile/load.js';
 import { loadCredentials } from '../lib/auth/credentials.js';
+import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -49,6 +50,13 @@ export function registerWelcomeCommand(program: Command): void {
       // Welcome is informational, not an error — route to stdout so it
       // doesn't render red in tools that style stderr as error.
       process.stdout.write(renderWelcome({ authReady, profileReady, cr }));
+      await track(
+        {
+          event_name: EventName.WelcomeViewed,
+          payload: { auth_ready: authReady, profile_ready: profileReady },
+        },
+        root.dataDir,
+      );
       process.exit(0);
     });
 }

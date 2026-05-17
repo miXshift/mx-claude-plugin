@@ -100,12 +100,16 @@ export async function runAuthSetup(
     ctx.data_dir_override,
   );
 
-  // 2. Update the user profile with email + (generate if needed) telemetry user_id.
+  // 2. Update the user profile with email + (generate if needed) telemetry
+  //    install_id. The install_id is also managed by the telemetry module
+  //    (lib/telemetry/identity.ts) — we populate it here as a convenience so
+  //    auth-completion guarantees an install_id exists on disk for the
+  //    user.identified event the auth command emits afterwards.
   const { profile } = await loadProfile(ctx.data_dir_override);
   const merged: Record<string, unknown> = JSON.parse(JSON.stringify(profile));
   merged.user = { email: inputs.email };
   const tele = (merged.telemetry ?? {}) as Record<string, unknown>;
-  tele.user_id = tele.user_id ?? randomUUID();
+  tele.install_id = tele.install_id ?? randomUUID();
   merged.telemetry = tele;
   const parsed = profileSchema.parse(merged);
   const { path: profile_path } = await saveProfile(parsed, ctx.data_dir_override);

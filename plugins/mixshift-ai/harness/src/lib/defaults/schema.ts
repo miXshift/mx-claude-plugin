@@ -66,12 +66,17 @@ export const defaultsSchema = z.object({
     }),
   telemetry: z
     .object({
+      // Supabase REST endpoint for the events table. Empty = "configured off"
+      // (events buffered locally, never flushed). See internal/SUPABASE-SETUP.md.
       endpoint: z.string().default(''),
+      // Supabase anon key. Empty = "configured off" same as endpoint.
+      apikey: z.string().default(''),
       batch_size: z.number().int().positive().default(50),
       flush_interval_ms: z.number().int().positive().default(60_000),
     })
     .default({
       endpoint: '',
+      apikey: '',
       batch_size: 50,
       flush_interval_ms: 60_000,
     }),

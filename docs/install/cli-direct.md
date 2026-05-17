@@ -171,8 +171,13 @@ Clone, `git checkout <branch>`, then `npm install && npm run build`. The bin/mix
 
 ---
 
+## A note on telemetry
+
+During the beta, the harness sends anonymized usage events to MixShift (skills invoked, query timings, command outcomes — never query results or credentials). The first time you run any `mixshift` command, you'll see a short FYI notice in stderr; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). For CI / scripted use where you want zero telemetry, set `MIXSHIFT_TELEMETRY=0` in your environment.
+
 ## What's next
 
 - [Auth setup deep dive](../auth-setup.md) — the full credentials flow, share-with-team patterns, IP whitelist
+- [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions
 - [Repo README](../../README.md) — high-level architecture + license + contributing

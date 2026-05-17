@@ -6,6 +6,7 @@ import { discoverSellers } from '../lib/discovery/seller-query.js';
 import { groupIntoBrands } from '../lib/discovery/brand-grouping.js';
 import { renderDiscoveryTable } from './_render-discovery.js';
 import { bootstrapBrand } from '../lib/clients/bootstrap.js';
+import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -71,6 +72,19 @@ export function registerBrandCommands(program: Command): void {
             dataDirOverride: root.dataDir,
             force: opts.force,
           });
+
+          await track(
+            {
+              event_name: EventName.BrandAdded,
+              outcome: 'ok',
+              payload: {
+                slug: match.slug,
+                account_count: result.context.accounts.length,
+                account_types: result.context.accounts.map((a) => a.account_type),
+              },
+            },
+            root.dataDir,
+          );
 
           // 3. Output
           if (root.json) {
@@ -168,6 +182,18 @@ export function registerBrandCommands(program: Command): void {
           includeInactive: opts.includeInactive,
         });
         const suggestions = groupIntoBrands(sellers);
+        await track(
+          {
+            event_name: EventName.BrandDiscovered,
+            outcome: 'ok',
+            payload: {
+              seller_count: sellers.length,
+              brand_count: suggestions.length,
+              include_inactive: opts.includeInactive,
+            },
+          },
+          root.dataDir,
+        );
 
         if (root.json) {
           process.stdout.write(

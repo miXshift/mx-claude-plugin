@@ -57,7 +57,7 @@ A deterministic harness (`mixshift` CLI, bundled in this repo) handles authentic
 - The plugin is **read-only** at the database level — the MySQL credentials issued by MixShift have SELECT permissions only.
 - Your warehouse credentials live at `~/.mixshift/auth/credentials` on your local machine. They never leave your device.
 - IP whitelist requests post your email and public IP to a MixShift ops channel (Discord webhook) so an operator can grant access.
-- The plugin does not phone home with usage data beyond what you explicitly send via `mixshift feedback` and IP whitelist requests.
+- **Beta telemetry:** during the beta, the plugin sends anonymized usage events (which skills run, query timings, onboarding funnel transitions) to MixShift's Supabase so we can iterate. We do **not** collect query result contents, your warehouse credentials, your brand context files, or your chat with Claude. Full details + opt-out instructions in [`docs/privacy.md`](./docs/privacy.md). The welcome screen shows a short notice on first run.
 
 ## License
 

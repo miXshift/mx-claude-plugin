@@ -134,8 +134,13 @@ In Cowork: Customize → find `mixshift-ai` → check for updates. Cowork pulls 
 
 ---
 
+## A note on telemetry
+
+During the beta, the plugin sends anonymized usage events to MixShift so we can iterate on it. The welcome screen prints a one-time notice the first time you run it; full details + opt-out in [Privacy & telemetry](../privacy.md).
+
 ## What's next
 
 - [Auth setup deep dive](../auth-setup.md) — how the credentials flow works, share-with-team patterns, troubleshooting
+- [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions about data visibility, multi-user setups, etc.
 - [Cowork organization install](./cowork-organization.md) — if you decide your whole team should have this, the admin can publish to your Cowork org marketplace

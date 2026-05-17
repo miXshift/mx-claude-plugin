@@ -60,9 +60,21 @@ auth:
       session, use your tenant subdomain instead (e.g.
       marpartners.mydashapplications.com/database-admin).
 
-# Telemetry destination (Supabase endpoint, populated once the project is set
-# up). When empty, telemetry events are buffered locally but not flushed.
+# Telemetry destination — MixShift's Supabase events table.
+#
+# When `endpoint` or `apikey` is empty, telemetry is "configured off": events
+# are written to the local queue file (~/.mixshift/telemetry/queue.jsonl) but
+# never flushed to the network. Populating both flips telemetry on for every
+# install — provided the user hasn't run `mixshift telemetry opt-out` and
+# hasn't set MIXSHIFT_TELEMETRY=0 in their environment.
+#
+# The anon key is safe to embed in the plugin (Supabase anon keys are designed
+# for client-side use; security is enforced server-side via Row Level Security
+# policies that limit the anon role to INSERT-only on the events table).
+#
+# Setup: see internal/SUPABASE-SETUP.md.
 telemetry:
   endpoint: ""
+  apikey: ""
   batch_size: 50
   flush_interval_ms: 60000

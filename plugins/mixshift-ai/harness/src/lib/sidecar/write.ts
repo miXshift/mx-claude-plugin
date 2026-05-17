@@ -19,6 +19,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolveDataDir } from '../paths/resolve.js';
 import { sidecarSchema, type Sidecar, type SqlCall } from './schema.js';
 import { formatZodError } from '../profile/format-error.js';
+import { track, EventName } from '../telemetry/index.js';
 
 /**
  * Skill-supplied input. Most fields map 1:1 to the schema; the
@@ -112,6 +113,31 @@ export async function writeSidecar(
 
   await mkdir(dirname(path), { recursive: true });
   await writeAtomic(path, JSON.stringify(parsed.data, null, 2) + '\n');
+
+  // Sidecar emission is the canonical "skill finished a run" signal.
+  // Tag it with skill_id, verdict, and run_kind for analytics.
+  await track(
+    {
+      event_name: EventName.SidecarWritten,
+      skill_id: input.skill,
+      outcome:
+        input.verdict === 'RED'
+          ? 'failed'
+          : input.verdict === 'OBSERVATIONAL'
+            ? 'deferred'
+            : 'ok',
+      payload: {
+        brand_slug: input.brand_slug,
+        data_date: input.data_date,
+        run_id: runId,
+        verdict: input.verdict,
+        run_kind: input.run_kind,
+        skill_version: input.skill_version,
+        sql_call_count: sqlCalls.length,
+      },
+    },
+    input.dataDirOverride,
+  );
 
   return {
     sidecar_path: path,

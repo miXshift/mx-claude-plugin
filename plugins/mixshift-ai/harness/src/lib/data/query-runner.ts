@@ -22,6 +22,7 @@
 import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { loadCredentials } from '../auth/credentials.js';
 import type { MysqlCreds } from '../auth/schema.js';
+import { track, EventName } from '../telemetry/index.js';
 
 export type DataQueryFailureKind =
   | 'access_denied_table'
@@ -62,10 +63,17 @@ export interface RunQueryOptions {
   connectTimeoutMs?: number;
 }
 
+export interface RunQueryTelemetry {
+  /** Library SQL ID (e.g. 'DHC-01') if this query came from the SQL library, else undefined. */
+  query_id?: string;
+  /** Primary table touched (best-effort; surface what callers know cheaply). */
+  query_table?: string;
+}
+
 export async function runQuery<Row = Record<string, unknown>>(
   sql: string,
   params: unknown[] | Record<string, unknown> = [],
-  options: RunQueryOptions = {},
+  options: RunQueryOptions & RunQueryTelemetry = {},
 ): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
   let conn: mysql.Connection | undefined;
@@ -98,14 +106,50 @@ export async function runQuery<Row = Record<string, unknown>>(
       sql,
       params as unknown as unknown[],
     );
+    const durationMs = Date.now() - t0;
+    // Telemetry — best-effort, won't throw. Fires for every query that
+    // actually executed against the warehouse (catalog SQL + ad-hoc).
+    void track(
+      {
+        event_name: EventName.QueryExecuted,
+        outcome: 'ok',
+        duration_ms: durationMs,
+        row_count: rows.length,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        payload: {
+          // The normalized SQL — :param tokens preserved, no resolved values.
+          // Useful for grouping similar query shapes server-side.
+          sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+        },
+      },
+      options.dataDirOverride,
+    );
     return {
       ok: true,
       rows: rows as unknown as Row[],
       rowCount: rows.length,
-      durationMs: Date.now() - t0,
+      durationMs,
     };
   } catch (err) {
-    return classify(err);
+    const failure = classify(err);
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: 'failed',
+        duration_ms: Date.now() - t0,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          table_name: failure.table_name,
+        },
+      },
+      options.dataDirOverride,
+    );
+    return failure;
   } finally {
     if (conn) {
       try {

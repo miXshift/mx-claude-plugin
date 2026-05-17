@@ -148,8 +148,13 @@ You're hitting the non-TTY detection. Either run `mixshift auth setup` in your o
 
 ---
 
+## A note on telemetry
+
+During the beta, the plugin sends anonymized usage events to MixShift so we can iterate. You'll see a one-time notice the first time you run `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md).
+
 ## What's next
 
 - [Auth setup deep dive](../auth-setup.md)
+- [Privacy & telemetry](../privacy.md)
 - [FAQ](../faq.md)
 - [CLI direct install](./cli-direct.md) — if you want the harness CLI without going through a plugin host at all (e.g. for scripting or CI)

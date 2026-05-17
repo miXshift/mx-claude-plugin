@@ -67,7 +67,7 @@ describe('runAuthSetup', () => {
     // Files were written
     const profileRaw = await readFile(join(testDir, 'profile.yaml'), 'utf-8');
     expect(profileRaw).toContain('sam@example.com');
-    expect(profileRaw).toContain('user_id'); // populated UUID
+    expect(profileRaw).toContain('install_id'); // populated UUID
 
     const credsRaw = await readFile(join(testDir, 'auth', 'credentials'), 'utf-8');
     expect(credsRaw).toContain('example.host');

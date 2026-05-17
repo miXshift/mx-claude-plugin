@@ -22,7 +22,9 @@ describe('loadProfile', () => {
     expect(result.source).toBe('default');
     expect(result.profile.schema_version).toBe(1);
     expect(result.profile.credential_store).toBe('plaintext');
-    expect(result.profile.telemetry.enabled).toBe(true);
+    // Default telemetry: not opted out, not yet acknowledged.
+    expect(result.profile.telemetry.opted_out).toBe(false);
+    expect(result.profile.telemetry.acknowledged_at).toBeUndefined();
   });
 
   it('loads a valid profile from disk', async () => {
@@ -52,7 +54,8 @@ describe('saveProfile + loadProfile round-trip', () => {
   it('round-trips a profile through disk without loss', async () => {
     const profile = defaultProfile();
     profile.user = { email: 'test@example.com' };
-    profile.telemetry.user_id = 'abc-123';
+    profile.telemetry.install_id = '550e8400-e29b-41d4-a716-446655440000';
+    profile.telemetry.acknowledged_at = '2026-05-17T12:00:00.000Z';
     profile.output.per_skill = {
       'daily-health-check': 'local-html',
       'monthly-performance-report': {
@@ -66,7 +69,12 @@ describe('saveProfile + loadProfile round-trip', () => {
 
     expect(loaded.source).toBe('file');
     expect(loaded.profile.user?.email).toBe('test@example.com');
-    expect(loaded.profile.telemetry.user_id).toBe('abc-123');
+    expect(loaded.profile.telemetry.install_id).toBe(
+      '550e8400-e29b-41d4-a716-446655440000',
+    );
+    expect(loaded.profile.telemetry.acknowledged_at).toBe(
+      '2026-05-17T12:00:00.000Z',
+    );
     expect(loaded.profile.output.per_skill['daily-health-check']).toBe('local-html');
     expect(loaded.profile.output.per_skill['monthly-performance-report']).toEqual({
       claude_code: 'google-doc',

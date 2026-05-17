@@ -75,3 +75,11 @@ export function tmpDir(dataDirOverride?: string): string {
 export function outputDir(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'output');
 }
+
+export function telemetryDir(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'telemetry');
+}
+
+export function telemetryQueuePath(dataDirOverride?: string): string {
+  return join(telemetryDir(dataDirOverride), 'queue.jsonl');
+}

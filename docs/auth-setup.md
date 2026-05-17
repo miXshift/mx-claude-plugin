@@ -231,6 +231,7 @@ The harness writes `~/.mixshift/auth/credentials` unconditionally during setup �
 ## What's next
 
 - [FAQ](./faq.md) — common questions about multi-user, data visibility, troubleshooting
+- [Privacy & telemetry](./privacy.md) — what the plugin collects during beta, how to opt out
 - [Cowork personal install](./install/cowork-personal.md)
 - [Cowork organization install](./install/cowork-organization.md)
 - [Claude Code install](./install/claude-code.md)

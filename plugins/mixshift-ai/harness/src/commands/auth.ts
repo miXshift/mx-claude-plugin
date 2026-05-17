@@ -7,6 +7,7 @@ import { runAuthSetup, type SetupInputs, type SetupResult } from '../lib/auth/se
 import { mysqlCredsSchema } from '../lib/auth/schema.js';
 import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
+import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -68,6 +69,8 @@ export function registerAuthCommands(program: Command): void {
     )
     .action(async (opts: SetupOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      await track({ event_name: EventName.AuthStarted }, root.dataDir);
       try {
         const defaults = await loadPluginDefaults();
         const inputs = await gatherInputs(opts, defaults);
@@ -77,9 +80,74 @@ export function registerAuthCommands(program: Command): void {
           data_dir_override: root.dataDir,
         });
         renderResult(result, !!root.json);
+
+        // Telemetry: capture the outcome class. Email goes into the event
+        // so the server-side join can link install_id → MixShift user.
+        const duration = Date.now() - startedAt;
+        await track(
+          {
+            event_name: EventName.AuthConnectionTested,
+            outcome:
+              result.status === 'ok'
+                ? 'ok'
+                : result.status === 'pending_whitelist'
+                  ? 'deferred'
+                  : 'failed',
+            duration_ms: duration,
+            email: inputs.email,
+            payload: {
+              status: result.status,
+              connection_tested:
+                'connection_tested' in result ? result.connection_tested : false,
+              whitelist_request_sent:
+                'whitelist_request_sent' in result
+                  ? result.whitelist_request_sent
+                  : undefined,
+              public_ip: 'public_ip' in result ? result.public_ip : undefined,
+            },
+          },
+          root.dataDir,
+        );
+        if (result.status === 'ok') {
+          await track(
+            { event_name: EventName.AuthCompleted, email: inputs.email },
+            root.dataDir,
+          );
+          // Link install_id ↔ email server-side.
+          await track(
+            {
+              event_name: EventName.UserIdentified,
+              email: inputs.email,
+            },
+            root.dataDir,
+          );
+        } else if (result.status === 'pending_whitelist') {
+          await track(
+            {
+              event_name: EventName.IpWhitelistRequested,
+              email: inputs.email,
+              payload: {
+                whitelist_request_sent:
+                  'whitelist_request_sent' in result
+                    ? result.whitelist_request_sent
+                    : false,
+              },
+            },
+            root.dataDir,
+          );
+        }
         process.exit(exitCodeFor(result));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        await track(
+          {
+            event_name: EventName.AuthFailed,
+            outcome: 'failed',
+            error_class: 'setup_threw',
+            payload: { message: message.slice(0, 500) },
+          },
+          root.dataDir,
+        );
         if (root.json) {
           process.stdout.write(
             JSON.stringify({ status: 'error', message }, null, 2) + '\n',

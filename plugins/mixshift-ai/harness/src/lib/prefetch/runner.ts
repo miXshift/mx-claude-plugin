@@ -25,6 +25,7 @@ import { readQuerySql } from './sql-library.js';
 import { substituteParams, findReferencedParams } from './substitute.js';
 import { runQuery, type DataQueryResult } from '../data/query-runner.js';
 import { writePrefetchArtifacts, type QueryRunOutput } from './artifacts.js';
+import { track, EventName } from '../telemetry/index.js';
 
 export interface PrefetchOptions {
   brand: string;
@@ -85,6 +86,15 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   const t0 = Date.now();
   const manifest = await loadSkillManifest(opts.skill);
   const { context } = await loadBrandContext(opts.brand, opts.dataDirOverride);
+
+  await track(
+    {
+      event_name: EventName.PrefetchStarted,
+      skill_id: opts.skill,
+      payload: { brand: opts.brand, run_date: opts.runDate, sql_ids: manifest.sql_ids },
+    },
+    opts.dataDirOverride,
+  );
 
   const params = buildStandardParams({
     context,
@@ -179,6 +189,23 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   const partial_failure = perQueryResults.some((r) => r.status === 'failed');
   const has_deferred = perQueryResults.some((r) => r.status === 'deferred');
 
+  await track(
+    {
+      event_name: EventName.PrefetchCompleted,
+      skill_id: opts.skill,
+      outcome: partial_failure ? 'failed' : has_deferred ? 'deferred' : 'ok',
+      duration_ms: Date.now() - t0,
+      payload: {
+        brand: opts.brand,
+        run_date: opts.runDate,
+        ok_count: perQueryResults.filter((r) => r.status === 'ok').length,
+        failed_count: perQueryResults.filter((r) => r.status === 'failed').length,
+        deferred_count: perQueryResults.filter((r) => r.status === 'deferred').length,
+      },
+    },
+    opts.dataDirOverride,
+  );
+
   return {
     brand_slug: context.brand_slug,
     skill_id: manifest.skill_id,
@@ -237,8 +264,12 @@ async function executeOne(
 
   const { sql, params } = substituteParams(rawSql, allParams);
 
+  // Pass the catalog ID into runQuery so the QueryExecuted event gets
+  // tagged with query_id (vs ad-hoc / data-explore queries which leave
+  // query_id unset). Lets us group library-SQL performance separately.
   const result = await runQuery<Record<string, unknown>>(sql, params, {
     dataDirOverride,
+    query_id: id,
   });
 
   if (!result.ok) {

@@ -142,8 +142,13 @@ Today, that's MixShift legacy's single-login-per-org reality. Option B above (th
 
 ---
 
+## A note on telemetry
+
+During the beta, the plugin sends anonymized usage events to MixShift so we can iterate. Each user sees a one-time notice on first run of `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). If your org has data-residency or compliance requirements that prevent telemetry submission, run `mixshift telemetry opt-out` on each user's machine after they install — or bake `MIXSHIFT_TELEMETRY=0` into your org's shell profile.
+
 ## What's next
 
 - [Auth setup deep dive](../auth-setup.md) — full reference for the credentials flow including the `--from-file` + `--password-file` mechanism
+- [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions, including multi-user / team scenarios
 - [Cowork personal install](./cowork-personal.md) — what your team would do if you weren't using the org marketplace

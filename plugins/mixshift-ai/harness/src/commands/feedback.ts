@@ -3,6 +3,7 @@ import { platform, release } from 'node:os';
 import { loadProfile } from '../lib/profile/load.js';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { postWebhook } from '../lib/webhook/discord.js';
+import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -66,6 +67,25 @@ export function registerFeedbackCommand(program: Command): void {
                   }
                 : {}),
             },
+          );
+
+          // Telemetry: also log feedback to Supabase (in addition to
+          // Discord). Discord routes for real-time human attention;
+          // Supabase routes for analyzable feedback firehose.
+          await track(
+            {
+              event_name: EventName.FeedbackSubmitted,
+              email: userEmail,
+              outcome: result.ok ? 'ok' : 'failed',
+              payload: {
+                category: opts.category,
+                message: message.slice(0, 2000),
+                skill_id: opts.skill,
+                command: opts.command,
+                brand_slug: opts.brand,
+              },
+            },
+            root.dataDir,
           );
 
           if (root.json) {

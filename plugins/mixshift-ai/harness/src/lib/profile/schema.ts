@@ -72,10 +72,20 @@ export const profileSchema = z.object({
 
   telemetry: z
     .object({
-      enabled: z.boolean().default(true),
-      user_id: z.string().optional(),
+      // Anonymous machine identifier — UUID generated on first run, immutable.
+      // Used to group events from one install before the user has set up auth.
+      // Linked to user.email server-side once auth setup completes.
+      install_id: z.uuid().optional(),
+      // ISO timestamp when the consent notice was shown. Absent = not yet shown.
+      // The first-run notice prints whenever this is absent; setting it suppresses
+      // future prints.
+      acknowledged_at: z.iso.datetime().optional(),
+      // User-set opt-out via `mixshift telemetry opt-out`. When true, no events
+      // are queued or sent (the env var MIXSHIFT_TELEMETRY=0 has the same effect
+      // but doesn't persist).
+      opted_out: z.boolean().default(false),
     })
-    .default({ enabled: true }),
+    .default({ opted_out: false }),
 
   ui: z
     .object({
