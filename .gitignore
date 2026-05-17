@@ -6,3 +6,8 @@
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Internal-only working docs (testing checklists, launch playbooks,
+# release-day runbooks, etc.). These don't belong in a customer-facing
+# repo. Anything customer-relevant goes in docs/ or README.md.
+internal/
