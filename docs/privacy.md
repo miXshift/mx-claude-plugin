@@ -61,7 +61,7 @@ This is not a marketing data play. We don't sell it, don't share it with third p
 
 - **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering.
 - **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Data stays inside MixShift infrastructure.
-- **Discord webhook (a subset only):** plugin install events, feedback submissions, IP whitelist requests, table-access requests, and hard errors. These are real-time alerts so a human can react quickly. The full event firehose goes to Supabase, not Discord.
+- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, IP whitelist requests, and table-access requests. These are forwarded server-side from the same Supabase events table — a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
 
 ## Retention
 

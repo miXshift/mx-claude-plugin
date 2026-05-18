@@ -12,29 +12,17 @@
 
 schema_version: 1
 
-# Discord routing for ops alerts: IP whitelist requests, user feedback,
-# table-access requests, and plugin crashes — same channel, multiple flows.
+# Discord routing for ops alerts (IP whitelist requests, user feedback,
+# table-access requests, plugin crashes) is server-side. The plugin POSTs
+# every event to the Supabase `events` table; a database trigger calls
+# the `fanout-discord` Edge Function which reads the Discord webhook URL
+# from the function's secrets (set once via the Supabase dashboard) and
+# posts to the ops channel. No Discord URL ever lives in the plugin.
 #
-# As of plugin v0.4.0 the Discord webhook URL is NOT shipped in this file
-# (Discord webhook URLs are credentials — anyone with the URL can post to
-# the channel, so we treat them as secrets and keep them out of git).
-# Routing happens via Supabase fan-out: the plugin POSTs the event to the
-# telemetry events table, and a Supabase Edge Function + DB trigger reads
-# the row and posts to Discord using a URL stored in Supabase Vault
-# (encrypted at rest, accessible only to server-side functions).
-#
-# For local development / MixShift-internal testing before Supabase
-# fan-out is wired, set the env var via your shell OR via .env.local:
-#   MIXSHIFT_DISCORD_WEBHOOK=https://...
-# The plugin honors this override at runtime. See .env.local.template at
-# the repo root for the full set of supported env vars + recommended
-# locations.
-#
-# Setup: internal/SUPABASE-SETUP.md documents the Edge Function template,
-# DB trigger, and Vault secret pattern. internal/SECRETS.md documents
-# which fields are secrets and which aren't.
+# Setup: internal/SUPABASE-SETUP.md §10 documents the Edge Function,
+# the database trigger, and the secret pattern. internal/SECRETS.md
+# documents which fields are secrets and which aren't.
 auth:
-  discord_webhook: ""
   public_ip_lookup_url: https://api.ipify.org?format=json
 
   # MySQL connection defaults — used as suggested values in the auth-setup

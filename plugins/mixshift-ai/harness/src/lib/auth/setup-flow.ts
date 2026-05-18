@@ -8,7 +8,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { platform, release } from 'node:os';
 import type { PluginDefaults } from '../defaults/schema.js';
 import { loadProfile } from '../profile/load.js';
 import { saveProfile } from '../profile/save.js';
@@ -21,8 +20,6 @@ import {
   type FailureKind,
 } from './test-connection.js';
 import { fetchPublicIp as defaultFetchPublicIp } from './public-ip.js';
-import { postWebhook as defaultPostWebhook } from '../webhook/discord.js';
-import type { PostResult, WebhookRequest } from '../webhook/types.js';
 
 export interface SetupInputs {
   email: string;
@@ -69,17 +66,22 @@ export interface SetupContext {
 /**
  * Injectable collaborators. Tests pass fakes; production uses the real
  * implementations imported in this module.
+ *
+ * Note: notifying MixShift ops about a pending whitelist request now
+ * happens via the telemetry pipeline (`commands/auth.ts` emits
+ * `EventName.IpWhitelistRequested` which the Supabase database trigger
+ * fans out to the Discord ops channel). This module just detects the
+ * "ip_not_allowed" failure + captures the user's public IP so the
+ * telemetry event has enough context for the Discord embed.
  */
 export interface SetupDeps {
   testConnection: (creds: MysqlCreds) => Promise<TestResult>;
   fetchPublicIp: (endpoint: string) => Promise<string | null>;
-  postWebhook: (url: string, request: WebhookRequest) => Promise<PostResult>;
 }
 
 const defaultDeps: SetupDeps = {
   testConnection: defaultTestConnection,
   fetchPublicIp: defaultFetchPublicIp,
-  postWebhook: defaultPostWebhook,
 };
 
 /**
@@ -175,34 +177,27 @@ async function sendWhitelistRequest(args: {
     args.ctx.defaults.auth.public_ip_lookup_url,
   );
 
-  let webhookResult: PostResult;
-  if (!publicIp) {
-    webhookResult = {
-      ok: false,
-      error:
-        'Could not determine your public IP automatically. ' +
-        'Visit https://api.ipify.org and email the result to your MixShift contact.',
-    };
-  } else {
-    webhookResult = await args.deps.postWebhook(
-      args.ctx.defaults.auth.discord_webhook,
-      {
-        kind: 'ip_whitelist_request',
-        user_email: args.email,
-        public_ip: publicIp,
-        plugin_version: args.ctx.plugin_version,
-        os: `${platform()} ${release()}`,
-      },
-    );
-  }
+  // Whether the whitelist request will reach ops boils down to: "did we
+  // capture the user's public IP?". The actual delivery happens via the
+  // `EventName.IpWhitelistRequested` telemetry event emitted by
+  // commands/auth.ts after this function returns — Supabase fans it out
+  // to the Discord ops channel server-side. If the user's IP couldn't
+  // be detected (network issue, DNS blocked api.ipify.org, etc.) the
+  // Discord embed would be useless to the operator, so we report this
+  // case as "not sent" and tell the user to email instead.
+  const sent = publicIp != null;
+  const error = sent
+    ? undefined
+    : 'Could not determine your public IP automatically. ' +
+      'Visit https://api.ipify.org and email the result to your MixShift contact.';
 
   return {
     status: 'pending_whitelist',
     profile_path: args.profile_path,
     credentials_path: args.credentials_path,
     failure_kind: 'ip_not_allowed',
-    whitelist_request_sent: webhookResult.ok,
-    whitelist_request_error: webhookResult.error,
+    whitelist_request_sent: sent,
+    whitelist_request_error: error,
     public_ip: publicIp ?? undefined,
   };
 }

@@ -20,7 +20,6 @@ describe('loadPluginDefaults', () => {
       join(testDir, 'does-not-exist.yaml'),
     );
     expect(result.schema_version).toBe(1);
-    expect(result.auth.discord_webhook).toBe('');
     expect(result.auth.public_ip_lookup_url).toBe(
       'https://api.ipify.org?format=json',
     );
@@ -33,21 +32,22 @@ describe('loadPluginDefaults', () => {
       [
         'schema_version: 1',
         'auth:',
-        '  discord_webhook: https://example.com/hook',
-        '  public_ip_lookup_url: https://api.ipify.org?format=json',
+        '  public_ip_lookup_url: https://api.ipify.org?format=other',
         '',
       ].join('\n'),
     );
 
     const result = await loadPluginDefaults(path);
-    expect(result.auth.discord_webhook).toBe('https://example.com/hook');
+    expect(result.auth.public_ip_lookup_url).toBe(
+      'https://api.ipify.org?format=other',
+    );
   });
 
   it('throws on schema violation', async () => {
     const path = join(testDir, 'bad-defaults.yaml');
     await writeFile(
       path,
-      'schema_version: 999\nauth:\n  discord_webhook: not-a-url\n',
+      'schema_version: 999\nauth:\n  public_ip_lookup_url: not-a-url\n',
     );
 
     await expect(loadPluginDefaults(path)).rejects.toThrow(/invalid/i);

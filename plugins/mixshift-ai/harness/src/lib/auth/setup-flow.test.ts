@@ -27,7 +27,6 @@ const sampleMysql: MysqlCreds = {
 const sampleDefaults = defaultsSchema.parse({
   schema_version: 1,
   auth: {
-    discord_webhook: 'https://example.com/webhook',
     public_ip_lookup_url: 'https://api.ipify.org?format=json',
   },
 });
@@ -36,7 +35,6 @@ function makeDeps(overrides: Partial<SetupDeps>): SetupDeps {
   return {
     testConnection: vi.fn().mockResolvedValue({ ok: true }),
     fetchPublicIp: vi.fn().mockResolvedValue('1.2.3.4'),
-    postWebhook: vi.fn().mockResolvedValue({ ok: true, status: 204 }),
     ...overrides,
   };
 }
@@ -62,7 +60,6 @@ describe('runAuthSetup', () => {
     expect(result.status).toBe('ok');
     expect(deps.testConnection).toHaveBeenCalledOnce();
     expect(deps.fetchPublicIp).not.toHaveBeenCalled();
-    expect(deps.postWebhook).not.toHaveBeenCalled();
 
     // Files were written
     const profileRaw = await readFile(join(testDir, 'profile.yaml'), 'utf-8');
@@ -127,7 +124,11 @@ describe('runAuthSetup', () => {
     expect(deps.fetchPublicIp).not.toHaveBeenCalled();
   });
 
-  it('sends a whitelist request when IP not allowed and auto_request_whitelist=true', async () => {
+  it('captures public IP for an outgoing whitelist request when IP not allowed', async () => {
+    // After v0.4.0 Discord routing is server-side (Supabase fan-out).
+    // setup-flow's job is to detect ip_not_allowed + capture the public
+    // IP so the telemetry event emitted by commands/auth.ts has enough
+    // context for the Discord embed. There is no direct webhook call.
     const deps = makeDeps({
       testConnection: vi.fn().mockResolvedValue({
         ok: false,
@@ -155,52 +156,14 @@ describe('runAuthSetup', () => {
     if (result.status !== 'pending_whitelist') throw new Error('unreachable');
     expect(result.whitelist_request_sent).toBe(true);
     expect(result.public_ip).toBe('1.2.3.4');
-    expect(deps.postWebhook).toHaveBeenCalledOnce();
-
-    // The webhook URL passed to the dep is the one from defaults
-    expect(deps.postWebhook).toHaveBeenCalledWith(
-      'https://example.com/webhook',
-      expect.objectContaining({
-        user_email: 'sam@example.com',
-        public_ip: '1.2.3.4',
-      }),
-    );
+    expect(result.whitelist_request_error).toBeUndefined();
+    expect(deps.fetchPublicIp).toHaveBeenCalledOnce();
   });
 
-  it('records a whitelist failure when the webhook POST fails', async () => {
-    const deps = makeDeps({
-      testConnection: vi.fn().mockResolvedValue({
-        ok: false,
-        kind: 'ip_not_allowed',
-        message: 'blocked',
-      }),
-      postWebhook: vi
-        .fn()
-        .mockResolvedValue({ ok: false, error: 'network down' }),
-    });
-
-    const result = await runAuthSetup(
-      {
-        email: 'sam@example.com',
-        mysql: sampleMysql,
-        auto_request_whitelist: true,
-        skip_connection_test: false,
-      },
-      {
-        defaults: sampleDefaults,
-        plugin_version: 'test-0.0',
-        data_dir_override: testDir,
-      },
-      deps,
-    );
-
-    expect(result.status).toBe('pending_whitelist');
-    if (result.status !== 'pending_whitelist') throw new Error('unreachable');
-    expect(result.whitelist_request_sent).toBe(false);
-    expect(result.whitelist_request_error).toBe('network down');
-  });
-
-  it('falls back gracefully when public IP cannot be determined', async () => {
+  it('marks the whitelist request as not-sent when public IP cannot be determined', async () => {
+    // Without a public IP the Discord embed would be useless to the
+    // operator, so we report "not sent" and surface a fallback message
+    // pointing the user to the manual email path.
     const deps = makeDeps({
       testConnection: vi.fn().mockResolvedValue({
         ok: false,
@@ -229,7 +192,7 @@ describe('runAuthSetup', () => {
     if (result.status !== 'pending_whitelist') throw new Error('unreachable');
     expect(result.whitelist_request_sent).toBe(false);
     expect(result.public_ip).toBeUndefined();
-    expect(deps.postWebhook).not.toHaveBeenCalled();
+    expect(result.whitelist_request_error).toMatch(/public IP/i);
   });
 
   it('reports access_denied with friendly message', async () => {

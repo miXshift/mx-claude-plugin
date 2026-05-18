@@ -121,15 +121,17 @@ export function registerAuthCommands(program: Command): void {
             root.dataDir,
           );
         } else if (result.status === 'pending_whitelist') {
+          // This event is in the Supabase fan-out allowlist — emitting it
+          // posts the request to the MixShift ops Discord channel. The
+          // public_ip in the payload is rendered into the Discord embed
+          // so the operator can whitelist it without a follow-up email.
           await track(
             {
               event_name: EventName.IpWhitelistRequested,
               email: inputs.email,
               payload: {
-                whitelist_request_sent:
-                  'whitelist_request_sent' in result
-                    ? result.whitelist_request_sent
-                    : false,
+                public_ip: result.public_ip,
+                whitelist_request_sent: result.whitelist_request_sent,
               },
             },
             root.dataDir,

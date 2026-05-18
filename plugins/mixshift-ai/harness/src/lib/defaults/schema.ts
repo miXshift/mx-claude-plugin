@@ -35,12 +35,11 @@ export const defaultsSchema = z.object({
   schema_version: z.literal(1),
   auth: z
     .object({
-      // Discord webhook for ops alerts: IP whitelist requests, user feedback,
-      // table-access requests, plugin crashes. Empty in shipped defaults
-      // (was a leaked URL until 2026-05-13); real value comes from
-      // MIXSHIFT_DISCORD_WEBHOOK env var or `.env.local`. See
-      // internal/SUPABASE-SETUP.md for the server-side fan-out architecture.
-      discord_webhook: z.url().or(z.literal('')).default(''),
+      // Note: there was an `auth.discord_webhook` field here (with a
+      // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
+      // removed when Discord routing moved server-side — telemetry
+      // events fan out to Discord via a Supabase database trigger +
+      // Edge Function. See internal/SUPABASE-SETUP.md §10.
       public_ip_lookup_url: z.url().default('https://api.ipify.org?format=json'),
       mysql: mysqlDefaults.default({
         host: 'db.mydashapplications.studio',
@@ -55,7 +54,6 @@ export const defaultsSchema = z.object({
       }),
     })
     .default({
-      discord_webhook: '',
       public_ip_lookup_url: 'https://api.ipify.org?format=json',
       mysql: {
         host: 'db.mydashapplications.studio',

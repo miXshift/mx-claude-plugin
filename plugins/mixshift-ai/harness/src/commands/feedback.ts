@@ -1,21 +1,31 @@
 import type { Command } from 'commander';
-import { platform, release } from 'node:os';
 import { loadProfile } from '../lib/profile/load.js';
-import { loadPluginDefaults } from '../lib/defaults/load.js';
-import { postWebhook } from '../lib/webhook/discord.js';
-import { track, EventName } from '../lib/telemetry/index.js';
-import { getPluginVersion } from '../lib/plugin-version.js';
+import { track, maybeFlush, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
   dataDir?: string;
 }
 
+/**
+ * `mixshift feedback` — user-facing channel for bug reports, feature
+ * requests, and comments.
+ *
+ * Delivery model: emit a `feedback.submitted` telemetry event and force
+ * a synchronous flush so the user gets an immediate "delivered" signal.
+ * The Supabase database trigger fans the event out to the MixShift ops
+ * Discord channel server-side (see internal/SUPABASE-SETUP.md §10). No
+ * Discord webhook URL ever lives in the plugin.
+ *
+ * If the flush fails (no network, Supabase down, …), the event stays in
+ * the local queue and gets retried on the next CLI invocation — feedback
+ * is never lost, just delayed.
+ */
 export function registerFeedbackCommand(program: Command): void {
   program
     .command('feedback <message>')
     .description(
-      'Send feedback to MixShift ops via the Discord webhook (bug reports, feature requests, comments).',
+      'Send feedback to MixShift ops (bug reports, feature requests, comments).',
     )
     .option(
       '--category <cat>',
@@ -39,7 +49,6 @@ export function registerFeedbackCommand(program: Command): void {
         const root = cmd.optsWithGlobals<RootOptions>();
         try {
           const { profile } = await loadProfile(root.dataDir);
-          const defaults = await loadPluginDefaults();
           const userEmail = profile.user?.email;
           if (!userEmail) {
             throw new Error(
@@ -47,35 +56,10 @@ export function registerFeedbackCommand(program: Command): void {
             );
           }
 
-          const result = await postWebhook(
-            defaults.auth.discord_webhook,
-            {
-              kind: 'user_feedback',
-              user_email: userEmail,
-              plugin_version: getPluginVersion(),
-              os: `${platform()} ${release()}`,
-              message,
-              category: opts.category,
-              ...(opts.skill || opts.command || opts.brand
-                ? {
-                    context: {
-                      ...(opts.skill ? { skill_id: opts.skill } : {}),
-                      ...(opts.command ? { command: opts.command } : {}),
-                      ...(opts.brand ? { brand_slug: opts.brand } : {}),
-                    },
-                  }
-                : {}),
-            },
-          );
-
-          // Telemetry: also log feedback to Supabase (in addition to
-          // Discord). Discord routes for real-time human attention;
-          // Supabase routes for analyzable feedback firehose.
           await track(
             {
               event_name: EventName.FeedbackSubmitted,
               email: userEmail,
-              outcome: result.ok ? 'ok' : 'failed',
               payload: {
                 category: opts.category,
                 message: message.slice(0, 2000),
@@ -87,31 +71,43 @@ export function registerFeedbackCommand(program: Command): void {
             root.dataDir,
           );
 
+          // Force a synchronous flush so the user gets immediate
+          // delivery confirmation. The standard background flush would
+          // pick this up on the next CLI invocation, but feedback
+          // benefits from "press Enter, see ✓ Sent" UX.
+          const flush = await maybeFlush(root.dataDir);
+          const delivered = flush.status === 'sent';
+
           if (root.json) {
             process.stdout.write(
               JSON.stringify(
                 {
-                  status: result.ok ? 'ok' : 'error',
-                  ...(result.ok ? {} : { message: result.error }),
+                  status: delivered ? 'ok' : 'queued',
+                  flush_status: flush.status,
+                  events_sent: flush.events_sent,
+                  ...(flush.error ? { error: flush.error } : {}),
                 },
                 null,
                 2,
               ) + '\n',
             );
+          } else if (delivered) {
+            process.stderr.write(
+              `\n✓ Feedback sent to MixShift ops. Thanks!\n`,
+            );
           } else {
-            if (result.ok) {
-              process.stderr.write(
-                `\n✓ Feedback sent to MixShift ops. Thanks!\n`,
-              );
-            } else {
-              process.stderr.write(
-                `\n✗ Could not send feedback: ${result.error ?? 'unknown error'}\n` +
-                  `  Save your message locally and email it to MixShift if you want to be sure it gets to us.\n`,
-              );
-              process.exit(1);
-            }
+            // Event is on disk in the queue; will retry on the next CLI
+            // invocation. Use stderr but with a soft warning shape, not
+            // an error — the feedback isn't lost.
+            process.stderr.write(
+              `\n• Feedback queued locally (couldn't reach the telemetry endpoint right now).\n` +
+                `  It will be sent automatically on your next mixshift command.\n` +
+                (flush.error ? `  Reason: ${flush.error}\n` : ''),
+            );
           }
-          process.exit(result.ok ? 0 : 1);
+          process.exit(delivered ? 0 : 0);
+          // Note: exit 0 in both cases. "Queued" isn't a failure — the
+          // feedback is captured locally and will retry.
         } catch (err) {
           const message_ = err instanceof Error ? err.message : String(err);
           if (root.json) {

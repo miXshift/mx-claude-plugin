@@ -270,7 +270,7 @@ Order is intentional — each builds on the previous and is independently testab
 
 2. **`mixshift profile show` + `mixshift profile set`**. Reads / writes `~/.mixshift/profile.yaml`. First end-to-end file I/O. Tests path resolution + env overrides. ~3 hours.
 
-3. **`mixshift auth setup`**. MySQL creds flow with IP whitelist check via Discord webhook. First real onboarding step. ~6 hours.
+3. **`mixshift auth setup`**. MySQL creds flow; IP whitelist requests emitted as telemetry events and fanned out to the ops Discord channel server-side. First real onboarding step. ~6 hours.
 
 4. **`mixshift validate <brand>`**. Loads `_template/context.yaml` or a real brand context, validates against `_schema/context.schema.yaml`. First skill-relevant function. Test with the template + intentionally broken fixtures. ~4 hours.
 

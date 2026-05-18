@@ -135,7 +135,7 @@ Confirm the repo is public (it must be for the GitHub source type). Check the pu
 Cowork didn't PATH-register the plugin's `bin/` directory for that user's seat. File a Cowork support ticket — this is the documented behavior. Workaround: invoke the harness via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
 
 **One user's auth setup fails with "IP not whitelisted".**
-That user's public IP isn't on the warehouse allowlist yet. The harness auto-fires a Discord webhook with the email + IP; a MixShift operator grants access (usually hours). Each user goes through this separately the first time they auth — IP whitelists are per-IP, not per-MixShift-org.
+That user's public IP isn't on the warehouse allowlist yet. The harness emits a telemetry event with the email + IP that MixShift ops sees in real time; an operator grants access (usually hours). Each user goes through this separately the first time they auth — IP whitelists are per-IP, not per-MixShift-org.
 
 **My team is asking why they each have to enter the same credentials.**
 Today, that's MixShift legacy's single-login-per-org reality. Option B above (the `--from-file` bundle approach) makes this a one-command operation per user. MixShift 2.0 will move to per-user logins with role-based data scoping.

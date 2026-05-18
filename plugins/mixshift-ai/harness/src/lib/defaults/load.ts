@@ -51,37 +51,27 @@ export async function loadPluginDefaults(
 /**
  * Layer environment-variable overrides on top of the parsed defaults.
  *
- * Why this exists: some defaults are MixShift-deployment-specific (the
- * Discord webhook URL, the Supabase telemetry endpoint) but shouldn't be
- * committed to a public repo as plaintext credentials. We ship empty
- * placeholders in `.mixshift-defaults.yaml` and let env vars carry the
- * real values at runtime. This keeps the public repo free of secret-
- * shaped strings while preserving the "plugin just works" UX for
- * customers running through MixShift's deployment pipeline.
+ * Why this exists: some defaults are MixShift-deployment-specific (e.g.
+ * the Supabase telemetry endpoint) and we want to override them for
+ * local development or sandbox-pointing without bumping a plugin
+ * version.
  *
  * Recognized env vars (all optional):
- *   MIXSHIFT_DISCORD_WEBHOOK        Discord webhook for ops alerts:
- *                                   IP whitelist requests, user feedback,
- *                                   table-access requests, plugin crashes.
- *                                   Until Supabase fan-out is live (see
- *                                   internal/SUPABASE-SETUP.md §10), this
- *                                   is how MixShift's internal team gets
- *                                   real-time alerts.
  *   MIXSHIFT_TELEMETRY_ENDPOINT     Supabase REST endpoint for events.
  *   MIXSHIFT_TELEMETRY_APIKEY       Supabase anon key (safe to embed —
- *                                   designed for client embedding, RLS does
- *                                   the security work).
+ *                                   designed for client embedding, RLS
+ *                                   does the security work).
  *
- * Values can come from the shell environment OR from a `.env.local` file
- * loaded at CLI startup (see lib/env/load-dotenv.ts).
+ * Removed in v0.4.0: MIXSHIFT_DISCORD_WEBHOOK. The plugin no longer
+ * makes direct Discord webhook calls — telemetry events fan out to
+ * Discord server-side via a Supabase database trigger + Edge Function.
+ * See internal/SUPABASE-SETUP.md §10.
+ *
+ * Values can come from the shell environment OR from a `.env.local`
+ * file loaded at CLI startup (see lib/env/load-dotenv.ts).
  */
 function applyEnvOverrides(defaults: PluginDefaults): PluginDefaults {
   const env = process.env;
-
-  // Webhook override (Discord URLs are secrets — never ship in repo).
-  if (env.MIXSHIFT_DISCORD_WEBHOOK) {
-    defaults.auth.discord_webhook = env.MIXSHIFT_DISCORD_WEBHOOK;
-  }
 
   // Telemetry endpoint + apikey overrides. Useful for local Supabase
   // testing without bumping a plugin version. Also covers the scenario

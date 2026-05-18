@@ -3,11 +3,12 @@
  * the harness reads `process.env`.
  *
  * Why we have this:
- *   The plugin needs runtime secrets — most importantly the rotated Discord
- *   webhook URL — that can't be committed to the public repo. Customers /
- *   MixShift internal team set them via a local `.env.local` file. This
- *   loader reads that file early in CLI startup and pushes values into
- *   `process.env`.
+ *   The plugin reads a few runtime overrides from env vars
+ *   (MIXSHIFT_TELEMETRY_ENDPOINT, MIXSHIFT_TELEMETRY_APIKEY, telemetry
+ *   opt-out flags) that customers or MixShift internal devs may want to
+ *   point at sandbox infra without bumping a plugin release. Standard
+ *   `.env.local` semantics: file lives outside the repo, contents are
+ *   merged into process.env at CLI startup.
  *
  * Lookup order (first match wins):
  *   1. `~/.mixshift/.env.local`            — preferred. Durable across plugin
@@ -21,8 +22,9 @@
  *                                            the plugin itself.
  *
  * Existing shell environment ALWAYS wins. If you already exported
- * `MIXSHIFT_DISCORD_WEBHOOK=...` in your shell, the `.env.local` value is
- * ignored. This matches dotenv semantics and avoids surprise overrides.
+ * `MIXSHIFT_TELEMETRY_ENDPOINT=...` in your shell, the `.env.local`
+ * value is ignored. This matches dotenv semantics and avoids surprise
+ * overrides.
  *
  * File format:
  *   - One `KEY=VALUE` per line

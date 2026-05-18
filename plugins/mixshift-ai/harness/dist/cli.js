@@ -44925,12 +44925,11 @@ var init_schema2 = __esm({
     defaultsSchema = external_exports.object({
       schema_version: external_exports.literal(1),
       auth: external_exports.object({
-        // Discord webhook for ops alerts: IP whitelist requests, user feedback,
-        // table-access requests, plugin crashes. Empty in shipped defaults
-        // (was a leaked URL until 2026-05-13); real value comes from
-        // MIXSHIFT_DISCORD_WEBHOOK env var or `.env.local`. See
-        // internal/SUPABASE-SETUP.md for the server-side fan-out architecture.
-        discord_webhook: external_exports.url().or(external_exports.literal("")).default(""),
+        // Note: there was an `auth.discord_webhook` field here (with a
+        // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
+        // removed when Discord routing moved server-side — telemetry
+        // events fan out to Discord via a Supabase database trigger +
+        // Edge Function. See internal/SUPABASE-SETUP.md §10.
         public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
         mysql: mysqlDefaults.default({
           host: "db.mydashapplications.studio",
@@ -44944,7 +44943,6 @@ var init_schema2 = __esm({
           notes: ""
         })
       }).default({
-        discord_webhook: "",
         public_ip_lookup_url: "https://api.ipify.org?format=json",
         mysql: {
           host: "db.mydashapplications.studio",
@@ -45002,9 +45000,6 @@ async function loadPluginDefaults(overridePath) {
 }
 function applyEnvOverrides(defaults) {
   const env = process.env;
-  if (env.MIXSHIFT_DISCORD_WEBHOOK) {
-    defaults.auth.discord_webhook = env.MIXSHIFT_DISCORD_WEBHOOK;
-  }
   if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
     defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
   }
@@ -48319,7 +48314,6 @@ init_load();
 init_save();
 init_schema();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { platform as platform2, release as release2 } from "node:os";
 
 // src/lib/auth/test-connection.ts
 var import_promise2 = __toESM(require_promise(), 1);
@@ -48389,109 +48383,10 @@ async function fetchPublicIp(endpoint, timeoutMs = 5e3) {
   }
 }
 
-// src/lib/webhook/discord.ts
-var COLOR = {
-  ip_whitelist_request: 5195493,
-  // indigo
-  table_access_request: 16096779,
-  // amber
-  user_feedback: 1096065
-  // emerald
-};
-var TITLE = {
-  ip_whitelist_request: "IP Whitelist Request",
-  table_access_request: "Table Access Request",
-  user_feedback: "User Feedback"
-};
-async function postWebhook(webhookUrl, request, timeoutMs = 1e4) {
-  if (!webhookUrl) {
-    return { ok: true, skipped: "no_webhook_configured" };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const embed = formatEmbed(request);
-  const payload = {
-    username: "mx-claude-plugin",
-    content: `${TITLE[request.kind]} from \`${request.user_email}\``,
-    embeds: [embed]
-  };
-  try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return {
-        ok: false,
-        status: res.status,
-        error: `Webhook returned ${res.status}: ${text.slice(0, 200)}`
-      };
-    }
-    return { ok: true, status: res.status };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-function formatEmbed(request) {
-  const baseFields = [
-    { name: "Email", value: request.user_email, inline: true },
-    { name: "Time (UTC)", value: (/* @__PURE__ */ new Date()).toISOString(), inline: false },
-    { name: "Plugin", value: request.plugin_version, inline: true },
-    { name: "OS", value: request.os, inline: true }
-  ];
-  switch (request.kind) {
-    case "ip_whitelist_request":
-      return embedFor(request, [
-        { name: "IP Address", value: `\`${request.public_ip}\``, inline: true },
-        ...baseFields,
-        ...request.brand_slug ? [{ name: "Brand", value: request.brand_slug, inline: true }] : [],
-        ...request.note ? [{ name: "Note", value: request.note }] : []
-      ], "Reply via email or run GRANT on the warehouse to approve.");
-    case "table_access_request":
-      return embedFor(request, [
-        { name: "Table", value: `\`${request.table_name}\``, inline: true },
-        ...baseFields,
-        ...request.seller_ids && request.seller_ids.length > 0 ? [
-          {
-            name: "Seller IDs attempted",
-            value: request.seller_ids.join(", "),
-            inline: false
-          }
-        ] : [],
-        ...request.note ? [{ name: "Note", value: request.note }] : []
-      ], "Grant SELECT on this table to the user, or reply with rationale for denial.");
-    case "user_feedback":
-      return embedFor(request, [
-        ...request.category ? [{ name: "Category", value: request.category, inline: true }] : [],
-        ...baseFields,
-        ...request.context?.skill_id ? [{ name: "Skill", value: request.context.skill_id, inline: true }] : [],
-        ...request.context?.command ? [{ name: "Command", value: `\`${request.context.command}\``, inline: true }] : [],
-        ...request.context?.brand_slug ? [{ name: "Brand", value: request.context.brand_slug, inline: true }] : [],
-        // Message rendered last so it has full width
-        { name: "Message", value: request.message.slice(0, 1900) }
-      ], "Reply via email or log in the feedback tracker.");
-  }
-}
-function embedFor(request, fields, footer) {
-  return {
-    title: TITLE[request.kind],
-    color: COLOR[request.kind],
-    fields,
-    footer: { text: footer }
-  };
-}
-
 // src/lib/auth/setup-flow.ts
 var defaultDeps = {
   testConnection,
-  fetchPublicIp,
-  postWebhook
+  fetchPublicIp
 };
 async function runAuthSetup(inputs, ctx, deps = defaultDeps) {
   const credsObj = await loadOrInit(ctx.data_dir_override);
@@ -48555,31 +48450,15 @@ async function sendWhitelistRequest(args) {
   const publicIp = await args.deps.fetchPublicIp(
     args.ctx.defaults.auth.public_ip_lookup_url
   );
-  let webhookResult;
-  if (!publicIp) {
-    webhookResult = {
-      ok: false,
-      error: "Could not determine your public IP automatically. Visit https://api.ipify.org and email the result to your MixShift contact."
-    };
-  } else {
-    webhookResult = await args.deps.postWebhook(
-      args.ctx.defaults.auth.discord_webhook,
-      {
-        kind: "ip_whitelist_request",
-        user_email: args.email,
-        public_ip: publicIp,
-        plugin_version: args.ctx.plugin_version,
-        os: `${platform2()} ${release2()}`
-      }
-    );
-  }
+  const sent = publicIp != null;
+  const error51 = sent ? void 0 : "Could not determine your public IP automatically. Visit https://api.ipify.org and email the result to your MixShift contact.";
   return {
     status: "pending_whitelist",
     profile_path: args.profile_path,
     credentials_path: args.credentials_path,
     failure_kind: "ip_not_allowed",
-    whitelist_request_sent: webhookResult.ok,
-    whitelist_request_error: webhookResult.error,
+    whitelist_request_sent: sent,
+    whitelist_request_error: error51,
     public_ip: publicIp ?? void 0
   };
 }
@@ -48670,7 +48549,8 @@ function registerAuthCommands(program3) {
             event_name: EventName.IpWhitelistRequested,
             email: inputs.email,
             payload: {
-              whitelist_request_sent: "whitelist_request_sent" in result ? result.whitelist_request_sent : false
+              public_ip: result.public_ip,
+              whitelist_request_sent: result.whitelist_request_sent
             }
           },
           root.dataDir
@@ -50682,11 +50562,9 @@ function todayISO5() {
 
 // src/commands/feedback.ts
 init_load();
-init_load2();
-import { platform as platform3, release as release3 } from "node:os";
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
-    "Send feedback to MixShift ops via the Discord webhook (bug reports, feature requests, comments)."
+    "Send feedback to MixShift ops (bug reports, feature requests, comments)."
   ).option(
     "--category <cat>",
     "bug | feature_request | comment | other",
@@ -50696,36 +50574,16 @@ function registerFeedbackCommand(program3) {
       const root = cmd.optsWithGlobals();
       try {
         const { profile } = await loadProfile(root.dataDir);
-        const defaults = await loadPluginDefaults();
         const userEmail = profile.user?.email;
         if (!userEmail) {
           throw new Error(
             "No user email on file. Run `mixshift auth setup` first so we can attach an identity to your feedback."
           );
         }
-        const result = await postWebhook(
-          defaults.auth.discord_webhook,
-          {
-            kind: "user_feedback",
-            user_email: userEmail,
-            plugin_version: getPluginVersion(),
-            os: `${platform3()} ${release3()}`,
-            message,
-            category: opts.category,
-            ...opts.skill || opts.command || opts.brand ? {
-              context: {
-                ...opts.skill ? { skill_id: opts.skill } : {},
-                ...opts.command ? { command: opts.command } : {},
-                ...opts.brand ? { brand_slug: opts.brand } : {}
-              }
-            } : {}
-          }
-        );
         await track(
           {
             event_name: EventName.FeedbackSubmitted,
             email: userEmail,
-            outcome: result.ok ? "ok" : "failed",
             payload: {
               category: opts.category,
               message: message.slice(0, 2e3),
@@ -50736,35 +50594,37 @@ function registerFeedbackCommand(program3) {
           },
           root.dataDir
         );
+        const flush = await maybeFlush(root.dataDir);
+        const delivered = flush.status === "sent";
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
               {
-                status: result.ok ? "ok" : "error",
-                ...result.ok ? {} : { message: result.error }
+                status: delivered ? "ok" : "queued",
+                flush_status: flush.status,
+                events_sent: flush.events_sent,
+                ...flush.error ? { error: flush.error } : {}
               },
               null,
               2
             ) + "\n"
           );
-        } else {
-          if (result.ok) {
-            process.stderr.write(
-              `
+        } else if (delivered) {
+          process.stderr.write(
+            `
 \u2713 Feedback sent to MixShift ops. Thanks!
 `
-            );
-          } else {
-            process.stderr.write(
-              `
-\u2717 Could not send feedback: ${result.error ?? "unknown error"}
-  Save your message locally and email it to MixShift if you want to be sure it gets to us.
-`
-            );
-            process.exit(1);
-          }
+          );
+        } else {
+          process.stderr.write(
+            `
+\u2022 Feedback queued locally (couldn't reach the telemetry endpoint right now).
+  It will be sent automatically on your next mixshift command.
+` + (flush.error ? `  Reason: ${flush.error}
+` : "")
+          );
         }
-        process.exit(result.ok ? 0 : 1);
+        process.exit(delivered ? 0 : 0);
       } catch (err) {
         const message_ = err instanceof Error ? err.message : String(err);
         if (root.json) {

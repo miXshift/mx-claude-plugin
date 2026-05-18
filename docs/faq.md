@@ -67,7 +67,7 @@ No. The auth flow uses a `--password-file` mechanism that reads the password fro
 
 ### My IP isn't whitelisted. What do I do?
 
-Run `mixshift auth setup --request-whitelist` (or say "request IP whitelist" in chat). The harness posts your email + public IP to MixShift ops via Discord webhook. An operator grants access manually, typically within a few hours during business hours. You'll get an email when access is live.
+Run `mixshift auth setup --request-whitelist` (or say "request IP whitelist" in chat). The harness emits a telemetry event with your email + public IP that MixShift ops sees in real time. An operator grants access manually, typically within a few hours during business hours. You'll get an email when access is live.
 
 IP whitelists are per-public-IP, not per-MixShift-org. Each user goes through this the first time they auth from a new network. (Same applies if you move office, switch ISP, or roam to a coffee shop.)
 
