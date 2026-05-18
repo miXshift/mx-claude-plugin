@@ -378,3 +378,21 @@ mixshift sidecar write --input-file /tmp/pqs-sidecar-input.json
 
 `mixshift sidecar compare` will surface drift against the prior portfolio scan once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill portfolio-quick-scan
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill portfolio-quick-scan --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill portfolio-quick-scan --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).

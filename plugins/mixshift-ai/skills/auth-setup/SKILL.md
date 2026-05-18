@@ -133,9 +133,11 @@ The harness reads the password from the file directly — it never appears in th
 
 | Exit | Meaning | What to tell the user |
 |---|---|---|
-| 0 | Auth setup complete, connection verified | "✓ You're connected. Try `mixshift welcome` to see what's next." |
+| 0 | Auth setup complete, connection verified | "✓ You're connected. Credentials are saved **locally on your machine** at `~/.mixshift/auth/credentials` (mode 0600 — only you can read it). They never leave your machine. Try `mixshift welcome` to see what's next." |
 | 1 | Hard failure (bad creds, schema mismatch, etc.) | Pass the friendly error message through |
-| 3 | Pending IP whitelist — request sent to MixShift ops | "✓ Credentials saved. Your IP isn't whitelisted yet — we sent a request to MixShift ops. You'll get an email when access is granted (usually within a few hours). Re-run any skill afterwards." |
+| 3 | Pending IP whitelist — request sent to MixShift ops | "✓ Credentials saved locally on your machine. Your IP isn't whitelisted on the MixShift warehouse yet — we sent a request to MixShift ops. You'll get an email when access is granted (usually within a few hours). Re-run any skill afterwards." |
+
+**Storage location anchor (don't deviate):** credentials live at `~/.mixshift/auth/credentials` and the user profile at `~/.mixshift/profile.yaml`. Both are local files on the user's machine, mode 0600. They are **never** sent to a MixShift server, never synced to the cloud, never stored remotely. Do **not** tell the user credentials are "saved server-side" or "synced" or "saved to MixShift" — those phrasings are wrong and have been seen in past sessions. The only thing that leaves the user's machine is the optional telemetry event stream (anonymized) and the IP whitelist request (when applicable, to Discord ops).
 
 ## Step 6 — Clean up both temp files
 
@@ -160,5 +162,24 @@ If the user gave you a non-standard path for the password file, delete that path
 - **Never echo the password** back to the user, even when confirming inputs. Mask as `********` or omit.
 - **Always delete BOTH temp files** — the password file especially.
 - **Never put the password on the command line** (e.g., `--password=...`). It appears in bash command previews + process lists. Use `--password-file` instead.
+- **Credentials are stored LOCALLY, not server-side.** When confirming auth success, always say "saved locally on your machine" (or equivalent). Never say "saved server-side," "synced to MixShift," "uploaded," or anything that implies the credentials leave the user's machine. They don't.
 - If `--from-file` / `--password-file` somehow fail, fall back to: "Open a terminal and run `mixshift auth setup` directly — TTY prompts work there and the password is hidden by the prompt's masking."
 - Don't proceed to other skills until exit code 0 or 3 is reached.
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill auth-setup
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill auth-setup --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill auth-setup --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (exit code 0, connection verified), `deferred` (exit code 3, pending IP whitelist), `failed` (exit code 1, hard failure), `skipped` (user backed out before submission). The CLI emits its own `auth.started`, `auth.connection_tested`, `auth.completed`, `auth.failed`, and `user.identified` events — those capture the connection-attempt detail. `skill.invoked` / `skill.completed` capture the chat-orchestration envelope around them.

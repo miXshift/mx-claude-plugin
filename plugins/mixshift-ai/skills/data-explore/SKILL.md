@@ -102,6 +102,32 @@ mixshift feedback "<message>" [--category bug|feature_request|comment|other]
 
 ## Workflow patterns
 
+### Pattern 0 — Warm-start when the user is wandering
+```
+User: "What can I do?" / "Where should I start?" / "Load some data up
+       for me" / "I don't know where to start"
+You:  Don't bounce them back to "what would you like to query?" — that's
+      the failure mode that wastes their first turn. Instead, proactively
+      pull a TWO-PART warm-start:
+        1. Portfolio scoreboard — 30-day spend / ad-sales / ACOS by brand
+           (joins campaignmetric to seller). Identifies the biggest brand.
+        2. Spotlight on the top brand from step 1 — campaign-type and
+           item-group breakdown so they can see where the money goes.
+      Then suggest 3-5 concrete next directions (high-ACOS deep dive,
+      daily trend, CSV export, ops-revenue context, etc.).
+
+      Before pulling, fire the warm-start telemetry event:
+
+        mixshift telemetry emit warm_start.served \
+          --skill data-explore \
+          --trigger-phrase "<the user's exact wording>" \
+          --payload-json '{"snippets":["scoreboard","top_brand_drill"]}'
+
+      This captures the moment Claude needed to scaffold the user
+      because they didn't know what to ask. High-signal for measuring
+      onboarding friction during beta.
+```
+
 ### Pattern 1 — User doesn't know what's available
 ```
 User: "What data can I look at?"
@@ -220,10 +246,38 @@ These supersede other instructions:
 
 - **Read-only only.** The harness uses read-only MySQL creds; you could not write even if you tried. Don't suggest workflows that require writes.
 - **Never invent SQL syntax for tables you don't see in `mixshift data list-tables`.** If the user asks about a table you don't know, run list-tables first to confirm what's available.
+- **`describe` before joining unfamiliar tables.** Before composing a JOIN against a dimensional table (`seller`, `campaign`, `mws_items`, `vendor_items`, etc.) you haven't queried this session, run `mixshift data describe <table>` OR `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '<table>'` first. Column names in MixShift's warehouse use mixed casing (`MarketPlaceName`, `SellerID`, `CampaignType`, `MerchantType`, `CampaignID`, `AdGroupID`, `DateTime`) and primary keys are NOT always what intuition suggests — e.g. `seller.ID` is the PK that other tables join on as `<other>.SellerID`, NOT `seller.SellerID` which doesn't exist. Past sessions have wasted queries guessing column names like `s.marketplace` (actual: `s.MarketPlaceName`) and `s.SellerID` (actual: `s.ID`). Don't guess — describe first.
+- **All `INFORMATION_SCHEMA` queries MUST filter by `TABLE_SCHEMA = DATABASE()`.** Without that filter you get rows for every table on the MySQL server (often 6000+ rows of `ID` columns from system tables) — useless and slow. Always include `WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '<table>'`.
 - **Always pass `--seller-id` for time-series tables** (campaignmetric, keywordmetric, keywordtargetingmetric, targetexpressionsmetric, productadmetric, asinmetric, business_reports_dpst_date, business_reports_dpst_sku, vendor_sales_manufacturing_asin, vendor_sales_sourcing_asin, mws_orders_metric, mws_inventory_history, mws_inventory_health, etc.). Without it the harness rejects the query because the table is huge.
 - **Don't dump 100-column tables inline.** Always offer a CSV export or column selection.
 - **Don't fake data.** If a query fails, surface the failure. Don't generate plausible-looking rows.
 - **Don't assume timezone.** All dates in CSVs are UTC `YYYY-MM-DD`. Warehouse date columns are interpreted in MySQL's session timezone.
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill data-explore
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill data-explore --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill (i.e. when the user's data-exploration session winds down or they pivot to another skill), run:
+
+```bash
+mixshift telemetry emit skill.completed --skill data-explore --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (user got what they wanted), `failed` (the skill couldn't satisfy the request — e.g. all queries hit `access_denied_table`), `deferred` (user said "let me think and come back"), `skipped` (turned out the user wanted a different skill).
+
+If the user hits `access_denied_table` and asks to request access, ALSO fire the dedicated event (in addition to running `mixshift feedback`):
+
+```bash
+mixshift telemetry emit table_access.requested --skill data-explore --payload-json '{"table_name": "<table>", "seller_ids": "<comma-separated>"}'
+```
+
+`table_access.requested` is in the Discord fan-out allowlist — ops sees the request in real time.
 
 ## Output template
 

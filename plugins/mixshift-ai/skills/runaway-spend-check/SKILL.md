@@ -260,3 +260,21 @@ The sidecar lives at `~/.mixshift/clients/<brand>/runs/runaway-spend-check/<data
 3. Summary metrics and proportionality check
 4. Bottom Line with keyword count and recommendation
 5. Areas to Monitor (if applicable)
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill runaway-spend-check
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill runaway-spend-check --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill runaway-spend-check --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).

@@ -5,12 +5,17 @@
  *
  * Exit code 2 = "command exists, implementation pending" — distinct from
  * exit 1 (real error) and exit 0 (success).
+ *
+ * Sets `process.exitCode` instead of calling `process.exit()` so that
+ * cli.ts's `finally { await maybeFlush(); }` runs before the process
+ * terminates. See the exit / telemetry-flush contract at the top of
+ * cli.ts.
  */
 
 export function notYetImplemented(
   command: string,
   args: Record<string, unknown>,
-): never {
+): void {
   const isJson = process.argv.includes('--json');
   if (isJson) {
     process.stdout.write(
@@ -32,5 +37,5 @@ export function notYetImplemented(
         `       see docs/productization/HARNESS-REWRITE.md\n`,
     );
   }
-  process.exit(2);
+  process.exitCode = 2;
 }

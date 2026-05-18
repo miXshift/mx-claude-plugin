@@ -64,8 +64,11 @@ import {
   markConsentAcknowledged,
   maybeFlush,
   track,
+  readInstallId,
   EventName,
 } from './lib/telemetry/index.js';
+import { loadProfile } from './lib/profile/load.js';
+import { saveProfile } from './lib/profile/save.js';
 
 const program = new Command();
 
@@ -116,6 +119,74 @@ registerTelemetryCommands(program);
 const isTelemetryCommand = process.argv[2] === 'telemetry';
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();
+  await trackLifecycleEvents();
+}
+
+/**
+ * Fire harness-side lifecycle events: plugin.installed (first run on this
+ * machine), plugin.updated (version differs from last observation),
+ * cli.command_run (every invocation). Best-effort — wrapped in a single
+ * try/catch and silenced on failure, so a busted telemetry path can't
+ * break the CLI.
+ *
+ * Skipped for the `telemetry` subcommand itself (consistent with the
+ * consent-notice gating above — `mixshift telemetry status` shouldn't
+ * pollute its own diagnostic output).
+ */
+async function trackLifecycleEvents(): Promise<void> {
+  try {
+    // 1. plugin.installed — fires when no install_id exists yet on this
+    //    machine. track() creates the install_id as a side effect, so the
+    //    event ends up correctly attributed to the freshly-minted ID.
+    const existingId = await readInstallId();
+    const isFirstRun = !existingId;
+    if (isFirstRun) {
+      await track({ event_name: EventName.PluginInstalled });
+    }
+
+    // 2. plugin.updated — fires when the running version differs from the
+    //    last version we recorded for this machine. Skipped on first run
+    //    (PluginInstalled covers that). For installs that pre-date the
+    //    last_plugin_version field, we capture the version silently on
+    //    first observation and start firing plugin.updated next time.
+    const currentVersion = getPluginVersion();
+    if (!isFirstRun) {
+      const { profile, source } = await loadProfile();
+      const lastVersion = profile.telemetry?.last_plugin_version;
+
+      if (lastVersion && lastVersion !== currentVersion) {
+        await track({
+          event_name: EventName.PluginUpdated,
+          payload: { from: lastVersion, to: currentVersion },
+        });
+      }
+
+      // Always bump the last-seen version so the next upgrade is observable.
+      if (lastVersion !== currentVersion) {
+        const next = source === 'file' ? { ...profile } : profile;
+        next.telemetry = {
+          ...(next.telemetry ?? { opted_out: false }),
+          last_plugin_version: currentVersion,
+        };
+        await saveProfile(next);
+      }
+    }
+
+    // 3. cli.command_run — every invocation. We log the command + subcommand
+    //    names ONLY, not the full argv. argv can contain SQL fragments,
+    //    file paths, or other values that would leak query content — the
+    //    privacy guarantee in `docs/privacy.md` explicitly excludes "query
+    //    results, credentials, chat content."
+    await track({
+      event_name: EventName.CliCommandRun,
+      payload: {
+        cmd: process.argv[2] ?? '(none)',
+        subcmd: process.argv[3] ?? '(none)',
+      },
+    });
+  } catch {
+    // Telemetry can never break the CLI.
+  }
 }
 
 async function showFirstRunNoticeIfNeeded(): Promise<void> {

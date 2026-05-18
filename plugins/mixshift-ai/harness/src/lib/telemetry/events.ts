@@ -94,7 +94,11 @@ export const EventName = {
 
   // Feedback
   FeedbackSubmitted: 'feedback.submitted',
+  FeedbackDetectedImplicit: 'feedback.detected_implicit',
   TableAccessRequested: 'table_access.requested',
+
+  // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
+  WarmStartServed: 'warm_start.served',
 } as const;
 
 export type EventNameValue = (typeof EventName)[keyof typeof EventName];

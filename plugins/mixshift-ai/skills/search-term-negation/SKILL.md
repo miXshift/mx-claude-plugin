@@ -300,3 +300,21 @@ mixshift sidecar write --input-file /tmp/stn-sidecar-input.json
 ---
 
 *Skill version: 1.1 — ported from upstream with full domain logic preserved*
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill search-term-negation
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill search-term-negation --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill search-term-negation --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).

@@ -396,7 +396,7 @@ function handleAccessDeniedExit(kind: string): number {
   return 1;
 }
 
-function emitError(err: unknown, json: boolean): never {
+function emitError(err: unknown, json: boolean): void {
   const message = err instanceof Error ? err.message : String(err);
   if (json) {
     process.stdout.write(
@@ -405,7 +405,7 @@ function emitError(err: unknown, json: boolean): never {
   } else {
     process.stderr.write(`error: ${message}\n`);
   }
-  process.exit(1);
+  process.exitCode = 1;
 }
 
 function parseInt10(v: string): number {

@@ -25549,7 +25549,13 @@ var init_schema = __esm({
         // User-set opt-out via `mixshift telemetry opt-out`. When true, no events
         // are queued or sent (the env var MIXSHIFT_TELEMETRY=0 has the same effect
         // but doesn't persist).
-        opted_out: external_exports.boolean().default(false)
+        opted_out: external_exports.boolean().default(false),
+        // Last plugin version we observed on this machine. Used to fire a
+        // plugin.updated telemetry event when the running version differs.
+        // Bumped after each emit. Absent on installs that pre-date this field —
+        // no plugin.updated event is fired for the first observation; the value
+        // is just captured for next time.
+        last_plugin_version: external_exports.string().optional()
       }).default({ opted_out: false }),
       ui: external_exports.object({
         port: external_exports.number().int().min(1).max(65535).default(8080),
@@ -45507,7 +45513,7 @@ function registerProfileCommands(program3) {
         }
         process.stdout.write((0, import_yaml3.stringify)(data, { lineWidth: 0 }));
       }
-      process.exit(0);
+      return;
     } catch (err) {
       emitError(err, root.json);
     }
@@ -45534,7 +45540,7 @@ function registerProfileCommands(program3) {
         process.stderr.write(`# Wrote ${key} = ${JSON.stringify(coerced)} to ${path2}
 `);
       }
-      process.exit(0);
+      return;
     } catch (err) {
       emitError(err, root.json);
     }
@@ -45550,7 +45556,7 @@ function emitError(err, json2) {
     process.stderr.write(`error: ${message}
 `);
   }
-  process.exit(1);
+  process.exitCode = 1;
 }
 
 // src/lib/stub.ts
@@ -45577,7 +45583,7 @@ function notYetImplemented(command, args) {
 `
     );
   }
-  process.exit(2);
+  process.exitCode = 2;
 }
 
 // src/lib/context/load.ts
@@ -46349,6 +46355,10 @@ async function getOrCreateInstallId(dataDirOverride) {
   await saveProfile(next, dataDirOverride);
   return newId;
 }
+async function readInstallId(dataDirOverride) {
+  const { profile } = await loadProfile(dataDirOverride);
+  return profile.telemetry?.install_id;
+}
 
 // src/lib/telemetry/queue.ts
 init_resolve();
@@ -46497,7 +46507,10 @@ var EventName = {
   SidecarWritten: "skill.sidecar_written",
   // Feedback
   FeedbackSubmitted: "feedback.submitted",
-  TableAccessRequested: "table_access.requested"
+  FeedbackDetectedImplicit: "feedback.detected_implicit",
+  TableAccessRequested: "table_access.requested",
+  // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
+  WarmStartServed: "warm_start.served"
 };
 
 // src/lib/telemetry/index.ts
@@ -46631,7 +46644,7 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
 `
           );
         }
-        process.exit(0);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (root.json) {
@@ -46642,7 +46655,8 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
           process.stderr.write(`error: ${message}
 `);
         }
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     }
   );
@@ -46715,7 +46729,7 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
       } else {
         process.stderr.write(renderDiscoveryTable(suggestions) + "\n");
       }
-      process.exit(0);
+      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (root.json) {
@@ -46726,14 +46740,16 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
         process.stderr.write(`error: ${message}
 `);
       }
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
   brand.command("validate <slug>").description("Schema-check one brand context.yaml (post manual edit)").action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const result = await validateBrandContext(slug, root.dataDir);
     renderValidationResult(slug, result, !!root.json);
-    process.exit(result.ok ? 0 : 1);
+    process.exitCode = result.ok ? 0 : 1;
+    return;
   });
 }
 
@@ -48556,7 +48572,8 @@ function registerAuthCommands(program3) {
           root.dataDir
         );
       }
-      process.exit(exitCodeFor(result));
+      process.exitCode = exitCodeFor(result);
+      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await track(
@@ -48576,7 +48593,8 @@ function registerAuthCommands(program3) {
         process.stderr.write(`error: ${message}
 `);
       }
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 }
@@ -48793,7 +48811,8 @@ function registerValidateCommand(program3) {
     const root = cmd.optsWithGlobals();
     const result = await validateBrandContext(opts.brand, root.dataDir);
     renderValidationResult(opts.brand, result, !!root.json);
-    process.exit(result.ok ? 0 : 1);
+    process.exitCode = result.ok ? 0 : 1;
+    return;
   });
 }
 
@@ -49646,7 +49665,8 @@ function registerPrefetchCommand(program3) {
         paramOverrides
       });
       renderResult2(result, !!root.json);
-      process.exit(exitCodeFor2(result));
+      process.exitCode = exitCodeFor2(result);
+      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (root.json) {
@@ -49657,7 +49677,8 @@ function registerPrefetchCommand(program3) {
         process.stderr.write(`error: ${message}
 `);
       }
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 }
@@ -49975,7 +49996,7 @@ function registerSidecarCommands(program3) {
 `
         );
       }
-      process.exit(0);
+      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (root.json) {
@@ -49986,7 +50007,8 @@ function registerSidecarCommands(program3) {
         process.stderr.write(`error: ${message}
 `);
       }
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
   sidecar.command("compare").description(
@@ -50547,7 +50569,7 @@ function emitError2(err, json2) {
     process.stderr.write(`error: ${message}
 `);
   }
-  process.exit(1);
+  process.exitCode = 1;
 }
 function parseInt10(v) {
   const n = parseInt(v, 10);
@@ -50742,6 +50764,9 @@ function renderWelcome(args) {
   lines.push("");
   lines.push("  The credentials page shows:");
   lines.push("    HostName, Username, Port, Schema, and Password \u2014 copy them.");
+  lines.push("");
+  lines.push("  You'll plug these into Step 2 (auth setup) below \u2014 keep");
+  lines.push("  them handy.");
   if (cr.notes) {
     lines.push("");
     cr.notes.split("\n").forEach((l) => {
@@ -50797,6 +50822,7 @@ function renderWelcome(args) {
 
 // src/commands/telemetry.ts
 init_resolve();
+var VALID_OUTCOMES = /* @__PURE__ */ new Set(["ok", "failed", "timeout", "deferred", "skipped"]);
 function registerTelemetryCommands(program3) {
   const telemetry = program3.command("telemetry").description(
     "View / control telemetry state for this install. See docs/privacy.md for what we collect."
@@ -50899,12 +50925,120 @@ See docs/privacy.md for what we collect and why.
 
 `
         );
-        process.exit(1);
+        process.exitCode = 1;
+        return;
     }
   });
+  telemetry.command("emit <event-name>").description(
+    "Emit a telemetry event from the chat surface. Used by SKILL.md to fire detection events the harness CLI itself can't observe (feedback.detected_implicit, warm_start.served, etc.). Event name must be one of the values in the EventName enum \u2014 invalid names are rejected with a list of valid ones."
+  ).option("--payload-json <json>", "Free-form JSON object payload").option("--skill <id>", "Skill ID context (e.g. data-explore, feedback)").option("--trigger-phrase <text>", "User phrase that triggered this event").option("--outcome <s>", "ok | failed | timeout | deferred | skipped").option("--duration-ms <n>", "Duration in milliseconds").option("--brand <slug>", "Brand slug context (added to payload.brand_slug)").option("--message <text>", "Free-form message text (added to payload.message)").option("--email <email>", "Override email (default: from profile.yaml)").action(
+    async (eventName, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      const validEvents = Object.values(EventName);
+      if (!validEvents.includes(eventName)) {
+        const message = `Unknown event name "${eventName}". Valid events:
+` + validEvents.map((e) => `  - ${e}`).join("\n");
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
+`);
+        }
+        process.exitCode = 2;
+        return;
+      }
+      let payload = {};
+      if (opts.payloadJson) {
+        try {
+          const parsed = JSON.parse(opts.payloadJson);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            throw new Error("payload must be a JSON object (not array / primitive)");
+          }
+          payload = parsed;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify(
+                { status: "error", message: `--payload-json: ${message}` },
+                null,
+                2
+              ) + "\n"
+            );
+          } else {
+            process.stderr.write(`error: --payload-json: ${message}
+`);
+          }
+          process.exitCode = 2;
+          return;
+        }
+      }
+      if (opts.brand) payload.brand_slug = opts.brand;
+      if (opts.message) payload.message = opts.message;
+      let outcome;
+      if (opts.outcome) {
+        if (!VALID_OUTCOMES.has(opts.outcome)) {
+          const message = `Invalid --outcome "${opts.outcome}". Must be one of: ${[...VALID_OUTCOMES].join(", ")}`;
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify({ status: "error", message }, null, 2) + "\n"
+            );
+          } else {
+            process.stderr.write(`error: ${message}
+`);
+          }
+          process.exitCode = 2;
+          return;
+        }
+        outcome = opts.outcome;
+      }
+      let durationMs;
+      if (opts.durationMs !== void 0) {
+        const n = Number.parseInt(opts.durationMs, 10);
+        if (!Number.isFinite(n) || n < 0) {
+          const message = `Invalid --duration-ms "${opts.durationMs}". Must be a non-negative integer.`;
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify({ status: "error", message }, null, 2) + "\n"
+            );
+          } else {
+            process.stderr.write(`error: ${message}
+`);
+          }
+          process.exitCode = 2;
+          return;
+        }
+        durationMs = n;
+      }
+      await track(
+        {
+          event_name: eventName,
+          payload,
+          skill_id: opts.skill,
+          trigger_phrase: opts.triggerPhrase,
+          outcome,
+          duration_ms: durationMs,
+          email: opts.email
+        },
+        root.dataDir
+      );
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({ status: "ok", event_name: eventName }, null, 2) + "\n"
+        );
+      } else {
+        process.stderr.write(`\u2713 Emitted ${eventName}
+`);
+      }
+    }
+  );
 }
 
 // src/cli.ts
+init_load();
+init_save();
 await loadDotenvIfPresent();
 var program2 = new Command();
 program2.name("mixshift").description(
@@ -50932,6 +51066,43 @@ registerTelemetryCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();
+  await trackLifecycleEvents();
+}
+async function trackLifecycleEvents() {
+  try {
+    const existingId = await readInstallId();
+    const isFirstRun = !existingId;
+    if (isFirstRun) {
+      await track({ event_name: EventName.PluginInstalled });
+    }
+    const currentVersion = getPluginVersion();
+    if (!isFirstRun) {
+      const { profile, source } = await loadProfile();
+      const lastVersion = profile.telemetry?.last_plugin_version;
+      if (lastVersion && lastVersion !== currentVersion) {
+        await track({
+          event_name: EventName.PluginUpdated,
+          payload: { from: lastVersion, to: currentVersion }
+        });
+      }
+      if (lastVersion !== currentVersion) {
+        const next = source === "file" ? { ...profile } : profile;
+        next.telemetry = {
+          ...next.telemetry ?? { opted_out: false },
+          last_plugin_version: currentVersion
+        };
+        await saveProfile(next);
+      }
+    }
+    await track({
+      event_name: EventName.CliCommandRun,
+      payload: {
+        cmd: process.argv[2] ?? "(none)",
+        subcmd: process.argv[3] ?? "(none)"
+      }
+    });
+  } catch {
+  }
 }
 async function showFirstRunNoticeIfNeeded() {
   try {

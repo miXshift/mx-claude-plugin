@@ -38,6 +38,8 @@ Cowork pulls the marketplace manifest and registers the marketplace locally — 
 
 The plugin appears in your **Personal plugins** section in the sidebar.
 
+**Tip — reopening the Directory modal later.** It's not obvious how to get back to this view after install. The path is: Customize → click **+** next to **Personal plugins** → the Directory reopens with your marketplaces and plugins listed. From there you can install other plugins, toggle **Sync automatically**, hit **Check for updates**, or **Remove** anything. You'll use this surface again whenever MixShift ships a new version (see Troubleshooting at the bottom for the workaround if the version field gets stuck).
+
 ## Step 3 — First run
 
 In any Cowork chat, say one of:
@@ -130,7 +132,10 @@ mixshift auth setup --request-whitelist
 Or in chat: "request IP whitelist". You'll get an email when access is live.
 
 **Plugin update available.**
-In Cowork: Customize → find `mixshift-ai` → check for updates. Cowork pulls the latest marketplace manifest and prompts you to update. Same auth credentials carry over.
+In Cowork: Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. Cowork pulls the latest marketplace manifest. Same auth credentials carry over across updates.
+
+**Plugin shows an old version even after Check for updates / Sync automatically.**
+Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub"). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.
 
 ---
 

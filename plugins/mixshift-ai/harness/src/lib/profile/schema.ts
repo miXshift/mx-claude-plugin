@@ -84,6 +84,12 @@ export const profileSchema = z.object({
       // are queued or sent (the env var MIXSHIFT_TELEMETRY=0 has the same effect
       // but doesn't persist).
       opted_out: z.boolean().default(false),
+      // Last plugin version we observed on this machine. Used to fire a
+      // plugin.updated telemetry event when the running version differs.
+      // Bumped after each emit. Absent on installs that pre-date this field —
+      // no plugin.updated event is fired for the first observation; the value
+      // is just captured for next time.
+      last_plugin_version: z.string().optional(),
     })
     .default({ opted_out: false }),
 

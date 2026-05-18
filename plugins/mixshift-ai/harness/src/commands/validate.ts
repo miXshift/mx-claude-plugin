@@ -17,6 +17,7 @@ export function registerValidateCommand(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const result = await validateBrandContext(opts.brand, root.dataDir);
       renderValidationResult(opts.brand, result, !!root.json);
-      process.exit(result.ok ? 0 : 1);
+      process.exitCode = result.ok ? 0 : 1;
+      return;
     });
 }

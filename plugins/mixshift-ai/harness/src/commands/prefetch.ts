@@ -54,7 +54,8 @@ export function registerPrefetchCommand(program: Command): void {
           paramOverrides,
         });
         renderResult(result, !!root.json);
-        process.exit(exitCodeFor(result));
+        process.exitCode = exitCodeFor(result);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (root.json) {
@@ -64,7 +65,8 @@ export function registerPrefetchCommand(program: Command): void {
         } else {
           process.stderr.write(`error: ${message}\n`);
         }
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     });
 }

@@ -139,6 +139,9 @@ function renderWelcome(args: {
   lines.push('');
   lines.push('  The credentials page shows:');
   lines.push('    HostName, Username, Port, Schema, and Password — copy them.');
+  lines.push('');
+  lines.push('  You\'ll plug these into Step 2 (auth setup) below — keep');
+  lines.push('  them handy.');
   if (cr.notes) {
     lines.push('');
     cr.notes.split('\n').forEach((l) => {

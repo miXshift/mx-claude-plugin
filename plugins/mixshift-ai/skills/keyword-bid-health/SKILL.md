@@ -293,3 +293,21 @@ mixshift sidecar write --input-file /tmp/kbh-sidecar-input.json
 4. Table 3: Dormant Keywords (top 20)
 5. Summary metrics + verdict
 6. Bottom Line with structural-event and WoW drift context
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill keyword-bid-health
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill keyword-bid-health --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill keyword-bid-health --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).

@@ -86,7 +86,7 @@ export function registerSidecarCommands(program: Command): void {
               `  - path:      ${result.sidecar_path}\n\n`,
           );
         }
-        process.exit(0);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (root.json) {
@@ -96,7 +96,8 @@ export function registerSidecarCommands(program: Command): void {
         } else {
           process.stderr.write(`error: ${message}\n`);
         }
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     });
 

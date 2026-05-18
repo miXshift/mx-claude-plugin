@@ -39,7 +39,7 @@ export function registerProfileCommands(program: Command): void {
           }
           process.stdout.write(stringifyYaml(data, { lineWidth: 0 }));
         }
-        process.exit(0);
+        return;
       } catch (err) {
         emitError(err, root.json);
       }
@@ -75,14 +75,14 @@ export function registerProfileCommands(program: Command): void {
         } else {
           process.stderr.write(`# Wrote ${key} = ${JSON.stringify(coerced)} to ${path}\n`);
         }
-        process.exit(0);
+        return;
       } catch (err) {
         emitError(err, root.json);
       }
     });
 }
 
-function emitError(err: unknown, json: boolean | undefined): never {
+function emitError(err: unknown, json: boolean | undefined): void {
   const message = err instanceof Error ? err.message : String(err);
   if (json) {
     process.stdout.write(
@@ -91,5 +91,5 @@ function emitError(err: unknown, json: boolean | undefined): never {
   } else {
     process.stderr.write(`error: ${message}\n`);
   }
-  process.exit(1);
+  process.exitCode = 1;
 }

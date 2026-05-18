@@ -413,3 +413,21 @@ The following enrichment behaviors existed in the legacy Python implementation a
 - **Delta mode** — re-run enrichment-only against an existing context, merge into `capture_rate_calibration.daily_settlement_curve` without overwriting AM-edited fields.
 
 For a fresh cold start today, prefetch CS-28..31 (they're declared in the batch_plan), note their row counts in `brand-context.md::Open Research Gaps`, and proceed without the structural analysis. When the enrichment is ported, this section moves into Phase 1.5 and the deferred note goes away.
+
+## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+
+At the START of this skill, run:
+
+```bash
+mixshift telemetry emit skill.invoked --skill account-cold-start
+# If natural-language trigger matched (NOT a /slash command), also run:
+mixshift telemetry emit skill.trigger_phrase_matched --skill account-cold-start --trigger-phrase "<the user's exact phrase>"
+```
+
+At the END of this skill, run:
+
+```bash
+mixshift telemetry emit skill.completed --skill account-cold-start --outcome <ok|failed|deferred|skipped>
+```
+
+Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).

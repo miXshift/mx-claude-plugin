@@ -29,6 +29,34 @@ Yes to all three. The harness is Node 20+, the bundled CLI is platform-portable.
 
 Not yet. Today you install from the public GitHub repo (`miXshift/mx-claude-plugin`). Submission to Anthropic's "Anthropic & Partners" curated directory is a future move; until then, install from GitHub via the docs above.
 
+### How do I get back to the Cowork Directory modal after installing?
+
+The Directory modal is the surface where you add marketplaces, install plugins, check for updates, toggle Sync automatically, and remove plugins. It's only obvious during first install. To reopen it:
+
+- **Cowork desktop:** click **Customize** in the left sidebar → click the **+** next to **Personal plugins** (or **Organization plugins** for org-managed installs). The Directory opens with your already-added marketplaces.
+- From the Directory, click your marketplace name (`mx-claude-plugin`) → the three-dot menu next to it has **Sync automatically** (toggle), **Check for updates**, and **Remove**.
+
+If you can't find the **+** button at all, your Cowork build may not expose user-level marketplace controls (older builds didn't). The Organization install path is the fallback for those builds.
+
+### What does "Sync automatically" do?
+
+Found in the Directory modal → three-dot menu next to a marketplace. When on, Cowork periodically pulls the latest commit from your marketplace's GitHub source so you get newly-shipped plugin code without manually checking for updates.
+
+**Important caveat (known bug, tracked with Anthropic):** Sync automatically pulls the latest commit and refreshes file contents (descriptions, skills, code) on disk, **but it does not currently refresh the displayed version field** in the plugin detail page. So you may see version `0.3.0` in the UI even after a newer version has been synced and the actual files on disk are at `0.4.1`. The plugin behavior reflects the latest synced files; only the version label is stale.
+
+Workaround until Anthropic fixes this: remove + re-add the plugin (see below) when MixShift ships a notable release. We'll update this FAQ once the upstream fix lands.
+
+### My plugin shows an old version even after "Check for updates" — what do I do?
+
+This is the version-field bug above. Quickest reliable workaround:
+
+1. Cowork → Customize → **+** next to Personal plugins → Directory modal opens.
+2. Click the three-dot menu next to `mx-claude-plugin` → **Remove**. (Confirms removal of the marketplace, which also uninstalls plugins from it.)
+3. Same modal → re-add the marketplace via "Add marketplace from GitHub" → `miXshift/mx-claude-plugin`.
+4. Open the newly-listed marketplace → install `mixshift-ai`.
+
+Cowork preserves its internal `marketplace_*` and `plugin_*` IDs across this — safe, no data loss. Your local auth credentials (`~/.mixshift/auth/credentials`) are independent of Cowork's plugin state and also carry over.
+
 ---
 
 ## Auth + credentials
@@ -227,12 +255,14 @@ We read every piece during beta. Bugs typically get a response within a couple b
 
 ### Plugin update available — how do I install it?
 
-- **Cowork personal install:** Customize → find `mixshift-ai` → check for updates.
+- **Cowork personal install:** Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. (See "How do I get back to the Directory modal" above if you can't find this surface.)
 - **Cowork organization install:** org admin re-publishes from Organization settings → Plugins.
 - **Claude Code:** `/plugin update mixshift-ai`.
 - **CLI direct:** `git pull && npm install && npm run build`.
 
 Auth credentials carry over across updates.
+
+**If Cowork shows a stale version after "Check for updates"** (known bug — see "What does 'Sync automatically' do?" above), do a remove + re-add of the marketplace via the Directory modal. The `marketplace_*` and `plugin_*` IDs are preserved across this, so it's safe.
 
 ### My data.json / data.md / report file is huge
 

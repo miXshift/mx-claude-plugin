@@ -116,7 +116,7 @@ export function registerBrandCommands(program: Command): void {
                 `      the bootstrap couldn't derive from the warehouse.\n`,
             );
           }
-          process.exit(0);
+          return;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (root.json) {
@@ -126,7 +126,8 @@ export function registerBrandCommands(program: Command): void {
           } else {
             process.stderr.write(`error: ${message}\n`);
           }
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
       },
     );
@@ -225,7 +226,7 @@ export function registerBrandCommands(program: Command): void {
         } else {
           process.stderr.write(renderDiscoveryTable(suggestions) + '\n');
         }
-        process.exit(0);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (root.json) {
@@ -235,7 +236,8 @@ export function registerBrandCommands(program: Command): void {
         } else {
           process.stderr.write(`error: ${message}\n`);
         }
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     });
 
@@ -246,6 +248,7 @@ export function registerBrandCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const result = await validateBrandContext(slug, root.dataDir);
       renderValidationResult(slug, result, !!root.json);
-      process.exit(result.ok ? 0 : 1);
+      process.exitCode = result.ok ? 0 : 1;
+      return;
     });
 }
