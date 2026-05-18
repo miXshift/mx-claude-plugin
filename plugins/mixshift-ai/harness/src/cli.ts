@@ -15,6 +15,7 @@ import { loadDotenvIfPresent } from './lib/env/load-dotenv.js';
 await loadDotenvIfPresent();
 
 import { Command } from 'commander';
+import { getPluginVersion } from './lib/plugin-version.js';
 import { registerProfileCommands } from './commands/profile.js';
 import { registerBrandCommands } from './commands/brand.js';
 import { registerAuthCommands } from './commands/auth.js';
@@ -44,7 +45,7 @@ program
     'Internal harness for the mixshift-ai plugin.\n' +
       'Invoked by Claude during skill execution. Not user-facing.',
   )
-  .version('0.0.1')
+  .version(getPluginVersion())
   .option('--json', 'emit machine-readable JSON to stdout', false)
   .option('--verbose', 'verbose logging to stderr', false)
   .option(

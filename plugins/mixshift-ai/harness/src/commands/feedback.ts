@@ -4,13 +4,12 @@ import { loadProfile } from '../lib/profile/load.js';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { postWebhook } from '../lib/webhook/discord.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { getPluginVersion } from '../lib/plugin-version.js';
 
 interface RootOptions {
   json?: boolean;
   dataDir?: string;
 }
-
-const PLUGIN_VERSION = '0.0.1';
 
 export function registerFeedbackCommand(program: Command): void {
   program
@@ -53,7 +52,7 @@ export function registerFeedbackCommand(program: Command): void {
             {
               kind: 'user_feedback',
               user_email: userEmail,
-              plugin_version: PLUGIN_VERSION,
+              plugin_version: getPluginVersion(),
               os: `${platform()} ${release()}`,
               message,
               category: opts.category,

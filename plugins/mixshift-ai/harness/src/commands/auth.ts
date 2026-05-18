@@ -8,6 +8,7 @@ import { mysqlCredsSchema } from '../lib/auth/schema.js';
 import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { getPluginVersion } from '../lib/plugin-version.js';
 
 interface RootOptions {
   json?: boolean;
@@ -24,8 +25,6 @@ interface SetupOptions {
   port?: string;
   database?: string;
 }
-
-const PLUGIN_VERSION = '0.0.1';
 
 export function registerAuthCommands(program: Command): void {
   const auth = program
@@ -76,7 +75,7 @@ export function registerAuthCommands(program: Command): void {
         const inputs = await gatherInputs(opts, defaults);
         const result = await runAuthSetup(inputs, {
           defaults,
-          plugin_version: PLUGIN_VERSION,
+          plugin_version: getPluginVersion(),
           data_dir_override: root.dataDir,
         });
         renderResult(result, !!root.json);

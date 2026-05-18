@@ -16,7 +16,10 @@ export type WebhookKind =
 
 export interface BaseRequest {
   user_email: string;
-  /** Plugin version (currently '0.0.1'). */
+  /**
+   * Plugin version, sourced from `.claude-plugin/plugin.json` via
+   * `getPluginVersion()` in `lib/plugin-version.ts`.
+   */
   plugin_version: string;
   /** OS string ('win32 22.04', 'linux 5.15', etc.). */
   os: string;

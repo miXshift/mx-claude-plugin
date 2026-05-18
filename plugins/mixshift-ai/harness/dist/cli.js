@@ -10365,40 +10365,40 @@ var require_dist = __commonJS({
 
 // src/lib/paths/resolve.ts
 import { homedir as homedir2 } from "node:os";
-import { join as join3, resolve } from "node:path";
+import { join as join4, resolve } from "node:path";
 function resolveDataDir(dataDirOverride) {
-  const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join3(homedir2(), ".mixshift");
+  const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join4(homedir2(), ".mixshift");
   return resolve(candidate);
 }
 function profilePath(dataDirOverride) {
-  return join3(resolveDataDir(dataDirOverride), "profile.yaml");
+  return join4(resolveDataDir(dataDirOverride), "profile.yaml");
 }
 function authDir(dataDirOverride) {
-  return join3(resolveDataDir(dataDirOverride), "auth");
+  return join4(resolveDataDir(dataDirOverride), "auth");
 }
 function credentialsPath(dataDirOverride) {
-  return join3(authDir(dataDirOverride), "credentials");
+  return join4(authDir(dataDirOverride), "credentials");
 }
 function clientsDir(dataDirOverride) {
-  return join3(resolveDataDir(dataDirOverride), "clients");
+  return join4(resolveDataDir(dataDirOverride), "clients");
 }
 function brandDir(brandSlug, dataDirOverride) {
-  return join3(clientsDir(dataDirOverride), brandSlug);
+  return join4(clientsDir(dataDirOverride), brandSlug);
 }
 function contextPath(brandSlug, dataDirOverride) {
-  return join3(brandDir(brandSlug, dataDirOverride), "context.yaml");
+  return join4(brandDir(brandSlug, dataDirOverride), "context.yaml");
 }
 function narrativePath(brandSlug, dataDirOverride) {
-  return join3(brandDir(brandSlug, dataDirOverride), "narrative.md");
+  return join4(brandDir(brandSlug, dataDirOverride), "narrative.md");
 }
 function outputDir(dataDirOverride) {
-  return join3(resolveDataDir(dataDirOverride), "output");
+  return join4(resolveDataDir(dataDirOverride), "output");
 }
 function telemetryDir(dataDirOverride) {
-  return join3(resolveDataDir(dataDirOverride), "telemetry");
+  return join4(resolveDataDir(dataDirOverride), "telemetry");
 }
 function telemetryQueuePath(dataDirOverride) {
-  return join3(telemetryDir(dataDirOverride), "queue.jsonl");
+  return join4(telemetryDir(dataDirOverride), "queue.jsonl");
 }
 var init_resolve = __esm({
   "src/lib/paths/resolve.ts"() {
@@ -10503,7 +10503,7 @@ __export(util_exports, {
   assignProp: () => assignProp,
   base64ToUint8Array: () => base64ToUint8Array,
   base64urlToUint8Array: () => base64urlToUint8Array,
-  cached: () => cached2,
+  cached: () => cached3,
   captureStackTrace: () => captureStackTrace,
   cleanEnum: () => cleanEnum,
   cleanRegex: () => cleanRegex,
@@ -10580,7 +10580,7 @@ function jsonStringifyReplacer(_, value) {
     return value.toString();
   return value;
 }
-function cached2(getter) {
+function cached3(getter) {
   const set2 = false;
   return {
     get value() {
@@ -11103,7 +11103,7 @@ var init_util = __esm({
     EVALUATING = /* @__PURE__ */ Symbol("evaluating");
     captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {
     };
-    allowsEval = /* @__PURE__ */ cached2(() => {
+    allowsEval = /* @__PURE__ */ cached3(() => {
       if (globalConfig.jitless) {
         return false;
       }
@@ -13244,7 +13244,7 @@ var init_schemas = __esm({
           }
         });
       }
-      const _normalized = cached2(() => normalizeDef(def));
+      const _normalized = cached3(() => normalizeDef(def));
       defineLazy(inst._zod, "propValues", () => {
         const shape = def.shape;
         const propValues = {};
@@ -13296,7 +13296,7 @@ var init_schemas = __esm({
     $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) => {
       $ZodObject.init(inst, def);
       const superParse = inst._zod.parse;
-      const _normalized = cached2(() => normalizeDef(def));
+      const _normalized = cached3(() => normalizeDef(def));
       const generateFastpass = (shape) => {
         const doc = new Doc(["shape", "payload", "ctx"]);
         const normalized = _normalized.value;
@@ -13514,7 +13514,7 @@ var init_schemas = __esm({
         }
         return propValues;
       });
-      const disc = cached2(() => {
+      const disc = cached3(() => {
         const opts = def.options;
         const map2 = /* @__PURE__ */ new Map();
         for (const o of opts) {
@@ -42439,7 +42439,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join8(tree) {
+      function join9(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42465,7 +42465,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join8(parse3(query2));
+        tree = join9(parse3(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -44978,7 +44978,7 @@ var init_schema2 = __esm({
 
 // src/lib/defaults/load.ts
 import { readFile as readFile5 } from "node:fs/promises";
-import { dirname as dirname5, join as join4 } from "node:path";
+import { dirname as dirname5, join as join5 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 async function loadPluginDefaults(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths2();
@@ -45018,7 +45018,7 @@ function candidatePaths2() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 6; i++) {
-    candidates.push(join4(dir, ".mixshift-defaults.yaml"));
+    candidates.push(join5(dir, ".mixshift-defaults.yaml"));
     const parent = dirname5(dir);
     if (parent === dir) break;
     dir = parent;
@@ -45426,6 +45426,26 @@ var {
   Option,
   Help
 } = import_index.default;
+
+// src/lib/plugin-version.ts
+import { readFileSync } from "node:fs";
+import { join as join3 } from "node:path";
+var cached2;
+function getPluginVersion() {
+  if (cached2) return cached2;
+  try {
+    const path2 = join3(resolvePluginRoot(), ".claude-plugin", "plugin.json");
+    const raw = readFileSync(path2, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.version === "string" && parsed.version) {
+      cached2 = parsed.version;
+      return cached2;
+    }
+  } catch {
+  }
+  cached2 = "0.0.0-unknown";
+  return cached2;
+}
 
 // src/commands/profile.ts
 var import_yaml3 = __toESM(require_dist(), 1);
@@ -46450,45 +46470,6 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
 
 // src/lib/telemetry/index.ts
 init_load();
-
-// package.json
-var package_default = {
-  name: "@mixshift/harness",
-  version: "0.0.1",
-  description: "Internal harness for the mixshift-ai plugin. Not user-facing \u2014 invoked by Claude via Bash tool during skill execution.",
-  private: true,
-  license: "SEE LICENSE IN ../../LICENSE",
-  type: "module",
-  bin: {
-    mixshift: "dist/cli.js"
-  },
-  scripts: {
-    build: "node scripts/build.mjs",
-    typecheck: "tsc --noEmit",
-    test: "vitest run",
-    "test:watch": "vitest",
-    "validate-manifests": "tsx scripts/validate-manifests.mjs"
-  },
-  dependencies: {
-    "@inquirer/prompts": "^8.4.3",
-    commander: "^12.1.0",
-    mysql2: "^3.22.3",
-    yaml: "^2.9.0",
-    zod: "^4.4.3"
-  },
-  devDependencies: {
-    "@types/node": "^22.0.0",
-    esbuild: "^0.24.0",
-    tsx: "^4.22.0",
-    typescript: "^5.6.0",
-    vitest: "^2.1.0"
-  },
-  engines: {
-    node: ">=20.0.0"
-  }
-};
-
-// src/lib/telemetry/index.ts
 init_consent();
 
 // src/lib/telemetry/events.ts
@@ -46525,7 +46506,6 @@ var EventName = {
 };
 
 // src/lib/telemetry/index.ts
-var PLUGIN_VERSION = package_default.version;
 async function track(input, dataDirOverride) {
   try {
     const enabled = await isTelemetryEnabled(dataDirOverride);
@@ -46536,7 +46516,7 @@ async function track(input, dataDirOverride) {
       event_name: input.event_name,
       install_id: installId,
       email: input.email ?? profile.user?.email,
-      plugin_version: PLUGIN_VERSION,
+      plugin_version: getPluginVersion(),
       install_path: detectInstallPath(),
       os: detectOs(),
       node_version: process.version,
@@ -48621,7 +48601,6 @@ function friendlyFailureMessage(result) {
 
 // src/commands/auth.ts
 init_format_error();
-var PLUGIN_VERSION2 = "0.0.1";
 function registerAuthCommands(program3) {
   const auth = program3.command("auth").description("User authentication setup (MySQL creds, IP whitelist)");
   auth.command("setup").description("Walk through interactive auth onboarding (one-time per user)").option("--non-interactive", "fail if input is required (for CI)", false).option(
@@ -48653,7 +48632,7 @@ function registerAuthCommands(program3) {
       const inputs = await gatherInputs(opts, defaults);
       const result = await runAuthSetup(inputs, {
         defaults,
-        plugin_version: PLUGIN_VERSION2,
+        plugin_version: getPluginVersion(),
         data_dir_override: root.dataDir
       });
       renderResult(result, !!root.json);
@@ -49479,13 +49458,13 @@ async function resolveCreds2(options) {
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir5, writeFile as writeFile5, rename as rename4 } from "node:fs/promises";
-import { dirname as dirname7, join as join5 } from "node:path";
+import { dirname as dirname7, join as join6 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir5(runDir, { recursive: true });
-  const dataJsonPath = join5(runDir, "data.json");
-  const dataMdPath = join5(runDir, "data.md");
+  const dataJsonPath = join6(runDir, "data.json");
+  const dataMdPath = join6(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -49511,7 +49490,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join5(
+  return join6(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -49892,7 +49871,7 @@ import { readFile as readFile10 } from "node:fs/promises";
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir6, writeFile as writeFile6, rename as rename5 } from "node:fs/promises";
-import { join as join6, dirname as dirname8 } from "node:path";
+import { join as join7, dirname as dirname8 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -50030,7 +50009,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join6(
+  return join7(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -50155,7 +50134,7 @@ import { resolve as resolvePath } from "node:path";
 // src/lib/data/tables-catalog.ts
 var import_yaml10 = __toESM(require_dist(), 1);
 import { readFile as readFile11 } from "node:fs/promises";
-import { dirname as dirname9, join as join7 } from "node:path";
+import { dirname as dirname9, join as join8 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
@@ -50194,7 +50173,7 @@ function candidatePaths3() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join7(dir, "shared", "data-tables.yaml"));
+    candidates.push(join8(dir, "shared", "data-tables.yaml"));
     const parent = dirname9(dir);
     if (parent === dir) break;
     dir = parent;
@@ -50705,7 +50684,6 @@ function todayISO5() {
 init_load();
 init_load2();
 import { platform as platform3, release as release3 } from "node:os";
-var PLUGIN_VERSION3 = "0.0.1";
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
     "Send feedback to MixShift ops via the Discord webhook (bug reports, feature requests, comments)."
@@ -50730,7 +50708,7 @@ function registerFeedbackCommand(program3) {
           {
             kind: "user_feedback",
             user_email: userEmail,
-            plugin_version: PLUGIN_VERSION3,
+            plugin_version: getPluginVersion(),
             os: `${platform3()} ${release3()}`,
             message,
             category: opts.category,
@@ -51075,7 +51053,7 @@ await loadDotenvIfPresent();
 var program2 = new Command();
 program2.name("mixshift").description(
   "Internal harness for the mixshift-ai plugin.\nInvoked by Claude during skill execution. Not user-facing."
-).version("0.0.1").option("--json", "emit machine-readable JSON to stdout", false).option("--verbose", "verbose logging to stderr", false).option(
+).version(getPluginVersion()).option("--json", "emit machine-readable JSON to stdout", false).option("--verbose", "verbose logging to stderr", false).option(
   "--data-dir <path>",
   "override MIXSHIFT_DATA_DIR (default: ~/.mixshift)"
 ).option(

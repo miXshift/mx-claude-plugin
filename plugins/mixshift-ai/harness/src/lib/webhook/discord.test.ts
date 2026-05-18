@@ -51,7 +51,7 @@ describe('postWebhook', () => {
     const result = await postWebhook('https://example.com/hook', {
       kind: 'table_access_request',
       user_email: 'sam@example.com',
-      plugin_version: '0.0.1',
+      plugin_version: '0.0.0-test',
       os: 'win32 22.04',
       table_name: 'mws_inventory_health',
       seller_ids: [113, 114],
@@ -75,7 +75,7 @@ describe('postWebhook', () => {
     const result = await postWebhook('https://example.com/hook', {
       kind: 'user_feedback',
       user_email: 'sam@example.com',
-      plugin_version: '0.0.1',
+      plugin_version: '0.0.0-test',
       os: 'win32 22.04',
       message: 'The export command timed out on a 6-month range.',
       category: 'bug',
@@ -103,7 +103,7 @@ describe('postWebhook', () => {
     await postWebhook('https://example.com/hook', {
       kind: 'user_feedback',
       user_email: 'sam@example.com',
-      plugin_version: '0.0.1',
+      plugin_version: '0.0.0-test',
       os: 'win32',
       message: huge,
     });
@@ -135,7 +135,7 @@ function sampleIp(): WebhookRequest {
   return {
     kind: 'ip_whitelist_request',
     user_email: 'sam@example.com',
-    plugin_version: '0.0.1',
+    plugin_version: '0.0.0-test',
     os: 'win32 22.04',
     public_ip: '1.2.3.4',
   };

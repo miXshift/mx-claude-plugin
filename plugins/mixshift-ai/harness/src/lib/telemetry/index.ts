@@ -27,11 +27,7 @@ import { enqueueEvent } from './queue.js';
 import { flushQueue, type FlushResult } from './client.js';
 import type { TrackInput, TelemetryEventRecord } from './events.js';
 import { loadProfile } from '../profile/load.js';
-
-// Plugin version read once per process. Updated at build time.
-import packageJson from '../../../package.json' with { type: 'json' };
-
-const PLUGIN_VERSION: string = (packageJson as { version: string }).version;
+import { getPluginVersion } from '../plugin-version.js';
 
 /**
  * Track an event. Best-effort:
@@ -56,7 +52,7 @@ export async function track(
       event_name: input.event_name,
       install_id: installId,
       email: input.email ?? profile.user?.email,
-      plugin_version: PLUGIN_VERSION,
+      plugin_version: getPluginVersion(),
       install_path: detectInstallPath(),
       os: detectOs(),
       node_version: process.version,
