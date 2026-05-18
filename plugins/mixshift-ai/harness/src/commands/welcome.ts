@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { loadProfile } from '../lib/profile/load.js';
 import { loadCredentials } from '../lib/auth/credentials.js';
-import { track, EventName } from '../lib/telemetry/index.js';
+import { track, maybeFlush, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -57,6 +57,13 @@ export function registerWelcomeCommand(program: Command): void {
         },
         root.dataDir,
       );
+      // Drain the telemetry queue before exit. `welcome` is the canonical
+      // one-shot first-run command (Cowork chat fires it, then the user
+      // moves to auth setup) — if we don't flush here, the
+      // `consent.acknowledged` event from CLI startup AND this
+      // `welcome.viewed` event sit in the queue until the user runs
+      // another mixshift command, which they may never do.
+      await maybeFlush(root.dataDir);
       process.exit(0);
     });
 }

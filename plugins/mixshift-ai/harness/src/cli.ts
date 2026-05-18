@@ -105,8 +105,14 @@ async function runCrossCuttingTelemetry(): Promise<void> {
         await track({ event_name: EventName.ConsentAcknowledged });
       }
     }
-    // Fire-and-forget queue drain.
-    void maybeFlush();
+    // Drain queued events synchronously. We used to fire-and-forget here,
+    // but for a one-shot first-run user (e.g. `mixshift welcome` from a
+    // fresh Cowork install) the harness exits via `process.exit()` before
+    // the in-flight HTTP request can complete — and there's no "next CLI
+    // invocation" to retry on. Awaiting adds ~100-500ms on startup (the
+    // POST to Supabase), but for empty queues this returns "no_events"
+    // almost instantly.
+    await maybeFlush();
   } catch {
     // Telemetry can never break the CLI.
   }

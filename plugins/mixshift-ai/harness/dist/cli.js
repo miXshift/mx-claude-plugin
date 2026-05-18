@@ -50683,6 +50683,7 @@ function registerWelcomeCommand(program3) {
       },
       root.dataDir
     );
+    await maybeFlush(root.dataDir);
     process.exit(0);
   });
 }
@@ -50948,7 +50949,7 @@ async function runCrossCuttingTelemetry() {
         await track({ event_name: EventName.ConsentAcknowledged });
       }
     }
-    void maybeFlush();
+    await maybeFlush();
   } catch {
   }
 }
