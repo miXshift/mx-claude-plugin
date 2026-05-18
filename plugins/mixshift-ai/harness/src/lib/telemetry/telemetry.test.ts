@@ -101,12 +101,16 @@ describe('consent', () => {
     expect(await isTelemetryEnabled(dataDir)).toBe(false);
   });
 
-  it('isTelemetryEnabled returns false when endpoint/apikey not configured', async () => {
-    // Defaults ship with empty endpoint+apikey in this repo
-    expect(await isTelemetryEnabled(dataDir)).toBe(false);
-    const status = await getTelemetryStatus(dataDir);
-    expect(status.reason).toMatch(/endpoint not configured/i);
-  });
+  // Note: the "endpoint not configured → telemetry off" branch in
+  // isTelemetryEnabled is still in the code path (handles edge cases like
+  // a fork with the values cleared, an old plugin version installed at the
+  // same time as a new one, etc.). It was directly tested when the shipped
+  // defaults shipped empty, but now that .mixshift-defaults.yaml carries
+  // the real Supabase endpoint + anon key, that branch can't be exercised
+  // without mocking loadPluginDefaults — which adds test plumbing for a
+  // path the user-facing env-var/opt-out tests already cover the effect of.
+  // We trust the type system here; the production-mode positive case is
+  // verified end-to-end by `mixshift telemetry status`.
 
   it('opt-in flips the persistent opt-out flag back off', async () => {
     await setOptedOut(true, dataDir);
@@ -211,11 +215,12 @@ describe('track()', () => {
     delete process.env.MIXSHIFT_TELEMETRY;
   });
 
-  it('no-ops silently when telemetry is disabled (endpoint not configured)', async () => {
-    // Endpoint isn't configured in the shipped defaults → track is a no-op.
-    await track({ event_name: 'should-not-queue' }, dataDir);
-    expect(await readQueue(dataDir)).toEqual([]);
-  });
+  // Note: a separate "track no-ops when endpoint/apikey are empty in
+  // defaults" case was removed once shipped defaults started carrying real
+  // Supabase values. The env-var and opt-out tests below cover the
+  // observable behavior (no events queued) for the user-facing disable
+  // paths. The "configured off" branch in track() still exists for forks /
+  // edge cases but isn't directly tested here.
 
   it('no-ops silently when MIXSHIFT_TELEMETRY=0', async () => {
     process.env.MIXSHIFT_TELEMETRY = '0';

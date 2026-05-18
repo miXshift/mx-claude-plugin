@@ -90,7 +90,8 @@ auth:
 #
 # Setup: see internal/SUPABASE-SETUP.md.
 telemetry:
-  endpoint: ""
-  apikey: ""
-  batch_size: 50
-  flush_interval_ms: 60000
+  enabled: true
+  endpoint: https://izurufltfnwxsljvtksy.supabase.co/rest/v1/events
+  apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dXJ1Zmx0Zm53eHNsanZ0a3N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDgxNzksImV4cCI6MjA5NDY4NDE3OX0.0GG7vjVGCc5vQvjoSjZTN5U7GP9uYRWVHmy5i8KywK8
+  batch_size: 10
+  flush_interval_ms: 5000
