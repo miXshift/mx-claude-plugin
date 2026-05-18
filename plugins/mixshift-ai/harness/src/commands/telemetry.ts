@@ -17,6 +17,7 @@ import {
 } from '../lib/telemetry/index.js';
 import { telemetryQueuePath } from '../lib/paths/resolve.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
+import { loadDotenvIfPresent, candidatePaths } from '../lib/env/load-dotenv.js';
 
 interface RootOptions {
   json?: boolean;
@@ -37,6 +38,11 @@ export function registerTelemetryCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const status = await getTelemetryStatus(root.dataDir);
       const queueBytes = await queueSizeBytes(root.dataDir);
+      // Re-run the loader so we know which .env.local (if any) was picked
+      // up. The CLI ran it at startup already; this re-run is idempotent
+      // (existing process.env vars win) and lets us report the source path.
+      const envLoad = await loadDotenvIfPresent();
+      const envCandidates = candidatePaths();
 
       if (root.json) {
         process.stdout.write(
@@ -45,6 +51,10 @@ export function registerTelemetryCommands(program: Command): void {
               ...status,
               queue_path: telemetryQueuePath(root.dataDir),
               queue_size_bytes: queueBytes,
+              env_file: envLoad.source_path ?? null,
+              env_applied_count: envLoad.applied_count,
+              env_skipped_existing: envLoad.skipped_existing,
+              env_candidates: envCandidates,
             },
             null,
             2,
@@ -54,6 +64,9 @@ export function registerTelemetryCommands(program: Command): void {
       }
 
       const indicator = status.enabled ? '✓' : '✗';
+      const envLine = envLoad.source_path
+        ? `loaded from ${envLoad.source_path} (${envLoad.applied_count} vars applied, ${envLoad.skipped_existing.length} skipped — shell wins)`
+        : `no .env.local found. Checked: ${envCandidates.join(', ')}`;
       process.stdout.write(
         `\n${indicator} Telemetry ${status.enabled ? 'enabled' : 'disabled'}\n` +
           `  - reason:           ${status.reason}\n` +
@@ -62,6 +75,7 @@ export function registerTelemetryCommands(program: Command): void {
           `  - opted_out:        ${status.opted_out}\n` +
           `  - env_override:     ${status.env_override} (MIXSHIFT_TELEMETRY)\n` +
           `  - configured:       ${status.configured} (endpoint + apikey in defaults)\n` +
+          `  - env_file:         ${envLine}\n` +
           `  - queue path:       ${telemetryQueuePath(root.dataDir)}\n` +
           `  - queue size:       ${queueBytes} bytes\n` +
           '\nSee docs/privacy.md for what we collect and why.\n',

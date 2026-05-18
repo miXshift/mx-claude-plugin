@@ -7,6 +7,13 @@
  * Architecture: see docs/productization/HARNESS-REWRITE.md
  */
 
+// Load `.env.local` FIRST — before any module reads process.env (including
+// loadPluginDefaults which checks for MIXSHIFT_DISCORD_WEBHOOK overrides).
+// Best-effort: missing or unreadable file is a silent no-op, the CLI
+// continues with whatever the shell already set.
+import { loadDotenvIfPresent } from './lib/env/load-dotenv.js';
+await loadDotenvIfPresent();
+
 import { Command } from 'commander';
 import { registerProfileCommands } from './commands/profile.js';
 import { registerBrandCommands } from './commands/brand.js';

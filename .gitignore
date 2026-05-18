@@ -11,3 +11,16 @@ Thumbs.db
 # release-day runbooks, etc.). These don't belong in a customer-facing
 # repo. Anything customer-relevant goes in docs/ or README.md.
 internal/
+
+# Local env files — runtime secrets and per-machine overrides. The harness
+# auto-loads .env.local at CLI startup. .env.local.template (committed) is
+# the structural reference; the real .env.local with populated values stays
+# on each developer's machine. See README + docs/ for setup.
+.env
+.env.local
+# Ignore variant env files (dev / prod / staging / test) without catching
+# the committed `.env.local.template` reference file.
+.env.development
+.env.production
+.env.staging
+.env.test

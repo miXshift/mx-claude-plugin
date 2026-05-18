@@ -10364,41 +10364,41 @@ var require_dist = __commonJS({
 });
 
 // src/lib/paths/resolve.ts
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { homedir as homedir2 } from "node:os";
+import { join as join3, resolve } from "node:path";
 function resolveDataDir(dataDirOverride) {
-  const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join(homedir(), ".mixshift");
+  const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join3(homedir2(), ".mixshift");
   return resolve(candidate);
 }
 function profilePath(dataDirOverride) {
-  return join(resolveDataDir(dataDirOverride), "profile.yaml");
+  return join3(resolveDataDir(dataDirOverride), "profile.yaml");
 }
 function authDir(dataDirOverride) {
-  return join(resolveDataDir(dataDirOverride), "auth");
+  return join3(resolveDataDir(dataDirOverride), "auth");
 }
 function credentialsPath(dataDirOverride) {
-  return join(authDir(dataDirOverride), "credentials");
+  return join3(authDir(dataDirOverride), "credentials");
 }
 function clientsDir(dataDirOverride) {
-  return join(resolveDataDir(dataDirOverride), "clients");
+  return join3(resolveDataDir(dataDirOverride), "clients");
 }
 function brandDir(brandSlug, dataDirOverride) {
-  return join(clientsDir(dataDirOverride), brandSlug);
+  return join3(clientsDir(dataDirOverride), brandSlug);
 }
 function contextPath(brandSlug, dataDirOverride) {
-  return join(brandDir(brandSlug, dataDirOverride), "context.yaml");
+  return join3(brandDir(brandSlug, dataDirOverride), "context.yaml");
 }
 function narrativePath(brandSlug, dataDirOverride) {
-  return join(brandDir(brandSlug, dataDirOverride), "narrative.md");
+  return join3(brandDir(brandSlug, dataDirOverride), "narrative.md");
 }
 function outputDir(dataDirOverride) {
-  return join(resolveDataDir(dataDirOverride), "output");
+  return join3(resolveDataDir(dataDirOverride), "output");
 }
 function telemetryDir(dataDirOverride) {
-  return join(resolveDataDir(dataDirOverride), "telemetry");
+  return join3(resolveDataDir(dataDirOverride), "telemetry");
 }
 function telemetryQueuePath(dataDirOverride) {
-  return join(telemetryDir(dataDirOverride), "queue.jsonl");
+  return join3(telemetryDir(dataDirOverride), "queue.jsonl");
 }
 var init_resolve = __esm({
   "src/lib/paths/resolve.ts"() {
@@ -10503,7 +10503,7 @@ __export(util_exports, {
   assignProp: () => assignProp,
   base64ToUint8Array: () => base64ToUint8Array,
   base64urlToUint8Array: () => base64urlToUint8Array,
-  cached: () => cached,
+  cached: () => cached2,
   captureStackTrace: () => captureStackTrace,
   cleanEnum: () => cleanEnum,
   cleanRegex: () => cleanRegex,
@@ -10580,7 +10580,7 @@ function jsonStringifyReplacer(_, value) {
     return value.toString();
   return value;
 }
-function cached(getter) {
+function cached2(getter) {
   const set2 = false;
   return {
     get value() {
@@ -11103,7 +11103,7 @@ var init_util = __esm({
     EVALUATING = /* @__PURE__ */ Symbol("evaluating");
     captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {
     };
-    allowsEval = /* @__PURE__ */ cached(() => {
+    allowsEval = /* @__PURE__ */ cached2(() => {
       if (globalConfig.jitless) {
         return false;
       }
@@ -13244,7 +13244,7 @@ var init_schemas = __esm({
           }
         });
       }
-      const _normalized = cached(() => normalizeDef(def));
+      const _normalized = cached2(() => normalizeDef(def));
       defineLazy(inst._zod, "propValues", () => {
         const shape = def.shape;
         const propValues = {};
@@ -13296,7 +13296,7 @@ var init_schemas = __esm({
     $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) => {
       $ZodObject.init(inst, def);
       const superParse = inst._zod.parse;
-      const _normalized = cached(() => normalizeDef(def));
+      const _normalized = cached2(() => normalizeDef(def));
       const generateFastpass = (shape) => {
         const doc = new Doc(["shape", "payload", "ctx"]);
         const normalized = _normalized.value;
@@ -13514,7 +13514,7 @@ var init_schemas = __esm({
         }
         return propValues;
       });
-      const disc = cached(() => {
+      const disc = cached2(() => {
         const opts = def.options;
         const map2 = /* @__PURE__ */ new Map();
         for (const o of opts) {
@@ -25575,14 +25575,14 @@ var init_format_error = __esm({
 });
 
 // src/lib/profile/load.ts
-import { readFile } from "node:fs/promises";
+import { readFile as readFile2 } from "node:fs/promises";
 async function loadProfile(dataDirOverride) {
   const path2 = profilePath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile(path2, "utf-8");
+    raw = await readFile2(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError(err)) {
+    if (isFileNotFoundError2(err)) {
       return { profile: defaultProfile(), source: "default", path: path2 };
     }
     throw err;
@@ -25606,7 +25606,7 @@ Hint: fix the offending fields, or delete the file to reset to defaults.`
   }
   return { profile: result.data, source: "file", path: path2 };
 }
-function isFileNotFoundError(err) {
+function isFileNotFoundError2(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 var import_yaml;
@@ -25622,11 +25622,11 @@ var init_load = __esm({
 
 // src/lib/profile/save.ts
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname as dirname2 } from "node:path";
 async function saveProfile(profile, dataDirOverride) {
   const validated = profileSchema.parse(profile);
   const path2 = profilePath(dataDirOverride);
-  await mkdir(dirname(path2), { recursive: true });
+  await mkdir(dirname2(path2), { recursive: true });
   const yaml = (0, import_yaml2.stringify)(validated, {
     lineWidth: 0,
     // don't wrap long strings
@@ -42439,7 +42439,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join7(tree) {
+      function join8(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42465,7 +42465,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join7(parse3(query2));
+        tree = join8(parse3(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -44925,7 +44925,12 @@ var init_schema2 = __esm({
     defaultsSchema = external_exports.object({
       schema_version: external_exports.literal(1),
       auth: external_exports.object({
-        ip_whitelist_webhook: external_exports.url().or(external_exports.literal("")).default(""),
+        // Discord webhook for ops alerts: IP whitelist requests, user feedback,
+        // table-access requests, plugin crashes. Empty in shipped defaults
+        // (was a leaked URL until 2026-05-13); real value comes from
+        // MIXSHIFT_DISCORD_WEBHOOK env var or `.env.local`. See
+        // internal/SUPABASE-SETUP.md for the server-side fan-out architecture.
+        discord_webhook: external_exports.url().or(external_exports.literal("")).default(""),
         public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
         mysql: mysqlDefaults.default({
           host: "db.mydashapplications.studio",
@@ -44939,7 +44944,7 @@ var init_schema2 = __esm({
           notes: ""
         })
       }).default({
-        ip_whitelist_webhook: "",
+        discord_webhook: "",
         public_ip_lookup_url: "https://api.ipify.org?format=json",
         mysql: {
           host: "db.mydashapplications.studio",
@@ -44972,14 +44977,14 @@ var init_schema2 = __esm({
 });
 
 // src/lib/defaults/load.ts
-import { readFile as readFile4 } from "node:fs/promises";
-import { dirname as dirname4, join as join2 } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFile as readFile5 } from "node:fs/promises";
+import { dirname as dirname5, join as join4 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 async function loadPluginDefaults(overridePath) {
-  const candidates = overridePath ? [overridePath] : candidatePaths();
+  const candidates = overridePath ? [overridePath] : candidatePaths2();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile4(path2, "utf-8");
+      const raw = await readFile5(path2, "utf-8");
       const parsed = (0, import_yaml6.parse)(raw);
       const result = defaultsSchema.safeParse(parsed);
       if (!result.success) {
@@ -44989,7 +44994,7 @@ async function loadPluginDefaults(overridePath) {
       }
       return applyEnvOverrides(result.data);
     } catch (err) {
-      if (isFileNotFoundError5(err)) continue;
+      if (isFileNotFoundError6(err)) continue;
       throw err;
     }
   }
@@ -44997,8 +45002,8 @@ async function loadPluginDefaults(overridePath) {
 }
 function applyEnvOverrides(defaults) {
   const env = process.env;
-  if (env.MIXSHIFT_IP_WHITELIST_WEBHOOK) {
-    defaults.auth.ip_whitelist_webhook = env.MIXSHIFT_IP_WHITELIST_WEBHOOK;
+  if (env.MIXSHIFT_DISCORD_WEBHOOK) {
+    defaults.auth.discord_webhook = env.MIXSHIFT_DISCORD_WEBHOOK;
   }
   if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
     defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
@@ -45008,19 +45013,19 @@ function applyEnvOverrides(defaults) {
   }
   return defaults;
 }
-function candidatePaths() {
-  const here = dirname4(fileURLToPath(import.meta.url));
+function candidatePaths2() {
+  const here = dirname5(fileURLToPath2(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 6; i++) {
-    candidates.push(join2(dir, ".mixshift-defaults.yaml"));
-    const parent = dirname4(dir);
+    candidates.push(join4(dir, ".mixshift-defaults.yaml"));
+    const parent = dirname5(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError5(err) {
+function isFileNotFoundError6(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 var import_yaml6;
@@ -45287,6 +45292,124 @@ var require_lib5 = __commonJS({
   }
 });
 
+// src/lib/env/load-dotenv.ts
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join as join2 } from "node:path";
+
+// src/lib/prefetch/plugin-root.ts
+import { existsSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+var cached;
+function resolvePluginRoot() {
+  if (cached) return cached;
+  const envOverride = process.env.MIXSHIFT_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+  if (envOverride && isPluginRoot(envOverride)) {
+    cached = envOverride;
+    return envOverride;
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    if (isPluginRoot(dir)) {
+      cached = dir;
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not locate the mixshift-ai plugin root (looked for shared/sql-library/catalog.yaml). Walked up from ${here}. If you're running tests, set MIXSHIFT_PLUGIN_ROOT.`
+  );
+}
+function isPluginRoot(dir) {
+  try {
+    const marker = join(dir, "shared", "sql-library", "catalog.yaml");
+    return existsSync(marker) && statSync(marker).isFile();
+  } catch {
+    return false;
+  }
+}
+function pluginPath(...segments) {
+  return join(resolvePluginRoot(), ...segments);
+}
+
+// src/lib/env/load-dotenv.ts
+var cachedResult;
+async function loadDotenvIfPresent() {
+  if (cachedResult) return cachedResult;
+  const candidates = candidatePaths();
+  for (const path2 of candidates) {
+    try {
+      const raw = await readFile(path2, "utf-8");
+      const parsed = parseDotenv(raw);
+      const result = applyToEnv(parsed);
+      cachedResult = {
+        source_path: path2,
+        applied_count: result.applied,
+        skipped_existing: result.skipped
+      };
+      return cachedResult;
+    } catch (err) {
+      if (isFileNotFoundError(err)) continue;
+      continue;
+    }
+  }
+  cachedResult = { applied_count: 0, skipped_existing: [] };
+  return cachedResult;
+}
+function candidatePaths() {
+  const paths = [join2(homedir(), ".mixshift", ".env.local")];
+  try {
+    const pluginRoot = resolvePluginRoot();
+    const repoRoot = join2(pluginRoot, "..", "..");
+    paths.push(join2(repoRoot, ".env.local"));
+    paths.push(join2(pluginRoot, ".env.local"));
+  } catch {
+  }
+  return paths;
+}
+function parseDotenv(raw) {
+  const out = /* @__PURE__ */ new Map();
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) continue;
+    let value = line.slice(eq + 1).trim();
+    if (value.length >= 2) {
+      const first = value[0];
+      const last = value[value.length - 1];
+      if (first === '"' && last === '"' || first === "'" && last === "'") {
+        value = value.slice(1, -1);
+      }
+    }
+    out.set(key, value);
+  }
+  return out;
+}
+function applyToEnv(parsed) {
+  let applied = 0;
+  const skipped = [];
+  for (const [key, value] of parsed) {
+    if (Object.prototype.hasOwnProperty.call(process.env, key) && process.env[key] !== void 0) {
+      skipped.push(key);
+      continue;
+    }
+    process.env[key] = value;
+    applied++;
+  }
+  return { applied, skipped };
+}
+function isFileNotFoundError(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
 // node_modules/commander/esm.mjs
 var import_index = __toESM(require_commander(), 1);
 var {
@@ -45446,7 +45569,7 @@ function notYetImplemented(command, args) {
 var import_yaml4 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { readFile as readFile2 } from "node:fs/promises";
+import { readFile as readFile3 } from "node:fs/promises";
 
 // src/lib/context/schema.ts
 init_zod();
@@ -45594,9 +45717,9 @@ async function validateBrandContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile2(path2, "utf-8");
+    raw = await readFile3(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError2(err)) {
+    if (isFileNotFoundError3(err)) {
       return {
         ok: false,
         path: path2,
@@ -45646,7 +45769,7 @@ async function loadBrandContext(brandSlug, dataDirOverride) {
   }
   return { context: result.context, path: result.path };
 }
-function isFileNotFoundError2(err) {
+function isFileNotFoundError3(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -45721,8 +45844,8 @@ var import_promise = __toESM(require_promise(), 1);
 // src/lib/auth/credentials.ts
 init_resolve();
 init_format_error();
-import { mkdir as mkdir2, readFile as readFile3, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
-import { dirname as dirname2 } from "node:path";
+import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
+import { dirname as dirname3 } from "node:path";
 
 // src/lib/auth/schema.ts
 init_zod();
@@ -45752,9 +45875,9 @@ async function loadCredentials(dataDirOverride) {
   const path2 = credentialsPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile3(path2, "utf-8");
+    raw = await readFile4(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError3(err)) return { credentials: null, path: path2 };
+    if (isFileNotFoundError4(err)) return { credentials: null, path: path2 };
     throw err;
   }
   let parsed;
@@ -45779,7 +45902,7 @@ Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
 async function saveCredentials(credentials, dataDirOverride) {
   const validated = credentialsSchema.parse(credentials);
   const path2 = credentialsPath(dataDirOverride);
-  await mkdir2(dirname2(path2), { recursive: true, mode: 448 });
+  await mkdir2(dirname3(path2), { recursive: true, mode: 448 });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile2(tmpPath, JSON.stringify(validated, null, 2) + "\n", {
     encoding: "utf-8",
@@ -45793,7 +45916,7 @@ async function loadOrInit(dataDirOverride) {
   const { credentials } = await loadCredentials(dataDirOverride);
   return credentials ?? newCredentials();
 }
-function isFileNotFoundError3(err) {
+function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46022,7 +46145,7 @@ function countBy(arr) {
 // src/lib/clients/bootstrap.ts
 var import_yaml5 = __toESM(require_dist(), 1);
 import { mkdir as mkdir3, rename as rename3, writeFile as writeFile3, access } from "node:fs/promises";
-import { dirname as dirname3 } from "node:path";
+import { dirname as dirname4 } from "node:path";
 init_format_error();
 init_resolve();
 async function bootstrapBrand(suggestion, options = {}) {
@@ -46043,7 +46166,7 @@ async function bootstrapBrand(suggestion, options = {}) {
 Either pick a different slug, delete the existing directory, or pass --force to overwrite.`
       );
     } catch (err) {
-      if (!isFileNotFoundError4(err)) throw err;
+      if (!isFileNotFoundError5(err)) throw err;
     }
   }
   const context = buildContext(suggestion, validAccounts, options.asOfDate);
@@ -46176,7 +46299,7 @@ Generated by \`mixshift brand add ${suggestion.slug}\`.
 `;
 }
 async function writeAtomic(path2, content) {
-  await mkdir3(dirname3(path2), { recursive: true });
+  await mkdir3(dirname4(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile3(tmpPath, content, { encoding: "utf-8" });
   await rename3(tmpPath, path2);
@@ -46184,7 +46307,7 @@ async function writeAtomic(path2, content) {
 function todayISO() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
-function isFileNotFoundError4(err) {
+function isFileNotFoundError5(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46214,16 +46337,16 @@ async function getOrCreateInstallId(dataDirOverride) {
 
 // src/lib/telemetry/queue.ts
 init_resolve();
-import { appendFile, readFile as readFile5, writeFile as writeFile4, mkdir as mkdir4, stat } from "node:fs/promises";
-import { dirname as dirname5 } from "node:path";
+import { appendFile, readFile as readFile6, writeFile as writeFile4, mkdir as mkdir4, stat } from "node:fs/promises";
+import { dirname as dirname6 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   const line = JSON.stringify(record2) + "\n";
   try {
     await appendFile(path2, line, { encoding: "utf-8" });
   } catch (err) {
-    if (isFileNotFoundError6(err)) {
-      await mkdir4(dirname5(path2), { recursive: true });
+    if (isFileNotFoundError7(err)) {
+      await mkdir4(dirname6(path2), { recursive: true });
       await appendFile(path2, line, { encoding: "utf-8" });
     } else {
     }
@@ -46233,9 +46356,9 @@ async function readQueue(dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile5(path2, "utf-8");
+    raw = await readFile6(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError6(err)) return [];
+    if (isFileNotFoundError7(err)) return [];
     return [];
   }
   if (!raw.trim()) return [];
@@ -46265,7 +46388,7 @@ async function queueSizeBytes(dataDirOverride) {
     return 0;
   }
 }
-function isFileNotFoundError6(err) {
+function isFileNotFoundError7(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46641,7 +46764,7 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
 
 // src/commands/auth.ts
 var import_yaml7 = __toESM(require_dist(), 1);
-import { readFile as readFile6 } from "node:fs/promises";
+import { readFile as readFile7 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -48460,7 +48583,7 @@ async function sendWhitelistRequest(args) {
     };
   } else {
     webhookResult = await args.deps.postWebhook(
-      args.ctx.defaults.auth.ip_whitelist_webhook,
+      args.ctx.defaults.auth.discord_webhook,
       {
         kind: "ip_whitelist_request",
         user_email: args.email,
@@ -48602,7 +48725,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile6(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile7(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -48622,7 +48745,7 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile6(path2, "utf-8");
+  const raw = await readFile7(path2, "utf-8");
   let parsed;
   try {
     parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml7.parse)(raw);
@@ -48818,48 +48941,7 @@ function registerValidateCommand(program3) {
 // src/lib/prefetch/manifest.ts
 init_zod();
 var import_yaml8 = __toESM(require_dist(), 1);
-import { readFile as readFile7 } from "node:fs/promises";
-
-// src/lib/prefetch/plugin-root.ts
-import { existsSync, statSync } from "node:fs";
-import { dirname as dirname6, join as join3 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-var cached2;
-function resolvePluginRoot() {
-  if (cached2) return cached2;
-  const envOverride = process.env.MIXSHIFT_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
-  if (envOverride && isPluginRoot(envOverride)) {
-    cached2 = envOverride;
-    return envOverride;
-  }
-  const here = dirname6(fileURLToPath2(import.meta.url));
-  let dir = here;
-  for (let i = 0; i < 8; i++) {
-    if (isPluginRoot(dir)) {
-      cached2 = dir;
-      return dir;
-    }
-    const parent = dirname6(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `Could not locate the mixshift-ai plugin root (looked for shared/sql-library/catalog.yaml). Walked up from ${here}. If you're running tests, set MIXSHIFT_PLUGIN_ROOT.`
-  );
-}
-function isPluginRoot(dir) {
-  try {
-    const marker = join3(dir, "shared", "sql-library", "catalog.yaml");
-    return existsSync(marker) && statSync(marker).isFile();
-  } catch {
-    return false;
-  }
-}
-function pluginPath(...segments) {
-  return join3(resolvePluginRoot(), ...segments);
-}
-
-// src/lib/prefetch/manifest.ts
+import { readFile as readFile8 } from "node:fs/promises";
 init_format_error();
 var allowedToolEnum = external_exports.enum([
   "db_read",
@@ -48925,9 +49007,9 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile7(path2, "utf-8");
+    raw = await readFile8(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError7(err)) {
+    if (isFileNotFoundError8(err)) {
       throw new Error(
         `Skill manifest not found at ${path2}. Known skill IDs are subdirectories under skills/. Check the skill name and try again.`
       );
@@ -48958,7 +49040,7 @@ function resolveBatchPlan(manifest) {
     { round: 1, parallel: [...manifest.sql_ids], notes: "Default single-round plan" }
   ];
 }
-function isFileNotFoundError7(err) {
+function isFileNotFoundError8(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -49060,7 +49142,7 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
-import { readFile as readFile8 } from "node:fs/promises";
+import { readFile as readFile9 } from "node:fs/promises";
 var import_yaml9 = __toESM(require_dist(), 1);
 init_format_error();
 var queryEntrySchema = external_exports.object({
@@ -49082,9 +49164,9 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile8(path2, "utf-8");
+    raw = await readFile9(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError8(err)) {
+    if (isFileNotFoundError9(err)) {
       throw new Error(
         `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
       );
@@ -49116,9 +49198,9 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile8(path2, "utf-8");
+    raw = await readFile9(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError8(err)) {
+    if (isFileNotFoundError9(err)) {
       throw new Error(
         `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
       );
@@ -49139,7 +49221,7 @@ async function readQuerySql(id) {
   const sql = lines.slice(headerEnd).join("\n").trim();
   return { id, sql, header };
 }
-function isFileNotFoundError8(err) {
+function isFileNotFoundError9(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -49397,13 +49479,13 @@ async function resolveCreds2(options) {
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir5, writeFile as writeFile5, rename as rename4 } from "node:fs/promises";
-import { dirname as dirname7, join as join4 } from "node:path";
+import { dirname as dirname7, join as join5 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir5(runDir, { recursive: true });
-  const dataJsonPath = join4(runDir, "data.json");
-  const dataMdPath = join4(runDir, "data.md");
+  const dataJsonPath = join5(runDir, "data.json");
+  const dataMdPath = join5(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -49429,7 +49511,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join4(
+  return join5(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -49805,12 +49887,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile9 } from "node:fs/promises";
+import { readFile as readFile10 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir6, writeFile as writeFile6, rename as rename5 } from "node:fs/promises";
-import { join as join5, dirname as dirname8 } from "node:path";
+import { join as join6, dirname as dirname8 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -49948,7 +50030,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join5(
+  return join6(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -49998,7 +50080,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile9(opts.inputFile, "utf-8");
+      const raw = await readFile10(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -50072,21 +50154,21 @@ import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
 var import_yaml10 = __toESM(require_dist(), 1);
-import { readFile as readFile10 } from "node:fs/promises";
-import { dirname as dirname9, join as join6 } from "node:path";
+import { readFile as readFile11 } from "node:fs/promises";
+import { dirname as dirname9, join as join7 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 async function loadTablesCatalog(overridePath) {
-  const candidates = overridePath ? [overridePath] : candidatePaths2();
+  const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile10(path2, "utf-8");
+      const raw = await readFile11(path2, "utf-8");
       const parsed = (0, import_yaml10.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
       );
     } catch (err) {
-      if (isFileNotFoundError9(err)) continue;
+      if (isFileNotFoundError10(err)) continue;
       throw err;
     }
   }
@@ -50107,19 +50189,19 @@ function normalize(name, raw) {
     date_column: raw.date_column
   };
 }
-function candidatePaths2() {
+function candidatePaths3() {
   const here = dirname9(fileURLToPath3(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join6(dir, "shared", "data-tables.yaml"));
+    candidates.push(join7(dir, "shared", "data-tables.yaml"));
     const parent = dirname9(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError9(err) {
+function isFileNotFoundError10(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -50644,7 +50726,7 @@ function registerFeedbackCommand(program3) {
           );
         }
         const result = await postWebhook(
-          defaults.auth.ip_whitelist_webhook,
+          defaults.auth.discord_webhook,
           {
             kind: "user_feedback",
             user_email: userEmail,
@@ -50889,13 +50971,19 @@ function registerTelemetryCommands(program3) {
     const root = cmd.optsWithGlobals();
     const status = await getTelemetryStatus(root.dataDir);
     const queueBytes = await queueSizeBytes(root.dataDir);
+    const envLoad = await loadDotenvIfPresent();
+    const envCandidates = candidatePaths();
     if (root.json) {
       process.stdout.write(
         JSON.stringify(
           {
             ...status,
             queue_path: telemetryQueuePath(root.dataDir),
-            queue_size_bytes: queueBytes
+            queue_size_bytes: queueBytes,
+            env_file: envLoad.source_path ?? null,
+            env_applied_count: envLoad.applied_count,
+            env_skipped_existing: envLoad.skipped_existing,
+            env_candidates: envCandidates
           },
           null,
           2
@@ -50904,6 +50992,7 @@ function registerTelemetryCommands(program3) {
       return;
     }
     const indicator = status.enabled ? "\u2713" : "\u2717";
+    const envLine = envLoad.source_path ? `loaded from ${envLoad.source_path} (${envLoad.applied_count} vars applied, ${envLoad.skipped_existing.length} skipped \u2014 shell wins)` : `no .env.local found. Checked: ${envCandidates.join(", ")}`;
     process.stdout.write(
       `
 ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
@@ -50913,6 +51002,7 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
   - opted_out:        ${status.opted_out}
   - env_override:     ${status.env_override} (MIXSHIFT_TELEMETRY)
   - configured:       ${status.configured} (endpoint + apikey in defaults)
+  - env_file:         ${envLine}
   - queue path:       ${telemetryQueuePath(root.dataDir)}
   - queue size:       ${queueBytes} bytes
 
@@ -50981,6 +51071,7 @@ See docs/privacy.md for what we collect and why.
 }
 
 // src/cli.ts
+await loadDotenvIfPresent();
 var program2 = new Command();
 program2.name("mixshift").description(
   "Internal harness for the mixshift-ai plugin.\nInvoked by Claude during skill execution. Not user-facing."

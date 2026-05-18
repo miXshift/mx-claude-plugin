@@ -60,21 +60,27 @@ export async function loadPluginDefaults(
  * customers running through MixShift's deployment pipeline.
  *
  * Recognized env vars (all optional):
- *   MIXSHIFT_IP_WHITELIST_WEBHOOK   Discord webhook for auth + feedback flows.
- *                                   Until Supabase fan-out is live (Option 3
- *                                   architecture), this is how MixShift's
- *                                   internal team gets real-time alerts.
+ *   MIXSHIFT_DISCORD_WEBHOOK        Discord webhook for ops alerts:
+ *                                   IP whitelist requests, user feedback,
+ *                                   table-access requests, plugin crashes.
+ *                                   Until Supabase fan-out is live (see
+ *                                   internal/SUPABASE-SETUP.md §10), this
+ *                                   is how MixShift's internal team gets
+ *                                   real-time alerts.
  *   MIXSHIFT_TELEMETRY_ENDPOINT     Supabase REST endpoint for events.
  *   MIXSHIFT_TELEMETRY_APIKEY       Supabase anon key (safe to embed —
  *                                   designed for client embedding, RLS does
  *                                   the security work).
+ *
+ * Values can come from the shell environment OR from a `.env.local` file
+ * loaded at CLI startup (see lib/env/load-dotenv.ts).
  */
 function applyEnvOverrides(defaults: PluginDefaults): PluginDefaults {
   const env = process.env;
 
   // Webhook override (Discord URLs are secrets — never ship in repo).
-  if (env.MIXSHIFT_IP_WHITELIST_WEBHOOK) {
-    defaults.auth.ip_whitelist_webhook = env.MIXSHIFT_IP_WHITELIST_WEBHOOK;
+  if (env.MIXSHIFT_DISCORD_WEBHOOK) {
+    defaults.auth.discord_webhook = env.MIXSHIFT_DISCORD_WEBHOOK;
   }
 
   // Telemetry endpoint + apikey overrides. Useful for local Supabase

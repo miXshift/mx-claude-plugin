@@ -185,7 +185,7 @@ async function sendWhitelistRequest(args: {
     };
   } else {
     webhookResult = await args.deps.postWebhook(
-      args.ctx.defaults.auth.ip_whitelist_webhook,
+      args.ctx.defaults.auth.discord_webhook,
       {
         kind: 'ip_whitelist_request',
         user_email: args.email,

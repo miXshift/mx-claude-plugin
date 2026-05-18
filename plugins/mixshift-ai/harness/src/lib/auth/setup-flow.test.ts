@@ -27,7 +27,7 @@ const sampleMysql: MysqlCreds = {
 const sampleDefaults = defaultsSchema.parse({
   schema_version: 1,
   auth: {
-    ip_whitelist_webhook: 'https://example.com/webhook',
+    discord_webhook: 'https://example.com/webhook',
     public_ip_lookup_url: 'https://api.ipify.org?format=json',
   },
 });

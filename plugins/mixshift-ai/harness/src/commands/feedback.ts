@@ -49,7 +49,7 @@ export function registerFeedbackCommand(program: Command): void {
           }
 
           const result = await postWebhook(
-            defaults.auth.ip_whitelist_webhook,
+            defaults.auth.discord_webhook,
             {
               kind: 'user_feedback',
               user_email: userEmail,

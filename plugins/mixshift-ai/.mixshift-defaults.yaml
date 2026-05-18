@@ -4,15 +4,16 @@
 # They are committed to the repository and ship with plugin releases.
 #
 # Users can override any value:
-#   - Via env var (e.g. MIXSHIFT_IP_WHITELIST_WEBHOOK)
-#   - In ~/.mixshift/profile.yaml (auth.ip_whitelist_webhook, etc.)
+#   - Via env var (e.g. MIXSHIFT_DISCORD_WEBHOOK)
+#   - Via .env.local at ~/.mixshift/.env.local or repo root (loaded at startup)
 #   - Via CLI flag (--webhook-url, ...)
 #
-# Resolution priority: CLI flag > env var > profile > this file.
+# Resolution priority: CLI flag > env var > .env.local > this file.
 
 schema_version: 1
 
-# Discord routing for IP whitelist / feedback / table-access requests.
+# Discord routing for ops alerts: IP whitelist requests, user feedback,
+# table-access requests, and plugin crashes — same channel, multiple flows.
 #
 # As of plugin v0.4.0 the Discord webhook URL is NOT shipped in this file
 # (Discord webhook URLs are credentials — anyone with the URL can post to
@@ -23,15 +24,17 @@ schema_version: 1
 # (encrypted at rest, accessible only to server-side functions).
 #
 # For local development / MixShift-internal testing before Supabase
-# fan-out is wired, set the env var:
-#   MIXSHIFT_IP_WHITELIST_WEBHOOK=https://...
-# The plugin honors this override at runtime.
+# fan-out is wired, set the env var via your shell OR via .env.local:
+#   MIXSHIFT_DISCORD_WEBHOOK=https://...
+# The plugin honors this override at runtime. See .env.local.template at
+# the repo root for the full set of supported env vars + recommended
+# locations.
 #
 # Setup: internal/SUPABASE-SETUP.md documents the Edge Function template,
 # DB trigger, and Vault secret pattern. internal/SECRETS.md documents
 # which fields are secrets and which aren't.
 auth:
-  ip_whitelist_webhook: ""
+  discord_webhook: ""
   public_ip_lookup_url: https://api.ipify.org?format=json
 
   # MySQL connection defaults — used as suggested values in the auth-setup
