@@ -16,7 +16,15 @@ export function registerWelcomeCommand(program: Command): void {
       'Show the first-run welcome and quick-start (URL to retrieve your ' +
         'credentials, what commands to run, where to get help).',
     )
-    .action(async (_opts, cmd: Command) => {
+    .option(
+      '--format <type>',
+      'output format: `terminal` (ASCII for shell, default) | `chat` ' +
+        '(markdown for Claude/Cowork to surface verbatim in chat). The ' +
+        'welcome SKILL.md uses --format chat so every install renders the ' +
+        'same text without depending on Claude\'s paraphrase quality.',
+      'terminal',
+    )
+    .action(async (opts: { format?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const defaults = await loadPluginDefaults();
       const { profile, source: profileSource } = await loadProfile(root.dataDir);
@@ -49,11 +57,20 @@ export function registerWelcomeCommand(program: Command): void {
 
       // Welcome is informational, not an error — route to stdout so it
       // doesn't render red in tools that style stderr as error.
-      process.stdout.write(renderWelcome({ authReady, profileReady, cr }));
+      const format = opts.format === 'chat' ? 'chat' : 'terminal';
+      const rendered =
+        format === 'chat'
+          ? renderWelcomeChat({ authReady, profileReady, cr })
+          : renderWelcome({ authReady, profileReady, cr });
+      process.stdout.write(rendered);
       await track(
         {
           event_name: EventName.WelcomeViewed,
-          payload: { auth_ready: authReady, profile_ready: profileReady },
+          payload: {
+            auth_ready: authReady,
+            profile_ready: profileReady,
+            format,
+          },
         },
         root.dataDir,
       );
@@ -194,5 +211,115 @@ function renderWelcome(args: {
     lines.push('Current state: ✗ no credentials yet. Start with Step 1 above.');
   }
   lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Chat-format renderer (markdown). Used when invoked as `mixshift welcome
+ * --format chat` — the welcome SKILL.md surfaces this output verbatim as
+ * Claude's chat reply, instead of having Claude paraphrase. This way the
+ * harness owns the chat wording (one place to iterate) and every install
+ * renders the same text regardless of Claude's interpretation.
+ *
+ * Design: each step is a separate paragraph with a bolded ### heading. The
+ * three sub-sections inside Step 1 (URL + master password + field list +
+ * Step-2 handoff) each get their own paragraph break to address the past
+ * "crushed paragraph" complaint.
+ */
+function renderWelcomeChat(args: {
+  authReady: boolean;
+  profileReady: boolean;
+  cr: {
+    url_default: string;
+    url_tenant_pattern: string;
+    master_password: string;
+    notes: string;
+  };
+}): string {
+  const { authReady, profileReady, cr } = args;
+  const lines: string[] = [];
+
+  if (authReady && profileReady) {
+    lines.push("**Welcome back to the MixShift plugin** — you're already set up. A few directions you can go:");
+    lines.push('');
+    lines.push('- **Discover your brands** — say *"discover my brands"*, or run `mixshift brand discover` in a terminal.');
+    lines.push('- **Explore + export your data** (no brand onboarding required) — *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>\'s campaigns to CSV"*.');
+    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) — *"onboard \\<brand-slug\\>"*, then *"run account cold start for \\<brand-slug\\>"*.');
+    lines.push('- **Re-run auth setup** if credentials need changing — *"set up my credentials"*.');
+    lines.push('- **Send feedback** — *"send feedback to mixshift: \\<your message\\>"*. Bugs, gripes, feature requests — all welcome during beta.');
+    lines.push('');
+    lines.push("Where do you want to start?");
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  // First-run / partially-set-up branch.
+  lines.push("**Welcome to the MixShift plugin** — you're at the very start, no credentials configured yet. Three quick steps to get going:");
+  lines.push('');
+
+  // Step 1 — three deliberate paragraph breaks at sub-section boundaries.
+  lines.push('### Step 1 — Get your warehouse credentials');
+  lines.push('');
+  lines.push(
+    `Open ${cr.url_default} in a browser where you're signed in to MixShift. ` +
+      `If the \`www\` URL doesn't recognize your session, use your tenant URL instead: ` +
+      `${cr.url_tenant_pattern} (e.g. \`marpartners.mydashapplications.com/database-admin\`).`,
+  );
+  lines.push('');
+  if (cr.master_password) {
+    lines.push(
+      `When the page prompts for "Master password", enter \`${cr.master_password}\` — ` +
+        `this is the same value for every MixShift customer, a guard against accidental ` +
+        `credential exposure on the page, not a per-user secret.`,
+    );
+    lines.push('');
+  }
+  lines.push(
+    'The page shows your **HostName**, **Username**, **Port**, **Schema**, and **Password**. ' +
+      "Copy all five — you'll plug them into Step 2 below.",
+  );
+  lines.push('');
+
+  // Step 2 — single paragraph.
+  lines.push('### Step 2 — Run auth setup');
+  lines.push('');
+  lines.push(
+    'Once you have those credentials, say *"set up my credentials"* or *"run auth setup"* in chat. ' +
+      "I'll walk you through it safely — for the password, you'll save it to a text file " +
+      'and tell me the path, so the password never appears in chat history. ' +
+      "We'll test the connection and auto-request an IP whitelist if your IP isn't approved yet.",
+  );
+  lines.push('');
+
+  // Step 3 — bulleted list of common asks.
+  lines.push('### Step 3 — Try something');
+  lines.push('');
+  lines.push('Once auth is done, ask things like:');
+  lines.push('');
+  lines.push('- *"what brands do I have access to?"*');
+  lines.push('- *"what tables can I query?"*');
+  lines.push('- *"explore my data"*');
+  lines.push('- *"export \\<brand\\>\'s campaigns to CSV"*');
+  lines.push('');
+
+  // Status + feedback footer.
+  lines.push('---');
+  lines.push('');
+  if (authReady) {
+    lines.push(
+      '**Current state:** ✓ credentials saved' +
+        (profileReady ? ', ✓ profile saved.' : ', ✗ profile incomplete.') +
+        ' You can skip to Step 3.',
+    );
+  } else {
+    lines.push('**Current state:** ✗ no credentials yet — start with Step 1 above.');
+  }
+  lines.push('');
+  lines.push(
+    '> Feedback during beta? Just describe a friction point (*"it\'d be nice if…"*, *"this is broken"*, *"I wish this could…"*) ' +
+      "and I'll offer to file it. Or say *\"send feedback to mixshift: \\<your message\\>\"* directly.",
+  );
+  lines.push('');
+
   return lines.join('\n');
 }

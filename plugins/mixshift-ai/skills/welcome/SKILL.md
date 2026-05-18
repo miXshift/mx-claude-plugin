@@ -26,26 +26,32 @@ This skill is a thin wrapper around the `mixshift welcome` CLI command. The CLI 
 
 ## How to run
 
-Execute the CLI command via Bash:
+Execute the CLI command via Bash with the `--format chat` flag:
 
 ```bash
-mixshift welcome
+mixshift welcome --format chat
 ```
+
+The `--format chat` flag tells the harness to render markdown formatted for direct chat display (instead of the ASCII-formatted terminal version). Every install renders the same text because the harness owns the wording.
 
 ## How to reply
 
-The Bash tool's output block displays the welcome content verbatim above your reply. The user already sees the full three-step walkthrough — URL, master password, field list, what to do next. **Do not re-render that content in your own words.**
+**Surface the bash output verbatim as your chat reply.** The text is already chat-ready markdown — bolded step headings, paragraph breaks at sub-section boundaries, plain prose. Render it as natural chat (NOT inside a code block) so the markdown formatting works.
 
-Specifically, do NOT:
-- Restate Step 1 / Step 2 / Step 3 in prose
-- Paraphrase the credential URL, master password, or list of fields
-- Compress multiple sub-sections (URL / password / field copy) into a single paragraph — that destroys the deliberate paragraph breaks in the CLI output
+Specifically:
+- Copy the markdown content from the bash output into your reply.
+- Do NOT add prose around it ("here's the welcome screen", "let me walk you through…") — the text starts with "Welcome to the MixShift plugin" and is self-contained.
+- Do NOT modify, paraphrase, condense, or restructure the text. It's hand-written to land cleanly in chat; edits cause regressions.
+- Do NOT also paste the raw bash code block above the rendered version — one display of the welcome is enough.
 
-Acceptable reply structure (keep it to ~2 sentences total):
-- One short acknowledgement of current state, e.g. *"You're at the very start — no credentials yet."*
-- One short pointer to the next move, e.g. *"Say 'set up my credentials' once you've got the values from Step 1."*
+If the user asks a follow-up about a specific step, reference the rendered text rather than re-rendering it. If the iteration needs to change the wording, that's a harness fix in `welcome.ts::renderWelcomeChat()`, not a SKILL.md edit.
 
-If the user asks a follow-up about a specific step, reference the CLI output rather than re-stating it (e.g. *"see Step 2 in the output above"*). The author hand-wrote the wording with care; paraphrasing loses nuance and breaks the visual hierarchy.
+### Fallback
+
+If `mixshift welcome --format chat` fails ("command not found", harness error, etc.), fall back to:
+
+1. `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome --format chat` — same output, absolute path.
+2. As a last resort, the older `mixshift welcome` (no --format flag) outputs the terminal-ASCII version. Surface that as-is in a code block; don't try to paraphrase it.
 
 ## When to use
 
