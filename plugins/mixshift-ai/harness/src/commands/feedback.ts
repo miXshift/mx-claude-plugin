@@ -20,6 +20,14 @@ interface RootOptions {
  * If the flush fails (no network, Supabase down, …), the event stays in
  * the local queue and gets retried on the next CLI invocation — feedback
  * is never lost, just delayed.
+ *
+ * Note: this command intentionally keeps its mid-handler `maybeFlush()`
+ * call (unlike every other command, which lets cli.ts's finally-block
+ * drain the queue). The flush *result* is what tells us whether to
+ * print "✓ Sent" vs "• Queued locally" to the user — that delivery
+ * confirmation UX requires inspecting the flush status synchronously
+ * inside the action handler. The cli.ts finally-block still runs after
+ * us; it's just a no-op because we've already drained the queue.
  */
 export function registerFeedbackCommand(program: Command): void {
   program
@@ -105,9 +113,9 @@ export function registerFeedbackCommand(program: Command): void {
                 (flush.error ? `  Reason: ${flush.error}\n` : ''),
             );
           }
-          process.exit(delivered ? 0 : 0);
-          // Note: exit 0 in both cases. "Queued" isn't a failure — the
-          // feedback is captured locally and will retry.
+          // No exitCode set — "queued" isn't a failure (the event is on
+          // disk and will retry on the next mixshift invocation), so the
+          // command always succeeds with exit 0.
         } catch (err) {
           const message_ = err instanceof Error ? err.message : String(err);
           if (root.json) {
@@ -117,7 +125,7 @@ export function registerFeedbackCommand(program: Command): void {
           } else {
             process.stderr.write(`error: ${message_}\n`);
           }
-          process.exit(1);
+          process.exitCode = 1;
         }
       },
     );

@@ -50263,7 +50263,6 @@ function registerDataCommands(program3) {
       } else {
         process.stderr.write(renderTableList(tables) + "\n");
       }
-      process.exit(0);
     } catch (err) {
       emitError2(err, !!root.json);
     }
@@ -50282,7 +50281,6 @@ function registerDataCommands(program3) {
       } else {
         process.stderr.write(renderTableDetail(meta3) + "\n");
       }
-      process.exit(0);
     } catch (err) {
       emitError2(err, !!root.json);
     }
@@ -50324,7 +50322,8 @@ function registerDataCommands(program3) {
             process.stderr.write(`
 \u2717 ${result.query_result.friendly}
 `);
-            process.exit(handleAccessDeniedExit(result.query_result.kind));
+            process.exitCode = handleAccessDeniedExit(result.query_result.kind);
+            return;
           }
           process.stderr.write(
             `
@@ -50335,7 +50334,6 @@ function registerDataCommands(program3) {
           );
           process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
         }
-        process.exit(0);
       } catch (err) {
         emitError2(err, !!root.json);
       }
@@ -50381,7 +50379,8 @@ function registerDataCommands(program3) {
             process.stderr.write(`
 \u2717 ${result.query_result.friendly}
 `);
-            process.exit(handleAccessDeniedExit(result.query_result.kind));
+            process.exitCode = handleAccessDeniedExit(result.query_result.kind);
+            return;
           }
           process.stderr.write(
             `
@@ -50391,7 +50390,6 @@ function registerDataCommands(program3) {
 `
           );
         }
-        process.exit(0);
       } catch (err) {
         emitError2(err, !!root.json);
       }
@@ -50425,7 +50423,8 @@ function registerDataCommands(program3) {
 \u2717 ${result.friendly}
 `);
           }
-          process.exit(handleAccessDeniedExit(result.kind));
+          process.exitCode = handleAccessDeniedExit(result.kind);
+          return;
         }
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
@@ -50461,7 +50460,6 @@ function registerDataCommands(program3) {
             );
           }
         }
-        process.exit(0);
       } catch (err) {
         emitError2(err, !!root.json);
       }
@@ -50624,7 +50622,6 @@ function registerFeedbackCommand(program3) {
 ` : "")
           );
         }
-        process.exit(delivered ? 0 : 0);
       } catch (err) {
         const message_ = err instanceof Error ? err.message : String(err);
         if (root.json) {
@@ -50635,7 +50632,7 @@ function registerFeedbackCommand(program3) {
           process.stderr.write(`error: ${message_}
 `);
         }
-        process.exit(1);
+        process.exitCode = 1;
       }
     }
   );
@@ -50673,7 +50670,7 @@ function registerWelcomeCommand(program3) {
           2
         ) + "\n"
       );
-      process.exit(0);
+      return;
     }
     process.stdout.write(renderWelcome({ authReady, profileReady, cr }));
     await track(
@@ -50683,8 +50680,6 @@ function registerWelcomeCommand(program3) {
       },
       root.dataDir
     );
-    await maybeFlush(root.dataDir);
-    process.exit(0);
   });
 }
 function renderWelcome(args) {
@@ -50936,20 +50931,17 @@ registerWelcomeCommand(program2);
 registerTelemetryCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
-  await runCrossCuttingTelemetry();
+  await showFirstRunNoticeIfNeeded();
 }
-async function runCrossCuttingTelemetry() {
+async function showFirstRunNoticeIfNeeded() {
   try {
     const acknowledged = await hasAcknowledgedConsent();
-    if (!acknowledged) {
-      const { isTelemetryEnabled: isTelemetryEnabled2 } = await Promise.resolve().then(() => (init_consent(), consent_exports));
-      if (await isTelemetryEnabled2()) {
-        printFirstRunNotice();
-        await markConsentAcknowledged();
-        await track({ event_name: EventName.ConsentAcknowledged });
-      }
-    }
-    await maybeFlush();
+    if (acknowledged) return;
+    const { isTelemetryEnabled: isTelemetryEnabled2 } = await Promise.resolve().then(() => (init_consent(), consent_exports));
+    if (!await isTelemetryEnabled2()) return;
+    printFirstRunNotice();
+    await markConsentAcknowledged();
+    await track({ event_name: EventName.ConsentAcknowledged });
   } catch {
   }
 }
@@ -50958,18 +50950,23 @@ function printFirstRunNotice() {
     "\n\u2501\u2501 MixShift plugin \u2014 beta usage tracking \u2501\u2501\nDuring the beta, this plugin sends anonymized usage events to MixShift\n(which skills run, query timings, onboarding funnel \u2014 not query results,\nnot credentials, not chat content). This lets us iterate on the plugin.\n\nFull disclosure + opt-out:\n  https://github.com/miXshift/mx-claude-plugin/blob/main/docs/privacy.md\n\nOpt out anytime:  mixshift telemetry opt-out\nCheck status:     mixshift telemetry status\nBy continuing, you agree to this collection.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
   );
 }
-program2.parseAsync(process.argv).catch((err) => {
+try {
+  await program2.parseAsync(process.argv);
+} catch (err) {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}
 `);
-  void track({
+  await track({
     event_name: EventName.PluginCrashed,
     outcome: "failed",
     error_class: "unhandled_exception",
     payload: { message, argv: process.argv.slice(2) }
   });
-  process.exit(1);
-});
+  process.exitCode = 1;
+} finally {
+  await maybeFlush();
+}
+process.exit(process.exitCode ?? 0);
 /*! Bundled license information:
 
 long/umd/index.js:

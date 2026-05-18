@@ -37,7 +37,6 @@ export function registerDataCommands(program: Command): void {
         } else {
           process.stderr.write(renderTableList(tables) + '\n');
         }
-        process.exit(0);
       } catch (err) {
         emitError(err, !!root.json);
       }
@@ -64,7 +63,6 @@ export function registerDataCommands(program: Command): void {
         } else {
           process.stderr.write(renderTableDetail(meta) + '\n');
         }
-        process.exit(0);
       } catch (err) {
         emitError(err, !!root.json);
       }
@@ -119,7 +117,8 @@ export function registerDataCommands(program: Command): void {
           } else {
             if (!result.query_result.ok) {
               process.stderr.write(`\n✗ ${result.query_result.friendly}\n`);
-              process.exit(handleAccessDeniedExit(result.query_result.kind));
+              process.exitCode = handleAccessDeniedExit(result.query_result.kind);
+              return;
             }
             process.stderr.write(
               `\n✓ ${result.query_result.rowCount} rows from \`${opts.table}\`` +
@@ -128,7 +127,6 @@ export function registerDataCommands(program: Command): void {
             );
             process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + '\n');
           }
-          process.exit(0);
         } catch (err) {
           emitError(err, !!root.json);
         }
@@ -200,7 +198,8 @@ export function registerDataCommands(program: Command): void {
           } else {
             if (!result.query_result.ok) {
               process.stderr.write(`\n✗ ${result.query_result.friendly}\n`);
-              process.exit(handleAccessDeniedExit(result.query_result.kind));
+              process.exitCode = handleAccessDeniedExit(result.query_result.kind);
+              return;
             }
             process.stderr.write(
               `\n✓ Exported ${result.rows_written} rows to ${result.out_path}\n` +
@@ -208,7 +207,6 @@ export function registerDataCommands(program: Command): void {
                 `  query:    ${result.display_sql}\n`,
             );
           }
-          process.exit(0);
         } catch (err) {
           emitError(err, !!root.json);
         }
@@ -251,7 +249,8 @@ export function registerDataCommands(program: Command): void {
             } else {
               process.stderr.write(`\n✗ ${result.friendly}\n`);
             }
-            process.exit(handleAccessDeniedExit(result.kind));
+            process.exitCode = handleAccessDeniedExit(result.kind);
+            return;
           }
 
           if (opts.out) {
@@ -288,7 +287,6 @@ export function registerDataCommands(program: Command): void {
               );
             }
           }
-          process.exit(0);
         } catch (err) {
           emitError(err, !!root.json);
         }

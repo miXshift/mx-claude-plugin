@@ -5,6 +5,35 @@
  * execution. End users interact through slash commands and natural language.
  *
  * Architecture: see docs/productization/HARNESS-REWRITE.md
+ *
+ * ──────────────────────────────────────────────────────────────────────
+ * Exit / telemetry-flush contract (read before adding a new command!)
+ * ──────────────────────────────────────────────────────────────────────
+ *
+ *   Command action handlers MUST NOT call `process.exit(N)` directly.
+ *
+ *   To signal a non-zero exit, set `process.exitCode = N` and `return`.
+ *   To signal success, just `return` (exitCode defaults to 0).
+ *
+ *   This file is the only place `process.exit()` is called. It wraps
+ *   `parseAsync` in a try/catch/finally so that:
+ *     1. The `finally` block awaits `maybeFlush()` — draining any
+ *        telemetry events queued during the command's execution.
+ *     2. The final `process.exit(process.exitCode ?? 0)` happens AFTER
+ *        the flush completes.
+ *
+ *   Why this matters: every `track()` call only appends to a local
+ *   JSONL queue. The HTTP POST to Supabase happens in `maybeFlush()`.
+ *   For a one-shot user (e.g. `mixshift welcome` invoked once from the
+ *   Cowork first-run flow and never again), there's no "next CLI
+ *   invocation" to drain the queue — so we MUST flush before exit, or
+ *   the events are lost. A command that calls `process.exit(N)` directly
+ *   bypasses this drain.
+ *
+ *   Helpers that previously called `process.exit()` (`emitError` in
+ *   data.ts/profile.ts, `notYetImplemented` in lib/stub.ts) now set
+ *   `process.exitCode` and return `void`. Callers naturally fall through
+ *   to the end of the action handler.
  */
 
 // Load `.env.local` FIRST — before any module reads process.env (mainly
@@ -74,45 +103,32 @@ registerFeedbackCommand(program);
 registerWelcomeCommand(program);
 registerTelemetryCommands(program);
 
-// Before commander parses, do two cross-cutting telemetry chores:
-//   1. Show the first-run consent notice (once per install) so the user
-//      knows what's collected during beta. Idempotent; subsequent runs
-//      skip silently.
-//   2. Drain the local telemetry queue from prior invocations. Fire-and-
-//      forget — we don't await it; it'll race against process exit and
-//      either complete (small queue, fast network) or leave events in
-//      the queue for next time. Best-effort by design.
+// First-run cross-cutting telemetry chore: show the consent notice once
+// per install. Idempotent on subsequent runs. Skipped silently when
+// telemetry is configured-off or the user has opted out, and skipped for
+// the `telemetry` subcommand itself (so `mixshift telemetry status`
+// doesn't print the notice while you're trying to inspect state).
 //
-// Both are skipped silently when telemetry is configured-off (no Supabase
-// endpoint) or when the user has opted out. The `telemetry` subcommand
-// itself is also skipped (so `mixshift telemetry status` doesn't drain or
-// notice-print — predictable for users debugging telemetry state).
+// We no longer drain the queue here — the `finally` block at the bottom
+// of this file flushes whatever's in the queue (including events emitted
+// during this very invocation) before `process.exit`. One round trip
+// instead of two, and it covers retries from prior failed flushes too.
 const isTelemetryCommand = process.argv[2] === 'telemetry';
 if (!isTelemetryCommand) {
-  await runCrossCuttingTelemetry();
+  await showFirstRunNoticeIfNeeded();
 }
 
-async function runCrossCuttingTelemetry(): Promise<void> {
+async function showFirstRunNoticeIfNeeded(): Promise<void> {
   try {
-    // First-run notice. Only print if telemetry is actually going to fire
-    // (no point telling the user about collection that won't happen).
     const acknowledged = await hasAcknowledgedConsent();
-    if (!acknowledged) {
-      const { isTelemetryEnabled } = await import('./lib/telemetry/consent.js');
-      if (await isTelemetryEnabled()) {
-        printFirstRunNotice();
-        await markConsentAcknowledged();
-        await track({ event_name: EventName.ConsentAcknowledged });
-      }
-    }
-    // Drain queued events synchronously. We used to fire-and-forget here,
-    // but for a one-shot first-run user (e.g. `mixshift welcome` from a
-    // fresh Cowork install) the harness exits via `process.exit()` before
-    // the in-flight HTTP request can complete — and there's no "next CLI
-    // invocation" to retry on. Awaiting adds ~100-500ms on startup (the
-    // POST to Supabase), but for empty queues this returns "no_events"
-    // almost instantly.
-    await maybeFlush();
+    if (acknowledged) return;
+
+    const { isTelemetryEnabled } = await import('./lib/telemetry/consent.js');
+    if (!(await isTelemetryEnabled())) return;
+
+    printFirstRunNotice();
+    await markConsentAcknowledged();
+    await track({ event_name: EventName.ConsentAcknowledged });
   } catch {
     // Telemetry can never break the CLI.
   }
@@ -139,15 +155,29 @@ function printFirstRunNotice(): void {
   );
 }
 
-program.parseAsync(process.argv).catch((err: unknown) => {
+// The one-and-only place `process.exit()` is allowed. See the
+// "Exit / telemetry-flush contract" block at the top of this file.
+try {
+  await program.parseAsync(process.argv);
+} catch (err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}\n`);
-  // Best-effort: fire a crash event so we see this in telemetry.
-  void track({
+  // Best-effort: fire a crash event so we see this in telemetry. We
+  // await `track()` (not `void track(...)`) so the event is on disk
+  // before the `finally` block flushes — otherwise the queue write
+  // races the flush and we lose the crash.
+  await track({
     event_name: EventName.PluginCrashed,
     outcome: 'failed',
     error_class: 'unhandled_exception',
     payload: { message, argv: process.argv.slice(2) },
   });
-  process.exit(1);
-});
+  process.exitCode = 1;
+} finally {
+  // Drain every event queued during this run before we exit. Adds
+  // ~100-500ms when the queue has events; near-zero when empty
+  // (single stat() call). Best-effort — `maybeFlush` swallows errors
+  // and returns a status object.
+  await maybeFlush();
+}
+process.exit(process.exitCode ?? 0);
