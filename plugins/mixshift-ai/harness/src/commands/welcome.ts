@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { loadProfile } from '../lib/profile/load.js';
 import { loadCredentials } from '../lib/auth/credentials.js';
+import { readIndex, countByActivity } from '../lib/clients/index.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -58,9 +59,29 @@ export function registerWelcomeCommand(program: Command): void {
       // Welcome is informational, not an error — route to stdout so it
       // doesn't render red in tools that style stderr as error.
       const format = opts.format === 'chat' ? 'chat' : 'terminal';
+
+      // Brand counts feed the chat-format "already set up" branch so the
+      // user sees "you have N active brands" right away. Best-effort: if
+      // the index hasn't been populated yet (fresh install) or read fails,
+      // fall through to the no-counts code path.
+      let brandCounts: {
+        total: number;
+        active: number;
+        dormant: number;
+        cold_started: number;
+      } | null = null;
+      if (authReady) {
+        try {
+          const idxResult = await readIndex(root.dataDir);
+          if (idxResult.source === 'file') brandCounts = countByActivity(idxResult.index);
+        } catch {
+          // Malformed registry — treat as if there's no index.
+        }
+      }
+
       const rendered =
         format === 'chat'
-          ? renderWelcomeChat({ authReady, profileReady, cr })
+          ? renderWelcomeChat({ authReady, profileReady, cr, brandCounts })
           : renderWelcome({ authReady, profileReady, cr });
       process.stdout.write(rendered);
       await track(
@@ -235,14 +256,55 @@ function renderWelcomeChat(args: {
     master_password: string;
     notes: string;
   };
+  brandCounts: {
+    total: number;
+    active: number;
+    dormant: number;
+    cold_started: number;
+  } | null;
 }): string {
-  const { authReady, profileReady, cr } = args;
+  const { authReady, profileReady, cr, brandCounts } = args;
   const lines: string[] = [];
 
   if (authReady && profileReady) {
-    lines.push("**Welcome back to the MixShift plugin** — you're already set up. A few directions you can go:");
+    lines.push("**Welcome back to the MixShift plugin** — you're already set up.");
     lines.push('');
-    lines.push('- **Discover your brands** — say *"discover my brands"*, or run `mixshift brand discover` in a terminal.');
+
+    // Brand-count summary (when the registry is populated).
+    if (brandCounts && brandCounts.total > 0) {
+      const dormantSuffix =
+        brandCounts.dormant > 0
+          ? ` (${brandCounts.dormant} dormant hidden by default — say *"show all my brands"* to see them)`
+          : '';
+      const coldStartedSuffix =
+        brandCounts.cold_started > 0
+          ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills`
+          : '';
+      lines.push(
+        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.`,
+      );
+      lines.push('');
+    } else if (brandCounts && brandCounts.total === 0) {
+      // Edge: auth complete but registry shows zero brands. Surface the
+      // activation handoff so the user knows what to do.
+      lines.push(
+        "Your warehouse access shows **no brands yet** — this means you have not yet activated data in MixShift for your brands.",
+      );
+      lines.push('');
+      lines.push(
+        'Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager',
+      );
+      lines.push('');
+      lines.push(
+        'Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift',
+      );
+      lines.push('');
+      return lines.join('\n');
+    }
+
+    lines.push('A few directions you can go:');
+    lines.push('');
+    lines.push('- **See your brands** — say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
     lines.push('- **Explore + export your data** (no brand onboarding required) — *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>\'s campaigns to CSV"*.');
     lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) — *"onboard \\<brand-slug\\>"*, then *"run account cold start for \\<brand-slug\\>"*.');
     lines.push('- **Re-run auth setup** if credentials need changing — *"set up my credentials"*.');

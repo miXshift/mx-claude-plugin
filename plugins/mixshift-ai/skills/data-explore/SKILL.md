@@ -79,9 +79,31 @@ Trigger when the user asks any of:
 |---|---|---|
 | Auth set up | `~/.mixshift/auth/credentials` exists | Direct user to run `mixshift auth setup` first |
 | IP whitelisted | Inferred from successful query | If queries hang/timeout, run `mixshift auth setup --request-whitelist` |
-| Knows a SellerID or brand slug | They tell you, or run discover | Run `mixshift brand discover` if they're unsure |
+| Brand registry populated | `~/.mixshift/clients/index.yaml` exists | Auto-populated after `mixshift auth setup` completes; if missing, run `mixshift brand discover` |
+| Knows a SellerID or brand slug | They tell you, or look up via the registry | Run `mixshift brand list` to surface the active brands |
 
-Cold-start is **NOT required.** Most data-explore workflows only need a SellerID, which discovery surfaces.
+Cold-start is **NOT required.** Most data-explore workflows only need a SellerID, which is in the brand registry.
+
+### Brand registry (`~/.mixshift/clients/index.yaml`)
+
+After `mixshift auth setup` completes, the harness auto-runs discovery and persists every brand the user has warehouse access to into `~/.mixshift/clients/index.yaml`. **Use this file as the canonical source for brand → SellerID lookups** — don't re-run `mixshift brand discover` unless:
+
+- The user explicitly asks to refresh ("refresh my brands", "check for new accounts"), OR
+- The registry is missing (`mixshift brand list` outputs the "no brand registry yet" warning), OR
+- The user mentions a brand by name and `brand list` doesn't surface it (could be dormant or stale).
+
+To read the registry, surface it to the user, run:
+
+```bash
+mixshift brand list           # active brands only (default)
+mixshift brand list --all     # include dormant
+mixshift brand list --only-inactive   # just dormants ("what do I need to activate?")
+mixshift brand list --refresh   # force a fresh discovery query
+```
+
+The registry has a 24h TTL — `brand list` refreshes silently on read if stale.
+
+**Dormant handling:** brands with no active ads + no active retail (SP-API) access are hidden by default. If the user asks "where is brand X?" and X isn't in the active list, check `mixshift brand list --all` for the dormant status, then explain (e.g. "X shows both ads and SP-API access disabled — ping MixShift ops or visit https://dash.mydashapplications.com/account-manager to reactivate").
 
 ## Available harness commands
 
@@ -134,6 +156,26 @@ User: "What data can I look at?"
 You:  Run `mixshift data list-tables`. Surface the result. Suggest
       they pick one of the common tables (campaignmetric for ad
       performance, business_reports_dpst_date for SC sales, etc.).
+      If the user hasn't yet seen their brands, also nudge them with
+      "say 'show my brands' to see which accounts are active."
+```
+
+### Pattern 1b — User asks about their brands
+```
+User: "What brands do I have?" / "What accounts do I have access to?"
+You:  Run `mixshift brand list` (default: active only, with a footer
+      noting how many dormants are hidden). Render the output.
+
+      DO NOT run `mixshift brand discover` for this — `brand list`
+      reads the auto-populated registry at ~/.mixshift/clients/index.yaml,
+      which is faster and avoids a redundant SQL query. The registry
+      auto-refreshes if stale (>24h).
+
+      Variants:
+        "show all my brands"     → `mixshift brand list --all`
+        "what's dormant"         → `mixshift brand list --only-inactive`
+        "refresh my brands"      → `mixshift brand list --refresh`
+        "who do I need to activate?" → `mixshift brand list --only-inactive`
 ```
 
 ### Pattern 2 — User wants a quick preview

@@ -10391,6 +10391,9 @@ function contextPath(brandSlug, dataDirOverride) {
 function narrativePath(brandSlug, dataDirOverride) {
   return join4(brandDir(brandSlug, dataDirOverride), "narrative.md");
 }
+function indexPath(dataDirOverride) {
+  return join4(clientsDir(dataDirOverride), "index.yaml");
+}
 function outputDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "output");
 }
@@ -44911,9 +44914,285 @@ var require_promise = __commonJS({
   }
 });
 
+// src/lib/auth/schema.ts
+function newCredentials() {
+  return {
+    schema_version: 1,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+var mysqlCredsSchema, credentialsSchema;
+var init_schema2 = __esm({
+  "src/lib/auth/schema.ts"() {
+    "use strict";
+    init_zod();
+    mysqlCredsSchema = external_exports.object({
+      host: external_exports.string().min(1),
+      port: external_exports.number().int().min(1).max(65535).default(3306),
+      user: external_exports.string().min(1),
+      password: external_exports.string(),
+      database: external_exports.string().min(1)
+    });
+    credentialsSchema = external_exports.object({
+      schema_version: external_exports.literal(1),
+      created_at: external_exports.iso.datetime(),
+      mysql: mysqlCredsSchema.optional()
+      // v2 placeholder:
+      // datahub: z.object({ token: z.string(), api_base: z.url() }).optional(),
+    });
+  }
+});
+
+// src/lib/auth/credentials.ts
+import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
+import { dirname as dirname3 } from "node:path";
+async function loadCredentials(dataDirOverride) {
+  const path2 = credentialsPath(dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile4(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError4(err)) return { credentials: null, path: path2 };
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Credentials file at ${path2} is malformed JSON: ${message}
+Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
+    );
+  }
+  const result = credentialsSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `${formatZodError(result.error, `Credentials at ${path2} are invalid`)}
+Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
+    );
+  }
+  return { credentials: result.data, path: path2 };
+}
+async function saveCredentials(credentials, dataDirOverride) {
+  const validated = credentialsSchema.parse(credentials);
+  const path2 = credentialsPath(dataDirOverride);
+  await mkdir2(dirname3(path2), { recursive: true, mode: 448 });
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile2(tmpPath, JSON.stringify(validated, null, 2) + "\n", {
+    encoding: "utf-8",
+    mode: 384
+  });
+  await chmod(tmpPath, 384);
+  await rename2(tmpPath, path2);
+  return { path: path2 };
+}
+async function loadOrInit(dataDirOverride) {
+  const { credentials } = await loadCredentials(dataDirOverride);
+  return credentials ?? newCredentials();
+}
+function isFileNotFoundError4(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+var init_credentials = __esm({
+  "src/lib/auth/credentials.ts"() {
+    "use strict";
+    init_resolve();
+    init_format_error();
+    init_schema2();
+  }
+});
+
+// src/lib/sql/connection.ts
+async function query(sql, params = [], options = {}) {
+  const creds = await resolveCreds(options);
+  const conn = await import_promise.default.createConnection({
+    host: creds.host,
+    port: creds.port,
+    user: creds.user,
+    password: creds.password,
+    database: creds.database,
+    connectTimeout: options.connectTimeoutMs ?? 1e4
+  });
+  try {
+    const [rows, fields] = await conn.query(sql, params);
+    return {
+      rows,
+      fields: (fields ?? []).map((f) => ({ name: f.name, type: f.type })),
+      rowCount: rows.length
+    };
+  } finally {
+    try {
+      await conn.end();
+    } catch {
+    }
+  }
+}
+async function resolveCreds(options) {
+  if (options.creds) return options.creds;
+  const { credentials } = await loadCredentials(options.dataDirOverride);
+  if (!credentials || !credentials.mysql) {
+    throw new Error(
+      "No MySQL credentials configured. Run `mixshift auth setup` first."
+    );
+  }
+  return credentials.mysql;
+}
+var import_promise;
+var init_connection = __esm({
+  "src/lib/sql/connection.ts"() {
+    "use strict";
+    import_promise = __toESM(require_promise(), 1);
+    init_credentials();
+  }
+});
+
+// src/lib/discovery/seller-query.ts
+var seller_query_exports = {};
+__export(seller_query_exports, {
+  _internal: () => _internal,
+  discoverSellers: () => discoverSellers
+});
+async function discoverSellers(options = {}) {
+  const result = await query(DISCOVERY_SQL, [], {
+    creds: options.creds,
+    dataDirOverride: options.dataDirOverride
+  });
+  const rows = result.rows.map(normalizeRow);
+  if (options.includeInactive) return rows;
+  return rows.filter((r) => r.ads_active || r.retail_active);
+}
+function normalizeRow(raw) {
+  return {
+    seller_id: raw.seller_id,
+    seller_name: raw.seller_name?.trim() || `seller-${raw.seller_id}`,
+    amazon_seller_id: raw.amazon_seller_id ?? null,
+    merchant_alias: raw.merchant_alias?.trim() || null,
+    account_type: normalizeAccountType(raw.merchant_type),
+    marketplace: raw.marketplace ?? null,
+    region: raw.region ?? null,
+    agency_name: raw.agency_name ?? null,
+    acos_target: toNumber(raw.acos_target),
+    ads_active: isAdsActive(raw),
+    retail_active: isRetailActive(raw),
+    is_active: raw.is_active === 1,
+    has_mws: raw.has_mws === 1,
+    created_at: toIso(raw.created_at),
+    updated_at: toIso(raw.updated_at)
+  };
+}
+function normalizeAccountType(raw) {
+  if (!raw) return "unknown";
+  const s = raw.trim().toLowerCase();
+  if (s === "seller" || s === "sellercentral" || s === "sc") return "SC";
+  if (s === "vendor" || s === "vendorcentral" || s === "vc") return "VC";
+  return "unknown";
+}
+function isAdsActive(raw) {
+  return raw.is_active === 1 && raw.ad_lost_access !== 1 && raw.hide_from_ads !== 1;
+}
+function isRetailActive(raw) {
+  return raw.is_active === 1 && raw.has_mws === 1 && raw.hide_from_mws !== 1 && raw.finance_lost_access !== 1;
+}
+function toNumber(v) {
+  if (v === null || v === void 0) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function toIso(v) {
+  if (v === null || v === void 0) return null;
+  if (v instanceof Date) return v.toISOString();
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+var DISCOVERY_SQL, _internal;
+var init_seller_query = __esm({
+  "src/lib/discovery/seller-query.ts"() {
+    "use strict";
+    init_connection();
+    DISCOVERY_SQL = `
+  SELECT
+    ID                          AS seller_id,
+    Name                        AS seller_name,
+    AmazonSellerID              AS amazon_seller_id,
+    MerchantAlias               AS merchant_alias,
+    MerchantType                AS merchant_type,
+    MarketPlaceName             AS marketplace,
+    MerchantRegion              AS region,
+    AgencyName                  AS agency_name,
+    ACOSTarget                  AS acos_target,
+    IsActive                    AS is_active,
+    IsDeleted                   AS is_deleted,
+    isAdLostAccess              AS ad_lost_access,
+    HideFromAdvertisingPlatform AS hide_from_ads,
+    HideFromMWSPlatform         AS hide_from_mws,
+    isMwsUser                   AS has_mws,
+    isBrandAnalyticsLostAccess  AS ba_lost_access,
+    isFinanceLostAccess         AS finance_lost_access,
+    dtCreatedOn                 AS created_at,
+    dtUpdatedOn                 AS updated_at
+  FROM seller
+  WHERE IsDeleted = 0
+  ORDER BY MerchantAlias, MarketPlaceName, MerchantType
+`;
+    _internal = { normalizeRow, normalizeAccountType, isAdsActive, isRetailActive };
+  }
+});
+
+// src/lib/discovery/brand-grouping.ts
+var brand_grouping_exports = {};
+__export(brand_grouping_exports, {
+  groupIntoBrands: () => groupIntoBrands,
+  slugify: () => slugify2
+});
+function groupIntoBrands(rows) {
+  const byName = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const key = r.seller_name.toLowerCase();
+    const bucket = byName.get(key) ?? [];
+    bucket.push(r);
+    byName.set(key, bucket);
+  }
+  const suggestions = [];
+  const usedSlugs = /* @__PURE__ */ new Set();
+  const entries = [...byName.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [, accounts] of entries) {
+    const display = accounts[0].seller_name;
+    const baseSlug = slugify2(display);
+    const slug = ensureUniqueSlug(baseSlug, usedSlugs);
+    usedSlugs.add(slug);
+    suggestions.push({
+      slug,
+      display_name: display,
+      accounts,
+      ads_active: accounts.some((a) => a.ads_active),
+      retail_active: accounts.some((a) => a.retail_active)
+    });
+  }
+  return suggestions;
+}
+function slugify2(input) {
+  let s = input.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  s = s.replace(/-(inc|llc|co|corp|corporation|ltd|limited|gmbh)$/, "");
+  if (s.length === 0) return "brand";
+  if (!/^[a-z]/.test(s)) return `b-${s}`;
+  return s;
+}
+function ensureUniqueSlug(base, taken) {
+  if (!taken.has(base)) return base;
+  let i = 2;
+  while (taken.has(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
+}
+var init_brand_grouping = __esm({
+  "src/lib/discovery/brand-grouping.ts"() {
+    "use strict";
+  }
+});
+
 // src/lib/defaults/schema.ts
 var mysqlDefaults, credentialRetrieval, defaultsSchema;
-var init_schema2 = __esm({
+var init_schema3 = __esm({
   "src/lib/defaults/schema.ts"() {
     "use strict";
     init_zod();
@@ -44981,15 +45260,15 @@ var init_schema2 = __esm({
 });
 
 // src/lib/defaults/load.ts
-import { readFile as readFile5 } from "node:fs/promises";
-import { dirname as dirname5, join as join5 } from "node:path";
+import { readFile as readFile6 } from "node:fs/promises";
+import { dirname as dirname6, join as join5 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 async function loadPluginDefaults(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths2();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile5(path2, "utf-8");
-      const parsed = (0, import_yaml6.parse)(raw);
+      const raw = await readFile6(path2, "utf-8");
+      const parsed = (0, import_yaml7.parse)(raw);
       const result = defaultsSchema.safeParse(parsed);
       if (!result.success) {
         throw new Error(
@@ -44998,7 +45277,7 @@ async function loadPluginDefaults(overridePath) {
       }
       return applyEnvOverrides(result.data);
     } catch (err) {
-      if (isFileNotFoundError6(err)) continue;
+      if (isFileNotFoundError7(err)) continue;
       throw err;
     }
   }
@@ -45015,26 +45294,26 @@ function applyEnvOverrides(defaults) {
   return defaults;
 }
 function candidatePaths2() {
-  const here = dirname5(fileURLToPath2(import.meta.url));
+  const here = dirname6(fileURLToPath2(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 6; i++) {
     candidates.push(join5(dir, ".mixshift-defaults.yaml"));
-    const parent = dirname5(dir);
+    const parent = dirname6(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError6(err) {
+function isFileNotFoundError7(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
-var import_yaml6;
+var import_yaml7;
 var init_load2 = __esm({
   "src/lib/defaults/load.ts"() {
     "use strict";
-    import_yaml6 = __toESM(require_dist(), 1);
-    init_schema2();
+    import_yaml7 = __toESM(require_dist(), 1);
+    init_schema3();
     init_format_error();
   }
 });
@@ -45859,242 +46138,9 @@ function renderValidationResult(brandSlug, result, json2) {
   }
 }
 
-// src/lib/sql/connection.ts
-var import_promise = __toESM(require_promise(), 1);
-
-// src/lib/auth/credentials.ts
-init_resolve();
-init_format_error();
-import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
-import { dirname as dirname3 } from "node:path";
-
-// src/lib/auth/schema.ts
-init_zod();
-var mysqlCredsSchema = external_exports.object({
-  host: external_exports.string().min(1),
-  port: external_exports.number().int().min(1).max(65535).default(3306),
-  user: external_exports.string().min(1),
-  password: external_exports.string(),
-  database: external_exports.string().min(1)
-});
-var credentialsSchema = external_exports.object({
-  schema_version: external_exports.literal(1),
-  created_at: external_exports.iso.datetime(),
-  mysql: mysqlCredsSchema.optional()
-  // v2 placeholder:
-  // datahub: z.object({ token: z.string(), api_base: z.url() }).optional(),
-});
-function newCredentials() {
-  return {
-    schema_version: 1,
-    created_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-
-// src/lib/auth/credentials.ts
-async function loadCredentials(dataDirOverride) {
-  const path2 = credentialsPath(dataDirOverride);
-  let raw;
-  try {
-    raw = await readFile4(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError4(err)) return { credentials: null, path: path2 };
-    throw err;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Credentials file at ${path2} is malformed JSON: ${message}
-Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
-    );
-  }
-  const result = credentialsSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `${formatZodError(result.error, `Credentials at ${path2} are invalid`)}
-Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
-    );
-  }
-  return { credentials: result.data, path: path2 };
-}
-async function saveCredentials(credentials, dataDirOverride) {
-  const validated = credentialsSchema.parse(credentials);
-  const path2 = credentialsPath(dataDirOverride);
-  await mkdir2(dirname3(path2), { recursive: true, mode: 448 });
-  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile2(tmpPath, JSON.stringify(validated, null, 2) + "\n", {
-    encoding: "utf-8",
-    mode: 384
-  });
-  await chmod(tmpPath, 384);
-  await rename2(tmpPath, path2);
-  return { path: path2 };
-}
-async function loadOrInit(dataDirOverride) {
-  const { credentials } = await loadCredentials(dataDirOverride);
-  return credentials ?? newCredentials();
-}
-function isFileNotFoundError4(err) {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
-}
-
-// src/lib/sql/connection.ts
-async function query(sql, params = [], options = {}) {
-  const creds = await resolveCreds(options);
-  const conn = await import_promise.default.createConnection({
-    host: creds.host,
-    port: creds.port,
-    user: creds.user,
-    password: creds.password,
-    database: creds.database,
-    connectTimeout: options.connectTimeoutMs ?? 1e4
-  });
-  try {
-    const [rows, fields] = await conn.query(sql, params);
-    return {
-      rows,
-      fields: (fields ?? []).map((f) => ({ name: f.name, type: f.type })),
-      rowCount: rows.length
-    };
-  } finally {
-    try {
-      await conn.end();
-    } catch {
-    }
-  }
-}
-async function resolveCreds(options) {
-  if (options.creds) return options.creds;
-  const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (!credentials || !credentials.mysql) {
-    throw new Error(
-      "No MySQL credentials configured. Run `mixshift auth setup` first."
-    );
-  }
-  return credentials.mysql;
-}
-
-// src/lib/discovery/seller-query.ts
-var DISCOVERY_SQL = `
-  SELECT
-    ID                          AS seller_id,
-    Name                        AS seller_name,
-    AmazonSellerID              AS amazon_seller_id,
-    MerchantAlias               AS merchant_alias,
-    MerchantType                AS merchant_type,
-    MarketPlaceName             AS marketplace,
-    MerchantRegion              AS region,
-    AgencyName                  AS agency_name,
-    ACOSTarget                  AS acos_target,
-    IsActive                    AS is_active,
-    IsDeleted                   AS is_deleted,
-    isAdLostAccess              AS ad_lost_access,
-    HideFromAdvertisingPlatform AS hide_from_ads,
-    HideFromMWSPlatform         AS hide_from_mws,
-    isMwsUser                   AS has_mws,
-    isBrandAnalyticsLostAccess  AS ba_lost_access,
-    isFinanceLostAccess         AS finance_lost_access,
-    dtCreatedOn                 AS created_at,
-    dtUpdatedOn                 AS updated_at
-  FROM seller
-  WHERE IsDeleted = 0
-  ORDER BY MerchantAlias, MarketPlaceName, MerchantType
-`;
-async function discoverSellers(options = {}) {
-  const result = await query(DISCOVERY_SQL, [], {
-    creds: options.creds,
-    dataDirOverride: options.dataDirOverride
-  });
-  const rows = result.rows.map(normalizeRow);
-  if (options.includeInactive) return rows;
-  return rows.filter((r) => r.ads_active || r.retail_active);
-}
-function normalizeRow(raw) {
-  return {
-    seller_id: raw.seller_id,
-    seller_name: raw.seller_name?.trim() || `seller-${raw.seller_id}`,
-    amazon_seller_id: raw.amazon_seller_id ?? null,
-    merchant_alias: raw.merchant_alias?.trim() || null,
-    account_type: normalizeAccountType(raw.merchant_type),
-    marketplace: raw.marketplace ?? null,
-    region: raw.region ?? null,
-    agency_name: raw.agency_name ?? null,
-    acos_target: toNumber(raw.acos_target),
-    ads_active: isAdsActive(raw),
-    retail_active: isRetailActive(raw),
-    is_active: raw.is_active === 1,
-    created_at: toIso(raw.created_at),
-    updated_at: toIso(raw.updated_at)
-  };
-}
-function normalizeAccountType(raw) {
-  if (!raw) return "unknown";
-  const s = raw.trim().toLowerCase();
-  if (s === "seller" || s === "sellercentral" || s === "sc") return "SC";
-  if (s === "vendor" || s === "vendorcentral" || s === "vc") return "VC";
-  return "unknown";
-}
-function isAdsActive(raw) {
-  return raw.is_active === 1 && raw.ad_lost_access !== 1 && raw.hide_from_ads !== 1;
-}
-function isRetailActive(raw) {
-  return raw.is_active === 1 && raw.has_mws === 1 && raw.hide_from_mws !== 1 && raw.finance_lost_access !== 1;
-}
-function toNumber(v) {
-  if (v === null || v === void 0) return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function toIso(v) {
-  if (v === null || v === void 0) return null;
-  if (v instanceof Date) return v.toISOString();
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-// src/lib/discovery/brand-grouping.ts
-function groupIntoBrands(rows) {
-  const byName = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    const key = r.seller_name.toLowerCase();
-    const bucket = byName.get(key) ?? [];
-    bucket.push(r);
-    byName.set(key, bucket);
-  }
-  const suggestions = [];
-  const usedSlugs = /* @__PURE__ */ new Set();
-  const entries = [...byName.entries()].sort(([a], [b]) => a.localeCompare(b));
-  for (const [, accounts] of entries) {
-    const display = accounts[0].seller_name;
-    const baseSlug = slugify2(display);
-    const slug = ensureUniqueSlug(baseSlug, usedSlugs);
-    usedSlugs.add(slug);
-    suggestions.push({
-      slug,
-      display_name: display,
-      accounts,
-      ads_active: accounts.some((a) => a.ads_active),
-      retail_active: accounts.some((a) => a.retail_active)
-    });
-  }
-  return suggestions;
-}
-function slugify2(input) {
-  let s = input.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  s = s.replace(/-(inc|llc|co|corp|corporation|ltd|limited|gmbh)$/, "");
-  if (s.length === 0) return "brand";
-  if (!/^[a-z]/.test(s)) return `b-${s}`;
-  return s;
-}
-function ensureUniqueSlug(base, taken) {
-  if (!taken.has(base)) return base;
-  let i = 2;
-  while (taken.has(`${base}-${i}`)) i++;
-  return `${base}-${i}`;
-}
+// src/commands/brand.ts
+init_seller_query();
+init_brand_grouping();
 
 // src/commands/_render-discovery.ts
 function renderDiscoveryTable(suggestions) {
@@ -46332,6 +46378,204 @@ function isFileNotFoundError5(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
+// src/lib/clients/index.ts
+var import_yaml6 = __toESM(require_dist(), 1);
+init_resolve();
+init_format_error();
+import { mkdir as mkdir4, readFile as readFile5, rename as rename4, writeFile as writeFile4, chmod as chmod2 } from "node:fs/promises";
+import { dirname as dirname5 } from "node:path";
+
+// src/lib/clients/index-schema.ts
+init_zod();
+var indexAccountSchema = external_exports.object({
+  seller_id: external_exports.number().int(),
+  seller_name: external_exports.string(),
+  merchant_alias: external_exports.string().nullable(),
+  account_type: external_exports.enum(["SC", "VC", "unknown"]),
+  marketplace: external_exports.string().nullable(),
+  region: external_exports.string().nullable(),
+  // Raw flags (mirrors source columns)
+  is_active: external_exports.boolean(),
+  // IsActive — top-level enable
+  is_mws_user: external_exports.boolean(),
+  // isMwsUser — SP-API access set up (legacy column name)
+  // Derived flags (richer than raw — factors in lost_access + hide flags;
+  // matches the `ads_active` / `retail_active` semantics in seller-query.ts)
+  ads_active: external_exports.boolean(),
+  retail_active: external_exports.boolean()
+});
+var indexBrandSchema = external_exports.object({
+  slug: external_exports.string().regex(/^[a-z][a-z0-9-]*$/),
+  display_name: external_exports.string(),
+  // Derived brand-level flags
+  ads_active: external_exports.boolean(),
+  // any account has ads_active
+  retail_active: external_exports.boolean(),
+  // any account has retail_active
+  is_dormant: external_exports.boolean(),
+  // !ads_active && !retail_active across all accounts
+  // Cold-start state (independent of dormancy — preserved through lapses)
+  cold_started: external_exports.boolean(),
+  cold_started_at: external_exports.iso.datetime().nullable(),
+  accounts: external_exports.array(indexAccountSchema).min(1)
+});
+var clientsIndexSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  discovered_at: external_exports.iso.datetime(),
+  brands: external_exports.array(indexBrandSchema)
+});
+function emptyIndex() {
+  return {
+    schema_version: 1,
+    discovered_at: (/* @__PURE__ */ new Date(0)).toISOString(),
+    // epoch — always stale
+    brands: []
+  };
+}
+
+// src/lib/clients/index.ts
+var DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
+async function readIndex(dataDirOverride) {
+  const path2 = indexPath(dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile5(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError6(err)) {
+      return { index: emptyIndex(), source: "empty", path: path2 };
+    }
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml6.parse)(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Brand registry at ${path2} is malformed YAML: ${message}
+Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
+    );
+  }
+  const result = clientsIndexSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      formatZodError(result.error, `Brand registry at ${path2} is invalid`) + `
+Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
+    );
+  }
+  return { index: result.data, source: "file", path: path2 };
+}
+async function saveIndex(index, dataDirOverride) {
+  const validated = clientsIndexSchema.parse(index);
+  const path2 = indexPath(dataDirOverride);
+  await mkdir4(dirname5(path2), { recursive: true, mode: 448 });
+  const yaml = (0, import_yaml6.stringify)(validated, { lineWidth: 0 });
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile4(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
+  await chmod2(tmpPath, 384);
+  await rename4(tmpPath, path2);
+  return { path: path2 };
+}
+function buildIndexFromBrands(brands, prev) {
+  const prevBySlug = /* @__PURE__ */ new Map();
+  if (prev) for (const b of prev.brands) prevBySlug.set(b.slug, b);
+  const indexBrands = brands.map((b) => {
+    const prior = prevBySlug.get(b.slug);
+    const accounts = b.accounts.map((a) => ({
+      seller_id: a.seller_id,
+      seller_name: a.seller_name,
+      merchant_alias: a.merchant_alias,
+      account_type: a.account_type,
+      marketplace: a.marketplace,
+      region: a.region,
+      // Raw source flags from the warehouse — preserved so a future
+      // "why is this dormant" diagnostic can show the underlying state.
+      is_active: a.is_active,
+      is_mws_user: a.has_mws,
+      // SP-API access flag (legacy column name)
+      // Derived "can MixShift actually use this" flags — what consumers
+      // should branch on for default-visibility decisions.
+      ads_active: a.ads_active,
+      retail_active: a.retail_active
+    }));
+    const adsActive = accounts.some((a) => a.ads_active);
+    const retailActive = accounts.some((a) => a.retail_active);
+    return {
+      slug: b.slug,
+      display_name: b.display_name,
+      ads_active: adsActive,
+      retail_active: retailActive,
+      is_dormant: !adsActive && !retailActive,
+      cold_started: prior?.cold_started ?? false,
+      cold_started_at: prior?.cold_started_at ?? null,
+      accounts
+    };
+  });
+  return {
+    schema_version: 1,
+    discovered_at: (/* @__PURE__ */ new Date()).toISOString(),
+    brands: indexBrands
+  };
+}
+function filterIndex(index, mode = "active") {
+  switch (mode) {
+    case "active":
+      return index.brands.filter((b) => !b.is_dormant);
+    case "dormant":
+      return index.brands.filter((b) => b.is_dormant);
+    case "all":
+      return index.brands;
+  }
+}
+function isStale(index, ttlMs = DEFAULT_TTL_MS) {
+  const discoveredMs = new Date(index.discovered_at).getTime();
+  if (!Number.isFinite(discoveredMs)) return true;
+  return Date.now() - discoveredMs > ttlMs;
+}
+async function markBrandColdStarted(slug, dataDirOverride) {
+  const { index, source, path: path2 } = await readIndex(dataDirOverride);
+  if (source === "empty") {
+    return { updated: false, path: path2 };
+  }
+  const brand = index.brands.find((b) => b.slug === slug);
+  if (!brand) {
+    return { updated: false, path: path2 };
+  }
+  brand.cold_started = true;
+  brand.cold_started_at = (/* @__PURE__ */ new Date()).toISOString();
+  await saveIndex(index, dataDirOverride);
+  return { updated: true, path: path2 };
+}
+function isFileNotFoundError6(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+async function runDiscoveryAndPersist(args) {
+  const { discoverSellers: discoverSellers2 } = await Promise.resolve().then(() => (init_seller_query(), seller_query_exports));
+  const { groupIntoBrands: groupIntoBrands2 } = await Promise.resolve().then(() => (init_brand_grouping(), brand_grouping_exports));
+  const sellers = await discoverSellers2({
+    dataDirOverride: args.dataDirOverride,
+    includeInactive: true
+    // capture everything for persistence
+  });
+  const suggestions = groupIntoBrands2(sellers);
+  const prior = await readIndex(args.dataDirOverride);
+  const previousDiscoveredAt = prior.source === "file" ? prior.index.discovered_at : null;
+  const nextIndex = buildIndexFromBrands(
+    suggestions,
+    prior.source === "file" ? prior.index : null
+  );
+  await saveIndex(nextIndex, args.dataDirOverride);
+  return { index: nextIndex, previousDiscoveredAt };
+}
+function countByActivity(index) {
+  return {
+    total: index.brands.length,
+    active: index.brands.filter((b) => !b.is_dormant).length,
+    dormant: index.brands.filter((b) => b.is_dormant).length,
+    cold_started: index.brands.filter((b) => b.cold_started).length
+  };
+}
+
 // src/lib/telemetry/index.ts
 init_consent();
 import { platform, release } from "node:os";
@@ -46362,16 +46606,16 @@ async function readInstallId(dataDirOverride) {
 
 // src/lib/telemetry/queue.ts
 init_resolve();
-import { appendFile, readFile as readFile6, writeFile as writeFile4, mkdir as mkdir4, stat } from "node:fs/promises";
-import { dirname as dirname6 } from "node:path";
+import { appendFile, readFile as readFile7, writeFile as writeFile5, mkdir as mkdir5, stat } from "node:fs/promises";
+import { dirname as dirname7 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   const line = JSON.stringify(record2) + "\n";
   try {
     await appendFile(path2, line, { encoding: "utf-8" });
   } catch (err) {
-    if (isFileNotFoundError7(err)) {
-      await mkdir4(dirname6(path2), { recursive: true });
+    if (isFileNotFoundError8(err)) {
+      await mkdir5(dirname7(path2), { recursive: true });
       await appendFile(path2, line, { encoding: "utf-8" });
     } else {
     }
@@ -46381,9 +46625,9 @@ async function readQueue(dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile6(path2, "utf-8");
+    raw = await readFile7(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError7(err)) return [];
+    if (isFileNotFoundError8(err)) return [];
     return [];
   }
   if (!raw.trim()) return [];
@@ -46401,7 +46645,7 @@ async function readQueue(dataDirOverride) {
 async function clearQueue(dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   try {
-    await writeFile4(path2, "", { encoding: "utf-8" });
+    await writeFile5(path2, "", { encoding: "utf-8" });
   } catch {
   }
 }
@@ -46413,7 +46657,7 @@ async function queueSizeBytes(dataDirOverride) {
     return 0;
   }
 }
-function isFileNotFoundError7(err) {
+function isFileNotFoundError8(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -46567,9 +46811,127 @@ function detectOs() {
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
-  brand.command("list").description("Show the portfolio table (mirrors index.yaml)").action(() => {
-    notYetImplemented("brand list", {});
-  });
+  brand.command("list").description(
+    "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands; use --all to see everything or --only-inactive to see just dormants."
+  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--refresh", "force a fresh discovery query before listing", false).action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        let { index, source } = await readIndex(root.dataDir);
+        const needsRefresh = opts.refresh || source === "empty" || isStale(index);
+        if (needsRefresh) {
+          const result = await runDiscoveryAndPersist({
+            dataDirOverride: root.dataDir
+          });
+          index = result.index;
+          const counts2 = countByActivity(index);
+          await track(
+            {
+              event_name: EventName.BrandDiscovered,
+              outcome: "ok",
+              payload: {
+                trigger: opts.refresh ? "manual_refresh" : "ttl_refresh",
+                total: counts2.total,
+                active: counts2.active,
+                dormant: counts2.dormant,
+                cold_started: counts2.cold_started
+              }
+            },
+            root.dataDir
+          );
+        }
+        const mode = opts.onlyInactive ? "dormant" : opts.all ? "all" : "active";
+        const brands = filterIndex(index, mode);
+        const counts = countByActivity(index);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                mode,
+                discovered_at: index.discovered_at,
+                counts,
+                brands
+              },
+              null,
+              2
+            ) + "\n"
+          );
+          return;
+        }
+        if (mode === "active" && counts.active === 0 && counts.total === 0) {
+          process.stdout.write(
+            "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n"
+          );
+          return;
+        }
+        if (mode === "active" && counts.active === 0 && counts.dormant > 0) {
+          process.stdout.write(
+            `
+No ACTIVE brands found (${counts.dormant} dormant \u2014 say "show all brands" or run "mixshift brand list --all").
+
+This typically means MixShift ops has not activated ads + retail
+on any of your seller accounts yet. Head to the Account Manager view:
+  https://dash.mydashapplications.com/account-manager
+
+Onboarding help doc:
+  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift
+
+`
+          );
+          return;
+        }
+        const renderable = brands.map((b) => ({
+          slug: b.slug,
+          display_name: b.display_name,
+          ads_active: b.ads_active,
+          retail_active: b.retail_active,
+          accounts: b.accounts.map((a) => ({
+            seller_id: a.seller_id,
+            seller_name: a.seller_name,
+            amazon_seller_id: null,
+            merchant_alias: a.merchant_alias,
+            account_type: a.account_type,
+            marketplace: a.marketplace,
+            region: a.region,
+            agency_name: null,
+            acos_target: null,
+            ads_active: a.ads_active,
+            retail_active: a.retail_active,
+            is_active: a.is_active,
+            has_mws: a.is_mws_user,
+            created_at: null,
+            updated_at: null
+          }))
+        }));
+        process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+        const footerLines = [];
+        footerLines.push(
+          `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`
+        );
+        footerLines.push(`Discovered: ${index.discovered_at}`);
+        if (mode === "active" && counts.dormant > 0) {
+          footerLines.push(
+            `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`
+          );
+        }
+        process.stderr.write("\n" + footerLines.join("\n") + "\n\n");
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
+`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+    }
+  );
   brand.command("add <slug>").description(
     "Bootstrap a brand context directory from warehouse data. Run /account-cold-start <slug> in Claude afterwards to complete AM intake."
   ).option("--force", "overwrite an existing brand directory", false).option(
@@ -46612,6 +46974,10 @@ ${close}
           },
           root.dataDir
         );
+        try {
+          await markBrandColdStarted(match.slug, root.dataDir);
+        } catch {
+        }
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
@@ -46675,60 +47041,90 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
   brand.command("rename <old> <new>").description("Rename a brand slug (folder move + index patch)").action((oldSlug, newSlug) => {
     notYetImplemented("brand rename", { old: oldSlug, new: newSlug });
   });
-  brand.command("discover").description("Query the seller table and surface all brands you have access to").option(
+  brand.command("discover").description(
+    "Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand."
+  ).option(
     "--include-inactive",
-    "include brands where both ads and retail access are lost",
+    "include dormant brands (no active ads or retail) in the printed table",
     false
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const sellers = await discoverSellers({
-        dataDirOverride: root.dataDir,
-        includeInactive: opts.includeInactive
+      const { index } = await runDiscoveryAndPersist({
+        dataDirOverride: root.dataDir
       });
-      const suggestions = groupIntoBrands(sellers);
+      const counts = countByActivity(index);
       await track(
         {
           event_name: EventName.BrandDiscovered,
           outcome: "ok",
           payload: {
-            seller_count: sellers.length,
-            brand_count: suggestions.length,
-            include_inactive: opts.includeInactive
+            trigger: "manual_discover",
+            total: counts.total,
+            active: counts.active,
+            dormant: counts.dormant,
+            cold_started: counts.cold_started,
+            include_inactive_display: opts.includeInactive
           }
         },
         root.dataDir
       );
+      const displayBrands = opts.includeInactive ? filterIndex(index, "all") : filterIndex(index, "active");
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
             {
               status: "ok",
-              seller_count: sellers.length,
-              brand_count: suggestions.length,
-              brands: suggestions.map((s) => ({
-                slug: s.slug,
-                display_name: s.display_name,
-                ads_active: s.ads_active,
-                retail_active: s.retail_active,
-                accounts: s.accounts.map((a) => ({
-                  seller_id: a.seller_id,
-                  seller_name: a.seller_name,
-                  merchant_alias: a.merchant_alias,
-                  account_type: a.account_type,
-                  marketplace: a.marketplace,
-                  ads_active: a.ads_active,
-                  retail_active: a.retail_active
-                }))
-              }))
+              discovered_at: index.discovered_at,
+              counts,
+              brands: displayBrands
             },
             null,
             2
           ) + "\n"
         );
-      } else {
-        process.stderr.write(renderDiscoveryTable(suggestions) + "\n");
+        return;
       }
+      if (counts.active === 0 && counts.total === 0) {
+        process.stdout.write(
+          "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n"
+        );
+        return;
+      }
+      const renderable = displayBrands.map((b) => ({
+        slug: b.slug,
+        display_name: b.display_name,
+        ads_active: b.ads_active,
+        retail_active: b.retail_active,
+        accounts: b.accounts.map((a) => ({
+          seller_id: a.seller_id,
+          seller_name: a.seller_name,
+          amazon_seller_id: null,
+          merchant_alias: a.merchant_alias,
+          account_type: a.account_type,
+          marketplace: a.marketplace,
+          region: a.region,
+          agency_name: null,
+          acos_target: null,
+          ads_active: a.ads_active,
+          retail_active: a.retail_active,
+          is_active: a.is_active,
+          has_mws: a.is_mws_user,
+          created_at: null,
+          updated_at: null
+        }))
+      }));
+      process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+      const footer = [
+        `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
+        `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
+      ];
+      if (!opts.includeInactive && counts.dormant > 0) {
+        footer.push(
+          `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
+        );
+      }
+      process.stderr.write("\n" + footer.join("\n") + "\n\n");
       return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -46754,8 +47150,8 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml7 = __toESM(require_dist(), 1);
-import { readFile as readFile7 } from "node:fs/promises";
+var import_yaml8 = __toESM(require_dist(), 1);
+import { readFile as readFile8 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -48329,6 +48725,7 @@ init_load2();
 init_load();
 init_save();
 init_schema();
+init_credentials();
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // src/lib/auth/test-connection.ts
@@ -48495,6 +48892,7 @@ function friendlyFailureMessage(result) {
 }
 
 // src/commands/auth.ts
+init_schema2();
 init_format_error();
 function registerAuthCommands(program3) {
   const auth = program3.command("auth").description("User authentication setup (MySQL creds, IP whitelist)");
@@ -48559,6 +48957,66 @@ function registerAuthCommands(program3) {
           },
           root.dataDir
         );
+        try {
+          const { index } = await runDiscoveryAndPersist({
+            dataDirOverride: root.dataDir
+          });
+          const counts = countByActivity(index);
+          await track(
+            {
+              event_name: EventName.BrandDiscovered,
+              outcome: "ok",
+              email: inputs.email,
+              payload: {
+                trigger: "post_auth",
+                total: counts.total,
+                active: counts.active,
+                dormant: counts.dormant,
+                cold_started: counts.cold_started
+              }
+            },
+            root.dataDir
+          );
+          if (!root.json) {
+            process.stdout.write(
+              `
+Brand registry populated at ~/.mixshift/clients/index.yaml:
+  - ${counts.active} active brand(s), ${counts.dormant} dormant, ${counts.cold_started} cold-started
+` + (counts.active === 0 ? `
+No active brands found. This means you have not yet activated
+data in MixShift for your brands. Head to the Account Manager view:
+  https://dash.mydashapplications.com/account-manager
+
+Onboarding help doc:
+  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift
+` : "")
+            );
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          await track(
+            {
+              event_name: EventName.BrandDiscovered,
+              outcome: "failed",
+              email: inputs.email,
+              error_class: "post_auth_discovery_threw",
+              payload: {
+                trigger: "post_auth",
+                message: message.slice(0, 500)
+              }
+            },
+            root.dataDir
+          );
+          if (!root.json) {
+            process.stdout.write(
+              `
+\u26A0 Auth succeeded but post-auth brand discovery failed:
+    ${message}
+  Run \`mixshift brand discover\` manually once the issue clears.
+`
+            );
+          }
+        }
       } else if (result.status === "pending_whitelist") {
         await track(
           {
@@ -48602,7 +49060,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile7(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile8(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -48622,10 +49080,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile7(path2, "utf-8");
+  const raw = await readFile8(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml7.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml8.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -48818,8 +49276,8 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml8 = __toESM(require_dist(), 1);
-import { readFile as readFile8 } from "node:fs/promises";
+var import_yaml9 = __toESM(require_dist(), 1);
+import { readFile as readFile9 } from "node:fs/promises";
 init_format_error();
 var allowedToolEnum = external_exports.enum([
   "db_read",
@@ -48885,16 +49343,16 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile8(path2, "utf-8");
+    raw = await readFile9(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError8(err)) {
+    if (isFileNotFoundError9(err)) {
       throw new Error(
         `Skill manifest not found at ${path2}. Known skill IDs are subdirectories under skills/. Check the skill name and try again.`
       );
     }
     throw err;
   }
-  const parsed = (0, import_yaml8.parse)(raw);
+  const parsed = (0, import_yaml9.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -48918,7 +49376,7 @@ function resolveBatchPlan(manifest) {
     { round: 1, parallel: [...manifest.sql_ids], notes: "Default single-round plan" }
   ];
 }
-function isFileNotFoundError8(err) {
+function isFileNotFoundError9(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -49020,8 +49478,8 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
-import { readFile as readFile9 } from "node:fs/promises";
-var import_yaml9 = __toESM(require_dist(), 1);
+import { readFile as readFile10 } from "node:fs/promises";
+var import_yaml10 = __toESM(require_dist(), 1);
 init_format_error();
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -49042,16 +49500,16 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile9(path2, "utf-8");
+    raw = await readFile10(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError9(err)) {
+    if (isFileNotFoundError10(err)) {
       throw new Error(
         `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
       );
     }
     throw err;
   }
-  const parsed = (0, import_yaml9.parse)(raw);
+  const parsed = (0, import_yaml10.parse)(raw);
   const result = catalogSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -49076,9 +49534,9 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile9(path2, "utf-8");
+    raw = await readFile10(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError9(err)) {
+    if (isFileNotFoundError10(err)) {
       throw new Error(
         `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
       );
@@ -49099,7 +49557,7 @@ async function readQuerySql(id) {
   const sql = lines.slice(headerEnd).join("\n").trim();
   return { id, sql, header };
 }
-function isFileNotFoundError9(err) {
+function isFileNotFoundError10(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -49193,6 +49651,7 @@ function findReferencedParams(sql) {
 
 // src/lib/data/query-runner.ts
 var import_promise3 = __toESM(require_promise(), 1);
+init_credentials();
 async function runQuery(sql, params = [], options = {}) {
   const t0 = Date.now();
   let conn;
@@ -49356,12 +49815,12 @@ async function resolveCreds2(options) {
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir5, writeFile as writeFile5, rename as rename4 } from "node:fs/promises";
-import { dirname as dirname7, join as join6 } from "node:path";
+import { mkdir as mkdir6, writeFile as writeFile6, rename as rename5 } from "node:fs/promises";
+import { dirname as dirname8, join as join6 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir5(runDir, { recursive: true });
+  await mkdir6(runDir, { recursive: true });
   const dataJsonPath = join6(runDir, "data.json");
   const dataMdPath = join6(runDir, "data.md");
   const jsonBody = JSON.stringify(
@@ -49484,10 +49943,10 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir5(dirname7(path2), { recursive: true });
+  await mkdir6(dirname8(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile5(tmpPath, content, { encoding: "utf-8" });
-  await rename4(tmpPath, path2);
+  await writeFile6(tmpPath, content, { encoding: "utf-8" });
+  await rename5(tmpPath, path2);
 }
 
 // src/lib/prefetch/runner.ts
@@ -49767,12 +50226,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile10 } from "node:fs/promises";
+import { readFile as readFile11 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir6, writeFile as writeFile6, rename as rename5 } from "node:fs/promises";
-import { join as join7, dirname as dirname8 } from "node:path";
+import { mkdir as mkdir7, writeFile as writeFile7, rename as rename6 } from "node:fs/promises";
+import { join as join7, dirname as dirname9 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -49882,7 +50341,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir6(dirname8(path2), { recursive: true });
+  await mkdir7(dirname9(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -49940,8 +50399,8 @@ function hashParams(params) {
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile6(tmpPath, content, { encoding: "utf-8" });
-  await rename5(tmpPath, path2);
+  await writeFile7(tmpPath, content, { encoding: "utf-8" });
+  await rename6(tmpPath, path2);
 }
 
 // src/commands/sidecar.ts
@@ -49960,7 +50419,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile10(opts.inputFile, "utf-8");
+      const raw = await readFile11(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -50034,22 +50493,22 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml10 = __toESM(require_dist(), 1);
-import { readFile as readFile11 } from "node:fs/promises";
-import { dirname as dirname9, join as join8 } from "node:path";
+var import_yaml11 = __toESM(require_dist(), 1);
+import { readFile as readFile12 } from "node:fs/promises";
+import { dirname as dirname10, join as join8 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile11(path2, "utf-8");
-      const parsed = (0, import_yaml10.parse)(raw);
+      const raw = await readFile12(path2, "utf-8");
+      const parsed = (0, import_yaml11.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
       );
     } catch (err) {
-      if (isFileNotFoundError10(err)) continue;
+      if (isFileNotFoundError11(err)) continue;
       throw err;
     }
   }
@@ -50071,18 +50530,18 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname9(fileURLToPath3(import.meta.url));
+  const here = dirname10(fileURLToPath3(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
     candidates.push(join8(dir, "shared", "data-tables.yaml"));
-    const parent = dirname9(dir);
+    const parent = dirname10(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError10(err) {
+function isFileNotFoundError11(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -50121,8 +50580,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir7 } from "node:fs/promises";
-import { dirname as dirname10 } from "node:path";
+import { mkdir as mkdir8 } from "node:fs/promises";
+import { dirname as dirname11 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -50229,7 +50688,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir7(dirname10(opts.outPath), { recursive: true });
+  await mkdir8(dirname11(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -50270,9 +50729,9 @@ function synthFailure(opts, message) {
 
 // src/commands/data.ts
 init_resolve();
-import { writeFile as writeFile7 } from "node:fs/promises";
-import { mkdir as mkdir8 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
+import { writeFile as writeFile8 } from "node:fs/promises";
+import { mkdir as mkdir9 } from "node:fs/promises";
+import { dirname as dirname12 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
@@ -50451,8 +50910,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir8(dirname11(opts.out), { recursive: true });
-          await writeFile7(opts.out, csv, "utf-8");
+          await mkdir9(dirname12(opts.out), { recursive: true });
+          await writeFile8(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -50663,6 +51122,7 @@ function registerFeedbackCommand(program3) {
 // src/commands/welcome.ts
 init_load2();
 init_load();
+init_credentials();
 function registerWelcomeCommand(program3) {
   program3.command("welcome").description(
     "Show the first-run welcome and quick-start (URL to retrieve your credentials, what commands to run, where to get help)."
@@ -50699,7 +51159,15 @@ function registerWelcomeCommand(program3) {
       return;
     }
     const format = opts.format === "chat" ? "chat" : "terminal";
-    const rendered = format === "chat" ? renderWelcomeChat({ authReady, profileReady, cr }) : renderWelcome({ authReady, profileReady, cr });
+    let brandCounts = null;
+    if (authReady) {
+      try {
+        const idxResult = await readIndex(root.dataDir);
+        if (idxResult.source === "file") brandCounts = countByActivity(idxResult.index);
+      } catch {
+      }
+    }
+    const rendered = format === "chat" ? renderWelcomeChat({ authReady, profileReady, cr, brandCounts }) : renderWelcome({ authReady, profileReady, cr });
     process.stdout.write(rendered);
     await track(
       {
@@ -50830,12 +51298,36 @@ function renderWelcome(args) {
   return lines.join("\n");
 }
 function renderWelcomeChat(args) {
-  const { authReady, profileReady, cr } = args;
+  const { authReady, profileReady, cr, brandCounts } = args;
   const lines = [];
   if (authReady && profileReady) {
-    lines.push("**Welcome back to the MixShift plugin** \u2014 you're already set up. A few directions you can go:");
+    lines.push("**Welcome back to the MixShift plugin** \u2014 you're already set up.");
     lines.push("");
-    lines.push('- **Discover your brands** \u2014 say *"discover my brands"*, or run `mixshift brand discover` in a terminal.');
+    if (brandCounts && brandCounts.total > 0) {
+      const dormantSuffix = brandCounts.dormant > 0 ? ` (${brandCounts.dormant} dormant hidden by default \u2014 say *"show all my brands"* to see them)` : "";
+      const coldStartedSuffix = brandCounts.cold_started > 0 ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills` : "";
+      lines.push(
+        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.`
+      );
+      lines.push("");
+    } else if (brandCounts && brandCounts.total === 0) {
+      lines.push(
+        "Your warehouse access shows **no brands yet** \u2014 this means you have not yet activated data in MixShift for your brands."
+      );
+      lines.push("");
+      lines.push(
+        "Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager"
+      );
+      lines.push("");
+      lines.push(
+        "Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift"
+      );
+      lines.push("");
+      return lines.join("\n");
+    }
+    lines.push("A few directions you can go:");
+    lines.push("");
+    lines.push('- **See your brands** \u2014 say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
     lines.push(`- **Explore + export your data** (no brand onboarding required) \u2014 *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>'s campaigns to CSV"*.`);
     lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) \u2014 *"onboard \\<brand-slug\\>"*, then *"run account cold start for \\<brand-slug\\>"*.');
     lines.push('- **Re-run auth setup** if credentials need changing \u2014 *"set up my credentials"*.');

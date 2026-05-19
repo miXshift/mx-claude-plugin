@@ -6,6 +6,14 @@ import { discoverSellers } from '../lib/discovery/seller-query.js';
 import { groupIntoBrands } from '../lib/discovery/brand-grouping.js';
 import { renderDiscoveryTable } from './_render-discovery.js';
 import { bootstrapBrand } from '../lib/clients/bootstrap.js';
+import {
+  readIndex,
+  filterIndex,
+  isStale,
+  runDiscoveryAndPersist,
+  countByActivity,
+  markBrandColdStarted,
+} from '../lib/clients/index.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -20,10 +28,160 @@ export function registerBrandCommands(program: Command): void {
 
   brand
     .command('list')
-    .description('Show the portfolio table (mirrors index.yaml)')
-    .action(() => {
-      notYetImplemented('brand list', {});
-    });
+    .description(
+      'List brands from the local registry (~/.mixshift/clients/index.yaml). ' +
+        'Default hides dormant brands; use --all to see everything or ' +
+        '--only-inactive to see just dormants.',
+    )
+    .option('--all', 'include dormant brands (no active ads or retail access)', false)
+    .option('--only-inactive', 'show ONLY dormant brands', false)
+    .option('--refresh', 'force a fresh discovery query before listing', false)
+    .action(
+      async (
+        opts: { all: boolean; onlyInactive: boolean; refresh: boolean },
+        cmd: Command,
+      ) => {
+        const root = cmd.optsWithGlobals<RootOptions>();
+        try {
+          // Load index, refresh if stale or explicitly requested
+          let { index, source } = await readIndex(root.dataDir);
+          const needsRefresh =
+            opts.refresh || source === 'empty' || isStale(index);
+          if (needsRefresh) {
+            const result = await runDiscoveryAndPersist({
+              dataDirOverride: root.dataDir,
+            });
+            index = result.index;
+            const counts = countByActivity(index);
+            await track(
+              {
+                event_name: EventName.BrandDiscovered,
+                outcome: 'ok',
+                payload: {
+                  trigger: opts.refresh ? 'manual_refresh' : 'ttl_refresh',
+                  total: counts.total,
+                  active: counts.active,
+                  dormant: counts.dormant,
+                  cold_started: counts.cold_started,
+                },
+              },
+              root.dataDir,
+            );
+          }
+
+          const mode = opts.onlyInactive
+            ? 'dormant'
+            : opts.all
+              ? 'all'
+              : 'active';
+          const brands = filterIndex(index, mode);
+          const counts = countByActivity(index);
+
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify(
+                {
+                  status: 'ok',
+                  mode,
+                  discovered_at: index.discovered_at,
+                  counts,
+                  brands,
+                },
+                null,
+                2,
+              ) + '\n',
+            );
+            return;
+          }
+
+          // Empty-active edge case: surface the activation handoff so
+          // the user knows what to do instead of staring at an empty
+          // table.
+          if (mode === 'active' && counts.active === 0 && counts.total === 0) {
+            process.stdout.write(
+              '\nNo brands found in your MixShift warehouse.\n' +
+                '\n' +
+                'This means you have not yet activated data in MixShift for\n' +
+                'your brands. Head to the Account Manager view to begin:\n' +
+                '  https://dash.mydashapplications.com/account-manager\n' +
+                '\n' +
+                'Onboarding help doc:\n' +
+                '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+                '\n',
+            );
+            return;
+          }
+          if (mode === 'active' && counts.active === 0 && counts.dormant > 0) {
+            process.stdout.write(
+              `\nNo ACTIVE brands found (${counts.dormant} dormant — say "show all brands" or run "mixshift brand list --all").\n` +
+                '\n' +
+                'This typically means MixShift ops has not activated ads + retail\n' +
+                'on any of your seller accounts yet. Head to the Account Manager view:\n' +
+                '  https://dash.mydashapplications.com/account-manager\n' +
+                '\n' +
+                'Onboarding help doc:\n' +
+                '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+                '\n',
+            );
+            return;
+          }
+
+          // Normal rendering path — reuse the existing discovery table
+          // by mapping IndexBrand back into the BrandSuggestion shape
+          // the renderer expects. (Lightweight adapter; the renderer
+          // doesn't care about the cold_started / is_dormant fields.)
+          const renderable = brands.map((b) => ({
+            slug: b.slug,
+            display_name: b.display_name,
+            ads_active: b.ads_active,
+            retail_active: b.retail_active,
+            accounts: b.accounts.map((a) => ({
+              seller_id: a.seller_id,
+              seller_name: a.seller_name,
+              amazon_seller_id: null,
+              merchant_alias: a.merchant_alias,
+              account_type: a.account_type,
+              marketplace: a.marketplace,
+              region: a.region,
+              agency_name: null,
+              acos_target: null,
+              ads_active: a.ads_active,
+              retail_active: a.retail_active,
+              is_active: a.is_active,
+              has_mws: a.is_mws_user,
+              created_at: null,
+              updated_at: null,
+            })),
+          }));
+          process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+
+          // Footer with counts + dormancy hint
+          const footerLines: string[] = [];
+          footerLines.push(
+            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
+          );
+          footerLines.push(`Discovered: ${index.discovered_at}`);
+          if (mode === 'active' && counts.dormant > 0) {
+            footerLines.push(
+              `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`,
+            );
+          }
+          process.stderr.write('\n' + footerLines.join('\n') + '\n\n');
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify({ status: 'error', message }, null, 2) + '\n',
+            );
+          } else {
+            process.stderr.write(`error: ${message}\n`);
+          }
+          process.exitCode = 1;
+          return;
+        }
+      },
+    );
 
   brand
     .command('add <slug>')
@@ -85,6 +243,17 @@ export function registerBrandCommands(program: Command): void {
             },
             root.dataDir,
           );
+
+          // Flip the cold_started flag in the registry so subsequent
+          // `brand list` / chat reads can see this brand is onboarded.
+          // Best-effort — never fails the bootstrap.
+          try {
+            await markBrandColdStarted(match.slug, root.dataDir);
+          } catch {
+            // Index might not exist yet (user ran `brand add` before
+            // `brand discover`) — that's fine, next discovery will pick
+            // up the cold-started state from the on-disk folder.
+          }
 
           // 3. Output
           if (root.json) {
@@ -169,63 +338,113 @@ export function registerBrandCommands(program: Command): void {
 
   brand
     .command('discover')
-    .description('Query the seller table and surface all brands you have access to')
+    .description(
+      'Query the seller table, persist to ~/.mixshift/clients/index.yaml, ' +
+        'and surface the brands you have access to. By default hides ' +
+        'dormant brands from the printed table; use --include-inactive to ' +
+        'see them. The registry on disk always captures every brand.',
+    )
     .option(
       '--include-inactive',
-      'include brands where both ads and retail access are lost',
+      'include dormant brands (no active ads or retail) in the printed table',
       false,
     )
     .action(async (opts: { includeInactive: boolean }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       try {
-        const sellers = await discoverSellers({
+        const { index } = await runDiscoveryAndPersist({
           dataDirOverride: root.dataDir,
-          includeInactive: opts.includeInactive,
         });
-        const suggestions = groupIntoBrands(sellers);
+        const counts = countByActivity(index);
+
         await track(
           {
             event_name: EventName.BrandDiscovered,
             outcome: 'ok',
             payload: {
-              seller_count: sellers.length,
-              brand_count: suggestions.length,
-              include_inactive: opts.includeInactive,
+              trigger: 'manual_discover',
+              total: counts.total,
+              active: counts.active,
+              dormant: counts.dormant,
+              cold_started: counts.cold_started,
+              include_inactive_display: opts.includeInactive,
             },
           },
           root.dataDir,
         );
+
+        const displayBrands = opts.includeInactive
+          ? filterIndex(index, 'all')
+          : filterIndex(index, 'active');
 
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
               {
                 status: 'ok',
-                seller_count: sellers.length,
-                brand_count: suggestions.length,
-                brands: suggestions.map((s) => ({
-                  slug: s.slug,
-                  display_name: s.display_name,
-                  ads_active: s.ads_active,
-                  retail_active: s.retail_active,
-                  accounts: s.accounts.map((a) => ({
-                    seller_id: a.seller_id,
-                    seller_name: a.seller_name,
-                    merchant_alias: a.merchant_alias,
-                    account_type: a.account_type,
-                    marketplace: a.marketplace,
-                    ads_active: a.ads_active,
-                    retail_active: a.retail_active,
-                  })),
-                })),
+                discovered_at: index.discovered_at,
+                counts,
+                brands: displayBrands,
               },
               null,
               2,
             ) + '\n',
           );
-        } else {
-          process.stderr.write(renderDiscoveryTable(suggestions) + '\n');
+          return;
         }
+
+        // Empty-active handoff (matches `brand list` behavior).
+        if (counts.active === 0 && counts.total === 0) {
+          process.stdout.write(
+            '\nNo brands found in your MixShift warehouse.\n' +
+              '\n' +
+              'This means you have not yet activated data in MixShift for\n' +
+              'your brands. Head to the Account Manager view to begin:\n' +
+              '  https://dash.mydashapplications.com/account-manager\n' +
+              '\n' +
+              'Onboarding help doc:\n' +
+              '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+              '\n',
+          );
+          return;
+        }
+
+        // Adapter back to BrandSuggestion shape for the existing renderer
+        const renderable = displayBrands.map((b) => ({
+          slug: b.slug,
+          display_name: b.display_name,
+          ads_active: b.ads_active,
+          retail_active: b.retail_active,
+          accounts: b.accounts.map((a) => ({
+            seller_id: a.seller_id,
+            seller_name: a.seller_name,
+            amazon_seller_id: null,
+            merchant_alias: a.merchant_alias,
+            account_type: a.account_type,
+            marketplace: a.marketplace,
+            region: a.region,
+            agency_name: null,
+            acos_target: null,
+            ads_active: a.ads_active,
+            retail_active: a.retail_active,
+            is_active: a.is_active,
+            has_mws: a.is_mws_user,
+            created_at: null,
+            updated_at: null,
+          })),
+        }));
+        process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+
+        const footer = [
+          `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
+          `Persisted to ${index.brands.length === 0 ? '(empty)' : '~/.mixshift/clients/index.yaml'}.`,
+        ];
+        if (!opts.includeInactive && counts.dormant > 0) {
+          footer.push(
+            `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`,
+          );
+        }
+        process.stderr.write('\n' + footer.join('\n') + '\n\n');
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

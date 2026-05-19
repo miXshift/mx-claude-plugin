@@ -9,6 +9,10 @@ import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
+import {
+  runDiscoveryAndPersist,
+  countByActivity,
+} from '../lib/clients/index.js';
 
 interface RootOptions {
   json?: boolean;
@@ -120,6 +124,70 @@ export function registerAuthCommands(program: Command): void {
             },
             root.dataDir,
           );
+          // Post-auth discovery: populate ~/.mixshift/clients/index.yaml so
+          // every subsequent skill has the brand list pre-cached. Best-effort
+          // — discovery failure does NOT fail auth (creds are saved, user
+          // can manually run `mixshift brand discover` later). The non-JSON
+          // success message gets a brand-count line appended downstream.
+          try {
+            const { index } = await runDiscoveryAndPersist({
+              dataDirOverride: root.dataDir,
+            });
+            const counts = countByActivity(index);
+            await track(
+              {
+                event_name: EventName.BrandDiscovered,
+                outcome: 'ok',
+                email: inputs.email,
+                payload: {
+                  trigger: 'post_auth',
+                  total: counts.total,
+                  active: counts.active,
+                  dormant: counts.dormant,
+                  cold_started: counts.cold_started,
+                },
+              },
+              root.dataDir,
+            );
+            // Non-JSON: append a brand-count line to the success message.
+            if (!root.json) {
+              process.stdout.write(
+                `\nBrand registry populated at ~/.mixshift/clients/index.yaml:\n` +
+                  `  - ${counts.active} active brand(s), ${counts.dormant} dormant, ${counts.cold_started} cold-started\n` +
+                  (counts.active === 0
+                    ? `\nNo active brands found. This means you have not yet activated\n` +
+                      `data in MixShift for your brands. Head to the Account Manager view:\n` +
+                      `  https://dash.mydashapplications.com/account-manager\n` +
+                      `\nOnboarding help doc:\n` +
+                      `  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n`
+                    : ''),
+              );
+            }
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : String(err);
+            await track(
+              {
+                event_name: EventName.BrandDiscovered,
+                outcome: 'failed',
+                email: inputs.email,
+                error_class: 'post_auth_discovery_threw',
+                payload: {
+                  trigger: 'post_auth',
+                  message: message.slice(0, 500),
+                },
+              },
+              root.dataDir,
+            );
+            // Surface the warning without failing the auth flow.
+            if (!root.json) {
+              process.stdout.write(
+                `\n⚠ Auth succeeded but post-auth brand discovery failed:\n` +
+                  `    ${message}\n` +
+                  `  Run \`mixshift brand discover\` manually once the issue clears.\n`,
+              );
+            }
+          }
         } else if (result.status === 'pending_whitelist') {
           // This event is in the Supabase fan-out allowlist — emitting it
           // posts the request to the MixShift ops Discord channel. The

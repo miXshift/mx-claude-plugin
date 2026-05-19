@@ -26,9 +26,17 @@ export interface SellerRow {
   region: string | null;
   agency_name: string | null;
   acos_target: number | null;
+  // Derived "MixShift can actually use this" flags (factor in hide_from_*,
+  // *_lost_access, finance flags — richer than the raw IsActive / isMwsUser).
+  // These are what consumers should branch on for "is this account usable?"
   ads_active: boolean;
   retail_active: boolean;
+  // Raw source-column flags (kept for debugging "why is this dormant" — show
+  // both the raw input and the derived output). `is_active` mirrors IsActive,
+  // `has_mws` mirrors isMwsUser (the SP-API access flag; column name predates
+  // the MWS→SP-API rename so we keep `has_mws` for source fidelity).
   is_active: boolean;
+  has_mws: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -122,6 +130,7 @@ function normalizeRow(raw: RawSellerRow): SellerRow {
     ads_active: isAdsActive(raw),
     retail_active: isRetailActive(raw),
     is_active: raw.is_active === 1,
+    has_mws: raw.has_mws === 1,
     created_at: toIso(raw.created_at),
     updated_at: toIso(raw.updated_at),
   };

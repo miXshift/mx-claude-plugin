@@ -32,6 +32,7 @@ function row(overrides: Partial<SellerRow>): SellerRow {
     ads_active: true,
     retail_active: true,
     is_active: true,
+    has_mws: true,
     created_at: null,
     updated_at: null,
     ...overrides,

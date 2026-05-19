@@ -67,6 +67,20 @@ From the MixShift portal: `https://www.mydashapplications.com/database-admin` (o
 
 If you don't know your tenant URL, ask your MixShift account team or run `mixshift welcome` after install — it prints the right URL for your account.
 
+### Where are my brands listed? I expected to see all my Amazon accounts.
+
+After you complete `mixshift auth setup`, the harness automatically discovers every brand you have warehouse access to and writes them to `~/.mixshift/clients/index.yaml`. To see them in chat: *"show my brands"* or *"what brands do I have"*. From a terminal: `mixshift brand list`.
+
+By default the listing hides **dormant** brands — those with no active ads access AND no active SP-API (retail) access. Dormants are still in the registry; they just don't surface unless you ask. Common ways to see them:
+
+- *"show all my brands"* / `mixshift brand list --all` — everything including dormants
+- *"what brands are dormant?"* / *"who do I need to activate?"* / `mixshift brand list --only-inactive`
+- *"why don't I see brand X?"* — Claude looks up X in the registry, shows you whether ads + SP-API are flagged active and what to do if not
+
+If you expected a brand to appear and it's not even in the dormant list, it likely hasn't been activated in MixShift yet. Head to the Account Manager view to begin: `https://dash.mydashapplications.com/account-manager`. Onboarding help doc: `https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift`.
+
+The registry refreshes automatically every 24 hours when you run a chat command, or on demand via `mixshift brand discover` / `mixshift brand list --refresh`.
+
 ### What's the "master password" and why is it shared across all customers?
 
 It's a guard against accidental credential exposure on the credentials page, not a per-user secret. Anyone with the URL but not the password can't see anything; the password keeps the page from leaking values to a logged-in user who shouldn't be there. Your per-tenant MySQL credentials are what actually identify you to the warehouse.
