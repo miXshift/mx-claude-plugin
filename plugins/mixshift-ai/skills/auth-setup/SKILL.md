@@ -71,25 +71,51 @@ If the user mentions "wait, I want to change the host" mid-flow, edit just the o
 
 **Never ask the user to paste the password into chat.** MixShift has no password-rotation feature for these credentials — many external integrations rely on this password being stable. If the password appears in chat history (or worse, gets interpreted by Claude Code's `!` prefix and routed to bash where it lands in error logs), the user has no clean recovery path.
 
-Instead, walk them through this **safer file-based pattern**:
+The pattern depends on which surface the user is on. **Detect the surface from your environment** (Cowork desktop chat = `CLAUDE_PLUGIN_ROOT` set + no TTY; Claude Code terminal = TTY available; direct CLI = neither) and surface the right guidance — don't default to the terminal pattern if you're in Cowork.
 
-> "MixShift's MySQL passwords can't be rotated without breaking other integrations, so I won't ask you to paste it in chat. Instead, please save it to a text file:
->
-> **On Windows:**
-> 1. Open Notepad
-> 2. Paste your password (only the password — no quotes, no labels, no extra characters or newlines)
-> 3. Save as `C:\Users\<your-username>\AppData\Local\Temp\mxpw.txt` (or anywhere convenient — just tell me the exact path)
->
-> **On macOS / Linux:**
-> 1. Open any text editor
-> 2. Paste your password
-> 3. Save as `/tmp/mxpw.txt` (or any path you prefer)
->
-> Once saved, tell me the path and I'll continue."
+### In Cowork desktop chat (the common case for new users)
 
-When the user gives you the path, use it as the `--password-file` argument to the harness. The harness reads the file directly — the password never appears in chat or in a bash command preview.
+The Linux sandbox can't read arbitrary Windows / macOS files. **Direct the user to attach the file via the chat upload widget** — drag-and-drop or the paperclip icon. The harness reads it from the sandbox's uploads directory.
+
+Walk them through this exact flow:
+
+> "MixShift's MySQL passwords can't be rotated without breaking other integrations, so I won't ask you to paste it in chat. Instead, save it to a text file and attach the file to this chat:
+>
+> 1. Open Notepad (Windows) or any text editor (macOS / Linux).
+> 2. Paste **only the password** — no quotes, no labels, no trailing newline.
+> 3. Save it anywhere convenient (Desktop, Downloads, etc.).
+> 4. **Drag the file into this chat**, OR click the paperclip icon and attach it.
+>
+> Once attached, I'll read it from the upload, run auth setup, and clean up. The password never appears in chat or in any command preview."
+
+When the upload lands, find the file in the sandbox's uploads area (typically `/sessions/<session-id>/mnt/uploads/<filename>` or similar — check your environment) and pass that path as `--password-file`.
+
+**Do NOT ask for a Windows/macOS path** in Cowork. The sandbox can't read it, and you'll waste a round-trip telling the user to switch to attach.
+
+### In Claude Code terminal or running `mixshift auth setup` directly in a shell
+
+The harness can read any file on the user's filesystem. The file-and-path pattern works:
+
+> "MixShift's MySQL passwords can't be rotated without breaking other integrations, so I won't ask you to paste it in chat. Instead, save it to a text file and tell me where it is:
+>
+> 1. Open Notepad (Windows) or any text editor.
+> 2. Paste **only the password** — no quotes, no labels, no trailing newline.
+> 3. Save it anywhere (e.g. `C:\Users\<you>\Downloads\mxpw.txt` or `~/Downloads/mxpw.txt`).
+> 4. Tell me the file path. The easiest way to get it exactly right:
+>    - **Windows:** right-click the file in File Explorer → 'Copy as path' → paste it to me (you can leave or remove the surrounding quotes, I handle both).
+>    - **macOS:** in Finder, right-click the file → hold Option → 'Copy <filename> as Pathname'.
+>    - **Linux:** any terminal-style path works (`/tmp/mxpw.txt`, `~/Downloads/mxpw.txt`, etc.).
+>
+> The harness reads the file directly — the password never appears in chat or in a bash command preview."
+
+### Either surface
 
 **Never echo the password back to the user in chat**, even when confirming inputs. When confirming, mask it as `********` or omit it entirely.
+
+After the harness finishes, clean up:
+- Delete the YAML temp file (always).
+- Delete the password file (terminal: at the user's path; Cowork: at the upload sandbox path).
+- The original password file in the user's Downloads / Desktop is the user's to delete; offer a reminder ("Delete `<path>` from your machine when you get a moment") but don't delete a file you didn't create.
 
 ## Step 3 — Write the non-password fields to a temp YAML
 

@@ -162,14 +162,10 @@ You:  Run `mixshift data list-tables`. Surface the result. Suggest
 
 ### Pattern 1b — User asks about their brands
 ```
-User: "What brands do I have?" / "What accounts do I have access to?"
+User: "What brands do I have?" / "What accounts do I have access to?" /
+      "Which brands can I work with?" / similar
 You:  Run `mixshift brand list` (default: active only, with a footer
-      noting how many dormants are hidden). Render the output.
-
-      DO NOT run `mixshift brand discover` for this — `brand list`
-      reads the auto-populated registry at ~/.mixshift/clients/index.yaml,
-      which is faster and avoids a redundant SQL query. The registry
-      auto-refreshes if stale (>24h).
+      noting how many dormants are hidden). Surface the output.
 
       Variants:
         "show all my brands"     → `mixshift brand list --all`
@@ -177,6 +173,22 @@ You:  Run `mixshift brand list` (default: active only, with a footer
         "refresh my brands"      → `mixshift brand list --refresh`
         "who do I need to activate?" → `mixshift brand list --only-inactive`
 ```
+
+**Hard rules for brand questions (these supersede default helpfulness instincts):**
+
+- **MUST use `mixshift brand list`.** Do NOT read `~/.mixshift/clients/index.yaml` directly with `cat` / `head` / `ls`. Do NOT run inline `python3 -c "import yaml…"` scripts against the registry. Do NOT re-query the warehouse with `mixshift brand discover` for this question — the registry is the source of truth and `brand list` is the only sanctioned access path. (The harness owns refresh behavior, error rendering, dormant filtering, footer counts — bypassing it loses all of that.)
+- **MUST NOT say "slug" or "canonical slug" in user-facing text.** Slugs are internal command-invocation identifiers (used when YOU call `mixshift brand add <slug>` or `mixshift data query --seller-id <N>`). Users think in display names ("Hydrapak", "Skratch Labs"). When you reference a brand in chat, use the display name. If you need to call a follow-up command, resolve the slug silently from the registry and pass it to the harness — don't expose it.
+- **MUST NOT label brands as "duplicates" or "legacy migrations" without evidence.** A brand showing up under multiple display names across marketplaces (Hydrapak / Hydrapak - CA / Hydrapak - DE Sporting Goods - (Pan-EU) / etc.) is the warehouse's intentional separation by marketplace and account type, not a data hygiene issue. The right framing is "multi-marketplace variants of one parent brand", not "duplicates" or "you need to figure out which is canonical."
+
+### Pattern 1b extension — adding observation paragraphs
+
+After surfacing the `mixshift brand list` output, you MAY add a brief observation paragraph if it adds genuine signal. Guidelines:
+
+- Use display names, never slugs.
+- Group multi-marketplace variants visually: *"Hydrapak shows up across 6 marketplace entries (US, CA, DE, FR, IT, plus the LLC parent) — same parent brand, separate ad accounts per marketplace."*
+- Surface zero-activity edge cases: *"Polar Bottle and Polar Bottle® look like a legacy SC/VC split — the SC variant shows no ad spend last 30d, the VC variant carries the activity."*
+- Don't editorialize about "data hygiene" or "canonical entries" — the warehouse is what it is.
+- Keep it to 2-4 sentences. The list itself is the substance.
 
 ### Pattern 2 — User wants a quick preview
 ```
