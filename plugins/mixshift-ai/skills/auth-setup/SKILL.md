@@ -35,19 +35,37 @@ That command renders the URL + master password the user needs to retrieve their 
 
 If they've already run `welcome` and have the credentials in hand, skip ahead.
 
-## Step 2 — Collect non-password inputs in chat
+## Step 2 — Collect non-password inputs
 
-Ask the user for each field below, **one at a time**, EXCEPT the password (which has its own step — see Step 2b). Show suggested defaults where applicable.
+Collect these fields. **EXCEPT the password** — that has its own step (Step 2b).
 
 | Field | Suggested default | Notes |
 |---|---|---|
-| Email | (none — ask) | For telemetry + IP whitelist requests |
+| Email | from `~/.mixshift/profile.yaml::user.email` if present, else ask | For telemetry + IP whitelist requests |
 | MySQL Username | (none — ask) | From the credentials page; e.g. "marpartners", "dash" |
 | MySQL HostName | `db.mydashapplications.studio` | Most users; tenant subdomains override (e.g. `marpartners.mydashapplications.studio`) |
 | MySQL Port | `3306` | Universal |
 | MySQL Schema (database) | (same as Username they just gave) | Typical case — username "marpartners" → schema "marpartners". Sam's `dash` user is an outlier with schema `dashamazon` |
 
-Confirm each field with the user before moving on. If they're unsure, refer them back to the URL from `mixshift welcome`.
+### Collection pattern depends on surface
+
+- **Cowork / Claude Code desktop (chat surface):** render a **single multi-field form** (Cowork's native form widget via `AskUserQuestion` with multiple sub-questions, or equivalent). Pre-fill every field with its suggested default. One submit = all inputs at once. This is the preferred UX.
+- **Terminal / scripted:** if invoked via the CLI directly (no form widget available), ask field-by-field via plain text prompts.
+
+### CRITICAL — do NOT re-prompt after submission
+
+The form widget IS the prompt. Once the user submits it (or once all field-by-field prompts have been answered), the values are committed — **proceed IMMEDIATELY to Step 2b** in your next response.
+
+Specifically, do NOT:
+
+- Say "go ahead and fill out the form above" after the form was rendered and submitted (it's already done).
+- Echo back the user's submitted values asking "is this correct?" (they just submitted them — they're correct unless they say otherwise).
+- Render the form a second time.
+- Wait for additional confirmation when the form has already returned.
+
+If a value clearly looks wrong post-submission (e.g. port = `33069`, or schema is blank), surface a SPECIFIC narrow correction question (*"Quick check — port 3306 is the universal default; your form has 33069. Want to fix it?"*). Don't re-render the full form.
+
+If the user mentions "wait, I want to change the host" mid-flow, edit just the one field — don't restart the collection from the top.
 
 ## Step 2b — Password handling (CRITICAL)
 
