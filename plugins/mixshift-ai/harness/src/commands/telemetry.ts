@@ -20,6 +20,7 @@ import {
 import type { Outcome } from '../lib/telemetry/events.js';
 import { telemetryQueuePath } from '../lib/paths/resolve.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
+import { tailFlushLog, flushLogPath } from '../lib/telemetry/flush-log.js';
 import { loadDotenvIfPresent, candidatePaths } from '../lib/env/load-dotenv.js';
 
 const VALID_OUTCOMES = new Set(['ok', 'failed', 'timeout', 'deferred', 'skipped']);
@@ -43,6 +44,7 @@ export function registerTelemetryCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const status = await getTelemetryStatus(root.dataDir);
       const queueBytes = await queueSizeBytes(root.dataDir);
+      const recentFlushes = await tailFlushLog(5, root.dataDir);
       // Re-run the loader so we know which .env.local (if any) was picked
       // up. The CLI ran it at startup already; this re-run is idempotent
       // (existing process.env vars win) and lets us report the source path.
@@ -56,6 +58,11 @@ export function registerTelemetryCommands(program: Command): void {
               ...status,
               queue_path: telemetryQueuePath(root.dataDir),
               queue_size_bytes: queueBytes,
+              flush_log_path: flushLogPath(root.dataDir),
+              recent_flushes: recentFlushes.map((l) => {
+                const [ts, st, n, err] = l.split('\t');
+                return { ts, status: st, events_sent: Number(n), error: err || null };
+              }),
               env_file: envLoad.source_path ?? null,
               env_applied_count: envLoad.applied_count,
               env_skipped_existing: envLoad.skipped_existing,
@@ -72,6 +79,23 @@ export function registerTelemetryCommands(program: Command): void {
       const envLine = envLoad.source_path
         ? `loaded from ${envLoad.source_path} (${envLoad.applied_count} vars applied, ${envLoad.skipped_existing.length} skipped — shell wins)`
         : `no .env.local found. Checked: ${envCandidates.join(', ')}`;
+
+      let flushSection = '';
+      if (recentFlushes.length > 0) {
+        flushSection =
+          `\nRecent flushes (last ${recentFlushes.length}):\n` +
+          recentFlushes
+            .map((l) => {
+              const [ts, st, n, err] = l.split('\t');
+              const errSuffix = err ? `   ${err}` : '';
+              return `  ${ts}  ${st.padEnd(12)}  sent=${n}${errSuffix}`;
+            })
+            .join('\n') +
+          `\n  log: ${flushLogPath(root.dataDir)}\n`;
+      } else {
+        flushSection = `\nNo flushes logged yet (or log file at ${flushLogPath(root.dataDir)} doesn't exist).\n`;
+      }
+
       process.stdout.write(
         `\n${indicator} Telemetry ${status.enabled ? 'enabled' : 'disabled'}\n` +
           `  - reason:           ${status.reason}\n` +
@@ -83,6 +107,7 @@ export function registerTelemetryCommands(program: Command): void {
           `  - env_file:         ${envLine}\n` +
           `  - queue path:       ${telemetryQueuePath(root.dataDir)}\n` +
           `  - queue size:       ${queueBytes} bytes\n` +
+          flushSection +
           '\nSee docs/privacy.md for what we collect and why.\n',
       );
     });

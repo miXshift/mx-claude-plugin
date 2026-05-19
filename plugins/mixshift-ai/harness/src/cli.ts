@@ -135,21 +135,24 @@ if (!isTelemetryCommand) {
  */
 async function trackLifecycleEvents(): Promise<void> {
   try {
-    // 1. plugin.installed — fires when no install_id exists yet on this
-    //    machine. track() creates the install_id as a side effect, so the
-    //    event ends up correctly attributed to the freshly-minted ID.
+    // plugin.installed firing is now handled inside track() itself —
+    // any first track() call where install_id was just created
+    // enqueues a synthetic plugin.installed alongside the triggering
+    // event. That decouples plugin.installed from "which command ran
+    // first" (previously a SKILL.md emit would create install_id and
+    // suppress this event for the subsequent `welcome` invocation).
+    //
+    // We just need plugin.updated + cli.command_run from this fn.
     const existingId = await readInstallId();
     const isFirstRun = !existingId;
-    if (isFirstRun) {
-      await track({ event_name: EventName.PluginInstalled });
-    }
-
-    // 2. plugin.updated — fires when the running version differs from the
-    //    last version we recorded for this machine. Skipped on first run
-    //    (PluginInstalled covers that). For installs that pre-date the
-    //    last_plugin_version field, we capture the version silently on
-    //    first observation and start firing plugin.updated next time.
     const currentVersion = getPluginVersion();
+
+    // plugin.updated — fires when the running version differs from the
+    // last version we recorded for this machine. Skipped on first run
+    // (the synthetic plugin.installed covers that). For installs that
+    // pre-date the last_plugin_version field, we capture the version
+    // silently on first observation and start firing plugin.updated
+    // next time.
     if (!isFirstRun) {
       const { profile, source } = await loadProfile();
       const lastVersion = profile.telemetry?.last_plugin_version;
@@ -172,11 +175,16 @@ async function trackLifecycleEvents(): Promise<void> {
       }
     }
 
-    // 3. cli.command_run — every invocation. We log the command + subcommand
-    //    names ONLY, not the full argv. argv can contain SQL fragments,
-    //    file paths, or other values that would leak query content — the
-    //    privacy guarantee in `docs/privacy.md` explicitly excludes "query
-    //    results, credentials, chat content."
+    // cli.command_run — every invocation. We log the command + subcommand
+    // names ONLY, not the full argv. argv can contain SQL fragments,
+    // file paths, or other values that would leak query content — the
+    // privacy guarantee in `docs/privacy.md` explicitly excludes "query
+    // results, credentials, chat content."
+    //
+    // This is the FIRST track() call in any harness invocation that
+    // matters for plugin.installed semantics — if install_id was
+    // freshly created (i.e. this IS the first run), the synthetic
+    // plugin.installed will be enqueued just before this cli.command_run.
     await track({
       event_name: EventName.CliCommandRun,
       payload: {
@@ -249,6 +257,37 @@ try {
   // ~100-500ms when the queue has events; near-zero when empty
   // (single stat() call). Best-effort — `maybeFlush` swallows errors
   // and returns a status object.
-  await maybeFlush();
+  const flushResult = await maybeFlush();
+
+  // Diagnostic logging — every flush attempt writes a one-line entry
+  // to ~/.mixshift/telemetry/flush.log so "events ran but didn't reach
+  // Supabase" debugging has a trail. View via:
+  //   cat ~/.mixshift/telemetry/flush.log
+  //   mixshift telemetry status   (last 5 lines surface inline)
+  const { appendFlushLog } = await import('./lib/telemetry/flush-log.js');
+  await appendFlushLog(flushResult);
+
+  // Visible-to-the-user diagnostics:
+  // - status='failed' always — flush errors should never be silent.
+  // - MIXSHIFT_TELEMETRY_DEBUG=1 → log every flush (incl. sent/no_events)
+  //   so we can see exactly what happened in Cowork transcripts.
+  // - sent/no_events without the debug flag stays silent (no noise on
+  //   the happy path).
+  const debugFlag = process.env.MIXSHIFT_TELEMETRY_DEBUG === '1';
+  if (flushResult.status === 'failed') {
+    process.stderr.write(
+      `[mixshift telemetry] flush failed: ${flushResult.error ?? 'unknown'} (sent ${flushResult.events_sent} before failure; remaining events stay queued)\n`,
+    );
+  } else if (debugFlag && flushResult.status === 'sent') {
+    process.stderr.write(
+      `[mixshift telemetry] flush sent ${flushResult.events_sent} event(s)\n`,
+    );
+  } else if (debugFlag && flushResult.status === 'no_events') {
+    process.stderr.write('[mixshift telemetry] flush: no events queued\n');
+  } else if (debugFlag && flushResult.status === 'no_endpoint') {
+    process.stderr.write(
+      '[mixshift telemetry] flush: endpoint not configured (events stay queued)\n',
+    );
+  }
 }
 process.exit(process.exitCode ?? 0);

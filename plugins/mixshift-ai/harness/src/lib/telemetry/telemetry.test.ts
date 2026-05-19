@@ -44,12 +44,14 @@ describe('identity', () => {
   });
 
   it('generates a UUID on first call and persists it', async () => {
-    const id1 = await getOrCreateInstallId(dataDir);
-    expect(id1).toMatch(/^[0-9a-f-]{36}$/);
+    const first = await getOrCreateInstallId(dataDir);
+    expect(first.installId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first.wasJustCreated).toBe(true);
 
-    // Second call returns the SAME id
-    const id2 = await getOrCreateInstallId(dataDir);
-    expect(id2).toBe(id1);
+    // Second call returns the SAME id, marked as NOT just created.
+    const second = await getOrCreateInstallId(dataDir);
+    expect(second.installId).toBe(first.installId);
+    expect(second.wasJustCreated).toBe(false);
   });
 
   it('readInstallId returns undefined before getOrCreate is called', async () => {
@@ -57,8 +59,8 @@ describe('identity', () => {
   });
 
   it('readInstallId returns the id after getOrCreate', async () => {
-    const id = await getOrCreateInstallId(dataDir);
-    expect(await readInstallId(dataDir)).toBe(id);
+    const { installId } = await getOrCreateInstallId(dataDir);
+    expect(await readInstallId(dataDir)).toBe(installId);
   });
 });
 
@@ -240,5 +242,48 @@ describe('track()', () => {
     await expect(
       track({ event_name: 'safety-net' }, '/nonexistent/readonly/path'),
     ).resolves.toBeUndefined();
+  });
+
+  it('synthetically enqueues plugin.installed alongside the FIRST track call', async () => {
+    // Telemetry is enabled by default in tests (no env override, no opt-out,
+    // defaults YAML ships a real endpoint). First track call should result
+    // in TWO events on the queue: plugin.installed (synthetic) + the
+    // triggering event.
+    await track({ event_name: 'cli.command_run', payload: { cmd: 'welcome' } }, dataDir);
+
+    const queue = await readQueue(dataDir);
+    expect(queue).toHaveLength(2);
+
+    const [first, second] = queue;
+    expect(first!.event_name).toBe('plugin.installed');
+    expect(first!.payload).toMatchObject({
+      synthetic: true,
+      triggered_by: 'cli.command_run',
+    });
+    expect(second!.event_name).toBe('cli.command_run');
+    // Same install_id on both (the freshly-minted one)
+    expect(first!.install_id).toBe(second!.install_id);
+  });
+
+  it('does NOT re-emit plugin.installed on subsequent track calls', async () => {
+    await track({ event_name: 'first' }, dataDir);
+    await clearQueue(dataDir);
+    await track({ event_name: 'second' }, dataDir);
+
+    const queue = await readQueue(dataDir);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]!.event_name).toBe('second');
+  });
+
+  it('does NOT double-emit when the first track call IS plugin.installed', async () => {
+    // Future-proofing: if some code path ever explicitly calls
+    // track(PluginInstalled), the synthetic enqueue should be skipped
+    // to avoid emitting two plugin.installed events on the same first run.
+    await track({ event_name: 'plugin.installed' }, dataDir);
+    const queue = await readQueue(dataDir);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]!.event_name).toBe('plugin.installed');
+    // Should NOT have the synthetic marker — this was a direct call.
+    expect(queue[0]!.payload).not.toHaveProperty('synthetic');
   });
 });

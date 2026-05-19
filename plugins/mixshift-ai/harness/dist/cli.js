@@ -42458,7 +42458,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join9(tree) {
+      function join10(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42484,7 +42484,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join9(parse3(query2));
+        tree = join10(parse3(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -45582,6 +45582,48 @@ var require_lib5 = __commonJS({
   }
 });
 
+// src/lib/telemetry/flush-log.ts
+var flush_log_exports = {};
+__export(flush_log_exports, {
+  appendFlushLog: () => appendFlushLog,
+  flushLogPath: () => flushLogPath,
+  tailFlushLog: () => tailFlushLog
+});
+import { appendFile as appendFile2, mkdir as mkdir10, readFile as readFile13 } from "node:fs/promises";
+import { join as join9, dirname as dirname13 } from "node:path";
+function flushLogPath(dataDirOverride) {
+  return join9(telemetryDir(dataDirOverride), LOG_FILENAME);
+}
+async function appendFlushLog(result, dataDirOverride) {
+  try {
+    const path2 = flushLogPath(dataDirOverride);
+    await mkdir10(dirname13(path2), { recursive: true });
+    const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
+    const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
+`;
+    await appendFile2(path2, line, { encoding: "utf-8" });
+  } catch {
+  }
+}
+async function tailFlushLog(lines = 5, dataDirOverride) {
+  try {
+    const path2 = flushLogPath(dataDirOverride);
+    const raw = await readFile13(path2, "utf-8");
+    const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
+    return allLines.slice(-lines);
+  } catch {
+    return [];
+  }
+}
+var LOG_FILENAME;
+var init_flush_log = __esm({
+  "src/lib/telemetry/flush-log.ts"() {
+    "use strict";
+    init_resolve();
+    LOG_FILENAME = "flush.log";
+  }
+});
+
 // src/lib/env/load-dotenv.ts
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -46805,7 +46847,7 @@ import { randomUUID } from "node:crypto";
 async function getOrCreateInstallId(dataDirOverride) {
   const { profile, source } = await loadProfile(dataDirOverride);
   if (profile.telemetry?.install_id) {
-    return profile.telemetry.install_id;
+    return { installId: profile.telemetry.install_id, wasJustCreated: false };
   }
   const newId = randomUUID();
   const next = source === "file" ? { ...profile } : defaultProfile();
@@ -46814,7 +46856,7 @@ async function getOrCreateInstallId(dataDirOverride) {
     install_id: newId
   };
   await saveProfile(next, dataDirOverride);
-  return newId;
+  return { installId: newId, wasJustCreated: true };
 }
 async function readInstallId(dataDirOverride) {
   const { profile } = await loadProfile(dataDirOverride);
@@ -46934,10 +46976,6 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
   }
 }
 
-// src/lib/telemetry/index.ts
-init_load();
-init_consent();
-
 // src/lib/telemetry/events.ts
 var EventName = {
   // Lifecycle
@@ -46975,21 +47013,44 @@ var EventName = {
 };
 
 // src/lib/telemetry/index.ts
+init_load();
+init_consent();
 async function track(input, dataDirOverride) {
   try {
     const enabled = await isTelemetryEnabled(dataDirOverride);
     if (!enabled) return;
-    const installId = await getOrCreateInstallId(dataDirOverride);
+    const { installId, wasJustCreated } = await getOrCreateInstallId(dataDirOverride);
     const { profile } = await loadProfile(dataDirOverride);
+    const pluginVersion = getPluginVersion();
+    const installPath = detectInstallPath();
+    const os = detectOs();
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const userEmail = profile.user?.email;
+    if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
+      const synthetic = {
+        event_name: EventName.PluginInstalled,
+        install_id: installId,
+        email: userEmail,
+        plugin_version: pluginVersion,
+        install_path: installPath,
+        os,
+        node_version: process.version,
+        ts: nowIso,
+        // Marker so analytics can distinguish "synthetic on first-track"
+        // from a hypothetical future direct track(PluginInstalled) call.
+        payload: { synthetic: true, triggered_by: input.event_name }
+      };
+      await enqueueEvent(synthetic, dataDirOverride);
+    }
     const record2 = {
       event_name: input.event_name,
       install_id: installId,
-      email: input.email ?? profile.user?.email,
-      plugin_version: getPluginVersion(),
-      install_path: detectInstallPath(),
-      os: detectOs(),
+      email: input.email ?? userEmail,
+      plugin_version: pluginVersion,
+      install_path: installPath,
+      os,
       node_version: process.version,
-      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      ts: nowIso,
       payload: input.payload ?? {},
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
@@ -51933,6 +51994,7 @@ function renderWelcomeChat(args) {
 
 // src/commands/telemetry.ts
 init_resolve();
+init_flush_log();
 var VALID_OUTCOMES = /* @__PURE__ */ new Set(["ok", "failed", "timeout", "deferred", "skipped"]);
 function registerTelemetryCommands(program3) {
   const telemetry = program3.command("telemetry").description(
@@ -51942,6 +52004,7 @@ function registerTelemetryCommands(program3) {
     const root = cmd.optsWithGlobals();
     const status = await getTelemetryStatus(root.dataDir);
     const queueBytes = await queueSizeBytes(root.dataDir);
+    const recentFlushes = await tailFlushLog(5, root.dataDir);
     const envLoad = await loadDotenvIfPresent();
     const envCandidates = candidatePaths();
     if (root.json) {
@@ -51951,6 +52014,11 @@ function registerTelemetryCommands(program3) {
             ...status,
             queue_path: telemetryQueuePath(root.dataDir),
             queue_size_bytes: queueBytes,
+            flush_log_path: flushLogPath(root.dataDir),
+            recent_flushes: recentFlushes.map((l) => {
+              const [ts, st, n, err] = l.split("	");
+              return { ts, status: st, events_sent: Number(n), error: err || null };
+            }),
             env_file: envLoad.source_path ?? null,
             env_applied_count: envLoad.applied_count,
             env_skipped_existing: envLoad.skipped_existing,
@@ -51964,6 +52032,22 @@ function registerTelemetryCommands(program3) {
     }
     const indicator = status.enabled ? "\u2713" : "\u2717";
     const envLine = envLoad.source_path ? `loaded from ${envLoad.source_path} (${envLoad.applied_count} vars applied, ${envLoad.skipped_existing.length} skipped \u2014 shell wins)` : `no .env.local found. Checked: ${envCandidates.join(", ")}`;
+    let flushSection = "";
+    if (recentFlushes.length > 0) {
+      flushSection = `
+Recent flushes (last ${recentFlushes.length}):
+` + recentFlushes.map((l) => {
+        const [ts, st, n, err] = l.split("	");
+        const errSuffix = err ? `   ${err}` : "";
+        return `  ${ts}  ${st.padEnd(12)}  sent=${n}${errSuffix}`;
+      }).join("\n") + `
+  log: ${flushLogPath(root.dataDir)}
+`;
+    } else {
+      flushSection = `
+No flushes logged yet (or log file at ${flushLogPath(root.dataDir)} doesn't exist).
+`;
+    }
     process.stdout.write(
       `
 ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
@@ -51976,9 +52060,7 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
   - env_file:         ${envLine}
   - queue path:       ${telemetryQueuePath(root.dataDir)}
   - queue size:       ${queueBytes} bytes
-
-See docs/privacy.md for what we collect and why.
-`
+` + flushSection + "\nSee docs/privacy.md for what we collect and why.\n"
     );
   });
   telemetry.command("opt-out").description("Persistently disable telemetry for this install.").action(async (_opts, cmd) => {
@@ -52183,9 +52265,6 @@ async function trackLifecycleEvents() {
   try {
     const existingId = await readInstallId();
     const isFirstRun = !existingId;
-    if (isFirstRun) {
-      await track({ event_name: EventName.PluginInstalled });
-    }
     const currentVersion = getPluginVersion();
     if (!isFirstRun) {
       const { profile, source } = await loadProfile();
@@ -52246,7 +52325,27 @@ try {
   });
   process.exitCode = 1;
 } finally {
-  await maybeFlush();
+  const flushResult = await maybeFlush();
+  const { appendFlushLog: appendFlushLog2 } = await Promise.resolve().then(() => (init_flush_log(), flush_log_exports));
+  await appendFlushLog2(flushResult);
+  const debugFlag = process.env.MIXSHIFT_TELEMETRY_DEBUG === "1";
+  if (flushResult.status === "failed") {
+    process.stderr.write(
+      `[mixshift telemetry] flush failed: ${flushResult.error ?? "unknown"} (sent ${flushResult.events_sent} before failure; remaining events stay queued)
+`
+    );
+  } else if (debugFlag && flushResult.status === "sent") {
+    process.stderr.write(
+      `[mixshift telemetry] flush sent ${flushResult.events_sent} event(s)
+`
+    );
+  } else if (debugFlag && flushResult.status === "no_events") {
+    process.stderr.write("[mixshift telemetry] flush: no events queued\n");
+  } else if (debugFlag && flushResult.status === "no_endpoint") {
+    process.stderr.write(
+      "[mixshift telemetry] flush: endpoint not configured (events stay queued)\n"
+    );
+  }
 }
 process.exit(process.exitCode ?? 0);
 /*! Bundled license information:

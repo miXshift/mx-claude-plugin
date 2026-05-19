@@ -25,7 +25,7 @@ import { isTelemetryEnabled } from './consent.js';
 import { getOrCreateInstallId } from './identity.js';
 import { enqueueEvent } from './queue.js';
 import { flushQueue, type FlushResult } from './client.js';
-import type { TrackInput, TelemetryEventRecord } from './events.js';
+import { EventName, type TrackInput, type TelemetryEventRecord } from './events.js';
 import { loadProfile } from '../profile/load.js';
 import { getPluginVersion } from '../plugin-version.js';
 
@@ -45,18 +45,51 @@ export async function track(
     const enabled = await isTelemetryEnabled(dataDirOverride);
     if (!enabled) return;
 
-    const installId = await getOrCreateInstallId(dataDirOverride);
+    const { installId, wasJustCreated } = await getOrCreateInstallId(dataDirOverride);
     const { profile } = await loadProfile(dataDirOverride);
+    const pluginVersion = getPluginVersion();
+    const installPath = detectInstallPath();
+    const os = detectOs();
+    const nowIso = new Date().toISOString();
+    const userEmail = profile.user?.email;
+
+    // If this is the first time install_id has been created on this
+    // machine, enqueue a synthetic plugin.installed event ALONGSIDE the
+    // triggering event. This decouples plugin.installed firing from
+    // "which command runs first" — previously, a SKILL.md emit like
+    // `mixshift telemetry emit skill.invoked` would create the install_id
+    // as a side effect and suppress plugin.installed for the subsequent
+    // `mixshift welcome` run. Now plugin.installed fires whenever
+    // install_id is genuinely new, regardless of trigger.
+    //
+    // Guarded so direct `track(PluginInstalled)` callers (none today, but
+    // future-proofing) don't double-fire.
+    if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
+      const synthetic: TelemetryEventRecord = {
+        event_name: EventName.PluginInstalled,
+        install_id: installId,
+        email: userEmail,
+        plugin_version: pluginVersion,
+        install_path: installPath,
+        os,
+        node_version: process.version,
+        ts: nowIso,
+        // Marker so analytics can distinguish "synthetic on first-track"
+        // from a hypothetical future direct track(PluginInstalled) call.
+        payload: { synthetic: true, triggered_by: input.event_name },
+      };
+      await enqueueEvent(synthetic, dataDirOverride);
+    }
 
     const record: TelemetryEventRecord = {
       event_name: input.event_name,
       install_id: installId,
-      email: input.email ?? profile.user?.email,
-      plugin_version: getPluginVersion(),
-      install_path: detectInstallPath(),
-      os: detectOs(),
+      email: input.email ?? userEmail,
+      plugin_version: pluginVersion,
+      install_path: installPath,
+      os,
       node_version: process.version,
-      ts: new Date().toISOString(),
+      ts: nowIso,
       payload: input.payload ?? {},
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,

@@ -20,14 +20,23 @@ import { defaultProfile } from '../profile/schema.js';
 /**
  * Returns the install_id for this machine, generating + persisting one if
  * it doesn't exist yet. Safe to call repeatedly — subsequent calls return
- * the same value.
+ * the same value with `wasJustCreated: false`.
+ *
+ * The `wasJustCreated` flag is the signal track() uses to enqueue a
+ * synthetic `plugin.installed` event alongside the triggering event.
+ * This makes `plugin.installed` fire on first-ever harness invocation
+ * regardless of which command triggered it — including via SKILL.md
+ * emits that pre-create the id before `mixshift welcome` would otherwise
+ * have a chance.
  */
-export async function getOrCreateInstallId(dataDirOverride?: string): Promise<string> {
+export async function getOrCreateInstallId(
+  dataDirOverride?: string,
+): Promise<{ installId: string; wasJustCreated: boolean }> {
   const { profile, source } = await loadProfile(dataDirOverride);
 
   // Existing install_id on disk
   if (profile.telemetry?.install_id) {
-    return profile.telemetry.install_id;
+    return { installId: profile.telemetry.install_id, wasJustCreated: false };
   }
 
   // Generate + persist
@@ -43,7 +52,7 @@ export async function getOrCreateInstallId(dataDirOverride?: string): Promise<st
   };
 
   await saveProfile(next, dataDirOverride);
-  return newId;
+  return { installId: newId, wasJustCreated: true };
 }
 
 /**
