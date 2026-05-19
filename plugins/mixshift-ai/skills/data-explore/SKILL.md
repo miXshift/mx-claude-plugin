@@ -190,6 +190,48 @@ After surfacing the `mixshift brand list` output, you MAY add a brief observatio
 - Don't editorialize about "data hygiene" or "canonical entries" — the warehouse is what it is.
 - Keep it to 2-4 sentences. The list itself is the substance.
 
+### Pattern 1c — Key brands (focused subset for agency / multi-brand users)
+
+The user can curate a "key brands" subset — the brands they actually focus on day-to-day. This is distinct from the full registry. Portfolio-level skills (e.g. portfolio-quick-scan) default to running across key brands when set, falling back to all active brands when not.
+
+State lives in `~/.mixshift/profile.yaml::brands.key`. Manage via the harness:
+
+```
+mixshift brand key add <name-or-slug>      add one (or multiple, space-separated)
+mixshift brand key remove <name-or-slug>   remove
+mixshift brand key list                    show current key brands
+mixshift brand key clear                   empty the list
+mixshift brand list --key                  same as `key list`
+```
+
+The harness accepts fuzzy input — display names, acronyms, prefixes, case-insensitive. "Skratch" → `skratch-labs`, "AOP" → `american-outdoor-products`, "Home IQ" → `home-iq-usa`. Ambiguous inputs return a non-zero exit code with candidate slugs in the output; pass that back to the user for disambiguation.
+
+**Chat triggers and routings:**
+
+| User phrase | Route to |
+|---|---|
+| "mark hydrapak as key" / "add hydrapak to my key brands" / "pin hydrapak" | `mixshift brand key add hydrapak` |
+| "I manage Skratch, Hydro Cell, AOP, and Home IQ" / "set my key brands to X, Y, Z" | Parse the comma/and-separated list, then loop: one `mixshift brand key add "<each>"` per item. Use the user's exact phrasing — don't normalize before sending; let the harness resolver handle it. |
+| "remove kiwa from key brands" / "unpin kiwa" / "drop kiwa from focus" | `mixshift brand key remove kiwa` |
+| "show my key brands" / "what are my key brands" / "which brands am I focused on" / "list my key brands" | `mixshift brand key list` |
+| "clear my key brands" / "reset my focus list" / "start over on key brands" | `mixshift brand key clear` (confirm before running if list has 3+ entries — irreversible, easy mistake to make) |
+
+**Multi-brand parse pattern** (the natural "I manage Skratch, Hydro Cell, AOP, and Home IQ" flow):
+
+1. Parse the list from the user's phrase. Common separators: comma, "and", "&", line breaks, "+". Strip filler words ("brands", "accounts").
+2. For each item, call `mixshift brand key add "<item>"` in sequence. Don't pre-resolve client-side — pass the literal user phrasing to the harness so the resolver gets a chance.
+3. Collect the results. Three possible per-item outcomes: added (✓), already_key (no-op, fine), ambiguous (need disambiguation), not_found (registry doesn't have it).
+4. Render a summary:
+   > *"Got it — your key brands are now Skratch Labs, Hydro Cell, American Outdoor Products, and Home IQ USA. Portfolio skills will default to these."*
+5. For ambiguous or not_found items, ask a clarifying question in the SAME response — don't make the user wait a turn. Example:
+   > *"Got 3 of 4. 'Hydro' matched both Hydrapak and Hydro Cell — which did you mean?"*
+
+**Behavior when user has many active brands and no key set:**
+
+If the user runs `mixshift brand list` and the footer says "No key brands set" with active count >5, proactively offer: *"You've got 23 active brands. Day-to-day, do you focus on a smaller set? Tell me which ones (e.g. 'I manage Skratch, Hydro Cell, AOP, and Home IQ') and I'll mark them as key — portfolio skills will then default to those."*
+
+Don't pester. Single offer per session. If the user declines or doesn't reply, move on.
+
 ### Pattern 2 — User wants a quick preview
 ```
 User: "Show me a sample of campaignmetric for Hydrapak"

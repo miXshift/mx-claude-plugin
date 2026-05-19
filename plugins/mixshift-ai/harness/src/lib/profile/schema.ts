@@ -70,6 +70,19 @@ export const profileSchema = z.object({
       per_skill: {},
     }),
 
+  // User-curated brand state. Distinct from the warehouse-derived registry
+  // at ~/.mixshift/clients/index.yaml (which lists every brand the user
+  // can see). `brands.key` is the focused subset the user actually works
+  // with day-to-day — agency managers with 200+ accounts use this to point
+  // portfolio skills at the 5-10 brands they own, instead of scanning
+  // every account. Each entry must match a slug present in the registry;
+  // validation happens at write time in lib/clients/key-brands.ts.
+  brands: z
+    .object({
+      key: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).default([]),
+    })
+    .default({ key: [] }),
+
   telemetry: z
     .object({
       // Anonymous machine identifier — UUID generated on first run, immutable.

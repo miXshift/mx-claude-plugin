@@ -81,6 +81,28 @@ If you expected a brand to appear and it's not even in the dormant list, it like
 
 The registry refreshes automatically every 24 hours when you run a chat command, or on demand via `mixshift brand discover` / `mixshift brand list --refresh`.
 
+### I manage 200+ accounts but only care about 5. Do I have to scan all of them?
+
+No. Mark the brands you actually focus on as **key brands**. Portfolio-level skills (e.g. portfolio quick scan) default to running against your key brands; only fall back to all-active when you haven't set any. The full list stays available in the registry — you can always opt into the full set with `--all` flags.
+
+In chat, the natural pattern is to just describe what you manage:
+
+> *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*
+
+Claude resolves each name against your registry (Skratch → Skratch Labs, AOP → American Outdoor Products, etc.) and adds them all to your key list. Ambiguous names ("Hydro" matches both Hydrapak and Hydro Cell) get a clarifying question.
+
+Other phrasings that work the same way:
+- *"mark Hydrapak as key"* — single brand
+- *"add Polar Bottle to my key brands"*
+- *"set my key brands to Hydrapak, Skratch Labs, and Polar Bottle"*
+
+To inspect / change later:
+- *"show my key brands"* / `mixshift brand key list`
+- *"remove Kiwa from key brands"* / `mixshift brand key remove kiwa`
+- *"clear my key brands"* / `mixshift brand key clear`
+
+Key brands live in `~/.mixshift/profile.yaml::brands.key`. The list is yours alone — no syncing across machines (per-machine state, like everything else the plugin tracks). When you re-auth on a different machine, you set your key brands again there.
+
 ### What's the "master password" and why is it shared across all customers?
 
 It's a guard against accidental credential exposure on the credentials page, not a per-user secret. Anyone with the URL but not the password can't see anything; the password keeps the page from leaking values to a logged-in user who shouldn't be there. Your per-tenant MySQL credentials are what actually identify you to the warehouse.

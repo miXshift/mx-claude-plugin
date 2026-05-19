@@ -14,6 +14,12 @@ import {
   countByActivity,
   markBrandColdStarted,
 } from '../lib/clients/index.js';
+import {
+  loadKeyBrands,
+  addKeyBrand,
+  removeKeyBrand,
+  clearKeyBrands,
+} from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -35,10 +41,16 @@ export function registerBrandCommands(program: Command): void {
     )
     .option('--all', 'include dormant brands (no active ads or retail access)', false)
     .option('--only-inactive', 'show ONLY dormant brands', false)
+    .option('--key', 'show ONLY brands marked as key in your profile', false)
     .option('--refresh', 'force a fresh discovery query before listing', false)
     .action(
       async (
-        opts: { all: boolean; onlyInactive: boolean; refresh: boolean },
+        opts: {
+          all: boolean;
+          onlyInactive: boolean;
+          key: boolean;
+          refresh: boolean;
+        },
         cmd: Command,
       ) => {
         const root = cmd.optsWithGlobals<RootOptions>();
@@ -69,12 +81,26 @@ export function registerBrandCommands(program: Command): void {
             );
           }
 
-          const mode = opts.onlyInactive
-            ? 'dormant'
-            : opts.all
-              ? 'all'
-              : 'active';
-          const brands = filterIndex(index, mode);
+          // Load the key-brand list once — used both for --key filtering
+          // and for ⭐ markers + footer count on the other modes.
+          const keyBrandSlugs = new Set(
+            (await loadKeyBrands(root.dataDir)).map((kb) => kb.slug),
+          );
+
+          const mode = opts.key
+            ? 'key'
+            : opts.onlyInactive
+              ? 'dormant'
+              : opts.all
+                ? 'all'
+                : 'active';
+
+          let brands;
+          if (mode === 'key') {
+            brands = index.brands.filter((b) => keyBrandSlugs.has(b.slug));
+          } else {
+            brands = filterIndex(index, mode);
+          }
           const counts = countByActivity(index);
 
           if (root.json) {
@@ -84,8 +110,11 @@ export function registerBrandCommands(program: Command): void {
                   status: 'ok',
                   mode,
                   discovered_at: index.discovered_at,
-                  counts,
-                  brands,
+                  counts: { ...counts, key: keyBrandSlugs.size },
+                  brands: brands.map((b) => ({
+                    ...b,
+                    is_key: keyBrandSlugs.has(b.slug),
+                  })),
                 },
                 null,
                 2,
@@ -126,13 +155,33 @@ export function registerBrandCommands(program: Command): void {
             return;
           }
 
+          // Empty-key edge case for --key mode
+          if (mode === 'key' && keyBrandSlugs.size === 0) {
+            process.stdout.write(
+              '\nNo key brands set yet.\n' +
+                '\n' +
+                'Mark brands you focus on day-to-day with:\n' +
+                '  mixshift brand key add <name-or-slug>\n' +
+                '\n' +
+                'Or in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".\n' +
+                '\n' +
+                `You have ${counts.active} active brand(s) available — say "show my brands" to see them.\n\n`,
+            );
+            return;
+          }
+
           // Normal rendering path — reuse the existing discovery table
           // by mapping IndexBrand back into the BrandSuggestion shape
           // the renderer expects. (Lightweight adapter; the renderer
           // doesn't care about the cold_started / is_dormant fields.)
+          // ⭐ marker is prepended to the display_name for key brands so
+          // the existing table renderer surfaces them without needing a
+          // dedicated column.
           const renderable = brands.map((b) => ({
             slug: b.slug,
-            display_name: b.display_name,
+            display_name: keyBrandSlugs.has(b.slug)
+              ? `⭐ ${b.display_name}`
+              : b.display_name,
             ads_active: b.ads_active,
             retail_active: b.retail_active,
             accounts: b.accounts.map((a) => ({
@@ -155,15 +204,20 @@ export function registerBrandCommands(program: Command): void {
           }));
           process.stderr.write(renderDiscoveryTable(renderable) + '\n');
 
-          // Footer with counts + dormancy hint
+          // Footer with counts + dormancy / key hints
           const footerLines: string[] = [];
           footerLines.push(
-            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
+            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`,
           );
           footerLines.push(`Discovered: ${index.discovered_at}`);
           if (mode === 'active' && counts.dormant > 0) {
             footerLines.push(
               `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`,
+            );
+          }
+          if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && counts.active > 5) {
+            footerLines.push(
+              `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
             );
           }
           process.stderr.write('\n' + footerLines.join('\n') + '\n\n');
@@ -468,6 +522,244 @@ export function registerBrandCommands(program: Command): void {
       const result = await validateBrandContext(slug, root.dataDir);
       renderValidationResult(slug, result, !!root.json);
       process.exitCode = result.ok ? 0 : 1;
+      return;
+    });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // `mixshift brand key` — manage the user-curated focused subset.
+  // See lib/clients/key-brands.ts for storage + validation.
+  // ──────────────────────────────────────────────────────────────────────
+  const key = brand
+    .command('key')
+    .description(
+      'Manage your "key brands" — the focused subset of brands portfolio ' +
+        'skills default to. Accepts display names ("Skratch Labs"), ' +
+        'acronyms ("AOP"), prefixes ("Home IQ"), or slugs.',
+    );
+
+  key
+    .command('add <input...>')
+    .description(
+      'Add one or more brands to your key list. Each argument can be a ' +
+        'slug or a fuzzy display-name match (resolver handles casing, ' +
+        'punctuation, acronyms, prefixes). Ambiguous inputs are reported ' +
+        'with candidates; multi-arg invocations process partial successes.',
+    )
+    .action(async (inputs: string[], _opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const results: Array<
+        Awaited<ReturnType<typeof addKeyBrand>> & { input: string }
+      > = [];
+      for (const input of inputs) {
+        const r = await addKeyBrand(input, root.dataDir);
+        results.push({ ...r, input });
+      }
+
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'ok',
+              results: results.map((r) => ({
+                input: r.input,
+                status: r.status,
+                slug: r.brand?.slug,
+                display_name: r.brand?.display_name,
+                candidates: r.candidates?.map((c) => ({
+                  slug: c.slug,
+                  display_name: c.display_name,
+                })),
+                normalized_input: r.normalized_input,
+              })),
+              key_brands: results[results.length - 1]?.key_brands ?? [],
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        process.exitCode = results.some(
+          (r) => r.status === 'not_found' || r.status === 'ambiguous',
+        )
+          ? 4
+          : 0;
+        return;
+      }
+
+      const lines: string[] = ['\n'];
+      let anyAmbiguousOrMissing = false;
+      for (const r of results) {
+        if (r.status === 'added') {
+          lines.push(`  ✓ ${r.brand!.display_name} → added to key brands`);
+        } else if (r.status === 'already_key') {
+          lines.push(`  • ${r.brand!.display_name} → already in key brands`);
+        } else if (r.status === 'ambiguous') {
+          anyAmbiguousOrMissing = true;
+          lines.push(
+            `  ✗ "${r.input}" → ambiguous, ${r.candidates!.length} candidates:`,
+          );
+          for (const c of r.candidates!.slice(0, 8)) {
+            lines.push(`      - ${c.display_name}  (slug: ${c.slug})`);
+          }
+        } else if (r.status === 'not_found') {
+          anyAmbiguousOrMissing = true;
+          lines.push(
+            `  ✗ "${r.input}" → no match in registry. Run "mixshift brand list" to see what's available.`,
+          );
+        }
+      }
+
+      const finalList = results[results.length - 1]?.key_brands ?? [];
+      lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}\n`);
+      process.stderr.write(lines.join('\n'));
+      process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
+      return;
+    });
+
+  key
+    .command('remove <input...>')
+    .description('Remove one or more brands from your key list. Same fuzzy input as "add".')
+    .action(async (inputs: string[], _opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const results: Array<
+        Awaited<ReturnType<typeof removeKeyBrand>> & { input: string }
+      > = [];
+      for (const input of inputs) {
+        const r = await removeKeyBrand(input, root.dataDir);
+        results.push({ ...r, input });
+      }
+
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'ok',
+              results: results.map((r) => ({
+                input: r.input,
+                status: r.status,
+                slug: r.brand?.slug,
+                display_name: r.brand?.display_name,
+                candidates: r.candidates?.map((c) => ({
+                  slug: c.slug,
+                  display_name: c.display_name,
+                })),
+                normalized_input: r.normalized_input,
+              })),
+              key_brands: results[results.length - 1]?.key_brands ?? [],
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        return;
+      }
+
+      const lines: string[] = ['\n'];
+      for (const r of results) {
+        if (r.status === 'removed') {
+          lines.push(
+            `  ✓ ${r.brand?.display_name ?? r.input} → removed from key brands`,
+          );
+        } else if (r.status === 'not_key') {
+          lines.push(
+            `  • ${r.brand!.display_name} → wasn't in key brands (no-op)`,
+          );
+        } else if (r.status === 'ambiguous') {
+          lines.push(
+            `  ✗ "${r.input}" → ambiguous, ${r.candidates!.length} candidates:`,
+          );
+          for (const c of r.candidates!.slice(0, 8)) {
+            lines.push(`      - ${c.display_name}  (slug: ${c.slug})`);
+          }
+        } else if (r.status === 'not_found') {
+          lines.push(
+            `  ✗ "${r.input}" → no match in registry, and not in your current key list.`,
+          );
+        }
+      }
+      const finalList = results[results.length - 1]?.key_brands ?? [];
+      lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}\n`);
+      process.stderr.write(lines.join('\n'));
+      return;
+    });
+
+  key
+    .command('list')
+    .description('List your current key brands (= mixshift brand list --key)')
+    .action(async (_opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const keys = await loadKeyBrands(root.dataDir);
+
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'ok',
+              count: keys.length,
+              key_brands: keys.map((k) => ({
+                slug: k.slug,
+                display_name: k.registry_entry?.display_name ?? null,
+                in_registry: k.registry_entry !== null,
+                is_dormant: k.registry_entry?.is_dormant ?? null,
+                cold_started: k.registry_entry?.cold_started ?? null,
+              })),
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        return;
+      }
+
+      if (keys.length === 0) {
+        process.stdout.write(
+          '\nNo key brands set.\n' +
+            '\nMark brands you focus on day-to-day:\n' +
+            '  mixshift brand key add <name-or-slug>\n' +
+            '\nOr in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".\n\n',
+        );
+        return;
+      }
+
+      const lines: string[] = ['\nKey brands:\n'];
+      for (const k of keys) {
+        if (k.registry_entry === null) {
+          lines.push(
+            `  ⚠ ${k.slug} (no longer in your warehouse registry — run "mixshift brand key remove ${k.slug}" to clean up)`,
+          );
+        } else if (k.registry_entry.is_dormant) {
+          lines.push(
+            `  ⚠ ${k.registry_entry.display_name} (slug: ${k.slug}) — dormant, portfolio skills will skip it`,
+          );
+        } else {
+          lines.push(
+            `  ⭐ ${k.registry_entry.display_name} (slug: ${k.slug})${k.registry_entry.cold_started ? '  — cold-started ✓' : ''}`,
+          );
+        }
+      }
+      lines.push('');
+      process.stdout.write(lines.join('\n'));
+      return;
+    });
+
+  key
+    .command('clear')
+    .description('Empty the key brands list')
+    .action(async (_opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const result = await clearKeyBrands(root.dataDir);
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            { status: 'ok', removed_count: result.removed_count },
+            null,
+            2,
+          ) + '\n',
+        );
+        return;
+      }
+      process.stdout.write(
+        `\n✓ Cleared ${result.removed_count} key brand(s).\n\n`,
+      );
       return;
     });
 }

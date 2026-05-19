@@ -150,6 +150,9 @@ export function registerAuthCommands(program: Command): void {
               root.dataDir,
             );
             // Non-JSON: append a brand-count line to the success message.
+            // Also nudge toward curating key brands when the count is large
+            // — agency managers with 200+ accounts don't want portfolio
+            // skills running against all of them.
             if (!root.json) {
               process.stdout.write(
                 `\nBrand registry populated at ~/.mixshift/clients/index.yaml:\n` +
@@ -160,7 +163,12 @@ export function registerAuthCommands(program: Command): void {
                       `  https://dash.mydashapplications.com/account-manager\n` +
                       `\nOnboarding help doc:\n` +
                       `  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n`
-                    : ''),
+                    : counts.active > 5
+                      ? `\nWith ${counts.active} active brand(s), you probably focus on a smaller set day-to-day.\n` +
+                        `Mark them as "key" so portfolio skills default to those instead of all ${counts.active}:\n` +
+                        `  mixshift brand key add <name-or-slug>   (accepts display names, acronyms, slugs)\n` +
+                        `Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."\n`
+                      : ''),
               );
             }
           } catch (err) {

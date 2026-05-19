@@ -25540,6 +25540,16 @@ var init_schema = __esm({
         },
         per_skill: {}
       }),
+      // User-curated brand state. Distinct from the warehouse-derived registry
+      // at ~/.mixshift/clients/index.yaml (which lists every brand the user
+      // can see). `brands.key` is the focused subset the user actually works
+      // with day-to-day — agency managers with 200+ accounts use this to point
+      // portfolio skills at the 5-10 brands they own, instead of scanning
+      // every account. Each entry must match a slug present in the registry;
+      // validation happens at write time in lib/clients/key-brands.ts.
+      brands: external_exports.object({
+        key: external_exports.array(external_exports.string().regex(/^[a-z][a-z0-9-]*$/)).default([])
+      }).default({ key: [] }),
       telemetry: external_exports.object({
         // Anonymous machine identifier — UUID generated on first run, immutable.
         // Used to group events from one install before the user has set up auth.
@@ -46576,6 +46586,213 @@ function countByActivity(index) {
   };
 }
 
+// src/lib/clients/key-brands.ts
+init_load();
+init_save();
+init_schema();
+
+// src/lib/clients/resolve-brand.ts
+var SLUG_REGEX = /^[a-z][a-z0-9-]*$/;
+function normalizeForMatch(s) {
+  return s.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function acronymFor(displayName) {
+  const tokens = normalizeForMatch(displayName).split(/\s+/).filter(Boolean);
+  return tokens.map((t) => t[0]?.toUpperCase() ?? "").join("");
+}
+function resolveBrandName(input, index) {
+  const raw = input.trim();
+  const normalized = normalizeForMatch(raw);
+  if (SLUG_REGEX.test(raw)) {
+    const slugMatch = index.brands.find((b) => b.slug === raw);
+    if (slugMatch) return { status: "found", brand: slugMatch };
+  }
+  const lowerInput = raw.toLowerCase().trim();
+  const literalCaseInsensitive = index.brands.filter(
+    (b) => b.display_name.toLowerCase().trim() === lowerInput
+  );
+  if (literalCaseInsensitive.length === 1) {
+    return { status: "found", brand: literalCaseInsensitive[0] };
+  }
+  const exactDisplayMatches = index.brands.filter(
+    (b) => normalizeForMatch(b.display_name) === normalized
+  );
+  if (exactDisplayMatches.length === 1) {
+    return { status: "found", brand: exactDisplayMatches[0] };
+  }
+  if (exactDisplayMatches.length > 1) {
+    return {
+      status: "ambiguous",
+      candidates: exactDisplayMatches,
+      normalized_input: raw
+    };
+  }
+  const acronymCandidates = (() => {
+    if (raw.length < 2 || raw.length > 6) return [];
+    if (/\s/.test(raw)) return [];
+    const inputUpper = raw.toUpperCase();
+    return index.brands.filter((b) => acronymFor(b.display_name) === inputUpper);
+  })();
+  if (acronymCandidates.length === 1) {
+    return { status: "found", brand: acronymCandidates[0] };
+  }
+  if (acronymCandidates.length > 1) {
+    return {
+      status: "ambiguous",
+      candidates: acronymCandidates,
+      normalized_input: raw
+    };
+  }
+  if (normalized.length < 3) {
+    return { status: "none", normalized_input: raw };
+  }
+  const prefixCandidates = index.brands.filter(
+    (b) => normalizeForMatch(b.display_name).startsWith(normalized)
+  );
+  if (prefixCandidates.length === 1) {
+    return { status: "found", brand: prefixCandidates[0] };
+  }
+  if (prefixCandidates.length > 1) {
+    return {
+      status: "ambiguous",
+      candidates: prefixCandidates,
+      normalized_input: raw
+    };
+  }
+  const substringCandidates = index.brands.filter(
+    (b) => normalizeForMatch(b.display_name).includes(normalized)
+  );
+  if (substringCandidates.length === 1) {
+    return { status: "found", brand: substringCandidates[0] };
+  }
+  if (substringCandidates.length > 1) {
+    return {
+      status: "ambiguous",
+      candidates: substringCandidates,
+      normalized_input: raw
+    };
+  }
+  return { status: "none", normalized_input: raw };
+}
+
+// src/lib/clients/key-brands.ts
+async function loadKeyBrands(dataDirOverride) {
+  const { profile } = await loadProfile(dataDirOverride);
+  const slugs = profile.brands?.key ?? [];
+  if (slugs.length === 0) return [];
+  const { index } = await readIndex(dataDirOverride);
+  const bySlug = /* @__PURE__ */ new Map();
+  for (const b of index.brands) bySlug.set(b.slug, b);
+  return slugs.map((slug) => ({
+    slug,
+    registry_entry: bySlug.get(slug) ?? null
+  }));
+}
+async function addKeyBrand(input, dataDirOverride) {
+  const { index } = await readIndex(dataDirOverride);
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "none") {
+    const { profile: profile2 } = await loadProfile(dataDirOverride);
+    return {
+      status: "not_found",
+      normalized_input: resolved.normalized_input,
+      key_brands: profile2.brands?.key ?? []
+    };
+  }
+  if (resolved.status === "ambiguous") {
+    const { profile: profile2 } = await loadProfile(dataDirOverride);
+    return {
+      status: "ambiguous",
+      candidates: resolved.candidates,
+      normalized_input: resolved.normalized_input,
+      key_brands: profile2.brands?.key ?? []
+    };
+  }
+  const slug = resolved.brand.slug;
+  const { profile, source } = await loadProfile(dataDirOverride);
+  const existing = profile.brands?.key ?? [];
+  if (existing.includes(slug)) {
+    return {
+      status: "already_key",
+      brand: resolved.brand,
+      key_brands: existing
+    };
+  }
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.brands = {
+    ...next.brands ?? { key: [] },
+    key: [...existing, slug]
+  };
+  await saveProfile(next, dataDirOverride);
+  return {
+    status: "added",
+    brand: resolved.brand,
+    key_brands: next.brands.key
+  };
+}
+async function removeKeyBrand(input, dataDirOverride) {
+  const { profile, source } = await loadProfile(dataDirOverride);
+  const existing = profile.brands?.key ?? [];
+  const inputTrimmed = input.trim();
+  if (existing.includes(inputTrimmed)) {
+    const next2 = source === "file" ? { ...profile } : defaultProfile();
+    next2.brands = {
+      ...next2.brands ?? { key: [] },
+      key: existing.filter((s) => s !== inputTrimmed)
+    };
+    await saveProfile(next2, dataDirOverride);
+    return {
+      status: "removed",
+      key_brands: next2.brands.key
+    };
+  }
+  const { index } = await readIndex(dataDirOverride);
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "none") {
+    return {
+      status: "not_found",
+      normalized_input: resolved.normalized_input,
+      key_brands: existing
+    };
+  }
+  if (resolved.status === "ambiguous") {
+    return {
+      status: "ambiguous",
+      candidates: resolved.candidates,
+      normalized_input: resolved.normalized_input,
+      key_brands: existing
+    };
+  }
+  const slug = resolved.brand.slug;
+  if (!existing.includes(slug)) {
+    return {
+      status: "not_key",
+      brand: resolved.brand,
+      key_brands: existing
+    };
+  }
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.brands = {
+    ...next.brands ?? { key: [] },
+    key: existing.filter((s) => s !== slug)
+  };
+  await saveProfile(next, dataDirOverride);
+  return {
+    status: "removed",
+    brand: resolved.brand,
+    key_brands: next.brands.key
+  };
+}
+async function clearKeyBrands(dataDirOverride) {
+  const { profile, source } = await loadProfile(dataDirOverride);
+  const existing = profile.brands?.key ?? [];
+  if (existing.length === 0) return { removed_count: 0 };
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.brands = { ...next.brands ?? { key: [] }, key: [] };
+  await saveProfile(next, dataDirOverride);
+  return { removed_count: existing.length };
+}
+
 // src/lib/telemetry/index.ts
 init_consent();
 import { platform, release } from "node:os";
@@ -46813,7 +47030,7 @@ function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
   brand.command("list").description(
     "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands; use --all to see everything or --only-inactive to see just dormants."
-  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--refresh", "force a fresh discovery query before listing", false).action(
+  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
@@ -46840,8 +47057,16 @@ function registerBrandCommands(program3) {
             root.dataDir
           );
         }
-        const mode = opts.onlyInactive ? "dormant" : opts.all ? "all" : "active";
-        const brands = filterIndex(index, mode);
+        const keyBrandSlugs = new Set(
+          (await loadKeyBrands(root.dataDir)).map((kb) => kb.slug)
+        );
+        const mode = opts.key ? "key" : opts.onlyInactive ? "dormant" : opts.all ? "all" : "active";
+        let brands;
+        if (mode === "key") {
+          brands = index.brands.filter((b) => keyBrandSlugs.has(b.slug));
+        } else {
+          brands = filterIndex(index, mode);
+        }
         const counts = countByActivity(index);
         if (root.json) {
           process.stdout.write(
@@ -46850,8 +47075,11 @@ function registerBrandCommands(program3) {
                 status: "ok",
                 mode,
                 discovered_at: index.discovered_at,
-                counts,
-                brands
+                counts: { ...counts, key: keyBrandSlugs.size },
+                brands: brands.map((b) => ({
+                  ...b,
+                  is_key: keyBrandSlugs.has(b.slug)
+                }))
               },
               null,
               2
@@ -46881,9 +47109,25 @@ Onboarding help doc:
           );
           return;
         }
+        if (mode === "key" && keyBrandSlugs.size === 0) {
+          process.stdout.write(
+            `
+No key brands set yet.
+
+Mark brands you focus on day-to-day with:
+  mixshift brand key add <name-or-slug>
+
+Or in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".
+
+You have ${counts.active} active brand(s) available \u2014 say "show my brands" to see them.
+
+`
+          );
+          return;
+        }
         const renderable = brands.map((b) => ({
           slug: b.slug,
-          display_name: b.display_name,
+          display_name: keyBrandSlugs.has(b.slug) ? `\u2B50 ${b.display_name}` : b.display_name,
           ads_active: b.ads_active,
           retail_active: b.retail_active,
           accounts: b.accounts.map((a) => ({
@@ -46907,12 +47151,17 @@ Onboarding help doc:
         process.stderr.write(renderDiscoveryTable(renderable) + "\n");
         const footerLines = [];
         footerLines.push(
-          `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`
+          `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`
         );
         footerLines.push(`Discovered: ${index.discovered_at}`);
         if (mode === "active" && counts.dormant > 0) {
           footerLines.push(
             `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`
+          );
+        }
+        if ((mode === "active" || mode === "all") && keyBrandSlugs.size === 0 && counts.active > 5) {
+          footerLines.push(
+            `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`
           );
         }
         process.stderr.write("\n" + footerLines.join("\n") + "\n\n");
@@ -47145,6 +47394,206 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
     const result = await validateBrandContext(slug, root.dataDir);
     renderValidationResult(slug, result, !!root.json);
     process.exitCode = result.ok ? 0 : 1;
+    return;
+  });
+  const key = brand.command("key").description(
+    'Manage your "key brands" \u2014 the focused subset of brands portfolio skills default to. Accepts display names ("Skratch Labs"), acronyms ("AOP"), prefixes ("Home IQ"), or slugs.'
+  );
+  key.command("add <input...>").description(
+    "Add one or more brands to your key list. Each argument can be a slug or a fuzzy display-name match (resolver handles casing, punctuation, acronyms, prefixes). Ambiguous inputs are reported with candidates; multi-arg invocations process partial successes."
+  ).action(async (inputs, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const results = [];
+    for (const input of inputs) {
+      const r = await addKeyBrand(input, root.dataDir);
+      results.push({ ...r, input });
+    }
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            results: results.map((r) => ({
+              input: r.input,
+              status: r.status,
+              slug: r.brand?.slug,
+              display_name: r.brand?.display_name,
+              candidates: r.candidates?.map((c) => ({
+                slug: c.slug,
+                display_name: c.display_name
+              })),
+              normalized_input: r.normalized_input
+            })),
+            key_brands: results[results.length - 1]?.key_brands ?? []
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      process.exitCode = results.some(
+        (r) => r.status === "not_found" || r.status === "ambiguous"
+      ) ? 4 : 0;
+      return;
+    }
+    const lines = ["\n"];
+    let anyAmbiguousOrMissing = false;
+    for (const r of results) {
+      if (r.status === "added") {
+        lines.push(`  \u2713 ${r.brand.display_name} \u2192 added to key brands`);
+      } else if (r.status === "already_key") {
+        lines.push(`  \u2022 ${r.brand.display_name} \u2192 already in key brands`);
+      } else if (r.status === "ambiguous") {
+        anyAmbiguousOrMissing = true;
+        lines.push(
+          `  \u2717 "${r.input}" \u2192 ambiguous, ${r.candidates.length} candidates:`
+        );
+        for (const c of r.candidates.slice(0, 8)) {
+          lines.push(`      - ${c.display_name}  (slug: ${c.slug})`);
+        }
+      } else if (r.status === "not_found") {
+        anyAmbiguousOrMissing = true;
+        lines.push(
+          `  \u2717 "${r.input}" \u2192 no match in registry. Run "mixshift brand list" to see what's available.`
+        );
+      }
+    }
+    const finalList = results[results.length - 1]?.key_brands ?? [];
+    lines.push(`
+  Key brands (${finalList.length}): ${finalList.join(", ") || "(none)"}
+`);
+    process.stderr.write(lines.join("\n"));
+    process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
+    return;
+  });
+  key.command("remove <input...>").description('Remove one or more brands from your key list. Same fuzzy input as "add".').action(async (inputs, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const results = [];
+    for (const input of inputs) {
+      const r = await removeKeyBrand(input, root.dataDir);
+      results.push({ ...r, input });
+    }
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            results: results.map((r) => ({
+              input: r.input,
+              status: r.status,
+              slug: r.brand?.slug,
+              display_name: r.brand?.display_name,
+              candidates: r.candidates?.map((c) => ({
+                slug: c.slug,
+                display_name: c.display_name
+              })),
+              normalized_input: r.normalized_input
+            })),
+            key_brands: results[results.length - 1]?.key_brands ?? []
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    const lines = ["\n"];
+    for (const r of results) {
+      if (r.status === "removed") {
+        lines.push(
+          `  \u2713 ${r.brand?.display_name ?? r.input} \u2192 removed from key brands`
+        );
+      } else if (r.status === "not_key") {
+        lines.push(
+          `  \u2022 ${r.brand.display_name} \u2192 wasn't in key brands (no-op)`
+        );
+      } else if (r.status === "ambiguous") {
+        lines.push(
+          `  \u2717 "${r.input}" \u2192 ambiguous, ${r.candidates.length} candidates:`
+        );
+        for (const c of r.candidates.slice(0, 8)) {
+          lines.push(`      - ${c.display_name}  (slug: ${c.slug})`);
+        }
+      } else if (r.status === "not_found") {
+        lines.push(
+          `  \u2717 "${r.input}" \u2192 no match in registry, and not in your current key list.`
+        );
+      }
+    }
+    const finalList = results[results.length - 1]?.key_brands ?? [];
+    lines.push(`
+  Key brands (${finalList.length}): ${finalList.join(", ") || "(none)"}
+`);
+    process.stderr.write(lines.join("\n"));
+    return;
+  });
+  key.command("list").description("List your current key brands (= mixshift brand list --key)").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const keys = await loadKeyBrands(root.dataDir);
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            count: keys.length,
+            key_brands: keys.map((k) => ({
+              slug: k.slug,
+              display_name: k.registry_entry?.display_name ?? null,
+              in_registry: k.registry_entry !== null,
+              is_dormant: k.registry_entry?.is_dormant ?? null,
+              cold_started: k.registry_entry?.cold_started ?? null
+            }))
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    if (keys.length === 0) {
+      process.stdout.write(
+        '\nNo key brands set.\n\nMark brands you focus on day-to-day:\n  mixshift brand key add <name-or-slug>\n\nOr in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".\n\n'
+      );
+      return;
+    }
+    const lines = ["\nKey brands:\n"];
+    for (const k of keys) {
+      if (k.registry_entry === null) {
+        lines.push(
+          `  \u26A0 ${k.slug} (no longer in your warehouse registry \u2014 run "mixshift brand key remove ${k.slug}" to clean up)`
+        );
+      } else if (k.registry_entry.is_dormant) {
+        lines.push(
+          `  \u26A0 ${k.registry_entry.display_name} (slug: ${k.slug}) \u2014 dormant, portfolio skills will skip it`
+        );
+      } else {
+        lines.push(
+          `  \u2B50 ${k.registry_entry.display_name} (slug: ${k.slug})${k.registry_entry.cold_started ? "  \u2014 cold-started \u2713" : ""}`
+        );
+      }
+    }
+    lines.push("");
+    process.stdout.write(lines.join("\n"));
+    return;
+  });
+  key.command("clear").description("Empty the key brands list").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await clearKeyBrands(root.dataDir);
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          { status: "ok", removed_count: result.removed_count },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    process.stdout.write(
+      `
+\u2713 Cleared ${result.removed_count} key brand(s).
+
+`
+    );
     return;
   });
 }
@@ -48989,6 +49438,11 @@ data in MixShift for your brands. Head to the Account Manager view:
 
 Onboarding help doc:
   https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift
+` : counts.active > 5 ? `
+With ${counts.active} active brand(s), you probably focus on a smaller set day-to-day.
+Mark them as "key" so portfolio skills default to those instead of all ${counts.active}:
+  mixshift brand key add <name-or-slug>   (accepts display names, acronyms, slugs)
+Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
 ` : "")
             );
           }
@@ -51163,7 +51617,11 @@ function registerWelcomeCommand(program3) {
     if (authReady) {
       try {
         const idxResult = await readIndex(root.dataDir);
-        if (idxResult.source === "file") brandCounts = countByActivity(idxResult.index);
+        if (idxResult.source === "file") {
+          const base = countByActivity(idxResult.index);
+          const keys = await loadKeyBrands(root.dataDir);
+          brandCounts = { ...base, key: keys.length };
+        }
       } catch {
       }
     }
@@ -51306,10 +51764,17 @@ function renderWelcomeChat(args) {
     if (brandCounts && brandCounts.total > 0) {
       const dormantSuffix = brandCounts.dormant > 0 ? ` (${brandCounts.dormant} dormant hidden by default \u2014 say *"show all my brands"* to see them)` : "";
       const coldStartedSuffix = brandCounts.cold_started > 0 ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills` : "";
+      const keySuffix = brandCounts.key > 0 ? ` You currently have **${brandCounts.key}** marked as key \u2014 portfolio skills default to those.` : "";
       lines.push(
-        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.`
+        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.${keySuffix}`
       );
       lines.push("");
+      if (brandCounts.active > 5 && brandCounts.key === 0) {
+        lines.push(
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** so portfolio skills default to those instead of all ${brandCounts.active}.`
+        );
+        lines.push("");
+      }
     } else if (brandCounts && brandCounts.total === 0) {
       lines.push(
         "Your warehouse access shows **no brands yet** \u2014 this means you have not yet activated data in MixShift for your brands."
@@ -51328,8 +51793,9 @@ function renderWelcomeChat(args) {
     lines.push("A few directions you can go:");
     lines.push("");
     lines.push('- **See your brands** \u2014 say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
+    lines.push('- **Curate your key brands** \u2014 *"mark \\<brand\\> as key"* or *"I manage \\<brand1\\>, \\<brand2\\>, ..."*. Portfolio skills default to these.');
     lines.push(`- **Explore + export your data** (no brand onboarding required) \u2014 *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>'s campaigns to CSV"*.`);
-    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) \u2014 *"onboard \\<brand-slug\\>"*, then *"run account cold start for \\<brand-slug\\>"*.');
+    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) \u2014 *"onboard \\<brand\\>"*, then *"run account cold start for \\<brand\\>"*.');
     lines.push('- **Re-run auth setup** if credentials need changing \u2014 *"set up my credentials"*.');
     lines.push('- **Send feedback** \u2014 *"send feedback to mixshift: \\<your message\\>"*. Bugs, gripes, feature requests \u2014 all welcome during beta.');
     lines.push("");

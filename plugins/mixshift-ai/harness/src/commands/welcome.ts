@@ -3,6 +3,7 @@ import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { loadProfile } from '../lib/profile/load.js';
 import { loadCredentials } from '../lib/auth/credentials.js';
 import { readIndex, countByActivity } from '../lib/clients/index.js';
+import { loadKeyBrands } from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -69,11 +70,16 @@ export function registerWelcomeCommand(program: Command): void {
         active: number;
         dormant: number;
         cold_started: number;
+        key: number;
       } | null = null;
       if (authReady) {
         try {
           const idxResult = await readIndex(root.dataDir);
-          if (idxResult.source === 'file') brandCounts = countByActivity(idxResult.index);
+          if (idxResult.source === 'file') {
+            const base = countByActivity(idxResult.index);
+            const keys = await loadKeyBrands(root.dataDir);
+            brandCounts = { ...base, key: keys.length };
+          }
         } catch {
           // Malformed registry — treat as if there's no index.
         }
@@ -261,6 +267,7 @@ function renderWelcomeChat(args: {
     active: number;
     dormant: number;
     cold_started: number;
+    key: number;
   } | null;
 }): string {
   const { authReady, profileReady, cr, brandCounts } = args;
@@ -280,10 +287,22 @@ function renderWelcomeChat(args: {
         brandCounts.cold_started > 0
           ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills`
           : '';
+      const keySuffix =
+        brandCounts.key > 0
+          ? ` You currently have **${brandCounts.key}** marked as key — portfolio skills default to those.`
+          : '';
       lines.push(
-        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.`,
+        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.${keySuffix}`,
       );
       lines.push('');
+
+      // Nudge: many active brands and no key set → suggest curating.
+      if (brandCounts.active > 5 && brandCounts.key === 0) {
+        lines.push(
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** so portfolio skills default to those instead of all ${brandCounts.active}.`,
+        );
+        lines.push('');
+      }
     } else if (brandCounts && brandCounts.total === 0) {
       // Edge: auth complete but registry shows zero brands. Surface the
       // activation handoff so the user knows what to do.
@@ -305,8 +324,9 @@ function renderWelcomeChat(args: {
     lines.push('A few directions you can go:');
     lines.push('');
     lines.push('- **See your brands** — say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
+    lines.push('- **Curate your key brands** — *"mark \\<brand\\> as key"* or *"I manage \\<brand1\\>, \\<brand2\\>, ..."*. Portfolio skills default to these.');
     lines.push('- **Explore + export your data** (no brand onboarding required) — *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>\'s campaigns to CSV"*.');
-    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) — *"onboard \\<brand-slug\\>"*, then *"run account cold start for \\<brand-slug\\>"*.');
+    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) — *"onboard \\<brand\\>"*, then *"run account cold start for \\<brand\\>"*.');
     lines.push('- **Re-run auth setup** if credentials need changing — *"set up my credentials"*.');
     lines.push('- **Send feedback** — *"send feedback to mixshift: \\<your message\\>"*. Bugs, gripes, feature requests — all welcome during beta.');
     lines.push('');
