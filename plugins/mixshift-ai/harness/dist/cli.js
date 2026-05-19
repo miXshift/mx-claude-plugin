@@ -47125,34 +47125,43 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
           );
           return;
         }
-        const renderable = brands.map((b) => ({
-          slug: b.slug,
-          display_name: keyBrandSlugs.has(b.slug) ? `\u2B50 ${b.display_name}` : b.display_name,
-          ads_active: b.ads_active,
-          retail_active: b.retail_active,
-          accounts: b.accounts.map((a) => ({
-            seller_id: a.seller_id,
-            seller_name: a.seller_name,
-            amazon_seller_id: null,
-            merchant_alias: a.merchant_alias,
-            account_type: a.account_type,
-            marketplace: a.marketplace,
-            region: a.region,
-            agency_name: null,
-            acos_target: null,
-            ads_active: a.ads_active,
-            retail_active: a.retail_active,
-            is_active: a.is_active,
-            has_mws: a.is_mws_user,
-            created_at: null,
-            updated_at: null
-          }))
-        }));
+        const renderable = brands.map((b) => {
+          const markers = [];
+          if (keyBrandSlugs.has(b.slug)) markers.push("\u2B50");
+          if (b.cold_started) markers.push("\u2713");
+          const prefix = markers.length > 0 ? markers.join("") + " " : "";
+          return {
+            slug: b.slug,
+            display_name: `${prefix}${b.display_name}`,
+            ads_active: b.ads_active,
+            retail_active: b.retail_active,
+            accounts: b.accounts.map((a) => ({
+              seller_id: a.seller_id,
+              seller_name: a.seller_name,
+              amazon_seller_id: null,
+              merchant_alias: a.merchant_alias,
+              account_type: a.account_type,
+              marketplace: a.marketplace,
+              region: a.region,
+              agency_name: null,
+              acos_target: null,
+              ads_active: a.ads_active,
+              retail_active: a.retail_active,
+              is_active: a.is_active,
+              has_mws: a.is_mws_user,
+              created_at: null,
+              updated_at: null
+            }))
+          };
+        });
         process.stderr.write(renderDiscoveryTable(renderable) + "\n");
         const footerLines = [];
         footerLines.push(
           `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`
         );
+        if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
+          footerLines.push("Markers: \u2B50 = key brand, \u2713 = cold-started");
+        }
         footerLines.push(`Discovered: ${index.discovered_at}`);
         if (mode === "active" && counts.dormant > 0) {
           footerLines.push(
@@ -47162,6 +47171,11 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
         if ((mode === "active" || mode === "all") && keyBrandSlugs.size === 0 && counts.active > 5) {
           footerLines.push(
             `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`
+          );
+        }
+        if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
+          footerLines.push(
+            `No brands cold-started yet \u2014 analytical skills (daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`
           );
         }
         process.stderr.write("\n" + footerLines.join("\n") + "\n\n");
@@ -51620,7 +51634,16 @@ function registerWelcomeCommand(program3) {
         if (idxResult.source === "file") {
           const base = countByActivity(idxResult.index);
           const keys = await loadKeyBrands(root.dataDir);
-          brandCounts = { ...base, key: keys.length };
+          const keyEntries = keys.map((k) => k.registry_entry).filter((e) => e !== null);
+          const firstKey = keyEntries[0] ?? null;
+          const firstUncold = keyEntries.find((e) => !e.cold_started) ?? null;
+          brandCounts = {
+            ...base,
+            key: keys.length,
+            key_cold_started: keyEntries.filter((e) => e.cold_started).length,
+            first_key_display_name: firstKey?.display_name ?? null,
+            first_key_uncold_display_name: firstUncold?.display_name ?? null
+          };
         }
       } catch {
       }
@@ -51759,46 +51782,101 @@ function renderWelcomeChat(args) {
   const { authReady, profileReady, cr, brandCounts } = args;
   const lines = [];
   if (authReady && profileReady) {
+    if (brandCounts && brandCounts.total === 0) {
+      lines.push("**Welcome back to the MixShift plugin** \u2014 you're authenticated, but your warehouse access shows **no brands yet**.");
+      lines.push("");
+      lines.push("This means you haven't activated data in MixShift for your brands. Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager");
+      lines.push("");
+      lines.push("Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift");
+      lines.push("");
+      return lines.join("\n");
+    }
+    let state = "D";
+    if (brandCounts) {
+      if (brandCounts.key === 0) state = "A";
+      else if (brandCounts.key_cold_started === 0) state = "B";
+      else if (brandCounts.key_cold_started < brandCounts.key) state = "C";
+      else state = "D";
+    }
     lines.push("**Welcome back to the MixShift plugin** \u2014 you're already set up.");
     lines.push("");
     if (brandCounts && brandCounts.total > 0) {
       const dormantSuffix = brandCounts.dormant > 0 ? ` (${brandCounts.dormant} dormant hidden by default \u2014 say *"show all my brands"* to see them)` : "";
-      const coldStartedSuffix = brandCounts.cold_started > 0 ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills` : "";
-      const keySuffix = brandCounts.key > 0 ? ` You currently have **${brandCounts.key}** marked as key \u2014 portfolio skills default to those.` : "";
+      const keyClause = brandCounts.key > 0 ? ` **${brandCounts.key}** marked as key${brandCounts.key_cold_started > 0 ? `, ${brandCounts.key_cold_started} cold-started` : ""}.` : "";
       lines.push(
-        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.${keySuffix}`
+        `You have access to **${brandCounts.active} active brand(s)**${dormantSuffix}.${keyClause}`
       );
       lines.push("");
-      if (brandCounts.active > 5 && brandCounts.key === 0) {
+    }
+    if (state === "A") {
+      if (brandCounts && brandCounts.active > 3) {
         lines.push(
-          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** so portfolio skills default to those instead of all ${brandCounts.active}.`
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** \u2014 portfolio skills will default to those instead of all ${brandCounts.active}.`
+        );
+      } else {
+        lines.push(
+          'You have a small number of brands, so you may not need to curate a key list \u2014 but if you want to, say *"mark <brand> as key"* anytime.'
+        );
+      }
+      lines.push("");
+      lines.push(`Or, if you'd rather just look at data: say *"explore my data"*.`);
+      lines.push("");
+    } else if (state === "B") {
+      const targetBrand = brandCounts?.first_key_uncold_display_name ?? brandCounts?.first_key_display_name ?? "your top key brand";
+      lines.push(
+        "### Next step: cold-start your first brand"
+      );
+      lines.push("");
+      lines.push(
+        "**Cold-start** teaches the plugin about your brand \u2014 catalog, marketplaces, target ACOS, recent launches and events. After ~3\u20135 minutes of mostly-automated setup (plus a few intake questions from me), every analytical skill \u2014 daily health check, runaway-spend, monthly report \u2014 already knows your brand and doesn't need re-explaining each time you run it."
+      );
+      lines.push("");
+      lines.push(
+        `Until you cold-start at least one brand, the analytical skills are locked. You can still explore data via *"explore my data"*. **Want to start with ${targetBrand}?** Just say *"cold start ${targetBrand}"*.`
+      );
+      lines.push("");
+      lines.push(
+        `Other options if you'd rather warm up first: *"explore my data"*, *"run a portfolio quick scan"* (gives you green/yellow/red verdicts across your ${brandCounts?.key ?? 0} key brand(s) \u2014 uses defaults until brands are cold-started, but still useful as a triage).`
+      );
+      lines.push("");
+    } else if (state === "C") {
+      const coldStartedKey = brandCounts?.first_key_display_name ?? "your cold-started brand";
+      const uncoldKey = brandCounts?.first_key_uncold_display_name;
+      lines.push(
+        `**${coldStartedKey}** is ready for analytical skills. A few things to try:`
+      );
+      lines.push("");
+      lines.push(
+        `- *"run daily health check on ${coldStartedKey}"* \u2014 exception-based daily review (what's broken today?)`
+      );
+      lines.push(
+        `- *"run runaway spend check on ${coldStartedKey}"* \u2014 flags acute keyword overspend`
+      );
+      lines.push(
+        `- *"write monthly report for ${coldStartedKey}"* \u2014 MoM/YoY analysis with item-group breakdown`
+      );
+      lines.push(
+        `- *"run portfolio quick scan"* \u2014 multi-brand triage across your ${brandCounts?.key ?? 0} key brand(s); GREEN/YELLOW/RED verdicts`
+      );
+      lines.push("");
+      if (uncoldKey) {
+        lines.push(
+          `When you're ready to unlock the same surface on the rest of your key brands, just say *"cold start ${uncoldKey}"* (or any of the others).`
         );
         lines.push("");
       }
-    } else if (brandCounts && brandCounts.total === 0) {
-      lines.push(
-        "Your warehouse access shows **no brands yet** \u2014 this means you have not yet activated data in MixShift for your brands."
-      );
+    } else {
+      lines.push("All your key brands are cold-started and ready. Common moves:");
       lines.push("");
-      lines.push(
-        "Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager"
-      );
+      lines.push('- *"run portfolio quick scan"* \u2014 multi-brand daily triage');
+      lines.push('- *"run daily health check on \\<brand\\>"* \u2014 single-brand exception review');
+      lines.push('- *"run runaway spend on \\<brand\\>"* \u2014 keyword overspend flagging');
+      lines.push('- *"write monthly report for \\<brand\\>"* \u2014 MoM/YoY analysis');
+      lines.push('- *"explore my data"* \u2014 ad-hoc queries / CSV exports');
+      lines.push('- *"show my brands"* \u2014 see your portfolio, *"add \\<brand\\> to key brands"* to expand the focused set');
+      lines.push('- *"send feedback to mixshift: \\<your message\\>"* \u2014 bugs, gripes, requests');
       lines.push("");
-      lines.push(
-        "Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift"
-      );
-      lines.push("");
-      return lines.join("\n");
     }
-    lines.push("A few directions you can go:");
-    lines.push("");
-    lines.push('- **See your brands** \u2014 say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
-    lines.push('- **Curate your key brands** \u2014 *"mark \\<brand\\> as key"* or *"I manage \\<brand1\\>, \\<brand2\\>, ..."*. Portfolio skills default to these.');
-    lines.push(`- **Explore + export your data** (no brand onboarding required) \u2014 *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>'s campaigns to CSV"*.`);
-    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) \u2014 *"onboard \\<brand\\>"*, then *"run account cold start for \\<brand\\>"*.');
-    lines.push('- **Re-run auth setup** if credentials need changing \u2014 *"set up my credentials"*.');
-    lines.push('- **Send feedback** \u2014 *"send feedback to mixshift: \\<your message\\>"*. Bugs, gripes, feature requests \u2014 all welcome during beta.');
-    lines.push("");
     lines.push("Where do you want to start?");
     lines.push("");
     return lines.join("\n");

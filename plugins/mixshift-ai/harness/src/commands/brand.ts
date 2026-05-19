@@ -174,41 +174,47 @@ export function registerBrandCommands(program: Command): void {
           // by mapping IndexBrand back into the BrandSuggestion shape
           // the renderer expects. (Lightweight adapter; the renderer
           // doesn't care about the cold_started / is_dormant fields.)
-          // ⭐ marker is prepended to the display_name for key brands so
-          // the existing table renderer surfaces them without needing a
-          // dedicated column.
-          const renderable = brands.map((b) => ({
-            slug: b.slug,
-            display_name: keyBrandSlugs.has(b.slug)
-              ? `⭐ ${b.display_name}`
-              : b.display_name,
-            ads_active: b.ads_active,
-            retail_active: b.retail_active,
-            accounts: b.accounts.map((a) => ({
-              seller_id: a.seller_id,
-              seller_name: a.seller_name,
-              amazon_seller_id: null,
-              merchant_alias: a.merchant_alias,
-              account_type: a.account_type,
-              marketplace: a.marketplace,
-              region: a.region,
-              agency_name: null,
-              acos_target: null,
-              ads_active: a.ads_active,
-              retail_active: a.retail_active,
-              is_active: a.is_active,
-              has_mws: a.is_mws_user,
-              created_at: null,
-              updated_at: null,
-            })),
-          }));
+          // Markers prepended to display_name: ⭐ for key brands,
+          // ✓ for cold-started brands.
+          const renderable = brands.map((b) => {
+            const markers: string[] = [];
+            if (keyBrandSlugs.has(b.slug)) markers.push('⭐');
+            if (b.cold_started) markers.push('✓');
+            const prefix = markers.length > 0 ? markers.join('') + ' ' : '';
+            return {
+              slug: b.slug,
+              display_name: `${prefix}${b.display_name}`,
+              ads_active: b.ads_active,
+              retail_active: b.retail_active,
+              accounts: b.accounts.map((a) => ({
+                seller_id: a.seller_id,
+                seller_name: a.seller_name,
+                amazon_seller_id: null,
+                merchant_alias: a.merchant_alias,
+                account_type: a.account_type,
+                marketplace: a.marketplace,
+                region: a.region,
+                agency_name: null,
+                acos_target: null,
+                ads_active: a.ads_active,
+                retail_active: a.retail_active,
+                is_active: a.is_active,
+                has_mws: a.is_mws_user,
+                created_at: null,
+                updated_at: null,
+              })),
+            };
+          });
           process.stderr.write(renderDiscoveryTable(renderable) + '\n');
 
-          // Footer with counts + dormancy / key hints
+          // Footer with counts + dormancy / key hints + marker legend
           const footerLines: string[] = [];
           footerLines.push(
             `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`,
           );
+          if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
+            footerLines.push('Markers: ⭐ = key brand, ✓ = cold-started');
+          }
           footerLines.push(`Discovered: ${index.discovered_at}`);
           if (mode === 'active' && counts.dormant > 0) {
             footerLines.push(
@@ -218,6 +224,11 @@ export function registerBrandCommands(program: Command): void {
           if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && counts.active > 5) {
             footerLines.push(
               `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
+            );
+          }
+          if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
+            footerLines.push(
+              `No brands cold-started yet — analytical skills (daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`,
             );
           }
           process.stderr.write('\n' + footerLines.join('\n') + '\n\n');

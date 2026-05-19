@@ -61,16 +61,19 @@ export function registerWelcomeCommand(program: Command): void {
       // doesn't render red in tools that style stderr as error.
       const format = opts.format === 'chat' ? 'chat' : 'terminal';
 
-      // Brand counts feed the chat-format "already set up" branch so the
-      // user sees "you have N active brands" right away. Best-effort: if
-      // the index hasn't been populated yet (fresh install) or read fails,
-      // fall through to the no-counts code path.
+      // Brand counts + key brand state feed the chat-format welcome
+      // ladder. Best-effort: if the index hasn't been populated yet
+      // (fresh install) or read fails, fall through to the no-counts
+      // code path.
       let brandCounts: {
         total: number;
         active: number;
         dormant: number;
         cold_started: number;
         key: number;
+        key_cold_started: number; // intersection: keys that are also cold-started
+        first_key_display_name: string | null;
+        first_key_uncold_display_name: string | null; // first key brand that ISN'T cold-started
       } | null = null;
       if (authReady) {
         try {
@@ -78,7 +81,19 @@ export function registerWelcomeCommand(program: Command): void {
           if (idxResult.source === 'file') {
             const base = countByActivity(idxResult.index);
             const keys = await loadKeyBrands(root.dataDir);
-            brandCounts = { ...base, key: keys.length };
+            const keyEntries = keys
+              .map((k) => k.registry_entry)
+              .filter((e): e is NonNullable<typeof e> => e !== null);
+            const firstKey = keyEntries[0] ?? null;
+            const firstUncold =
+              keyEntries.find((e) => !e.cold_started) ?? null;
+            brandCounts = {
+              ...base,
+              key: keys.length,
+              key_cold_started: keyEntries.filter((e) => e.cold_started).length,
+              first_key_display_name: firstKey?.display_name ?? null,
+              first_key_uncold_display_name: firstUncold?.display_name ?? null,
+            };
           }
         } catch {
           // Malformed registry — treat as if there's no index.
@@ -268,68 +283,139 @@ function renderWelcomeChat(args: {
     dormant: number;
     cold_started: number;
     key: number;
+    key_cold_started: number;
+    first_key_display_name: string | null;
+    first_key_uncold_display_name: string | null;
   } | null;
 }): string {
   const { authReady, profileReady, cr, brandCounts } = args;
   const lines: string[] = [];
 
   if (authReady && profileReady) {
+    // Empty-active edge case (auth done, but no brands at all) — surface
+    // the activation handoff and bail before the ladder logic.
+    if (brandCounts && brandCounts.total === 0) {
+      lines.push("**Welcome back to the MixShift plugin** — you're authenticated, but your warehouse access shows **no brands yet**.");
+      lines.push('');
+      lines.push("This means you haven't activated data in MixShift for your brands. Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager");
+      lines.push('');
+      lines.push('Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift');
+      lines.push('');
+      return lines.join('\n');
+    }
+
+    // Determine which state on the welcome ladder the user is in.
+    // A — just authed, no key brands set (and many active to choose from)
+    // B — key brands set, none cold-started yet → explain cold-start
+    // C — at least one key brand cold-started → surface unlocked skills
+    // D — all key brands cold-started → tight navigation
+    let state: 'A' | 'B' | 'C' | 'D' = 'D';
+    if (brandCounts) {
+      if (brandCounts.key === 0) state = 'A';
+      else if (brandCounts.key_cold_started === 0) state = 'B';
+      else if (brandCounts.key_cold_started < brandCounts.key) state = 'C';
+      else state = 'D';
+    }
+
     lines.push("**Welcome back to the MixShift plugin** — you're already set up.");
     lines.push('');
 
-    // Brand-count summary (when the registry is populated).
+    // Brand-count summary (renders for all states A-D when registry populated)
     if (brandCounts && brandCounts.total > 0) {
       const dormantSuffix =
         brandCounts.dormant > 0
           ? ` (${brandCounts.dormant} dormant hidden by default — say *"show all my brands"* to see them)`
           : '';
-      const coldStartedSuffix =
-        brandCounts.cold_started > 0
-          ? `, of which **${brandCounts.cold_started}** is/are cold-started for analytical skills`
-          : '';
-      const keySuffix =
+      const keyClause =
         brandCounts.key > 0
-          ? ` You currently have **${brandCounts.key}** marked as key — portfolio skills default to those.`
+          ? ` **${brandCounts.key}** marked as key${brandCounts.key_cold_started > 0 ? `, ${brandCounts.key_cold_started} cold-started` : ''}.`
           : '';
       lines.push(
-        `You have access to **${brandCounts.active} active brand(s)**${coldStartedSuffix}${dormantSuffix}.${keySuffix}`,
+        `You have access to **${brandCounts.active} active brand(s)**${dormantSuffix}.${keyClause}`,
       );
       lines.push('');
+    }
 
-      // Nudge: many active brands and no key set → suggest curating.
-      if (brandCounts.active > 5 && brandCounts.key === 0) {
+    // State-specific content
+    if (state === 'A') {
+      // Nudge to set key brands. Only if many active — for 1-3 brand
+      // accounts, asking them to "narrow" feels weird.
+      if (brandCounts && brandCounts.active > 3) {
         lines.push(
-          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** so portfolio skills default to those instead of all ${brandCounts.active}.`,
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** — portfolio skills will default to those instead of all ${brandCounts.active}.`,
+        );
+      } else {
+        lines.push(
+          'You have a small number of brands, so you may not need to curate a key list — but if you want to, say *"mark <brand> as key"* anytime.',
+        );
+      }
+      lines.push('');
+      lines.push("Or, if you'd rather just look at data: say *\"explore my data\"*.");
+      lines.push('');
+    } else if (state === 'B') {
+      // The key step: explain cold-start in user-centric terms + nudge
+      // to do the first one.
+      const targetBrand =
+        brandCounts?.first_key_uncold_display_name ?? brandCounts?.first_key_display_name ?? 'your top key brand';
+      lines.push(
+        '### Next step: cold-start your first brand',
+      );
+      lines.push('');
+      lines.push(
+        '**Cold-start** teaches the plugin about your brand — catalog, marketplaces, target ACOS, recent launches and events. After ~3–5 minutes of mostly-automated setup (plus a few intake questions from me), every analytical skill — daily health check, runaway-spend, monthly report — already knows your brand and doesn\'t need re-explaining each time you run it.',
+      );
+      lines.push('');
+      lines.push(
+        `Until you cold-start at least one brand, the analytical skills are locked. You can still explore data via *"explore my data"*. **Want to start with ${targetBrand}?** Just say *"cold start ${targetBrand}"*.`,
+      );
+      lines.push('');
+      lines.push(
+        `Other options if you'd rather warm up first: *"explore my data"*, *"run a portfolio quick scan"* (gives you green/yellow/red verdicts across your ${brandCounts?.key ?? 0} key brand(s) — uses defaults until brands are cold-started, but still useful as a triage).`,
+      );
+      lines.push('');
+    } else if (state === 'C') {
+      // At least one key brand is cold-started. Surface the unlocked
+      // skills, naming the cold-started brand. If there are still
+      // un-cold-started keys, mention that too.
+      const coldStartedKey = brandCounts?.first_key_display_name ?? 'your cold-started brand';
+      const uncoldKey = brandCounts?.first_key_uncold_display_name;
+      lines.push(
+        `**${coldStartedKey}** is ready for analytical skills. A few things to try:`,
+      );
+      lines.push('');
+      lines.push(
+        `- *"run daily health check on ${coldStartedKey}"* — exception-based daily review (what's broken today?)`,
+      );
+      lines.push(
+        `- *"run runaway spend check on ${coldStartedKey}"* — flags acute keyword overspend`,
+      );
+      lines.push(
+        `- *"write monthly report for ${coldStartedKey}"* — MoM/YoY analysis with item-group breakdown`,
+      );
+      lines.push(
+        `- *"run portfolio quick scan"* — multi-brand triage across your ${brandCounts?.key ?? 0} key brand(s); GREEN/YELLOW/RED verdicts`,
+      );
+      lines.push('');
+      if (uncoldKey) {
+        lines.push(
+          `When you're ready to unlock the same surface on the rest of your key brands, just say *"cold start ${uncoldKey}"* (or any of the others).`,
         );
         lines.push('');
       }
-    } else if (brandCounts && brandCounts.total === 0) {
-      // Edge: auth complete but registry shows zero brands. Surface the
-      // activation handoff so the user knows what to do.
-      lines.push(
-        "Your warehouse access shows **no brands yet** — this means you have not yet activated data in MixShift for your brands.",
-      );
+    } else {
+      // State D — fully onboarded. Tight navigation.
+      lines.push('All your key brands are cold-started and ready. Common moves:');
       lines.push('');
-      lines.push(
-        'Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager',
-      );
+      lines.push('- *"run portfolio quick scan"* — multi-brand daily triage');
+      lines.push('- *"run daily health check on \\<brand\\>"* — single-brand exception review');
+      lines.push('- *"run runaway spend on \\<brand\\>"* — keyword overspend flagging');
+      lines.push('- *"write monthly report for \\<brand\\>"* — MoM/YoY analysis');
+      lines.push('- *"explore my data"* — ad-hoc queries / CSV exports');
+      lines.push('- *"show my brands"* — see your portfolio, *"add \\<brand\\> to key brands"* to expand the focused set');
+      lines.push('- *"send feedback to mixshift: \\<your message\\>"* — bugs, gripes, requests');
       lines.push('');
-      lines.push(
-        'Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift',
-      );
-      lines.push('');
-      return lines.join('\n');
     }
 
-    lines.push('A few directions you can go:');
-    lines.push('');
-    lines.push('- **See your brands** — say *"show my brands"* or *"what brands do I have"*. (Dormant brands hidden by default; say *"show all my brands"* to include them.)');
-    lines.push('- **Curate your key brands** — *"mark \\<brand\\> as key"* or *"I manage \\<brand1\\>, \\<brand2\\>, ..."*. Portfolio skills default to these.');
-    lines.push('- **Explore + export your data** (no brand onboarding required) — *"explore my data"*, *"show me a sample of \\<table\\>"*, *"export \\<brand\\>\'s campaigns to CSV"*.');
-    lines.push('- **Onboard a brand for analytical skills** (daily-health-check, runaway-spend, etc.) — *"onboard \\<brand\\>"*, then *"run account cold start for \\<brand\\>"*.');
-    lines.push('- **Re-run auth setup** if credentials need changing — *"set up my credentials"*.');
-    lines.push('- **Send feedback** — *"send feedback to mixshift: \\<your message\\>"*. Bugs, gripes, feature requests — all welcome during beta.');
-    lines.push('');
     lines.push("Where do you want to start?");
     lines.push('');
     return lines.join('\n');

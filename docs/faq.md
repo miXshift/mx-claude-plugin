@@ -179,6 +179,16 @@ Present in the codebase but **not yet enabled for general customer use** as of p
 
 The analytical skills will be opened in subsequent releases as each one is validated. Watch the changelog / release notes.
 
+### What's cold-start and why do I need it?
+
+**Cold-start teaches the plugin about your brand.** It's a one-time setup (~3–5 minutes per brand) that runs structured queries against your warehouse + walks you through a short intake — your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it.
+
+**Without cold-start**, the analytical skills are locked. You can still use `data-explore` to query and export anything, but skills like *"run daily health check on Hydrapak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
+
+**To run it:** in chat, say *"cold start Hydrapak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/` — preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, cold-start state stays).
+
+**You don't have to cold-start every brand.** Most users start with their top 1–2 brands, see the analytical skill output, then decide whether to cold-start more. The `mixshift brand list` output shows ✓ next to cold-started brands so you can see at a glance what's ready.
+
 ### Can I run a custom SQL query?
 
 Yes. `mixshift data query --sql "<your SQL>"` runs arbitrary read-only SQL. The warehouse user has SELECT permissions only — destructive operations (INSERT/UPDATE/DELETE/DDL) fail at the database level. Statement-level timeout is 60s; narrow your query if it takes longer.
