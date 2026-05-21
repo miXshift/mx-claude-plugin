@@ -50599,6 +50599,148 @@ function emptyArtifact(brandSlug, runDate, accountCount) {
   };
 }
 
+// src/lib/enrichment/settlement-curve.ts
+function computeSettlementCurve(rows) {
+  if (rows.length === 0) return null;
+  const byCt = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const ct = normalizeCampaignType(r.campaign_type);
+    if (!ct) continue;
+    const agg = byCt.get(ct) ?? { spend: 0, s1: 0, s7: 0, s14: 0 };
+    agg.spend += safeFloat(r.spend);
+    agg.s1 += safeFloat(r.sales_1day);
+    agg.s7 += safeFloat(r.sales_7day);
+    agg.s14 += safeFloat(r.sales_14day);
+    byCt.set(ct, agg);
+  }
+  const ctSlots = ["sponsoredProducts", "sponsoredBrands", "sponsoredDisplay"];
+  const by_campaign_type = {};
+  for (const ct of ctSlots) {
+    const agg = byCt.get(ct);
+    if (!agg || agg.spend === 0) {
+      by_campaign_type[ct] = insufficientCell();
+      continue;
+    }
+    const acos1 = agg.s1 > 0 ? agg.spend / agg.s1 * 100 : null;
+    const acos7 = agg.s7 > 0 ? agg.spend / agg.s7 * 100 : null;
+    const acos14 = agg.s14 > 0 ? agg.spend / agg.s14 * 100 : null;
+    const imp7 = acos1 !== null && acos7 !== null ? acos1 - acos7 : null;
+    const imp14 = acos1 !== null && acos14 !== null ? acos1 - acos14 : null;
+    const settled = agg.s14 > 0 ? agg.s1 / agg.s14 * 100 : null;
+    if (acos14 === null) {
+      by_campaign_type[ct] = insufficientCell();
+      continue;
+    }
+    by_campaign_type[ct] = {
+      acos_1day: round2(acos1),
+      acos_7day: round2(acos7),
+      acos_14day: round2(acos14),
+      improvement_pts_1_to_7: round2(imp7),
+      improvement_pts_1_to_14: round2(imp14),
+      settled_pct_at_1day: round2(settled),
+      status: "computed"
+    };
+  }
+  const byDow = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const dow = normalizeDow(r.dow);
+    if (dow === null) continue;
+    const agg = byDow.get(dow) ?? { spend: 0, s1: 0, s14: 0 };
+    agg.spend += safeFloat(r.spend);
+    agg.s1 += safeFloat(r.sales_1day);
+    agg.s14 += safeFloat(r.sales_14day);
+    byDow.set(dow, agg);
+  }
+  const dowImp = /* @__PURE__ */ new Map();
+  for (const [dow, agg] of byDow.entries()) {
+    if (agg.s1 > 0 && agg.s14 > 0) {
+      const acos1 = agg.spend / agg.s1 * 100;
+      const acos14 = agg.spend / agg.s14 * 100;
+      dowImp.set(dow, acos1 - acos14);
+    }
+  }
+  let globalMean = 0;
+  if (dowImp.size > 0) {
+    const vals = Array.from(dowImp.values());
+    globalMean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+  const dow_offset_pts = {
+    monday: 0,
+    tuesday: 0,
+    wednesday: 0,
+    thursday: 0,
+    friday: 0,
+    saturday: 0,
+    sunday: 0
+  };
+  for (const [dow, imp] of dowImp.entries()) {
+    const name = DOW_NAMES.get(dow);
+    if (!name) continue;
+    dow_offset_pts[name] = round2(imp - globalMean) ?? 0;
+  }
+  let stability_score;
+  if (dowImp.size >= 5) {
+    const vals = Array.from(dowImp.values());
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const variance = vals.reduce((acc, v) => acc + (v - mean) ** 2, 0) / vals.length;
+    const stddev = Math.sqrt(variance);
+    stability_score = stddev < 5 ? "high" : stddev < 15 ? "medium" : "low";
+  } else {
+    stability_score = "low";
+  }
+  return {
+    by_campaign_type,
+    dow_offset_pts,
+    stability_score,
+    last_calibrated: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)
+  };
+}
+var DOW_NAMES = /* @__PURE__ */ new Map([
+  [1, "sunday"],
+  [2, "monday"],
+  [3, "tuesday"],
+  [4, "wednesday"],
+  [5, "thursday"],
+  [6, "friday"],
+  [7, "saturday"]
+]);
+function normalizeCampaignType(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (s === "sponsoredProducts" || s === "SP" || s.toLowerCase() === "sponsored products")
+    return "sponsoredProducts";
+  if (s === "sponsoredBrands" || s === "SB" || s.toLowerCase() === "sponsored brands")
+    return "sponsoredBrands";
+  if (s === "sponsoredDisplay" || s === "SD" || s.toLowerCase() === "sponsored display")
+    return "sponsoredDisplay";
+  return null;
+}
+function normalizeDow(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 7) return null;
+  return n;
+}
+function safeFloat(v) {
+  if (v === null || v === void 0 || v === "") return 0;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function round2(n) {
+  if (n === null) return null;
+  return Math.round(n * 100) / 100;
+}
+function insufficientCell() {
+  return {
+    acos_1day: null,
+    acos_7day: null,
+    acos_14day: null,
+    improvement_pts_1_to_7: null,
+    improvement_pts_1_to_14: null,
+    settled_pct_at_1day: null,
+    status: "insufficient_data"
+  };
+}
+
 // src/commands/brand-enrich.ts
 init_resolve();
 function registerBrandEnrichCommand(brandCmd) {
@@ -50634,12 +50776,20 @@ function registerBrandEnrichCommand(brandCmd) {
         const row = index.brands.find((b) => b.slug === brand.slug);
         const accountCount = row?.accounts.length ?? 0;
         const artifact = emptyArtifact(brand.slug, runDate, accountCount);
-        artifact.partial = true;
-        artifact.partial_reasons = [
-          "C.2 settlement-curve enricher not yet implemented",
-          "C.3 stockout-window stitcher not yet implemented",
-          "C.4 brand-typo clusterer not yet implemented"
-        ];
+        const partial_reasons = [];
+        const cs28Rows = extractQueryRows(prefetch, "CS-28");
+        if (cs28Rows.length === 0) {
+          partial_reasons.push("CS-28 returned no rows \u2014 settlement curve unavailable");
+        } else {
+          artifact.daily_settlement_curve = computeSettlementCurve(cs28Rows);
+          if (artifact.daily_settlement_curve === null) {
+            partial_reasons.push("Settlement curve computation returned null");
+          }
+        }
+        partial_reasons.push("C.3 stockout-window stitcher not yet implemented");
+        partial_reasons.push("C.4 brand-typo clusterer not yet implemented");
+        artifact.partial_reasons = partial_reasons;
+        artifact.partial = partial_reasons.length > 0;
         const { path: path2 } = await writeEnrichmentArtifact(
           brand.slug,
           runDate,
@@ -50678,7 +50828,10 @@ function registerBrandEnrichCommand(brandCmd) {
         process.stdout.write(
           `
 \u2713 Enrichment artifact written to ${path2}
-` + (artifact.partial ? `  (partial \u2014 ${artifact.partial_reasons.length} sub-analyses pending)
+  Settlement curve: ${artifact.daily_settlement_curve ? `computed (stability: ${artifact.daily_settlement_curve.stability_score})` : "unavailable"}
+  Stockout candidates: ${artifact.stockout_candidates.length}
+  Brand-typo clusters: ${artifact.brand_term_typo_candidates.length}
+` + (artifact.partial ? `  Partial \u2014 ${artifact.partial_reasons.length} pending: ${artifact.partial_reasons.join("; ")}
 
 ` : `
 `)
@@ -50690,6 +50843,16 @@ function registerBrandEnrichCommand(brandCmd) {
       }
     }
   );
+}
+function extractQueryRows(prefetch, queryId) {
+  if (prefetch === null || typeof prefetch !== "object") return [];
+  const queries = prefetch.queries;
+  if (!queries || typeof queries !== "object") return [];
+  const q = queries[queryId];
+  if (!q || typeof q !== "object") return [];
+  const rows = q.rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => r !== null && typeof r === "object");
 }
 async function resolveBrand2(input, dataDir) {
   const { index } = await readIndex(dataDir);

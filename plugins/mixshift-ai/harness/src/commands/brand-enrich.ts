@@ -23,6 +23,10 @@ import {
   emptyArtifact,
   writeEnrichmentArtifact,
 } from '../lib/enrichment/storage.js';
+import {
+  computeSettlementCurve,
+  type CS28Row,
+} from '../lib/enrichment/settlement-curve.js';
 import { brandDir } from '../lib/paths/resolve.js';
 import { track } from '../lib/telemetry/index.js';
 
@@ -79,18 +83,28 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
           const row = index.brands.find((b) => b.slug === brand.slug);
           const accountCount = row?.accounts.length ?? 0;
 
-          // Skeleton artifact + flag partial until each sub-analysis is implemented.
           const artifact = emptyArtifact(brand.slug, runDate, accountCount);
-          artifact.partial = true;
-          artifact.partial_reasons = [
-            'C.2 settlement-curve enricher not yet implemented',
-            'C.3 stockout-window stitcher not yet implemented',
-            'C.4 brand-typo clusterer not yet implemented',
-          ];
+          const partial_reasons: string[] = [];
 
-          // TODO Phase C.2: compute daily_settlement_curve from prefetch.CS-28
-          // TODO Phase C.3: compute stockout_candidates from prefetch.CS-29 + CS-30
-          // TODO Phase C.4: compute brand_term_typo_candidates from prefetch.CS-31
+          // ─── C.2 — Settlement curve from CS-28 ─────────────────────────────
+          const cs28Rows = extractQueryRows(prefetch, 'CS-28') as CS28Row[];
+          if (cs28Rows.length === 0) {
+            partial_reasons.push('CS-28 returned no rows — settlement curve unavailable');
+          } else {
+            artifact.daily_settlement_curve = computeSettlementCurve(cs28Rows);
+            if (artifact.daily_settlement_curve === null) {
+              partial_reasons.push('Settlement curve computation returned null');
+            }
+          }
+
+          // ─── C.3 — Stockout windows from CS-29 + CS-30 (pending) ───────────
+          partial_reasons.push('C.3 stockout-window stitcher not yet implemented');
+
+          // ─── C.4 — Brand-name typo clusters from CS-31 (pending) ───────────
+          partial_reasons.push('C.4 brand-typo clusterer not yet implemented');
+
+          artifact.partial_reasons = partial_reasons;
+          artifact.partial = partial_reasons.length > 0;
 
           const { path } = await writeEnrichmentArtifact(
             brand.slug,
@@ -127,17 +141,17 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
                 2,
               ) + '\n',
             );
-            // Mark prefetch result reachable so it's not "unused"
-            void prefetch;
             return;
           }
           process.stdout.write(
             `\n✓ Enrichment artifact written to ${path}\n` +
+              `  Settlement curve: ${artifact.daily_settlement_curve ? `computed (stability: ${artifact.daily_settlement_curve.stability_score})` : 'unavailable'}\n` +
+              `  Stockout candidates: ${artifact.stockout_candidates.length}\n` +
+              `  Brand-typo clusters: ${artifact.brand_term_typo_candidates.length}\n` +
               (artifact.partial
-                ? `  (partial — ${artifact.partial_reasons.length} sub-analyses pending)\n\n`
+                ? `  Partial — ${artifact.partial_reasons.length} pending: ${artifact.partial_reasons.join('; ')}\n\n`
                 : `\n`),
           );
-          void prefetch;
           return;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -150,6 +164,22 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Extract rows for a specific CS-* query from the prefetch artifact.
+ * The prefetch artifact's shape is `{ queries: { "CS-XX": { rows: [...] } } }`.
+ * Returns [] when the query isn't present or has no rows.
+ */
+function extractQueryRows(prefetch: unknown, queryId: string): Array<Record<string, unknown>> {
+  if (prefetch === null || typeof prefetch !== 'object') return [];
+  const queries = (prefetch as { queries?: Record<string, unknown> }).queries;
+  if (!queries || typeof queries !== 'object') return [];
+  const q = queries[queryId];
+  if (!q || typeof q !== 'object') return [];
+  const rows = (q as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object');
+}
 
 async function resolveBrand(
   input: string,
