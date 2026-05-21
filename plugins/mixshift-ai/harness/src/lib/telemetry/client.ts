@@ -72,9 +72,20 @@ export async function flushQueue(
 /**
  * POST one batch to Supabase. Throws on non-2xx response or timeout.
  *
- * Supabase PostgREST accepts an array body for bulk insert. The `Prefer:
- * return=minimal` header keeps the response small (we don't need the
- * inserted rows back).
+ * Supabase PostgREST accepts an array body for bulk insert. Two `Prefer`
+ * directives matter:
+ *   - `return=minimal` — keeps the response small (no inserted rows back).
+ *   - `missing=default` — tells PostgREST to fill in missing columns with
+ *      their default (NULL where the column is nullable). Without this,
+ *      heterogeneous batches 400 with PGRST102 "All object keys must match"
+ *      because JSON.stringify drops `undefined` values — so an event with
+ *      a skill_id and one without serialize with different key sets, even
+ *      though both are valid rows in the events table.
+ *
+ * Belt-and-suspenders, we also normalize each record below so missing
+ * optional fields become explicit `null`s. Either alone would work; both
+ * gives us defense if a future PostgREST version interprets `Prefer` more
+ * strictly.
  */
 async function postBatch(
   endpoint: string,
@@ -85,15 +96,16 @@ async function postBatch(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const normalized = batch.map(normalizeRecord);
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         apikey,
         Authorization: `Bearer ${apikey}`,
-        Prefer: 'return=minimal',
+        Prefer: 'return=minimal, missing=default',
       },
-      body: JSON.stringify(batch),
+      body: JSON.stringify(normalized),
       signal: controller.signal,
     });
     if (!resp.ok) {
@@ -105,4 +117,37 @@ async function postBatch(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Normalize a record so every event in a batch has the same key set.
+ * Missing optional lifted fields become `null` (which PostgREST inserts as
+ * SQL NULL via the table's nullable columns). Without this, `JSON.stringify`
+ * silently drops `undefined` values and PostgREST's PGRST102 trips on
+ * mismatched key sets across rows.
+ *
+ * We list every optional key explicitly rather than coercing in a loop so
+ * adding a new lifted field to `TelemetryEventRecord` is an obvious diff
+ * here too — keeps the contract surface visible.
+ */
+function normalizeRecord(rec: TelemetryEventRecord): Record<string, unknown> {
+  return {
+    event_name: rec.event_name,
+    install_id: rec.install_id,
+    email: rec.email ?? null,
+    plugin_version: rec.plugin_version,
+    install_path: rec.install_path,
+    os: rec.os,
+    node_version: rec.node_version,
+    ts: rec.ts,
+    payload: rec.payload ?? {},
+    skill_id: rec.skill_id ?? null,
+    duration_ms: rec.duration_ms ?? null,
+    outcome: rec.outcome ?? null,
+    query_id: rec.query_id ?? null,
+    query_table: rec.query_table ?? null,
+    row_count: rec.row_count ?? null,
+    error_class: rec.error_class ?? null,
+    trigger_phrase: rec.trigger_phrase ?? null,
+  };
 }

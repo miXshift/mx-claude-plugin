@@ -81,6 +81,9 @@ export const EventName = {
   // Brand context
   BrandDiscovered: 'brand.discovered',
   BrandAdded: 'brand.added',
+  // Brand config editor (mixshift brand config <slug>)
+  BrandConfigViewed: 'brand_config.viewed',
+  BrandConfigEdited: 'brand_config.edited',
 
   // Skill + query
   SkillInvoked: 'skill.invoked',
@@ -91,6 +94,15 @@ export const EventName = {
   PrefetchStarted: 'skill.prefetch_started',
   PrefetchCompleted: 'skill.prefetch_completed',
   SidecarWritten: 'skill.sidecar_written',
+
+  // OCL (Objective Level Configuration) — confirm-on-run flow
+  SkillCalibrationConfirmed: 'skill.calibration_confirmed',
+  SkillCalibrationEdited: 'skill.calibration_edited',
+  SkillCalibrationReset: 'skill.calibration_reset',
+
+  // Apply gate (dry-run today; flips to real writes when MCP/API lands)
+  SkillApplyAttempted: 'skill.apply_attempted',
+  SkillApplied: 'skill.applied',
 
   // Feedback
   FeedbackSubmitted: 'feedback.submitted',

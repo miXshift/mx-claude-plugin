@@ -112,6 +112,24 @@ export const profileSchema = z.object({
       password_hash: z.string().optional(),
     })
     .default({ port: 8080 }),
+
+  // User-level display preferences. Applied across every HTML surface +
+  // confirmation card. Distinct from per-skill OCL (which is per-brand-
+  // per-skill) — these settings live with the user and travel with them
+  // across brands.
+  display: z
+    .object({
+      // ACoS-thinkers vs RoAS-thinkers. Same underlying numbers, inverse
+      // framing. We store metrics canonically as ACoS percentages (the
+      // warehouse convention) and convert at display time when this is
+      // set to 'roas'.
+      //   acos → "ACoS target: 28%", "TACoS target: 18%"
+      //   roas → "RoAS target: 3.57x", "TRoAS target: 5.56x"
+      // No per-skill override — the user picks once and every surface
+      // respects it. Avoids inconsistent framing between reports.
+      metric_framing: z.enum(['acos', 'roas']).default('acos'),
+    })
+    .default({ metric_framing: 'acos' }),
 });
 
 export type Profile = z.infer<typeof profileSchema>;

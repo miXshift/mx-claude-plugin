@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { parse as parseYaml } from 'yaml';
 import { pluginPath } from './plugin-root.js';
 import { formatZodError } from '../profile/format-error.js';
+import { calibrationManifestSchema } from '../calibration/manifest-schema.js';
 
 const allowedToolEnum = z.enum([
   'db_read',
@@ -85,6 +86,11 @@ export const skillManifestSchema = z.object({
   upstream_skills: z.array(z.string()).optional(),
   escalation_conditions: z.array(z.string()).optional(),
   notes: z.string().optional(),
+  // OCL — Objective Level Configuration. When present, the harness shows a
+  // confirm-on-run flow with these fields before invoking the skill. Skills
+  // without a calibration block skip the confirm flow entirely. See
+  // lib/calibration/manifest-schema.ts for field types + authoring guide.
+  calibration: calibrationManifestSchema.optional(),
 });
 
 export type SkillManifest = z.infer<typeof skillManifestSchema>;

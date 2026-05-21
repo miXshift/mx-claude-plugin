@@ -21,6 +21,8 @@ import {
   clearKeyBrands,
 } from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { registerBrandViewCommand } from './brand-view.js';
+import { registerBrandConfigCommand } from './brand-config.js';
 
 interface RootOptions {
   json?: boolean;
@@ -535,6 +537,15 @@ export function registerBrandCommands(program: Command): void {
       process.exitCode = result.ok ? 0 : 1;
       return;
     });
+
+  // `mixshift brand view <slug>` — design-system HTML overview.
+  // Lives in a sibling file (brand-view.ts) to keep this file readable.
+  registerBrandViewCommand(brand);
+
+  // `mixshift brand config <slug>` — confirm-on-edit flow for brand-level
+  // context fields (ACoS/TACoS targets, attribution window, goals). Mirror
+  // of the skill OCL surface, pointed at context.yaml instead of config.yaml.
+  registerBrandConfigCommand(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.

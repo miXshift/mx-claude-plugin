@@ -116,7 +116,7 @@ Runtime-only artifacts are separate from missing context. Forecast models, HCAM/
 - **Primary metric**: ACOS or TACOS? TACOS for SC; ACOS default for VC.
 - **ACOS target %**: blended account level; per-sub-brand if they differ materially.
 - **For SC: TACOS target**: monthly and quarterly if quarterly pacing is enabled.
-- **Quarterly or annual revenue target**: if one exists.
+- **Quarterly or annual revenue target**: if one exists. When `report_quarterly_pacing: true`, remind the AM that this target should be refreshed at each quarter rollover. The Tier 1 freshness preflight catches stale `context.yaml::last_updated`, but if the AM bumps `last_updated` without also updating `quarterly_revenue_target` (or `monthly_revenue_target` at month rollover), daily and weekly skills will pace against a stale anchor and produce verdicts that look on-target when they're actually pacing against last quarter's number.
 - **Forecast / bridge runtime status**: confirm whether forecast, HCAM, H-Bridge, vertical bridge, or screenshots should be requested at downstream skill run time.
 - **Spend posture**: scale / efficiency / defend / clear_bleed.
 - **Active promotions or upcoming launches**: 30-60 day horizon.
@@ -129,6 +129,23 @@ Runtime-only artifacts are separate from missing context. Forecast models, HCAM/
 - Competitive context if conquesting is active.
 - Re-entry conditions if currently in pullback posture.
 - Any first-paragraph brand facts that public research missed or got wrong.
+
+---
+
+**Target-refresh discipline (Alpha cohort guidance)**
+
+The Tier 1 freshness preflight measures `context.yaml::last_updated` at the file level,
+not per-field. Two cases the AM should watch for:
+
+- **Quarter rollover.** When a new quarter begins and `report_quarterly_pacing: true`,
+  refresh `goals.quarterly_revenue_target` first, then bump `last_updated`. Skipping the
+  target refresh means `pacing_gap_pct` is computed against the prior-quarter anchor.
+- **Month rollover.** Same hazard with `goals.monthly_revenue_target` when daily skills
+  pace against monthly targets. Refresh first, then bump `last_updated`.
+
+A future per-field timestamp (`goals.targets_last_updated`) is on the roadmap; for now
+this is AM discipline. Skills will flag a stale `last_updated` via the Tier 1 preflight,
+but they cannot detect a field-level miss when the file-level timestamp was bumped.
 
 ---
 

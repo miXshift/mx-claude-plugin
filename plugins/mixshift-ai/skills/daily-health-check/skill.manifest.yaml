@@ -78,3 +78,87 @@ notes: >
   never hardcode percentiles.
   Sales targets are not required for TACOS-primary accounts; the daily check evaluates
   spend/ACOS/TACOS posture against management fields and context events.
+
+# OCL — Objective Level Configuration.
+# Surfaced to the user via the confirm-on-run flow (`mixshift skill config
+# daily-health-check --brand <slug>` or implicitly on `mixshift skill run`).
+# Sovereign once edited — see lib/calibration/manifest-schema.ts for the
+# sovereignty rules. Seeds pull from the brand's context.yaml on first run;
+# the user still has to confirm.
+calibration:
+  schema_version: 1
+  # The OCL is what DHC is USING for this specific run. Some fields are
+  # brand-level facts surfaced here so the user sees them on the confirm
+  # card (seeded from context.yaml — the brand config layer). Others are
+  # DHC-specific operational knobs (min spend floor, paused-campaign
+  # display) that have no brand-level analogue.
+  #
+  # Storage: only fields the user explicitly sets are written; the rest
+  # are computed from the seed at run-time. So accepting all defaults
+  # means config.yaml stays empty for this skill until you actually
+  # override something — clean separation between "I touched this" and
+  # "I inherited the brand default."
+  fields:
+    # ACoS / TACoS targets — seeded from brand context. Surfaces what DHC
+    # is using so it's never a hidden input. Optional: when unset (the
+    # common case), DHC falls back to the brand-level value at run time.
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target DHC should use for {brand_name}?"
+      help: >
+        DHC flags campaigns running materially above this. Defaults to
+        your brand's ACoS target from context.yaml. Override here only
+        when this specific skill should use a different value (e.g. DHC
+        runs at a tighter threshold than monthly reporting).
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false
+
+    - id: tacos_target
+      label: "TACoS target"
+      prompt: "TACoS target DHC should use for {brand_name}?"
+      help: >
+        Total Advertising Cost of Sales — ad spend over TOTAL ordered
+        revenue. Catches over-investment in ads even when ACoS looks
+        fine. Defaults to your brand's TACoS target from context.yaml.
+      type: percent
+      range: { min: 0.01, max: 1.0 }
+      seed_from: context.management.tacos_target_pct
+      required: false
+
+    - id: min_spend_to_flag
+      label: "Min daily spend to flag"
+      prompt: "Minimum daily spend before a campaign surfaces as YELLOW/RED?"
+      help: >
+        Anything spending less than this on the analysis day is suppressed
+        from the exception list, even if its ACoS is high. Prevents tiny
+        campaigns from cluttering the report. Set to 0 to flag everything.
+      type: int
+      default: 5
+      range: { min: 0, max: 10000 }
+      required: true
+
+    - id: hero_skus
+      label: "Hero SKUs (protect from cuts)"
+      prompt: "Hero SKUs that should never be flagged for bid cuts?"
+      help: >
+        ASINs in this list are excluded from RED/YELLOW recommendations to
+        reduce bids or pause. They can still surface as informational. Leave
+        empty to apply standard rules to every SKU.
+      type: asin_list
+      default: []
+      max_items: 200
+      required: false
+
+    - id: quiet_paused
+      label: "Hide paused campaigns"
+      prompt: "Suppress paused campaigns from the exception list?"
+      help: >
+        Paused campaigns can't bleed spend, but they can still flag for
+        stale targeting or pending review. Most brands set this to yes
+        once the paused set stabilizes. Set to no during a cleanup sprint
+        when you want everything visible.
+      type: bool
+      default: true
+      required: true

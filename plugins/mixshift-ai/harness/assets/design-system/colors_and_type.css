@@ -1,0 +1,364 @@
+/* ==========================================================================
+   MixShift — Colors & Type
+   The canonical design tokens for the MixShift brand.
+   Mirrors libs/ui/web-ui/src/global.css (shadcn-based) with readable names.
+   ========================================================================== */
+
+/* -------------------------------------------------------------------------- */
+/* Fonts                                                                      */
+/* -------------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Inter — brand fonts (local). 24pt optical size is the default body/UI face.
+   "Inter Text" is the 18pt optical size for small text (<14px).
+   "Inter Display" is the 28pt optical size for large headings (>28px). */
+
+/* --- Inter (24pt — default) --- */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100; font-display: swap; src: url('fonts/Inter_24pt-Thin.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 100; font-display: swap; src: url('fonts/Inter_24pt-ThinItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 200; font-display: swap; src: url('fonts/Inter_24pt-ExtraLight.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 200; font-display: swap; src: url('fonts/Inter_24pt-ExtraLightItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 300; font-display: swap; src: url('fonts/Inter_24pt-Light.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 300; font-display: swap; src: url('fonts/Inter_24pt-LightItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/Inter_24pt-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 400; font-display: swap; src: url('fonts/Inter_24pt-Italic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/Inter_24pt-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 500; font-display: swap; src: url('fonts/Inter_24pt-MediumItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/Inter_24pt-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 600; font-display: swap; src: url('fonts/Inter_24pt-SemiBoldItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/Inter_24pt-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 700; font-display: swap; src: url('fonts/Inter_24pt-BoldItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 800; font-display: swap; src: url('fonts/Inter_24pt-ExtraBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 800; font-display: swap; src: url('fonts/Inter_24pt-ExtraBoldItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 900; font-display: swap; src: url('fonts/Inter_24pt-Black.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-style: italic; font-weight: 900; font-display: swap; src: url('fonts/Inter_24pt-BlackItalic.ttf') format('truetype'); }
+
+/* --- Inter Text (18pt — for small UI text) --- */
+@font-face { font-family: 'Inter Text'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/Inter_18pt-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Text'; font-style: italic; font-weight: 400; font-display: swap; src: url('fonts/Inter_18pt-Italic.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Text'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/Inter_18pt-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Text'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/Inter_18pt-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Text'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/Inter_18pt-Bold.ttf') format('truetype'); }
+
+/* --- Inter Display (28pt — for large headings) --- */
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/Inter_28pt-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/Inter_28pt-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/Inter_28pt-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/Inter_28pt-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 800; font-display: swap; src: url('fonts/Inter_28pt-ExtraBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 900; font-display: swap; src: url('fonts/Inter_28pt-Black.ttf') format('truetype'); }
+
+:root {
+  /* --- Brand core ------------------------------------------------------- */
+  /* MixShift green — the signature accent in the wordmark X and CTAs.
+     Sourced from libs/ui/web-ui/src/global.css --primary.                   */
+  --mx-green: hsl(142.1 76.2% 36.3%);   /* #16a34a-ish — primary */
+  --mx-green-400: hsl(142 70% 58%);     /* hero gradient start */
+  --mx-green-500: hsl(142 70% 45%);
+  --mx-green-600: hsl(142 76% 32%);
+  --mx-cyan-400: hsl(188 94% 58%);      /* hero gradient end */
+  --mx-cyan-500: hsl(188 86% 48%);
+
+  /* Brand neutrals — taken from the marketing black/gray stack and the
+     shadcn slate scale used app-side. */
+  --mx-black: #000000;
+  --mx-ink-900: hsl(222.2 84% 4.9%);    /* background / dark mode surface */
+  --mx-ink-800: hsl(217.2 32.6% 17.5%); /* card / muted on dark */
+  --mx-ink-700: #1f2937;                /* gray-800 — borders on dark */
+  --mx-ink-600: #374151;                /* gray-700 */
+  --mx-ink-500: #4b5563;                /* gray-600 */
+  --mx-slate-400: hsl(215 20.2% 65.1%); /* muted-foreground dark */
+  --mx-slate-300: hsl(214.3 31.8% 91.4%); /* border light */
+  --mx-slate-100: hsl(210 40% 96.1%);   /* secondary / muted light */
+  --mx-slate-50: hsl(210 40% 98%);      /* primary-foreground */
+  --mx-white: #ffffff;
+
+  /* --- Semantic (light, default) — mirrors global.css --- */
+  --background: 0 0% 100%;
+  --foreground: 222.2 47.4% 11.2%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 47.4% 11.2%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+  --primary: 142.1 76.2% 36.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+  --radius: 0.5rem;
+
+  /* Chart palette (uses HSL triplets so Tailwind's `hsl(var(--chart-1))`
+     composition works the same way). */
+  --chart-1: 217 91% 60%;   /* blue */
+  --chart-2: 175 84% 32%;   /* teal */
+  --chart-3: 38 92% 50%;    /* amber */
+  --chart-4: 258 90% 66%;   /* violet */
+  --chart-5: 350 89% 60%;   /* rose */
+  --chart-6: 199 89% 48%;   /* sky */
+  --chart-7: 160 84% 39%;   /* emerald */
+  --chart-8: 38 92% 50%;    /* amber */
+  --chart-grid: 0 0% 94%;
+  --chart-axis-text: 0 0% 40%;
+  --chart-comparison: 0 0% 64%;
+
+  /* --- Type --- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Type scale — two worlds.
+     Marketing uses big display sizes on dark; app chrome stays tight. */
+  --fs-display-xl: clamp(3.5rem, 7vw, 5.5rem);   /* hero headline */
+  --fs-display-lg: clamp(2.5rem, 5vw, 4rem);     /* section headline */
+  --fs-display-md: 2.25rem;                      /* 36px */
+  --fs-h1: 1.875rem;   /* 30px */
+  --fs-h2: 1.5rem;     /* 24px */
+  --fs-h3: 1.25rem;    /* 20px */
+  --fs-h4: 1.125rem;   /* 18px */
+  --fs-body-lg: 1.125rem; /* 18px — marketing paragraphs */
+  --fs-body: 1rem;        /* 16px */
+  --fs-body-sm: 0.875rem; /* 14px — dense app UI */
+  --fs-caption: 0.75rem;  /* 12px — metadata, labels */
+
+  --lh-tight: 1.1;
+  --lh-heading: 1.2;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+
+  /* Spacing, radii, shadows */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  --radius-sm: calc(var(--radius) - 4px); /* 4px */
+  --radius-md: calc(var(--radius) - 2px); /* 6px */
+  --radius-lg: var(--radius);             /* 8px — shadcn default */
+  --radius-xl: 12px;
+  --radius-2xl: 16px;   /* marketing cards */
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -4px rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+  --shadow-primary: 0 10px 28px -8px hsl(142.1 76.2% 36.3% / 0.4);
+  --shadow-inner: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 142.1 76.2% 36.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Semantic element styles                                                    */
+/* Use these for quickly writing prose in static HTML files.                  */
+/* -------------------------------------------------------------------------- */
+
+html { font-family: var(--font-sans); color: hsl(var(--foreground)); }
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6,
+.display-xl, .display-lg, .display-md {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: var(--lh-heading);
+  color: hsl(var(--foreground));
+}
+
+.display-xl { font-size: var(--fs-display-xl); line-height: var(--lh-tight); font-weight: 700; }
+.display-lg { font-size: var(--fs-display-lg); line-height: var(--lh-tight); font-weight: 700; }
+.display-md { font-size: var(--fs-display-md); line-height: var(--lh-heading); font-weight: 700; }
+
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); font-weight: 600; }
+h4 { font-size: var(--fs-h4); font-weight: 600; }
+
+p { margin: 0 0 1em; }
+p.lead { font-size: var(--fs-body-lg); color: hsl(var(--muted-foreground)); line-height: var(--lh-body); }
+.caption { font-size: var(--fs-caption); color: hsl(var(--muted-foreground)); }
+
+code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.95em; }
+code { background: hsl(var(--muted)); padding: 0.1em 0.4em; border-radius: var(--radius-sm); }
+
+a { color: hsl(var(--primary)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+hr { border: 0; border-top: 1px solid hsl(var(--border)); margin: var(--space-8) 0; }
+
+/* Brand gradient — the signature green → cyan used in hero headlines,
+   CTA fills, and the animated beam accents. */
+.brand-gradient-text {
+  background: linear-gradient(90deg, var(--mx-green-400), var(--mx-cyan-400));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-gradient-bg {
+  background: linear-gradient(90deg, var(--mx-green-400), var(--mx-cyan-400));
+}
+
+/* Theme-aware MixShift logo icon swap
+   Light theme shows the dark-stroke glyph; dark theme shows the white-stroke glyph. */
+[data-rc-theme="dark"] .ms-logo-light { display: none !important; }
+[data-rc-theme="dark"] .ms-logo-dark  { display: block !important; }
+[data-rc-theme="light"] .ms-logo-light { display: block !important; }
+[data-rc-theme="light"] .ms-logo-dark  { display: none !important; }
+
+/* ==========================================================================
+   Report Center (rc-*) semantic tokens
+   The shorthand surface tokens that all UI-kit components reference.
+   Apply by setting `data-rc-theme="light"` (or "dark") on <html> or any
+   ancestor; if no theme attribute is set, the :root defaults to light.
+   ========================================================================== */
+:root,
+:root[data-rc-theme="light"] {
+  /* Surfaces */
+  --rc-bg:            #f6f7f9;   /* app canvas */
+  --rc-card:          #ffffff;   /* card / panel surface */
+  --rc-subtle:        #f8fafc;   /* table-row stripe, header bands */
+  --rc-hover:         #f1f5f9;   /* hover wash for rows / icon buttons */
+  --rc-chip-bg:       #f8fafc;   /* segmented + outline-pill background */
+  --rc-rail-bg:       #0f172a;   /* dark icon rail background */
+  --rc-rail-border:   #1e293b;   /* rail right edge */
+  --rc-ink:           #0f172a;   /* dark high-contrast surface (toasts, dark pills) */
+
+  /* Borders + dividers */
+  --rc-border:        #e2e8f0;   /* default 1px border */
+  --rc-border-strong: #cbd5e1;   /* hover / focus border */
+  --rc-divider:       #eef2f6;   /* row separator (lighter than border) */
+
+  /* Text */
+  --rc-text:          #0f172a;   /* primary text */
+  --rc-text-sub:      #475569;   /* secondary text */
+  --rc-text-mute:     #94a3b8;   /* tertiary / placeholder */
+
+  /* Brand greens */
+  --rc-green:         #16a34a;   /* primary brand green (buttons, dots) */
+  --rc-green-ink:     #15803d;   /* deep green for text on tinted bg */
+  --rc-green-soft:    color-mix(in srgb, #16a34a 10%, #ffffff); /* tinted bg */
+
+  /* Status */
+  --rc-positive:      #15803d;
+  --rc-positive-soft: color-mix(in srgb, #16a34a 10%, transparent);
+  --rc-negative:      #dc2626;
+  --rc-negative-soft: color-mix(in srgb, #dc2626 10%, transparent);
+  --rc-red:           #dc2626;   /* alias used by danger button + delta */
+  --rc-warn:          #b45309;
+  --rc-warn-soft:     color-mix(in srgb, #f59e0b 12%, transparent);
+  --rc-info:          #2563eb;
+  --rc-info-soft:     color-mix(in srgb, #2563eb 10%, transparent);
+
+  /* Chart series — 8-stop categorical ramp */
+  --rc-chart-1:       #2563eb;   /* blue   (primary line) */
+  --rc-chart-2:       #16a34a;   /* green  (brand) */
+  --rc-chart-3:       #f59e0b;   /* amber */
+  --rc-chart-4:       #8b5cf6;   /* violet */
+  --rc-chart-5:       #06b6d4;   /* cyan */
+  --rc-chart-6:       #ec4899;   /* pink */
+  --rc-chart-7:       #65a30d;   /* lime */
+  --rc-chart-8:       #475569;   /* slate (neutral series) */
+  --rc-chart-prior:   #94a3b8;   /* prior-period dashed line */
+
+  /* Elevation */
+  --rc-shadow-1:      0 1px 2px rgba(15, 23, 42, 0.04);
+  --rc-shadow-2:      0 4px 14px -4px rgba(15, 23, 42, 0.10);
+  --rc-shadow-3:      0 12px 32px -8px rgba(15, 23, 42, 0.22);
+  --rc-shadow-4:      0 24px 48px -12px rgba(15, 23, 42, 0.28);
+}
+
+:root[data-rc-theme="dark"] {
+  --rc-bg:            #0b1220;
+  --rc-card:          #111a2e;
+  --rc-subtle:        #0f1729;
+  --rc-hover:         #1a2540;
+  --rc-chip-bg:       #1a2540;
+  --rc-rail-bg:       #060a14;
+  --rc-rail-border:   #111a2e;
+  --rc-ink:           #f8fafc;
+
+  --rc-border:        #1e293b;
+  --rc-border-strong: #334155;
+  --rc-divider:       #16213a;
+
+  --rc-text:          #f1f5f9;
+  --rc-text-sub:      #94a3b8;
+  --rc-text-mute:     #64748b;
+
+  --rc-green:         #22c55e;
+  --rc-green-ink:     #4ade80;
+  --rc-green-soft:    color-mix(in srgb, #22c55e 18%, transparent);
+
+  --rc-positive:      #4ade80;
+  --rc-positive-soft: color-mix(in srgb, #22c55e 16%, transparent);
+  --rc-negative:      #f87171;
+  --rc-negative-soft: color-mix(in srgb, #f87171 18%, transparent);
+  --rc-red:           #f87171;
+  --rc-warn:          #fbbf24;
+  --rc-warn-soft:     color-mix(in srgb, #fbbf24 18%, transparent);
+  --rc-info:          #60a5fa;
+  --rc-info-soft:     color-mix(in srgb, #60a5fa 18%, transparent);
+
+  --rc-chart-1:       #60a5fa;
+  --rc-chart-2:       #4ade80;
+  --rc-chart-3:       #fbbf24;
+  --rc-chart-4:       #a78bfa;
+  --rc-chart-5:       #22d3ee;
+  --rc-chart-6:       #f472b6;
+  --rc-chart-7:       #a3e635;
+  --rc-chart-8:       #94a3b8;
+  --rc-chart-prior:   #475569;
+
+  --rc-shadow-1:      0 1px 2px rgba(0, 0, 0, 0.30);
+  --rc-shadow-2:      0 4px 14px -4px rgba(0, 0, 0, 0.45);
+  --rc-shadow-3:      0 12px 32px -8px rgba(0, 0, 0, 0.55);
+  --rc-shadow-4:      0 24px 48px -12px rgba(0, 0, 0, 0.65);
+}

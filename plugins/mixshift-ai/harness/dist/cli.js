@@ -10263,7 +10263,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse3(src, reviver, options) {
+    function parse4(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -10304,7 +10304,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse3;
+    exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify;
@@ -10390,6 +10390,18 @@ function contextPath(brandSlug, dataDirOverride) {
 }
 function narrativePath(brandSlug, dataDirOverride) {
   return join4(brandDir(brandSlug, dataDirOverride), "narrative.md");
+}
+function brandConfigPath(brandSlug, dataDirOverride) {
+  return join4(brandDir(brandSlug, dataDirOverride), "config.yaml");
+}
+function runAppliedPath(brandSlug, skillId, runDate, dataDirOverride) {
+  return join4(
+    brandDir(brandSlug, dataDirOverride),
+    "runs",
+    skillId,
+    runDate,
+    "applied.json"
+  );
 }
 function indexPath(dataDirOverride) {
   return join4(clientsDir(dataDirOverride), "index.yaml");
@@ -25573,7 +25585,22 @@ var init_schema = __esm({
       ui: external_exports.object({
         port: external_exports.number().int().min(1).max(65535).default(8080),
         password_hash: external_exports.string().optional()
-      }).default({ port: 8080 })
+      }).default({ port: 8080 }),
+      // User-level display preferences. Applied across every HTML surface +
+      // confirmation card. Distinct from per-skill OCL (which is per-brand-
+      // per-skill) — these settings live with the user and travel with them
+      // across brands.
+      display: external_exports.object({
+        // ACoS-thinkers vs RoAS-thinkers. Same underlying numbers, inverse
+        // framing. We store metrics canonically as ACoS percentages (the
+        // warehouse convention) and convert at display time when this is
+        // set to 'roas'.
+        //   acos → "ACoS target: 28%", "TACoS target: 18%"
+        //   roas → "RoAS target: 3.57x", "TRoAS target: 5.56x"
+        // No per-skill override — the user picks once and every surface
+        // respects it. Avoids inconsistent framing between reports.
+        metric_framing: external_exports.enum(["acos", "roas"]).default("acos")
+      }).default({ metric_framing: "acos" })
     });
   }
 });
@@ -42369,7 +42396,7 @@ var require_named_placeholders = __commonJS({
     var DQUOTE = 34;
     var SQUOTE = 39;
     var BSLASH = 92;
-    function parse3(query2) {
+    function parse4(query2) {
       let ppos = RE_PARAM.exec(query2);
       let curpos = 0;
       let start = 0;
@@ -42458,7 +42485,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join10(tree) {
+      function join11(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42484,17 +42511,17 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join10(parse3(query2));
+        tree = join11(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
         return toArrayParams(tree, paramsObj);
       }
-      compile.parse = parse3;
+      compile.parse = parse4;
       return compile;
     }
     function toNumbered(q, params) {
-      const tree = parse3(q);
+      const tree = parse4(q);
       const paramsArr = [];
       if (tree.length === 1) {
         return [tree[0], paramsArr];
@@ -45589,15 +45616,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir10, readFile as readFile13 } from "node:fs/promises";
-import { join as join9, dirname as dirname13 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir13, readFile as readFile16 } from "node:fs/promises";
+import { join as join10, dirname as dirname17 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join9(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join10(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir10(dirname13(path2), { recursive: true });
+    await mkdir13(dirname17(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -45608,7 +45635,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile13(path2, "utf-8");
+    const raw = await readFile16(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -46954,15 +46981,16 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const normalized = batch.map(normalizeRecord);
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey,
         Authorization: `Bearer ${apikey}`,
-        Prefer: "return=minimal"
+        Prefer: "return=minimal, missing=default"
       },
-      body: JSON.stringify(batch),
+      body: JSON.stringify(normalized),
       signal: controller.signal
     });
     if (!resp.ok) {
@@ -46974,6 +47002,27 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+function normalizeRecord(rec) {
+  return {
+    event_name: rec.event_name,
+    install_id: rec.install_id,
+    email: rec.email ?? null,
+    plugin_version: rec.plugin_version,
+    install_path: rec.install_path,
+    os: rec.os,
+    node_version: rec.node_version,
+    ts: rec.ts,
+    payload: rec.payload ?? {},
+    skill_id: rec.skill_id ?? null,
+    duration_ms: rec.duration_ms ?? null,
+    outcome: rec.outcome ?? null,
+    query_id: rec.query_id ?? null,
+    query_table: rec.query_table ?? null,
+    row_count: rec.row_count ?? null,
+    error_class: rec.error_class ?? null,
+    trigger_phrase: rec.trigger_phrase ?? null
+  };
 }
 
 // src/lib/telemetry/events.ts
@@ -46995,6 +47044,9 @@ var EventName = {
   // Brand context
   BrandDiscovered: "brand.discovered",
   BrandAdded: "brand.added",
+  // Brand config editor (mixshift brand config <slug>)
+  BrandConfigViewed: "brand_config.viewed",
+  BrandConfigEdited: "brand_config.edited",
   // Skill + query
   SkillInvoked: "skill.invoked",
   SkillCompleted: "skill.completed",
@@ -47004,6 +47056,13 @@ var EventName = {
   PrefetchStarted: "skill.prefetch_started",
   PrefetchCompleted: "skill.prefetch_completed",
   SidecarWritten: "skill.sidecar_written",
+  // OCL (Objective Level Configuration) — confirm-on-run flow
+  SkillCalibrationConfirmed: "skill.calibration_confirmed",
+  SkillCalibrationEdited: "skill.calibration_edited",
+  SkillCalibrationReset: "skill.calibration_reset",
+  // Apply gate (dry-run today; flips to real writes when MCP/API lands)
+  SkillApplyAttempted: "skill.apply_attempted",
+  SkillApplied: "skill.applied",
   // Feedback
   FeedbackSubmitted: "feedback.submitted",
   FeedbackDetectedImplicit: "feedback.detected_implicit",
@@ -47084,6 +47143,1871 @@ function detectInstallPath() {
 }
 function detectOs() {
   return `${platform()}-${release()}`;
+}
+
+// src/commands/brand-view.ts
+import { readdir, stat as stat2, writeFile as writeFile7, mkdir as mkdir7 } from "node:fs/promises";
+import { dirname as dirname10 } from "node:path";
+import { exec as execCb } from "node:child_process";
+import { promisify } from "node:util";
+
+// src/lib/calibration/brand-config.ts
+var import_yaml8 = __toESM(require_dist(), 1);
+init_zod();
+init_resolve();
+import { mkdir as mkdir6, readFile as readFile8, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink } from "node:fs/promises";
+import { dirname as dirname8 } from "node:path";
+var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
+var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
+async function readBrandConfig(brandSlug, dataDirOverride) {
+  const path2 = brandConfigPath(brandSlug, dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile8(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError9(err)) {
+      return { config: {}, source: "empty", path: path2 };
+    }
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml8.parse)(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Brand config at ${path2} is malformed YAML: ${message}
+Hint: open the file and fix the YAML, or run \`mixshift skill config <skill> --brand ${brandSlug} --reset\` to wipe a specific skill's block.`
+    );
+  }
+  if (parsed === null || parsed === void 0) {
+    return { config: {}, source: "file", path: path2 };
+  }
+  const result = brandConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `Brand config at ${path2} is structurally invalid (each top-level key must map to a skill_id \u2192 object of values).
+First issue: ${result.error.issues[0]?.message ?? "(unknown)"}`
+    );
+  }
+  return { config: result.data, source: "file", path: path2 };
+}
+function buildSkillConfigView(storedBlock, manifest) {
+  const stored = storedBlock ?? {};
+  const isFirstRun = storedBlock === void 0;
+  if (manifest === null) {
+    return {
+      effective: { ...stored },
+      stored,
+      user_set_keys: Object.keys(stored),
+      extras: { ...stored },
+      is_first_run: isFirstRun,
+      missing_required_keys: []
+    };
+  }
+  const manifestKeys = new Set(manifest.fields.map((f) => f.id));
+  const effective = {};
+  const user_set_keys = [];
+  const missing_required_keys = [];
+  for (const field of manifest.fields) {
+    if (field.deprecated) continue;
+    if (Object.prototype.hasOwnProperty.call(stored, field.id)) {
+      effective[field.id] = stored[field.id];
+      user_set_keys.push(field.id);
+    } else if (hasDefault(field)) {
+      effective[field.id] = field.default;
+    } else if (field.required) {
+      missing_required_keys.push(field.id);
+    }
+  }
+  const extras = {};
+  for (const k of Object.keys(stored)) {
+    if (!manifestKeys.has(k)) extras[k] = stored[k];
+  }
+  return {
+    effective,
+    stored,
+    user_set_keys,
+    extras,
+    is_first_run: isFirstRun,
+    missing_required_keys
+  };
+}
+async function saveSkillConfig(brandSlug, skillId, values, dataDirOverride) {
+  const path2 = brandConfigPath(brandSlug, dataDirOverride);
+  const { config: existing } = await readBrandConfig(brandSlug, dataDirOverride);
+  const next = { ...existing, [skillId]: values };
+  await writeBrandConfigFile(path2, next);
+  return { path: path2 };
+}
+async function resetSkillConfig(brandSlug, skillId, dataDirOverride) {
+  const path2 = brandConfigPath(brandSlug, dataDirOverride);
+  const { config: existing, source } = await readBrandConfig(
+    brandSlug,
+    dataDirOverride
+  );
+  if (source === "empty" || !(skillId in existing)) {
+    return { existed: false, path: path2 };
+  }
+  const next = { ...existing };
+  delete next[skillId];
+  if (Object.keys(next).length === 0) {
+    try {
+      await unlink(path2);
+    } catch {
+    }
+    return { existed: true, path: path2 };
+  }
+  await writeBrandConfigFile(path2, next);
+  return { existed: true, path: path2 };
+}
+function composeSkillBlock(manifestValues, preservedExtras) {
+  return { ...preservedExtras, ...manifestValues };
+}
+function validateAgainstManifest(values, manifest) {
+  const issues = [];
+  for (const field of manifest.fields) {
+    if (field.deprecated) continue;
+    const present = Object.prototype.hasOwnProperty.call(values, field.id);
+    if (!present) {
+      if (field.required && !hasDefault(field)) {
+        issues.push({ field: field.id, message: "required, no value set" });
+      }
+      continue;
+    }
+    const issue2 = checkType(field, values[field.id]);
+    if (issue2) issues.push({ field: field.id, message: issue2 });
+  }
+  return { ok: issues.length === 0, issues };
+}
+function hasDefault(field) {
+  return field.default !== void 0;
+}
+function checkType(field, value) {
+  switch (field.type) {
+    case "enum":
+      if (typeof value !== "string") return `expected enum string`;
+      if (!field.options.some((o) => o.value === value)) {
+        return `not one of ${field.options.map((o) => o.value).join(", ")}`;
+      }
+      return null;
+    case "percent":
+      if (typeof value !== "number") return "expected number";
+      if (value < field.range.min || value > field.range.max) {
+        return `out of range [${field.range.min}, ${field.range.max}]`;
+      }
+      return null;
+    case "float":
+      if (typeof value !== "number") return "expected number";
+      if (field.range && (value < field.range.min || value > field.range.max)) {
+        return `out of range [${field.range.min}, ${field.range.max}]`;
+      }
+      return null;
+    case "int":
+      if (typeof value !== "number" || !Number.isInteger(value))
+        return "expected integer";
+      if (field.range && (value < field.range.min || value > field.range.max)) {
+        return `out of range [${field.range.min}, ${field.range.max}]`;
+      }
+      return null;
+    case "bool":
+      if (typeof value !== "boolean") return "expected boolean";
+      return null;
+    case "string":
+      if (typeof value !== "string") return "expected string";
+      if (value.length > field.max_length)
+        return `too long (max ${field.max_length})`;
+      return null;
+    case "asin_list":
+      if (!Array.isArray(value)) return "expected list of ASINs";
+      for (const a of value) {
+        if (typeof a !== "string" || !/^B0[A-Z0-9]{8}$/.test(a)) {
+          return `invalid ASIN "${String(a)}"`;
+        }
+      }
+      if (value.length > field.max_items)
+        return `too many items (max ${field.max_items})`;
+      return null;
+    case "sku_list":
+      if (!Array.isArray(value)) return "expected list of SKUs";
+      if (value.length > field.max_items)
+        return `too many items (max ${field.max_items})`;
+      return null;
+  }
+}
+async function writeBrandConfigFile(path2, config2) {
+  await mkdir6(dirname8(path2), { recursive: true });
+  const yamlText = (0, import_yaml8.stringify)(config2, {
+    indent: 2,
+    lineWidth: 0
+    // never wrap — keeps user-readable values intact
+  });
+  const tmpPath = `${path2}.${process.pid}.tmp`;
+  await writeFile6(tmpPath, yamlText, "utf-8");
+  try {
+    await chmod3(tmpPath, 384);
+  } catch {
+  }
+  await rename5(tmpPath, path2);
+}
+function isFileNotFoundError9(err) {
+  return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
+}
+
+// src/commands/brand-view.ts
+init_resolve();
+
+// src/lib/render/design-system.ts
+import { readFile as readFile9 } from "node:fs/promises";
+import { existsSync as existsSync2 } from "node:fs";
+import { dirname as dirname9, join as join6, parse as parse3 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+function designSystemDir() {
+  if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
+    return process.env.MIXSHIFT_DESIGN_SYSTEM_DIR;
+  }
+  let dir = dirname9(fileURLToPath3(import.meta.url));
+  const root = parse3(dir).root;
+  for (let i = 0; i < 8; i++) {
+    const candidate = join6(dir, "assets", "design-system");
+    if (existsSync2(join6(candidate, "colors_and_type.css"))) {
+      return candidate;
+    }
+    if (dir === root) break;
+    dir = dirname9(dir);
+  }
+  throw new Error(
+    "Could not locate harness/assets/design-system/. The renderer walks up from the running CLI file looking for assets/design-system/colors_and_type.css. Set MIXSHIFT_DESIGN_SYSTEM_DIR if your install puts the assets elsewhere."
+  );
+}
+async function readDesignSystemCss() {
+  const dsDir = designSystemDir();
+  const raw = await readFile9(join6(dsDir, "colors_and_type.css"), "utf-8");
+  const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
+  return raw.replace(
+    /url\((['"]?)fonts\//g,
+    (_match, quote2) => `url(${quote2}${fontsAbsUrl}/`
+  );
+}
+async function readLogoSvg(filename) {
+  const raw = await readFile9(join6(designSystemDir(), filename), "utf-8");
+  return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
+}
+async function renderPage(options) {
+  const theme = options.theme ?? "light";
+  const css = await readDesignSystemCss();
+  const railIcon = await readLogoSvg("mixshift-icon-white.svg");
+  const wordmarkDark = await readLogoSvg("mixshift-logo-dark.svg");
+  const wordmarkWhite = await readLogoSvg("mixshift-logo-white.svg");
+  return `<!DOCTYPE html>
+<html lang="en" data-rc-theme="${escapeAttr(theme)}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(options.title)} \u2014 MixShift</title>
+<style>${css}
+${pageShellCss()}${options.extra_css ? "\n" + options.extra_css : ""}</style>
+</head>
+<body>
+<div class="rc-app">
+  ${renderRail(railIcon)}
+  <main class="rc-main">
+    <header class="rc-header">
+      <div>
+        <h1 class="rc-title">${escapeHtml(options.title)}</h1>
+        ${options.subtitle ? `<p class="rc-subtitle">${escapeHtml(options.subtitle)}</p>` : ""}
+      </div>
+      ${renderThemeToggle(theme)}
+    </header>
+    <section class="rc-content">
+${options.body}
+    </section>
+    ${renderFooter(wordmarkDark, wordmarkWhite)}
+  </main>
+</div>
+<script>${themeToggleScript()}</script>
+</body>
+</html>`;
+}
+function pageShellCss() {
+  return `
+/* Browsers ship with 8px body margin by default \u2014 without resetting it,
+   the rail sits ~8px in from the viewport edge instead of flush. */
+html, body { margin: 0; padding: 0; }
+body { background: var(--rc-bg); }
+.rc-app {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  min-height: 100vh;
+  background: var(--rc-bg);
+  color: var(--rc-text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body);
+  font-feature-settings: 'tnum' 1, 'rlig' 1, 'calt' 1;
+}
+.rc-rail {
+  background: var(--rc-rail-bg);
+  border-right: 1px solid var(--rc-rail-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-4) 0;
+  gap: var(--space-4);
+}
+.rc-rail-mark {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rc-rail-mark > svg { width: 100%; height: 100%; display: block; }
+.rc-main { padding: var(--space-6) var(--space-8); max-width: 1280px; }
+.rc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--rc-border);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.rc-title {
+  font-family: var(--font-heading);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--rc-text);
+}
+.rc-subtitle {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  margin: 4px 0 0;
+}
+.rc-content { display: flex; flex-direction: column; gap: var(--space-6); }
+.rc-segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: 7px;
+}
+.rc-segmented button {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--rc-text-sub);
+  cursor: pointer;
+  font-family: inherit;
+}
+.rc-segmented button.is-active {
+  background: var(--rc-card);
+  color: var(--rc-text);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.08);
+}
+/* Scorecards */
+.rc-scorecard-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.rc-scorecard {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-scorecard-label {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  text-transform: none;
+  margin: 0;
+}
+.rc-scorecard-value {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 6px 0 4px;
+  color: var(--rc-text);
+  font-feature-settings: 'tnum' 1;
+}
+.rc-scorecard-delta {
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  font-feature-settings: 'tnum' 1;
+}
+.rc-scorecard-delta.is-positive { color: var(--rc-positive); }
+.rc-scorecard-delta.is-negative { color: var(--rc-negative); }
+.rc-scorecard-delta.is-neutral  { color: var(--rc-text-sub); }
+/* Cards */
+.rc-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-card-title {
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+}
+.rc-card-body { color: var(--rc-text); font-size: var(--fs-body-sm); }
+/* Table */
+.rc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body-sm);
+  font-feature-settings: 'tnum' 1;
+}
+.rc-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rc-border);
+}
+.rc-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--rc-divider);
+}
+.rc-table tr:last-child td { border-bottom: 0; }
+.rc-table td.is-numeric { text-align: right; font-feature-settings: 'tnum' 1; }
+/* Pills */
+.rc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px solid var(--rc-border);
+  background: var(--rc-chip-bg);
+  color: var(--rc-text);
+}
+.rc-pill.is-green {
+  background: color-mix(in srgb, var(--rc-green) 10%, transparent);
+  color: var(--rc-green-ink);
+  border-color: color-mix(in srgb, var(--rc-green) 25%, transparent);
+}
+.rc-pill.is-amber {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #f59e0b 30%, transparent);
+}
+.rc-pill.is-red {
+  background: color-mix(in srgb, var(--rc-red) 10%, transparent);
+  color: var(--rc-red);
+  border-color: color-mix(in srgb, var(--rc-red) 25%, transparent);
+}
+.rc-pill.is-ghost {
+  background: transparent;
+  color: var(--rc-text-sub);
+}
+/* Empty state */
+.rc-empty {
+  border: 1px dashed var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--rc-text-sub);
+  background: var(--rc-card);
+}
+/* Footer (branding + copyright). Stacked + centered: copyright first,
+   wordmark below it. The wordmark is intentionally generous so the
+   brand registers \u2014 designed as the visual signature, not a sign-off. */
+.rc-footer {
+  margin-top: var(--space-12);
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+  border-top: 1px solid var(--rc-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+}
+.rc-footer-copy {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  margin: 0;
+}
+.rc-footer-mark {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rc-footer-mark > svg {
+  height: 100%;
+  width: auto;
+  display: block;
+}
+`;
+}
+function renderRail(railIconSvg) {
+  return `<aside class="rc-rail" aria-label="MixShift">
+  <div class="rc-rail-mark" aria-hidden="true">${railIconSvg}</div>
+</aside>`;
+}
+function renderFooter(wordmarkDarkSvg, wordmarkWhiteSvg) {
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  return `<footer class="rc-footer">
+  <p class="rc-footer-copy">\xA9 ${year} Dash Applications LLC, DBA MixShift. All rights reserved.</p>
+  <div class="rc-footer-mark ms-logo-light" aria-hidden="true">${wordmarkDarkSvg}</div>
+  <div class="rc-footer-mark ms-logo-dark"  aria-hidden="true">${wordmarkWhiteSvg}</div>
+</footer>`;
+}
+function renderThemeToggle(theme) {
+  return `<div class="rc-segmented" role="tablist" aria-label="Theme">
+  <button data-theme="light" class="${theme === "light" ? "is-active" : ""}">Light</button>
+  <button data-theme="dark"  class="${theme === "dark" ? "is-active" : ""}">Dark</button>
+</div>`;
+}
+function themeToggleScript() {
+  return `
+(function () {
+  const root = document.documentElement;
+  document.querySelectorAll('.rc-segmented button[data-theme]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var next = btn.getAttribute('data-theme');
+      root.setAttribute('data-rc-theme', next);
+      document.querySelectorAll('.rc-segmented button[data-theme]').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-theme') === next);
+      });
+    });
+  });
+})();
+`;
+}
+function renderScorecard(opts) {
+  const deltaHtml = opts.delta ? `<div class="rc-scorecard-delta is-${opts.delta.direction}">${escapeHtml(opts.delta.text)}</div>` : "";
+  return `<div class="rc-scorecard">
+  <p class="rc-scorecard-label">${escapeHtml(opts.label)}</p>
+  <div class="rc-scorecard-value">${escapeHtml(opts.value)}</div>
+  ${deltaHtml}
+</div>`;
+}
+function renderScorecardRow(cards) {
+  return `<div class="rc-scorecard-row">
+${cards.map(renderScorecard).join("\n")}
+</div>`;
+}
+function renderCard(opts) {
+  const title = opts.title ? `<h3 class="rc-card-title">${escapeHtml(opts.title)}</h3>` : "";
+  return `<div class="rc-card">${title}<div class="rc-card-body">${opts.body}</div></div>`;
+}
+function renderPill(text, tone = "default") {
+  const cls = tone === "default" ? "rc-pill" : `rc-pill is-${tone}`;
+  return `<span class="${cls}">${escapeHtml(text)}</span>`;
+}
+function renderTable(columns, rows) {
+  if (rows.length === 0) {
+    return `<div class="rc-empty">No data yet.</div>`;
+  }
+  const head = columns.map((c) => `<th${c.numeric ? ' class="is-numeric"' : ""}>${escapeHtml(c.label)}</th>`).join("");
+  const body = rows.map((row) => {
+    const cells = columns.map((c) => {
+      const content = c.render ? c.render(row) : escapeHtml(String(row[c.key] ?? ""));
+      return `<td${c.numeric ? ' class="is-numeric"' : ""}>${content}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("\n");
+  return `<table class="rc-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function formatPct(value, precision = 1) {
+  if (value === null || value === void 0 || Number.isNaN(value)) return "\u2014";
+  return `${(value * 100).toFixed(precision)}%`;
+}
+function formatRoas(acosValue, precision = 2) {
+  if (acosValue === null || acosValue === void 0 || Number.isNaN(acosValue))
+    return "\u2014";
+  if (acosValue <= 0) return "\u2014";
+  return `${(1 / acosValue).toFixed(precision)}x`;
+}
+function frameMetric(acosValue, kind, framing) {
+  if (framing === "roas") {
+    return {
+      label: kind === "ad" ? "RoAS target" : "TRoAS target",
+      value: formatRoas(acosValue)
+    };
+  }
+  return {
+    label: kind === "ad" ? "ACoS target" : "TACoS target",
+    value: formatPct(acosValue, 0)
+  };
+}
+function formatInt(value) {
+  if (value === null || value === void 0 || Number.isNaN(value)) return "\u2014";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+var HTML_ESCAPES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;"
+};
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
+
+// src/commands/brand-view.ts
+init_load();
+var exec = promisify(execCb);
+function registerBrandViewCommand(brandCmd) {
+  brandCmd.command("view <slug>").description(
+    "Render a per-brand HTML overview to ~/.mixshift/clients/<slug>/view.html and open in the default browser. Use --no-open to just write the file."
+  ).option("--no-open", "write the file but do not open the browser").option(
+    "--theme <theme>",
+    "initial theme (light | dark)",
+    "light"
+  ).action(
+    async (slug, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const result = await renderBrandView({
+          slug,
+          theme: opts.theme,
+          dataDir: root.dataDir
+        });
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              { status: "ok", view_path: result.path, slug, theme: opts.theme },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          process.stdout.write(`
+\u2713 Wrote ${result.path}
+`);
+        }
+        if (opts.open) {
+          await openInBrowser(result.path);
+        }
+        await track(
+          {
+            event_name: "brand.viewed",
+            payload: { slug, theme: opts.theme }
+          },
+          root.dataDir
+        );
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
+`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+    }
+  );
+}
+async function renderBrandView(args) {
+  const { index } = await readIndex(args.dataDir);
+  let row = index.brands.find((b) => b.slug === args.slug);
+  if (!row) {
+    const resolved = resolveBrandName(args.slug, index);
+    if (resolved.status === "found") {
+      row = resolved.brand;
+    } else if (resolved.status === "ambiguous") {
+      const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+      throw new Error(
+        `Brand input "${args.slug}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`
+      );
+    } else {
+      throw new Error(
+        `Brand "${args.slug}" not found in the registry. Run \`node dist/cli.js brand list\` to see what's available. The resolver accepts slugs, display names, acronyms, and prefixes.`
+      );
+    }
+  }
+  const canonicalSlug = row.slug;
+  const ctxResult = await validateBrandContext(canonicalSlug, args.dataDir);
+  const context = ctxResult.ok ? ctxResult.context : null;
+  const { config: brandConfig } = await readBrandConfig(
+    canonicalSlug,
+    args.dataDir
+  );
+  const keyBrands = await loadKeyBrands(args.dataDir);
+  const isKey = keyBrands.some((k) => k.slug === canonicalSlug);
+  const runs = await scanRecentRuns(canonicalSlug, args.dataDir, 10);
+  const { profile } = await loadProfile(args.dataDir);
+  const framing = profile.display?.metric_framing ?? "acos";
+  const blocks = [];
+  blocks.push(
+    renderPillsRow({
+      isKey,
+      adsActive: row.ads_active,
+      retailActive: row.retail_active,
+      coldStarted: row.cold_started
+    })
+  );
+  blocks.push(
+    renderScorecardRow(
+      buildScorecards({ row, context, brandConfig, runs, isKey, framing })
+    )
+  );
+  if (context) {
+    blocks.push(
+      renderCard({ title: "Context", body: renderContextBody(context, framing) })
+    );
+  } else {
+    blocks.push(
+      renderCard({
+        title: "Context",
+        body: `
+<p>No cold-start context yet. Run <code>/account-cold-start ${escapeHtml(args.slug)}</code> in chat to capture posture, goals, and structural events.</p>`
+      })
+    );
+  }
+  blocks.push(
+    renderCard({
+      title: "Calibration",
+      body: renderCalibrationBody(brandConfig, args.slug)
+    })
+  );
+  blocks.push(
+    renderCard({
+      title: "Recent runs",
+      body: renderRunsTable(runs)
+    })
+  );
+  const subtitle = row.cold_started_at ? `Cold-started ${formatDate(row.cold_started_at)} \xB7 ${row.accounts.length} account(s)` : `${row.accounts.length} account(s)`;
+  const html = await renderPage({
+    title: row.display_name,
+    subtitle,
+    theme: args.theme,
+    body: blocks.join("\n\n")
+  });
+  const outPath = `${brandDir(args.slug, args.dataDir)}/view.html`;
+  await mkdir7(dirname10(outPath), { recursive: true });
+  await writeFile7(outPath, html, "utf-8");
+  return { path: outPath };
+}
+function renderPillsRow(opts) {
+  const pills = [];
+  if (opts.isKey) pills.push(renderPill("Key brand", "green"));
+  if (opts.adsActive) pills.push(renderPill("Ads", "default"));
+  else pills.push(renderPill("Ads inactive", "ghost"));
+  if (opts.retailActive) pills.push(renderPill("Retail", "default"));
+  else pills.push(renderPill("Retail inactive", "ghost"));
+  if (opts.coldStarted) pills.push(renderPill("Cold-started", "green"));
+  else pills.push(renderPill("Not cold-started", "amber"));
+  return `<div style="display: flex; gap: 8px; flex-wrap: wrap;">${pills.join("")}</div>`;
+}
+function buildScorecards(args) {
+  const ctx = args.context;
+  const skillsConfigured = Object.keys(args.brandConfig).length;
+  const lastRunDate = args.runs.length > 0 ? args.runs[0].run_date : null;
+  const adMetric = frameMetric(
+    ctx?.management?.acos_target_pct,
+    "ad",
+    args.framing
+  );
+  const totalMetric = frameMetric(
+    ctx?.management?.tacos_target_pct,
+    "total",
+    args.framing
+  );
+  return [
+    {
+      label: "Accounts",
+      value: formatInt(args.row.accounts.length)
+    },
+    { label: adMetric.label, value: adMetric.value },
+    { label: totalMetric.label, value: totalMetric.value },
+    {
+      label: "Skills configured",
+      value: formatInt(skillsConfigured)
+    },
+    {
+      label: "Last run",
+      value: lastRunDate ?? "\u2014"
+    }
+  ];
+}
+function renderContextBody(ctx, framing) {
+  const c = ctx;
+  const lines = [];
+  if (c.management) {
+    const m = c.management;
+    const items = [];
+    if (m.primary_metric && framing === "acos")
+      items.push(
+        `Primary metric: <strong>${escapeHtml(m.primary_metric === "TACOS" ? "TACoS" : "ACoS")}</strong>`
+      );
+    if (m.acos_target_pct !== void 0) {
+      const ad = frameMetric(m.acos_target_pct, "ad", framing);
+      items.push(`${ad.label}: <strong>${ad.value}</strong>`);
+    }
+    if (m.tacos_target_pct !== void 0) {
+      const total = frameMetric(m.tacos_target_pct, "total", framing);
+      items.push(`${total.label}: <strong>${total.value}</strong>`);
+    }
+    if (m.attribution_window_days !== void 0)
+      items.push(
+        `Attribution window: <strong>${m.attribution_window_days} days</strong>`
+      );
+    if (items.length > 0) {
+      lines.push(`<p style="margin: 0 0 12px;">${items.join(" \xB7 ")}</p>`);
+    }
+  }
+  if (c.accounts && c.accounts.length > 0) {
+    lines.push(
+      `<h4 style="margin: 16px 0 8px; font-size: 12px; font-weight: 600; color: var(--rc-text-sub); text-transform: none;">Accounts</h4>`
+    );
+    const accountColumns = [
+      { key: "seller_name", label: "Name" },
+      { key: "account_type", label: "Type" },
+      { key: "marketplace", label: "Marketplace" },
+      {
+        key: "status",
+        label: "Status",
+        render: (row) => {
+          const s = String(row.status ?? "active");
+          const tone = s === "active" ? "green" : s === "wind_down" ? "amber" : "ghost";
+          return renderPill(sentenceCase(s), tone);
+        }
+      }
+    ];
+    lines.push(
+      renderTable(
+        accountColumns,
+        c.accounts.map((a) => ({
+          seller_name: a.seller_name,
+          account_type: a.account_type,
+          marketplace: a.marketplace ?? "\u2014",
+          status: a.status ?? "active"
+        }))
+      )
+    );
+  }
+  if (c.sub_brands && c.sub_brands.length > 0) {
+    const names = c.sub_brands.map((sb) => escapeHtml(sb.name)).join(", ");
+    lines.push(
+      `<p style="margin: 16px 0 0;"><span style="color: var(--rc-text-sub); font-size: 12px;">Sub-brands:</span> ${names}</p>`
+    );
+  }
+  if (c.structural_events && c.structural_events.length > 0) {
+    const events = c.structural_events.map((e) => `${escapeHtml(e.type)} (${escapeHtml(e.id)})`).join(", ");
+    lines.push(
+      `<p style="margin: 8px 0 0;"><span style="color: var(--rc-text-sub); font-size: 12px;">Active events:</span> ${events}</p>`
+    );
+  }
+  return lines.length > 0 ? lines.join("\n") : `<p style="color: var(--rc-text-sub);">Context loaded but no rendered fields. Edit ${escapeHtml(contextPath("<slug>"))} to add posture, management, and accounts.</p>`;
+}
+function renderCalibrationBody(brandConfig, slug) {
+  const skillIds = Object.keys(brandConfig);
+  if (skillIds.length === 0) {
+    return `<p style="color: var(--rc-text-sub);">No skills calibrated yet. Run any skill \u2014 the confirmation prompt walks through tuning, then saves on confirm.</p>`;
+  }
+  const cols = [
+    {
+      key: "skill_id",
+      label: "Skill",
+      render: (row) => `<code style="font-size: 12px;">${escapeHtml(String(row.skill_id))}</code>`
+    },
+    { key: "field_count", label: "Fields set", numeric: true },
+    {
+      key: "edit",
+      label: "",
+      render: (row) => `<span style="color: var(--rc-text-sub); font-size: 12px;">mixshift skill config ${escapeHtml(String(row.skill_id))} --brand ${escapeHtml(slug)}</span>`
+    }
+  ];
+  const rows = skillIds.map((id) => ({
+    skill_id: id,
+    field_count: Object.keys(brandConfig[id] ?? {}).length,
+    edit: ""
+  }));
+  return renderTable(cols, rows);
+}
+function renderRunsTable(runs) {
+  if (runs.length === 0) {
+    return `<p style="color: var(--rc-text-sub);">No runs recorded yet. Skill runs land under <code>~/.mixshift/clients/&lt;slug&gt;/runs/&lt;skill&gt;/&lt;date&gt;/</code>.</p>`;
+  }
+  const cols = [
+    {
+      key: "skill_id",
+      label: "Skill",
+      render: (row) => `<code style="font-size: 12px;">${escapeHtml(String(row.skill_id))}</code>`
+    },
+    { key: "run_date", label: "Date" },
+    {
+      key: "artifacts",
+      label: "Artifacts",
+      render: (row) => {
+        const arts = row.artifacts ?? [];
+        if (arts.length === 0) return renderPill("Empty", "ghost");
+        return arts.map((a) => renderPill(a, "default")).join(" ");
+      }
+    },
+    {
+      key: "status",
+      label: "Apply",
+      render: (row) => {
+        if (row.has_applied) return renderPill("Applied (dry-run)", "green");
+        if (row.has_suggestions) return renderPill("Pending apply", "amber");
+        return renderPill("\u2014", "ghost");
+      }
+    }
+  ];
+  return renderTable(cols, runs);
+}
+async function scanRecentRuns(slug, dataDir, limit) {
+  const runsRoot = `${brandDir(slug, dataDir)}/runs`;
+  let skillDirs;
+  try {
+    skillDirs = await readdir(runsRoot);
+  } catch {
+    return [];
+  }
+  const records = [];
+  for (const skillId of skillDirs) {
+    const skillDir = `${runsRoot}/${skillId}`;
+    let dateDirs;
+    try {
+      dateDirs = await readdir(skillDir);
+    } catch {
+      continue;
+    }
+    for (const runDate of dateDirs) {
+      const runDir = `${skillDir}/${runDate}`;
+      try {
+        const s = await stat2(runDir);
+        if (!s.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      const [hasData, hasSuggestions, hasApplied, files] = await Promise.all([
+        fileExists(`${runDir}/data.json`),
+        fileExists(`${runDir}/suggestions.json`),
+        fileExists(`${runDir}/applied.json`),
+        listKnownArtifacts(runDir)
+      ]);
+      records.push({
+        skill_id: skillId,
+        run_date: runDate,
+        has_data: hasData,
+        has_suggestions: hasSuggestions,
+        has_applied: hasApplied,
+        artifacts: files
+      });
+    }
+  }
+  records.sort((a, b) => a.run_date < b.run_date ? 1 : a.run_date > b.run_date ? -1 : 0);
+  return records.slice(0, limit);
+}
+async function fileExists(path2) {
+  try {
+    await stat2(path2);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function listKnownArtifacts(runDir) {
+  const candidates = [
+    { file: "data.json", label: "data" },
+    { file: "suggestions.json", label: "suggestions" },
+    { file: "overrides.json", label: "overrides" },
+    { file: "applied.json", label: "applied" },
+    { file: "ocl.yaml", label: "ocl" },
+    { file: "report.html", label: "report" },
+    { file: "report.md", label: "report" }
+  ];
+  const labels = [];
+  for (const c of candidates) {
+    if (await fileExists(`${runDir}/${c.file}`)) {
+      if (!labels.includes(c.label)) labels.push(c.label);
+    }
+  }
+  return labels;
+}
+function sentenceCase(s) {
+  if (!s) return s;
+  const spaced = s.replace(/_/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function formatDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+  } catch {
+    return iso;
+  }
+}
+async function openInBrowser(path2) {
+  try {
+    if (process.platform === "win32") {
+      await exec(`start "" "${path2}"`);
+    } else if (process.platform === "darwin") {
+      await exec(`open "${path2}"`);
+    } else {
+      await exec(`xdg-open "${path2}"`);
+    }
+  } catch {
+  }
+}
+
+// src/lib/context-editor/flow.ts
+var import_yaml9 = __toESM(require_dist(), 1);
+init_resolve();
+import { mkdir as mkdir8, readFile as readFile10, rename as rename6, writeFile as writeFile8, chmod as chmod4 } from "node:fs/promises";
+import { dirname as dirname11 } from "node:path";
+
+// src/lib/calibration/manifest-schema.ts
+init_zod();
+var fieldIdSchema = external_exports.string().regex(
+  /^[a-z][a-z0-9_]*$/,
+  "Field id must be snake_case (lowercase letter start, [a-z0-9_])"
+);
+var seedFromSchema = external_exports.string().regex(
+  /^context\.[a-zA-Z0-9_.[\]*]+$/,
+  'seed_from must be a dotted path into context, e.g. "context.posture.stance"'
+).optional();
+var fieldBase = {
+  id: fieldIdSchema,
+  prompt: external_exports.string().min(1),
+  /** Short sentence-case noun phrase used as the confirmation card label.
+   *  Defaults to a derivation from `prompt` (strips question mark, "for
+   *  {brand_name}" suffix, capitalizes). Set explicitly when:
+   *    - The label contains an acronym ("Hero SKUs", not "Hero skus")
+   *    - The prompt is too long to read as a label
+   *    - You want different copy in the prompt vs. the column header
+   *  Should be under 30 characters and sentence case. */
+  label: external_exports.string().min(1).max(40).optional(),
+  help: external_exports.string().optional(),
+  seed_from: seedFromSchema,
+  required: external_exports.boolean().default(true),
+  deprecated: external_exports.boolean().default(false)
+};
+var enumFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("enum"),
+  options: external_exports.array(
+    external_exports.object({
+      value: external_exports.string().min(1),
+      label: external_exports.string().min(1)
+    })
+  ).min(2),
+  default: external_exports.string().optional()
+});
+var percentFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("percent"),
+  default: external_exports.number().min(0).max(1).optional(),
+  range: external_exports.object({ min: external_exports.number().min(0).max(1), max: external_exports.number().min(0).max(1) }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).default({ min: 0, max: 1 })
+});
+var floatFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("float"),
+  default: external_exports.number().optional(),
+  range: external_exports.object({ min: external_exports.number(), max: external_exports.number() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional(),
+  decimals: external_exports.number().int().min(0).max(6).default(2)
+});
+var intFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("int"),
+  default: external_exports.number().int().optional(),
+  range: external_exports.object({ min: external_exports.number().int(), max: external_exports.number().int() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional()
+});
+var boolFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("bool"),
+  default: external_exports.boolean().optional()
+});
+var stringFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("string"),
+  default: external_exports.string().optional(),
+  max_length: external_exports.number().int().positive().default(280)
+});
+var asinListFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("asin_list"),
+  default: external_exports.array(external_exports.string()).default([]),
+  max_items: external_exports.number().int().positive().default(200)
+});
+var skuListFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("sku_list"),
+  default: external_exports.array(external_exports.string()).default([]),
+  max_items: external_exports.number().int().positive().default(500)
+});
+var calibrationFieldSchema = external_exports.discriminatedUnion("type", [
+  enumFieldSchema,
+  percentFieldSchema,
+  floatFieldSchema,
+  intFieldSchema,
+  boolFieldSchema,
+  stringFieldSchema,
+  asinListFieldSchema,
+  skuListFieldSchema
+]);
+var calibrationManifestSchema = external_exports.object({
+  /** Schema version of the calibration block itself. Bump on breaking
+   *  changes to the field-type union. */
+  schema_version: external_exports.literal(1).default(1),
+  /** Ordered field list — the confirm-flow renders in this order. */
+  fields: external_exports.array(calibrationFieldSchema).min(1)
+});
+function extractCalibration(parsedManifest) {
+  if (parsedManifest === null || typeof parsedManifest !== "object" || !("calibration" in parsedManifest)) {
+    return null;
+  }
+  const block = parsedManifest.calibration;
+  if (block === null || block === void 0) return null;
+  return calibrationManifestSchema.parse(block);
+}
+function formatFieldValue(field, value) {
+  if (value === null || value === void 0) return "(not set)";
+  switch (field.type) {
+    case "enum": {
+      const opt = field.options.find((o) => o.value === value);
+      return opt?.label ?? String(value);
+    }
+    case "percent": {
+      if (typeof value !== "number") return String(value);
+      return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
+    }
+    case "float": {
+      if (typeof value !== "number") return String(value);
+      return value.toFixed(field.decimals);
+    }
+    case "int":
+      return String(value);
+    case "bool":
+      return value ? "yes" : "no";
+    case "string":
+      return String(value);
+    case "asin_list":
+    case "sku_list": {
+      if (!Array.isArray(value)) return String(value);
+      if (value.length === 0) return "(none)";
+      if (value.length <= 3) return value.join(", ");
+      return `${value.slice(0, 3).join(", ")} +${value.length - 3} more`;
+    }
+  }
+}
+function parseFieldInput(field, raw) {
+  const trimmed = raw.trim();
+  switch (field.type) {
+    case "enum": {
+      const byValue = field.options.find((o) => o.value === trimmed);
+      if (byValue) return { ok: true, value: byValue.value };
+      const byLabel = field.options.find(
+        (o) => o.label.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (byLabel) return { ok: true, value: byLabel.value };
+      const idx = Number(trimmed);
+      if (Number.isInteger(idx) && idx >= 1 && idx <= field.options.length) {
+        return { ok: true, value: field.options[idx - 1].value };
+      }
+      return {
+        ok: false,
+        error: `Expected one of: ${field.options.map((o) => o.value).join(", ")}`
+      };
+    }
+    case "percent": {
+      const cleaned = trimmed.replace(/%$/, "");
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) {
+        return { ok: false, error: 'Expected a number (e.g. "32" or "32%")' };
+      }
+      const normalized = n > 1 ? n / 100 : n;
+      if (normalized < field.range.min || normalized > field.range.max) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${(field.range.min * 100).toFixed(0)}% and ${(field.range.max * 100).toFixed(0)}%`
+        };
+      }
+      return { ok: true, value: normalized };
+    }
+    case "float": {
+      const n = Number(trimmed);
+      if (!Number.isFinite(n)) {
+        return { ok: false, error: "Expected a number" };
+      }
+      if (field.range && (n < field.range.min || n > field.range.max)) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
+        };
+      }
+      return { ok: true, value: n };
+    }
+    case "int": {
+      const n = Number(trimmed);
+      if (!Number.isInteger(n)) {
+        return { ok: false, error: "Expected a whole number" };
+      }
+      if (field.range && (n < field.range.min || n > field.range.max)) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
+        };
+      }
+      return { ok: true, value: n };
+    }
+    case "bool": {
+      const lower = trimmed.toLowerCase();
+      if (["y", "yes", "true", "1", "on"].includes(lower))
+        return { ok: true, value: true };
+      if (["n", "no", "false", "0", "off"].includes(lower))
+        return { ok: true, value: false };
+      return { ok: false, error: "Expected yes/no" };
+    }
+    case "string": {
+      if (trimmed.length === 0 && field.required) {
+        return { ok: false, error: "Cannot be empty" };
+      }
+      if (trimmed.length > field.max_length) {
+        return {
+          ok: false,
+          error: `Too long. Max ${field.max_length} characters.`
+        };
+      }
+      return { ok: true, value: trimmed };
+    }
+    case "asin_list": {
+      if (trimmed === "" || trimmed.toLowerCase() === "none") {
+        return { ok: true, value: [] };
+      }
+      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim().toUpperCase()).filter(Boolean);
+      const invalid = parts.filter((p) => !/^B0[A-Z0-9]{8}$/.test(p));
+      if (invalid.length > 0) {
+        return {
+          ok: false,
+          error: `Invalid ASIN(s): ${invalid.slice(0, 3).join(", ")}${invalid.length > 3 ? ` +${invalid.length - 3} more` : ""}. ASINs look like B0XXXXXXXX.`
+        };
+      }
+      if (parts.length > field.max_items) {
+        return {
+          ok: false,
+          error: `Too many ASINs (${parts.length}). Max ${field.max_items}.`
+        };
+      }
+      return { ok: true, value: Array.from(new Set(parts)) };
+    }
+    case "sku_list": {
+      if (trimmed === "" || trimmed.toLowerCase() === "none") {
+        return { ok: true, value: [] };
+      }
+      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length > field.max_items) {
+        return {
+          ok: false,
+          error: `Too many SKUs (${parts.length}). Max ${field.max_items}.`
+        };
+      }
+      return { ok: true, value: Array.from(new Set(parts)) };
+    }
+  }
+}
+
+// src/lib/context-editor/manifest.ts
+var BRAND_CONTEXT_MANIFEST = [
+  // -----------------------------------------------------------------------
+  // Management — how the brand views performance
+  // -----------------------------------------------------------------------
+  {
+    context_path: "management.primary_metric",
+    field: {
+      id: "primary_metric",
+      label: "Primary metric",
+      prompt: "Primary metric for {brand_name}?",
+      help: "Drives how every skill frames performance. ACoS-thinkers look at ad-attributed efficiency; TACoS-thinkers look at total revenue. Set once at the brand level; can be flipped to RoAS/TRoAS display via profile.yaml::display.metric_framing.",
+      type: "enum",
+      options: [
+        { value: "ACOS", label: "ACoS (ad-attributed)" },
+        { value: "TACOS", label: "TACoS (total revenue)" }
+      ],
+      required: true,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.acos_target_pct",
+    field: {
+      id: "acos_target_pct",
+      label: "ACoS target",
+      prompt: "ACoS target for {brand_name}?",
+      help: "The brand's reference ACoS target. Skills use this as the default threshold for flagging exceptions. Surfaces on every skill's OCL card as the seed value; per-skill overrides happen there.",
+      type: "percent",
+      range: { min: 0.05, max: 1 },
+      required: true,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.tacos_target_pct",
+    field: {
+      id: "tacos_target_pct",
+      label: "TACoS target",
+      prompt: "TACoS target for {brand_name}?",
+      help: "Total Advertising Cost of Sales target \u2014 ad spend over TOTAL ordered revenue. Catches over-investment in ads even when ACoS looks clean. Leave empty for ACoS-primary brands that don't track a separate TACoS target.",
+      type: "percent",
+      range: { min: 0.01, max: 1 },
+      required: false,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.attribution_window_days",
+    field: {
+      id: "attribution_window_days",
+      label: "Attribution window (days)",
+      prompt: "Attribution window for {brand_name}?",
+      help: "Days from click to attributed conversion. Common values: 7 (most sellers), 14 (longer consideration cycles), 30 (high-AOV). Drives how reports interpret the lag between ad spend and revenue.",
+      type: "int",
+      default: 7,
+      range: { min: 1, max: 60 },
+      required: true,
+      deprecated: false
+    }
+  },
+  // -----------------------------------------------------------------------
+  // Goals — sales / performance targets
+  // -----------------------------------------------------------------------
+  {
+    context_path: "goals.monthly_total_sales_target",
+    field: {
+      id: "monthly_total_sales_target",
+      label: "Monthly sales target",
+      prompt: "Monthly total sales target for {brand_name} (USD)?",
+      help: "Used by monthly-performance-report and the portfolio scorecard. Total ordered revenue across all marketplaces. Leave empty if this brand operates without a monthly sales goal.",
+      type: "int",
+      range: { min: 0, max: 1e8 },
+      required: false,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "goals.tacos_goal_pct",
+    field: {
+      id: "tacos_goal_pct",
+      label: "TACoS goal",
+      prompt: "TACoS goal (forward-looking) for {brand_name}?",
+      help: "Aspirational TACoS \u2014 distinct from `tacos_target_pct` above which is the threshold for flagging. Use this when the brand's running higher than ideal and you want monthly reports to track the gap between current and target.",
+      type: "percent",
+      range: { min: 0.01, max: 1 },
+      required: false,
+      deprecated: false
+    }
+  }
+];
+function findContextEntry(fieldId) {
+  return BRAND_CONTEXT_MANIFEST.find((e) => e.field.id === fieldId);
+}
+
+// src/lib/context-editor/flow.ts
+async function prepareBrandConfigEdit(opts) {
+  const ctx = await tryReadContextObject(opts.brandSlug, opts.dataDirOverride);
+  if (ctx === null) {
+    return {
+      brand_slug: opts.brandSlug,
+      brand_name: opts.brandName,
+      context_missing: true,
+      fields: [],
+      blocking: { has_missing_required: false, missing_keys: [] }
+    };
+  }
+  const fields = BRAND_CONTEXT_MANIFEST.filter(
+    (e) => !e.field.deprecated
+  ).map((entry) => buildFieldState(entry, ctx));
+  const missing_keys = fields.filter((f) => f.field.required && f.source === "missing").map((f) => f.field.id);
+  return {
+    brand_slug: opts.brandSlug,
+    brand_name: opts.brandName,
+    context_missing: false,
+    fields,
+    blocking: {
+      has_missing_required: missing_keys.length > 0,
+      missing_keys
+    }
+  };
+}
+function buildFieldState(entry, ctx) {
+  const stored_value = getByPath(ctx, entry.context_path);
+  const default_value = hasDefault2(entry.field) ? entry.field.default : void 0;
+  let effective_value;
+  let source;
+  if (stored_value !== void 0) {
+    effective_value = stored_value;
+    source = "stored";
+  } else if (default_value !== void 0) {
+    effective_value = default_value;
+    source = "default";
+  } else {
+    effective_value = void 0;
+    source = "missing";
+  }
+  return {
+    field: entry.field,
+    context_path: entry.context_path,
+    stored_value,
+    default_value,
+    effective_value,
+    source,
+    display: formatFieldValue(entry.field, effective_value)
+  };
+}
+async function applyBrandConfigEdit(payload, decision, opts) {
+  if (payload.context_missing) {
+    return {
+      status: "context_missing",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  if (decision.action === "cancel") {
+    return {
+      status: "cancelled",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  if (decision.action === "confirm") {
+    if (payload.blocking.has_missing_required) {
+      return {
+        status: "validation_failed",
+        updated_context: null,
+        did_write: false,
+        written_to: null,
+        changed_field_count: 0,
+        validation_issues: payload.blocking.missing_keys.map((k) => ({
+          field: k,
+          message: "required, no value set"
+        }))
+      };
+    }
+    return {
+      status: "ok",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  const issues = [];
+  const parsedEdits = [];
+  for (const [fieldId, raw] of Object.entries(decision.edits)) {
+    const entry = findContextEntry(fieldId);
+    if (!entry) {
+      issues.push({ field: fieldId, message: "unknown brand-config field" });
+      continue;
+    }
+    const parsed = parseFieldInput(entry.field, raw);
+    if (!parsed.ok) {
+      issues.push({ field: fieldId, message: parsed.error });
+      continue;
+    }
+    parsedEdits.push({
+      path: entry.context_path,
+      value: parsed.value,
+      field_id: fieldId
+    });
+  }
+  if (issues.length > 0) {
+    return {
+      status: "validation_failed",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: issues
+    };
+  }
+  const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
+  let rawText;
+  try {
+    rawText = await readFile10(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError10(err)) {
+      return {
+        status: "context_missing",
+        updated_context: null,
+        did_write: false,
+        written_to: null,
+        changed_field_count: 0,
+        validation_issues: []
+      };
+    }
+    throw err;
+  }
+  const ctxObj = (0, import_yaml9.parse)(rawText) ?? {};
+  let changedCount = 0;
+  for (const edit of parsedEdits) {
+    const before = getByPath(ctxObj, edit.path);
+    if (!deepEqual(before, edit.value)) {
+      setNested(ctxObj, edit.path, edit.value);
+      changedCount += 1;
+    }
+  }
+  if (changedCount > 0) {
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    setNested(ctxObj, "last_updated", today);
+  }
+  if (changedCount === 0) {
+    return {
+      status: "ok",
+      updated_context: ctxObj,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  await writeContextFile(path2, ctxObj);
+  return {
+    status: "ok",
+    updated_context: ctxObj,
+    did_write: true,
+    written_to: path2,
+    changed_field_count: changedCount,
+    validation_issues: []
+  };
+}
+function hasDefault2(field) {
+  return field.default !== void 0;
+}
+function getByPath(obj, path2) {
+  if (obj === null || obj === void 0) return void 0;
+  const parts = path2.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur === null || cur === void 0 || typeof cur !== "object") {
+      return void 0;
+    }
+    cur = cur[p];
+  }
+  return cur;
+}
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => deepEqual(v, b[i]));
+  }
+  const ao = a;
+  const bo = b;
+  const aKeys = Object.keys(ao);
+  const bKeys = Object.keys(bo);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => deepEqual(ao[k], bo[k]));
+}
+async function tryReadContextObject(brandSlug, dataDirOverride) {
+  const path2 = contextPath(brandSlug, dataDirOverride);
+  try {
+    const raw = await readFile10(path2, "utf-8");
+    const parsed = (0, import_yaml9.parse)(raw);
+    if (parsed === null || parsed === void 0) return {};
+    if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+async function writeContextFile(path2, obj) {
+  await mkdir8(dirname11(path2), { recursive: true });
+  const yamlText = (0, import_yaml9.stringify)(obj, { indent: 2, lineWidth: 0 });
+  const tmpPath = `${path2}.${process.pid}.tmp`;
+  await writeFile8(tmpPath, yamlText, "utf-8");
+  try {
+    await chmod4(tmpPath, 384);
+  } catch {
+  }
+  await rename6(tmpPath, path2);
+}
+function isFileNotFoundError10(err) {
+  return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
+}
+
+// src/commands/brand-config.ts
+function registerBrandConfigCommand(brandCmd) {
+  brandCmd.command("config <slug>").description(
+    "Edit brand-level context fields (ACoS/TACoS targets, attribution window, goals). Shows the confirmation card by default. Pair with --apply <decision-json> to persist edits."
+  ).option(
+    "--apply <decision>",
+    'apply a decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{...}} | {"action":"cancel"}'
+  ).option(
+    "--show",
+    "read-only inspect \u2014 alias for the default action when no flags pass",
+    false
+  ).action(
+    async (slug, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const brandRow = await resolveBrandRow(slug, root.dataDir);
+        if (brandRow === null) {
+          return emitError2(
+            root.json,
+            `Brand "${slug}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands.`
+          );
+        }
+        if (opts.apply) {
+          return await runApplyDecision({
+            brandSlug: brandRow.slug,
+            brandName: brandRow.display_name,
+            decisionJson: opts.apply,
+            json: root.json,
+            dataDir: root.dataDir
+          });
+        }
+        return await runShow({
+          brandSlug: brandRow.slug,
+          brandName: brandRow.display_name,
+          json: root.json,
+          dataDir: root.dataDir
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return emitError2(root.json, message);
+      }
+    }
+  );
+}
+async function runShow(args) {
+  const payload = await prepareBrandConfigEdit({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    dataDirOverride: args.dataDir
+  });
+  indexFields(payload);
+  await track(
+    {
+      event_name: "brand_config.viewed",
+      payload: {
+        brand_slug: args.brandSlug,
+        context_missing: payload.context_missing
+      }
+    },
+    args.dataDir
+  );
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify({ status: "ok", config: payload }, null, 2) + "\n"
+    );
+    return;
+  }
+  if (payload.context_missing) {
+    process.stdout.write(
+      `
+No brand context yet for ${args.brandName}.
+
+Run /account-cold-start ${args.brandSlug} in chat to capture the brand's positioning, targets, and structural events.
+
+`
+    );
+    return;
+  }
+  process.stdout.write("\n" + renderBrandConfigCard(payload) + "\n\n");
+}
+async function runApplyDecision(args) {
+  let decision;
+  try {
+    decision = JSON.parse(args.decisionJson);
+  } catch (err) {
+    return emitError2(
+      args.json,
+      `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  const payload = await prepareBrandConfigEdit({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    dataDirOverride: args.dataDir
+  });
+  const result = await applyBrandConfigEdit(payload, decision, {
+    dataDirOverride: args.dataDir
+  });
+  if (decision.action === "edit") {
+    await track(
+      {
+        event_name: "brand_config.edited",
+        outcome: result.status === "ok" ? "ok" : "failed",
+        payload: {
+          brand_slug: args.brandSlug,
+          edit_count: Object.keys(decision.edits).length,
+          changed_count: result.changed_field_count
+        }
+      },
+      args.dataDir
+    );
+  }
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: result.status,
+          did_write: result.did_write,
+          changed_field_count: result.changed_field_count,
+          written_to: result.written_to,
+          validation_issues: result.validation_issues
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    if (result.status === "validation_failed") process.exitCode = 4;
+    if (result.status === "context_missing") process.exitCode = 5;
+    return;
+  }
+  switch (result.status) {
+    case "context_missing":
+      process.stderr.write(
+        `
+No brand context yet for ${args.brandName}. Run /account-cold-start ${args.brandSlug} first.
+
+`
+      );
+      process.exitCode = 5;
+      return;
+    case "cancelled":
+      process.stdout.write("\nCancelled. No changes saved.\n\n");
+      return;
+    case "validation_failed":
+      process.stderr.write("\nCould not save \u2014 please fix:\n");
+      for (const issue2 of result.validation_issues) {
+        process.stderr.write(`  - ${issue2.field}: ${issue2.message}
+`);
+      }
+      process.stderr.write("\n");
+      process.exitCode = 4;
+      return;
+    case "ok":
+      if (result.did_write) {
+        process.stdout.write(
+          `
+\u2713 Saved ${result.changed_field_count} brand config edit(s) for ${args.brandName}.
+
+`
+        );
+      } else {
+        process.stdout.write(`
+No changes.
+
+`);
+      }
+      return;
+  }
+}
+function renderBrandConfigCard(payload) {
+  const lines = [];
+  lines.push(`Brand config \u2014 ${payload.brand_name}`);
+  lines.push("");
+  for (const f of payload.fields) {
+    lines.push(renderFieldLine(f));
+    const hint = renderSourceHint(f);
+    if (hint) lines.push(`${"".padStart(28)}${hint}`);
+  }
+  lines.push("");
+  if (payload.blocking.has_missing_required) {
+    lines.push(`Missing required: ${payload.blocking.missing_keys.join(", ")}`);
+    lines.push("");
+    lines.push(
+      `Some required fields are unset. Choose a number above to set, or "cancel".`
+    );
+  } else {
+    lines.push(
+      `Confirm or edit?  [Enter to keep / number to edit / "cancel"]`
+    );
+  }
+  return lines.join("\n");
+}
+function renderFieldLine(state) {
+  const idx = state._idx ?? 0;
+  const num = idx.toString().padStart(2, " ");
+  const label = humanLabel(state.field).padEnd(24);
+  return `  ${num}. ${label}  ${state.display}`;
+}
+function renderSourceHint(state) {
+  switch (state.source) {
+    case "stored":
+      return null;
+    case "default":
+      return `(default \u2014 set explicitly if this isn't right)`;
+    case "missing":
+      return state.field.required ? `(required \u2014 must be set)` : `(not set \u2014 optional)`;
+  }
+}
+function humanLabel(field) {
+  if (field.label) return field.label;
+  return field.id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+function indexFields(payload) {
+  payload.fields.forEach((f, i) => {
+    f._idx = i + 1;
+  });
+}
+async function resolveBrandRow(input, dataDir) {
+  const { index } = await readIndex(dataDir);
+  const exact = index.brands.find((b) => b.slug === input);
+  if (exact) return { slug: exact.slug, display_name: exact.display_name };
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "found") {
+    return {
+      slug: resolved.brand.slug,
+      display_name: resolved.brand.display_name
+    };
+  }
+  if (resolved.status === "ambiguous") {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+    throw new Error(
+      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`
+    );
+  }
+  return null;
+}
+function emitError2(json2, message) {
+  if (json2) {
+    process.stdout.write(
+      JSON.stringify({ status: "error", message }, null, 2) + "\n"
+    );
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
 }
 
 // src/commands/brand.ts
@@ -47471,6 +49395,8 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
     process.exitCode = result.ok ? 0 : 1;
     return;
   });
+  registerBrandViewCommand(brand);
+  registerBrandConfigCommand(brand);
   const key = brand.command("key").description(
     'Manage your "key brands" \u2014 the focused subset of brands portfolio skills default to. Accepts display names ("Skratch Labs"), acronyms ("AOP"), prefixes ("Home IQ"), or slugs.'
   );
@@ -47674,8 +49600,8 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml8 = __toESM(require_dist(), 1);
-import { readFile as readFile8 } from "node:fs/promises";
+var import_yaml10 = __toESM(require_dist(), 1);
+import { readFile as readFile11 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -48476,7 +50402,7 @@ var stringVisibleTrimSpacesRight = (string4) => {
   }
   return words.slice(0, last).join(" ") + words.slice(last).join("");
 };
-var exec = (string4, columns, options = {}) => {
+var exec2 = (string4, columns, options = {}) => {
   if (options.trim !== false && string4.trim() === "") {
     return "";
   }
@@ -48583,7 +50509,7 @@ var exec = (string4, columns, options = {}) => {
 };
 var CRLF_OR_LF = /\r?\n/;
 function wrapAnsi(string4, columns, options) {
-  return String(string4).normalize().split(CRLF_OR_LF).map((line) => exec(line, columns, options)).join("\n");
+  return String(string4).normalize().split(CRLF_OR_LF).map((line) => exec2(line, columns, options)).join("\n");
 }
 
 // node_modules/@inquirer/core/dist/lib/utils.js
@@ -49589,7 +51515,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile8(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile11(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -49609,10 +51535,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile8(path2, "utf-8");
+  const raw = await readFile11(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml8.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml10.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -49805,8 +51731,8 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml9 = __toESM(require_dist(), 1);
-import { readFile as readFile9 } from "node:fs/promises";
+var import_yaml11 = __toESM(require_dist(), 1);
+import { readFile as readFile12 } from "node:fs/promises";
 init_format_error();
 var allowedToolEnum = external_exports.enum([
   "db_read",
@@ -49866,22 +51792,27 @@ var skillManifestSchema = external_exports.object({
   trigger_phrases: external_exports.array(external_exports.string()).optional(),
   upstream_skills: external_exports.array(external_exports.string()).optional(),
   escalation_conditions: external_exports.array(external_exports.string()).optional(),
-  notes: external_exports.string().optional()
+  notes: external_exports.string().optional(),
+  // OCL — Objective Level Configuration. When present, the harness shows a
+  // confirm-on-run flow with these fields before invoking the skill. Skills
+  // without a calibration block skip the confirm flow entirely. See
+  // lib/calibration/manifest-schema.ts for field types + authoring guide.
+  calibration: calibrationManifestSchema.optional()
 });
 async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile9(path2, "utf-8");
+    raw = await readFile12(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError9(err)) {
+    if (isFileNotFoundError11(err)) {
       throw new Error(
         `Skill manifest not found at ${path2}. Known skill IDs are subdirectories under skills/. Check the skill name and try again.`
       );
     }
     throw err;
   }
-  const parsed = (0, import_yaml9.parse)(raw);
+  const parsed = (0, import_yaml11.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -49905,7 +51836,7 @@ function resolveBatchPlan(manifest) {
     { round: 1, parallel: [...manifest.sql_ids], notes: "Default single-round plan" }
   ];
 }
-function isFileNotFoundError9(err) {
+function isFileNotFoundError11(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -50007,8 +51938,8 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
-import { readFile as readFile10 } from "node:fs/promises";
-var import_yaml10 = __toESM(require_dist(), 1);
+import { readFile as readFile13 } from "node:fs/promises";
+var import_yaml12 = __toESM(require_dist(), 1);
 init_format_error();
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -50029,16 +51960,16 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile10(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError10(err)) {
+    if (isFileNotFoundError12(err)) {
       throw new Error(
         `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
       );
     }
     throw err;
   }
-  const parsed = (0, import_yaml10.parse)(raw);
+  const parsed = (0, import_yaml12.parse)(raw);
   const result = catalogSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -50063,9 +51994,9 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile10(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError10(err)) {
+    if (isFileNotFoundError12(err)) {
       throw new Error(
         `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
       );
@@ -50086,7 +52017,7 @@ async function readQuerySql(id) {
   const sql = lines.slice(headerEnd).join("\n").trim();
   return { id, sql, header };
 }
-function isFileNotFoundError10(err) {
+function isFileNotFoundError12(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -50344,14 +52275,14 @@ async function resolveCreds2(options) {
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir6, writeFile as writeFile6, rename as rename5 } from "node:fs/promises";
-import { dirname as dirname8, join as join6 } from "node:path";
+import { mkdir as mkdir9, writeFile as writeFile9, rename as rename7 } from "node:fs/promises";
+import { dirname as dirname12, join as join7 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir6(runDir, { recursive: true });
-  const dataJsonPath = join6(runDir, "data.json");
-  const dataMdPath = join6(runDir, "data.md");
+  await mkdir9(runDir, { recursive: true });
+  const dataJsonPath = join7(runDir, "data.json");
+  const dataMdPath = join7(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -50377,7 +52308,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join6(
+  return join7(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -50472,10 +52403,10 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir6(dirname8(path2), { recursive: true });
+  await mkdir9(dirname12(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile6(tmpPath, content, { encoding: "utf-8" });
-  await rename5(tmpPath, path2);
+  await writeFile9(tmpPath, content, { encoding: "utf-8" });
+  await rename7(tmpPath, path2);
 }
 
 // src/lib/prefetch/runner.ts
@@ -50755,12 +52686,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile11 } from "node:fs/promises";
+import { readFile as readFile14 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir7, writeFile as writeFile7, rename as rename6 } from "node:fs/promises";
-import { join as join7, dirname as dirname9 } from "node:path";
+import { mkdir as mkdir10, writeFile as writeFile10, rename as rename8 } from "node:fs/promises";
+import { join as join8, dirname as dirname13 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -50870,7 +52801,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir7(dirname9(path2), { recursive: true });
+  await mkdir10(dirname13(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -50898,7 +52829,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join7(
+  return join8(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -50928,8 +52859,8 @@ function hashParams(params) {
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile7(tmpPath, content, { encoding: "utf-8" });
-  await rename6(tmpPath, path2);
+  await writeFile10(tmpPath, content, { encoding: "utf-8" });
+  await rename8(tmpPath, path2);
 }
 
 // src/commands/sidecar.ts
@@ -50948,7 +52879,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile11(opts.inputFile, "utf-8");
+      const raw = await readFile14(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -51022,22 +52953,22 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile12 } from "node:fs/promises";
-import { dirname as dirname10, join as join8 } from "node:path";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+var import_yaml13 = __toESM(require_dist(), 1);
+import { readFile as readFile15 } from "node:fs/promises";
+import { dirname as dirname14, join as join9 } from "node:path";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile12(path2, "utf-8");
-      const parsed = (0, import_yaml11.parse)(raw);
+      const raw = await readFile15(path2, "utf-8");
+      const parsed = (0, import_yaml13.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
       );
     } catch (err) {
-      if (isFileNotFoundError11(err)) continue;
+      if (isFileNotFoundError13(err)) continue;
       throw err;
     }
   }
@@ -51059,18 +52990,18 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname10(fileURLToPath3(import.meta.url));
+  const here = dirname14(fileURLToPath4(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join8(dir, "shared", "data-tables.yaml"));
-    const parent = dirname10(dir);
+    candidates.push(join9(dir, "shared", "data-tables.yaml"));
+    const parent = dirname14(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError11(err) {
+function isFileNotFoundError13(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -51109,8 +53040,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir8 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
+import { mkdir as mkdir11 } from "node:fs/promises";
+import { dirname as dirname15 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -51146,7 +53077,7 @@ function formatCell2(value) {
   if (value === null || value === void 0) return "";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
-  if (value instanceof Date) return formatDate(value);
+  if (value instanceof Date) return formatDate2(value);
   if (typeof value === "string") return quote(value);
   return quote(JSON.stringify(value));
 }
@@ -51156,7 +53087,7 @@ function quote(value) {
   }
   return value;
 }
-function formatDate(d) {
+function formatDate2(d) {
   if (!Number.isFinite(d.getTime())) return "";
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -51217,7 +53148,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir8(dirname11(opts.outPath), { recursive: true });
+  await mkdir11(dirname15(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -51258,9 +53189,9 @@ function synthFailure(opts, message) {
 
 // src/commands/data.ts
 init_resolve();
-import { writeFile as writeFile8 } from "node:fs/promises";
-import { mkdir as mkdir9 } from "node:fs/promises";
-import { dirname as dirname12 } from "node:path";
+import { writeFile as writeFile11 } from "node:fs/promises";
+import { mkdir as mkdir12 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
@@ -51274,7 +53205,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableList(tables) + "\n");
       }
     } catch (err) {
-      emitError2(err, !!root.json);
+      emitError3(err, !!root.json);
     }
   });
   data.command("describe <table>").description("Show description + scoping hints for one table").action(async (table, _opts, cmd) => {
@@ -51292,7 +53223,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableDetail(meta3) + "\n");
       }
     } catch (err) {
-      emitError2(err, !!root.json);
+      emitError3(err, !!root.json);
     }
   });
   data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
@@ -51345,7 +53276,7 @@ function registerDataCommands(program3) {
           process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
         }
       } catch (err) {
-        emitError2(err, !!root.json);
+        emitError3(err, !!root.json);
       }
     }
   );
@@ -51401,7 +53332,7 @@ function registerDataCommands(program3) {
           );
         }
       } catch (err) {
-        emitError2(err, !!root.json);
+        emitError3(err, !!root.json);
       }
     }
   );
@@ -51439,8 +53370,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir9(dirname12(opts.out), { recursive: true });
-          await writeFile8(opts.out, csv, "utf-8");
+          await mkdir12(dirname16(opts.out), { recursive: true });
+          await writeFile11(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -51471,7 +53402,7 @@ function registerDataCommands(program3) {
           }
         }
       } catch (err) {
-        emitError2(err, !!root.json);
+        emitError3(err, !!root.json);
       }
     }
   );
@@ -51547,7 +53478,7 @@ function handleAccessDeniedExit(kind) {
   if (kind === "access_denied_table") return 4;
   return 1;
 }
-function emitError2(err, json2) {
+function emitError3(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     process.stdout.write(
@@ -52229,6 +54160,746 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
   );
 }
 
+// src/lib/calibration/confirm-flow.ts
+var import_yaml14 = __toESM(require_dist(), 1);
+import { readFile as readFile17 } from "node:fs/promises";
+init_resolve();
+async function prepareConfirmation(opts) {
+  const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
+  const { config: brandConfig } = await readBrandConfig(
+    brandSlug,
+    dataDirOverride
+  );
+  const storedBlock = brandConfig[skillId];
+  const view = buildSkillConfigView(storedBlock, manifest);
+  const ctx = await tryReadContext(brandSlug, dataDirOverride);
+  const entries = manifest.fields.filter((f) => !f.deprecated).map((field) => {
+    const stored_value = storedBlock?.[field.id];
+    const seed_value = field.seed_from ? getByPath2(ctx, stripContextPrefix(field.seed_from)) : void 0;
+    const default_value = hasDefault3(field) ? field.default : void 0;
+    let effective_value;
+    let source;
+    if (stored_value !== void 0) {
+      effective_value = stored_value;
+      source = "stored";
+    } else if (seed_value !== void 0) {
+      effective_value = seed_value;
+      source = "seed";
+    } else if (default_value !== void 0) {
+      effective_value = default_value;
+      source = "default";
+    } else {
+      effective_value = void 0;
+      source = "missing";
+    }
+    return {
+      field,
+      stored_value,
+      seed_value,
+      default_value,
+      effective_value,
+      source,
+      display: formatFieldValue(field, effective_value)
+    };
+  });
+  const missing_keys = entries.filter((e) => e.field.required && e.source === "missing").map((e) => e.field.id);
+  return {
+    skill_id: skillId,
+    brand_slug: brandSlug,
+    brand_name: brandName,
+    is_first_run: view.is_first_run,
+    fields: entries,
+    extras: view.extras,
+    blocking: {
+      has_missing_required: missing_keys.length > 0,
+      missing_keys
+    }
+  };
+}
+async function applyConfirmation(payload, decision, opts) {
+  if (decision.action === "cancel") {
+    return {
+      status: "cancelled",
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: []
+    };
+  }
+  const effective = {};
+  for (const entry of payload.fields) {
+    if (entry.effective_value !== void 0) {
+      effective[entry.field.id] = entry.effective_value;
+    }
+  }
+  if (decision.action === "confirm") {
+    if (payload.blocking.has_missing_required) {
+      return {
+        status: "validation_failed",
+        effective_config: {},
+        did_persist: false,
+        saved_to: null,
+        validation_issues: payload.blocking.missing_keys.map((k) => ({
+          field: k,
+          message: "required, no value set"
+        }))
+      };
+    }
+    return {
+      status: "ok",
+      effective_config: effective,
+      did_persist: false,
+      saved_to: null,
+      validation_issues: []
+    };
+  }
+  const issues = [];
+  const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
+  for (const [key, raw] of Object.entries(decision.edits)) {
+    const field = fieldsById.get(key);
+    if (!field) {
+      issues.push({ field: key, message: "unknown field (not in manifest)" });
+      continue;
+    }
+    const parsed = parseFieldInput(field, raw);
+    if (!parsed.ok) {
+      issues.push({ field: key, message: parsed.error });
+      continue;
+    }
+    effective[key] = parsed.value;
+  }
+  const manifest = paddedManifestFromEntries(payload.fields);
+  const sanity = validateAgainstManifest(effective, manifest);
+  for (const issue2 of sanity.issues) {
+    if (!issues.find((i) => i.field === issue2.field)) issues.push(issue2);
+  }
+  if (issues.length > 0) {
+    return {
+      status: "validation_failed",
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: issues
+    };
+  }
+  if (!decision.save) {
+    return {
+      status: "ok",
+      effective_config: effective,
+      did_persist: false,
+      saved_to: null,
+      validation_issues: []
+    };
+  }
+  const blockToSave = composeSkillBlock(effective, payload.extras);
+  const { path: path2 } = await saveSkillConfig(
+    payload.brand_slug,
+    payload.skill_id,
+    blockToSave,
+    opts.dataDirOverride
+  );
+  return {
+    status: "ok",
+    effective_config: effective,
+    did_persist: true,
+    saved_to: path2,
+    validation_issues: []
+  };
+}
+function hasDefault3(field) {
+  return field.default !== void 0;
+}
+function stripContextPrefix(seedPath) {
+  return seedPath.replace(/^context\./, "");
+}
+function getByPath2(obj, path2) {
+  if (obj === null || obj === void 0) return void 0;
+  const parts = path2.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur === null || cur === void 0 || typeof cur !== "object") {
+      return void 0;
+    }
+    cur = cur[p];
+  }
+  return cur;
+}
+async function tryReadContext(brandSlug, dataDirOverride) {
+  const path2 = contextPath(brandSlug, dataDirOverride);
+  try {
+    const raw = await readFile17(path2, "utf-8");
+    return (0, import_yaml14.parse)(raw);
+  } catch {
+    return null;
+  }
+}
+function paddedManifestFromEntries(entries) {
+  return {
+    schema_version: 1,
+    fields: entries.map((e) => e.field)
+  };
+}
+
+// src/lib/calibration/render-chat.ts
+function renderConfirmationCard(payload, options = {}) {
+  const skillName = options.skill_display_name ?? payload.skill_id;
+  const labelWidth = options.label_width ?? 22;
+  const header = payload.is_first_run ? `${skillName} \u2014 ${payload.brand_name} (first run \u2014 review calibration before running)` : `${skillName} \u2014 ${payload.brand_name} (review calibration)`;
+  const lines = [];
+  for (const entry of payload.fields) {
+    lines.push(renderFieldLine2(entry, labelWidth));
+    const hint = renderSourceHint2(entry);
+    if (hint) lines.push(`${"".padStart(labelWidth + 2)}${hint}`);
+  }
+  const fields = lines.join("\n");
+  const extras_note = Object.keys(payload.extras).length > 0 ? renderExtrasNote(payload.extras) : null;
+  const blocking_note = payload.blocking.has_missing_required ? renderBlockingNote(payload.blocking.missing_keys) : null;
+  const action_prompt = payload.blocking.has_missing_required ? `Some required fields are unset. Choose a number above to set, or "cancel".` : payload.is_first_run ? `Confirm and run, or edit a field?  [number to edit / "run" / "cancel"]` : `Confirm and run, or edit?  [Enter / number to edit / "cancel"]`;
+  return {
+    header,
+    fields,
+    extras_note,
+    blocking_note,
+    action_prompt
+  };
+}
+function joinCard(parts) {
+  const blocks = [parts.header, "", parts.fields];
+  if (parts.extras_note) blocks.push("", parts.extras_note);
+  if (parts.blocking_note) blocks.push("", parts.blocking_note);
+  blocks.push("", parts.action_prompt);
+  return blocks.join("\n");
+}
+function renderFieldLine2(entry, labelWidth) {
+  const num = entryIndex(entry).toString().padStart(2, " ");
+  const label = humanLabel2(entry.field).padEnd(labelWidth);
+  const value = entry.display;
+  return `  ${num}. ${label}  ${value}`;
+}
+function renderSourceHint2(entry) {
+  switch (entry.source) {
+    case "stored":
+      return null;
+    case "seed":
+      return `(from your cold-start notes \u2014 confirm or edit)`;
+    case "default":
+      return `(default \u2014 set explicitly if this isn't right)`;
+    case "missing":
+      return entry.field.required ? `(required \u2014 must be set before running)` : `(optional \u2014 leave unset to skip)`;
+  }
+}
+function renderExtrasNote(extras) {
+  const keys = Object.keys(extras);
+  const sample = keys.slice(0, 3).join(", ");
+  const overflow = keys.length > 3 ? `, +${keys.length - 3} more` : "";
+  return `Note: ${keys.length} user-added field(s) in your config will round-trip but aren't edited here: ${sample}${overflow}`;
+}
+function renderBlockingNote(missing) {
+  return `Missing required: ${missing.join(", ")}`;
+}
+function entryIndex(entry) {
+  return entry._idx ?? 0;
+}
+function renderValidationIssues(result, fieldsById) {
+  if (result.validation_issues.length === 0) return "";
+  const lines = ["Could not save \u2014 please fix:"];
+  for (const issue2 of result.validation_issues) {
+    const field = fieldsById.get(issue2.field);
+    const label = field ? humanLabel2(field) : issue2.field;
+    lines.push(`  - ${label}: ${issue2.message}`);
+  }
+  return lines.join("\n");
+}
+function renderPersistenceFooter(result, brandName, skillDisplayName) {
+  if (result.status !== "ok") return "";
+  if (result.did_persist) {
+    return `Saved your edits to ${brandName}'s ${skillDisplayName} config.`;
+  }
+  return "";
+}
+function humanLabel2(field) {
+  if (field.label && field.label.length > 0) return field.label;
+  const trimmed = field.prompt.replace(/\?$/, "").replace(/\s*for\s+\{brand_name\}.*$/i, "").replace(/\s*for\s+the\s+brand.*$/i, "").replace(/\s*right now$/i, "").trim();
+  if (trimmed.length > 0 && trimmed.length <= 36) {
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  }
+  return field.id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+function indexConfirmationEntries(payload) {
+  payload.fields.forEach((entry, i) => {
+    entry._idx = i + 1;
+  });
+}
+
+// src/commands/skill.ts
+init_resolve();
+import { mkdir as mkdir14, readFile as readFile18, writeFile as writeFile12 } from "node:fs/promises";
+import { dirname as dirname18 } from "node:path";
+function registerSkillCommands(program3) {
+  const skill = program3.command("skill").description(
+    "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
+  );
+  skill.command("config <skill-id>").description(
+    "Show or edit the per-brand calibration for one skill. Default prints the confirmation card. Pair with --apply to persist edits, --reset to wipe, or --json to emit a machine-readable payload."
+  ).requiredOption("--brand <slug>", "brand slug from the registry").option(
+    "--apply <decision>",
+    'apply a confirmation decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{},"save":true} | {"action":"cancel"}'
+  ).option("--reset", "reset the per-brand block (wipes user values)", false).option(
+    "--yes",
+    "skip the interactive confirmation for --reset",
+    false
+  ).option(
+    "--show",
+    "read-only inspect \u2014 alias for the default action when no flags are passed",
+    false
+  ).action(
+    async (skillId, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
+        if (brandRow === null) {
+          return emitError4(
+            root.json,
+            `Brand "${opts.brand}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands. The resolver accepts slugs, display names, acronyms, and prefixes.`
+          );
+        }
+        if (opts.reset) {
+          return await runReset({
+            skillId,
+            brandSlug: brandRow.slug,
+            brandName: brandRow.display_name,
+            yes: opts.yes,
+            json: root.json,
+            dataDir: root.dataDir
+          });
+        }
+        const manifest = await loadSkillManifest(skillId);
+        const calibration = extractCalibration(manifest);
+        if (!calibration) {
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify(
+                {
+                  status: "ok",
+                  skill_id: skillId,
+                  has_calibration: false,
+                  message: "Skill has no calibration manifest."
+                },
+                null,
+                2
+              ) + "\n"
+            );
+            return;
+          }
+          process.stdout.write(
+            `
+${manifest.display_name} has no calibration to configure. It runs with whatever the skill code defines internally.
+
+`
+          );
+          return;
+        }
+        if (opts.apply) {
+          return await runApplyDecision2({
+            skillId,
+            brandSlug: brandRow.slug,
+            brandName: brandRow.display_name,
+            manifest,
+            calibration,
+            decisionJson: opts.apply,
+            json: root.json,
+            dataDir: root.dataDir
+          });
+        }
+        return await runShow2({
+          skillId,
+          brandSlug: brandRow.slug,
+          brandName: brandRow.display_name,
+          manifestDisplayName: manifest.display_name,
+          calibration,
+          json: root.json,
+          dataDir: root.dataDir
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return emitError4(root.json, message);
+      }
+    }
+  );
+  skill.command("apply <skill-id>").description(
+    'Apply-gate: reconciles suggestions.json + overrides.json from a run and writes applied.json. In 0.5.0 this is dry-run only (status: "dry_run" per row). Real writes ship when the Amazon write MCP/API lands \u2014 same contract, status flips to "applied" | "failed".'
+  ).requiredOption("--brand <slug>", "brand slug from the registry").requiredOption("--run <date>", "run date directory under runs/<skill>/").option(
+    "--dry-run",
+    'write applied.json with status="dry_run" (default for 0.5.0)',
+    true
+  ).action(
+    async (skillId, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
+        if (brandRow === null) {
+          return emitError4(
+            root.json,
+            `Brand "${opts.brand}" not in the registry.`
+          );
+        }
+        await track(
+          {
+            event_name: EventName.SkillApplyAttempted,
+            skill_id: skillId,
+            payload: {
+              brand_slug: brandRow.slug,
+              run_date: opts.run,
+              dry_run: opts.dryRun
+            }
+          },
+          root.dataDir
+        );
+        const result = await applyDryRun({
+          skillId,
+          brandSlug: brandRow.slug,
+          runDate: opts.run,
+          dataDir: root.dataDir
+        });
+        await track(
+          {
+            event_name: EventName.SkillApplied,
+            skill_id: skillId,
+            outcome: "ok",
+            row_count: result.row_count,
+            payload: {
+              brand_slug: brandRow.slug,
+              run_date: opts.run,
+              dry_run: opts.dryRun,
+              rows_with_overrides: result.rows_with_overrides
+            }
+          },
+          root.dataDir
+        );
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                applied_to: result.applied_path,
+                row_count: result.row_count,
+                rows_with_overrides: result.rows_with_overrides,
+                dry_run: opts.dryRun
+              },
+              null,
+              2
+            ) + "\n"
+          );
+          return;
+        }
+        process.stdout.write(
+          `
+\u2713 Apply-gate (dry-run) wrote ${result.row_count} row(s) to
+  ${result.applied_path}
+  (${result.rows_with_overrides} had user overrides)
+
+Real Amazon writes will land once the write MCP/API is wired. Same contract.
+
+`
+        );
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return emitError4(root.json, message);
+      }
+    }
+  );
+}
+async function runShow2(args) {
+  const payload = await prepareConfirmation({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    skillId: args.skillId,
+    manifest: args.calibration,
+    dataDirOverride: args.dataDir
+  });
+  indexConfirmationEntries(payload);
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        { status: "ok", confirmation: payload },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  const card = renderConfirmationCard(payload, {
+    skill_display_name: args.manifestDisplayName
+  });
+  process.stdout.write("\n" + joinCard(card) + "\n\n");
+  return;
+}
+async function runApplyDecision2(args) {
+  let decision;
+  try {
+    decision = JSON.parse(args.decisionJson);
+  } catch (err) {
+    return emitError4(
+      args.json,
+      `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  const payload = await prepareConfirmation({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    skillId: args.skillId,
+    manifest: args.calibration,
+    dataDirOverride: args.dataDir
+  });
+  const result = await applyConfirmation(payload, decision, {
+    dataDirOverride: args.dataDir
+  });
+  if (decision.action === "confirm") {
+    await track(
+      {
+        event_name: EventName.SkillCalibrationConfirmed,
+        skill_id: args.skillId,
+        outcome: result.status === "ok" ? "ok" : "failed",
+        payload: {
+          brand_slug: args.brandSlug,
+          had_edits: false
+        }
+      },
+      args.dataDir
+    );
+  } else if (decision.action === "edit") {
+    await track(
+      {
+        event_name: EventName.SkillCalibrationEdited,
+        skill_id: args.skillId,
+        outcome: result.status === "ok" ? "ok" : "failed",
+        payload: {
+          brand_slug: args.brandSlug,
+          edit_count: Object.keys(decision.edits).length,
+          persisted: result.did_persist
+        }
+      },
+      args.dataDir
+    );
+  }
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: result.status,
+          effective_config: result.effective_config,
+          did_persist: result.did_persist,
+          saved_to: result.saved_to,
+          validation_issues: result.validation_issues
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    if (result.status === "validation_failed") process.exitCode = 4;
+    return;
+  }
+  if (result.status === "validation_failed") {
+    const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
+    process.stderr.write("\n" + renderValidationIssues(result, fieldsById) + "\n\n");
+    process.exitCode = 4;
+    return;
+  }
+  if (result.status === "cancelled") {
+    process.stdout.write("\nCancelled. No changes saved.\n\n");
+    return;
+  }
+  const footer = renderPersistenceFooter(
+    result,
+    args.brandName,
+    args.manifest.display_name
+  );
+  if (footer) process.stdout.write(`
+${footer}
+
+`);
+  return;
+}
+async function runReset(args) {
+  if (!args.yes && !args.json) {
+    process.stdout.write(
+      `
+This will wipe ${args.brandName}'s calibration for ${args.skillId}.
+Your tuned values will be lost. The next run will re-prompt as if first-time.
+
+To confirm, re-run with --yes:
+  mixshift skill config ${args.skillId} --brand ${args.brandSlug} --reset --yes
+
+`
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const result = await resetSkillConfig(
+    args.skillId,
+    args.brandSlug,
+    args.dataDir
+  );
+  await track(
+    {
+      event_name: EventName.SkillCalibrationReset,
+      skill_id: args.skillId,
+      outcome: "ok",
+      payload: { brand_slug: args.brandSlug, existed: result.existed }
+    },
+    args.dataDir
+  );
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        { status: "ok", existed: result.existed, path: result.path },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  process.stdout.write(
+    result.existed ? `
+\u2713 Reset ${args.brandName}'s ${args.skillId} calibration.
+
+` : `
+${args.brandName} had no calibration for ${args.skillId}. Nothing to reset.
+
+`
+  );
+  return;
+}
+async function applyDryRun(args) {
+  const path2 = runAppliedPath(
+    args.brandSlug,
+    args.skillId,
+    args.runDate,
+    args.dataDir
+  );
+  const runDir = dirname18(path2);
+  const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
+  if (!suggestions) {
+    throw new Error(
+      `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
+    );
+  }
+  const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {
+    rows: []
+  };
+  const suggestionRows = extractRows(suggestions);
+  const overrideMap = /* @__PURE__ */ new Map();
+  for (const r of extractRows(overrides)) {
+    const id = stableRowId(r);
+    if (id) overrideMap.set(id, r);
+  }
+  const appliedRows = [];
+  let rowsWithOverrides = 0;
+  for (const s of suggestionRows) {
+    const id = stableRowId(s);
+    const ov = id ? overrideMap.get(id) : void 0;
+    if (ov) rowsWithOverrides += 1;
+    appliedRows.push({
+      row_id: id ?? null,
+      suggested: s,
+      override: ov ?? null,
+      // Final values: override fields take precedence per-field.
+      final: ov ? { ...s, ...ov } : s,
+      // Apply contract: dry_run today, "applied" | "failed" when MCP lands.
+      status: "dry_run",
+      applied_at: null,
+      external_id: null,
+      // User's reasoning note (if any) lifted to top for easy querying.
+      reason_note: ov && typeof ov.reason_note === "string" && ov.reason_note || null
+    });
+  }
+  const body = {
+    schema_version: 1,
+    skill_id: args.skillId,
+    brand_slug: args.brandSlug,
+    run_date: args.runDate,
+    generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    dry_run: true,
+    row_count: appliedRows.length,
+    rows_with_overrides: rowsWithOverrides,
+    rows: appliedRows
+  };
+  await mkdir14(dirname18(path2), { recursive: true });
+  await writeFile12(path2, JSON.stringify(body, null, 2), "utf-8");
+  return {
+    applied_path: path2,
+    row_count: appliedRows.length,
+    rows_with_overrides: rowsWithOverrides
+  };
+}
+async function resolveBrandRow2(input, dataDir) {
+  const { index } = await readIndex(dataDir);
+  const exact = index.brands.find((b) => b.slug === input);
+  if (exact) return { slug: exact.slug, display_name: exact.display_name };
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "found") {
+    return {
+      slug: resolved.brand.slug,
+      display_name: resolved.brand.display_name
+    };
+  }
+  if (resolved.status === "ambiguous") {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+    throw new Error(
+      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`
+    );
+  }
+  return null;
+}
+async function readJsonIfExists(path2) {
+  try {
+    const raw = await readFile18(path2, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+}
+function extractRows(obj) {
+  if (obj === null || typeof obj !== "object") return [];
+  const rows = obj.rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter(
+    (r) => r !== null && typeof r === "object" && !Array.isArray(r)
+  );
+}
+function stableRowId(row) {
+  for (const key of [
+    "row_id",
+    "campaign_id",
+    "ad_group_id",
+    "keyword_id",
+    "target_id",
+    "placement_id",
+    "asin",
+    "sku"
+  ]) {
+    const v = row[key];
+    if (typeof v === "string" || typeof v === "number") return String(v);
+  }
+  return null;
+}
+function emitError4(json2, message) {
+  if (json2) {
+    process.stdout.write(
+      JSON.stringify({ status: "error", message }, null, 2) + "\n"
+    );
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+
 // src/cli.ts
 init_load();
 init_save();
@@ -52256,6 +54927,7 @@ registerDataCommands(program2);
 registerFeedbackCommand(program2);
 registerWelcomeCommand(program2);
 registerTelemetryCommands(program2);
+registerSkillCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();

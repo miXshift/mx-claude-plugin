@@ -64,6 +64,55 @@ export function narrativePath(brandSlug: string, dataDirOverride?: string): stri
   return join(brandDir(brandSlug, dataDirOverride), 'narrative.md');
 }
 
+/**
+ * Per-brand OCL (Objective Level Configuration) file. Stores user-tuned
+ * defaults for each skill keyed by skill_id. Sovereign post-edit — see
+ * lib/calibration/brand-config.ts for the read/write contract.
+ */
+export function brandConfigPath(brandSlug: string, dataDirOverride?: string): string {
+  return join(brandDir(brandSlug, dataDirOverride), 'config.yaml');
+}
+
+/**
+ * Per-run OCL snapshot — captures the effective config used for one run of
+ * one skill. Lives under runs/<skill_id>/<run_date>/ocl.yaml so audit can
+ * answer "what config was actually used for this run".
+ */
+export function runOclPath(
+  brandSlug: string,
+  skillId: string,
+  runDate: string,
+  dataDirOverride?: string,
+): string {
+  return join(
+    brandDir(brandSlug, dataDirOverride),
+    'runs',
+    skillId,
+    runDate,
+    'ocl.yaml',
+  );
+}
+
+/**
+ * Apply-gate sidecar — written by `mixshift skill apply` after suggestions
+ * + overrides are reconciled. Dry-run for 0.5.0, real writes once the
+ * Amazon write MCP/API lands.
+ */
+export function runAppliedPath(
+  brandSlug: string,
+  skillId: string,
+  runDate: string,
+  dataDirOverride?: string,
+): string {
+  return join(
+    brandDir(brandSlug, dataDirOverride),
+    'runs',
+    skillId,
+    runDate,
+    'applied.json',
+  );
+}
+
 export function indexPath(dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), 'index.yaml');
 }
