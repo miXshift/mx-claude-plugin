@@ -113,6 +113,26 @@ export function runAppliedPath(
   );
 }
 
+/**
+ * Cold-start Phase 1.5 enrichment artifact (settlement curve + stockout
+ * candidates + brand-typo clusters). Written by `mixshift brand enrich`
+ * (or auto by delta-mode); read by the renderer's Detected Anomalies
+ * section and by `mixshift brand merge-delta` for patching into context.
+ */
+export function enrichmentPath(
+  brandSlug: string,
+  runDate: string,
+  dataDirOverride?: string,
+): string {
+  return join(
+    brandDir(brandSlug, dataDirOverride),
+    'runs',
+    'account-cold-start',
+    runDate,
+    `${runDate}.enrichment.json`,
+  );
+}
+
 export function indexPath(dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), 'index.yaml');
 }

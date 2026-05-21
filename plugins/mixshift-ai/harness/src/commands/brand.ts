@@ -24,6 +24,7 @@ import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
+import { registerBrandEnrichCommand } from './brand-enrich.js';
 
 interface RootOptions {
   json?: boolean;
@@ -552,6 +553,11 @@ export function registerBrandCommands(program: Command): void {
   // 19-section HTML + headline.json + review.json using design-system primitives.
   // Replaces Todd's brand-context-template.html / render-brand-context.py.
   registerBrandRenderContextCommand(brand);
+
+  // `mixshift brand enrich <slug>` — Phase 1.5 enrichment runner.
+  // Settlement curve + stockout windows + brand-typo clusters from CS-28-31.
+  // Shell ships in 0.5.0; sub-analyses fill in across Phase C.2/C.3/C.4.
+  registerBrandEnrichCommand(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.

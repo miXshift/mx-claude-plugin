@@ -1,0 +1,125 @@
+# JSON-Schema-style spec for per-brand reporting style.
+# Lives at: ~/.mixshift/clients/<brand-slug>/reporting-style.yaml (optional).
+#
+# Purpose: when a brand has an established monthly report convention, this
+# file declares the section list, ordering, and variants the brand expects.
+# The monthly-performance-report skill consults this during report-data.json
+# assembly to match the brand's house style.
+#
+# Provenance: produced by account-cold-start when the AM uploads a
+# reference report (Phase 2 sub-step: Reporting Style Intake). Editable by
+# AMs over time as the brand's preferences evolve.
+#
+# When this file is absent, monthly-performance-report uses canonical
+# defaults (the section list it would assemble for a generic brand).
+
+schema_version: 1
+
+required_top_level:
+  - schema_version
+  - brand_slug
+  - last_updated
+  - sections
+
+optional_top_level:
+  - source
+  - variants
+  - voice_notes
+  - emphasis
+  - omit
+
+shapes:
+  source:
+    optional: [type, reference_artifact, notes]
+    enums:
+      type: [cold_start_inference, manual_edit]
+    note: |
+      `type` distinguishes auto-derived from hand-edited. `reference_artifact`
+      is the relative path to the uploaded reference report (if any), kept so
+      the AM can re-derive style from the same source later. `notes` is
+      free-text provenance — what the inference was based on, what the AM
+      confirmed during cold-start intake, what they edited later.
+
+  variants:
+    optional: [metrics_table, forecast_presentation, item_group]
+    enums:
+      metrics_table: [split, unified]
+      forecast_presentation: [anchor_cards_plus_table, inline_metric_row, forward_projection_table, none]
+      item_group: [table_only, table_plus_deep_dives]
+    note: |
+      Per-section render variants. Where a section has multiple visual
+      styles, the brand picks which one applies. Renderer dispatches.
+        metrics_table:
+          - "split"      — separate performance_snapshot_mom + _yoy tables
+          - "unified"    — single key_metrics_summary with MoM + YoY columns
+        forecast_presentation:
+          - "anchor_cards_plus_table"  — anchor cards above a detail table
+          - "inline_metric_row"        — forecast as a row in key_metrics_summary
+          - "forward_projection_table" — pacing table only, no anchors
+          - "none"                     — brand does not include forecast
+        item_group:
+          - "table_only"               — table summary
+          - "table_plus_deep_dives"    — table + per-line prose deep-dive
+
+  emphasis:
+    optional: [primary_metric, feature_sub_brands, forecast_lead, brand_specific_framings]
+    enums:
+      primary_metric: [ACOS, TACOS]
+      forecast_lead: [ahead, behind, neutral]
+    note: |
+      Steering signals for narrative prose.
+        primary_metric         — which metric leads in Bottom Line + KPI heroes
+        feature_sub_brands[]   — sub-brand slugs that always get a callout
+        forecast_lead          — tone calibration for variance language
+        brand_specific_framings[] — short framing rules ("Treat X as launch-stage")
+
+# ---------------------------------------------------------------------------
+# Section list
+# ---------------------------------------------------------------------------
+# Ordered array of section identifiers. Each must match a section_type
+# declared in shared/clients/_schema/report-data.schema.yaml::section_types.
+# Sections render in this order. Conditional render rules (forecast
+# suppression, audience filters) still apply on top.
+#
+# Sections NOT in this list are skipped. Sections in this list AND in `omit`
+# are also skipped (`omit` is the override layer for canonical-default
+# expansion; explicit `sections` list wins for brand-specific orderings).
+#
+# Example for an NZHC-style split brand:
+#   sections:
+#     - title_block
+#     - bottom_line
+#     - kpi_heroes
+#     - performance_snapshot_mom
+#     - performance_snapshot_yoy
+#     - campaign_type_mom
+#     - campaign_type_yoy
+#     - product_line_mom
+#     - product_line_yoy
+#     - forecast_anchor_cards
+#     - forecast_table
+#     - narrative   # "Active Conditions"
+#     - narrative   # "Coming Next Month"
+#     - footer
+#
+# Example for a Hydrapak-style unified brand:
+#   sections:
+#     - nav_header
+#     - title_block
+#     - bottom_line
+#     - key_metrics_summary
+#     - narrative          # "Volume & Traffic"
+#     - narrative          # "Advertising Efficiency"
+#     - performance_by_brand
+#     - item_group_highlights
+#     - narrative          # "Year-Over-Year Context"
+#     - looking_ahead
+#     - footer
+
+# ---------------------------------------------------------------------------
+# Notes for AMs
+# ---------------------------------------------------------------------------
+# Edit this file directly to refine the brand's reporting style over time.
+# Changes apply on the next monthly-performance-report run. To regenerate
+# from a fresh reference report, re-run cold-start with --mode style-refresh
+# (when implemented).
