@@ -372,6 +372,339 @@ body { background: var(--rc-bg); }
   color: var(--rc-text-sub);
   background: var(--rc-card);
 }
+/* Status pills (uppercase, tight) — for schema-status / readiness states.
+   Distinct from rc-pill (sentence-case, label-style). Both can coexist. */
+.rc-status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.25px;
+  white-space: nowrap;
+}
+.rc-status-pill.is-complete {
+  background: color-mix(in srgb, var(--rc-positive) 14%, transparent);
+  color: var(--rc-positive);
+}
+.rc-status-pill.is-partial {
+  background: color-mix(in srgb, var(--rc-warn) 14%, transparent);
+  color: var(--rc-warn);
+}
+.rc-status-pill.is-missing {
+  background: color-mix(in srgb, var(--rc-red) 14%, transparent);
+  color: var(--rc-red);
+}
+.rc-status-pill.is-runtime {
+  background: color-mix(in srgb, var(--rc-info) 14%, transparent);
+  color: var(--rc-info);
+}
+/* Proof cards — bordered card w/ title, status pill, body, source chips */
+.rc-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+.rc-proof-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-proof-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.rc-proof-title {
+  font-weight: 700;
+  color: var(--rc-text);
+  font-size: var(--fs-body-sm);
+}
+.rc-proof-body {
+  color: var(--rc-text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+.rc-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.rc-source-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rc-info) 10%, transparent);
+  color: var(--rc-info);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.rc-source-chip:hover {
+  background: color-mix(in srgb, var(--rc-info) 18%, transparent);
+}
+/* Runtime cards — left-border-accent, prose body */
+.rc-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-3);
+}
+.rc-runtime-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-left: 4px solid var(--rc-info);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-runtime-card-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  margin: 0 0 var(--space-2);
+}
+.rc-runtime-card p {
+  color: var(--rc-text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: var(--space-2) 0;
+}
+/* Condition blocks — Active Conditions surface (events / watch items) */
+.rc-condition-block {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-left: 3px solid var(--rc-warn);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.rc-condition-block.is-event {
+  border-left-color: var(--rc-info);
+}
+.rc-condition-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+  margin-bottom: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-condition-body {
+  font-size: 12.5px;
+  color: var(--rc-text-sub);
+  line-height: 1.55;
+}
+/* Lane cards — ASIN corpora grid (item-group / sub-brand counts) */
+.rc-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+}
+.rc-lane-card {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.rc-lane-name {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--rc-text);
+}
+.rc-lane-sub {
+  font-size: 11px;
+  color: var(--rc-text-sub);
+  margin-top: 2px;
+}
+.rc-lane-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--rc-info);
+  font-weight: 700;
+}
+/* Bucket cards — Missing Context Buckets (status-colored left border) */
+.rc-bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+.rc-bucket-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--rc-border-strong);
+}
+.rc-bucket-card.is-complete { border-left-color: var(--rc-positive); }
+.rc-bucket-card.is-partial  { border-left-color: var(--rc-warn); }
+.rc-bucket-card.is-missing  { border-left-color: var(--rc-red); }
+.rc-bucket-card.is-runtime  { border-left-color: var(--rc-info); }
+.rc-bucket-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+.rc-bucket-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+}
+.rc-bucket-desc {
+  color: var(--rc-text-sub);
+  font-size: 11.5px;
+  line-height: 1.45;
+  margin-bottom: var(--space-2);
+}
+.rc-bucket-summary {
+  color: var(--rc-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.rc-bucket-details {
+  margin-top: var(--space-2);
+}
+.rc-bucket-details > summary {
+  cursor: pointer;
+  color: var(--rc-info);
+  font-size: 11.5px;
+  font-weight: 700;
+  list-style: none;
+}
+.rc-bucket-details > summary::-webkit-details-marker { display: none; }
+.rc-detail-list {
+  margin: var(--space-2) 0 0 var(--space-3);
+  color: var(--rc-text);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.rc-detail-list li { margin-bottom: 5px; }
+/* Audit blocks — Schema Coverage Audit (collapsible) */
+.rc-audit-section { margin-top: var(--space-2); }
+.rc-audit-section > summary {
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--rc-text-sub);
+  font-weight: 600;
+  list-style: none;
+}
+.rc-audit-section > summary::-webkit-details-marker { display: none; }
+.rc-audit-section > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.rc-audit-section[open] > summary::before { transform: rotate(90deg); }
+.rc-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.rc-audit-block {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+.rc-audit-block-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rc-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--rc-border);
+}
+.rc-audit-row {
+  display: grid;
+  grid-template-columns: 22px 1fr 1.5fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rc-audit-icon { font-weight: 700; text-align: center; font-size: 12px; }
+.rc-audit-icon.is-ok    { color: var(--rc-positive); }
+.rc-audit-icon.is-warn  { color: var(--rc-warn); }
+.rc-audit-icon.is-miss  { color: var(--rc-red); }
+.rc-audit-icon.is-muted { color: var(--rc-text-mute); }
+.rc-audit-label { color: var(--rc-text); }
+.rc-audit-desc {
+  color: var(--rc-text-sub);
+  font-size: 10.5px;
+  font-style: italic;
+  line-height: 1.35;
+  margin-top: 1px;
+}
+.rc-audit-value {
+  color: var(--rc-text-sub);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+.rc-audit-value.is-missing { color: var(--rc-red); font-style: italic; font-family: inherit; }
+.rc-audit-value.is-stale   { color: var(--rc-warn); font-style: italic; font-family: inherit; }
+.rc-audit-summary {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 12px;
+  color: var(--rc-text-sub);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+}
+.rc-audit-summary b { color: var(--rc-text); }
+/* Anomaly block — Detected Anomalies (advisory list) */
+.rc-anomaly-block {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+}
+.rc-anomaly-block h4 {
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+  margin: 0 0 var(--space-2);
+}
+.rc-anomaly-block ul { padding-left: var(--space-4); margin: 0; }
+.rc-anomaly-block li {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--rc-text);
+  line-height: 1.45;
+}
+/* Gap-list — open gaps with subtle warning treatment */
+.rc-gap-list { list-style: none; padding: 0; margin: 0; }
+.rc-gap-list li {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: color-mix(in srgb, var(--rc-warn) 8%, var(--rc-card));
+  border: 1px solid color-mix(in srgb, var(--rc-warn) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.5;
+}
 /* Footer (branding + copyright). Stacked + centered: copyright first,
    wordmark below it. The wordmark is intentionally generous so the
    brand registers — designed as the visual signature, not a sign-off. */
@@ -525,6 +858,278 @@ export interface TableColumn {
   /** Optional cell renderer. Default: text content of row[key]. */
   render?: (row: Record<string, unknown>) => string;
 }
+
+// ---------------------------------------------------------------------------
+// Status pill (uppercase, tight) — for schema-status / readiness states
+// ---------------------------------------------------------------------------
+
+export type StatusTone = 'complete' | 'partial' | 'missing' | 'runtime';
+
+export function renderStatusPill(text: string, tone: StatusTone): string {
+  return `<span class="rc-status-pill is-${tone}">${escapeHtml(text)}</span>`;
+}
+
+// ---------------------------------------------------------------------------
+// Proof card — public-facing brand claim w/ evidence chips
+// ---------------------------------------------------------------------------
+
+export interface ProofCardOptions {
+  title: string;
+  status: 'strong' | 'partial' | 'identified_no_counts' | 'needs_capture';
+  /** Body prose. Caller is responsible for escaping if injecting HTML. */
+  body: string;
+  /** Source chips — array of {label, href?}. href makes it a link. */
+  sources?: Array<{ label: string; href?: string }>;
+}
+
+export function renderProofCard(opts: ProofCardOptions): string {
+  const statusToneMap: Record<ProofCardOptions['status'], StatusTone> = {
+    strong: 'complete',
+    partial: 'partial',
+    identified_no_counts: 'partial',
+    needs_capture: 'missing',
+  };
+  const statusLabelMap: Record<ProofCardOptions['status'], string> = {
+    strong: 'Strong',
+    partial: 'Partial',
+    identified_no_counts: 'Identified',
+    needs_capture: 'Needs capture',
+  };
+  const tone = statusToneMap[opts.status];
+  const sources = opts.sources ?? [];
+  const chips = sources
+    .map((s) => {
+      if (s.href) {
+        return `<a class="rc-source-chip" href="${escapeAttr(s.href)}" target="_blank" rel="noopener">${escapeHtml(s.label)}</a>`;
+      }
+      return `<span class="rc-source-chip">${escapeHtml(s.label)}</span>`;
+    })
+    .join('');
+  return `<div class="rc-proof-card">
+  <div class="rc-proof-top">
+    <div class="rc-proof-title">${escapeHtml(opts.title)}</div>
+    ${renderStatusPill(statusLabelMap[opts.status], tone)}
+  </div>
+  <div class="rc-proof-body">${opts.body}</div>
+  ${chips ? `<div class="rc-source-row">${chips}</div>` : ''}
+</div>`;
+}
+
+export function renderProofGrid(cards: ProofCardOptions[]): string {
+  if (cards.length === 0) return '<div class="rc-empty">No proof points captured yet.</div>';
+  return `<div class="rc-proof-grid">${cards.map(renderProofCard).join('\n')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime card — artifacts the user supplies at downstream skill run time
+// ---------------------------------------------------------------------------
+
+export interface RuntimeCardOptions {
+  title: string;
+  /** Body HTML. Use `<p>` paragraphs inside if multi-paragraph. */
+  body: string;
+}
+
+export function renderRuntimeCard(opts: RuntimeCardOptions): string {
+  return `<div class="rc-runtime-card">
+  <div class="rc-runtime-card-title">${escapeHtml(opts.title)}</div>
+  ${opts.body}
+</div>`;
+}
+
+export function renderRuntimeGrid(cards: RuntimeCardOptions[]): string {
+  if (cards.length === 0)
+    return '<div class="rc-empty">No runtime inputs required for this brand.</div>';
+  return `<div class="rc-runtime-grid">${cards.map(renderRuntimeCard).join('\n')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Condition block — Active Conditions surface (events vs watch items)
+// ---------------------------------------------------------------------------
+
+export interface ConditionBlockOptions {
+  title: string;
+  body: string;
+  /** 'event' (blue border, structural_events) vs 'watch' (amber, active_watch).
+   *  Default 'watch'. */
+  kind?: 'event' | 'watch';
+  /** Optional sentence-case pill rendered next to the title (e.g. event type). */
+  pill?: { text: string; tone?: PillTone };
+}
+
+export function renderConditionBlock(opts: ConditionBlockOptions): string {
+  const cls = opts.kind === 'event' ? 'rc-condition-block is-event' : 'rc-condition-block';
+  const pillHtml = opts.pill ? renderPill(opts.pill.text, opts.pill.tone ?? 'default') : '';
+  return `<div class="${cls}">
+  <div class="rc-condition-title">${escapeHtml(opts.title)}${pillHtml ? ' ' + pillHtml : ''}</div>
+  <div class="rc-condition-body">${opts.body}</div>
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Lane card — ASIN corpora display (item-group + count)
+// ---------------------------------------------------------------------------
+
+export interface LaneCardOptions {
+  name: string;
+  /** Sub-label (e.g. parent sub-brand, or "Layer 1 manual") */
+  sub?: string;
+  count: number;
+}
+
+export function renderLaneCard(opts: LaneCardOptions): string {
+  return `<div class="rc-lane-card">
+  <div>
+    <div class="rc-lane-name">${escapeHtml(opts.name)}</div>
+    ${opts.sub ? `<div class="rc-lane-sub">${escapeHtml(opts.sub)}</div>` : ''}
+  </div>
+  <div class="rc-lane-count">${formatInt(opts.count)}</div>
+</div>`;
+}
+
+export function renderLaneGrid(cards: LaneCardOptions[]): string {
+  if (cards.length === 0) return '<div class="rc-empty">No ASIN lanes documented yet.</div>';
+  return `<div class="rc-lane-grid">${cards.map(renderLaneCard).join('\n')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Bucket card — Missing Context Buckets (status-colored left border)
+// ---------------------------------------------------------------------------
+
+export interface BucketCardOptions {
+  title: string;
+  status: StatusTone;
+  description?: string;
+  summary?: string;
+  /** Optional collapsible details (e.g. raw items in the bucket). */
+  details?: { label: string; items: string[] };
+}
+
+export function renderBucketCard(opts: BucketCardOptions): string {
+  const detailsHtml = opts.details
+    ? `<details class="rc-bucket-details">
+    <summary>${escapeHtml(opts.details.label)}</summary>
+    <ul class="rc-detail-list">${opts.details.items
+      .map((i) => `<li>${escapeHtml(i)}</li>`)
+      .join('')}</ul>
+  </details>`
+    : '';
+  const statusLabelMap: Record<StatusTone, string> = {
+    complete: 'Complete',
+    partial: 'Partial',
+    missing: 'Missing',
+    runtime: 'Runtime',
+  };
+  return `<div class="rc-bucket-card is-${opts.status}">
+  <div class="rc-bucket-top">
+    <div class="rc-bucket-title">${escapeHtml(opts.title)}</div>
+    ${renderStatusPill(statusLabelMap[opts.status], opts.status)}
+  </div>
+  ${opts.description ? `<div class="rc-bucket-desc">${escapeHtml(opts.description)}</div>` : ''}
+  ${opts.summary ? `<div class="rc-bucket-summary">${opts.summary}</div>` : ''}
+  ${detailsHtml}
+</div>`;
+}
+
+export function renderBucketGrid(cards: BucketCardOptions[]): string {
+  if (cards.length === 0)
+    return '<div class="rc-empty">No missing-context buckets — context is complete.</div>';
+  return `<div class="rc-bucket-grid">${cards.map(renderBucketCard).join('\n')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Audit block — Schema Coverage Audit (collapsible per category)
+// ---------------------------------------------------------------------------
+
+export type AuditIcon = 'ok' | 'warn' | 'miss' | 'muted';
+
+export interface AuditRow {
+  icon: AuditIcon;
+  label: string;
+  description?: string;
+  value: string;
+  /** 'missing' | 'stale' apply special styling. */
+  valueClass?: 'missing' | 'stale';
+}
+
+export interface AuditBlockOptions {
+  title: string;
+  rows: AuditRow[];
+}
+
+export function renderAuditRow(row: AuditRow): string {
+  const icons: Record<AuditIcon, string> = {
+    ok: '✓',
+    warn: '!',
+    miss: '✗',
+    muted: '·',
+  };
+  const valueCls = row.valueClass
+    ? `rc-audit-value is-${row.valueClass}`
+    : 'rc-audit-value';
+  return `<div class="rc-audit-row">
+  <span class="rc-audit-icon is-${row.icon}">${icons[row.icon]}</span>
+  <div>
+    <div class="rc-audit-label">${escapeHtml(row.label)}</div>
+    ${row.description ? `<div class="rc-audit-desc">${escapeHtml(row.description)}</div>` : ''}
+  </div>
+  <div class="${valueCls}">${escapeHtml(row.value)}</div>
+</div>`;
+}
+
+export function renderAuditBlock(opts: AuditBlockOptions): string {
+  return `<div class="rc-audit-block">
+  <div class="rc-audit-block-title">${escapeHtml(opts.title)}</div>
+  ${opts.rows.map(renderAuditRow).join('\n')}
+</div>`;
+}
+
+export interface AuditSectionOptions {
+  /** The collapsible summary text (e.g. "Reviewer view — expand for field-by-field schema status"). */
+  summary: string;
+  blocks: AuditBlockOptions[];
+  /** Optional bottom summary line ("X required, Y recommended, Z stale, W gaps"). */
+  footer?: string;
+}
+
+export function renderAuditSection(opts: AuditSectionOptions): string {
+  return `<details class="rc-audit-section">
+  <summary>${escapeHtml(opts.summary)}</summary>
+  <div class="rc-audit-grid">${opts.blocks.map(renderAuditBlock).join('\n')}</div>
+  ${opts.footer ? `<div class="rc-audit-summary">${opts.footer}</div>` : ''}
+</details>`;
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly block — Detected Anomalies (advisory list)
+// ---------------------------------------------------------------------------
+
+export interface AnomalyBlockOptions {
+  title: string;
+  items: string[];
+}
+
+export function renderAnomalyBlock(opts: AnomalyBlockOptions): string {
+  if (opts.items.length === 0) return '';
+  return `<div class="rc-anomaly-block">
+  <h4>${escapeHtml(opts.title)}</h4>
+  <ul>${opts.items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Gap list — open gaps with warning treatment
+// ---------------------------------------------------------------------------
+
+export function renderGapList(items: string[]): string {
+  if (items.length === 0)
+    return '<div class="rc-empty">No open gaps documented.</div>';
+  return `<ul class="rc-gap-list">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+}
+
+// ---------------------------------------------------------------------------
+// Table (existing)
+// ---------------------------------------------------------------------------
 
 export function renderTable(
   columns: TableColumn[],

@@ -23,6 +23,7 @@ import {
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandConfigCommand } from './brand-config.js';
+import { registerBrandRenderContextCommand } from './brand-render-context.js';
 
 interface RootOptions {
   json?: boolean;
@@ -546,6 +547,11 @@ export function registerBrandCommands(program: Command): void {
   // context fields (ACoS/TACoS targets, attribution window, goals). Mirror
   // of the skill OCL surface, pointed at context.yaml instead of config.yaml.
   registerBrandConfigCommand(brand);
+
+  // `mixshift brand render-context <slug>` — cold-start Brand Context page.
+  // 19-section HTML + headline.json + review.json using design-system primitives.
+  // Replaces Todd's brand-context-template.html / render-brand-context.py.
+  registerBrandRenderContextCommand(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.

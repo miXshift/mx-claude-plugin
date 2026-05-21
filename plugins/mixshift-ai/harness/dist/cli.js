@@ -42485,7 +42485,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join11(tree) {
+      function join13(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42511,7 +42511,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join11(parse4(query2));
+        tree = join13(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -45616,15 +45616,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir13, readFile as readFile16 } from "node:fs/promises";
-import { join as join10, dirname as dirname17 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir14, readFile as readFile17 } from "node:fs/promises";
+import { join as join12, dirname as dirname18 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join10(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join12(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir13(dirname17(path2), { recursive: true });
+    await mkdir14(dirname18(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -45635,7 +45635,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile16(path2, "utf-8");
+    const raw = await readFile17(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -47624,6 +47624,339 @@ body { background: var(--rc-bg); }
   color: var(--rc-text-sub);
   background: var(--rc-card);
 }
+/* Status pills (uppercase, tight) \u2014 for schema-status / readiness states.
+   Distinct from rc-pill (sentence-case, label-style). Both can coexist. */
+.rc-status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.25px;
+  white-space: nowrap;
+}
+.rc-status-pill.is-complete {
+  background: color-mix(in srgb, var(--rc-positive) 14%, transparent);
+  color: var(--rc-positive);
+}
+.rc-status-pill.is-partial {
+  background: color-mix(in srgb, var(--rc-warn) 14%, transparent);
+  color: var(--rc-warn);
+}
+.rc-status-pill.is-missing {
+  background: color-mix(in srgb, var(--rc-red) 14%, transparent);
+  color: var(--rc-red);
+}
+.rc-status-pill.is-runtime {
+  background: color-mix(in srgb, var(--rc-info) 14%, transparent);
+  color: var(--rc-info);
+}
+/* Proof cards \u2014 bordered card w/ title, status pill, body, source chips */
+.rc-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+.rc-proof-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-proof-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.rc-proof-title {
+  font-weight: 700;
+  color: var(--rc-text);
+  font-size: var(--fs-body-sm);
+}
+.rc-proof-body {
+  color: var(--rc-text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+.rc-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.rc-source-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rc-info) 10%, transparent);
+  color: var(--rc-info);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.rc-source-chip:hover {
+  background: color-mix(in srgb, var(--rc-info) 18%, transparent);
+}
+/* Runtime cards \u2014 left-border-accent, prose body */
+.rc-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-3);
+}
+.rc-runtime-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-left: 4px solid var(--rc-info);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--rc-shadow-1);
+}
+.rc-runtime-card-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  margin: 0 0 var(--space-2);
+}
+.rc-runtime-card p {
+  color: var(--rc-text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: var(--space-2) 0;
+}
+/* Condition blocks \u2014 Active Conditions surface (events / watch items) */
+.rc-condition-block {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-left: 3px solid var(--rc-warn);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.rc-condition-block.is-event {
+  border-left-color: var(--rc-info);
+}
+.rc-condition-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+  margin-bottom: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-condition-body {
+  font-size: 12.5px;
+  color: var(--rc-text-sub);
+  line-height: 1.55;
+}
+/* Lane cards \u2014 ASIN corpora grid (item-group / sub-brand counts) */
+.rc-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+}
+.rc-lane-card {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.rc-lane-name {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--rc-text);
+}
+.rc-lane-sub {
+  font-size: 11px;
+  color: var(--rc-text-sub);
+  margin-top: 2px;
+}
+.rc-lane-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--rc-info);
+  font-weight: 700;
+}
+/* Bucket cards \u2014 Missing Context Buckets (status-colored left border) */
+.rc-bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+.rc-bucket-card {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--rc-border-strong);
+}
+.rc-bucket-card.is-complete { border-left-color: var(--rc-positive); }
+.rc-bucket-card.is-partial  { border-left-color: var(--rc-warn); }
+.rc-bucket-card.is-missing  { border-left-color: var(--rc-red); }
+.rc-bucket-card.is-runtime  { border-left-color: var(--rc-info); }
+.rc-bucket-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+.rc-bucket-title {
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+}
+.rc-bucket-desc {
+  color: var(--rc-text-sub);
+  font-size: 11.5px;
+  line-height: 1.45;
+  margin-bottom: var(--space-2);
+}
+.rc-bucket-summary {
+  color: var(--rc-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.rc-bucket-details {
+  margin-top: var(--space-2);
+}
+.rc-bucket-details > summary {
+  cursor: pointer;
+  color: var(--rc-info);
+  font-size: 11.5px;
+  font-weight: 700;
+  list-style: none;
+}
+.rc-bucket-details > summary::-webkit-details-marker { display: none; }
+.rc-detail-list {
+  margin: var(--space-2) 0 0 var(--space-3);
+  color: var(--rc-text);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.rc-detail-list li { margin-bottom: 5px; }
+/* Audit blocks \u2014 Schema Coverage Audit (collapsible) */
+.rc-audit-section { margin-top: var(--space-2); }
+.rc-audit-section > summary {
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--rc-text-sub);
+  font-weight: 600;
+  list-style: none;
+}
+.rc-audit-section > summary::-webkit-details-marker { display: none; }
+.rc-audit-section > summary::before {
+  content: "\u25B8 ";
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.rc-audit-section[open] > summary::before { transform: rotate(90deg); }
+.rc-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.rc-audit-block {
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+.rc-audit-block-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rc-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--rc-border);
+}
+.rc-audit-row {
+  display: grid;
+  grid-template-columns: 22px 1fr 1.5fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rc-audit-icon { font-weight: 700; text-align: center; font-size: 12px; }
+.rc-audit-icon.is-ok    { color: var(--rc-positive); }
+.rc-audit-icon.is-warn  { color: var(--rc-warn); }
+.rc-audit-icon.is-miss  { color: var(--rc-red); }
+.rc-audit-icon.is-muted { color: var(--rc-text-mute); }
+.rc-audit-label { color: var(--rc-text); }
+.rc-audit-desc {
+  color: var(--rc-text-sub);
+  font-size: 10.5px;
+  font-style: italic;
+  line-height: 1.35;
+  margin-top: 1px;
+}
+.rc-audit-value {
+  color: var(--rc-text-sub);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+.rc-audit-value.is-missing { color: var(--rc-red); font-style: italic; font-family: inherit; }
+.rc-audit-value.is-stale   { color: var(--rc-warn); font-style: italic; font-family: inherit; }
+.rc-audit-summary {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 12px;
+  color: var(--rc-text-sub);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+}
+.rc-audit-summary b { color: var(--rc-text); }
+/* Anomaly block \u2014 Detected Anomalies (advisory list) */
+.rc-anomaly-block {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--rc-subtle);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+}
+.rc-anomaly-block h4 {
+  font-size: var(--fs-body-sm);
+  color: var(--rc-text);
+  margin: 0 0 var(--space-2);
+}
+.rc-anomaly-block ul { padding-left: var(--space-4); margin: 0; }
+.rc-anomaly-block li {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--rc-text);
+  line-height: 1.45;
+}
+/* Gap-list \u2014 open gaps with subtle warning treatment */
+.rc-gap-list { list-style: none; padding: 0; margin: 0; }
+.rc-gap-list li {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: color-mix(in srgb, var(--rc-warn) 8%, var(--rc-card));
+  border: 1px solid color-mix(in srgb, var(--rc-warn) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.5;
+}
 /* Footer (branding + copyright). Stacked + centered: copyright first,
    wordmark below it. The wordmark is intentionally generous so the
    brand registers \u2014 designed as the visual signature, not a sign-off. */
@@ -47711,6 +48044,138 @@ function renderCard(opts) {
 function renderPill(text, tone = "default") {
   const cls = tone === "default" ? "rc-pill" : `rc-pill is-${tone}`;
   return `<span class="${cls}">${escapeHtml(text)}</span>`;
+}
+function renderStatusPill(text, tone) {
+  return `<span class="rc-status-pill is-${tone}">${escapeHtml(text)}</span>`;
+}
+function renderProofCard(opts) {
+  const statusToneMap = {
+    strong: "complete",
+    partial: "partial",
+    identified_no_counts: "partial",
+    needs_capture: "missing"
+  };
+  const statusLabelMap = {
+    strong: "Strong",
+    partial: "Partial",
+    identified_no_counts: "Identified",
+    needs_capture: "Needs capture"
+  };
+  const tone = statusToneMap[opts.status];
+  const sources = opts.sources ?? [];
+  const chips = sources.map((s) => {
+    if (s.href) {
+      return `<a class="rc-source-chip" href="${escapeAttr(s.href)}" target="_blank" rel="noopener">${escapeHtml(s.label)}</a>`;
+    }
+    return `<span class="rc-source-chip">${escapeHtml(s.label)}</span>`;
+  }).join("");
+  return `<div class="rc-proof-card">
+  <div class="rc-proof-top">
+    <div class="rc-proof-title">${escapeHtml(opts.title)}</div>
+    ${renderStatusPill(statusLabelMap[opts.status], tone)}
+  </div>
+  <div class="rc-proof-body">${opts.body}</div>
+  ${chips ? `<div class="rc-source-row">${chips}</div>` : ""}
+</div>`;
+}
+function renderProofGrid(cards) {
+  if (cards.length === 0) return '<div class="rc-empty">No proof points captured yet.</div>';
+  return `<div class="rc-proof-grid">${cards.map(renderProofCard).join("\n")}</div>`;
+}
+function renderRuntimeCard(opts) {
+  return `<div class="rc-runtime-card">
+  <div class="rc-runtime-card-title">${escapeHtml(opts.title)}</div>
+  ${opts.body}
+</div>`;
+}
+function renderRuntimeGrid(cards) {
+  if (cards.length === 0)
+    return '<div class="rc-empty">No runtime inputs required for this brand.</div>';
+  return `<div class="rc-runtime-grid">${cards.map(renderRuntimeCard).join("\n")}</div>`;
+}
+function renderConditionBlock(opts) {
+  const cls = opts.kind === "event" ? "rc-condition-block is-event" : "rc-condition-block";
+  const pillHtml = opts.pill ? renderPill(opts.pill.text, opts.pill.tone ?? "default") : "";
+  return `<div class="${cls}">
+  <div class="rc-condition-title">${escapeHtml(opts.title)}${pillHtml ? " " + pillHtml : ""}</div>
+  <div class="rc-condition-body">${opts.body}</div>
+</div>`;
+}
+function renderLaneCard(opts) {
+  return `<div class="rc-lane-card">
+  <div>
+    <div class="rc-lane-name">${escapeHtml(opts.name)}</div>
+    ${opts.sub ? `<div class="rc-lane-sub">${escapeHtml(opts.sub)}</div>` : ""}
+  </div>
+  <div class="rc-lane-count">${formatInt(opts.count)}</div>
+</div>`;
+}
+function renderLaneGrid(cards) {
+  if (cards.length === 0) return '<div class="rc-empty">No ASIN lanes documented yet.</div>';
+  return `<div class="rc-lane-grid">${cards.map(renderLaneCard).join("\n")}</div>`;
+}
+function renderBucketCard(opts) {
+  const detailsHtml = opts.details ? `<details class="rc-bucket-details">
+    <summary>${escapeHtml(opts.details.label)}</summary>
+    <ul class="rc-detail-list">${opts.details.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
+  </details>` : "";
+  const statusLabelMap = {
+    complete: "Complete",
+    partial: "Partial",
+    missing: "Missing",
+    runtime: "Runtime"
+  };
+  return `<div class="rc-bucket-card is-${opts.status}">
+  <div class="rc-bucket-top">
+    <div class="rc-bucket-title">${escapeHtml(opts.title)}</div>
+    ${renderStatusPill(statusLabelMap[opts.status], opts.status)}
+  </div>
+  ${opts.description ? `<div class="rc-bucket-desc">${escapeHtml(opts.description)}</div>` : ""}
+  ${opts.summary ? `<div class="rc-bucket-summary">${opts.summary}</div>` : ""}
+  ${detailsHtml}
+</div>`;
+}
+function renderBucketGrid(cards) {
+  if (cards.length === 0)
+    return '<div class="rc-empty">No missing-context buckets \u2014 context is complete.</div>';
+  return `<div class="rc-bucket-grid">${cards.map(renderBucketCard).join("\n")}</div>`;
+}
+function renderAuditRow(row) {
+  const icons = {
+    ok: "\u2713",
+    warn: "!",
+    miss: "\u2717",
+    muted: "\xB7"
+  };
+  const valueCls = row.valueClass ? `rc-audit-value is-${row.valueClass}` : "rc-audit-value";
+  return `<div class="rc-audit-row">
+  <span class="rc-audit-icon is-${row.icon}">${icons[row.icon]}</span>
+  <div>
+    <div class="rc-audit-label">${escapeHtml(row.label)}</div>
+    ${row.description ? `<div class="rc-audit-desc">${escapeHtml(row.description)}</div>` : ""}
+  </div>
+  <div class="${valueCls}">${escapeHtml(row.value)}</div>
+</div>`;
+}
+function renderAuditBlock(opts) {
+  return `<div class="rc-audit-block">
+  <div class="rc-audit-block-title">${escapeHtml(opts.title)}</div>
+  ${opts.rows.map(renderAuditRow).join("\n")}
+</div>`;
+}
+function renderAuditSection(opts) {
+  return `<details class="rc-audit-section">
+  <summary>${escapeHtml(opts.summary)}</summary>
+  <div class="rc-audit-grid">${opts.blocks.map(renderAuditBlock).join("\n")}</div>
+  ${opts.footer ? `<div class="rc-audit-summary">${opts.footer}</div>` : ""}
+</details>`;
+}
+function renderAnomalyBlock(opts) {
+  if (opts.items.length === 0) return "";
+  return `<div class="rc-anomaly-block">
+  <h4>${escapeHtml(opts.title)}</h4>
+  <ul>${opts.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
+</div>`;
 }
 function renderTable(columns, rows) {
   if (rows.length === 0) {
@@ -49010,6 +49475,1090 @@ function emitError2(json2, message) {
   process.exitCode = 1;
 }
 
+// src/commands/brand-render-context.ts
+import { exec as execCb2 } from "node:child_process";
+import { promisify as promisify2 } from "node:util";
+
+// src/lib/render/brand-context-composer.ts
+init_resolve();
+import { mkdir as mkdir9, writeFile as writeFile9 } from "node:fs/promises";
+import { join as join8 } from "node:path";
+
+// src/lib/render/brand-context-report.ts
+var import_yaml10 = __toESM(require_dist(), 1);
+init_resolve();
+import { readFile as readFile11, readdir as readdir2, stat as stat3 } from "node:fs/promises";
+import { dirname as dirname12, join as join7 } from "node:path";
+async function readBrandContextSources(brandSlug, runDate, dataDirOverride) {
+  const ctxPath = contextPath(brandSlug, dataDirOverride);
+  const narPath = narrativePath(brandSlug, dataDirOverride);
+  const dir = brandDir(brandSlug, dataDirOverride);
+  const briPath = join7(dir, "brand-intelligence.yaml");
+  const corporaPath = join7(dir, "corpora");
+  const enrichmentPath = join7(
+    dir,
+    "runs",
+    "account-cold-start",
+    runDate,
+    `${runDate}.enrichment.json`
+  );
+  const [context, narrative, intel, corpora, enrichment] = await Promise.all([
+    readYamlIfExists(ctxPath),
+    readTextIfExists(narPath),
+    readYamlIfExists(briPath),
+    summarizeCorpora(corporaPath),
+    readJsonIfExists(enrichmentPath)
+  ]);
+  const last_updated = context?.last_updated ?? null;
+  return {
+    context,
+    context_path: ctxPath,
+    narrative_md: narrative,
+    narrative_path: narPath,
+    brand_intelligence: intel,
+    brand_intelligence_path: briPath,
+    corpora_summary: corpora,
+    corpora_path: corporaPath,
+    enrichment,
+    last_updated
+  };
+}
+function parseNarrativeSections(md) {
+  if (!md) return {};
+  const lines = md.split(/\r?\n/);
+  const out = {};
+  let currentKey = null;
+  let currentBody = [];
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      if (currentKey !== null) {
+        out[currentKey] = currentBody.join("\n").trim();
+      }
+      currentKey = h2[1].toLowerCase().replace(/[?.!:;,]$/, "").trim();
+      currentBody = [];
+    } else if (currentKey !== null) {
+      currentBody.push(line);
+    }
+  }
+  if (currentKey !== null) {
+    out[currentKey] = currentBody.join("\n").trim();
+  }
+  return out;
+}
+function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date()) {
+  const rows = [];
+  let required_present = 0;
+  let required_total = 0;
+  let recommended_present = 0;
+  let recommended_total = 0;
+  let stale_count = 0;
+  let open_gaps_count = 0;
+  for (const label of labels) {
+    const value = context ? resolveAuditPath(context, label.path) : void 0;
+    const isPresent = !isAuditMissing(value);
+    const isStale2 = !!(label.fresh_check && isPresent && typeof value === "string" && isStaleDate(value, now));
+    if (isStale2) stale_count += 1;
+    if (label.tier === "required") {
+      required_total += 1;
+      if (isPresent) required_present += 1;
+    } else if (label.tier === "recommended") {
+      recommended_total += 1;
+      if (isPresent) recommended_present += 1;
+    }
+    let status;
+    if (!isPresent) {
+      status = label.tier === "required" ? "miss" : label.tier === "recommended" ? "warn" : "muted";
+    } else if (isStale2) {
+      status = "warn";
+    } else {
+      status = "ok";
+    }
+    rows.push({
+      label,
+      value,
+      status,
+      display: formatAuditValue(label, value, isPresent, isStale2),
+      is_stale: isStale2
+    });
+    if (label.path === "open_gaps" && Array.isArray(value)) {
+      open_gaps_count = value.length;
+    }
+  }
+  return {
+    rows,
+    required_present,
+    required_total,
+    recommended_present,
+    recommended_total,
+    stale_count,
+    open_gaps_count
+  };
+}
+function resolveAuditPath(obj, path2) {
+  if (obj === null || obj === void 0) return void 0;
+  const arrayWildcard = path2.includes("[]");
+  if (arrayWildcard) {
+    const [head, tail] = path2.split("[]");
+    const arr = getNested(obj, head.replace(/\.$/, ""));
+    if (!Array.isArray(arr)) return void 0;
+    if (!tail || tail === "") return arr;
+    return arr.map((el) => getNested(el, tail.replace(/^\./, "")));
+  }
+  return getNested(obj, path2);
+}
+function getNested(obj, path2) {
+  if (!path2) return obj;
+  const parts = path2.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur === null || cur === void 0 || typeof cur !== "object") {
+      return void 0;
+    }
+    cur = cur[p];
+  }
+  return cur;
+}
+function isAuditMissing(value) {
+  if (value === void 0 || value === null) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return true;
+    if (value.every((v) => v === void 0 || v === null || v === "")) return true;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    if (Object.keys(value).length === 0) return true;
+  }
+  return false;
+}
+function isStaleDate(value, now, days = 30) {
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return false;
+    const ageMs = now.getTime() - d.getTime();
+    return ageMs > days * 24 * 60 * 60 * 1e3;
+  } catch {
+    return false;
+  }
+}
+function formatAuditValue(label, value, isPresent, isStale2) {
+  if (!isPresent) {
+    return label.tier === "required" ? "missing (required)" : label.tier === "recommended" ? "missing (recommended)" : "not set";
+  }
+  if (isStale2 && typeof value === "string") return `${value} (stale)`;
+  if (label.aggregate && Array.isArray(value)) {
+    return value.filter((v) => v !== void 0 && v !== null).map(String).join(" / ");
+  }
+  if (label.list_count && Array.isArray(value)) {
+    return `${value.length} ${value.length === 1 ? "entry" : "entries"}`;
+  }
+  if (label.dict_count && typeof value === "object" && !Array.isArray(value)) {
+    return `${Object.keys(value).length} entries`;
+  }
+  if (label.display_as === "status") return "configured";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return JSON.stringify(value);
+}
+function computeVerdict(args) {
+  if (args.observational) {
+    return {
+      verdict: "OBSERVATIONAL",
+      reason: "Phase 1 complete; Phase 2 AM intake pending."
+    };
+  }
+  if (!args.validator_passed || args.coverage.required_present < args.coverage.required_total) {
+    const missing = args.coverage.required_total - args.coverage.required_present;
+    return {
+      verdict: "RED",
+      reason: !args.validator_passed ? "Schema validator failed \u2014 fix context.yaml and re-render." : `${missing} required field(s) missing.`
+    };
+  }
+  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
+    const parts = [];
+    if (args.coverage.open_gaps_count > 0)
+      parts.push(`${args.coverage.open_gaps_count} open gap(s)`);
+    if (args.coverage.stale_count > 0)
+      parts.push(`${args.coverage.stale_count} stale field(s)`);
+    return {
+      verdict: "YELLOW",
+      reason: parts.join("; ") + "."
+    };
+  }
+  if (args.coverage.recommended_present < args.coverage.recommended_total) {
+    const missing = args.coverage.recommended_total - args.coverage.recommended_present;
+    return {
+      verdict: "YELLOW",
+      reason: `${missing} recommended field(s) not populated.`
+    };
+  }
+  return {
+    verdict: "GREEN",
+    reason: "All required + recommended fields populated; no open gaps; context fresh."
+  };
+}
+async function loadAuditLabels() {
+  const { existsSync: existsSync3 } = await import("node:fs");
+  const { fileURLToPath: fileURLToPath5 } = await import("node:url");
+  const { parse: parse4 } = await import("node:path");
+  let dir = dirname12(fileURLToPath5(import.meta.url));
+  const root = parse4(dir).root;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join7(
+      dir,
+      "shared",
+      "clients",
+      "_schema",
+      "audit-labels.yaml"
+    );
+    if (existsSync3(candidate)) {
+      const raw = await readFile11(candidate, "utf-8");
+      const parsed = (0, import_yaml10.parse)(raw);
+      return parsed.fields ?? [];
+    }
+    if (dir === root) break;
+    dir = dirname12(dir);
+  }
+  return [];
+}
+async function readYamlIfExists(path2) {
+  try {
+    const raw = await readFile11(path2, "utf-8");
+    return (0, import_yaml10.parse)(raw);
+  } catch {
+    return null;
+  }
+}
+async function readTextIfExists(path2) {
+  try {
+    return await readFile11(path2, "utf-8");
+  } catch {
+    return null;
+  }
+}
+async function readJsonIfExists(path2) {
+  try {
+    const raw = await readFile11(path2, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+async function summarizeCorpora(dirPath) {
+  try {
+    const entries = await readdir2(dirPath);
+    const summaries = [];
+    for (const f of entries) {
+      if (!f.endsWith(".csv")) continue;
+      try {
+        const s = await stat3(join7(dirPath, f));
+        if (!s.isFile()) continue;
+        const raw = await readFile11(join7(dirPath, f), "utf-8");
+        const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
+        const row_count = Math.max(0, lines.length - 1);
+        summaries.push({ filename: f, row_count });
+      } catch {
+      }
+    }
+    return summaries;
+  } catch {
+    return [];
+  }
+}
+
+// src/lib/render/brand-context-sections.ts
+function sectionHeader(s) {
+  const verdictTone = s.verdict === "GREEN" ? "complete" : s.verdict === "YELLOW" ? "partial" : s.verdict === "RED" ? "missing" : "runtime";
+  const freshness = s.sources.last_updated ? `Last updated ${s.sources.last_updated}` : "Freshness unknown";
+  return `<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+  ${renderStatusPill(s.verdict, verdictTone)}
+  <span style="color: var(--rc-text-sub); font-size: 12px;">${escapeHtml(freshness)}</span>
+  <span style="color: var(--rc-text); font-size: 13px;">${escapeHtml(s.verdict_reason)}</span>
+</div>`;
+}
+function sectionBrandSummary(s) {
+  const intel = s.sources.brand_intelligence;
+  const heroFromIntel = intel?.hero_narrative;
+  const heroFallback = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
+  const heroProse = heroFromIntel ?? heroFallback;
+  const proofPoints = intel?.proof_points ?? [];
+  const heroBlock = heroProse ? `<div style="padding: 14px 18px; background: var(--rc-subtle); border-left: 4px solid var(--rc-info); border-radius: 6px; margin-bottom: 14px; font-size: 14px; line-height: 1.65;">${mdToHtmlParagraphs(heroProse)}</div>` : `<div class="rc-empty">No brand summary yet. Add a hero narrative in <code>brand-intelligence.yaml::hero_narrative</code> or <code>narrative.md ## Brand Identity</code>.</div>`;
+  const proofCards = proofPoints.map((p) => ({
+    title: p.title,
+    status: p.status,
+    body: escapeHtml(p.summary),
+    sources: (p.evidence ?? []).map(
+      (e) => typeof e === "string" ? { label: e } : { label: e.label, href: e.href }
+    )
+  }));
+  return renderCard({
+    title: "What I know about this brand",
+    body: `${heroBlock}${proofCards.length > 0 ? renderProofGrid(proofCards) : ""}`
+  });
+}
+function sectionReviewAtAGlance(s) {
+  return renderScorecardRow([
+    {
+      label: "Required fields",
+      value: `${s.coverage.required_present}/${s.coverage.required_total}`,
+      delta: s.coverage.required_present === s.coverage.required_total ? { text: "Complete", direction: "positive" } : { text: `${s.coverage.required_total - s.coverage.required_present} missing`, direction: "negative" }
+    },
+    {
+      label: "Recommended fields",
+      value: `${s.coverage.recommended_present}/${s.coverage.recommended_total}`
+    },
+    {
+      label: "Open gaps",
+      value: formatInt(s.coverage.open_gaps_count),
+      delta: s.coverage.open_gaps_count === 0 ? { text: "None", direction: "positive" } : void 0
+    },
+    {
+      label: "Stale fields",
+      value: formatInt(s.coverage.stale_count),
+      delta: s.coverage.stale_count === 0 ? { text: "Fresh", direction: "positive" } : { text: `${s.coverage.stale_count} stale`, direction: "negative" }
+    }
+  ]);
+}
+function sectionRuntimeInputs(s) {
+  const ctx = s.sources.context;
+  const cards = [];
+  if (ctx?.goals?.forecast_tracking) {
+    cards.push({
+      title: "Forecast model",
+      body: `<p>Forecast tracking enabled. Supply the current month's forecast (HCAM / H-Bridge / dimension bridge) at monthly-performance-report run time.</p>`
+    });
+  }
+  return renderCard({
+    title: "Runtime inputs required",
+    body: renderRuntimeGrid(cards)
+  });
+}
+function sectionSkillReadiness(s) {
+  const columns = [
+    {
+      key: "skill",
+      label: "Skill",
+      render: (row) => `<code style="font-size: 12px;">${escapeHtml(String(row.skill))}</code>`
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => renderStatusPill(String(row.status), row.tone)
+    },
+    { key: "notes", label: "Notes" }
+  ];
+  return renderCard({
+    title: "Skill readiness",
+    body: renderTable(columns, s.skill_readiness)
+  });
+}
+function sectionActiveConditions(s) {
+  const ctx = s.sources.context;
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const activeEvents = (ctx?.structural_events ?? []).filter(
+    (e) => isEventActive(e, today)
+  );
+  const watch = ctx?.active_watch ?? [];
+  const blocks = [];
+  for (const evt of activeEvents) {
+    blocks.push({
+      title: evt.id,
+      kind: "event",
+      pill: { text: friendlyEventType(evt.type), tone: "default" },
+      body: escapeHtml(evt.interpretation)
+    });
+  }
+  for (const w of watch) {
+    blocks.push({
+      title: w.id ?? "Open watch",
+      kind: "watch",
+      body: escapeHtml(w.question ?? w.note ?? "")
+    });
+  }
+  const quarterContext = findSection(s.narrative_sections, ["current quarter context"]);
+  const leadHtml = quarterContext ? `<div style="color: var(--rc-text-sub); font-size: 12px; font-style: italic; margin-bottom: 12px;">${mdToHtmlParagraphs(quarterContext)}</div>` : "";
+  const body = blocks.length === 0 ? leadHtml + '<div class="rc-empty">No active conditions documented.</div>' : leadHtml + blocks.map(renderConditionBlock).join("\n");
+  return renderCard({
+    title: "What I'm watching right now",
+    body
+  });
+}
+function sectionAccountSnapshot(s) {
+  const ctx = s.sources.context;
+  const accounts = ctx?.accounts ?? [];
+  const m = ctx?.management ?? {};
+  const isTacosPrimary = m.primary_metric === "TACOS";
+  const primaryLabel = isTacosPrimary ? "TACoS target" : "ACoS target";
+  const primaryValue = isTacosPrimary ? formatPct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatPct(m.acos_target_pct, 0);
+  const scorecards = renderScorecardRow([
+    { label: "Accounts", value: formatInt(accounts.length) },
+    {
+      label: "Account types",
+      value: Array.from(new Set(accounts.map((a) => a.account_type))).join(" / ") || "\u2014"
+    },
+    { label: primaryLabel, value: primaryValue },
+    {
+      label: "Attribution window",
+      value: m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "\u2014"
+    }
+  ]);
+  const columns = [
+    { key: "seller_id", label: "SellerID" },
+    { key: "seller_name", label: "Name" },
+    { key: "account_type", label: "Type" },
+    { key: "marketplace", label: "Marketplace" },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => {
+        const status = String(row.status ?? "active");
+        const tone = status === "active" ? "green" : status === "wind_down" ? "amber" : "ghost";
+        return renderPill(sentenceCase2(status), tone);
+      }
+    },
+    { key: "role", label: "Role" }
+  ];
+  const accountsTable = renderTable(
+    columns,
+    accounts.map((a) => ({
+      seller_id: a.seller_id,
+      seller_name: a.seller_name,
+      account_type: a.account_type,
+      marketplace: a.marketplace ?? "\u2014",
+      status: a.status ?? "active",
+      role: a.role ?? "primary"
+    }))
+  );
+  return renderCard({
+    title: "Account snapshot",
+    body: `${scorecards}<div style="margin-top: var(--space-4);">${accountsTable}</div>`
+  });
+}
+function sectionSubBrands(s) {
+  const ctx = s.sources.context;
+  const subs = ctx?.sub_brands ?? [];
+  if (subs.length === 0) {
+    return renderCard({
+      title: "Sub-brand structure",
+      body: '<div class="rc-empty">Single-brand account (no sub-brands documented).</div>'
+    });
+  }
+  const columns = [
+    { key: "slug", label: "Slug", render: (r) => `<code>${escapeHtml(String(r.slug))}</code>` },
+    { key: "name", label: "Name" },
+    {
+      key: "item_groups",
+      label: "Item groups",
+      render: (r) => Array.isArray(r.item_groups) && r.item_groups.length > 0 ? r.item_groups.map((g) => `<code style="font-size: 11px;">${escapeHtml(g)}</code>`).join(" ") : '<span style="color: var(--rc-text-mute);">\u2014</span>'
+    }
+  ];
+  return renderCard({
+    title: "Sub-brand structure",
+    body: renderTable(columns, subs)
+  });
+}
+function sectionItemGroups(s) {
+  const ctx = s.sources.context;
+  const subs = ctx?.sub_brands ?? [];
+  const rows = [];
+  for (const sb of subs) {
+    for (const ig of sb.item_groups ?? []) {
+      rows.push({ sub_brand: sb.name, item_group: ig });
+    }
+  }
+  if (rows.length === 0) {
+    return renderCard({
+      title: "Item groups by sub-brand",
+      body: '<div class="rc-empty">No item-group taxonomy documented.</div>'
+    });
+  }
+  return renderCard({
+    title: "Item groups by sub-brand",
+    body: renderTable(
+      [
+        { key: "sub_brand", label: "Sub-brand" },
+        { key: "item_group", label: "Item group", render: (r) => `<code>${escapeHtml(String(r.item_group))}</code>` }
+      ],
+      rows
+    )
+  });
+}
+function sectionBrandTerms(s) {
+  const ctx = s.sources.context;
+  const terms = ctx?.brand_terms ?? {};
+  const rows = [];
+  for (const [subBrand, entry] of Object.entries(terms)) {
+    rows.push({
+      sub_brand: subBrand,
+      canonical: (entry.canonical ?? []).join(", ") || "\u2014",
+      variants: (entry.variants ?? []).join(", ") || "\u2014"
+    });
+  }
+  if (rows.length === 0) {
+    return renderCard({
+      title: "Brand term dictionary",
+      body: '<div class="rc-empty">No brand terms captured yet. Phase 1 CS-19/CS-20 + Phase 2 AM variants populate this.</div>'
+    });
+  }
+  return renderCard({
+    title: "Brand term dictionary",
+    body: renderTable(
+      [
+        { key: "sub_brand", label: "Sub-brand" },
+        { key: "canonical", label: "Canonical" },
+        { key: "variants", label: "Variants" }
+      ],
+      rows
+    )
+  });
+}
+function sectionAsinCorpora(s) {
+  const cards = s.sources.corpora_summary.map((c) => ({
+    name: c.filename.replace(/\.csv$/, ""),
+    sub: "rows",
+    count: c.row_count
+  }));
+  return renderCard({
+    title: "ASIN negation corpora",
+    body: renderLaneGrid(cards)
+  });
+}
+function sectionSeasonality(_s) {
+  const tentpoles = [
+    { event: "Prime Day", window: "mid-July", notes: "Spend + ASP spike across SP and SD; reset baselines after." },
+    { event: "Prime Big Deal Days", window: "October", notes: "Second Prime event; check year-over-year against July." },
+    { event: "Black Friday / Cyber Monday", window: "late November", notes: "Highest-volume week; spend caps often hit." },
+    { event: "Holiday peak", window: "Dec 1\u201320", notes: "Sustained elevated traffic; conversion ramps then declines." },
+    { event: "January reset", window: "first 2 weeks of January", notes: "Traffic + conversion drop; ACoS often inflated." }
+  ];
+  return renderCard({
+    title: "Seasonality & tentpole calendar",
+    body: renderTable(
+      [
+        { key: "event", label: "Event" },
+        { key: "window", label: "Window" },
+        { key: "notes", label: "Notes" }
+      ],
+      tentpoles
+    )
+  });
+}
+function sectionCalibration(s) {
+  const ctx = s.sources.context;
+  const cal = ctx?.capture_rate_calibration;
+  if (!cal || !cal.enabled) {
+    return renderCard({
+      title: "Attribution backfill calibration",
+      body: '<div class="rc-empty">Capture-rate calibration not enabled for this brand. Required when attribution window > 1 day.</div>'
+    });
+  }
+  const rows = [
+    { field: "Capture rate", value: cal.capture_rate_pct !== void 0 ? formatPct(cal.capture_rate_pct, 1) : "\u2014" },
+    { field: "Fresh-day ACoS lift (pts)", value: cal.fresh_day_acos_improvement_pts !== void 0 ? `${cal.fresh_day_acos_improvement_pts.toFixed(2)} pts` : "\u2014" },
+    { field: "Settlement application rule", value: cal.settlement_application_rule ?? "\u2014" },
+    { field: "Stability score", value: cal.stability_score ? sentenceCase2(cal.stability_score) : "\u2014" }
+  ];
+  return renderCard({
+    title: "Attribution backfill calibration",
+    body: renderTable(
+      [
+        { key: "field", label: "Field" },
+        { key: "value", label: "Value" }
+      ],
+      rows
+    )
+  });
+}
+function sectionDetectedAnomalies(s) {
+  const enr = s.sources.enrichment;
+  const blocks = [];
+  if (enr?.stockout_candidates && enr.stockout_candidates.length > 0) {
+    const items = enr.stockout_candidates.slice(0, 10).map(
+      (sc) => `${sc.item_name ?? sc.asin ?? "(unknown)"} \u2014 ${sc.days_in_window ?? 0}d window`
+    );
+    blocks.push(renderAnomalyBlock({ title: "Stockout candidates (advisory)", items }));
+  }
+  if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
+    const items = enr.brand_term_typo_candidates.slice(0, 10).map(
+      (c) => `${c.canonical_match ?? "(unknown)"} \u2014 ${c.total_variants ?? 0} variant(s)`
+    );
+    blocks.push(renderAnomalyBlock({ title: "Brand-term typo clusters (advisory)", items }));
+  }
+  return renderCard({
+    title: "Detected anomalies (advisory)",
+    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No advisory findings. Phase 1.5 enrichment will populate stockout + brand-term-typo candidates here once enabled.</div>'
+  });
+}
+function sectionBrandIdentity(s) {
+  const identity = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
+  const lang = findSection(s.narrative_sections, ["customer language samples", "buyer language"]);
+  const history = findSection(s.narrative_sections, ["historical notes"]);
+  const blocks = [];
+  if (identity) blocks.push(`<h4 style="font-size: 13px; margin: 0 0 8px;">Identity</h4>${mdToHtmlParagraphs(identity)}`);
+  if (lang) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Customer language</h4>${mdToHtmlParagraphs(lang)}`);
+  if (history) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Historical notes</h4>${mdToHtmlParagraphs(history)}`);
+  return renderCard({
+    title: "Brand identity (prose context)",
+    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No narrative prose yet. Add H2 sections to <code>narrative.md</code>: Brand Identity, Customer Language Samples, Historical Notes.</div>'
+  });
+}
+function sectionOpenGaps(s) {
+  return renderCard({
+    title: "Missing context buckets",
+    body: renderBucketGrid(s.buckets)
+  });
+}
+function sectionAuditChecklist(s) {
+  const byCategory = /* @__PURE__ */ new Map();
+  for (const row of s.coverage.rows) {
+    const cat = row.label.category;
+    if (!byCategory.has(cat)) {
+      byCategory.set(cat, {
+        title: categoryLabel(cat),
+        rows: []
+      });
+    }
+    byCategory.get(cat).rows.push({
+      icon: row.status,
+      label: row.label.label,
+      description: row.label.description,
+      value: row.display,
+      valueClass: row.status === "miss" ? "missing" : row.is_stale ? "stale" : void 0
+    });
+  }
+  const blocks = Array.from(byCategory.values());
+  const footer = `<b>${s.coverage.required_present}</b>/${s.coverage.required_total} required \xB7 <b>${s.coverage.recommended_present}</b>/${s.coverage.recommended_total} recommended \xB7 <b>${s.coverage.stale_count}</b> stale \xB7 <b>${s.coverage.open_gaps_count}</b> open gap(s)`;
+  return renderCard({
+    title: "Schema coverage audit",
+    body: renderAuditSection({
+      summary: "Reviewer view \u2014 expand to see field-by-field schema status",
+      blocks,
+      footer
+    })
+  });
+}
+function findSection(sections, candidates) {
+  for (const c of candidates) {
+    if (c in sections && sections[c].length > 0) return sections[c];
+  }
+  return null;
+}
+function mdToHtmlParagraphs(md) {
+  const paragraphs = md.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  return paragraphs.map((p) => {
+    let html = escapeHtml(p);
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+    html = html.replace(/\n/g, "<br>");
+    return `<p style="margin: 0 0 12px;">${html}</p>`;
+  }).join("\n");
+}
+function isEventActive(evt, today) {
+  if (evt.active_through && evt.active_through >= today) return true;
+  if (evt.end && evt.end >= today) return true;
+  if (!evt.end && !evt.active_through && evt.start) {
+    return evt.start <= today;
+  }
+  return false;
+}
+function friendlyEventType(t) {
+  const map2 = {
+    brand_migration: "Brand migration",
+    media_spike: "Media spike",
+    media_spike_recurring: "Recurring media spike",
+    portfolio_decision: "Portfolio decision",
+    promotional_window: "Promo window",
+    promotional_window_recurring: "Recurring promo",
+    stockout: "Stockout",
+    price_test: "Price test",
+    launch: "Launch"
+  };
+  return map2[t] ?? sentenceCase2(t);
+}
+function sentenceCase2(s) {
+  if (!s) return s;
+  const spaced = s.replace(/_/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function categoryLabel(category) {
+  const map2 = {
+    identity: "Account identity",
+    targets: "Management & targets",
+    calibration: "Attribution backfill calibration",
+    brand_structure: "Brand & sub-brand structure",
+    bid_posture: "Bid health & posture",
+    campaign: "Campaign structure & events",
+    negation: "Negation rules",
+    reporting: "Reporting & delivery",
+    gaps: "Open gaps & TODOs"
+  };
+  return map2[category] ?? sentenceCase2(category);
+}
+
+// src/lib/render/brand-context-composer.ts
+async function composeBrandContextReport(args) {
+  const sources = await readBrandContextSources(
+    args.brandSlug,
+    args.runDate,
+    args.dataDirOverride
+  );
+  const narrativeSections = parseNarrativeSections(sources.narrative_md);
+  const labels = await loadAuditLabels();
+  const coverage = computeAuditCoverage(sources.context, labels);
+  const buckets = buildBuckets(sources, coverage);
+  const skillReadiness = computeSkillReadiness(sources, coverage);
+  const { verdict, reason } = computeVerdict({
+    coverage,
+    observational: !!args.observational,
+    validator_passed: coverage.required_present === coverage.required_total
+  });
+  const state = {
+    brand_slug: args.brandSlug,
+    brand_name: args.brandName,
+    run_date: args.runDate,
+    sources,
+    narrative_sections: narrativeSections,
+    coverage,
+    verdict,
+    verdict_reason: reason,
+    buckets,
+    skill_readiness: skillReadiness
+  };
+  const body = [
+    sectionHeader(state),
+    sectionBrandSummary(state),
+    sectionReviewAtAGlance(state),
+    sectionRuntimeInputs(state),
+    sectionSkillReadiness(state),
+    sectionActiveConditions(state),
+    sectionAccountSnapshot(state),
+    sectionSubBrands(state),
+    sectionItemGroups(state),
+    sectionBrandTerms(state),
+    sectionAsinCorpora(state),
+    sectionSeasonality(state),
+    sectionCalibration(state),
+    sectionDetectedAnomalies(state),
+    sectionBrandIdentity(state),
+    sectionOpenGaps(state),
+    sectionAuditChecklist(state)
+    // sectionFooter intentionally omitted — renderPage emits the
+    // design-system footer with copyright + wordmark.
+  ].filter(Boolean).join("\n\n");
+  const html = await renderPage({
+    title: `${args.brandName} \u2014 Brand Context`,
+    subtitle: `Cold-start render \xB7 ${args.runDate}`,
+    theme: args.theme ?? "light",
+    body
+  });
+  const headline = composeHeadlineJson(state);
+  const review = composeReviewJson(state);
+  const dir = brandDir(args.brandSlug, args.dataDirOverride);
+  await mkdir9(dir, { recursive: true });
+  const htmlPath = join8(dir, "brand-context.html");
+  const headlinePath = join8(dir, "brand-context.headline.json");
+  const reviewPath = join8(dir, "brand-context.review.json");
+  await Promise.all([
+    writeFile9(htmlPath, html, "utf-8"),
+    writeFile9(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
+    writeFile9(reviewPath, JSON.stringify(review, null, 2), "utf-8")
+  ]);
+  return {
+    html_path: htmlPath,
+    headline_path: headlinePath,
+    review_path: reviewPath,
+    verdict,
+    verdict_reason: reason,
+    coverage
+  };
+}
+function buildBuckets(sources, coverage) {
+  const buckets = [];
+  const ctx = sources.context;
+  const openGaps = ctx?.open_gaps ?? [];
+  const byCategory = /* @__PURE__ */ new Map();
+  for (const gap of openGaps) {
+    const category = gap.category ?? "operating_rules";
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category).push(gap);
+  }
+  const categoryMeta = {
+    operating_rules: { title: "Operating rules", description: "Targets, posture, thresholds the AM still needs to set." },
+    brand_voice: { title: "Brand voice & buyer language", description: "Customer-language samples and brand identity prose." },
+    product_coverage: { title: "Product & ASIN coverage", description: "Item-group taxonomy, hero SKUs, conquesting catalog." },
+    reporting_setup: { title: "Reporting setup", description: "Audience, voice-lint, monthly-report style preferences." },
+    runtime_inputs: { title: "Runtime inputs", description: "Forecast, HCAM, H-Bridge \u2014 supplied at skill run time, not cold-start." },
+    accepted: { title: "Accepted gaps", description: "Explicitly acknowledged; not blocking." }
+  };
+  for (const [cat, items] of byCategory.entries()) {
+    const meta3 = categoryMeta[cat] ?? { title: sentenceCase3(cat), description: "" };
+    const tone = cat === "runtime_inputs" ? "runtime" : cat === "accepted" ? "complete" : items.length === 0 ? "complete" : "partial";
+    buckets.push({
+      title: meta3.title,
+      status: tone,
+      description: meta3.description,
+      summary: `${items.length} item(s) in this bucket.`,
+      details: items.length > 0 ? {
+        label: "Show items",
+        items: items.map((g) => g.description ?? g.id ?? "(unspecified)")
+      } : void 0
+    });
+  }
+  if (buckets.length === 0 && coverage.required_present === coverage.required_total) {
+    buckets.push({
+      title: "Context coverage",
+      status: "complete",
+      description: "All required + recommended fields populated; no open gaps documented."
+    });
+  }
+  return buckets;
+}
+function computeSkillReadiness(sources, coverage) {
+  const ctx = sources.context;
+  const hasManagement = !!ctx?.management?.primary_metric;
+  const requiredOk = coverage.required_present === coverage.required_total;
+  const hasCalibration = !!ctx?.capture_rate_calibration?.enabled;
+  const skills = [
+    {
+      skill: "daily-health-check",
+      status: requiredOk ? "Ready" : "Blocked by context",
+      tone: requiredOk ? "complete" : "missing",
+      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
+    },
+    {
+      skill: "runaway-spend-check",
+      status: requiredOk ? "Ready" : "Blocked by context",
+      tone: requiredOk ? "complete" : "missing",
+      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
+    },
+    {
+      skill: "keyword-bid-health",
+      status: requiredOk ? "Ready" : "Blocked by context",
+      tone: requiredOk ? "complete" : "missing",
+      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
+    },
+    {
+      skill: "monthly-performance-report",
+      status: hasManagement && hasCalibration ? "Ready" : "Ready with caveats",
+      tone: hasManagement && hasCalibration ? "complete" : "partial",
+      notes: hasCalibration ? "Capture-rate calibration available." : "Calibration not enabled \u2014 MoM/YoY uses raw aggregates."
+    },
+    {
+      skill: "competitive-analysis",
+      status: sources.brand_intelligence ? "Ready" : "Ready with caveats",
+      tone: sources.brand_intelligence ? "complete" : "partial",
+      notes: sources.brand_intelligence ? "Brand intelligence populated." : "brand-intelligence.yaml missing \u2014 analysis runs without research backing."
+    }
+  ];
+  return skills;
+}
+function composeHeadlineJson(s) {
+  const ctx = s.sources.context;
+  return {
+    schema_version: 1,
+    brand_slug: s.brand_slug,
+    brand_name: s.brand_name,
+    run_date: s.run_date,
+    verdict: s.verdict,
+    verdict_reason: s.verdict_reason,
+    headline_metrics: {
+      required_present: s.coverage.required_present,
+      required_total: s.coverage.required_total,
+      recommended_present: s.coverage.recommended_present,
+      recommended_total: s.coverage.recommended_total,
+      stale_count: s.coverage.stale_count,
+      open_gaps_count: s.coverage.open_gaps_count
+    },
+    context_snapshot: ctx ? {
+      primary_metric: ctx.management?.primary_metric,
+      acos_target_pct: ctx.management?.acos_target_pct,
+      tacos_target_pct: ctx.management?.tacos_target_pct,
+      attribution_window_days: ctx.management?.attribution_window_days,
+      account_count: ctx.accounts?.length ?? 0,
+      account_types: Array.from(new Set((ctx.accounts ?? []).map((a) => a.account_type)))
+    } : null,
+    artifacts: {
+      html_path: "brand-context.html",
+      review_path: "brand-context.review.json"
+    }
+  };
+}
+function composeReviewJson(s) {
+  return {
+    schema_version: 1,
+    brand_slug: s.brand_slug,
+    run_date: s.run_date,
+    verdict: s.verdict,
+    coverage: {
+      required_present: s.coverage.required_present,
+      required_total: s.coverage.required_total,
+      recommended_present: s.coverage.recommended_present,
+      recommended_total: s.coverage.recommended_total,
+      stale_count: s.coverage.stale_count,
+      open_gaps_count: s.coverage.open_gaps_count
+    },
+    buckets: s.buckets.map((b) => ({
+      title: b.title,
+      status: b.status,
+      description: b.description,
+      summary: b.summary,
+      item_count: b.details?.items.length ?? 0
+    })),
+    skill_readiness: s.skill_readiness,
+    audit_rows: s.coverage.rows.map((r) => ({
+      path: r.label.path,
+      category: r.label.category,
+      tier: r.label.tier,
+      status: r.status,
+      value: r.display,
+      is_stale: r.is_stale
+    }))
+  };
+}
+function sentenceCase3(s) {
+  if (!s) return s;
+  const spaced = s.replace(/_/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+// src/commands/brand-render-context.ts
+var exec2 = promisify2(execCb2);
+function registerBrandRenderContextCommand(brandCmd) {
+  brandCmd.command("render-context <slug>").description(
+    "Render the cold-start Brand Context page: brand-context.html + brand-context.headline.json + brand-context.review.json. Reads context.yaml + narrative.md + brand-intelligence.yaml + corpora/. Auto-opens the HTML; --no-open to skip."
+  ).option(
+    "--date <date>",
+    "run date (YYYY-MM-DD). Defaults to today."
+  ).option("--no-open", "write the files but do not open the browser").option(
+    "--theme <theme>",
+    "initial theme (light | dark)",
+    "light"
+  ).option(
+    "--observational",
+    "mark this as Phase 1 only (Phase 2 AMA pending \u2014 verdict will be OBSERVATIONAL)",
+    false
+  ).action(
+    async (slug, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const brand = await resolveBrand(slug, root.dataDir);
+        if (!brand) {
+          return emitError3(root.json, `Brand "${slug}" not found in the registry.`);
+        }
+        const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        const result = await composeBrandContextReport({
+          brandSlug: brand.slug,
+          brandName: brand.display_name,
+          runDate,
+          theme: opts.theme,
+          observational: opts.observational,
+          dataDirOverride: root.dataDir
+        });
+        await track(
+          {
+            event_name: "brand.context_rendered",
+            payload: {
+              brand_slug: brand.slug,
+              run_date: runDate,
+              verdict: result.verdict,
+              required_present: result.coverage.required_present,
+              required_total: result.coverage.required_total,
+              open_gaps_count: result.coverage.open_gaps_count,
+              stale_count: result.coverage.stale_count
+            }
+          },
+          root.dataDir
+        );
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                brand_slug: brand.slug,
+                run_date: runDate,
+                verdict: result.verdict,
+                verdict_reason: result.verdict_reason,
+                html_path: result.html_path,
+                headline_path: result.headline_path,
+                review_path: result.review_path,
+                coverage: {
+                  required_present: result.coverage.required_present,
+                  required_total: result.coverage.required_total,
+                  recommended_present: result.coverage.recommended_present,
+                  recommended_total: result.coverage.recommended_total,
+                  stale_count: result.coverage.stale_count,
+                  open_gaps_count: result.coverage.open_gaps_count
+                }
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          process.stdout.write(
+            `
+\u2713 Rendered Brand Context for ${brand.display_name}
+  Verdict: ${result.verdict} \u2014 ${result.verdict_reason}
+  HTML:     ${result.html_path}
+  Headline: ${result.headline_path}
+  Review:   ${result.review_path}
+
+`
+          );
+        }
+        if (opts.open) {
+          await openInBrowser2(result.html_path);
+        }
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return emitError3(root.json, message);
+      }
+    }
+  );
+}
+async function resolveBrand(input, dataDir) {
+  const { index } = await readIndex(dataDir);
+  const exact = index.brands.find((b) => b.slug === input);
+  if (exact) return { slug: exact.slug, display_name: exact.display_name };
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "found") {
+    return { slug: resolved.brand.slug, display_name: resolved.brand.display_name };
+  }
+  if (resolved.status === "ambiguous") {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+    throw new Error(
+      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`
+    );
+  }
+  return null;
+}
+async function openInBrowser2(path2) {
+  try {
+    if (process.platform === "win32") {
+      await exec2(`start "" "${path2}"`);
+    } else if (process.platform === "darwin") {
+      await exec2(`open "${path2}"`);
+    } else {
+      await exec2(`xdg-open "${path2}"`);
+    }
+  } catch {
+  }
+}
+function emitError3(json2, message) {
+  if (json2) {
+    process.stdout.write(
+      JSON.stringify({ status: "error", message }, null, 2) + "\n"
+    );
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
@@ -49397,6 +50946,7 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
   });
   registerBrandViewCommand(brand);
   registerBrandConfigCommand(brand);
+  registerBrandRenderContextCommand(brand);
   const key = brand.command("key").description(
     'Manage your "key brands" \u2014 the focused subset of brands portfolio skills default to. Accepts display names ("Skratch Labs"), acronyms ("AOP"), prefixes ("Home IQ"), or slugs.'
   );
@@ -49600,8 +51150,8 @@ Next: run \`/account-cold-start ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml10 = __toESM(require_dist(), 1);
-import { readFile as readFile11 } from "node:fs/promises";
+var import_yaml11 = __toESM(require_dist(), 1);
+import { readFile as readFile12 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -50402,7 +51952,7 @@ var stringVisibleTrimSpacesRight = (string4) => {
   }
   return words.slice(0, last).join(" ") + words.slice(last).join("");
 };
-var exec2 = (string4, columns, options = {}) => {
+var exec3 = (string4, columns, options = {}) => {
   if (options.trim !== false && string4.trim() === "") {
     return "";
   }
@@ -50509,7 +52059,7 @@ var exec2 = (string4, columns, options = {}) => {
 };
 var CRLF_OR_LF = /\r?\n/;
 function wrapAnsi(string4, columns, options) {
-  return String(string4).normalize().split(CRLF_OR_LF).map((line) => exec2(line, columns, options)).join("\n");
+  return String(string4).normalize().split(CRLF_OR_LF).map((line) => exec3(line, columns, options)).join("\n");
 }
 
 // node_modules/@inquirer/core/dist/lib/utils.js
@@ -51515,7 +53065,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile11(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile12(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -51535,10 +53085,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile11(path2, "utf-8");
+  const raw = await readFile12(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml10.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml11.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -51731,8 +53281,8 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile12 } from "node:fs/promises";
+var import_yaml12 = __toESM(require_dist(), 1);
+import { readFile as readFile13 } from "node:fs/promises";
 init_format_error();
 var allowedToolEnum = external_exports.enum([
   "db_read",
@@ -51803,7 +53353,7 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile12(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -51812,7 +53362,7 @@ async function loadSkillManifest(skillId) {
     }
     throw err;
   }
-  const parsed = (0, import_yaml11.parse)(raw);
+  const parsed = (0, import_yaml12.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -51938,8 +53488,8 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
-import { readFile as readFile13 } from "node:fs/promises";
-var import_yaml12 = __toESM(require_dist(), 1);
+import { readFile as readFile14 } from "node:fs/promises";
+var import_yaml13 = __toESM(require_dist(), 1);
 init_format_error();
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -51960,7 +53510,7 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile13(path2, "utf-8");
+    raw = await readFile14(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError12(err)) {
       throw new Error(
@@ -51969,7 +53519,7 @@ async function loadCatalog() {
     }
     throw err;
   }
-  const parsed = (0, import_yaml12.parse)(raw);
+  const parsed = (0, import_yaml13.parse)(raw);
   const result = catalogSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -51994,7 +53544,7 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile13(path2, "utf-8");
+    raw = await readFile14(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError12(err)) {
       throw new Error(
@@ -52275,14 +53825,14 @@ async function resolveCreds2(options) {
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir9, writeFile as writeFile9, rename as rename7 } from "node:fs/promises";
-import { dirname as dirname12, join as join7 } from "node:path";
+import { mkdir as mkdir10, writeFile as writeFile10, rename as rename7 } from "node:fs/promises";
+import { dirname as dirname13, join as join9 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir9(runDir, { recursive: true });
-  const dataJsonPath = join7(runDir, "data.json");
-  const dataMdPath = join7(runDir, "data.md");
+  await mkdir10(runDir, { recursive: true });
+  const dataJsonPath = join9(runDir, "data.json");
+  const dataMdPath = join9(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -52308,7 +53858,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join7(
+  return join9(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -52403,9 +53953,9 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir9(dirname12(path2), { recursive: true });
+  await mkdir10(dirname13(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile9(tmpPath, content, { encoding: "utf-8" });
+  await writeFile10(tmpPath, content, { encoding: "utf-8" });
   await rename7(tmpPath, path2);
 }
 
@@ -52686,12 +54236,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile14 } from "node:fs/promises";
+import { readFile as readFile15 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir10, writeFile as writeFile10, rename as rename8 } from "node:fs/promises";
-import { join as join8, dirname as dirname13 } from "node:path";
+import { mkdir as mkdir11, writeFile as writeFile11, rename as rename8 } from "node:fs/promises";
+import { join as join10, dirname as dirname14 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -52801,7 +54351,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir10(dirname13(path2), { recursive: true });
+  await mkdir11(dirname14(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -52829,7 +54379,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join8(
+  return join10(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -52859,7 +54409,7 @@ function hashParams(params) {
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile10(tmpPath, content, { encoding: "utf-8" });
+  await writeFile11(tmpPath, content, { encoding: "utf-8" });
   await rename8(tmpPath, path2);
 }
 
@@ -52879,7 +54429,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile14(opts.inputFile, "utf-8");
+      const raw = await readFile15(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -52953,16 +54503,16 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml13 = __toESM(require_dist(), 1);
-import { readFile as readFile15 } from "node:fs/promises";
-import { dirname as dirname14, join as join9 } from "node:path";
+var import_yaml14 = __toESM(require_dist(), 1);
+import { readFile as readFile16 } from "node:fs/promises";
+import { dirname as dirname15, join as join11 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile15(path2, "utf-8");
-      const parsed = (0, import_yaml13.parse)(raw);
+      const raw = await readFile16(path2, "utf-8");
+      const parsed = (0, import_yaml14.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
@@ -52990,12 +54540,12 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname14(fileURLToPath4(import.meta.url));
+  const here = dirname15(fileURLToPath4(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join9(dir, "shared", "data-tables.yaml"));
-    const parent = dirname14(dir);
+    candidates.push(join11(dir, "shared", "data-tables.yaml"));
+    const parent = dirname15(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -53040,8 +54590,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir11 } from "node:fs/promises";
-import { dirname as dirname15 } from "node:path";
+import { mkdir as mkdir12 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -53148,7 +54698,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir11(dirname15(opts.outPath), { recursive: true });
+  await mkdir12(dirname16(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -53189,9 +54739,9 @@ function synthFailure(opts, message) {
 
 // src/commands/data.ts
 init_resolve();
-import { writeFile as writeFile11 } from "node:fs/promises";
-import { mkdir as mkdir12 } from "node:fs/promises";
-import { dirname as dirname16 } from "node:path";
+import { writeFile as writeFile12 } from "node:fs/promises";
+import { mkdir as mkdir13 } from "node:fs/promises";
+import { dirname as dirname17 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
@@ -53205,7 +54755,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableList(tables) + "\n");
       }
     } catch (err) {
-      emitError3(err, !!root.json);
+      emitError4(err, !!root.json);
     }
   });
   data.command("describe <table>").description("Show description + scoping hints for one table").action(async (table, _opts, cmd) => {
@@ -53223,7 +54773,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableDetail(meta3) + "\n");
       }
     } catch (err) {
-      emitError3(err, !!root.json);
+      emitError4(err, !!root.json);
     }
   });
   data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
@@ -53276,7 +54826,7 @@ function registerDataCommands(program3) {
           process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
         }
       } catch (err) {
-        emitError3(err, !!root.json);
+        emitError4(err, !!root.json);
       }
     }
   );
@@ -53332,7 +54882,7 @@ function registerDataCommands(program3) {
           );
         }
       } catch (err) {
-        emitError3(err, !!root.json);
+        emitError4(err, !!root.json);
       }
     }
   );
@@ -53370,8 +54920,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir12(dirname16(opts.out), { recursive: true });
-          await writeFile11(opts.out, csv, "utf-8");
+          await mkdir13(dirname17(opts.out), { recursive: true });
+          await writeFile12(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -53402,7 +54952,7 @@ function registerDataCommands(program3) {
           }
         }
       } catch (err) {
-        emitError3(err, !!root.json);
+        emitError4(err, !!root.json);
       }
     }
   );
@@ -53478,7 +55028,7 @@ function handleAccessDeniedExit(kind) {
   if (kind === "access_denied_table") return 4;
   return 1;
 }
-function emitError3(err, json2) {
+function emitError4(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     process.stdout.write(
@@ -54161,8 +55711,8 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 }
 
 // src/lib/calibration/confirm-flow.ts
-var import_yaml14 = __toESM(require_dist(), 1);
-import { readFile as readFile17 } from "node:fs/promises";
+var import_yaml15 = __toESM(require_dist(), 1);
+import { readFile as readFile18 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -54327,8 +55877,8 @@ function getByPath2(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile17(path2, "utf-8");
-    return (0, import_yaml14.parse)(raw);
+    const raw = await readFile18(path2, "utf-8");
+    return (0, import_yaml15.parse)(raw);
   } catch {
     return null;
   }
@@ -54433,8 +55983,8 @@ function indexConfirmationEntries(payload) {
 
 // src/commands/skill.ts
 init_resolve();
-import { mkdir as mkdir14, readFile as readFile18, writeFile as writeFile12 } from "node:fs/promises";
-import { dirname as dirname18 } from "node:path";
+import { mkdir as mkdir15, readFile as readFile19, writeFile as writeFile13 } from "node:fs/promises";
+import { dirname as dirname19 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -54458,7 +56008,7 @@ function registerSkillCommands(program3) {
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError4(
+          return emitError5(
             root.json,
             `Brand "${opts.brand}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands. The resolver accepts slugs, display names, acronyms, and prefixes.`
           );
@@ -54522,7 +56072,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError4(root.json, message);
+        return emitError5(root.json, message);
       }
     }
   );
@@ -54538,7 +56088,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError4(
+          return emitError5(
             root.json,
             `Brand "${opts.brand}" not in the registry.`
           );
@@ -54605,7 +56155,7 @@ Real Amazon writes will land once the write MCP/API is wired. Same contract.
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError4(root.json, message);
+        return emitError5(root.json, message);
       }
     }
   );
@@ -54640,7 +56190,7 @@ async function runApplyDecision2(args) {
   try {
     decision = JSON.parse(args.decisionJson);
   } catch (err) {
-    return emitError4(
+    return emitError5(
       args.json,
       `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
     );
@@ -54778,14 +56328,14 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname18(path2);
-  const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
+  const runDir = dirname19(path2);
+  const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
       `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
     );
   }
-  const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {
+  const overrides = await readJsonIfExists2(`${runDir}/overrides.json`) ?? {
     rows: []
   };
   const suggestionRows = extractRows(suggestions);
@@ -54825,8 +56375,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir14(dirname18(path2), { recursive: true });
-  await writeFile12(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir15(dirname19(path2), { recursive: true });
+  await writeFile13(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -54853,9 +56403,9 @@ ${candidates}`
   }
   return null;
 }
-async function readJsonIfExists(path2) {
+async function readJsonIfExists2(path2) {
   try {
-    const raw = await readFile18(path2, "utf-8");
+    const raw = await readFile19(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -54888,7 +56438,7 @@ function stableRowId(row) {
   }
   return null;
 }
-function emitError4(json2, message) {
+function emitError5(json2, message) {
   if (json2) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
