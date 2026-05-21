@@ -1,7 +1,7 @@
 {
   "name": "mixshift-ai",
-  "version": "0.4.9",
-  "description": "MixShift AI skills for Amazon advertising and retail operations. The MixShift warehouse is a MySQL database (legacy schema: dashamazon) covering Sponsored Ads (SP/SB/SD), DSP, Seller Central + Vendor Central ops revenue, orders, inventory, and dimensional catalog. This plugin ships: data-explore (ad-hoc querying + CSV export), PPC optimization skills (daily health checks, bid management, search term negation, harvest, monthly reporting), and onboarding commands (welcome, brand discover/add). Warehouse access is read-only via the bundled harness; credentials saved locally at ~/.mixshift/auth/credentials.",
+  "version": "0.5.0",
+  "description": "MixShift AI skills for Amazon advertising and retail operations. The MixShift warehouse is a MySQL database (legacy schema: dashamazon) covering Sponsored Ads (SP/SB/SD), DSP, Seller Central + Vendor Central ops revenue, orders, inventory, and dimensional catalog. Ships: data-explore (ad-hoc querying + CSV export), PPC optimization skills (daily health checks, bid management, search term negation, harvest, monthly reporting), onboarding commands (welcome, brand discover/add), brand-context management (cold-start, render-context, config, enrich, merge-delta), and per-skill OCL (Objective Level Configuration) confirm-on-run flow. Warehouse access is read-only via the bundled harness; credentials saved locally at ~/.mixshift/auth/credentials.",
   "author": {
     "name": "MixShift"
   },

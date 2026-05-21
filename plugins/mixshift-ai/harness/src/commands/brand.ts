@@ -25,6 +25,7 @@ import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
 import { registerBrandEnrichCommand } from './brand-enrich.js';
+import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
 
 interface RootOptions {
   json?: boolean;
@@ -556,8 +557,12 @@ export function registerBrandCommands(program: Command): void {
 
   // `mixshift brand enrich <slug>` — Phase 1.5 enrichment runner.
   // Settlement curve + stockout windows + brand-typo clusters from CS-28-31.
-  // Shell ships in 0.5.0; sub-analyses fill in across Phase C.2/C.3/C.4.
+  // Writes runs/account-cold-start/<date>/<date>.enrichment.json.
   registerBrandEnrichCommand(brand);
+
+  // `mixshift brand merge-delta <slug>` — patches settlement curve from the
+  // enrichment artifact into context.yaml. Preserves AM-edited fields.
+  registerBrandMergeDeltaCommand(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.

@@ -27,6 +27,19 @@ import {
   computeSettlementCurve,
   type CS28Row,
 } from '../lib/enrichment/settlement-curve.js';
+import {
+  detectStockoutWindows,
+  type CS29Row,
+  type CS30Row,
+} from '../lib/enrichment/stockout-windows.js';
+import {
+  detectBrandTermTypos,
+  type CS31Row,
+  type BrandTermsBlock,
+} from '../lib/enrichment/brand-typos.js';
+import { readFile as fsReadFile } from 'node:fs/promises';
+import { parse as parseYaml } from 'yaml';
+import { contextPath } from '../lib/paths/resolve.js';
 import { brandDir } from '../lib/paths/resolve.js';
 import { track } from '../lib/telemetry/index.js';
 
@@ -39,10 +52,11 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
   brandCmd
     .command('enrich <slug>')
     .description(
-      'Run Phase 1.5 enrichment: settlement curve + stockout windows + ' +
-        'brand-typo clusters. Writes runs/account-cold-start/<date>/<date>.' +
-        'enrichment.json. Read by the cold-start renderer + delta-mode ' +
-        'merge. CURRENT STATE: shell only — sub-analyses land in Phase C.2-C.4.',
+      'Run Phase 1.5 enrichment: settlement curve from CS-28, stockout ' +
+        'windows from CS-29+CS-30, brand-name typo clusters from CS-31. ' +
+        'Writes runs/account-cold-start/<date>/<date>.enrichment.json. Read ' +
+        "by the cold-start renderer (Detected Anomalies section) + the " +
+        '`brand merge-delta` patcher.',
     )
     .option('--date <date>', 'run date (YYYY-MM-DD). Defaults to today.')
     .action(
@@ -97,11 +111,37 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
             }
           }
 
-          // ─── C.3 — Stockout windows from CS-29 + CS-30 (pending) ───────────
-          partial_reasons.push('C.3 stockout-window stitcher not yet implemented');
+          // ─── C.3 — Stockout windows from CS-29 + CS-30 ─────────────────────
+          const cs29Rows = extractQueryRows(prefetch, 'CS-29') as CS29Row[];
+          const cs30Rows = extractQueryRows(prefetch, 'CS-30') as CS30Row[];
+          if (cs29Rows.length === 0) {
+            partial_reasons.push('CS-29 returned no rows — stockout detection skipped');
+          } else {
+            artifact.stockout_candidates = detectStockoutWindows(cs29Rows, cs30Rows);
+          }
 
-          // ─── C.4 — Brand-name typo clusters from CS-31 (pending) ───────────
-          partial_reasons.push('C.4 brand-typo clusterer not yet implemented');
+          // ─── C.4 — Brand-name typo clusters from CS-31 ─────────────────────
+          const cs31Rows = extractQueryRows(prefetch, 'CS-31') as CS31Row[];
+          if (cs31Rows.length === 0) {
+            partial_reasons.push('CS-31 returned no rows — brand-typo clustering skipped');
+          } else {
+            // Read context.yaml for brand_terms + negation.competitor_brands.
+            // Without these we can't do typo detection — drop gracefully.
+            const ctx = await tryReadContextForTypos(brand.slug, root.dataDir);
+            if (!ctx || !ctx.brand_terms) {
+              partial_reasons.push(
+                'context.yaml::brand_terms missing — brand-typo clustering needs canonicals to match against',
+              );
+            } else {
+              artifact.brand_term_typo_candidates = detectBrandTermTypos(
+                cs31Rows,
+                ctx.brand_terms,
+                {
+                  competitor_brands: ctx.negation?.competitor_brands ?? [],
+                },
+              );
+            }
+          }
 
           artifact.partial_reasons = partial_reasons;
           artifact.partial = partial_reasons.length > 0;
@@ -164,6 +204,31 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Read context.yaml just for the typo-detection inputs (brand_terms +
+ * negation.competitor_brands). Returns null when context is missing or
+ * malformed — caller treats that as "skip typo detection".
+ */
+async function tryReadContextForTypos(
+  brandSlug: string,
+  dataDir?: string,
+): Promise<{
+  brand_terms?: BrandTermsBlock;
+  negation?: { competitor_brands?: string[] };
+} | null> {
+  try {
+    const raw = await fsReadFile(contextPath(brandSlug, dataDir), 'utf-8');
+    const parsed = parseYaml(raw);
+    if (parsed === null || typeof parsed !== 'object') return null;
+    return parsed as {
+      brand_terms?: BrandTermsBlock;
+      negation?: { competitor_brands?: string[] };
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Extract rows for a specific CS-* query from the prefetch artifact.
