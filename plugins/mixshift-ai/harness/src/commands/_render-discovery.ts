@@ -25,9 +25,9 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
   }));
 
   const headers = {
-    slug: 'SLUG',
+    slug: 'ID',
     name: 'BRAND',
-    accounts: 'N',
+    accounts: 'ACCOUNTS',
     types: 'TYPES',
     markets: 'MARKETS',
     ads: 'ADS',
@@ -55,7 +55,7 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
   lines.push('');
   lines.push(`${suggestions.length} brand${suggestions.length === 1 ? '' : 's'} discovered.`);
   lines.push('');
-  lines.push('Next: `mixshift brand add <slug>` to onboard a brand,');
+  lines.push('Next: `mixshift brand add <id>` to onboard a brand,');
   lines.push('  or  `mixshift brand list` once you have a portfolio set up.');
   return lines.join('\n');
 }

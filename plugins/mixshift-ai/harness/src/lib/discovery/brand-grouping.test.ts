@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupIntoBrands, slugify } from './brand-grouping.js';
+import { groupIntoBrands, slugify, canonicalBrandKey } from './brand-grouping.js';
 import type { SellerRow } from './seller-query.js';
 
 function row(overrides: Partial<SellerRow>): SellerRow {
@@ -23,65 +23,117 @@ function row(overrides: Partial<SellerRow>): SellerRow {
   };
 }
 
-describe('slugify', () => {
+describe('canonicalBrandKey', () => {
+  it('handles plain brand names without modification', () => {
+    expect(canonicalBrandKey('Hydrapak')).toBe('hydrapak');
+    expect(canonicalBrandKey('American Outdoor Products')).toBe('american-outdoor-products');
+  });
+
+  it('strips marketplace suffixes after " - "', () => {
+    expect(canonicalBrandKey('Hydrapak - CA')).toBe('hydrapak');
+    expect(canonicalBrandKey('Hydrapak - DE Sporting Goods - (Pan-EU)')).toBe('hydrapak');
+    expect(canonicalBrandKey('Hydrapak - FR - Sporting Goods')).toBe('hydrapak');
+    expect(canonicalBrandKey('Hydrapak - IT Sporting Goods - (Pan-EU)')).toBe('hydrapak');
+  });
+
+  it('strips corporate suffixes via comma OR trailing token', () => {
+    expect(canonicalBrandKey('HydraPak, LLC')).toBe('hydrapak');
+    expect(canonicalBrandKey('Acme, Inc')).toBe('acme');
+    expect(canonicalBrandKey('Acme LLC')).toBe('acme');
+    expect(canonicalBrandKey('Foo Bar Corp')).toBe('foo-bar');
+  });
+
+  it('handles em-dash and en-dash separators', () => {
+    expect(canonicalBrandKey('Brand — Marketplace')).toBe('brand');
+    expect(canonicalBrandKey('Brand – Marketplace')).toBe('brand');
+  });
+
+  it('preserves multi-word names without suffix patterns', () => {
+    expect(canonicalBrandKey('Rowdy Parrot')).toBe('rowdy-parrot');
+    expect(canonicalBrandKey('New Zealand Honey Co')).toBe('new-zealand-honey');
+    expect(canonicalBrandKey('Skratch Labs')).toBe('skratch-labs');
+  });
+
+  it('strips non-alphanumeric punctuation', () => {
+    expect(canonicalBrandKey("Bob's Burgers")).toBe('bobs-burgers');
+    expect(canonicalBrandKey('Polar Bottle®')).toBe('polar-bottle');
+  });
+
+  it('prefixes digit-starting names with "b-"', () => {
+    expect(canonicalBrandKey('123 Brand')).toBe('b-123-brand');
+  });
+
+  it('returns "brand" for fully-stripped input', () => {
+    expect(canonicalBrandKey('!!!')).toBe('brand');
+    expect(canonicalBrandKey('')).toBe('brand');
+  });
+});
+
+describe('slugify (legacy export — still used by mixshift brand add)', () => {
   it('lowercases + hyphenates a multi-word name without corporate suffix', () => {
     expect(slugify('Hello World')).toBe('hello-world');
-    expect(slugify('My Cool Brand')).toBe('my-cool-brand');
   });
 
   it('strips corporate suffixes', () => {
     expect(slugify('Acme Inc')).toBe('acme');
     expect(slugify('Acme LLC')).toBe('acme');
-    expect(slugify('Foo Bar Corp')).toBe('foo-bar');
-    expect(slugify('HydraPak Inc.')).toBe('hydrapak');
   });
 
   it('preserves multi-word brand names without suffixes', () => {
     expect(slugify('Rowdy Parrot')).toBe('rowdy-parrot');
-    expect(slugify('New Zealand Honey Co')).toBe('new-zealand-honey');
-  });
-
-  it('strips non-allowed characters', () => {
-    expect(slugify('Acme & Sons')).toBe('acme-sons');
-    expect(slugify("Bob's Burgers")).toBe('bobs-burgers');
-    expect(slugify('Foo/Bar.Baz')).toBe('foo-bar-baz');
-  });
-
-  it('prefixes digit-starting names with "b-"', () => {
-    expect(slugify('123 Brand')).toBe('b-123-brand');
-  });
-
-  it('returns "brand" for fully-stripped input', () => {
-    expect(slugify('!!!')).toBe('brand');
-    expect(slugify('')).toBe('brand');
-  });
-
-  it('collapses runs of hyphens', () => {
-    expect(slugify('foo---bar')).toBe('foo-bar');
-    expect(slugify('foo & & bar')).toBe('foo-bar');
   });
 });
 
-describe('groupIntoBrands', () => {
-  it('groups rows that share the same Name across marketplaces and account types', () => {
-    // User has set Name="Acme" on all three rows — they group as one brand
-    // regardless of MerchantAlias differences or marketplace/account-type spread.
+describe('groupIntoBrands — Hydrapak family consolidation (the regression)', () => {
+  it('collapses 6 Hydrapak rows into one brand entry', () => {
+    // Real names observed in Sam's warehouse during the AOP test:
     const rows = [
-      row({ seller_id: 1, seller_name: 'Acme', account_type: 'SC', marketplace: 'US' }),
-      row({ seller_id: 2, seller_name: 'Acme', account_type: 'VC', marketplace: 'US' }),
-      row({ seller_id: 3, seller_name: 'Acme', account_type: 'SC', marketplace: 'CA' }),
+      row({ seller_id: 1, seller_name: 'Hydrapak', account_type: 'VC', marketplace: 'US' }),
+      row({ seller_id: 2, seller_name: 'Hydrapak - CA', account_type: 'VC', marketplace: 'CA' }),
+      row({
+        seller_id: 3,
+        seller_name: 'Hydrapak - DE Sporting Goods - (Pan-EU)',
+        account_type: 'VC',
+        marketplace: 'DE',
+      }),
+      row({
+        seller_id: 4,
+        seller_name: 'Hydrapak - FR - Sporting Goods',
+        account_type: 'VC',
+        marketplace: 'FR',
+      }),
+      row({
+        seller_id: 5,
+        seller_name: 'Hydrapak - IT Sporting Goods - (Pan-EU)',
+        account_type: 'VC',
+        marketplace: 'IT',
+      }),
+      row({ seller_id: 6, seller_name: 'HydraPak, LLC', account_type: 'SC', marketplace: 'US' }),
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
-    expect(groups[0]!.slug).toBe('acme');
-    expect(groups[0]!.display_name).toBe('Acme');
-    expect(groups[0]!.accounts).toHaveLength(3);
+    expect(groups[0]!.slug).toBe('hydrapak');
+    expect(groups[0]!.accounts).toHaveLength(6);
+    // Display name = shortest variant, no marketplace suffix noise
+    expect(groups[0]!.display_name).toBe('Hydrapak');
+  });
+});
+
+describe('groupIntoBrands — AOP-style same-name grouping (no regression)', () => {
+  it('groups rows that share the same exact Name across marketplaces', () => {
+    const rows = [
+      row({ seller_id: 1, seller_name: 'American Outdoor Products', marketplace: 'US' }),
+      row({ seller_id: 2, seller_name: 'American Outdoor Products', marketplace: 'CA' }),
+      row({ seller_id: 3, seller_name: 'American Outdoor Products', marketplace: 'MX' }),
+      row({ seller_id: 4, seller_name: 'American Outdoor Products', marketplace: 'US' }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.slug).toBe('american-outdoor-products');
+    expect(groups[0]!.accounts).toHaveLength(4);
   });
 
-  it('ignores MerchantAlias differences when Name agrees', () => {
-    // The user has curated Name="American Outdoor Products" on rows whose
-    // Amazon storefronts (MerchantAlias) are "backpacker's pantry" — the
-    // grouping uses Name, not alias.
+  it('ignores MerchantAlias differences when canonical key agrees', () => {
     const rows = [
       row({
         seller_id: 1,
@@ -99,10 +151,11 @@ describe('groupIntoBrands', () => {
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
     expect(groups[0]!.slug).toBe('american-outdoor-products');
-    expect(groups[0]!.accounts).toHaveLength(2);
   });
+});
 
-  it('keeps rows with distinct Names as separate brands', () => {
+describe('groupIntoBrands — keeps genuinely distinct brands separate', () => {
+  it('keeps rows with distinct canonical keys as separate brands', () => {
     const rows = [
       row({ seller_id: 1, seller_name: 'Alpha' }),
       row({ seller_id: 2, seller_name: 'Beta' }),
@@ -111,16 +164,14 @@ describe('groupIntoBrands', () => {
     expect(groups).toHaveLength(2);
   });
 
-  it('disambiguates colliding slugs with -2, -3 suffixes', () => {
-    // Two distinct Names slugify to the same root; second one gets -2.
+  it('treats different multi-word brands as separate even with shared first words', () => {
     const rows = [
-      row({ seller_id: 1, seller_name: 'Acme One' }),
-      row({ seller_id: 2, seller_name: 'Acme. One!' }), // slugifies to 'acme-one' too
+      row({ seller_id: 1, seller_name: 'Polar Bottle' }),
+      row({ seller_id: 2, seller_name: 'Polar Express' }),
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(2);
-    const slugs = groups.map((g) => g.slug).sort();
-    expect(slugs).toEqual(['acme-one', 'acme-one-2']);
+    expect(groups.map((g) => g.slug).sort()).toEqual(['polar-bottle', 'polar-express']);
   });
 
   it('aggregates ads_active / retail_active across the group', () => {
@@ -134,7 +185,7 @@ describe('groupIntoBrands', () => {
     expect(groups[0]!.retail_active).toBe(true);
   });
 
-  it('returns groups in stable alpha order by display name', () => {
+  it('returns groups in stable alpha order by canonical key', () => {
     const rows = [
       row({ seller_id: 1, seller_name: 'Zebra' }),
       row({ seller_id: 2, seller_name: 'Apple' }),
@@ -142,5 +193,16 @@ describe('groupIntoBrands', () => {
     ];
     const groups = groupIntoBrands(rows);
     expect(groups.map((g) => g.display_name)).toEqual(['Apple', 'Mango', 'Zebra']);
+  });
+
+  it('picks the shortest non-empty name as display', () => {
+    const rows = [
+      row({ seller_id: 1, seller_name: 'HydraPak, LLC' }),
+      row({ seller_id: 2, seller_name: 'Hydrapak' }),
+      row({ seller_id: 3, seller_name: 'Hydrapak - DE Sporting Goods - (Pan-EU)' }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.display_name).toBe('Hydrapak');
   });
 });

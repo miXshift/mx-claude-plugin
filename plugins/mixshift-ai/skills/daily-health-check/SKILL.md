@@ -24,6 +24,27 @@ These rules supersede any other instruction. Violating them produces inconsisten
 - **Do NOT echo full data tables or raw query output** in your model response. The HTML report is the deliverable.
 - **Begin output immediately.** Do not restate these instructions, summarize what you are about to do, or ask clarifying questions.
 
+### Voice rules (user-facing output)
+
+These apply ONLY to what you say to the user. Internal procedure notes
+below can still use the IDs.
+
+- **Never use internal query IDs (`DHC-01`, `DHC-12`, `CS-16`, etc.) in
+  chat output.** Translate to human language:
+    - "DHC-12 returned 86 rows" → "yesterday's inventory snapshot flagged 86 SKUs"
+    - "DHC-01 spend_t1 was $928" → "yesterday's spend was $928"
+    - "DHC-04 thresholds" → "the brand's CI thresholds"
+- **Never say "slug" to the user.** Use "brand", "brand ID", or just the
+  brand name. Slugs are an internal addressing scheme.
+- **When an internal data source is unreliable (returns suspicious values),
+  say so plainly + flag what you're falling back to.** Don't pretend a
+  bad signal is real. Example: "yesterday's inventory check returned
+  zero stock for every SKU, which contradicts your own count — treating
+  as unreliable for now and flagging to ops."
+- **Lead with the recommendation, not the methodology.** R², percentile
+  windows, CI bounds, statistical tests are footnotes for the curious,
+  not the headline.
+
 ---
 
 ## Preflight — Risk Tier 3 (Required)
@@ -127,7 +148,7 @@ This file contains pre-executed results for all queries, keyed by query ID:
 - `DHC-09` — Brand Performance (conditional — present only when sub-brand segmentation is active): `brand_label, spend, adsales, acos`
 - `DHC-10` — Data lag check (campaign-level vs. keyword-level spend comparison): `campaign_spend_t1, keyword_spend_t1`
 - `DHC-11` — Keyword-level spend comparison supplemental data
-- `DHC-12` — Additional anomaly detection context
+- `DHC-12` — Inventory snapshot (latest per ASIN, FBA-only): ASINs at risk by SellableQuantity / DaysOfSupply / Alert. Note: as of 2026-05-21, the SQL was patched to filter to the latest snapshot per ASIN — earlier behavior returned all historical OOS rows mixed with current state, producing false stockout alarms. If this query still surfaces every active SKU as zero-quantity, log a data-quality flag (do not draw inventory conclusions).
 - `LIB-PT-01` — Price test query (conditional — present only when `structural_events` includes an active price_test): `asin, total_sales, units` for tested vs. untested sub-lines
 
 All queries share the join key: `(SellerID, date)` at account level; dimensional queries use `(SellerID, CampaignName/Objective/ItemGroup, date)` as appropriate.

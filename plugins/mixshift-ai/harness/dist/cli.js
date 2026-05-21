@@ -45188,23 +45188,24 @@ var init_seller_query = __esm({
 // src/lib/discovery/brand-grouping.ts
 var brand_grouping_exports = {};
 __export(brand_grouping_exports, {
+  canonicalBrandKey: () => canonicalBrandKey,
   groupIntoBrands: () => groupIntoBrands,
   slugify: () => slugify2
 });
 function groupIntoBrands(rows) {
-  const byName = /* @__PURE__ */ new Map();
+  const byCanonical = /* @__PURE__ */ new Map();
   for (const r of rows) {
-    const key = r.seller_name.toLowerCase();
-    const bucket = byName.get(key) ?? [];
+    const key = canonicalBrandKey(r.seller_name);
+    const bucket = byCanonical.get(key) ?? [];
     bucket.push(r);
-    byName.set(key, bucket);
+    byCanonical.set(key, bucket);
   }
   const suggestions = [];
   const usedSlugs = /* @__PURE__ */ new Set();
-  const entries = [...byName.entries()].sort(([a], [b]) => a.localeCompare(b));
-  for (const [, accounts] of entries) {
-    const display = accounts[0].seller_name;
-    const baseSlug = slugify2(display);
+  const entries = [...byCanonical.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [canonical, accounts] of entries) {
+    const display = pickDisplayName(accounts);
+    const baseSlug = canonical || "brand";
     const slug = ensureUniqueSlug(baseSlug, usedSlugs);
     usedSlugs.add(slug);
     suggestions.push({
@@ -45216,6 +45217,23 @@ function groupIntoBrands(rows) {
     });
   }
   return suggestions;
+}
+function canonicalBrandKey(name) {
+  let s = name.split(/\s+[-–—]\s+|,\s+/)[0] ?? name;
+  s = s.toLowerCase().normalize("NFKD");
+  s = s.replace(/['‘’]+/g, "");
+  s = s.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  s = s.replace(/-(inc|llc|co|corp|corporation|ltd|limited|gmbh)$/, "");
+  if (s.length === 0) return "brand";
+  if (!/^[a-z]/.test(s)) return `b-${s}`;
+  return s;
+}
+function pickDisplayName(accounts) {
+  const names = accounts.map((a) => a.seller_name).filter(Boolean);
+  if (names.length === 0) return "Unknown brand";
+  return names.reduce(
+    (best, cur) => cur.length < best.length ? cur : best
+  );
 }
 function slugify2(input) {
   let s = input.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -46245,9 +46263,9 @@ function renderDiscoveryTable(suggestions) {
     retail: s.retail_active ? "\u2713" : "\u2717"
   }));
   const headers = {
-    slug: "SLUG",
+    slug: "ID",
     name: "BRAND",
-    accounts: "N",
+    accounts: "ACCOUNTS",
     types: "TYPES",
     markets: "MARKETS",
     ads: "ADS",
@@ -46269,7 +46287,7 @@ function renderDiscoveryTable(suggestions) {
   lines.push("");
   lines.push(`${suggestions.length} brand${suggestions.length === 1 ? "" : "s"} discovered.`);
   lines.push("");
-  lines.push("Next: `mixshift brand add <slug>` to onboard a brand,");
+  lines.push("Next: `mixshift brand add <id>` to onboard a brand,");
   lines.push("  or  `mixshift brand list` once you have a portfolio set up.");
   return lines.join("\n");
 }
