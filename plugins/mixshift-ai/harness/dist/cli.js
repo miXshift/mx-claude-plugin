@@ -47019,6 +47019,10 @@ function normalizeRecord(rec) {
     email: rec.email ?? null,
     plugin_version: rec.plugin_version,
     install_path: rec.install_path,
+    // Surface added in 0.5.1 — older queue.jsonl entries that pre-date the
+    // field land here with `surface: undefined` and get coerced to null.
+    // Once the queue drains, every new event carries the surface.
+    surface: rec.surface ?? null,
     os: rec.os,
     node_version: rec.node_version,
     ts: rec.ts,
@@ -47082,6 +47086,61 @@ var EventName = {
 
 // src/lib/telemetry/index.ts
 init_load();
+
+// src/lib/telemetry/surface.ts
+var ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
+function detectSurface(flagValue) {
+  const envOverride = process.env[ENV_VAR_OVERRIDE];
+  if (envOverride && isKnownSurface(envOverride)) {
+    return envOverride;
+  }
+  if (flagValue && isKnownSurface(flagValue)) {
+    return flagValue;
+  }
+  for (const detector of detectors) {
+    const result = detector();
+    if (result !== null) return result;
+  }
+  return "cli";
+}
+function detectClaudeCode() {
+  if (process.env.CLAUDECODE === "1" || process.env.CLAUDE_CODE === "1") {
+    return "claude_code";
+  }
+  if (process.env.CLAUDE_CODE_ENTRYPOINT || process.env.CLAUDE_CODE_VERSION) {
+    return "claude_code";
+  }
+  return null;
+}
+function detectCowork() {
+  if (process.env.COWORK === "1") return "cowork";
+  if (process.env.COWORK_VERSION) return "cowork";
+  if (process.env.COWORK_PLUGIN_HOST) return "cowork";
+  return null;
+}
+function detectPluginHostUnknown() {
+  if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin_host_unknown";
+  return null;
+}
+var detectors = [
+  detectClaudeCode,
+  detectCowork,
+  detectPluginHostUnknown
+];
+var KNOWN_SURFACES = /* @__PURE__ */ new Set([
+  "cowork",
+  "claude_code",
+  "plugin_host_unknown",
+  "cli",
+  "chatgpt",
+  "claude_desktop",
+  "other"
+]);
+function isKnownSurface(s) {
+  return KNOWN_SURFACES.has(s);
+}
+
+// src/lib/telemetry/index.ts
 init_consent();
 async function track(input, dataDirOverride) {
   try {
@@ -47091,6 +47150,7 @@ async function track(input, dataDirOverride) {
     const { profile } = await loadProfile(dataDirOverride);
     const pluginVersion = getPluginVersion();
     const installPath = detectInstallPath();
+    const surface = detectSurface(readSurfaceFlag());
     const os = detectOs();
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const userEmail = profile.user?.email;
@@ -47101,6 +47161,7 @@ async function track(input, dataDirOverride) {
         email: userEmail,
         plugin_version: pluginVersion,
         install_path: installPath,
+        surface,
         os,
         node_version: process.version,
         ts: nowIso,
@@ -47116,6 +47177,7 @@ async function track(input, dataDirOverride) {
       email: input.email ?? userEmail,
       plugin_version: pluginVersion,
       install_path: installPath,
+      surface,
       os,
       node_version: process.version,
       ts: nowIso,
@@ -47152,6 +47214,15 @@ function detectInstallPath() {
 }
 function detectOs() {
   return `${platform()}-${release()}`;
+}
+function readSurfaceFlag() {
+  const idx = process.argv.indexOf("--surface");
+  if (idx >= 0 && idx + 1 < process.argv.length) {
+    return process.argv[idx + 1];
+  }
+  const eq = process.argv.find((a) => a.startsWith("--surface="));
+  if (eq) return eq.slice("--surface=".length);
+  return void 0;
 }
 
 // src/commands/brand-view.ts

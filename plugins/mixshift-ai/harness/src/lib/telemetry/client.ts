@@ -137,6 +137,10 @@ function normalizeRecord(rec: TelemetryEventRecord): Record<string, unknown> {
     email: rec.email ?? null,
     plugin_version: rec.plugin_version,
     install_path: rec.install_path,
+    // Surface added in 0.5.1 — older queue.jsonl entries that pre-date the
+    // field land here with `surface: undefined` and get coerced to null.
+    // Once the queue drains, every new event carries the surface.
+    surface: rec.surface ?? null,
     os: rec.os,
     node_version: rec.node_version,
     ts: rec.ts,

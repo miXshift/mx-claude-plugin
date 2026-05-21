@@ -22,6 +22,10 @@ export interface TelemetryEventRecord {
   email?: string;
   plugin_version: string;
   install_path: string;
+  /** Which runtime/host is invoking the harness. See lib/telemetry/surface.ts.
+   *  Values: cowork | claude_code | plugin_host_unknown | cli | chatgpt |
+   *  claude_desktop | other. Evolves as new LLM hosts are added. */
+  surface: string;
   os: string;
   node_version: string;
   ts: string; // ISO timestamp set client-side at queue time

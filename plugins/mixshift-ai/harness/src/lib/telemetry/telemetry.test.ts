@@ -26,6 +26,7 @@ function makeRecord(overrides?: Partial<TelemetryEventRecord>): TelemetryEventRe
     install_id: '00000000-0000-0000-0000-000000000001',
     plugin_version: '0.0.0-test',
     install_path: 'cli',
+    surface: 'cli',
     os: 'test',
     node_version: 'v20.0.0',
     ts: new Date().toISOString(),

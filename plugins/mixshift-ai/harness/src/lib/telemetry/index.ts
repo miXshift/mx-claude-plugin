@@ -28,6 +28,7 @@ import { flushQueue, type FlushResult } from './client.js';
 import { EventName, type TrackInput, type TelemetryEventRecord } from './events.js';
 import { loadProfile } from '../profile/load.js';
 import { getPluginVersion } from '../plugin-version.js';
+import { detectSurface } from './surface.js';
 
 /**
  * Track an event. Best-effort:
@@ -49,6 +50,7 @@ export async function track(
     const { profile } = await loadProfile(dataDirOverride);
     const pluginVersion = getPluginVersion();
     const installPath = detectInstallPath();
+    const surface = detectSurface(readSurfaceFlag());
     const os = detectOs();
     const nowIso = new Date().toISOString();
     const userEmail = profile.user?.email;
@@ -71,6 +73,7 @@ export async function track(
         email: userEmail,
         plugin_version: pluginVersion,
         install_path: installPath,
+        surface,
         os,
         node_version: process.version,
         ts: nowIso,
@@ -87,6 +90,7 @@ export async function track(
       email: input.email ?? userEmail,
       plugin_version: pluginVersion,
       install_path: installPath,
+      surface,
       os,
       node_version: process.version,
       ts: nowIso,
@@ -146,6 +150,24 @@ function detectInstallPath(): string {
 
 function detectOs(): string {
   return `${platform()}-${release()}`;
+}
+
+/**
+ * Read the `--surface` CLI flag from argv if present. Returns undefined when
+ * not set so `detectSurface` falls through to env-based detection. We parse
+ * argv directly rather than threading the Commander option through every
+ * telemetry call site — simpler and the flag's exact position varies (could
+ * be at root or after a subcommand).
+ */
+function readSurfaceFlag(): string | undefined {
+  const idx = process.argv.indexOf('--surface');
+  if (idx >= 0 && idx + 1 < process.argv.length) {
+    return process.argv[idx + 1];
+  }
+  // Also support --surface=<value> form
+  const eq = process.argv.find((a) => a.startsWith('--surface='));
+  if (eq) return eq.slice('--surface='.length);
+  return undefined;
 }
 
 // Re-exports
