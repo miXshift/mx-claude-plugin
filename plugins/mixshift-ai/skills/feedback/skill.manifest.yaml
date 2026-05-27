@@ -52,6 +52,7 @@ notes: >
   Lives at risk_tier 1 -- informational only, no DB calls, no durable artifacts
   on the customer machine. Submits to MixShift's Discord ops channel (real-time
   alert) and Supabase events table (for analyzable feedback firehose).
-  Requires `mixshift auth setup` to have completed first (so we have the user's
-  email to attach to the feedback). If auth isn't set up, surface that gap and
-  redirect to the auth-setup skill.
+  Requires the user to be signed in first (via `mixshift auth login` or the
+  legacy `mixshift auth setup` CLI) so we have an email to attach to the
+  feedback. If they're not signed in, surface that gap and redirect to the
+  auth-login skill.

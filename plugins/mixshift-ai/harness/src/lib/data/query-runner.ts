@@ -20,8 +20,8 @@
  */
 
 import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { loadCredentials } from '../auth/credentials.js';
-import type { MysqlCreds } from '../auth/schema.js';
+import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
+import { type MysqlCreds, type DatahubCreds, isDatahubCreds } from '../auth/schema.js';
 import { track, EventName } from '../telemetry/index.js';
 
 export type DataQueryFailureKind =
@@ -55,7 +55,10 @@ export interface DataQueryFailure {
 export type DataQueryResult<Row> = DataQuerySuccess<Row> | DataQueryFailure;
 
 export interface RunQueryOptions {
-  creds?: MysqlCreds;
+  /** Override the resolved credentials. Accepts either flavor (legacy
+   *  mysql or datahub token-based). Tests pass a fixture; production
+   *  callers leave this unset and let resolveCreds read from disk. */
+  creds?: MysqlCreds | DatahubCreds;
   dataDirOverride?: string;
   /** Statement timeout. Defaults to 60s (Sam's call). */
   queryTimeoutMs?: number;
@@ -75,16 +78,47 @@ export async function runQuery<Row = Record<string, unknown>>(
   params: unknown[] | Record<string, unknown> = [],
   options: RunQueryOptions & RunQueryTelemetry = {},
 ): Promise<DataQueryResult<Row>> {
+  let creds: MysqlCreds | DatahubCreds;
+  try {
+    creds = await resolveCreds(options);
+  } catch (err) {
+    // resolveCreds throws when no creds file exists. Surface as a
+    // failure envelope so callers see the same shape they get for
+    // every other failure mode.
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      kind: 'unknown',
+      message,
+      friendly: message,
+      durationMs: 0,
+    };
+  }
+  if (isDatahubCreds(creds)) {
+    return runDatahubQuery<Row>(creds, sql, params, options);
+  }
+  return runMysqlQuery<Row>(creds, sql, params, options);
+}
+
+// ---------------------------------------------------------------------------
+// MySQL path (legacy raw-creds)
+// ---------------------------------------------------------------------------
+
+async function runMysqlQuery<Row>(
+  creds: MysqlCreds,
+  sql: string,
+  params: unknown[] | Record<string, unknown>,
+  options: RunQueryOptions & RunQueryTelemetry,
+): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
   let conn: mysql.Connection | undefined;
   try {
-    const creds = await resolveCreds(options);
-
     // If params is an object (not an array), flip on mysql2's
     // namedPlaceholders mode so `:name` in SQL gets bound to params[name].
     // Lists are inlined upstream (see lib/prefetch/substitute.ts), so we
     // never need positional-mode array expansion here.
-    const useNamed = !Array.isArray(params) && params !== null && typeof params === 'object';
+    const useNamed =
+      !Array.isArray(params) && params !== null && typeof params === 'object';
 
     conn = await mysql.createConnection({
       host: creds.host,
@@ -95,20 +129,14 @@ export async function runQuery<Row = Record<string, unknown>>(
       connectTimeout: options.connectTimeoutMs ?? 10_000,
       namedPlaceholders: useNamed,
     });
-    // Statement-level timeout via SET so it applies to this query only.
     const timeoutMs = options.queryTimeoutMs ?? 60_000;
     await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
 
-    // mysql2's QueryValues type doesn't model object-form params even when
-    // namedPlaceholders is on. Cast through unknown — the runtime accepts
-    // either shape, and we've already verified the shape above.
     const [rows] = await conn.query<RowDataPacket[]>(
       sql,
       params as unknown as unknown[],
     );
     const durationMs = Date.now() - t0;
-    // Telemetry — best-effort, won't throw. Fires for every query that
-    // actually executed against the warehouse (catalog SQL + ad-hoc).
     void track(
       {
         event_name: EventName.QueryExecuted,
@@ -118,8 +146,7 @@ export async function runQuery<Row = Record<string, unknown>>(
         query_id: options.query_id,
         query_table: options.query_table,
         payload: {
-          // The normalized SQL — :param tokens preserved, no resolved values.
-          // Useful for grouping similar query shapes server-side.
+          auth_path: 'mysql',
           sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
         },
       },
@@ -142,6 +169,7 @@ export async function runQuery<Row = Record<string, unknown>>(
         query_table: options.query_table,
         error_class: failure.kind,
         payload: {
+          auth_path: 'mysql',
           raw_code: failure.raw_code,
           sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
           table_name: failure.table_name,
@@ -158,6 +186,197 @@ export async function runQuery<Row = Record<string, unknown>>(
         // ignore close errors
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Datahub path (token-based, mx-legacy-auth)
+// ---------------------------------------------------------------------------
+
+interface DatahubQueryWire {
+  ok: boolean;
+  // Success shape
+  rows?: unknown[];
+  rowCount?: number;
+  durationMs?: number;
+  // Failure shape
+  kind?: DataQueryFailureKind;
+  table_name?: string;
+  raw_code?: string;
+  message?: string;
+  friendly?: string;
+}
+
+async function runDatahubQuery<Row>(
+  creds: DatahubCreds,
+  sql: string,
+  params: unknown[] | Record<string, unknown>,
+  options: RunQueryOptions & RunQueryTelemetry,
+): Promise<DataQueryResult<Row>> {
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 60_000;
+
+  const doFetch = async (
+    bearer: string,
+  ): Promise<{ res: Response; readErr?: string } | null> => {
+    try {
+      const res = await fetch(`${creds.api_base}/api/query`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sql, params, queryTimeoutMs }),
+        // Give the server a small grace window beyond its own timeout so
+        // we don't AbortError before it has a chance to return the
+        // classified timeout envelope.
+        signal: AbortSignal.timeout(queryTimeoutMs + 5_000),
+      });
+      return { res };
+    } catch (err) {
+      // Network / DNS / TLS failures surface here. Map them to the
+      // existing `host_unreachable` kind so consumers don't have to
+      // know about the datahub branch.
+      const message = err instanceof Error ? err.message : String(err);
+      return { res: null as unknown as Response, readErr: message };
+    }
+  };
+
+  try {
+    let token = await getValidAccessToken(options.dataDirOverride);
+    let result = await doFetch(token);
+
+    if (result?.readErr) {
+      throw new DatahubNetworkError(result.readErr);
+    }
+    if (!result) throw new Error('datahub fetch produced no result');
+
+    let res = result.res;
+
+    // Mid-session 401: token looked fresh client-side but the server
+    // rejected it. Force-refresh and retry exactly once.
+    if (res.status === 401) {
+      token = await getValidAccessToken(options.dataDirOverride, true);
+      result = await doFetch(token);
+      if (result?.readErr) {
+        throw new DatahubNetworkError(result.readErr);
+      }
+      if (!result) throw new Error('datahub fetch produced no result on retry');
+      res = result.res;
+      if (res.status === 401) {
+        throw new Error(
+          'Your MixShift session expired and could not be refreshed. ' +
+            'Run `mixshift auth login` to re-authenticate.',
+        );
+      }
+    }
+
+    // Server returns the same envelope shape as DataQueryResult — just
+    // pass through. Type assertion is safe because the schema is
+    // shared with the plugin (DataQueryFailureKind kinds match).
+    const json = (await res.json()) as DatahubQueryWire;
+    const durationMs = Date.now() - t0;
+
+    if (json.ok === true) {
+      const rows = (json.rows ?? []) as Row[];
+      const rowCount = json.rowCount ?? rows.length;
+      const serverDuration = json.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: 'ok',
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: options.query_id,
+          query_table: options.query_table,
+          payload: {
+            auth_path: 'datahub',
+            server_duration_ms: serverDuration,
+            sql_normalized:
+              sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          },
+        },
+        options.dataDirOverride,
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+
+    // Failure envelope
+    const failure: DataQueryFailure = {
+      ok: false,
+      kind: (json.kind ?? 'unknown') as DataQueryFailureKind,
+      table_name: json.table_name,
+      raw_code: json.raw_code,
+      message: json.message ?? 'Query failed',
+      friendly: json.friendly ?? json.message ?? 'Query failed',
+      durationMs,
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: 'failed',
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: 'datahub',
+          raw_code: failure.raw_code,
+          sql_normalized:
+            sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          table_name: failure.table_name,
+        },
+      },
+      options.dataDirOverride,
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure: DataQueryFailure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: 'host_unreachable',
+        message: err.message,
+        friendly:
+          'The MixShift auth service is unreachable. Check your network ' +
+          'or try again in a minute.',
+        durationMs,
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = {
+        ok: false,
+        kind: 'unknown',
+        message,
+        friendly: message,
+        durationMs,
+      };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: 'failed',
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: 'datahub',
+          sql_normalized:
+            sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+        },
+      },
+      options.dataDirOverride,
+    );
+    return failure;
+  }
+}
+
+class DatahubNetworkError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'DatahubNetworkError';
   }
 }
 
@@ -265,11 +484,18 @@ function extractTableFromNoSuchTable(message: string): string | undefined {
   return full.includes('.') ? full.split('.').pop() : full;
 }
 
-async function resolveCreds(options: RunQueryOptions): Promise<MysqlCreds> {
+async function resolveCreds(
+  options: RunQueryOptions,
+): Promise<MysqlCreds | DatahubCreds> {
   if (options.creds) return options.creds;
   const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (!credentials || !credentials.mysql) {
-    throw new Error('No MySQL credentials configured. Run `mixshift auth setup` first.');
-  }
-  return credentials.mysql;
+  // Prefer datahub when both blocks exist (the rollout pattern: legacy
+  // mysql stays around as a fallback for the same install, but new
+  // logins are token-based).
+  if (credentials?.datahub) return credentials.datahub;
+  if (credentials?.mysql) return credentials.mysql;
+  throw new Error(
+    'No credentials configured. Run `mixshift auth login` (recommended) ' +
+      'or `mixshift auth setup` for the legacy path.',
+  );
 }

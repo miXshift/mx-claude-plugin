@@ -1,0 +1,68 @@
+schema_version: 1
+skill_id: auth-login
+display_name: MixShift Auth Login
+version: "0.1.0"
+description: >
+  Sign the user in to the MixShift warehouse via the mx-legacy-auth
+  service (token-based). On shell-capable surfaces (Cowork, Claude Code,
+  terminal) drives the harness `mixshift auth login` command, which
+  opens a browser (PKCE) or falls back to device-code on browser-open
+  failure. On no-shell surfaces (claude.ai web, etc.) uses the
+  unauthenticated `mixshift_auth_start` / `mixshift_auth_complete`
+  MCP tools directly. Collects a self-attested work email
+  (person_label) for per-employee session attribution. Replaces the
+  legacy chat-driven raw-MySQL flow; the CLI `mixshift auth setup`
+  command remains for users who need the legacy path.
+
+# Account-agnostic but lives in the per-account skill family for
+# discovery (parity with auth-setup).
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [file_read, file_write]   # bash + mcp invocations are implicit
+side_effect_policy: context_write   # writes credentials.json to ~/.mixshift/auth/
+review_required: never
+sql_ids: []
+
+harness_commands:
+  - mixshift auth login --person-label <email>
+  - mixshift data run-query "SELECT 1"   # post-login verification
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: credentials
+    type: json_artifact   # ~/.mixshift/auth/credentials, datahub block
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - sign in to mixshift
+  - log me in to mixshift
+  - log in to mixshift
+  - mixshift login
+  - run auth login
+  - auth login
+  - connect to mixshift
+  - connect mixshift
+  - set up my credentials
+  - set up mixshift credentials
+  - configure mixshift
+  - authenticate mixshift
+notes: >
+  Token-based replacement for the legacy auth-setup chat flow.
+  Credentials envelope is v2 (`schema_version: 2`) with a `datahub`
+  block holding {access_token, refresh_token, expires_at,
+  refresh_expires_at, user_id, email, person_label, device_label,
+  client_id, api_base}. The legacy `mysql` block coexists during the
+  rollout window; the query-runner prefers `datahub` when both
+  are present.
+
+  client_id resolves via env var (`MIXSHIFT_PLUGIN_CLIENT_ID`),
+  defaulting to `mx-claude-plugin`. Plugin developers set the env to
+  `mx-claude-plugin-dev` so their sessions are identifiable in
+  Supabase by `client_id = 'mx-claude-plugin-dev'`.
+
+  The CLI emits the wire-level events (`auth.started`,
+  `auth.login_completed`, `auth.refresh_failed`, `user.identified`,
+  post-login `brand.discovered`). The skill emits the chat-orchestration
+  envelope (`skill.invoked`, `skill.completed`).

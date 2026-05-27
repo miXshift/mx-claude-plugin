@@ -1,0 +1,682 @@
+/**
+ * Token-based login against the mx-legacy-auth MCP service.
+ *
+ * Two flows, plus auto-detect:
+ *
+ *   PKCE (Desktop / Cowork / Claude Code)
+ *     Generates verifier+challenge+state. Spins up a localhost HTTP
+ *     server on an ephemeral port. Opens the browser to the service's
+ *     /login page. The user signs in; the page redirects to
+ *     http://127.0.0.1:<port>/callback?code=&state=. We verify state,
+ *     POST /auth/exchange with {auth_code, code_verifier}, persist the
+ *     returned tokens.
+ *
+ *   Device-code (headless / claude.ai / WSL without DISPLAY)
+ *     POST /auth/device/init to get a deviceCode + loginUrl. Print the
+ *     URL for the user to open on any machine. Poll /auth/device/poll
+ *     every 3s until state='approved' or timeout. On approved, the
+ *     response carries the same tokens as PKCE.
+ *
+ *   Auto (default)
+ *     Try PKCE first. If `open()` throws (no browser available — common
+ *     in headless WSL / containers / claude.ai), fall back to
+ *     device-code with a one-line stderr notice. Pass --no-fallback to
+ *     turn auto into hard PKCE for dev/debug.
+ *
+ * Successful login saves `datahub` creds via saveDatahub, fires a
+ * best-effort post-login brand discovery (parity with the legacy
+ * auth-setup chat flow), and emits AuthLoginCompleted telemetry.
+ *
+ * Notes for callers:
+ *   - person_label is REQUIRED. There is no chat-driven prompt here;
+ *     callers (CLI / chat skill) must supply it via flag or persisted
+ *     value. Rationale: one tenant credential is shared across many
+ *     employees; person_label lets admins see who did what.
+ *   - device_label defaults to os.hostname().
+ *   - client_id resolves via resolveClientId() (CLI flag > env > default).
+ *   - api_base defaults to https://mcp.mixshift.io.
+ */
+
+import { createServer, type Server, type ServerResponse } from 'node:http';
+import { randomBytes, createHash } from 'node:crypto';
+import { hostname } from 'node:os';
+import { spawn } from 'node:child_process';
+
+import { saveDatahub } from './credentials.js';
+import { resolveClientId } from './client-id.js';
+import type { DatahubCreds } from './schema.js';
+import { track, EventName } from '../telemetry/index.js';
+import {
+  runDiscoveryAndPersist,
+  countByActivity,
+} from '../clients/index.js';
+
+const DEFAULT_API_BASE = 'https://mcp.mixshift.io';
+const PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
+const DEVICE_POLL_INTERVAL_MS = 3_000;
+const DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// Public surface
+// ---------------------------------------------------------------------------
+
+export interface RunAuthLoginOptions {
+  apiBase?: string;
+  personLabel: string;
+  deviceLabel?: string;
+  clientId?: string;
+  mode?: 'pkce' | 'device' | 'auto';
+  /** Auto-mode debug flag — when true, PKCE failure surfaces directly
+   *  instead of falling back to device-code. */
+  noFallback?: boolean;
+  dataDirOverride?: string;
+  /** Discovery fires after a successful login by default; pass false
+   *  to skip (used by tests + future surface flags). */
+  postLoginDiscovery?: boolean;
+  /** Override the browser-opening function. Defaults to the `open`
+   *  package. Tests use this to capture the login URL and simulate
+   *  the browser→localhost callback without launching a real browser. */
+  openBrowser?: (url: string) => Promise<void>;
+}
+
+export interface AuthLoginResult {
+  ok: true;
+  mode: 'pkce' | 'device';
+  apiBase: string;
+  personLabel: string;
+  email: string;
+  userId: string;
+  clientId: string;
+  durationMs: number;
+}
+
+interface ResolvedOptions {
+  apiBase: string;
+  personLabel: string;
+  deviceLabel: string;
+  clientId: string;
+  mode: 'pkce' | 'device' | 'auto';
+  noFallback: boolean;
+  dataDirOverride?: string;
+  postLoginDiscovery: boolean;
+  openBrowser: (url: string) => Promise<void>;
+}
+
+/**
+ * Open a URL in the user's default browser via the OS-native command.
+ * Inlined here instead of pulling in the `open` npm package, which
+ * declares its own top-level `var __dirname` that collides with our
+ * esbuild bundle banner.
+ *
+ * Shell quoting: URLs we generate are URL-encoded via URLSearchParams,
+ * so there's no injection vector even with shell:true. The quoted form
+ * (`"<url>"`) protects against ampersands and spaces.
+ */
+const defaultOpenBrowser = async (url: string): Promise<void> => {
+  const cmd =
+    process.platform === 'win32'
+      ? `start "" "${url}"` // Windows: cmd.exe builtin; "" is required as title
+      : process.platform === 'darwin'
+        ? `open "${url}"`
+        : `xdg-open "${url}"`;
+
+  const child = spawn(cmd, {
+    detached: true,
+    stdio: 'ignore',
+    shell: true,
+  });
+  // Don't fail the call if the spawn errors asynchronously; the caller's
+  // callback timeout handles "browser never opened" anyway. But surface
+  // immediate failures (command not found, EACCES, etc.) so auto-mode
+  // can fall back to device-code.
+  await new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    // Spawn succeeds the moment the OS hands us a pid. Resolve on the
+    // next tick so an immediate-error handler has had a chance to fire.
+    setImmediate(() => resolve());
+  });
+  child.unref();
+};
+
+/**
+ * Run the login flow. Saves credentials + fires post-login discovery
+ * + emits telemetry on success. Throws (with a user-facing message)
+ * on failure.
+ */
+export async function runAuthLogin(
+  opts: RunAuthLoginOptions,
+): Promise<AuthLoginResult> {
+  const startedAt = Date.now();
+
+  if (!opts.personLabel) {
+    throw new Error(
+      'Missing --person-label. Pass your work email so we can attribute ' +
+        'your session (e.g. --person-label alice@marpartners.com). ' +
+        'Required because one MixShift tenant credential is shared across ' +
+        'many employees; person_label lets admins see who did what.',
+    );
+  }
+  if (!isLikelyEmail(opts.personLabel)) {
+    throw new Error(
+      `--person-label must be an email address (got "${opts.personLabel}").`,
+    );
+  }
+
+  const resolved: ResolvedOptions = {
+    apiBase: opts.apiBase ?? DEFAULT_API_BASE,
+    personLabel: opts.personLabel,
+    deviceLabel: opts.deviceLabel ?? hostname(),
+    clientId: resolveClientId(opts.clientId),
+    mode: opts.mode ?? 'auto',
+    noFallback: opts.noFallback ?? false,
+    dataDirOverride: opts.dataDirOverride,
+    postLoginDiscovery: opts.postLoginDiscovery ?? true,
+    openBrowser: opts.openBrowser ?? defaultOpenBrowser,
+  };
+
+  let result: AuthLoginResult;
+  let chosenMode: 'pkce' | 'device';
+
+  if (resolved.mode === 'pkce') {
+    chosenMode = 'pkce';
+    result = await runPkceLogin(resolved);
+  } else if (resolved.mode === 'device') {
+    chosenMode = 'device';
+    result = await runDeviceLogin(resolved);
+  } else {
+    // auto: PKCE first, device-code fallback on browser-open failure
+    try {
+      chosenMode = 'pkce';
+      result = await runPkceLogin(resolved);
+    } catch (err) {
+      if (resolved.noFallback || !isPkceBrowserOpenError(err)) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `\nBrowser didn't respond (${msg}). ` +
+          `Switching to device-code flow. ` +
+          `Open the URL below on any machine to complete login.\n\n`,
+      );
+      chosenMode = 'device';
+      result = await runDeviceLogin(resolved);
+    }
+  }
+
+  result.durationMs = Date.now() - startedAt;
+
+  await track(
+    {
+      event_name: EventName.AuthLoginCompleted,
+      outcome: 'ok',
+      duration_ms: result.durationMs,
+      email: result.email,
+      person_label: result.personLabel,
+      payload: {
+        mode: chosenMode,
+        api_base: resolved.apiBase,
+        client_id: resolved.clientId,
+      },
+    },
+    resolved.dataDirOverride,
+  );
+
+  if (resolved.postLoginDiscovery) {
+    await postLoginDiscoverBestEffort(
+      resolved.dataDirOverride,
+      result.email,
+      result.personLabel,
+    );
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// PKCE flow
+// ---------------------------------------------------------------------------
+
+interface PkceBundle {
+  verifier: string;
+  challenge: string;
+  state: string;
+}
+
+async function runPkceLogin(opts: ResolvedOptions): Promise<AuthLoginResult> {
+  const pkce = generatePkce();
+  const { server, port, callbackPromise } = await startCallbackServer(
+    pkce.state,
+  );
+
+  try {
+    const callbackUrl = `http://127.0.0.1:${port}/callback`;
+    const loginUrl = buildLoginUrl(opts, pkce, callbackUrl);
+
+    try {
+      await opts.openBrowser(loginUrl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new PkceBrowserOpenError(`Failed to open browser: ${msg}`);
+    }
+
+    process.stdout.write(
+      `\nOpening MixShift sign-in in your browser. ` +
+        `If it doesn't open automatically, visit:\n  ${loginUrl}\n\n`,
+    );
+
+    const { code } = await callbackPromise;
+    const exchanged = await exchangeAuthCode(
+      opts.apiBase,
+      code,
+      pkce.verifier,
+    );
+
+    const datahub = toDatahubCreds(opts, exchanged);
+    await saveDatahub(datahub, opts.dataDirOverride);
+
+    return {
+      ok: true,
+      mode: 'pkce',
+      apiBase: opts.apiBase,
+      personLabel: opts.personLabel,
+      email: exchanged.email,
+      userId: exchanged.user_id,
+      clientId: exchanged.client_id ?? opts.clientId,
+      durationMs: 0,
+    };
+  } finally {
+    await closeServer(server);
+  }
+}
+
+function generatePkce(): PkceBundle {
+  const verifier = base64url(randomBytes(64));
+  const challenge = base64url(
+    createHash('sha256').update(verifier).digest(),
+  );
+  const state = base64url(randomBytes(32));
+  return { verifier, challenge, state };
+}
+
+function base64url(buf: Buffer): string {
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function buildLoginUrl(
+  opts: ResolvedOptions,
+  pkce: PkceBundle,
+  redirectUri: string,
+): string {
+  // Both URL params (pre-fill the login form) AND body fields (sent on
+  // POST /auth/login by the page) carry these — server validates body
+  // is authoritative; URL is for the user-visible confirmation chrome.
+  const params = new URLSearchParams({
+    challenge: pkce.challenge,
+    state: pkce.state,
+    device_label: opts.deviceLabel,
+    actor: opts.personLabel,
+    client_id: opts.clientId,
+    redirect_uri: redirectUri,
+  });
+  return `${opts.apiBase}/login?${params.toString()}`;
+}
+
+interface CallbackResult {
+  code: string;
+}
+
+interface CallbackServerHandle {
+  server: Server;
+  port: number;
+  callbackPromise: Promise<CallbackResult>;
+}
+
+function startCallbackServer(
+  expectedState: string,
+): Promise<CallbackServerHandle> {
+  return new Promise((resolve, reject) => {
+    let resolveCallback: (r: CallbackResult) => void = () => {};
+    let rejectCallback: (e: Error) => void = () => {};
+
+    const callbackPromise = new Promise<CallbackResult>((res, rej) => {
+      resolveCallback = res;
+      rejectCallback = rej;
+    });
+
+    const timeoutId = setTimeout(() => {
+      rejectCallback(
+        new Error(
+          `Login timed out after ${PKCE_CALLBACK_TIMEOUT_MS / 60000} minutes. ` +
+            `The browser callback never reached the local server.`,
+        ),
+      );
+    }, PKCE_CALLBACK_TIMEOUT_MS);
+    timeoutId.unref();
+
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      if (url.pathname !== '/callback') {
+        res.writeHead(404).end('Not found');
+        return;
+      }
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      const error = url.searchParams.get('error');
+
+      if (error) {
+        respondHtml(
+          res,
+          400,
+          `<h1>Login failed</h1><p>${escapeHtml(error)}</p>`,
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(new Error(`Login flow returned error: ${error}`));
+        return;
+      }
+
+      if (!code || !state) {
+        respondHtml(
+          res,
+          400,
+          `<h1>Bad request</h1><p>Missing code or state.</p>`,
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(new Error('Callback missing code or state'));
+        return;
+      }
+
+      if (state !== expectedState) {
+        respondHtml(
+          res,
+          400,
+          `<h1>State mismatch</h1>` +
+            `<p>This callback does not match the login flow that started here. ` +
+            `Possible CSRF; ignoring.</p>`,
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(
+          new Error('State mismatch on callback (CSRF defense triggered)'),
+        );
+        return;
+      }
+
+      respondHtml(
+        res,
+        200,
+        `<h1>Login complete</h1>` +
+          `<p>You can close this window and return to your terminal.</p>`,
+      );
+      clearTimeout(timeoutId);
+      resolveCallback({ code });
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      if (!addr || typeof addr === 'string') {
+        reject(new Error('Could not determine local callback port'));
+        return;
+      }
+      resolve({ server, port: addr.port, callbackPromise });
+    });
+
+    server.on('error', (err) => reject(err));
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+  });
+}
+
+function respondHtml(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
+  res.end(`<!doctype html><meta charset="utf-8"><title>MixShift</title>${body}`);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+  );
+}
+
+interface ExchangeResponse {
+  ok: true;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  refresh_expires_at: string;
+  user_id: string;
+  email: string;
+  client_id: string;
+}
+
+async function exchangeAuthCode(
+  apiBase: string,
+  authCode: string,
+  codeVerifier: string,
+): Promise<ExchangeResponse> {
+  const res = await fetch(`${apiBase}/auth/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      auth_code: authCode,
+      code_verifier: codeVerifier,
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '<unreadable>');
+    throw new Error(
+      `/auth/exchange returned HTTP ${res.status}: ${body.slice(0, 500)}`,
+    );
+  }
+  return (await res.json()) as ExchangeResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Device-code flow
+// ---------------------------------------------------------------------------
+
+interface DeviceInitResponse {
+  ok: true;
+  deviceCode: string;
+  loginUrl: string;
+  expiresAt: string;
+}
+
+interface DevicePollApproved {
+  ok: true;
+  state: 'approved';
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  refresh_expires_at: string;
+  user_id: string;
+  email: string;
+  client_id: string;
+}
+
+interface DevicePollPending {
+  ok: true;
+  state: 'pending';
+}
+
+interface DevicePollFailure {
+  ok: false;
+  error: string;
+}
+
+type DevicePollResponse =
+  | DevicePollApproved
+  | DevicePollPending
+  | DevicePollFailure;
+
+async function runDeviceLogin(
+  opts: ResolvedOptions,
+): Promise<AuthLoginResult> {
+  const init = await deviceInit(opts);
+
+  process.stdout.write(
+    `\nMixShift device-code login\n` +
+      `  1. Open this URL in any browser:\n     ${init.loginUrl}\n` +
+      `  2. Sign in and confirm the device on the page.\n` +
+      `  3. This terminal continues automatically once you're done.\n\n`,
+  );
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DEVICE_POLL_TIMEOUT_MS) {
+    await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL_MS));
+    const poll = await devicePoll(opts.apiBase, init.deviceCode);
+    if (!poll.ok) {
+      throw new Error(`Device-code poll failed: ${poll.error}`);
+    }
+    if (poll.state === 'approved') {
+      const datahub = toDatahubCreds(opts, poll);
+      await saveDatahub(datahub, opts.dataDirOverride);
+      return {
+        ok: true,
+        mode: 'device',
+        apiBase: opts.apiBase,
+        personLabel: opts.personLabel,
+        email: poll.email,
+        userId: poll.user_id,
+        clientId: poll.client_id ?? opts.clientId,
+        durationMs: 0,
+      };
+    }
+    // state === 'pending'; loop
+  }
+  throw new Error(
+    `Device-code login timed out after ${DEVICE_POLL_TIMEOUT_MS / 60000} minutes. ` +
+      `Run \`mixshift auth login\` to try again.`,
+  );
+}
+
+async function deviceInit(opts: ResolvedOptions): Promise<DeviceInitResponse> {
+  const res = await fetch(`${opts.apiBase}/auth/device/init`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      device_label: opts.deviceLabel,
+      actor_hint: opts.personLabel,
+      client_id: opts.clientId,
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '<unreadable>');
+    throw new Error(
+      `/auth/device/init returned HTTP ${res.status}: ${body.slice(0, 500)}`,
+    );
+  }
+  return (await res.json()) as DeviceInitResponse;
+}
+
+async function devicePoll(
+  apiBase: string,
+  deviceCode: string,
+): Promise<DevicePollResponse> {
+  const res = await fetch(`${apiBase}/auth/device/poll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device_code: deviceCode }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  // 401 returns a JSON error envelope — parse rather than throw.
+  if (!res.ok && res.status !== 401) {
+    const body = await res.text().catch(() => '<unreadable>');
+    throw new Error(
+      `/auth/device/poll returned HTTP ${res.status}: ${body.slice(0, 500)}`,
+    );
+  }
+  return (await res.json()) as DevicePollResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Common helpers
+// ---------------------------------------------------------------------------
+
+function toDatahubCreds(
+  opts: ResolvedOptions,
+  resp: ExchangeResponse | DevicePollApproved,
+): DatahubCreds {
+  return {
+    api_base: opts.apiBase,
+    access_token: resp.access_token,
+    refresh_token: resp.refresh_token,
+    expires_at: resp.expires_at,
+    refresh_expires_at: resp.refresh_expires_at,
+    user_id: resp.user_id,
+    email: resp.email,
+    person_label: opts.personLabel,
+    device_label: opts.deviceLabel,
+    client_id: opts.clientId,
+  };
+}
+
+async function postLoginDiscoverBestEffort(
+  dataDirOverride: string | undefined,
+  email: string,
+  personLabel: string,
+): Promise<void> {
+  try {
+    const { index } = await runDiscoveryAndPersist({ dataDirOverride });
+    const counts = countByActivity(index);
+    await track(
+      {
+        event_name: EventName.BrandDiscovered,
+        outcome: 'ok',
+        email,
+        person_label: personLabel,
+        payload: {
+          trigger: 'post_login',
+          total: counts.total,
+          active: counts.active,
+          dormant: counts.dormant,
+          cold_started: counts.cold_started,
+        },
+      },
+      dataDirOverride,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await track(
+      {
+        event_name: EventName.BrandDiscovered,
+        outcome: 'failed',
+        email,
+        person_label: personLabel,
+        error_class: 'post_login_discovery_threw',
+        payload: { trigger: 'post_login', message: message.slice(0, 500) },
+      },
+      dataDirOverride,
+    );
+    // Discovery failure must not break the login.
+  }
+}
+
+function isLikelyEmail(s: string): boolean {
+  // Lightweight check; the schema parse downstream validates further.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+// ---------------------------------------------------------------------------
+// Error classes
+// ---------------------------------------------------------------------------
+
+class PkceBrowserOpenError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'PkceBrowserOpenError';
+  }
+}
+
+function isPkceBrowserOpenError(err: unknown): boolean {
+  return err instanceof PkceBrowserOpenError;
+}

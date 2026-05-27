@@ -11098,8 +11098,8 @@ function uint8ArrayToBase64(bytes) {
   }
   return btoa(binaryString);
 }
-function base64urlToUint8Array(base64url3) {
-  const base643 = base64url3.replace(/-/g, "+").replace(/_/g, "/");
+function base64urlToUint8Array(base64url4) {
+  const base643 = base64url4.replace(/-/g, "+").replace(/_/g, "/");
   const padding = "=".repeat((4 - base643.length % 4) % 4);
   return base64ToUint8Array(base643 + padding);
 }
@@ -44963,11 +44963,14 @@ var require_promise = __commonJS({
 // src/lib/auth/schema.ts
 function newCredentials() {
   return {
-    schema_version: 1,
+    schema_version: 2,
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-var mysqlCredsSchema, credentialsSchema;
+function isDatahubCreds(c) {
+  return "access_token" in c;
+}
+var mysqlCredsSchema, datahubCredsSchema, credentialsSchema;
 var init_schema2 = __esm({
   "src/lib/auth/schema.ts"() {
     "use strict";
@@ -44979,12 +44982,23 @@ var init_schema2 = __esm({
       password: external_exports.string(),
       database: external_exports.string().min(1)
     });
+    datahubCredsSchema = external_exports.object({
+      api_base: external_exports.url(),
+      access_token: external_exports.string().min(1),
+      refresh_token: external_exports.string().min(1),
+      expires_at: external_exports.iso.datetime(),
+      refresh_expires_at: external_exports.iso.datetime(),
+      user_id: external_exports.string().min(1),
+      email: external_exports.email(),
+      person_label: external_exports.email(),
+      device_label: external_exports.string().min(1),
+      client_id: external_exports.string().regex(/^[a-z0-9-]{1,64}$/).default("mx-claude-plugin")
+    });
     credentialsSchema = external_exports.object({
-      schema_version: external_exports.literal(1),
+      schema_version: external_exports.union([external_exports.literal(1), external_exports.literal(2)]),
       created_at: external_exports.iso.datetime(),
-      mysql: mysqlCredsSchema.optional()
-      // v2 placeholder:
-      // datahub: z.object({ token: z.string(), api_base: z.url() }).optional(),
+      mysql: mysqlCredsSchema.optional(),
+      datahub: datahubCredsSchema.optional()
     });
   }
 });
@@ -45008,17 +45022,22 @@ async function loadCredentials(dataDirOverride) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
       `Credentials file at ${path2} is malformed JSON: ${message}
-Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
+Hint: delete the file and re-run \`mixshift auth login\` to recreate it.`
     );
   }
   const result = credentialsSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
       `${formatZodError(result.error, `Credentials at ${path2} are invalid`)}
-Hint: delete the file and re-run \`mixshift auth setup\` to recreate it.`
+Hint: delete the file and re-run \`mixshift auth login\` to recreate it.`
     );
   }
-  return { credentials: result.data, path: path2 };
+  let creds = result.data;
+  if (creds.schema_version === 1) {
+    creds = { ...creds, schema_version: 2 };
+    await saveCredentials(creds, dataDirOverride);
+  }
+  return { credentials: creds, path: path2 };
 }
 async function saveCredentials(credentials, dataDirOverride) {
   const validated = credentialsSchema.parse(credentials);
@@ -45037,15 +45056,101 @@ async function loadOrInit(dataDirOverride) {
   const { credentials } = await loadCredentials(dataDirOverride);
   return credentials ?? newCredentials();
 }
+async function saveDatahub(datahub, dataDirOverride) {
+  const existing = await loadOrInit(dataDirOverride);
+  return saveCredentials(
+    { ...existing, schema_version: 2, datahub },
+    dataDirOverride
+  );
+}
+async function clearDatahub(dataDirOverride) {
+  const { credentials } = await loadCredentials(dataDirOverride);
+  if (!credentials?.datahub) return;
+  const next = { ...credentials };
+  delete next.datahub;
+  await saveCredentials(next, dataDirOverride);
+}
+async function getValidAccessToken(dataDirOverride, forceRefresh = false) {
+  const { credentials } = await loadCredentials(dataDirOverride);
+  if (!credentials?.datahub) {
+    throw new Error(
+      "No datahub credentials found. Run `mixshift auth login` to sign in."
+    );
+  }
+  if (!forceRefresh) {
+    const expiresAtMs = Date.parse(credentials.datahub.expires_at);
+    const fresh = expiresAtMs - Date.now() > REFRESH_SAFETY_MARGIN_MS;
+    if (fresh) {
+      return credentials.datahub.access_token;
+    }
+  }
+  if (_refreshState.inFlight) {
+    const refreshed2 = await _refreshState.inFlight;
+    return refreshed2.access_token;
+  }
+  _refreshState.inFlight = doRefresh(
+    credentials.datahub,
+    dataDirOverride
+  ).finally(() => {
+    _refreshState.inFlight = null;
+  });
+  const refreshed = await _refreshState.inFlight;
+  return refreshed.access_token;
+}
+async function doRefresh(current, dataDirOverride) {
+  let res;
+  try {
+    res = await fetch(`${current.api_base}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: current.refresh_token }),
+      signal: AbortSignal.timeout(REFRESH_REQUEST_TIMEOUT_MS)
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not reach ${current.api_base}/auth/refresh: ${message}. Check your network or try again in a minute.`
+    );
+  }
+  if (res.status === 401) {
+    await clearDatahub(dataDirOverride);
+    throw new Error(
+      "Your MixShift session expired. Run `mixshift auth login` to re-authenticate."
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/auth/refresh returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  const json2 = await res.json();
+  const updated = {
+    ...current,
+    access_token: json2.access_token,
+    refresh_token: json2.refresh_token,
+    expires_at: json2.expires_at,
+    refresh_expires_at: json2.refresh_expires_at,
+    user_id: json2.user_id
+  };
+  await saveDatahub(updated, dataDirOverride);
+  return updated;
+}
 function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
+var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState;
 var init_credentials = __esm({
   "src/lib/auth/credentials.ts"() {
     "use strict";
     init_resolve();
     init_format_error();
     init_schema2();
+    REFRESH_SAFETY_MARGIN_MS = 6e4;
+    REFRESH_REQUEST_TIMEOUT_MS = 3e4;
+    _refreshState = {
+      inFlight: null
+    };
   }
 });
 
@@ -47070,6 +47175,11 @@ var EventName = {
   AuthCompleted: "auth.completed",
   AuthFailed: "auth.failed",
   AuthConnectionTested: "auth.connection_tested",
+  /** Token-based login (PKCE or device-code) against mx-legacy-auth. */
+  AuthLoginCompleted: "auth.login_completed",
+  /** /auth/refresh returned a non-success status (401 = replay revocation,
+   *  others = transient / unexpected). Emitted from getValidAccessToken. */
+  AuthRefreshFailed: "auth.refresh_failed",
   UserIdentified: "user.identified",
   IpWhitelistRequested: "ip_whitelist.requested",
   // Brand context
@@ -47104,6 +47214,7 @@ var EventName = {
 
 // src/lib/telemetry/index.ts
 init_load();
+init_credentials();
 
 // src/lib/telemetry/surface.ts
 var ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
@@ -47172,11 +47283,15 @@ async function track(input, dataDirOverride) {
     const os = detectOs();
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const userEmail = profile.user?.email;
+    const datahubPersonLabel = await readDatahubPersonLabelBestEffort(
+      dataDirOverride
+    );
     if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
       const synthetic = {
         event_name: EventName.PluginInstalled,
         install_id: installId,
         email: userEmail,
+        person_label: datahubPersonLabel,
         plugin_version: pluginVersion,
         install_path: installPath,
         surface,
@@ -47193,6 +47308,7 @@ async function track(input, dataDirOverride) {
       event_name: input.event_name,
       install_id: installId,
       email: input.email ?? userEmail,
+      person_label: input.person_label ?? datahubPersonLabel,
       plugin_version: pluginVersion,
       install_path: installPath,
       surface,
@@ -47241,6 +47357,14 @@ function readSurfaceFlag() {
   const eq = process.argv.find((a) => a.startsWith("--surface="));
   if (eq) return eq.slice("--surface=".length);
   return void 0;
+}
+async function readDatahubPersonLabelBestEffort(dataDirOverride) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    return credentials?.datahub?.person_label;
+  } catch {
+    return void 0;
+  }
 }
 
 // src/commands/brand-view.ts
@@ -53903,9 +54027,442 @@ function friendlyFailureMessage(result) {
 
 // src/commands/auth.ts
 init_schema2();
+
+// src/lib/auth/login-flow.ts
+init_credentials();
+import { createServer } from "node:http";
+import { randomBytes, createHash } from "node:crypto";
+import { hostname as hostname3 } from "node:os";
+import { spawn } from "node:child_process";
+
+// src/lib/auth/client-id.ts
+var CLIENT_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
+var DEFAULT_CLIENT_ID = "mx-claude-plugin";
+var ENV_VAR_NAME = "MIXSHIFT_PLUGIN_CLIENT_ID";
+function resolveClientId(cliFlag) {
+  const envRaw = process.env[ENV_VAR_NAME];
+  const envValue = envRaw && envRaw.length > 0 ? envRaw : void 0;
+  const raw = cliFlag ?? envValue ?? DEFAULT_CLIENT_ID;
+  if (!CLIENT_ID_PATTERN.test(raw)) {
+    const source = cliFlag ? "--client-id" : envValue ? `${ENV_VAR_NAME} env var` : "default";
+    throw new Error(
+      `Invalid client_id "${raw}" (from ${source}). Must match [a-z0-9-]{1,64}. Common values: mx-claude-plugin, mx-claude-plugin-dev.`
+    );
+  }
+  return raw;
+}
+
+// src/lib/auth/login-flow.ts
+var DEFAULT_API_BASE = "https://mcp.mixshift.io";
+var PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1e3;
+var DEVICE_POLL_INTERVAL_MS = 3e3;
+var DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1e3;
+var HTTP_REQUEST_TIMEOUT_MS = 3e4;
+var defaultOpenBrowser = async (url2) => {
+  const cmd = process.platform === "win32" ? `start "" "${url2}"` : process.platform === "darwin" ? `open "${url2}"` : `xdg-open "${url2}"`;
+  const child = spawn(cmd, {
+    detached: true,
+    stdio: "ignore",
+    shell: true
+  });
+  await new Promise((resolve2, reject) => {
+    child.once("error", reject);
+    setImmediate(() => resolve2());
+  });
+  child.unref();
+};
+async function runAuthLogin(opts) {
+  const startedAt = Date.now();
+  if (!opts.personLabel) {
+    throw new Error(
+      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@marpartners.com). Required because one MixShift tenant credential is shared across many employees; person_label lets admins see who did what."
+    );
+  }
+  if (!isLikelyEmail(opts.personLabel)) {
+    throw new Error(
+      `--person-label must be an email address (got "${opts.personLabel}").`
+    );
+  }
+  const resolved = {
+    apiBase: opts.apiBase ?? DEFAULT_API_BASE,
+    personLabel: opts.personLabel,
+    deviceLabel: opts.deviceLabel ?? hostname3(),
+    clientId: resolveClientId(opts.clientId),
+    mode: opts.mode ?? "auto",
+    noFallback: opts.noFallback ?? false,
+    dataDirOverride: opts.dataDirOverride,
+    postLoginDiscovery: opts.postLoginDiscovery ?? true,
+    openBrowser: opts.openBrowser ?? defaultOpenBrowser
+  };
+  let result;
+  let chosenMode;
+  if (resolved.mode === "pkce") {
+    chosenMode = "pkce";
+    result = await runPkceLogin(resolved);
+  } else if (resolved.mode === "device") {
+    chosenMode = "device";
+    result = await runDeviceLogin(resolved);
+  } else {
+    try {
+      chosenMode = "pkce";
+      result = await runPkceLogin(resolved);
+    } catch (err) {
+      if (resolved.noFallback || !isPkceBrowserOpenError(err)) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `
+Browser didn't respond (${msg}). Switching to device-code flow. Open the URL below on any machine to complete login.
+
+`
+      );
+      chosenMode = "device";
+      result = await runDeviceLogin(resolved);
+    }
+  }
+  result.durationMs = Date.now() - startedAt;
+  await track(
+    {
+      event_name: EventName.AuthLoginCompleted,
+      outcome: "ok",
+      duration_ms: result.durationMs,
+      email: result.email,
+      person_label: result.personLabel,
+      payload: {
+        mode: chosenMode,
+        api_base: resolved.apiBase,
+        client_id: resolved.clientId
+      }
+    },
+    resolved.dataDirOverride
+  );
+  if (resolved.postLoginDiscovery) {
+    await postLoginDiscoverBestEffort(
+      resolved.dataDirOverride,
+      result.email,
+      result.personLabel
+    );
+  }
+  return result;
+}
+async function runPkceLogin(opts) {
+  const pkce = generatePkce();
+  const { server, port, callbackPromise } = await startCallbackServer(
+    pkce.state
+  );
+  try {
+    const callbackUrl = `http://127.0.0.1:${port}/callback`;
+    const loginUrl = buildLoginUrl(opts, pkce, callbackUrl);
+    try {
+      await opts.openBrowser(loginUrl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new PkceBrowserOpenError(`Failed to open browser: ${msg}`);
+    }
+    process.stdout.write(
+      `
+Opening MixShift sign-in in your browser. If it doesn't open automatically, visit:
+  ${loginUrl}
+
+`
+    );
+    const { code } = await callbackPromise;
+    const exchanged = await exchangeAuthCode(
+      opts.apiBase,
+      code,
+      pkce.verifier
+    );
+    const datahub = toDatahubCreds(opts, exchanged);
+    await saveDatahub(datahub, opts.dataDirOverride);
+    return {
+      ok: true,
+      mode: "pkce",
+      apiBase: opts.apiBase,
+      personLabel: opts.personLabel,
+      email: exchanged.email,
+      userId: exchanged.user_id,
+      clientId: exchanged.client_id ?? opts.clientId,
+      durationMs: 0
+    };
+  } finally {
+    await closeServer(server);
+  }
+}
+function generatePkce() {
+  const verifier = base64url3(randomBytes(64));
+  const challenge = base64url3(
+    createHash("sha256").update(verifier).digest()
+  );
+  const state = base64url3(randomBytes(32));
+  return { verifier, challenge, state };
+}
+function base64url3(buf) {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function buildLoginUrl(opts, pkce, redirectUri) {
+  const params = new URLSearchParams({
+    challenge: pkce.challenge,
+    state: pkce.state,
+    device_label: opts.deviceLabel,
+    actor: opts.personLabel,
+    client_id: opts.clientId,
+    redirect_uri: redirectUri
+  });
+  return `${opts.apiBase}/login?${params.toString()}`;
+}
+function startCallbackServer(expectedState) {
+  return new Promise((resolve2, reject) => {
+    let resolveCallback = () => {
+    };
+    let rejectCallback = () => {
+    };
+    const callbackPromise = new Promise((res, rej) => {
+      resolveCallback = res;
+      rejectCallback = rej;
+    });
+    const timeoutId = setTimeout(() => {
+      rejectCallback(
+        new Error(
+          `Login timed out after ${PKCE_CALLBACK_TIMEOUT_MS / 6e4} minutes. The browser callback never reached the local server.`
+        )
+      );
+    }, PKCE_CALLBACK_TIMEOUT_MS);
+    timeoutId.unref();
+    const server = createServer((req, res) => {
+      const url2 = new URL(req.url ?? "/", "http://localhost");
+      if (url2.pathname !== "/callback") {
+        res.writeHead(404).end("Not found");
+        return;
+      }
+      const code = url2.searchParams.get("code");
+      const state = url2.searchParams.get("state");
+      const error51 = url2.searchParams.get("error");
+      if (error51) {
+        respondHtml(
+          res,
+          400,
+          `<h1>Login failed</h1><p>${escapeHtml2(error51)}</p>`
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(new Error(`Login flow returned error: ${error51}`));
+        return;
+      }
+      if (!code || !state) {
+        respondHtml(
+          res,
+          400,
+          `<h1>Bad request</h1><p>Missing code or state.</p>`
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(new Error("Callback missing code or state"));
+        return;
+      }
+      if (state !== expectedState) {
+        respondHtml(
+          res,
+          400,
+          `<h1>State mismatch</h1><p>This callback does not match the login flow that started here. Possible CSRF; ignoring.</p>`
+        );
+        clearTimeout(timeoutId);
+        rejectCallback(
+          new Error("State mismatch on callback (CSRF defense triggered)")
+        );
+        return;
+      }
+      respondHtml(
+        res,
+        200,
+        `<h1>Login complete</h1><p>You can close this window and return to your terminal.</p>`
+      );
+      clearTimeout(timeoutId);
+      resolveCallback({ code });
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        reject(new Error("Could not determine local callback port"));
+        return;
+      }
+      resolve2({ server, port: addr.port, callbackPromise });
+    });
+    server.on("error", (err) => reject(err));
+  });
+}
+function closeServer(server) {
+  return new Promise((resolve2) => {
+    server.close(() => resolve2());
+  });
+}
+function respondHtml(res, status, body) {
+  res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+  res.end(`<!doctype html><meta charset="utf-8"><title>MixShift</title>${body}`);
+}
+function escapeHtml2(s) {
+  return s.replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c
+  );
+}
+async function exchangeAuthCode(apiBase, authCode, codeVerifier) {
+  const res = await fetch(`${apiBase}/auth/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      auth_code: authCode,
+      code_verifier: codeVerifier
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS)
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/auth/exchange returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  return await res.json();
+}
+async function runDeviceLogin(opts) {
+  const init = await deviceInit(opts);
+  process.stdout.write(
+    `
+MixShift device-code login
+  1. Open this URL in any browser:
+     ${init.loginUrl}
+  2. Sign in and confirm the device on the page.
+  3. This terminal continues automatically once you're done.
+
+`
+  );
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DEVICE_POLL_TIMEOUT_MS) {
+    await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL_MS));
+    const poll = await devicePoll(opts.apiBase, init.deviceCode);
+    if (!poll.ok) {
+      throw new Error(`Device-code poll failed: ${poll.error}`);
+    }
+    if (poll.state === "approved") {
+      const datahub = toDatahubCreds(opts, poll);
+      await saveDatahub(datahub, opts.dataDirOverride);
+      return {
+        ok: true,
+        mode: "device",
+        apiBase: opts.apiBase,
+        personLabel: opts.personLabel,
+        email: poll.email,
+        userId: poll.user_id,
+        clientId: poll.client_id ?? opts.clientId,
+        durationMs: 0
+      };
+    }
+  }
+  throw new Error(
+    `Device-code login timed out after ${DEVICE_POLL_TIMEOUT_MS / 6e4} minutes. Run \`mixshift auth login\` to try again.`
+  );
+}
+async function deviceInit(opts) {
+  const res = await fetch(`${opts.apiBase}/auth/device/init`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_label: opts.deviceLabel,
+      actor_hint: opts.personLabel,
+      client_id: opts.clientId
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS)
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/auth/device/init returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  return await res.json();
+}
+async function devicePoll(apiBase, deviceCode) {
+  const res = await fetch(`${apiBase}/auth/device/poll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_code: deviceCode }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok && res.status !== 401) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/auth/device/poll returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  return await res.json();
+}
+function toDatahubCreds(opts, resp) {
+  return {
+    api_base: opts.apiBase,
+    access_token: resp.access_token,
+    refresh_token: resp.refresh_token,
+    expires_at: resp.expires_at,
+    refresh_expires_at: resp.refresh_expires_at,
+    user_id: resp.user_id,
+    email: resp.email,
+    person_label: opts.personLabel,
+    device_label: opts.deviceLabel,
+    client_id: opts.clientId
+  };
+}
+async function postLoginDiscoverBestEffort(dataDirOverride, email3, personLabel) {
+  try {
+    const { index } = await runDiscoveryAndPersist({ dataDirOverride });
+    const counts = countByActivity(index);
+    await track(
+      {
+        event_name: EventName.BrandDiscovered,
+        outcome: "ok",
+        email: email3,
+        person_label: personLabel,
+        payload: {
+          trigger: "post_login",
+          total: counts.total,
+          active: counts.active,
+          dormant: counts.dormant,
+          cold_started: counts.cold_started
+        }
+      },
+      dataDirOverride
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await track(
+      {
+        event_name: EventName.BrandDiscovered,
+        outcome: "failed",
+        email: email3,
+        person_label: personLabel,
+        error_class: "post_login_discovery_threw",
+        payload: { trigger: "post_login", message: message.slice(0, 500) }
+      },
+      dataDirOverride
+    );
+  }
+}
+function isLikelyEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+var PkceBrowserOpenError = class extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "PkceBrowserOpenError";
+  }
+};
+function isPkceBrowserOpenError(err) {
+  return err instanceof PkceBrowserOpenError;
+}
+
+// src/commands/auth.ts
 init_format_error();
 function registerAuthCommands(program3) {
-  const auth = program3.command("auth").description("User authentication setup (MySQL creds, IP whitelist)");
+  const auth = program3.command("auth").description(
+    "Authenticate against the MixShift warehouse. Two flows: `login` (recommended) for the token-based mx-legacy-auth path, or `setup` for the legacy raw-MySQL path."
+  );
+  registerLoginSubcommand(auth);
   auth.command("setup").description("Walk through interactive auth onboarding (one-time per user)").option("--non-interactive", "fail if input is required (for CI)", false).option(
     "--from-file <path>",
     "read inputs from a YAML / JSON file instead of prompting"
@@ -54071,6 +54628,117 @@ Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
     }
   });
 }
+function registerLoginSubcommand(auth) {
+  auth.command("login").description(
+    "Sign in to the MixShift warehouse via the mx-legacy-auth MCP service. Opens a browser (PKCE) or falls back to a device-code flow when no browser is available. Recommended over `auth setup` for new installs \u2014 no IP whitelist, no raw MySQL credentials."
+  ).option(
+    "--person-label <email>",
+    "Your work email \u2014 attributes this session to you in the admin view. Required because one tenant credential is shared across many employees; person_label lets admins see who did what."
+  ).option(
+    "--device-label <label>",
+    "Friendly device name shown on the login confirmation page (default: this machine's hostname)."
+  ).option(
+    "--client-id <slug>",
+    "Override the surface-attribution client_id. Defaults to `mx-claude-plugin` (or MIXSHIFT_PLUGIN_CLIENT_ID env var). Use `mx-claude-plugin-dev` for plugin development."
+  ).option(
+    "--api-base <url>",
+    "Override the auth service URL (default: https://mcp.mixshift.io). Used for local mx-legacy-auth development."
+  ).option(
+    "--mode <flow>",
+    "Login flow: `pkce` (browser callback), `device` (device-code paste-URL), or `auto` (PKCE first, fall back to device on browser-open failure).",
+    "auto"
+  ).option(
+    "--no-fallback",
+    "Auto-mode debug: surface PKCE failure directly instead of falling back to device-code. Use when debugging PKCE locally.",
+    false
+  ).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    await track({ event_name: EventName.AuthStarted }, root.dataDir);
+    try {
+      const personLabel = opts.personLabel ?? await promptPersonLabel();
+      const mode = parseLoginMode(opts.mode);
+      const result = await runAuthLogin({
+        personLabel,
+        deviceLabel: opts.deviceLabel,
+        clientId: opts.clientId,
+        apiBase: opts.apiBase,
+        mode,
+        noFallback: opts.noFallback ?? false,
+        dataDirOverride: root.dataDir
+      });
+      renderLoginResult(result, !!root.json);
+      await track(
+        {
+          event_name: EventName.UserIdentified,
+          email: result.email,
+          person_label: result.personLabel
+        },
+        root.dataDir
+      );
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await track(
+        {
+          event_name: EventName.AuthFailed,
+          outcome: "failed",
+          error_class: "login_threw",
+          duration_ms: Date.now() - startedAt,
+          payload: { message: message.slice(0, 500) }
+        },
+        root.dataDir
+      );
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({ status: "error", message }, null, 2) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+  });
+}
+async function promptPersonLabel() {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      "Missing --person-label and stdin is not a TTY. Pass --person-label <your.email@domain.com> on the command line. (The chat skill provides this automatically; you only need to pass it when running `mixshift auth login` directly in a non-interactive context.)"
+    );
+  }
+  return dist_default5({
+    message: "Your work email (for per-employee session attribution; not auth):",
+    required: true,
+    validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? true : "Use email format (e.g. alice@marpartners.com)"
+  });
+}
+function parseLoginMode(raw) {
+  const v = (raw ?? "auto").toLowerCase();
+  if (v === "pkce" || v === "device" || v === "auto") return v;
+  throw new Error(
+    `--mode must be one of: pkce, device, auto (got "${raw}").`
+  );
+}
+function renderLoginResult(result, json2) {
+  if (json2) {
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write(
+    `
+\u2713 Signed in via ${result.mode === "pkce" ? "browser (PKCE)" : "device-code"}.
+  - tenant:        ${result.email}
+  - actor:         ${result.personLabel}
+  - api_base:      ${result.apiBase}
+  - client_id:     ${result.clientId}
+  - duration:      ${(result.durationMs / 1e3).toFixed(1)}s
+
+Try: \`mixshift data run-query "SELECT 1"\` to verify warehouse access.
+`
+  );
+}
 async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
@@ -54132,9 +54800,10 @@ async function promptInputs(opts, defaults) {
     throw new Error(
       `Interactive prompts require a TTY (a real terminal). It looks like stdin isn't a terminal here \u2014 common when running through the Claude Code Bash tool.
 
-Two options:
-  1. Run "mixshift auth setup" in your own terminal (Git Bash, PowerShell, etc.) where TTY prompts work.
-  2. In Claude chat, ask "run auth setup" \u2014 the auth-setup skill collects inputs in chat and routes them through --from-file.
+Three options:
+  1. Recommended: in Claude chat, say "sign in to mixshift" \u2014 the auth-login skill drives the token-based browser flow (no TTY prompts needed, no raw MySQL credentials).
+  2. Run "mixshift auth login" in your own terminal \u2014 same browser flow as the chat skill.
+  3. (Legacy) Run "mixshift auth setup" in your own terminal (Git Bash, PowerShell, etc.) where TTY prompts work.
 
 For scripted / CI use, pass --from-file <path> with a YAML/JSON file containing email + mysql fields.`
     );
@@ -54672,11 +55341,30 @@ function findReferencedParams(sql) {
 // src/lib/data/query-runner.ts
 var import_promise3 = __toESM(require_promise(), 1);
 init_credentials();
+init_schema2();
 async function runQuery(sql, params = [], options = {}) {
+  let creds;
+  try {
+    creds = await resolveCreds2(options);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      kind: "unknown",
+      message,
+      friendly: message,
+      durationMs: 0
+    };
+  }
+  if (isDatahubCreds(creds)) {
+    return runDatahubQuery(creds, sql, params, options);
+  }
+  return runMysqlQuery(creds, sql, params, options);
+}
+async function runMysqlQuery(creds, sql, params, options) {
   const t0 = Date.now();
   let conn;
   try {
-    const creds = await resolveCreds2(options);
     const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
     conn = await import_promise3.default.createConnection({
       host: creds.host,
@@ -54703,8 +55391,7 @@ async function runQuery(sql, params = [], options = {}) {
         query_id: options.query_id,
         query_table: options.query_table,
         payload: {
-          // The normalized SQL — :param tokens preserved, no resolved values.
-          // Useful for grouping similar query shapes server-side.
+          auth_path: "mysql",
           sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
         }
       },
@@ -54727,6 +55414,7 @@ async function runQuery(sql, params = [], options = {}) {
         query_table: options.query_table,
         error_class: failure.kind,
         payload: {
+          auth_path: "mysql",
           raw_code: failure.raw_code,
           sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
           table_name: failure.table_name
@@ -54744,6 +55432,147 @@ async function runQuery(sql, params = [], options = {}) {
     }
   }
 }
+async function runDatahubQuery(creds, sql, params, options) {
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  const doFetch = async (bearer) => {
+    try {
+      const res = await fetch(`${creds.api_base}/api/query`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ sql, params, queryTimeoutMs }),
+        // Give the server a small grace window beyond its own timeout so
+        // we don't AbortError before it has a chance to return the
+        // classified timeout envelope.
+        signal: AbortSignal.timeout(queryTimeoutMs + 5e3)
+      });
+      return { res };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { res: null, readErr: message };
+    }
+  };
+  try {
+    let token = await getValidAccessToken(options.dataDirOverride);
+    let result = await doFetch(token);
+    if (result?.readErr) {
+      throw new DatahubNetworkError(result.readErr);
+    }
+    if (!result) throw new Error("datahub fetch produced no result");
+    let res = result.res;
+    if (res.status === 401) {
+      token = await getValidAccessToken(options.dataDirOverride, true);
+      result = await doFetch(token);
+      if (result?.readErr) {
+        throw new DatahubNetworkError(result.readErr);
+      }
+      if (!result) throw new Error("datahub fetch produced no result on retry");
+      res = result.res;
+      if (res.status === 401) {
+        throw new Error(
+          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
+        );
+      }
+    }
+    const json2 = await res.json();
+    const durationMs = Date.now() - t0;
+    if (json2.ok === true) {
+      const rows = json2.rows ?? [];
+      const rowCount = json2.rowCount ?? rows.length;
+      const serverDuration = json2.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: "ok",
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: options.query_id,
+          query_table: options.query_table,
+          payload: {
+            auth_path: "datahub",
+            server_duration_ms: serverDuration,
+            sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+          }
+        },
+        options.dataDirOverride
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+    const failure = {
+      ok: false,
+      kind: json2.kind ?? "unknown",
+      table_name: json2.table_name,
+      raw_code: json2.raw_code,
+      message: json2.message ?? "Query failed",
+      friendly: json2.friendly ?? json2.message ?? "Query failed",
+      durationMs
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
+          table_name: failure.table_name
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: "host_unreachable",
+        message: err.message,
+        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        durationMs
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = {
+        ok: false,
+        kind: "unknown",
+        message,
+        friendly: message,
+        durationMs
+      };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  }
+}
+var DatahubNetworkError = class extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "DatahubNetworkError";
+  }
+};
 function classify2(err) {
   const e = err;
   const message = e.sqlMessage ?? e.message ?? String(err);
@@ -54827,10 +55656,11 @@ function extractTableFromNoSuchTable(message) {
 async function resolveCreds2(options) {
   if (options.creds) return options.creds;
   const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (!credentials || !credentials.mysql) {
-    throw new Error("No MySQL credentials configured. Run `mixshift auth setup` first.");
-  }
-  return credentials.mysql;
+  if (credentials?.datahub) return credentials.datahub;
+  if (credentials?.mysql) return credentials.mysql;
+  throw new Error(
+    "No credentials configured. Run `mixshift auth login` (recommended) or `mixshift auth setup` for the legacy path."
+  );
 }
 
 // src/lib/prefetch/artifacts.ts
@@ -55252,7 +56082,7 @@ import { readFile as readFile18 } from "node:fs/promises";
 init_resolve();
 import { mkdir as mkdir13, writeFile as writeFile13, rename as rename10 } from "node:fs/promises";
 import { join as join11, dirname as dirname16 } from "node:path";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
 init_zod();
@@ -55399,7 +56229,7 @@ function sidecarPath(args) {
   );
 }
 function generateRunId() {
-  return randomBytes(3).toString("hex");
+  return randomBytes2(3).toString("hex");
 }
 function normalizeSqlCalls(calls) {
   return calls.map((c) => ({
@@ -55415,7 +56245,7 @@ function hashParams(params) {
       return acc;
     }, {})
   );
-  return createHash("sha1").update(canonical).digest("hex");
+  return createHash2("sha1").update(canonical).digest("hex");
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;

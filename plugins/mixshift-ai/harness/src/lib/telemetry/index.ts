@@ -27,6 +27,7 @@ import { enqueueEvent } from './queue.js';
 import { flushQueue, type FlushResult } from './client.js';
 import { EventName, type TrackInput, type TelemetryEventRecord } from './events.js';
 import { loadProfile } from '../profile/load.js';
+import { loadCredentials } from '../auth/credentials.js';
 import { getPluginVersion } from '../plugin-version.js';
 import { detectSurface } from './surface.js';
 
@@ -54,6 +55,13 @@ export async function track(
     const os = detectOs();
     const nowIso = new Date().toISOString();
     const userEmail = profile.user?.email;
+    // Auto-resolve person_label from datahub creds when caller didn't pass
+    // one. Best-effort — pre-auth events / corrupted creds files fall
+    // through silently. Keeps the per-employee actor visible on
+    // QueryExecuted / QueryFailed without every caller threading it through.
+    const datahubPersonLabel = await readDatahubPersonLabelBestEffort(
+      dataDirOverride,
+    );
 
     // If this is the first time install_id has been created on this
     // machine, enqueue a synthetic plugin.installed event ALONGSIDE the
@@ -71,6 +79,7 @@ export async function track(
         event_name: EventName.PluginInstalled,
         install_id: installId,
         email: userEmail,
+        person_label: datahubPersonLabel,
         plugin_version: pluginVersion,
         install_path: installPath,
         surface,
@@ -88,6 +97,7 @@ export async function track(
       event_name: input.event_name,
       install_id: installId,
       email: input.email ?? userEmail,
+      person_label: input.person_label ?? datahubPersonLabel,
       plugin_version: pluginVersion,
       install_path: installPath,
       surface,
@@ -168,6 +178,27 @@ function readSurfaceFlag(): string | undefined {
   const eq = process.argv.find((a) => a.startsWith('--surface='));
   if (eq) return eq.slice('--surface='.length);
   return undefined;
+}
+
+/**
+ * Best-effort lookup of the datahub `person_label` (per-employee actor)
+ * from the credentials file. Returns undefined when:
+ *   - no credentials file yet
+ *   - credentials file is malformed
+ *   - no datahub block present (pre-auth or legacy mysql-only install)
+ *
+ * Never throws. Wraps the file I/O so a missing or broken credentials
+ * file can't take down telemetry.
+ */
+async function readDatahubPersonLabelBestEffort(
+  dataDirOverride?: string,
+): Promise<string | undefined> {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    return credentials?.datahub?.person_label;
+  } catch {
+    return undefined;
+  }
 }
 
 // Re-exports

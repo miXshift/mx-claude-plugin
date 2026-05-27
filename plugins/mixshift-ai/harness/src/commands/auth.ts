@@ -5,6 +5,7 @@ import { input, password, confirm } from '@inquirer/prompts';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { runAuthSetup, type SetupInputs, type SetupResult } from '../lib/auth/setup-flow.js';
 import { mysqlCredsSchema } from '../lib/auth/schema.js';
+import { runAuthLogin, type AuthLoginResult } from '../lib/auth/login-flow.js';
 import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { track, EventName } from '../lib/telemetry/index.js';
@@ -30,10 +31,25 @@ interface SetupOptions {
   database?: string;
 }
 
+interface LoginOptions {
+  personLabel?: string;
+  deviceLabel?: string;
+  clientId?: string;
+  apiBase?: string;
+  mode?: string;
+  noFallback?: boolean;
+}
+
 export function registerAuthCommands(program: Command): void {
   const auth = program
     .command('auth')
-    .description('User authentication setup (MySQL creds, IP whitelist)');
+    .description(
+      'Authenticate against the MixShift warehouse. Two flows: ' +
+        '`login` (recommended) for the token-based mx-legacy-auth path, ' +
+        'or `setup` for the legacy raw-MySQL path.',
+    );
+
+  registerLoginSubcommand(auth);
 
   auth
     .command('setup')
@@ -239,6 +255,158 @@ export function registerAuthCommands(program: Command): void {
     });
 }
 
+function registerLoginSubcommand(auth: Command): void {
+  auth
+    .command('login')
+    .description(
+      'Sign in to the MixShift warehouse via the mx-legacy-auth MCP ' +
+        'service. Opens a browser (PKCE) or falls back to a device-code ' +
+        'flow when no browser is available. Recommended over `auth setup` ' +
+        'for new installs — no IP whitelist, no raw MySQL credentials.',
+    )
+    .option(
+      '--person-label <email>',
+      'Your work email — attributes this session to you in the admin ' +
+        'view. Required because one tenant credential is shared across ' +
+        'many employees; person_label lets admins see who did what.',
+    )
+    .option(
+      '--device-label <label>',
+      'Friendly device name shown on the login confirmation page ' +
+        '(default: this machine\'s hostname).',
+    )
+    .option(
+      '--client-id <slug>',
+      'Override the surface-attribution client_id. Defaults to ' +
+        '`mx-claude-plugin` (or MIXSHIFT_PLUGIN_CLIENT_ID env var). ' +
+        'Use `mx-claude-plugin-dev` for plugin development.',
+    )
+    .option(
+      '--api-base <url>',
+      'Override the auth service URL (default: https://mcp.mixshift.io). ' +
+        'Used for local mx-legacy-auth development.',
+    )
+    .option(
+      '--mode <flow>',
+      'Login flow: `pkce` (browser callback), `device` (device-code ' +
+        'paste-URL), or `auto` (PKCE first, fall back to device on ' +
+        'browser-open failure).',
+      'auto',
+    )
+    .option(
+      '--no-fallback',
+      'Auto-mode debug: surface PKCE failure directly instead of ' +
+        'falling back to device-code. Use when debugging PKCE locally.',
+      false,
+    )
+    .action(async (opts: LoginOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      await track({ event_name: EventName.AuthStarted }, root.dataDir);
+
+      try {
+        const personLabel =
+          opts.personLabel ??
+          (await promptPersonLabel());
+
+        const mode = parseLoginMode(opts.mode);
+        const result = await runAuthLogin({
+          personLabel,
+          deviceLabel: opts.deviceLabel,
+          clientId: opts.clientId,
+          apiBase: opts.apiBase,
+          mode,
+          noFallback: opts.noFallback ?? false,
+          dataDirOverride: root.dataDir,
+        });
+
+        renderLoginResult(result, !!root.json);
+
+        await track(
+          {
+            event_name: EventName.UserIdentified,
+            email: result.email,
+            person_label: result.personLabel,
+          },
+          root.dataDir,
+        );
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await track(
+          {
+            event_name: EventName.AuthFailed,
+            outcome: 'failed',
+            error_class: 'login_threw',
+            duration_ms: Date.now() - startedAt,
+            payload: { message: message.slice(0, 500) },
+          },
+          root.dataDir,
+        );
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: 'error', message }, null, 2) + '\n',
+          );
+        } else {
+          process.stderr.write(`error: ${message}\n`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+    });
+}
+
+/**
+ * Prompt for person_label when not supplied via flag. TTY-required.
+ * Chat-driven invocations should pass --person-label so we don't reach
+ * this path (Bash tool can't satisfy interactive prompts).
+ */
+async function promptPersonLabel(): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'Missing --person-label and stdin is not a TTY. Pass ' +
+        '--person-label <your.email@domain.com> on the command line. ' +
+        '(The chat skill provides this automatically; you only need ' +
+        'to pass it when running `mixshift auth login` directly in a ' +
+        'non-interactive context.)',
+    );
+  }
+  return input({
+    message:
+      'Your work email (for per-employee session attribution; not auth):',
+    required: true,
+    validate: (v: string) =>
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+        ? true
+        : 'Use email format (e.g. alice@marpartners.com)',
+  });
+}
+
+function parseLoginMode(raw: string | undefined): 'pkce' | 'device' | 'auto' {
+  const v = (raw ?? 'auto').toLowerCase();
+  if (v === 'pkce' || v === 'device' || v === 'auto') return v;
+  throw new Error(
+    `--mode must be one of: pkce, device, auto (got "${raw}").`,
+  );
+}
+
+function renderLoginResult(result: AuthLoginResult, json: boolean): void {
+  if (json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    return;
+  }
+  process.stdout.write(
+    `\n✓ Signed in via ${result.mode === 'pkce' ? 'browser (PKCE)' : 'device-code'}.\n` +
+      `  - tenant:        ${result.email}\n` +
+      `  - actor:         ${result.personLabel}\n` +
+      `  - api_base:      ${result.apiBase}\n` +
+      `  - client_id:     ${result.clientId}\n` +
+      `  - duration:      ${(result.durationMs / 1000).toFixed(1)}s\n` +
+      `\nTry: \`mixshift data run-query "SELECT 1"\` to verify ` +
+      `warehouse access.\n`,
+  );
+}
+
 async function gatherInputs(
   opts: SetupOptions,
   defaults: PluginDefaults,
@@ -335,17 +503,20 @@ async function promptInputs(
   // Interactive prompts require a TTY. Claude Code's Bash tool doesn't
   // pass one through, so we'd fail with "User force closed the prompt"
   // a few prompts in. Detect early and give a clear error pointing at
-  // the right path (auth-setup skill orchestrates --from-file in chat).
+  // the right path (chat surface should use auth-login skill instead).
   if (!process.stdin.isTTY) {
     throw new Error(
       'Interactive prompts require a TTY (a real terminal). It looks like ' +
         'stdin isn\'t a terminal here — common when running through the ' +
         'Claude Code Bash tool.\n\n' +
-        'Two options:\n' +
-        '  1. Run "mixshift auth setup" in your own terminal (Git Bash, ' +
-        'PowerShell, etc.) where TTY prompts work.\n' +
-        '  2. In Claude chat, ask "run auth setup" — the auth-setup skill ' +
-        'collects inputs in chat and routes them through --from-file.\n\n' +
+        'Three options:\n' +
+        '  1. Recommended: in Claude chat, say "sign in to mixshift" — ' +
+        'the auth-login skill drives the token-based browser flow (no ' +
+        'TTY prompts needed, no raw MySQL credentials).\n' +
+        '  2. Run "mixshift auth login" in your own terminal — same ' +
+        'browser flow as the chat skill.\n' +
+        '  3. (Legacy) Run "mixshift auth setup" in your own terminal ' +
+        '(Git Bash, PowerShell, etc.) where TTY prompts work.\n\n' +
         'For scripted / CI use, pass --from-file <path> with a YAML/JSON ' +
         'file containing email + mysql fields.',
     );

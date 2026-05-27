@@ -20,6 +20,11 @@ export interface TelemetryEventRecord {
   event_name: string;
   install_id: string;
   email?: string;
+  /** Self-attested per-employee actor email. Distinct from `email`
+   *  (which is the tenant's shared MySQL login). Populated on datahub
+   *  flow events (auth.login_completed, query.*, etc.) and absent on
+   *  events that pre-date a successful `mixshift auth login`. */
+  person_label?: string;
   plugin_version: string;
   install_path: string;
   /** Which runtime/host is invoking the harness. See lib/telemetry/surface.ts.
@@ -59,6 +64,9 @@ export interface TrackInput {
   trigger_phrase?: string;
   /** When the event mentions a user identity (email), set this for downstream linkage. */
   email?: string;
+  /** Self-attested per-employee actor email (datahub flow). See
+   *  TelemetryEventRecord.person_label for semantics. */
+  person_label?: string;
 }
 
 // -----------------------------------------------------------------------
@@ -79,6 +87,11 @@ export const EventName = {
   AuthCompleted: 'auth.completed',
   AuthFailed: 'auth.failed',
   AuthConnectionTested: 'auth.connection_tested',
+  /** Token-based login (PKCE or device-code) against mx-legacy-auth. */
+  AuthLoginCompleted: 'auth.login_completed',
+  /** /auth/refresh returned a non-success status (401 = replay revocation,
+   *  others = transient / unexpected). Emitted from getValidAccessToken. */
+  AuthRefreshFailed: 'auth.refresh_failed',
   UserIdentified: 'user.identified',
   IpWhitelistRequested: 'ip_whitelist.requested',
 

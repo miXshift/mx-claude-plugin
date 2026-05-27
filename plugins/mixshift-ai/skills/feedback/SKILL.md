@@ -78,7 +78,7 @@ You can also invoke this skill **mid-session** if the user expresses frustration
 
 ## Prerequisites
 
-- The user must have completed `mixshift auth setup` so we have an email to attach to the feedback. If auth isn't set up, surface that and offer to walk them through auth-setup first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
+- The user must have signed in (`mixshift auth login` for the token flow, or the legacy `mixshift auth setup` CLI) so we have an email to attach to the feedback. If they're not signed in, surface that and offer to walk them through the auth-login skill first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
 
 ## Flow
 

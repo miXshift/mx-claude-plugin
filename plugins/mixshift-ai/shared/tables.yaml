@@ -836,6 +836,82 @@ tables:
       - { name: dtCustomUpdateStartTime, type: "datetime" }
       - { name: dtCustomUpdateEndTime, type: "datetime" }
       - { name: dtUpdateDspAdvertisers, type: "datetime" }
+  mws_items:
+    columns:
+      - { name: ID, type: "int" }
+      - { name: SellerID, type: "int" }
+      - { name: SellerName, type: "varchar(150)" }
+      - { name: ProfileID, type: "varchar(200)" }
+      - { name: MerchantType, type: "varchar(200)" }
+      - { name: MarketPlaceName, type: "varchar(200)" }
+      - { name: MarketPlaceID, type: "varchar(200)" }
+      - { name: AmazonSellerID, type: "varchar(100)" }
+      - { name: AmazonMarketplaceId, type: "varchar(100)" }
+      - { name: AmazonMarketplaceName, type: "varchar(150)" }
+      - { name: ItemName, type: "text" }
+      - { name: ItemDescription, type: "text" }
+      - { name: AmazonListingId, type: "varchar(100)" }
+      - { name: SKU, type: "varchar(150)" }
+      - { name: ItemPrice, type: "decimal(10,2)" }
+      - { name: ItemQuantityAvailable, type: "int" }
+      - { name: OpenDate, type: "date" }
+      - { name: ImageUrl, type: "text" }
+      - { name: ItemIsMarketplace, type: "varchar(10)" }
+      - { name: ProductIdType, type: "int" }
+      - { name: ZshopShippingFee, type: "varchar(50)" }
+      - { name: ItemNote, type: "text" }
+      - { name: ItemCondition, type: "int" }
+      - { name: ZshopCategory, type: "varchar(255)" }
+      - { name: ZshopBrowsePath, type: "varchar(255)" }
+      - { name: ZshopStorefrontFeature, type: "varchar(255)" }
+      - { name: ASIN, type: "varchar(150)" }
+      - { name: ASIN_2, type: "varchar(150)" }
+      - { name: ASIN_3, type: "varchar(150)" }
+      - { name: WillShipInternationally, type: "varchar(10)" }
+      - { name: ExpeditedShipping, type: "varchar(10)" }
+      - { name: ZShopBoldface, type: "varchar(10)" }
+      - { name: AmazonProductId, type: "varchar(50)" }
+      - { name: BidForFeaturedPlacement, type: "varchar(50)" }
+      - { name: AddDelete, type: "varchar(10)" }
+      - { name: PendingQuantity, type: "int" }
+      - { name: FulfillmentChannel, type: "varchar(100)" }
+      - { name: MerchantShippingGroup, type: "varchar(255)" }
+      - { name: ItemCost, type: "decimal(10,2)" }
+      - { name: LeadTime, type: "decimal(10,2)" }
+      - { name: IsActive, type: "varchar(10)" }
+      - { name: ItemNickname, type: "text" }
+      - { name: ParentASIN, type: "varchar(150)" }
+      - { name: ItemGroup, type: "varchar(250)" }
+      - { name: ItemLabel1, type: "varchar(250)" }
+      - { name: ItemLabel2, type: "varchar(250)" }
+      - { name: ItemCostGlobal, type: "decimal(10,2)" }
+      - { name: ShippingCost, type: "decimal(10,2)" }
+      - { name: Brand, type: "varchar(250)" }
+      - { name: TargetACOS, type: "decimal(15,10)" }
+      - { name: TargetTACOS, type: "decimal(15,10)" }
+      - { name: Tag1, type: "varchar(250)" }
+      - { name: Tag2, type: "varchar(250)" }
+      - { name: Tag3, type: "varchar(250)" }
+      - { name: Tag4, type: "varchar(250)" }
+      - { name: MainImage1, type: "text" }
+      - { name: MainImage2, type: "text" }
+      - { name: MainImage3, type: "text" }
+      - { name: Images, type: "text" }
+      - { name: dtUpdatedOn, type: "datetime" }
+      - { name: HadMFInventory, type: "tinyint(1)" }
+      - { name: FBAInventoryReportOccurrence, type: "tinyint(1)" }
+      - { name: InCatalog, type: "tinyint(1)" }
+      - { name: dtMainImageUpdatedDate, type: "datetime" }
+    notes: |
+      Schema captured from example CSV on 2026-05-22. Column types inferred
+      from sample values; some varchar lengths and tinyint widths are
+      estimates pending a live DESCRIBE refresh via scripts/dump-schema.py.
+      SC catalog table. Custom labels (Brand, ItemGroup, ItemLabel1/2,
+      Tag1-4, TargetACOS, TargetTACOS, ItemNickname) match vendor_items
+      semantically but the surrounding listing/inventory fields are
+      SC-specific. mws_items.Brand is AM-set (no CustomBrand in this table).
+      SellerName is denormalized and can be stale across rows for the same
+      SellerID -- use seller.MerchantAlias as the canonical brand display.
   vendor_items:
     columns:
       - { name: ID, type: "int" }
