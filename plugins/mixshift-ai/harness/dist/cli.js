@@ -42494,7 +42494,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join14(tree) {
+      function join15(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42520,7 +42520,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join14(parse4(query2));
+        tree = join15(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -45748,15 +45748,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir16, readFile as readFile20 } from "node:fs/promises";
-import { join as join13, dirname as dirname20 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir17, readFile as readFile21 } from "node:fs/promises";
+import { join as join14, dirname as dirname21 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join13(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join14(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir16(dirname20(path2), { recursive: true });
+    await mkdir17(dirname21(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -45767,7 +45767,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile20(path2, "utf-8");
+    const raw = await readFile21(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -56973,6 +56973,140 @@ function registerFeedbackCommand(program3) {
 init_load2();
 init_load();
 init_credentials();
+
+// src/lib/version-check.ts
+import { readFile as readFile20, writeFile as writeFile15, mkdir as mkdir16 } from "node:fs/promises";
+import { dirname as dirname20 } from "node:path";
+import { join as join13 } from "node:path";
+init_resolve();
+var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
+var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
+var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+var FETCH_TIMEOUT_MS = 5e3;
+function versionCheckCachePath(dataDirOverride) {
+  return join13(resolveDataDir(dataDirOverride), "version-check.json");
+}
+async function checkForUpdate(opts = {}) {
+  const current = getPluginVersion();
+  const cachePath = versionCheckCachePath(opts.dataDirOverride);
+  let cached4 = null;
+  try {
+    const raw = await readFile20(cachePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
+      cached4 = {
+        checked_at: parsed.checked_at,
+        latest_version: parsed.latest_version
+      };
+    }
+  } catch {
+  }
+  const now = Date.now();
+  const cacheAge = cached4 ? now - Date.parse(cached4.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS;
+  let latest = cached4?.latest_version ?? null;
+  let fetched = false;
+  if (!cacheFresh) {
+    const fresh = await fetchLatestVersion();
+    if (fresh !== null) {
+      latest = fresh;
+      fetched = true;
+      try {
+        await mkdir16(dirname20(cachePath), { recursive: true });
+        await writeFile15(
+          cachePath,
+          JSON.stringify(
+            {
+              checked_at: new Date(now).toISOString(),
+              latest_version: fresh
+            },
+            null,
+            2
+          ) + "\n",
+          { encoding: "utf-8" }
+        );
+      } catch {
+      }
+    }
+  }
+  const isStale2 = latest !== null && compareVersions(current, latest) < 0;
+  const releaseUrl = latest && isStale2 ? `${RELEASES_TAG_BASE}mixshift-ai--v${latest}` : null;
+  return { current, latest, isStale: isStale2, releaseUrl, fetched };
+}
+async function fetchLatestVersion() {
+  try {
+    const res = await fetch(MARKETPLACE_URL, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const entry = (data.plugins ?? []).find(
+      (p) => p?.name === "mixshift-ai"
+    );
+    return typeof entry?.version === "string" ? entry.version : null;
+  } catch {
+    return null;
+  }
+}
+function compareVersions(a, b) {
+  const [coreA, preA = ""] = a.split("-", 2);
+  const [coreB, preB = ""] = b.split("-", 2);
+  const partsA = coreA.split(".").map((x) => parseInt(x, 10) || 0);
+  const partsB = coreB.split(".").map((x) => parseInt(x, 10) || 0);
+  const len = Math.max(partsA.length, partsB.length);
+  for (let i = 0; i < len; i++) {
+    const valA = partsA[i] ?? 0;
+    const valB = partsB[i] ?? 0;
+    if (valA < valB) return -1;
+    if (valA > valB) return 1;
+  }
+  if (preA && !preB) return -1;
+  if (!preA && preB) return 1;
+  if (preA < preB) return -1;
+  if (preA > preB) return 1;
+  return 0;
+}
+function renderUpdateBanner(result, format = "terminal") {
+  if (!result.isStale || !result.latest) return "";
+  if (format === "chat") {
+    const lines2 = [];
+    lines2.push(
+      `> \u26A0 **Update available:** you're on **${result.current}**, latest is **${result.latest}**.`
+    );
+    lines2.push(">");
+    lines2.push(
+      "> **In Cowork:** Settings \u2192 Plugins \u2192 uninstall and reinstall `mixshift-ai`. (Org-managed installs may auto-sync within ~30 min; restart Cowork to force a fetch.)"
+    );
+    lines2.push(">");
+    lines2.push("> **In Claude Code:** `/plugin update mixshift-ai`");
+    if (result.releaseUrl) {
+      lines2.push(">");
+      lines2.push(`> Release notes: ${result.releaseUrl}`);
+    }
+    lines2.push("");
+    return lines2.join("\n");
+  }
+  const lines = [];
+  lines.push("");
+  lines.push("\u2501\u2501 Update available \u2501\u2501");
+  lines.push(`  You are on ${result.current}; latest is ${result.latest}.`);
+  lines.push("");
+  lines.push("  In Cowork:");
+  lines.push("    Settings \u2192 Plugins \u2192 uninstall and reinstall mixshift-ai.");
+  lines.push("    (Org-managed installs may auto-sync within ~30 min;");
+  lines.push("     restart Cowork to force a fetch.)");
+  lines.push("");
+  lines.push("  In Claude Code:");
+  lines.push("    /plugin update mixshift-ai");
+  if (result.releaseUrl) {
+    lines.push("");
+    lines.push(`  Release notes: ${result.releaseUrl}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// src/commands/welcome.ts
 function registerWelcomeCommand(program3) {
   program3.command("welcome").description(
     "Show the first-run welcome and quick-start (URL to retrieve your credentials, what commands to run, where to get help)."
@@ -57030,15 +57164,21 @@ function registerWelcomeCommand(program3) {
       } catch {
       }
     }
+    const updateCheck = await checkForUpdate({
+      dataDirOverride: root.dataDir
+    }).catch(() => null);
+    const banner = updateCheck ? renderUpdateBanner(updateCheck, format === "chat" ? "chat" : "terminal") : "";
     const rendered = format === "chat" ? renderWelcomeChat({ authReady, profileReady, cr, brandCounts }) : renderWelcome({ authReady, profileReady, cr });
-    process.stdout.write(rendered);
+    process.stdout.write(banner + rendered);
     await track(
       {
         event_name: EventName.WelcomeViewed,
         payload: {
           auth_ready: authReady,
           profile_ready: profileReady,
-          format
+          format,
+          update_available: updateCheck?.isStale === true,
+          latest_version: updateCheck?.latest ?? void 0
         }
       },
       root.dataDir
@@ -57270,6 +57410,64 @@ function renderWelcomeChat(args) {
   );
   lines.push("");
   return lines.join("\n");
+}
+
+// src/commands/version.ts
+function registerVersionCommand(program3) {
+  program3.command("version").description(
+    "Show the installed mixshift-ai plugin version and check for updates against the public marketplace.json. Cache: 24h."
+  ).option(
+    "--skip-check",
+    "skip the update check (just print current version)",
+    false
+  ).option(
+    "--force-fetch",
+    "bypass the 24h cache and re-fetch from GitHub",
+    false
+  ).action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      const current = getPluginVersion();
+      if (opts.skipCheck) {
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ version: current }, null, 2) + "\n"
+          );
+        } else {
+          process.stdout.write(`mixshift-ai v${current}
+`);
+        }
+        return;
+      }
+      const result = await checkForUpdate({
+        dataDirOverride: root.dataDir,
+        forceFetch: opts.forceFetch
+      });
+      if (root.json) {
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        return;
+      }
+      process.stdout.write(`mixshift-ai v${result.current}
+`);
+      if (result.latest === null) {
+        process.stdout.write(
+          "  (could not check for updates; run with --force-fetch to retry)\n"
+        );
+        return;
+      }
+      if (result.isStale) {
+        process.stdout.write(renderUpdateBanner(result, "terminal"));
+      } else if (result.current === result.latest) {
+        process.stdout.write(`  up to date (latest is v${result.latest})
+`);
+      } else {
+        process.stdout.write(
+          `  ahead of public release (latest published is v${result.latest})
+`
+        );
+      }
+    }
+  );
 }
 
 // src/commands/telemetry.ts
@@ -57511,7 +57709,7 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml17 = __toESM(require_dist(), 1);
-import { readFile as readFile21 } from "node:fs/promises";
+import { readFile as readFile22 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -57676,7 +57874,7 @@ function getByPath2(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile21(path2, "utf-8");
+    const raw = await readFile22(path2, "utf-8");
     return (0, import_yaml17.parse)(raw);
   } catch {
     return null;
@@ -57782,8 +57980,8 @@ function indexConfirmationEntries(payload) {
 
 // src/commands/skill.ts
 init_resolve();
-import { mkdir as mkdir17, readFile as readFile22, writeFile as writeFile15 } from "node:fs/promises";
-import { dirname as dirname21 } from "node:path";
+import { mkdir as mkdir18, readFile as readFile23, writeFile as writeFile16 } from "node:fs/promises";
+import { dirname as dirname22 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -58127,7 +58325,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname21(path2);
+  const runDir = dirname22(path2);
   const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -58174,8 +58372,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir17(dirname21(path2), { recursive: true });
-  await writeFile15(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir18(dirname22(path2), { recursive: true });
+  await writeFile16(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -58204,7 +58402,7 @@ ${candidates}`
 }
 async function readJsonIfExists2(path2) {
   try {
-    const raw = await readFile22(path2, "utf-8");
+    const raw = await readFile23(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -58275,6 +58473,7 @@ registerUiCommand(program2);
 registerDataCommands(program2);
 registerFeedbackCommand(program2);
 registerWelcomeCommand(program2);
+registerVersionCommand(program2);
 registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";

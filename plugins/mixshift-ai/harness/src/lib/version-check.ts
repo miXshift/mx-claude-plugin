@@ -1,0 +1,227 @@
+/**
+ * Check whether the installed plugin is behind the latest published
+ * version on GitHub.
+ *
+ * Source of truth: `marketplace.json` on the default branch. Same file
+ * that Cowork / Claude Code read when they install or update the
+ * plugin, so the "latest" we report is exactly what the user would
+ * land on if they reinstalled.
+ *
+ * Cache: 24h on disk. Fetch failures fall back to whatever is cached
+ * (or render nothing if no cache yet). Never throws — the version
+ * check is purely advisory and must not break commands that call it.
+ */
+
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { join } from 'node:path';
+import { getPluginVersion } from './plugin-version.js';
+import { resolveDataDir } from './paths/resolve.js';
+
+const MARKETPLACE_URL =
+  'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json';
+const RELEASES_TAG_BASE =
+  'https://github.com/miXshift/mx-claude-plugin/releases/tag/';
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const FETCH_TIMEOUT_MS = 5_000;
+
+export interface VersionCheckResult {
+  current: string;
+  /** Null when no fetch has succeeded yet (no network + no cached value). */
+  latest: string | null;
+  /** True iff we have a `latest` and `current < latest`. */
+  isStale: boolean;
+  /** GitHub release tag URL for the latest version (when known + stale). */
+  releaseUrl: string | null;
+  /** True if this call performed a fresh fetch (vs reading from cache). */
+  fetched: boolean;
+}
+
+interface CacheFile {
+  checked_at: string; // ISO timestamp
+  latest_version: string;
+}
+
+interface MarketplaceJson {
+  plugins?: Array<{ name?: string; version?: string }>;
+}
+
+function versionCheckCachePath(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'version-check.json');
+}
+
+/**
+ * Returns the staleness assessment. Never throws — network failures
+ * and JSON parse errors collapse to `{latest: null, isStale: false}`.
+ */
+export async function checkForUpdate(opts: {
+  dataDirOverride?: string;
+  /** Bypass the 24h cache and force a fresh fetch. */
+  forceFetch?: boolean;
+} = {}): Promise<VersionCheckResult> {
+  const current = getPluginVersion();
+  const cachePath = versionCheckCachePath(opts.dataDirOverride);
+
+  // Try cache first.
+  let cached: CacheFile | null = null;
+  try {
+    const raw = await readFile(cachePath, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<CacheFile>;
+    if (
+      typeof parsed.checked_at === 'string' &&
+      typeof parsed.latest_version === 'string'
+    ) {
+      cached = {
+        checked_at: parsed.checked_at,
+        latest_version: parsed.latest_version,
+      };
+    }
+  } catch {
+    // No cache or invalid; continue.
+  }
+
+  const now = Date.now();
+  const cacheAge = cached ? now - Date.parse(cached.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached !== null && cacheAge < CACHE_TTL_MS;
+
+  let latest: string | null = cached?.latest_version ?? null;
+  let fetched = false;
+
+  if (!cacheFresh) {
+    const fresh = await fetchLatestVersion();
+    if (fresh !== null) {
+      latest = fresh;
+      fetched = true;
+      // Persist; ignore write errors (the check is advisory).
+      try {
+        await mkdir(dirname(cachePath), { recursive: true });
+        await writeFile(
+          cachePath,
+          JSON.stringify(
+            {
+              checked_at: new Date(now).toISOString(),
+              latest_version: fresh,
+            },
+            null,
+            2,
+          ) + '\n',
+          { encoding: 'utf-8' },
+        );
+      } catch {
+        // Cache write failures are non-fatal.
+      }
+    }
+  }
+
+  const isStale =
+    latest !== null && compareVersions(current, latest) < 0;
+  const releaseUrl =
+    latest && isStale
+      ? `${RELEASES_TAG_BASE}mixshift-ai--v${latest}`
+      : null;
+
+  return { current, latest, isStale, releaseUrl, fetched };
+}
+
+async function fetchLatestVersion(): Promise<string | null> {
+  try {
+    const res = await fetch(MARKETPLACE_URL, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as MarketplaceJson;
+    const entry = (data.plugins ?? []).find(
+      (p) => p?.name === 'mixshift-ai',
+    );
+    return typeof entry?.version === 'string' ? entry.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lexical semver-ish comparison. Returns -1/0/1.
+ *
+ * Handles 0.5.3, 0.5.10, 1.0.0-rc.1 (rc.1 treated as a pre-release tail
+ * via string compare on the suffix). We don't expect pre-releases in
+ * practice; the public marketplace.json only carries tagged releases.
+ */
+export function compareVersions(a: string, b: string): number {
+  const [coreA, preA = ''] = a.split('-', 2);
+  const [coreB, preB = ''] = b.split('-', 2);
+  const partsA = coreA.split('.').map((x) => parseInt(x, 10) || 0);
+  const partsB = coreB.split('.').map((x) => parseInt(x, 10) || 0);
+  const len = Math.max(partsA.length, partsB.length);
+  for (let i = 0; i < len; i++) {
+    const valA = partsA[i] ?? 0;
+    const valB = partsB[i] ?? 0;
+    if (valA < valB) return -1;
+    if (valA > valB) return 1;
+  }
+  // Equal core; pre-release tail loses to no-tail (1.0.0 > 1.0.0-rc).
+  if (preA && !preB) return -1;
+  if (!preA && preB) return 1;
+  if (preA < preB) return -1;
+  if (preA > preB) return 1;
+  return 0;
+}
+
+/**
+ * Render the user-facing update banner. Returns empty string when not
+ * stale. Two formats:
+ *
+ *   - `terminal` — ASCII layout for shell output (used by `mixshift welcome`
+ *     in terminal mode and `mixshift version`)
+ *   - `chat` — markdown quote-block layout for in-chat surfacing (used by
+ *     `mixshift welcome --format chat`)
+ *
+ * Copy intentionally covers both Cowork (UI uninstall+reinstall + optional
+ * org-managed auto-sync note) and Claude Code (`/plugin update` slash).
+ * Other surfaces fall through to the same content; CLI users updating from
+ * source don't usually see this banner anyway (their `current` matches
+ * what they just built).
+ */
+export function renderUpdateBanner(
+  result: VersionCheckResult,
+  format: 'terminal' | 'chat' = 'terminal',
+): string {
+  if (!result.isStale || !result.latest) return '';
+  if (format === 'chat') {
+    const lines: string[] = [];
+    lines.push(
+      `> ⚠ **Update available:** you're on **${result.current}**, latest is **${result.latest}**.`,
+    );
+    lines.push('>');
+    lines.push(
+      '> **In Cowork:** Settings → Plugins → uninstall and reinstall `mixshift-ai`. ' +
+        '(Org-managed installs may auto-sync within ~30 min; restart Cowork to force a fetch.)',
+    );
+    lines.push('>');
+    lines.push('> **In Claude Code:** `/plugin update mixshift-ai`');
+    if (result.releaseUrl) {
+      lines.push('>');
+      lines.push(`> Release notes: ${result.releaseUrl}`);
+    }
+    lines.push('');
+    return lines.join('\n');
+  }
+  // terminal
+  const lines: string[] = [];
+  lines.push('');
+  lines.push('━━ Update available ━━');
+  lines.push(`  You are on ${result.current}; latest is ${result.latest}.`);
+  lines.push('');
+  lines.push('  In Cowork:');
+  lines.push('    Settings → Plugins → uninstall and reinstall mixshift-ai.');
+  lines.push('    (Org-managed installs may auto-sync within ~30 min;');
+  lines.push('     restart Cowork to force a fetch.)');
+  lines.push('');
+  lines.push('  In Claude Code:');
+  lines.push('    /plugin update mixshift-ai');
+  if (result.releaseUrl) {
+    lines.push('');
+    lines.push(`  Release notes: ${result.releaseUrl}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}

@@ -5,6 +5,7 @@ import { loadCredentials } from '../lib/auth/credentials.js';
 import { readIndex, countByActivity } from '../lib/clients/index.js';
 import { loadKeyBrands } from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { checkForUpdate, renderUpdateBanner } from '../lib/version-check.js';
 
 interface RootOptions {
   json?: boolean;
@@ -100,11 +101,20 @@ export function registerWelcomeCommand(program: Command): void {
         }
       }
 
+      // Best-effort update check. Cached 24h on disk; network failures
+      // collapse to "no banner" without breaking welcome.
+      const updateCheck = await checkForUpdate({
+        dataDirOverride: root.dataDir,
+      }).catch(() => null);
+      const banner = updateCheck
+        ? renderUpdateBanner(updateCheck, format === 'chat' ? 'chat' : 'terminal')
+        : '';
+
       const rendered =
         format === 'chat'
           ? renderWelcomeChat({ authReady, profileReady, cr, brandCounts })
           : renderWelcome({ authReady, profileReady, cr });
-      process.stdout.write(rendered);
+      process.stdout.write(banner + rendered);
       await track(
         {
           event_name: EventName.WelcomeViewed,
@@ -112,6 +122,8 @@ export function registerWelcomeCommand(program: Command): void {
             auth_ready: authReady,
             profile_ready: profileReady,
             format,
+            update_available: updateCheck?.isStale === true,
+            latest_version: updateCheck?.latest ?? undefined,
           },
         },
         root.dataDir,

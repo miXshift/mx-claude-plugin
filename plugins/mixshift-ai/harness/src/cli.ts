@@ -58,6 +58,7 @@ import { registerUiCommand } from './commands/ui.js';
 import { registerDataCommands } from './commands/data.js';
 import { registerFeedbackCommand } from './commands/feedback.js';
 import { registerWelcomeCommand } from './commands/welcome.js';
+import { registerVersionCommand } from './commands/version.js';
 import { registerTelemetryCommands } from './commands/telemetry.js';
 import { registerSkillCommands } from './commands/skill.js';
 import {
@@ -105,6 +106,7 @@ registerUiCommand(program);
 registerDataCommands(program);
 registerFeedbackCommand(program);
 registerWelcomeCommand(program);
+registerVersionCommand(program);
 registerTelemetryCommands(program);
 registerSkillCommands(program);
 
