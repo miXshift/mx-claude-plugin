@@ -63,6 +63,24 @@ Trigger when the user:
 
 **Don't trigger** for specific workflow requests like "run daily health check" or "export data" — those have their own dedicated skills.
 
+## Auto-drive sign-in for first-time users
+
+After surfacing the welcome text, **check the rendered output for `Current state: ✗ not signed in yet`**. If you see it (or any equivalent "not signed in" indicator), the user is new — and they shouldn't have to say "sign in to mixshift" to get the auth flow started. The welcome copy has already told them you'll set up the sign-in link next; follow through inline.
+
+Immediately after rendering the welcome text:
+
+1. **Collect their work email.** Ask once: *"What's your work email? (used for session attribution — the same one you use to log into MixShift is fine.)"* Skip the prompt if you can pull a stored email from a prior session.
+2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash. Capture the JSON output (`device_code`, `login_url`).
+3. **Prep the user + send them the link.** In one chat reply:
+   > *"Click this to sign in: \<login_url\>*
+   > *Use your MixShift login — same email + password you use for MixShift. Tell me when you're done."*
+4. **Poll for approval when they confirm.** Run `mixshift auth device-poll <device_code> --person-label "<email>"`. Re-poll on `pending`, restart from step 2 on `expired`, move to verification on `approved`.
+5. **Verify + bottom line.** Run `mixshift data run-query "SELECT 1"` to confirm the warehouse is reachable, then show what to try next.
+
+For the detailed dispatch logic (Bash path vs MCP path on claude.ai, error envelopes, fallbacks), defer to the `auth-login` skill's SKILL.md — those rules apply here verbatim. The welcome's job is just to remove the "say 'sign in to mixshift'" middleman.
+
+If the user **is** already signed in (welcome rendered the returning-user view with brand counts + ladder state), there's nothing else to do here. The welcome content is self-contained.
+
 ## Output handling
 
 The `mixshift welcome` command writes to stderr (so it shows up correctly in terminals). In Claude's Bash output you'll see the rendered text. Just pass it through to the user.

@@ -87,7 +87,8 @@ Capture `device_code` and `login_url`. The other fields don't need to be passed 
 **Step 2b — Send the user to the URL:**
 
 > *"Open this link to sign in: \<login_url\>*
-> *Sign in there and come back. Tell me when you're done."*
+> *Use your MixShift login — the same email + password you use to log into MixShift. Your credentials stay on the sign-in page; the plugin only holds a token after.*
+> *Tell me when you're done."*
 
 Don't paste the device code separately — the URL encodes it. The user just signs in on the page.
 
@@ -126,6 +127,7 @@ The tool returns `{ deviceCode, loginUrl, expiresAt }`. Save the `deviceCode` fo
 **Step B2 — Send the user to the login URL:**
 
 > *"Open this link in any browser and sign in: \<loginUrl\>*
+> *Use your MixShift login — the same email + password you use to log into MixShift.*
 > *Tell me when you're done — I'll finish the sign-in here."*
 
 Don't paste the device_code separately — the loginUrl already encodes it. The user just signs in on the page; the page does the rest server-side.

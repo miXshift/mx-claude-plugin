@@ -57440,11 +57440,12 @@ function renderWelcome(args) {
   lines.push("\u2501\u2501 Step 1 \u2014 Sign in to MixShift \u2501\u2501");
   lines.push("");
   lines.push("  Sign in so the plugin can read your Amazon ads + retail data.");
-  lines.push("  Your credentials stay in your browser; the plugin only holds");
-  lines.push("  a token after.");
+  lines.push("  You'll need your MixShift account (the same email + password");
+  lines.push("  you use to log into MixShift). Your credentials stay in your");
+  lines.push("  browser; the plugin only holds a token after.");
   lines.push("");
   lines.push("  In Claude Code / Cowork (recommended):");
-  lines.push('    Say "sign in to mixshift" in chat.');
+  lines.push("    I'll get you a sign-in link in a moment \u2014 no need to say anything.");
   lines.push("");
   lines.push("  In a terminal:");
   lines.push("    mixshift auth login");
@@ -57587,12 +57588,10 @@ function renderWelcomeChat(args) {
   lines.push("### Step 1 \u2014 Sign in to MixShift");
   lines.push("");
   lines.push(
-    "Sign in so the plugin can read your Amazon ads + retail data. Your credentials stay in your browser; the plugin only holds a token after."
+    "Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account (the same email + password you use to log into MixShift). Your credentials stay in your browser; the plugin only holds a token after."
   );
   lines.push("");
-  lines.push(
-    'Just say *"sign in to mixshift"* in chat and I\'ll walk you through it. (Or `mixshift auth login` in a terminal.)'
-  );
+  lines.push("I'll set up a sign-in link for you right after this. (Or run `mixshift auth login` in a terminal yourself.)");
   lines.push("");
   lines.push("### Step 2 \u2014 Try something");
   lines.push("");

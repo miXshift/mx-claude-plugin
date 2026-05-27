@@ -207,11 +207,12 @@ function renderWelcome(args: {
   lines.push('━━ Step 1 — Sign in to MixShift ━━');
   lines.push('');
   lines.push('  Sign in so the plugin can read your Amazon ads + retail data.');
-  lines.push('  Your credentials stay in your browser; the plugin only holds');
-  lines.push('  a token after.');
+  lines.push('  You\'ll need your MixShift account (the same email + password');
+  lines.push('  you use to log into MixShift). Your credentials stay in your');
+  lines.push('  browser; the plugin only holds a token after.');
   lines.push('');
   lines.push('  In Claude Code / Cowork (recommended):');
-  lines.push('    Say "sign in to mixshift" in chat.');
+  lines.push('    I\'ll get you a sign-in link in a moment — no need to say anything.');
   lines.push('');
   lines.push('  In a terminal:');
   lines.push('    mixshift auth login');
@@ -429,17 +430,19 @@ function renderWelcomeChat(args: {
   lines.push('');
 
   // Step 1 — Sign in. Short and direct: what, why, how.
+  // The welcome skill orchestrates the actual sign-in inline (see
+  // skills/welcome/SKILL.md), so this copy primes the user for what's
+  // about to happen rather than telling them to invoke another phrase.
   lines.push('### Step 1 — Sign in to MixShift');
   lines.push('');
   lines.push(
     'Sign in so the plugin can read your Amazon ads + retail data. ' +
-      'Your credentials stay in your browser; the plugin only holds a token after.',
+      "You'll need your MixShift account (the same email + password you " +
+      'use to log into MixShift). Your credentials stay in your browser; ' +
+      'the plugin only holds a token after.',
   );
   lines.push('');
-  lines.push(
-    'Just say *"sign in to mixshift"* in chat and I\'ll walk you through it. ' +
-      '(Or `mixshift auth login` in a terminal.)',
-  );
+  lines.push("I'll set up a sign-in link for you right after this. (Or run `mixshift auth login` in a terminal yourself.)");
   lines.push('');
 
   // Step 2 — Try something.
