@@ -54053,6 +54053,8 @@ function resolveClientId(cliFlag) {
 }
 
 // src/lib/auth/login-flow.ts
+init_load();
+init_save();
 var DEFAULT_API_BASE = "https://mcp.mixshift.io";
 var PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1e3;
 var DEVICE_POLL_INTERVAL_MS = 3e3;
@@ -54147,6 +54149,10 @@ async function pollDeviceFlow(opts) {
             orchestration: "two_phase_chat"
           }
         },
+        opts.dataDirOverride
+      );
+      await syncProfileEmailBestEffort(
+        result.personLabel,
         opts.dataDirOverride
       );
       if (postLoginDiscovery) {
@@ -54257,6 +54263,10 @@ Browser didn't respond (${msg}). Switching to device-code flow. Open the URL bel
         client_id: resolved.clientId
       }
     },
+    resolved.dataDirOverride
+  );
+  await syncProfileEmailBestEffort(
+    result.personLabel,
     resolved.dataDirOverride
   );
   if (resolved.postLoginDiscovery) {
@@ -54537,6 +54547,23 @@ function toDatahubCreds(opts, resp) {
     device_label: opts.deviceLabel,
     client_id: opts.clientId
   };
+}
+async function syncProfileEmailBestEffort(personLabel, dataDirOverride) {
+  try {
+    const { profile } = await loadProfile(dataDirOverride);
+    if (profile.user?.email === personLabel) return;
+    const next = {
+      ...profile,
+      user: { ...profile.user, email: personLabel }
+    };
+    await saveProfile(next, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(
+      `(note: could not sync profile.yaml::user.email to "${personLabel}" \u2014 ${message.slice(0, 200)}; run \`mixshift profile set --email <email>\` if downstream commands like \`mixshift feedback\` complain about a missing email.)
+`
+    );
+  }
 }
 async function postLoginDiscoverBestEffort(dataDirOverride, email3, personLabel) {
   try {

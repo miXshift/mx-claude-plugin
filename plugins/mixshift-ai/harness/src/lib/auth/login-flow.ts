@@ -45,6 +45,8 @@ import { spawn } from 'node:child_process';
 import { saveDatahub } from './credentials.js';
 import { resolveClientId } from './client-id.js';
 import type { DatahubCreds } from './schema.js';
+import { loadProfile } from '../profile/load.js';
+import { saveProfile } from '../profile/save.js';
 import { track, EventName } from '../telemetry/index.js';
 import {
   runDiscoveryAndPersist,
@@ -272,6 +274,13 @@ export async function pollDeviceFlow(
         opts.dataDirOverride,
       );
 
+      // Mirror person_label into profile.user.email — see
+      // syncProfileEmailBestEffort docstring for the why.
+      await syncProfileEmailBestEffort(
+        result.personLabel,
+        opts.dataDirOverride,
+      );
+
       if (postLoginDiscovery) {
         await postLoginDiscoverBestEffort(
           opts.dataDirOverride,
@@ -429,6 +438,13 @@ export async function runAuthLogin(
         client_id: resolved.clientId,
       },
     },
+    resolved.dataDirOverride,
+  );
+
+  // Mirror person_label into profile.user.email so downstream commands
+  // (telemetry, `mixshift feedback`, etc.) find a populated email.
+  await syncProfileEmailBestEffort(
+    result.personLabel,
     resolved.dataDirOverride,
   );
 
@@ -843,6 +859,45 @@ function toDatahubCreds(
     device_label: opts.deviceLabel,
     client_id: opts.clientId,
   };
+}
+
+/**
+ * Mirror the per-employee actor email (person_label) into
+ * `~/.mixshift/profile.yaml::user.email` after a successful login.
+ *
+ * Downstream code (telemetry track(), `mixshift feedback`, anything
+ * that reads `profile.user.email`) expects this field to be populated
+ * once the user has authenticated. The legacy `mixshift auth setup`
+ * flow set it as part of credential collection; the new token-based
+ * auth login flow didn't, which left a gap where new users would sign
+ * in via the browser but still have `feedback` complain about a
+ * missing email. This closes that gap.
+ *
+ * Best-effort: profile-save failures don't break the login. The user
+ * is signed in; profile.yaml is downstream metadata. We emit a
+ * one-line stderr note so the operator can see + investigate.
+ */
+async function syncProfileEmailBestEffort(
+  personLabel: string,
+  dataDirOverride: string | undefined,
+): Promise<void> {
+  try {
+    const { profile } = await loadProfile(dataDirOverride);
+    if (profile.user?.email === personLabel) return; // already in sync
+    const next = {
+      ...profile,
+      user: { ...profile.user, email: personLabel },
+    };
+    await saveProfile(next, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(
+      `(note: could not sync profile.yaml::user.email to "${personLabel}" ` +
+        `— ${message.slice(0, 200)}; ` +
+        'run `mixshift profile set --email <email>` if downstream commands ' +
+        `like \`mixshift feedback\` complain about a missing email.)\n`,
+    );
+  }
 }
 
 async function postLoginDiscoverBestEffort(
