@@ -206,17 +206,15 @@ function renderWelcome(args: {
   lines.push('');
   lines.push('━━ Step 1 — Sign in to MixShift ━━');
   lines.push('');
+  lines.push('  Sign in so the plugin can read your Amazon ads + retail data.');
+  lines.push('  Your credentials stay in your browser; the plugin only holds');
+  lines.push('  a token after.');
+  lines.push('');
   lines.push('  In Claude Code / Cowork (recommended):');
-  lines.push('    Say "sign in to mixshift" in chat. We open your browser,');
-  lines.push('    you sign in there, and you\'re back in about 30 seconds.');
-  lines.push('    No raw MySQL credentials, no IP whitelist wait.');
+  lines.push('    Say "sign in to mixshift" in chat.');
   lines.push('');
   lines.push('  In a terminal:');
   lines.push('    mixshift auth login');
-  lines.push('');
-  lines.push('  Either way, the plugin holds a short-lived token after');
-  lines.push('  (24h access / 30d refresh) at ~/.mixshift/auth/credentials.');
-  lines.push('  Never your password.');
   lines.push('');
   lines.push('━━ Step 2 — Try something ━━');
   lines.push('');
@@ -430,18 +428,17 @@ function renderWelcomeChat(args: {
   lines.push("**Welcome to the MixShift plugin.** You're not signed in yet. Two quick steps:");
   lines.push('');
 
-  // Step 1 — Sign in. One short paragraph.
+  // Step 1 — Sign in. Short and direct: what, why, how.
   lines.push('### Step 1 — Sign in to MixShift');
   lines.push('');
   lines.push(
-    'Just say *"sign in to mixshift"* in chat. I\'ll open a browser tab, you ' +
-      'sign in there, and we\'re done in about 30 seconds. No raw MySQL credentials ' +
-      'to retrieve, no IP whitelist to wait for. The plugin holds a short-lived token ' +
-      'after (24h access / 30d refresh) at `~/.mixshift/auth/credentials`. Never your password.',
+    'Sign in so the plugin can read your Amazon ads + retail data. ' +
+      'Your credentials stay in your browser; the plugin only holds a token after.',
   );
   lines.push('');
   lines.push(
-    'If you\'d rather drive it yourself, run `mixshift auth login` in a terminal. Same flow.',
+    'Just say *"sign in to mixshift"* in chat and I\'ll walk you through it. ' +
+      '(Or `mixshift auth login` in a terminal.)',
   );
   lines.push('');
 

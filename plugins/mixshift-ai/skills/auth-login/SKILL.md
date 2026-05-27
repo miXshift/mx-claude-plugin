@@ -60,35 +60,50 @@ Two paths. The distinguishing factor is whether you have access to a Bash tool.
 
 ### Path A — Bash is available (Cowork, Claude Code, terminal)
 
-This covers most surfaces. Run the harness command directly.
+Two-phase device-code orchestration. Cowork's Bash tool kills processes at ~45s, which is shorter than a typical browser sign-in, so the chat skill drives the flow across multiple short Bash calls instead of one long blocking call.
+
+**Step 2a — Initialize the sign-in:**
 
 ```bash
-mixshift auth login --person-label "<email-from-step-1>"
+mixshift auth device-init --person-label "<email-from-step-1>"
 ```
 
-The CLI will print one of:
+The CLI returns JSON immediately and exits:
 
-- *"Opening MixShift sign-in in your browser. If it doesn't open automatically, visit: https://mcp.mixshift.io/login?..."*
-- *"Browser didn't respond; switching to device-code flow. Open the URL below on any machine..."*
-
-**Surface the CLI's output verbatim.** Then nudge once:
-
-> *"Your browser should open in a moment. Sign in there and come back — I'll detect it. The URL also works if you'd rather paste it manually."*
-
-Wait for the CLI to return. It blocks until login completes or times out after 10 minutes. On success it prints:
-
-```
-✓ Signed in via browser (PKCE).
-  - tenant:    <tenant-email>
-  - actor:     <person_label>
-  - api_base:  https://mcp.mixshift.io
-  - client_id: mx-claude-plugin
-  - duration:  XX.Xs
+```json
+{
+  "device_code": "DY57-6CJD",
+  "login_url": "https://mcp.mixshift.io/login?device_code=DY57-6CJD&...",
+  "expires_at": "<ISO timestamp>",
+  "api_base": "https://mcp.mixshift.io",
+  "person_label": "<email>",
+  "device_label": "<hostname>",
+  "client_id": "mx-claude-plugin"
+}
 ```
 
-Pass that result through to the user. Then go to Step 3.
+Capture `device_code` and `login_url`. The other fields don't need to be passed again — `device-poll` only needs `device_code` + `person_label`.
 
-If the CLI exits non-zero, surface the error message and offer the fallback in the Fallbacks section below.
+**Step 2b — Send the user to the URL:**
+
+> *"Open this link to sign in: \<login_url\>*
+> *Sign in there and come back. Tell me when you're done."*
+
+Don't paste the device code separately — the URL encodes it. The user just signs in on the page.
+
+**Step 2c — Poll for approval when the user returns:**
+
+When the user confirms they signed in (says "done", "ready", etc.), run:
+
+```bash
+mixshift auth device-poll <device_code> --person-label "<email-from-step-1>"
+```
+
+Default max-wait is 30s (fits comfortably under Cowork's Bash timeout). The CLI returns JSON:
+
+- `{ "state": "approved", "result": { "ok": true, "mode": "device", "email": "<tenant>", "personLabel": "<actor>", "apiBase": "...", "clientId": "...", "durationMs": N } }` — success. Tokens are already saved to `~/.mixshift/auth/credentials` and post-login discovery has fired. Move to Step 3.
+- `{ "state": "pending" }` — user hasn't completed sign-in yet. Ask politely (*"Still finishing? I'll check again."*) and re-call `device-poll` with the same `device_code`. Repeat up to a few times before bailing.
+- `{ "state": "expired", "error": "<reason>" }` — device code is no longer valid (typically 10 min limit on the server side). Restart from Step 2a with a fresh `device-init`.
 
 ### Path B — No Bash (claude.ai web, ChatGPT, other no-shell surfaces)
 

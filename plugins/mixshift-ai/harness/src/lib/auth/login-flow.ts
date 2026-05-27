@@ -103,6 +103,216 @@ interface ResolvedOptions {
   openBrowser: (url: string) => Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Public two-phase device-code surface (for chat orchestration)
+// ---------------------------------------------------------------------------
+//
+// Chat hosts like Cowork have a ~45s ceiling on Bash tool invocations.
+// The blocking `runAuthLogin` flow doesn't fit — the user takes longer than
+// that to switch tabs, sign in, come back. So we expose the device-code
+// flow as two short-lived primitives the chat skill can orchestrate:
+//
+//   initDeviceFlow()  → returns {device_code, login_url, expires_at}, exits.
+//                       The chat skill shows the URL to the user and waits
+//                       for them to confirm in chat.
+//   pollDeviceFlow()  → polls /auth/device/poll for up to maxWaitMs (default
+//                       30s). Returns {state, result?}. On approved, saves
+//                       datahub creds + fires post-login discovery + emits
+//                       telemetry, same side effects as runAuthLogin.
+//                       The chat skill re-calls with the same device_code if
+//                       state was still 'pending'.
+
+export interface InitDeviceFlowOptions {
+  apiBase?: string;
+  personLabel: string;
+  deviceLabel?: string;
+  clientId?: string;
+}
+
+export interface InitDeviceFlowResult {
+  device_code: string;
+  login_url: string;
+  expires_at: string;
+  /** Echoed back so the chat skill doesn't have to re-pass these to poll. */
+  api_base: string;
+  person_label: string;
+  device_label: string;
+  client_id: string;
+}
+
+export async function initDeviceFlow(
+  opts: InitDeviceFlowOptions,
+): Promise<InitDeviceFlowResult> {
+  if (!opts.personLabel) {
+    throw new Error(
+      'Missing --person-label. Pass your work email so we can attribute ' +
+        'your session (e.g. --person-label alice@marpartners.com).',
+    );
+  }
+  if (!isLikelyEmail(opts.personLabel)) {
+    throw new Error(
+      `--person-label must be an email address (got "${opts.personLabel}").`,
+    );
+  }
+  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const deviceLabel = opts.deviceLabel ?? hostname();
+  const clientId = resolveClientId(opts.clientId);
+
+  const init = await deviceInitFetch(
+    apiBase,
+    deviceLabel,
+    opts.personLabel,
+    clientId,
+  );
+
+  return {
+    device_code: init.deviceCode,
+    login_url: init.loginUrl,
+    expires_at: init.expiresAt,
+    api_base: apiBase,
+    person_label: opts.personLabel,
+    device_label: deviceLabel,
+    client_id: clientId,
+  };
+}
+
+export interface PollDeviceFlowOptions {
+  apiBase?: string;
+  deviceCode: string;
+  personLabel: string;
+  deviceLabel?: string;
+  clientId?: string;
+  dataDirOverride?: string;
+  /** Maximum wall-clock time to keep polling before returning 'pending'.
+   *  Default 30s — fits comfortably under Cowork's Bash tool timeout. */
+  maxWaitMs?: number;
+  pollIntervalMs?: number;
+  postLoginDiscovery?: boolean;
+}
+
+export interface PollDeviceFlowResult {
+  state: 'pending' | 'approved' | 'expired';
+  /** Set when state === 'approved'. Carries the same shape as
+   *  runAuthLogin's result; tokens are already persisted to disk. */
+  result?: AuthLoginResult;
+  /** Set when state === 'expired' or on poll-error envelope; the chat
+   *  skill should restart the flow from initDeviceFlow. */
+  error?: string;
+}
+
+export async function pollDeviceFlow(
+  opts: PollDeviceFlowOptions,
+): Promise<PollDeviceFlowResult> {
+  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const deviceLabel = opts.deviceLabel ?? hostname();
+  const clientId = resolveClientId(opts.clientId);
+  const maxWaitMs = opts.maxWaitMs ?? 30_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? DEVICE_POLL_INTERVAL_MS;
+  const postLoginDiscovery = opts.postLoginDiscovery ?? true;
+
+  const startedAt = Date.now();
+  // First poll fires immediately (no initial wait) so a fast user gets
+  // the answer right away.
+  let firstAttempt = true;
+  while (Date.now() - startedAt < maxWaitMs) {
+    if (!firstAttempt) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+    firstAttempt = false;
+
+    const poll = await devicePoll(apiBase, opts.deviceCode);
+    if (!poll.ok) {
+      return {
+        state: 'expired',
+        error: poll.error,
+      };
+    }
+    if (poll.state === 'approved') {
+      // Build a ResolvedOptions-shaped view so we can reuse the
+      // existing helpers (toDatahubCreds, post-login discovery).
+      const resolved: ResolvedOptions = {
+        apiBase,
+        personLabel: opts.personLabel,
+        deviceLabel,
+        clientId,
+        mode: 'device',
+        noFallback: false,
+        dataDirOverride: opts.dataDirOverride,
+        postLoginDiscovery,
+        openBrowser: defaultOpenBrowser,
+      };
+      const datahub = toDatahubCreds(resolved, poll);
+      await saveDatahub(datahub, opts.dataDirOverride);
+
+      const result: AuthLoginResult = {
+        ok: true,
+        mode: 'device',
+        apiBase,
+        personLabel: opts.personLabel,
+        email: poll.email,
+        userId: poll.user_id,
+        clientId: poll.client_id ?? clientId,
+        durationMs: Date.now() - startedAt,
+      };
+
+      await track(
+        {
+          event_name: EventName.AuthLoginCompleted,
+          outcome: 'ok',
+          duration_ms: result.durationMs,
+          email: result.email,
+          person_label: result.personLabel,
+          payload: {
+            mode: 'device',
+            api_base: apiBase,
+            client_id: clientId,
+            orchestration: 'two_phase_chat',
+          },
+        },
+        opts.dataDirOverride,
+      );
+
+      if (postLoginDiscovery) {
+        await postLoginDiscoverBestEffort(
+          opts.dataDirOverride,
+          result.email,
+          result.personLabel,
+        );
+      }
+
+      return { state: 'approved', result };
+    }
+    // state === 'pending'; loop until maxWaitMs.
+  }
+
+  return { state: 'pending' };
+}
+
+async function deviceInitFetch(
+  apiBase: string,
+  deviceLabel: string,
+  personLabel: string,
+  clientId: string,
+): Promise<DeviceInitResponse> {
+  const res = await fetch(`${apiBase}/auth/device/init`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      device_label: deviceLabel,
+      actor_hint: personLabel,
+      client_id: clientId,
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '<unreadable>');
+    throw new Error(
+      `/auth/device/init returned HTTP ${res.status}: ${body.slice(0, 500)}`,
+    );
+  }
+  return (await res.json()) as DeviceInitResponse;
+}
+
 /**
  * Open a URL in the user's default browser via the OS-native command.
  * Inlined here instead of pulling in the `open` npm package, which
@@ -588,14 +798,29 @@ async function devicePoll(
     body: JSON.stringify({ device_code: deviceCode }),
     signal: AbortSignal.timeout(15_000),
   });
-  // 401 returns a JSON error envelope — parse rather than throw.
-  if (!res.ok && res.status !== 401) {
+  // The service returns JSON envelopes for all "expected" outcomes even
+  // when the HTTP status is 4xx (e.g. 410 device_code_unknown_or_expired,
+  // 401 unauthorized). Parse the body regardless; only throw on 5xx /
+  // unparseable responses (network or service health issues we want
+  // surfaced loudly).
+  const contentType = res.headers.get('content-type') ?? '';
+  const looksJson = contentType.includes('json');
+  if (looksJson) {
+    try {
+      return (await res.json()) as DevicePollResponse;
+    } catch {
+      // Fall through to the throw below if JSON parse fails.
+    }
+  }
+  if (!res.ok) {
     const body = await res.text().catch(() => '<unreadable>');
     throw new Error(
       `/auth/device/poll returned HTTP ${res.status}: ${body.slice(0, 500)}`,
     );
   }
-  return (await res.json()) as DevicePollResponse;
+  // 2xx but no parseable JSON body — shouldn't happen but treat as expired
+  // so the chat skill restarts the flow.
+  return { ok: false, error: 'unparseable_response' };
 }
 
 // ---------------------------------------------------------------------------

@@ -54058,6 +54058,128 @@ var PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1e3;
 var DEVICE_POLL_INTERVAL_MS = 3e3;
 var DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1e3;
 var HTTP_REQUEST_TIMEOUT_MS = 3e4;
+async function initDeviceFlow(opts) {
+  if (!opts.personLabel) {
+    throw new Error(
+      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@marpartners.com)."
+    );
+  }
+  if (!isLikelyEmail(opts.personLabel)) {
+    throw new Error(
+      `--person-label must be an email address (got "${opts.personLabel}").`
+    );
+  }
+  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const deviceLabel = opts.deviceLabel ?? hostname3();
+  const clientId = resolveClientId(opts.clientId);
+  const init = await deviceInitFetch(
+    apiBase,
+    deviceLabel,
+    opts.personLabel,
+    clientId
+  );
+  return {
+    device_code: init.deviceCode,
+    login_url: init.loginUrl,
+    expires_at: init.expiresAt,
+    api_base: apiBase,
+    person_label: opts.personLabel,
+    device_label: deviceLabel,
+    client_id: clientId
+  };
+}
+async function pollDeviceFlow(opts) {
+  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const deviceLabel = opts.deviceLabel ?? hostname3();
+  const clientId = resolveClientId(opts.clientId);
+  const maxWaitMs = opts.maxWaitMs ?? 3e4;
+  const pollIntervalMs = opts.pollIntervalMs ?? DEVICE_POLL_INTERVAL_MS;
+  const postLoginDiscovery = opts.postLoginDiscovery ?? true;
+  const startedAt = Date.now();
+  let firstAttempt = true;
+  while (Date.now() - startedAt < maxWaitMs) {
+    if (!firstAttempt) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+    firstAttempt = false;
+    const poll = await devicePoll(apiBase, opts.deviceCode);
+    if (!poll.ok) {
+      return {
+        state: "expired",
+        error: poll.error
+      };
+    }
+    if (poll.state === "approved") {
+      const resolved = {
+        apiBase,
+        personLabel: opts.personLabel,
+        deviceLabel,
+        clientId,
+        mode: "device",
+        noFallback: false,
+        dataDirOverride: opts.dataDirOverride,
+        postLoginDiscovery,
+        openBrowser: defaultOpenBrowser
+      };
+      const datahub = toDatahubCreds(resolved, poll);
+      await saveDatahub(datahub, opts.dataDirOverride);
+      const result = {
+        ok: true,
+        mode: "device",
+        apiBase,
+        personLabel: opts.personLabel,
+        email: poll.email,
+        userId: poll.user_id,
+        clientId: poll.client_id ?? clientId,
+        durationMs: Date.now() - startedAt
+      };
+      await track(
+        {
+          event_name: EventName.AuthLoginCompleted,
+          outcome: "ok",
+          duration_ms: result.durationMs,
+          email: result.email,
+          person_label: result.personLabel,
+          payload: {
+            mode: "device",
+            api_base: apiBase,
+            client_id: clientId,
+            orchestration: "two_phase_chat"
+          }
+        },
+        opts.dataDirOverride
+      );
+      if (postLoginDiscovery) {
+        await postLoginDiscoverBestEffort(
+          opts.dataDirOverride,
+          result.email,
+          result.personLabel
+        );
+      }
+      return { state: "approved", result };
+    }
+  }
+  return { state: "pending" };
+}
+async function deviceInitFetch(apiBase, deviceLabel, personLabel, clientId) {
+  const res = await fetch(`${apiBase}/auth/device/init`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_label: deviceLabel,
+      actor_hint: personLabel,
+      client_id: clientId
+    }),
+    signal: AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS)
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/auth/device/init returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  return await res.json();
+}
 var defaultOpenBrowser = async (url2) => {
   const cmd = process.platform === "win32" ? `start "" "${url2}"` : process.platform === "darwin" ? `open "${url2}"` : `xdg-open "${url2}"`;
   const child = spawn(cmd, {
@@ -54386,13 +54508,21 @@ async function devicePoll(apiBase, deviceCode) {
     body: JSON.stringify({ device_code: deviceCode }),
     signal: AbortSignal.timeout(15e3)
   });
-  if (!res.ok && res.status !== 401) {
+  const contentType = res.headers.get("content-type") ?? "";
+  const looksJson = contentType.includes("json");
+  if (looksJson) {
+    try {
+      return await res.json();
+    } catch {
+    }
+  }
+  if (!res.ok) {
     const body = await res.text().catch(() => "<unreadable>");
     throw new Error(
       `/auth/device/poll returned HTTP ${res.status}: ${body.slice(0, 500)}`
     );
   }
-  return await res.json();
+  return { ok: false, error: "unparseable_response" };
 }
 function toDatahubCreds(opts, resp) {
   return {
@@ -54463,6 +54593,8 @@ function registerAuthCommands(program3) {
     "Authenticate against the MixShift warehouse. Two flows: `login` (recommended) for the token-based mx-legacy-auth path, or `setup` for the legacy raw-MySQL path."
   );
   registerLoginSubcommand(auth);
+  registerDeviceInitSubcommand(auth);
+  registerDevicePollSubcommand(auth);
   auth.command("setup").description("Walk through interactive auth onboarding (one-time per user)").option("--non-interactive", "fail if input is required (for CI)", false).option(
     "--from-file <path>",
     "read inputs from a YAML / JSON file instead of prompting"
@@ -54737,6 +54869,84 @@ function renderLoginResult(result, json2) {
 
 Try: \`mixshift data run-query "SELECT 1"\` to verify warehouse access.
 `
+  );
+}
+function registerDeviceInitSubcommand(auth) {
+  auth.command("device-init").description(
+    "Initialize a device-code sign-in flow. Returns {device_code, login_url, expires_at} as JSON and exits immediately. The chat skill orchestrates the wait via `auth device-poll`. Humans should use `auth login` instead."
+  ).option(
+    "--person-label <email>",
+    "Self-attested per-employee actor email (required)."
+  ).option("--device-label <label>", "Device hostname-style label.").option("--client-id <slug>", "Surface-attribution client_id.").option("--api-base <url>", "mx-legacy-auth service URL.").action(async (opts, _cmd) => {
+    try {
+      if (!opts.personLabel) {
+        throw new Error(
+          "--person-label is required for device-init. Pass --person-label <your.email@domain.com>."
+        );
+      }
+      const result = await initDeviceFlow({
+        personLabel: opts.personLabel,
+        deviceLabel: opts.deviceLabel,
+        clientId: opts.clientId,
+        apiBase: opts.apiBase
+      });
+      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stdout.write(
+        JSON.stringify({ ok: false, error: message }, null, 2) + "\n"
+      );
+      process.exitCode = 1;
+      return;
+    }
+  });
+}
+function registerDevicePollSubcommand(auth) {
+  auth.command("device-poll <deviceCode>").description(
+    "Poll a device-code sign-in flow for up to --max-wait-ms (default 30s). Returns {state, result?} as JSON. On approved, persists tokens + runs post-login discovery. Used by the chat skill after the user completes sign-in in their browser."
+  ).option(
+    "--person-label <email>",
+    "Self-attested per-employee actor email (must match device-init)."
+  ).option("--device-label <label>", "Device label (match device-init).").option("--client-id <slug>", "client_id (match device-init).").option("--api-base <url>", "mx-legacy-auth service URL.").option(
+    "--max-wait-ms <ms>",
+    "Maximum wall-clock time to keep polling before returning pending.",
+    "30000"
+  ).action(
+    async (deviceCode, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        if (!opts.personLabel) {
+          throw new Error(
+            "--person-label is required for device-poll. Pass the same value used in device-init."
+          );
+        }
+        const maxWaitMs = Number.parseInt(opts.maxWaitMs ?? "30000", 10);
+        if (!Number.isFinite(maxWaitMs) || maxWaitMs < 1e3) {
+          throw new Error(
+            `--max-wait-ms must be an integer >= 1000 (got "${opts.maxWaitMs}").`
+          );
+        }
+        const result = await pollDeviceFlow({
+          deviceCode,
+          personLabel: opts.personLabel,
+          deviceLabel: opts.deviceLabel,
+          clientId: opts.clientId,
+          apiBase: opts.apiBase,
+          maxWaitMs,
+          dataDirOverride: root.dataDir
+        });
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stdout.write(
+          JSON.stringify({ ok: false, error: message }, null, 2) + "\n"
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
   );
 }
 async function gatherInputs(opts, defaults) {
@@ -57229,17 +57439,15 @@ function renderWelcome(args) {
   lines.push("");
   lines.push("\u2501\u2501 Step 1 \u2014 Sign in to MixShift \u2501\u2501");
   lines.push("");
+  lines.push("  Sign in so the plugin can read your Amazon ads + retail data.");
+  lines.push("  Your credentials stay in your browser; the plugin only holds");
+  lines.push("  a token after.");
+  lines.push("");
   lines.push("  In Claude Code / Cowork (recommended):");
-  lines.push('    Say "sign in to mixshift" in chat. We open your browser,');
-  lines.push("    you sign in there, and you're back in about 30 seconds.");
-  lines.push("    No raw MySQL credentials, no IP whitelist wait.");
+  lines.push('    Say "sign in to mixshift" in chat.');
   lines.push("");
   lines.push("  In a terminal:");
   lines.push("    mixshift auth login");
-  lines.push("");
-  lines.push("  Either way, the plugin holds a short-lived token after");
-  lines.push("  (24h access / 30d refresh) at ~/.mixshift/auth/credentials.");
-  lines.push("  Never your password.");
   lines.push("");
   lines.push("\u2501\u2501 Step 2 \u2014 Try something \u2501\u2501");
   lines.push("");
@@ -57379,11 +57587,11 @@ function renderWelcomeChat(args) {
   lines.push("### Step 1 \u2014 Sign in to MixShift");
   lines.push("");
   lines.push(
-    "Just say *\"sign in to mixshift\"* in chat. I'll open a browser tab, you sign in there, and we're done in about 30 seconds. No raw MySQL credentials to retrieve, no IP whitelist to wait for. The plugin holds a short-lived token after (24h access / 30d refresh) at `~/.mixshift/auth/credentials`. Never your password."
+    "Sign in so the plugin can read your Amazon ads + retail data. Your credentials stay in your browser; the plugin only holds a token after."
   );
   lines.push("");
   lines.push(
-    "If you'd rather drive it yourself, run `mixshift auth login` in a terminal. Same flow."
+    'Just say *"sign in to mixshift"* in chat and I\'ll walk you through it. (Or `mixshift auth login` in a terminal.)'
   );
   lines.push("");
   lines.push("### Step 2 \u2014 Try something");

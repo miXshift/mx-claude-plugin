@@ -5,7 +5,12 @@ import { input, password, confirm } from '@inquirer/prompts';
 import { loadPluginDefaults } from '../lib/defaults/load.js';
 import { runAuthSetup, type SetupInputs, type SetupResult } from '../lib/auth/setup-flow.js';
 import { mysqlCredsSchema } from '../lib/auth/schema.js';
-import { runAuthLogin, type AuthLoginResult } from '../lib/auth/login-flow.js';
+import {
+  runAuthLogin,
+  initDeviceFlow,
+  pollDeviceFlow,
+  type AuthLoginResult,
+} from '../lib/auth/login-flow.js';
 import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { track, EventName } from '../lib/telemetry/index.js';
@@ -50,6 +55,8 @@ export function registerAuthCommands(program: Command): void {
     );
 
   registerLoginSubcommand(auth);
+  registerDeviceInitSubcommand(auth);
+  registerDevicePollSubcommand(auth);
 
   auth
     .command('setup')
@@ -405,6 +412,152 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
       `\nTry: \`mixshift data run-query "SELECT 1"\` to verify ` +
       `warehouse access.\n`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Two-phase device-code subcommands (for chat-skill orchestration).
+//
+// `mixshift auth login` blocks the CLI for up to 10 minutes waiting for the
+// browser callback. That doesn't fit chat hosts (Cowork, claude.ai) where
+// the Bash tool ceiling is ~45 seconds. These two short-lived commands let
+// the chat skill orchestrate the wait across multiple Bash invocations:
+//
+//   `auth device-init` → POST /auth/device/init, prints {device_code,
+//     login_url, ...} JSON, exits immediately. The skill shows login_url
+//     to the user and waits for them to confirm in chat.
+//
+//   `auth device-poll <device_code>` → polls /auth/device/poll for up to
+//     --max-wait-ms (default 30s). Prints {state: pending|approved|expired}
+//     JSON. On approved, saves the datahub creds + fires post-login
+//     discovery + emits AuthLoginCompleted, identical side effects to
+//     `auth login`. If still pending, the skill re-calls with the same
+//     device_code.
+//
+// The output is always JSON (`--json` flag is implicit) — these are
+// machine-friendly primitives designed for skill orchestration, not
+// direct human use. Humans should keep using `mixshift auth login`.
+// ---------------------------------------------------------------------------
+
+interface DeviceInitCliOptions {
+  personLabel?: string;
+  deviceLabel?: string;
+  clientId?: string;
+  apiBase?: string;
+}
+
+function registerDeviceInitSubcommand(auth: Command): void {
+  auth
+    .command('device-init')
+    .description(
+      'Initialize a device-code sign-in flow. Returns {device_code, ' +
+        'login_url, expires_at} as JSON and exits immediately. The chat ' +
+        'skill orchestrates the wait via `auth device-poll`. Humans ' +
+        'should use `auth login` instead.',
+    )
+    .option(
+      '--person-label <email>',
+      'Self-attested per-employee actor email (required).',
+    )
+    .option('--device-label <label>', 'Device hostname-style label.')
+    .option('--client-id <slug>', 'Surface-attribution client_id.')
+    .option('--api-base <url>', 'mx-legacy-auth service URL.')
+    .action(async (opts: DeviceInitCliOptions, _cmd: Command) => {
+      try {
+        if (!opts.personLabel) {
+          throw new Error(
+            '--person-label is required for device-init. ' +
+              'Pass --person-label <your.email@domain.com>.',
+          );
+        }
+        const result = await initDeviceFlow({
+          personLabel: opts.personLabel,
+          deviceLabel: opts.deviceLabel,
+          clientId: opts.clientId,
+          apiBase: opts.apiBase,
+        });
+        process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stdout.write(
+          JSON.stringify({ ok: false, error: message }, null, 2) + '\n',
+        );
+        process.exitCode = 1;
+        return;
+      }
+    });
+}
+
+interface DevicePollCliOptions {
+  personLabel?: string;
+  deviceLabel?: string;
+  clientId?: string;
+  apiBase?: string;
+  maxWaitMs?: string;
+}
+
+function registerDevicePollSubcommand(auth: Command): void {
+  auth
+    .command('device-poll <deviceCode>')
+    .description(
+      'Poll a device-code sign-in flow for up to --max-wait-ms (default ' +
+        '30s). Returns {state, result?} as JSON. On approved, persists ' +
+        'tokens + runs post-login discovery. Used by the chat skill ' +
+        'after the user completes sign-in in their browser.',
+    )
+    .option(
+      '--person-label <email>',
+      'Self-attested per-employee actor email (must match device-init).',
+    )
+    .option('--device-label <label>', 'Device label (match device-init).')
+    .option('--client-id <slug>', 'client_id (match device-init).')
+    .option('--api-base <url>', 'mx-legacy-auth service URL.')
+    .option(
+      '--max-wait-ms <ms>',
+      'Maximum wall-clock time to keep polling before returning pending.',
+      '30000',
+    )
+    .action(
+      async (
+        deviceCode: string,
+        opts: DevicePollCliOptions,
+        cmd: Command,
+      ) => {
+        const root = cmd.optsWithGlobals<RootOptions>();
+        try {
+          if (!opts.personLabel) {
+            throw new Error(
+              '--person-label is required for device-poll. ' +
+                'Pass the same value used in device-init.',
+            );
+          }
+          const maxWaitMs = Number.parseInt(opts.maxWaitMs ?? '30000', 10);
+          if (!Number.isFinite(maxWaitMs) || maxWaitMs < 1_000) {
+            throw new Error(
+              `--max-wait-ms must be an integer >= 1000 (got "${opts.maxWaitMs}").`,
+            );
+          }
+          const result = await pollDeviceFlow({
+            deviceCode,
+            personLabel: opts.personLabel,
+            deviceLabel: opts.deviceLabel,
+            clientId: opts.clientId,
+            apiBase: opts.apiBase,
+            maxWaitMs,
+            dataDirOverride: root.dataDir,
+          });
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          process.stdout.write(
+            JSON.stringify({ ok: false, error: message }, null, 2) + '\n',
+          );
+          process.exitCode = 1;
+          return;
+        }
+      },
+    );
 }
 
 async function gatherInputs(
