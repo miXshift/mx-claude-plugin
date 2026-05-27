@@ -56,8 +56,9 @@ notes: >
   via the feedback webhook.
 
   Required state (not modeled in schema fields):
-    - ~/.mixshift/auth/credentials must exist (run `mixshift auth setup` if not)
-    - ~/.mixshift/profile.yaml with user.email (created by auth setup)
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login` if not,
+      or the legacy `mixshift auth setup` for the raw-MySQL path)
+    - ~/.mixshift/profile.yaml with user.email (created by either sign-in flow)
   Optional state:
     - ~/.mixshift/clients/<slug>/context.yaml -- when the user references a brand
       by slug rather than SellerID.

@@ -3,8 +3,10 @@ skill_id: welcome
 display_name: Welcome / Quick Start
 version: "0.1.1"
 description: >
-  First-run welcome and quick-start orientation. Renders the warehouse
-  credential URL, master password, and the recommended next commands.
+  First-run welcome and quick-start orientation. Renders a two-step
+  walkthrough: sign in (token-based `mixshift auth login` via browser),
+  then try a few common asks. The CLI handles rendering (first-run view
+  vs. returning-user view) based on detected state.
 
 # Tier 1 = informational only. No file writes, no DB calls.
 # Modeled as per_account because trigger_phrases include account-oriented
@@ -37,8 +39,8 @@ trigger_phrases:
 notes: >
   Thin skill wrapping the `mixshift welcome` CLI command. Used as the
   natural-language entry point for new users who don't yet know they
-  should run `auth setup`. The CLI itself handles rendering (first-run
-  view vs. returning-user view) based on detected state.
+  should sign in. The CLI itself handles rendering (first-run view
+  vs. returning-user view) based on detected state.
 
   allowed_tools is set to [file_read] because the closest schema enum is
   file_read; the skill itself just invokes the CLI via Claude Code's Bash

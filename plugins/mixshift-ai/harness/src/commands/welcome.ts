@@ -48,7 +48,7 @@ export function registerWelcomeCommand(program: Command): void {
                 url_tenant_pattern: cr.url_tenant_pattern,
                 master_password: cr.master_password,
               },
-              next_step: authReady ? 'mixshift brand discover' : 'mixshift auth setup',
+              next_step: authReady ? 'mixshift brand discover' : 'mixshift auth login',
             },
             null,
             2,
@@ -161,9 +161,9 @@ function renderWelcome(args: {
     lines.push('                    to walk through AM intake.');
     lines.push('        Terminal:   mixshift brand add <slug>');
     lines.push('');
-    lines.push('    • Re-run auth setup (new credentials / different account):');
-    lines.push('        In chat:    "set up my credentials" / "run auth setup"');
-    lines.push('        Terminal:   mixshift auth setup');
+    lines.push('    • Re-run sign-in (new account / switch accounts):');
+    lines.push('        In chat:    "sign in to mixshift"');
+    lines.push('        Terminal:   mixshift auth login');
     lines.push('');
     lines.push('    • Send feedback / report bugs / request features:');
     lines.push('        In chat:    /feedback');
@@ -177,53 +177,36 @@ function renderWelcome(args: {
     return lines.join('\n');
   }
 
-  // First-time / partially-completed setup walkthrough
-  lines.push('This is the MixShift Amazon plugin. Three quick steps to get going:');
+  // First-time / partially-completed setup walkthrough.
+  //
+  // The token-based auth-login flow doesn't need the user to retrieve
+  // raw MySQL credentials anymore, so the welcome shrinks to two steps:
+  // sign in, try something. The legacy raw-MySQL CLI command
+  // (`mixshift auth setup`) is still available for users who need it
+  // (per-user IP whitelist, direct DB access for tooling outside the
+  // plugin) but we don't surface it here — the recommended flow drives
+  // the message. The `cr` (credential_retrieval) defaults are still
+  // loaded and JSON-emitted for backward compat with any programmatic
+  // consumers; we just don't render them in the primary welcome.
+  void cr;
+
+  lines.push('This is the MixShift Amazon plugin. Two quick steps to get going:');
   lines.push('');
-  lines.push('━━ Step 1 — Get your warehouse credentials ━━');
-  lines.push('');
-  lines.push('  Open this URL in a browser (where you sign in to MixShift):');
-  lines.push(`    ${cr.url_default}`);
-  lines.push('');
-  lines.push('  If that page does not recognize your session, use your tenant URL:');
-  lines.push(`    ${cr.url_tenant_pattern}`);
-  if (cr.master_password) {
-    lines.push('');
-    lines.push('  When prompted for "Master password", enter:');
-    lines.push(`    ${cr.master_password}`);
-    lines.push('');
-    lines.push('  This is the same value for all MixShift customers — it just');
-    lines.push('  prevents accidental credential exposure to other logged-in users.');
-  }
-  lines.push('');
-  lines.push('  The credentials page shows:');
-  lines.push('    HostName, Username, Port, Schema, and Password — copy them.');
-  lines.push('');
-  lines.push('  You\'ll plug these into Step 2 (auth setup) below — keep');
-  lines.push('  them handy.');
-  if (cr.notes) {
-    lines.push('');
-    cr.notes.split('\n').forEach((l) => {
-      if (l.trim()) lines.push(`  ${l}`);
-    });
-  }
-  lines.push('');
-  lines.push('━━ Step 2 — Run auth setup ━━');
+  lines.push('━━ Step 1 — Sign in to MixShift ━━');
   lines.push('');
   lines.push('  In Claude Code / Cowork (recommended):');
-  lines.push('    Say "set up my credentials" or "run auth setup" in chat.');
-  lines.push('    Claude will walk you through the inputs safely — for the');
-  lines.push('    password, you save it to a text file (so it never appears');
-  lines.push('    in chat history) and tell Claude the path.');
+  lines.push('    Say "sign in to mixshift" in chat. We open your browser,');
+  lines.push('    you sign in there, and you\'re back in about 30 seconds.');
+  lines.push('    No raw MySQL credentials, no IP whitelist wait.');
   lines.push('');
   lines.push('  In a terminal:');
-  lines.push('    mixshift auth setup');
-  lines.push('    Walks you through interactive TTY prompts (password is masked).');
+  lines.push('    mixshift auth login');
   lines.push('');
-  lines.push('  Either way, we test the connection and auto-request an IP');
-  lines.push('  whitelist if your IP isn\'t approved yet.');
+  lines.push('  Either way, the plugin holds a short-lived token after');
+  lines.push('  (24h access / 30d refresh) at ~/.mixshift/auth/credentials.');
+  lines.push('  Never your password.');
   lines.push('');
-  lines.push('━━ Step 3 — Try something ━━');
+  lines.push('━━ Step 2 — Try something ━━');
   lines.push('');
   lines.push('  In Claude Code / Cowork (chat):');
   lines.push('    "what brands do I have access to?"');
@@ -238,8 +221,8 @@ function renderWelcome(args: {
   lines.push('');
   lines.push('━'.repeat(60));
   lines.push('');
-  lines.push('Got feedback? Bugs, "this is broken", "I wish this could…",');
-  lines.push('feature requests, comments — all of it helps us iterate the');
+  lines.push('Got feedback? Bugs, "this is broken", "I wish this could...",');
+  lines.push('feature requests, comments. All of it helps us iterate the');
   lines.push('plugin during beta. We read every piece.');
   lines.push('  In chat:     /feedback');
   lines.push('               or "send feedback to mixshift: <your message>"');
@@ -250,7 +233,7 @@ function renderWelcome(args: {
     lines.push('Current state: ✓ auth credentials saved, ' +
       (profileReady ? '✓ profile saved' : '✗ profile incomplete') + '.');
   } else {
-    lines.push('Current state: ✗ no credentials yet. Start with Step 1 above.');
+    lines.push('Current state: ✗ not signed in yet. Start with Step 1 above.');
   }
   lines.push('');
   return lines.join('\n');
@@ -422,47 +405,38 @@ function renderWelcomeChat(args: {
   }
 
   // First-run / partially-set-up branch.
-  lines.push("**Welcome to the MixShift plugin** — you're at the very start, no credentials configured yet. Three quick steps to get going:");
+  //
+  // The token-based auth-login flow doesn't need users to retrieve raw
+  // MySQL credentials anymore, so the welcome shrinks to two steps:
+  // sign in, try something. The `cr` (credential_retrieval) defaults
+  // are still loaded and JSON-emitted for backward compat; not surfaced
+  // in chat. The legacy `mixshift auth setup` CLI is still available
+  // for users who explicitly need the raw-MySQL path, but isn't part
+  // of the recommended welcome.
+  void cr;
+
+  lines.push("**Welcome to the MixShift plugin.** You're not signed in yet. Two quick steps:");
   lines.push('');
 
-  // Step 1 — three deliberate paragraph breaks at sub-section boundaries.
-  lines.push('### Step 1 — Get your warehouse credentials');
+  // Step 1 — Sign in. One short paragraph.
+  lines.push('### Step 1 — Sign in to MixShift');
   lines.push('');
   lines.push(
-    `Open ${cr.url_default} in a browser where you're signed in to MixShift. ` +
-      `If the \`www\` URL doesn't recognize your session, use your tenant URL instead: ` +
-      `${cr.url_tenant_pattern} (e.g. \`marpartners.mydashapplications.com/database-admin\`).`,
+    'Just say *"sign in to mixshift"* in chat. I\'ll open a browser tab, you ' +
+      'sign in there, and we\'re done in about 30 seconds. No raw MySQL credentials ' +
+      'to retrieve, no IP whitelist to wait for. The plugin holds a short-lived token ' +
+      'after (24h access / 30d refresh) at `~/.mixshift/auth/credentials`. Never your password.',
   );
   lines.push('');
-  if (cr.master_password) {
-    lines.push(
-      `When the page prompts for "Master password", enter \`${cr.master_password}\` — ` +
-        `this is the same value for every MixShift customer, a guard against accidental ` +
-        `credential exposure on the page, not a per-user secret.`,
-    );
-    lines.push('');
-  }
   lines.push(
-    'The page shows your **HostName**, **Username**, **Port**, **Schema**, and **Password**. ' +
-      "Copy all five — you'll plug them into Step 2 below.",
-  );
-  lines.push('');
-
-  // Step 2 — single paragraph.
-  lines.push('### Step 2 — Run auth setup');
-  lines.push('');
-  lines.push(
-    'Once you have those credentials, say *"set up my credentials"* or *"run auth setup"* in chat. ' +
-      "I'll walk you through it safely — for the password, you'll save it to a text file " +
-      'and tell me the path, so the password never appears in chat history. ' +
-      "We'll test the connection and auto-request an IP whitelist if your IP isn't approved yet.",
+    'If you\'d rather drive it yourself, run `mixshift auth login` in a terminal. Same flow.',
   );
   lines.push('');
 
-  // Step 3 — bulleted list of common asks.
-  lines.push('### Step 3 — Try something');
+  // Step 2 — Try something.
+  lines.push('### Step 2 — Try something');
   lines.push('');
-  lines.push('Once auth is done, ask things like:');
+  lines.push('Once you\'re signed in, ask:');
   lines.push('');
   lines.push('- *"what brands do I have access to?"*');
   lines.push('- *"what tables can I query?"*');
@@ -477,14 +451,14 @@ function renderWelcomeChat(args: {
     lines.push(
       '**Current state:** ✓ credentials saved' +
         (profileReady ? ', ✓ profile saved.' : ', ✗ profile incomplete.') +
-        ' You can skip to Step 3.',
+        ' You can skip to Step 2.',
     );
   } else {
-    lines.push('**Current state:** ✗ no credentials yet — start with Step 1 above.');
+    lines.push('**Current state:** ✗ not signed in yet. Start with Step 1.');
   }
   lines.push('');
   lines.push(
-    '> Feedback during beta? Just describe a friction point (*"it\'d be nice if…"*, *"this is broken"*, *"I wish this could…"*) ' +
+    '> Feedback during beta? Describe any friction point (*"it\'d be nice if..."*, *"this is broken"*, *"I wish this could..."*) ' +
       "and I'll offer to file it. Or say *\"send feedback to mixshift: \\<your message\\>\"* directly.",
   );
   lines.push('');
