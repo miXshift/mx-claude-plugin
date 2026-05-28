@@ -164,9 +164,8 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 - **Don't silently submit.** Always confirm with the user before sending, even if the message seems obvious. They may want to tighten it.
 - **Don't editorialize the message.** Pass through the user's wording. You can suggest a clearer phrasing, but ultimately the user's words are the user's words.
 - **Don't bundle multiple feedback items into one submission.** If the user has three different bugs, send three separate `mixshift feedback` invocations. Each routes / gets triaged / closed independently.
-- **Don't use this for IP whitelist requests or table access requests.** Those have dedicated flows:
-  - IP whitelist: handled inside `mixshift auth setup`
-  - Table access denied: the data-explore skill's error-handling path; uses `mixshift feedback ... --category feature_request` with specific framing
+- **Don't use this for table-access requests.** That has a dedicated flow: the data-explore skill's error-handling path uses `mixshift feedback ... --category feature_request` with specific framing.
+- **IP whitelist isn't a thing anymore in the token flow** (0.5.3+). If a user mentions an IP issue, point them at `mixshift auth login` — the auth service holds the single static egress IP server-side, so per-user whitelisting doesn't apply. Only if they're explicitly on the legacy `mixshift auth setup` raw-MySQL path does IP whitelist matter; that path is CLI-only and rare.
 
 ## Output template
 

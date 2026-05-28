@@ -8,7 +8,8 @@ description: >
   routes through the bundled harness CLI. Use when the user wants to see
   what's in their data, sample a table, export to CSV for use in other
   tools, or run a custom SQL query. Does NOT require brand cold-start —
-  only auth setup + (optionally) knowing a SellerID or brand slug.
+  only that the user has signed in (`mixshift auth login`) and optionally
+  knows a SellerID or brand slug.
 metadata:
   version: "0.1.1"
   author: "MixShift"
@@ -51,15 +52,16 @@ disambiguation), use these facts:
     - Catalog metadata (mws_items with Brand / ItemGroup / Tags / TargetACOS,
       vendor_items with CustomBrand)
 - **Routing:** All queries flow through the harness CLI (`mixshift data ...`),
-  which connects via `mysql2` with creds from `~/.mixshift/auth/credentials.json`.
-  There is NO MCP server registered for the warehouse — `.mcp.json` is
-  intentionally empty.
+  which sends them to MixShift's auth service at `mcp.mixshift.io/api/query`
+  using a Bearer token from `~/.mixshift/auth/credentials` (no `.json` extension).
+  The auth service holds the warehouse credentials server-side and the single
+  static egress IP. The plugin itself never holds raw MySQL credentials.
 
 If the user asks "what kind of database is this" or you need to pick
 between multiple data sources, lead with "MixShift's MySQL warehouse"
 rather than guessing technology.
 
-You help the user query, sample, and export MixShift warehouse data. This is a **low-friction, read-only** skill — partners can use it without doing a full brand cold-start, as long as they've completed auth setup.
+You help the user query, sample, and export MixShift warehouse data. This is a **low-friction, read-only** skill — partners can use it without doing a full brand cold-start, as long as they've signed in (`mixshift auth login`).
 
 ## When to use this skill
 

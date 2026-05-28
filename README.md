@@ -21,7 +21,7 @@ Pick the row that matches your situation:
 | You use Claude Code (terminal-based) | **Claude Code** | [`docs/install/claude-code.md`](./docs/install/claude-code.md) |
 | You want the harness CLI directly (without a plugin host) | **CLI direct** | [`docs/install/cli-direct.md`](./docs/install/cli-direct.md) |
 
-All four paths land at the same place: a working `mixshift` CLI on your machine, plus the plugin's skills available to Claude. After install, every path goes through the same [auth setup](./docs/auth-setup.md).
+All four paths land at the same place: a working `mixshift` CLI on your machine, plus the plugin's skills available to Claude. After install, every path goes through the same browser-based sign-in flow — kicked off automatically by the `welcome` skill on first chat.
 
 ## Quickstart (Cowork — Personal install)
 
@@ -29,22 +29,51 @@ The most common path:
 
 1. In Cowork desktop: **Customize** → **+** → **"Add marketplace from GitHub"** → paste `miXshift/mx-claude-plugin`.
 2. Open the Directory → install `mixshift-ai`.
-3. In a Cowork chat, say: **"welcome"** or **"how do I get started"**. Claude runs the welcome skill, which prints the warehouse-credentials URL and the master password.
-4. Open the credentials URL, enter the master password, copy the values from the page.
-5. In chat, say: **"set up my credentials"**. Claude walks you through the auth setup safely (your MixShift password goes through a temp file, never into chat history).
-6. From there you can:
+3. In a Cowork chat, say: **"welcome"** or **"how do I get started"**. Claude walks you through sign-in inline: asks for your work email, opens a browser tab for you to sign in with your MixShift account, then verifies the connection. Takes about 30 seconds.
+4. From there you can:
    - **"explore my data"** — sample tables, export CSVs, run ad-hoc queries
    - **"what brands do I have access to"** — discovery
    - **"export this brand's campaign data to CSV"** — bulk extraction
 
 Full step-by-step in the install docs.
 
+## Available skills
+
+The plugin ships **17 skills**. Each is invoked naturally in chat — say what you want and Claude picks the right one. Two tiers based on whether the skill needs a brand-context build first:
+
+### Available right after sign-in (no brand setup needed)
+
+| Skill | What it does |
+|---|---|
+| `welcome` | First-run orientation + your current state + suggested next steps. |
+| `auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
+| `data-explore` | Query, sample, and CSV-export your MixShift warehouse — Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
+| `feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
+| `competitive-analysis` | Research-driven SWOT + competitor positioning + pricing-tier maps. Web-based, no warehouse data required. |
+| `account-cold-start` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. |
+
+### Require brand context (run `account-cold-start <brand>` first)
+
+| Skill | What it does |
+|---|---|
+| `daily-health-check` | Comprehensive daily exception-based account review — spend / ACoS anomalies via percentile-based confidence intervals, broken into campaign-type / objective / item-group cuts. |
+| `runaway-spend-check` | Acute daily keyword-level overspend detection — flags T-1 spikes + zero-conversion runaways. |
+| `keyword-bid-health` | Weekly keyword-level bid review — scale-up candidates with proven conversions, pullback candidates on high-ACoS. |
+| `monthly-performance-report` | MoM / YoY performance report in MixShift's analytical voice, H-Bridge efficiency, item-group highlights, forecast beat/miss, Looking Ahead. |
+| `portfolio-quick-scan` | Multi-brand daily triage. One status card per brand: do I need to log in today? GREEN / YELLOW / RED verdicts. |
+| `search-term-negation` | Search-term irrelevance analysis + surgical negative keywords. |
+| `search-term-harvest` | Promote high-performing auto / broad search terms to explicit keyword targeting. |
+| `search-term-data-pull` | Pure data-extraction layer for search-term analysis (consumed by negation + harvest). |
+| `phrase-negative-discovery` | Phrase-negative candidates from n-gram decomposition of the search-term corpus. |
+| `asin-target-negation` | Phase 2 negation review for ASIN targets matched through auto / category / PAT paths. |
+| `ppc-relevance-check` | Semantic relevance classification for search terms and ASIN targets — separate from threshold logic. |
+
 ## Requirements
 
 - A Claude account (Cowork or Claude Code)
-- An active MixShift customer account with warehouse access
-- Read credentials to your MixShift warehouse (you retrieve them via the MixShift portal — your team admin or onboarding contact knows the URL, and `mixshift welcome` prints it too)
-- An IP whitelist grant on the warehouse (handled automatically by the plugin on first connection; manual approval typically lands within hours)
+- An active MixShift customer account — the same email + password you use to log into MixShift authenticates the plugin (via a browser-based sign-in, not pasted in chat)
+
+That's it. The plugin holds a short-lived token after sign-in (24h access / 30d refresh), stored at `~/.mixshift/auth/credentials` on your machine. No raw database passwords on disk, no IP whitelist setup — MixShift's auth service holds the single egress IP server-side.
 
 Everything else — brand context, run history, output destinations — lives at `~/.mixshift/` on your local machine. The plugin manages it.
 
@@ -54,10 +83,10 @@ A deterministic harness (`mixshift` CLI, bundled in this repo) handles authentic
 
 ## Security & privacy
 
-- The plugin is **read-only** at the database level — the MySQL credentials issued by MixShift have SELECT permissions only.
-- Your warehouse credentials live at `~/.mixshift/auth/credentials` on your local machine. They never leave your device.
-- IP whitelist requests send your email and public IP to MixShift ops via the telemetry pipeline (Supabase events table → ops Discord channel server-side) so an operator can grant access.
-- **Beta telemetry:** during the beta, the plugin sends anonymized usage events (which skills run, query timings, onboarding funnel transitions) to MixShift's Supabase so we can iterate. We do **not** collect query result contents, your warehouse credentials, your brand context files, or your chat with Claude. Full details + opt-out instructions in [`docs/privacy.md`](./docs/privacy.md). The welcome screen shows a short notice on first run.
+- The plugin is **read-only** at the database level — every warehouse user issued by MixShift has SELECT permissions only.
+- Your **session tokens** (Bearer + refresh, issued by MixShift's auth service on sign-in) live at `~/.mixshift/auth/credentials` on your local machine, mode 0600. They never leave your device. Your MixShift password is entered on the sign-in page in your browser and is never seen by the plugin or by Claude.
+- Tokens are short-lived: 24h access, 30d refresh. Expired access tokens auto-refresh; if the refresh token expires or is revoked, you re-run `welcome` / `auth login` to sign in again. No per-user IP whitelist coordination — MixShift's auth service holds the single static egress IP that talks to the warehouse.
+- **Beta telemetry:** during the beta, the plugin sends anonymized usage events (which skills run, query timings, onboarding funnel transitions) to MixShift's Supabase so we can iterate. We do **not** collect query result contents, your tokens, your brand context files, or your chat with Claude. Full details + opt-out instructions in [`docs/privacy.md`](./docs/privacy.md). The welcome screen shows a short notice on first run.
 
 ## License
 

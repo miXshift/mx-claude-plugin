@@ -57565,7 +57565,7 @@ function renderWelcomeChat(args) {
       );
       lines.push("");
       lines.push(
-        `Other options if you'd rather warm up first: *"explore my data"*, *"run a portfolio quick scan"* (gives you green/yellow/red verdicts across your ${brandCounts?.key ?? 0} key brand(s) \u2014 uses defaults until brands are cold-started, but still useful as a triage).`
+        `Other options while you decide: *"explore my data"* lets you sample tables and export CSVs without any brand setup. (Portfolio-quick-scan needs at least one brand cold-started first \u2014 it produces a green/yellow/red verdict per brand by aggregating per-brand health checks.)`
       );
       lines.push("");
     } else if (state === "C") {
