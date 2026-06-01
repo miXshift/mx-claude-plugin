@@ -40,55 +40,27 @@ The plugin appears in your **Personal plugins** section in the sidebar.
 
 **Tip — reopening the Directory modal later.** It's not obvious how to get back to this view after install. The path is: Customize → click **+** next to **Personal plugins** → the Directory reopens with your marketplaces and plugins listed. From there you can install other plugins, toggle **Sync automatically**, hit **Check for updates**, or **Remove** anything. You'll use this surface again whenever MixShift ships a new version (see Troubleshooting at the bottom for the workaround if the version field gets stuck).
 
-## Step 3 — First run
+## Step 3 — Sign in
 
 In any Cowork chat, say one of:
 
 - "welcome"
+- "sign in to mixshift"
 - "how do I get started with MixShift"
-- "first time setup"
 
-Claude runs the `welcome` skill, which invokes `mixshift welcome` and prints:
+Claude runs the `welcome` skill and walks you through sign-in inline. The full flow takes about 30 seconds:
 
-- The credential-retrieval URL (where you'll go to get your MySQL credentials)
-- The master password (a value shared across all MixShift customers — it's a guard against accidental credential exposure, not a per-user secret)
-- The three quick-start steps to follow
+1. Claude asks for your work email (used to attribute your session — same email you use to log into MixShift is fine).
+2. Claude opens a browser tab at the MixShift sign-in page (`https://mcp.mixshift.io/login`).
+3. You sign in with your MixShift account — the same email + password you use to log into MixShift. Your credentials stay on the sign-in page; the plugin never sees them.
+4. You return to chat and say "done".
+5. Claude confirms the sign-in, runs a verification query, and shows you the brands you have access to.
 
-## Step 4 — Get your warehouse credentials
+That's it. The plugin stores a short-lived token at `~/.mixshift/auth/credentials` (24h access / 30d refresh). No raw database passwords on disk, no IP whitelist setup — MixShift's auth service holds the single static egress IP that talks to the warehouse server-side.
 
-1. Open the credential-retrieval URL from the welcome screen (default: `https://www.mydashapplications.com/database-admin`; your screen shows the right URL for your tenant if it's different).
-2. Enter the **master password** from the welcome screen when prompted.
-3. The page shows your warehouse credentials:
-   - **HostName** — usually `db.mydashapplications.studio`; some tenants have a tenant-specific subdomain
-   - **Username** — typically matches your MixShift tenant slug
-   - **Port** — `3306`
-   - **Schema** — usually matches Username; the canonical legacy schema is `dashamazon`
-   - **Password** — your MySQL password
+Full details on how sign-in works: [`docs/auth-setup.md`](../auth-setup.md).
 
-Keep this page open. You'll paste the values in the next step.
-
-## Step 5 — Run auth setup
-
-In Cowork chat, say:
-
-- "set up my credentials"
-- "run auth setup"
-
-Claude walks you through the values from Step 4. Crucially, **your MySQL password goes through a temporary file**, not directly into chat — Claude will ask you to save the password to a text file (e.g. `/tmp/pw.txt`) and give it the path. This keeps the password out of your chat transcript.
-
-Behind the scenes, the harness runs:
-
-```bash
-mixshift auth setup --from-file <values.yaml> --password-file <pw.txt>
-```
-
-The values file contains your email + host + port + username + schema. The password file contains just the password. The harness validates everything, tests the connection, and writes credentials to `~/.mixshift/auth/credentials`.
-
-If your IP isn't whitelisted on the warehouse yet, the harness asks you for permission to send a whitelist request to MixShift ops. The request includes your email + public IP — an operator grants access manually, typically within a few hours. You'll get an email when access is live, then re-run any skill.
-
-Full details on auth setup: [`docs/auth-setup.md`](../auth-setup.md).
-
-## Step 6 — Verify it works
+## Step 4 — Verify it works
 
 Re-run the welcome skill to confirm everything is set up:
 
@@ -99,7 +71,7 @@ Now you should see the "you are already set up" view with four actions:
 - Discover your brands
 - Explore + export your data
 - Onboard a brand for analytical skills (pre-beta — not generally enabled yet)
-- Re-run auth setup (if you need to change credentials)
+- Re-run sign-in (if you need to switch accounts)
 
 Then try the data-explore skill:
 
@@ -119,17 +91,14 @@ The exact UI label may differ between Cowork versions. Look for "+" next to **Ma
 **"command not found: mixshift" when Claude tries to run the welcome.**
 This means Cowork didn't auto-PATH the plugin's `bin/` directory. File a Cowork support request — this is the documented behavior per Cowork's plugin install docs and should be auto-handled. Workaround: ask Claude to invoke the harness via its absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
 
-**"User force closed the prompt" during auth setup.**
-This means Claude tried to drive the interactive TTY prompts, which Cowork's Bash tool can't support. The chat-orchestrated `--from-file` + `--password-file` flow handles this — make sure Claude isn't trying to run `mixshift auth setup` without the file flags. If Claude is asking for your password directly in chat (instead of asking you to save it to a file), say "use the password file flow instead" — that's the correct path.
+**Browser didn't open during sign-in.**
+The PKCE flow tries to open your default browser via the OS-native handler. If that fails (rare), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat — open that URL in any browser. If the chat skill never showed a URL at all, the harness may not be on PATH inside Cowork's Bash tool — say "run welcome" again, and if the issue persists open a feedback ticket.
 
-**Connection test hangs forever.**
-Your IP isn't whitelisted on the warehouse. The auth-setup skill should have asked your permission to send a whitelist request automatically. If it didn't, run in a terminal:
+**"Sign-in page won't accept my credentials."**
+Use the same email + password you use to log into MixShift. If those don't work, your MixShift account itself may be locked or expired — contact your MixShift account team.
 
-```bash
-mixshift auth setup --request-whitelist
-```
-
-Or in chat: "request IP whitelist". You'll get an email when access is live.
+**"Your session expired."**
+Your refresh token expired (>30d since last sign-in) or was revoked. Just say "sign in to mixshift" again and the chat skill drives a fresh sign-in.
 
 **Plugin update available.**
 In Cowork: Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. Cowork pulls the latest marketplace manifest. Same auth credentials carry over across updates.

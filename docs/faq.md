@@ -61,15 +61,21 @@ Cowork preserves its internal `marketplace_*` and `plugin_*` IDs across this —
 
 ## Auth + credentials
 
-### Where do I get my warehouse credentials?
+### How do I sign in?
 
-From the MixShift portal: `https://www.mydashapplications.com/database-admin` (or your tenant's URL). Enter the master password (shared across all MixShift customers — `mixshift welcome` prints it). The page shows your HostName, Username, Port, Schema, and Password.
+Say "welcome" or "sign in to mixshift" in chat (Cowork or Claude Code). The plugin walks you through inline: asks for your work email, opens a browser tab at the MixShift sign-in page, you sign in with your MixShift account, and we're done in about 30 seconds.
 
-If you don't know your tenant URL, ask your MixShift account team or run `mixshift welcome` after install — it prints the right URL for your account.
+From a terminal: `mixshift auth login --person-label you@yourcompany.com`.
+
+Full details: [`docs/auth-setup.md`](./auth-setup.md).
+
+### What credentials do I use to sign in?
+
+The same email + password you use to log into MixShift. Your credentials stay on the sign-in page in your browser; the plugin never sees them. After sign-in, the plugin only holds a short-lived token (24h access / 30d refresh).
 
 ### Where are my brands listed? I expected to see all my Amazon accounts.
 
-After you complete `mixshift auth setup`, the harness automatically discovers every brand you have warehouse access to and writes them to `~/.mixshift/clients/index.yaml`. To see them in chat: *"show my brands"* or *"what brands do I have"*. From a terminal: `mixshift brand list`.
+After you sign in, the harness automatically discovers every brand you have warehouse access to and writes them to `~/.mixshift/clients/index.yaml`. To see them in chat: *"show my brands"* or *"what brands do I have"*. From a terminal: `mixshift brand list`.
 
 By default the listing hides **dormant** brands — those with no active ads access AND no active SP-API (retail) access. Dormants are still in the registry; they just don't surface unless you ask. Common ways to see them:
 
@@ -103,45 +109,39 @@ To inspect / change later:
 
 Key brands live in `~/.mixshift/profile.yaml::brands.key`. The list is yours alone — no syncing across machines (per-machine state, like everything else the plugin tracks). When you re-auth on a different machine, you set your key brands again there.
 
-### What's the "master password" and why is it shared across all customers?
-
-It's a guard against accidental credential exposure on the credentials page, not a per-user secret. Anyone with the URL but not the password can't see anything; the password keeps the page from leaking values to a logged-in user who shouldn't be there. Your per-tenant MySQL credentials are what actually identify you to the warehouse.
-
 ### Does my teammate see the same data as me?
 
-**Today, yes.** MixShift's legacy system uses **a single MySQL login per customer organization** — there are no row-level permissions, no per-user data scoping. Every user at your MixShift org sees the same merchants.
+**Today, yes.** MixShift's legacy backing system uses **a single MySQL login per customer organization** — there are no row-level permissions, no per-user data scoping. Every user at your MixShift org sees the same merchants once they sign in.
 
-**Future:** MixShift 2.0 will introduce per-user logins with role-based data scoping. Until then, treat the warehouse login as a shared org credential.
+**Future:** MixShift 2.0 will introduce per-user logins with role-based data scoping. Until then, treat the warehouse view as shared org-wide.
 
-### Do my teammates and I share credentials, or does each of us enter our own?
+### Do my teammates and I sign in with the same account?
 
-The credential **values** are the same for everyone in your MixShift customer org (single-login model). The **entry** is per-user — each teammate runs `mixshift auth setup` on their own machine, writing their own `~/.mixshift/auth/credentials`. Cowork doesn't share local filesystem state across users.
+Each person signs in with their **own** MixShift account (their own email + password). The auth service maps each user to your tenant's shared data view, but with their own session and their own `person_label` for attribution. So admin tooling can see WHO at your org ran what.
 
-For teams of >3, the [pre-bundling pattern](./auth-setup.md#pre-bundling-credentials-for-a-team) (admin saves credentials to two files and shares with team) turns this into a one-command operation per user.
+Each teammate runs sign-in once on their own machine; tokens land at their own `~/.mixshift/auth/credentials`. Cowork doesn't share local filesystem state across users.
 
-### Why does each user have to re-enter the same credentials?
+### My IP needs to be whitelisted, right?
 
-Because the credentials live in each user's home directory (`~/.mixshift/auth/credentials`), not in shared Cowork state. Cowork doesn't currently expose an "org-wide plugin state" API for plugins to consume. The pre-bundling pattern minimizes the per-user friction.
+**No** (on the recommended token-based path). The MixShift auth service runs from a single static egress IP that's pre-whitelisted on the warehouse. Your IP is irrelevant — you can sign in from any network: office, home, coffee shop, mobile hotspot, anywhere.
 
-In MixShift 2.0 (per-user roles), each person will have genuinely different credentials, so the current pattern becomes the right one anyway.
+(The legacy raw-MySQL path still has a per-user IP whitelist requirement. See [`docs/auth-setup.md`](./auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup) if you're explicitly on that path.)
 
-### My password contains characters that look like a shell command — does that matter?
+### What if my session expires?
 
-No. The auth flow uses a `--password-file` mechanism that reads the password from disk via Node's `fs.readFile` — no shell interpolation, no chat-history exposure. Characters like `!`, `$`, `&`, `|`, quotes, etc. work fine. Just save the password to a text file and pass the path to `auth setup`.
+Access tokens refresh automatically (~60s before expiry). If the refresh token expires (>30d since last sign-in) or is revoked, you'll see "Your session expired. Run `mixshift auth login`." in chat or terminal. Just re-run sign-in — same flow, ~30 seconds.
 
-### My IP isn't whitelisted. What do I do?
+### What if I rotate my MixShift password?
 
-Run `mixshift auth setup --request-whitelist` (or say "request IP whitelist" in chat). The harness emits a telemetry event with your email + public IP that MixShift ops sees in real time. An operator grants access manually, typically within a few hours during business hours. You'll get an email when access is live.
-
-IP whitelists are per-public-IP, not per-MixShift-org. Each user goes through this the first time they auth from a new network. (Same applies if you move office, switch ISP, or roam to a coffee shop.)
-
-### What if I rotate my password or move to a different host?
-
-Re-run `mixshift auth setup`. It overwrites `~/.mixshift/auth/credentials` with the new values. Same command, same flow.
+Nothing happens to your existing token until it expires. New sign-ins use the new password. If you want to invalidate the existing session immediately, you can re-run sign-in (which overwrites the local token pair).
 
 ### Are my credentials sent anywhere?
 
-No. They live on your local machine at `~/.mixshift/auth/credentials` with `0600` permissions. The harness reads them locally to connect to the warehouse. The IP whitelist webhook sends your email + public IP (no password), and `mixshift feedback` sends whatever message you ask it to send — nothing else phones home.
+Your **MixShift password** is entered on the sign-in page in your browser. It never touches the plugin, Claude, your shell history, or any harness command.
+
+Your **tokens** (access + refresh) live on your local machine at `~/.mixshift/auth/credentials` with `0600` permissions. They're sent only as Bearer credentials to `https://mcp.mixshift.io/api/query` and the auth-refresh endpoints when needed — nowhere else.
+
+`mixshift feedback` sends whatever message you ask it to send. The telemetry firehose (during beta) sends anonymized usage events ([details](./privacy.md)).
 
 ---
 
@@ -170,12 +170,14 @@ Depends on the source. Ad metrics typically update daily (T-1 freshness). Seller
 
 ### Are the analytical skills (daily-health-check, runaway-spend-check, etc.) available?
 
-Present in the codebase but **not yet enabled for general customer use** as of plugin version `0.3.0`. We're vetting each skill end-to-end with real brand contexts before opening them broadly. The launch surface today is:
+Present in the codebase but **not yet enabled for general customer use** during pre-beta. We're vetting each skill end-to-end with real brand contexts before opening them broadly. The launch surface today is:
 
 - `welcome` — first-run orientation
-- `auth-setup` — credentials flow
+- `auth-login` — browser-based sign-in
 - `data-explore` — ad-hoc query / sample / export
 - `brand discover` + `brand add` — brand onboarding plumbing
+- `feedback` — send feedback / bug reports / feature requests
+- `competitive-analysis` — research-driven SWOT (web-based, no warehouse data required)
 
 The analytical skills will be opened in subsequent releases as each one is validated. Watch the changelog / release notes.
 
@@ -227,11 +229,11 @@ Each brand shows its SellerIDs, account types (SC/VC), and marketplaces.
 
 Two options, both work:
 
-**Option A — Cowork organization install + pre-bundled credentials.**
-You (admin) publish the plugin once to your Cowork org marketplace. You pre-bundle credentials to two files (`creds.yaml` + `pw.txt`) and share via your team's secrets manager. Each user downloads the files and runs one command to auth. Best UX for teams. See [Cowork organization install](./install/cowork-organization.md).
+**Option A — Cowork organization install.**
+You (admin) publish the plugin once to your Cowork org marketplace, optionally marking it as required so it auto-installs for every seat. Each user signs in with their own MixShift account when they first use the plugin (~30 seconds in chat). No credential distribution. Best UX for teams. See [Cowork organization install](./install/cowork-organization.md).
 
 **Option B — Each user installs individually.**
-Each teammate installs via [Cowork personal install](./install/cowork-personal.md) and goes through auth setup with the org-shared credentials. Five identical setups. Works but adds friction.
+Each teammate installs via [Cowork personal install](./install/cowork-personal.md) and signs in with their own MixShift account. Same end state as Option A; just no admin involvement.
 
 ### Can two users on the same machine both use the plugin?
 
@@ -239,18 +241,18 @@ Yes. The plugin state lives at `~/.mixshift/` which is per-OS-user. If two users
 
 ### What if I work for an agency with multiple MixShift customers?
 
-The MySQL login is per-MixShift-org, so each customer has its own login. Today, you'd need to swap credentials when switching customers (re-run `mixshift auth setup` with the other org's values). Not ideal — we're tracking this as a feature request for v0.4+.
+The MixShift account-tenant binding is per-customer-org, so each customer has its own tenant. Today, you'd swap sessions when switching customers — sign in with the other tenant's MixShift account (re-run `mixshift auth login --person-label ...` with the MixShift account that belongs to that customer's tenant). Not ideal — we're tracking this as a feature request for a future release.
 
 Workaround: use `--data-dir` to maintain separate workspaces:
 
 ```bash
-mixshift --data-dir ~/.mixshift-customer-a auth setup
-mixshift --data-dir ~/.mixshift-customer-b auth setup
+mixshift --data-dir ~/.mixshift-customer-a auth login --person-label you@example.com
+mixshift --data-dir ~/.mixshift-customer-b auth login --person-label you@example.com
 # Then for queries:
 mixshift --data-dir ~/.mixshift-customer-a data list-tables
 ```
 
-In chat, this doesn't help (Claude doesn't know which workspace to pick) — for chat-based workflows, swap credentials when you switch customers.
+In chat, this doesn't help (Claude doesn't know which workspace to pick) — for chat-based workflows, swap sessions when you switch customers.
 
 ---
 
@@ -263,13 +265,13 @@ Cowork / Claude Code didn't auto-PATH the plugin's `bin/` directory. Workarounds
 - Invoke via absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js <command>`
 - File a Cowork support ticket if the auto-PATH behavior is broken — it's documented to work.
 
-### "User force closed the prompt" during auth setup
+### Browser didn't open during sign-in
 
-Cowork / Claude Code's Bash tool doesn't pass an interactive TTY. The chat-orchestrated `--from-file` + `--password-file` flow is the right path. If Claude is trying to run `mixshift auth setup` without those flags, say "use the password file flow" to push it onto the chat-orchestrated path.
+PKCE tries to open your default browser via the OS-native handler. If that fails (rare — headless environment, container, SSH session), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat or that you see in the terminal. Open that URL on any device with a browser. To force device-code up front: `mixshift auth login --mode device --person-label you@yourcompany.com`.
 
-### Connection test hangs forever
+### "Your session expired" or "no datahub credentials"
 
-IP whitelist hasn't been granted yet. Run `mixshift auth setup --request-whitelist` to send the request. You'll get an email when access is live.
+Your refresh token expired (>30d since last sign-in) or was revoked. Just re-run sign-in: say "sign in to mixshift" in chat, or `mixshift auth login --person-label you@yourcompany.com` in a terminal. Same flow, ~30 seconds.
 
 ### Query returns 0 rows but I know the data is there
 

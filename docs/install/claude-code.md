@@ -40,52 +40,35 @@ Confirm:
 /plugin
 ```
 
-Should list `mixshift-ai` with version `0.3.0` (or newer).
+Should list `mixshift-ai` with the latest version.
 
-## Step 3 — First run
+## Step 3 — Sign in
 
 In Claude Code chat, say:
 
 - "welcome"
-- "how do I get started"
+- "sign in to mixshift"
 
-Claude runs the welcome skill via the Bash tool. You'll see the credential URL, master password, and the three-step quickstart.
+Claude walks you through sign-in inline:
 
-## Step 4 — Get warehouse credentials
+1. Asks for your work email (used to attribute your session — same email you use to log into MixShift is fine).
+2. Opens a browser tab at the MixShift sign-in page (`https://mcp.mixshift.io/login`).
+3. You sign in with your MixShift account — same email + password you use for MixShift.
+4. You say "done" in chat, and Claude confirms.
 
-Same as the Cowork flow:
-
-1. Open the credential-retrieval URL printed by `mixshift welcome` (default `https://www.mydashapplications.com/database-admin`).
-2. Enter the master password (also printed by welcome).
-3. Copy HostName, Port, Username, Schema, Password.
-
-## Step 5 — Run auth setup
-
-Two options in Claude Code:
-
-### Option A — Chat-orchestrated (same as Cowork)
-
-Say "set up my credentials". Claude walks you through the values. Your password goes through a temp file (Claude asks you to save it locally and provide the path) — the harness reads it with `--password-file` and never echoes it.
-
-### Option B — Direct terminal command (Claude Code only)
-
-If you're already in a terminal, you can skip the chat orchestration and just run:
+Alternatively, run directly from a terminal:
 
 ```bash
-mixshift auth setup
+mixshift auth login --person-label you@yourcompany.com
 ```
 
-Claude Code's Bash tool doesn't pass a TTY, but if you run the command in **your own terminal** (not through Claude), you'll get interactive prompts for each field. The password prompt masks input with `*`.
+This opens your default browser via PKCE and waits for the callback. If your environment can't open a browser, the harness auto-falls-back to a device-code flow and prints a URL you can open elsewhere.
 
-If you want to avoid prompts entirely:
+That's it. Tokens land at `~/.mixshift/auth/credentials` (24h access / 30d refresh). No raw database passwords on disk, no IP whitelist setup — MixShift's auth service holds the single static egress IP that talks to the warehouse server-side.
 
-```bash
-mixshift auth setup --from-file creds.yaml --password-file pw.txt --request-whitelist
-```
+Full details: [`docs/auth-setup.md`](../auth-setup.md).
 
-(See [auth setup deep dive](../auth-setup.md) for the YAML schema and the `--password-file` mechanics.)
-
-## Step 6 — Verify
+## Step 4 — Verify
 
 ```bash
 mixshift welcome
@@ -123,7 +106,7 @@ Or to update all installed plugins:
 /plugin update --all
 ```
 
-Auth credentials carry over across plugin updates.
+Tokens carry over across plugin updates.
 
 ---
 
@@ -135,16 +118,13 @@ Confirm the GitHub repo is reachable from your machine: `curl -sI https://github
 **"command not found: mixshift" after install.**
 Claude Code should auto-add the plugin's `bin/` directory to the Bash tool's PATH. If it doesn't, you have two workarounds:
 - Run via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`
-- Add the bin path to your shell's PATH manually: `export PATH="$HOME/.claude/plugins/mxshift-ai/bin:$PATH"` (exact path may vary)
+- Add the bin path to your shell's PATH manually: `export PATH="$HOME/.claude/plugins/mixshift-ai/bin:$PATH"` (exact path may vary)
 
-**Connection test hangs during auth setup.**
-Your IP isn't on the MixShift warehouse allowlist. The harness should ask permission to send a whitelist request; if you skipped that prompt, re-run with `--request-whitelist`:
-```bash
-mixshift auth setup --request-whitelist
-```
+**Browser didn't open during sign-in.**
+PKCE tries to open your default browser via the OS-native handler. On Linux without a display environment (headless server, container, SSH session), the open call fails. The harness detects this and falls back to device-code, printing a URL you can open on any machine with a browser. To force the device-code flow up front: `mixshift auth login --mode device --person-label you@yourcompany.com`.
 
-**"User force closed the prompt".**
-You're hitting the non-TTY detection. Either run `mixshift auth setup` in your own terminal (not through Claude Code's Bash tool) OR use the chat-orchestrated `--from-file` flow.
+**"Your session expired."**
+Refresh token expired (>30d) or was revoked. Run `mixshift auth login` (or "sign in to mixshift" in chat) to get a fresh pair.
 
 ---
 

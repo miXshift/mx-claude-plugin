@@ -13,11 +13,11 @@ This path has two distinct steps that happen at different times:
 | Step | Who does it | When | What it accomplishes |
 |---|---|---|---|
 | **Part 1: Publish the plugin** | Org admin (you) | Once | Plugin code becomes available to every seat in your Cowork org |
-| **Part 2: Auth setup** | Every user, individually | After Part 1, before first use | Each user writes their own `~/.mixshift/auth/credentials` |
+| **Part 2: Sign-in** | Every user, individually | After Part 1, before first use | Each user signs in with their MixShift account; tokens write to `~/.mixshift/auth/credentials` |
 
 Part 1 is org-wide. Part 2 is per-user. Both are required.
 
-A note on credentials: today, MixShift's legacy system uses **a single MySQL login per customer organization** — no row-level permissions, no per-user data scoping. That means every user at your MixShift org sees the same merchants. The credentials values are identical for everyone; the per-user step (Part 2) is just because Cowork doesn't share filesystem state between users. Per-user roles + scoped data access are coming in MixShift 2.0.
+A note on data access: today, MixShift's legacy system uses **a single MySQL backing login per customer organization** — no row-level permissions, no per-user data scoping. That means every user at your MixShift org sees the same merchants once they sign in. Per-user roles + scoped data access are coming in MixShift 2.0. The per-user sign-in step (Part 2) is just because Cowork doesn't share filesystem state across users, AND because each person signs in with their own MixShift account for attribution purposes (the auth service maps their `person_label` to your tenant's data access).
 
 ---
 
@@ -38,80 +38,32 @@ The repo must be public (it is). Plugin must already be shipped as a valid Cowor
 
 After saving, `mixshift-ai` appears in the **"Your organization"** tab of the Directory modal for everyone in the org. If you marked it required, it auto-installs; otherwise users click Install to add it to their **Organization plugins** sidebar section.
 
-## Part 2 — Tell your team to run auth setup
+## Part 2 — Each team member signs in
 
-This is where the single-login-per-org model gets relevant. Two flows your team can use:
-
-### Option A — Each user enters credentials individually (default)
-
-Each user at your org:
+Sign-in is per-user but trivial. Each person at your org:
 
 1. Opens any Cowork chat.
-2. Says "set up my credentials" or "run auth setup".
-3. Claude walks them through the values: HostName, Port, Username, Schema, Password.
-4. Password goes through a temporary file (Claude asks the user to save it locally and give the path).
-5. Harness writes `~/.mixshift/auth/credentials` on the user's machine.
+2. Says "welcome" or "sign in to mixshift".
+3. Claude asks for their work email (used to attribute their session — same email they use to log into MixShift is fine).
+4. Claude opens a browser tab at the MixShift sign-in page.
+5. They sign in with their MixShift account — same email + password they use for MixShift.
+6. They return to chat, say "done", and Claude confirms.
 
-The values your team members enter are **identical across the team** because there's only one MySQL login per MixShift customer org. You'll need to share the values with them via your normal internal channels (1Password, Slack DM, internal wiki, etc.).
+That's it. The plugin stores a short-lived token at `~/.mixshift/auth/credentials` on each person's machine. No shared credentials to distribute, no password files, no IP whitelist coordination.
 
-### Option B — Pre-bundle the credentials and let users install in one shot (recommended for >3 users)
-
-Better UX for teams. As the admin, you produce two files once and share them with the team:
-
-**Step B.1 — Get your warehouse credentials (admin does this once)**
-
-1. Open the credentials retrieval URL (default `https://www.mydashapplications.com/database-admin`; `mixshift welcome` prints the right URL for your tenant).
-2. Enter the master password (also from `mixshift welcome`).
-3. Copy HostName, Port, Username, Schema, Password.
-
-**Step B.2 — Create a values file**
-
-Save this as `mixshift-creds.yaml` (substitute your real values):
-
-```yaml
-email: REPLACE@WITHUSER  # each user replaces this with their email
-mysql:
-  host: db.mydashapplications.studio   # from credentials page
-  port: 3306
-  user: yourmixshiftuser                # from credentials page
-  database: yourmixshiftschema          # from credentials page
-  password: ""                           # leave empty; password comes from --password-file
-```
-
-**Step B.3 — Create a password file**
-
-Save the MySQL password to a separate file `mixshift-password.txt`. Just the password, nothing else, no quotes, no trailing newline.
-
-**Step B.4 — Share both files with your team**
-
-Use whatever your team uses for shared secrets — 1Password vault, Vanta, Doppler, encrypted Slack post, etc. Treat the password file like any other production credential.
-
-**Step B.5 — Each team member runs (one command, from a terminal)**
-
-```bash
-mixshift auth setup \
-  --from-file ~/Downloads/mixshift-creds.yaml \
-  --password-file ~/Downloads/mixshift-password.txt \
-  --request-whitelist
-```
-
-Each user replaces `email:` in their copy of the YAML with their actual email (so MixShift ops knows who's asking for IP whitelist if that's needed).
-
-Or, in chat: "run auth setup using the files at `<paths>`" — Claude will invoke the harness with the right flags.
-
-After auth setup, each user has their own `~/.mixshift/auth/credentials` on their machine. The plugin is fully usable.
+**Compared to the legacy path:** the old `mixshift auth setup` flow required the admin to fetch shared MySQL credentials from MixShift's portal, distribute them via a secrets manager, and have each user run a `--from-file` + `--password-file` command. That pattern is still supported in the harness (see [`auth-setup.md`](../auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup)) but no longer the recommended path — token-based sign-in is faster for end users and removes the credential-distribution overhead.
 
 ---
 
 ## Verify the rollout
 
-Once you've published in Part 1 and at least one teammate has run auth setup in Part 2:
+Once you've published in Part 1 and at least one teammate has signed in in Part 2:
 
 1. Ask the teammate to say "welcome" in Cowork chat — should show the "already set up" view.
-2. Ask them to say "what brands do I have access to" — should return your full brand list (because legacy single-login = full org visibility).
+2. Ask them to say "what brands do I have access to" — should return your full brand list (because the legacy single-login backing model = full org visibility once authenticated).
 3. Ask them to say "explore my data" or "show me a sample of campaignmetric for seller X" — should return rows.
 
-If the welcome shows the first-time view instead of the already-set-up view, the credentials file wasn't written — investigate the auth setup step on that user's machine.
+If the welcome shows the first-time view instead of the already-set-up view, the sign-in didn't complete — have them re-run "sign in to mixshift".
 
 ---
 
@@ -119,7 +71,7 @@ If the welcome shows the first-time view instead of the already-set-up view, the
 
 Plugin updates are published from your org's plugin admin page (the same place you published in Part 1). Cowork will prompt users to update, or auto-update if you marked the plugin as required + auto-update.
 
-When MixShift ships a new plugin version (e.g. 0.3.1 → 0.4.0), point your org's plugin entry at the same GitHub source — Cowork pulls the latest tag/release. Auth credentials carry over; no re-auth needed unless the harness version explicitly bumps the credentials schema (rare).
+When MixShift ships a new plugin version, point your org's plugin entry at the same GitHub source — Cowork pulls the latest tag/release. Tokens carry over across plugin updates; no re-auth needed unless the harness version explicitly bumps the credentials schema (rare).
 
 ---
 
@@ -134,11 +86,11 @@ Confirm the repo is public (it must be for the GitHub source type). Check the pu
 **Plugin installs but `mixshift welcome` returns "command not found".**
 Cowork didn't PATH-register the plugin's `bin/` directory for that user's seat. File a Cowork support ticket — this is the documented behavior. Workaround: invoke the harness via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
 
-**One user's auth setup fails with "IP not whitelisted".**
-That user's public IP isn't on the warehouse allowlist yet. The harness emits a telemetry event with the email + IP that MixShift ops sees in real time; an operator grants access (usually hours). Each user goes through this separately the first time they auth — IP whitelists are per-IP, not per-MixShift-org.
+**One user's sign-in browser tab won't open / sign-in stalls.**
+The PKCE flow tries to open the user's default browser via the OS-native handler. If that fails (rare — headless WSL, container, etc.), the harness auto-falls-back to a device-code flow and prints a URL. Claude surfaces it in chat — the user can open it on any device with a browser.
 
-**My team is asking why they each have to enter the same credentials.**
-Today, that's MixShift legacy's single-login-per-org reality. Option B above (the `--from-file` bundle approach) makes this a one-command operation per user. MixShift 2.0 will move to per-user logins with role-based data scoping.
+**My team is asking whether they all see the same data.**
+Yes. MixShift's legacy backing model is a single MySQL login per customer org, so once authenticated every team member sees the full merchant set. Per-user roles + scoped data access are coming in MixShift 2.0. The chat-driven sign-in still has each user enter their own work email (`person_label`) so MixShift admin tooling can see WHO ran what session — that's attribution, not authorization.
 
 ---
 
@@ -148,7 +100,7 @@ During the beta, the plugin sends anonymized usage events to MixShift so we can 
 
 ## What's next
 
-- [Auth setup deep dive](../auth-setup.md) — full reference for the credentials flow including the `--from-file` + `--password-file` mechanism
+- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in + the legacy raw-MySQL path
 - [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions, including multi-user / team scenarios
 - [Cowork personal install](./cowork-personal.md) — what your team would do if you weren't using the org marketplace

@@ -15,13 +15,14 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Plugin version
 - Which install path you used (Cowork personal / Cowork org / Claude Code / CLI direct)
 - Operating system family + Node version
-- The email you provided to `mixshift auth setup` — links anonymous installs to MixShift accounts so we can see "X customer orgs are using the plugin"
+- The work email (`person_label`) you provided during sign-in — links anonymous installs to MixShift accounts so we can see "X customer orgs are using the plugin"
 
 **Onboarding funnel:**
 - Welcome viewed
-- Auth setup started / completed / failed (with the failure class, not the credentials)
-- IP whitelist request submitted
+- Sign-in started / completed / failed (with the failure class, not the credentials or tokens)
+- Token refresh failures (when the auth service rejects a refresh attempt — used to spot stale-session friction)
 - Brand discovery / brand add events
+- (Legacy raw-MySQL path only): IP whitelist request submitted
 
 **Usage events:**
 - Skills invoked (which skill, when, duration, outcome)
@@ -42,7 +43,8 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 ## What we do NOT collect
 
 - **The contents of your query results.** We log that you ran a query and how many rows it returned; we never see the row data itself. (MixShift already has database-level access to the warehouse, so the query results aren't a privacy boundary either way — but we still don't bother collecting them since they aren't useful for telemetry.)
-- **Your warehouse credentials.** Host, user, password — none of these leave your machine.
+- **Your MixShift password.** It's entered on the sign-in page in your browser, never seen by the plugin or by Claude.
+- **Your auth tokens.** The access + refresh tokens at `~/.mixshift/auth/credentials` stay on your machine. They're sent only as Bearer credentials to the MixShift auth service when querying the warehouse.
 - **Your chat content with Claude.** We don't have access to the conversational stream between you and Claude. Only the trigger phrases that activated our skills (via the skill manifest match) are visible to us.
 - **Brand context.** The files under `~/.mixshift/clients/<brand>/` — your context.yaml, narrative.md, corpora — never leave your machine. They're your IP.
 - **Resolved parameter values for queries.** We log `SELECT * FROM campaignmetric WHERE SellerID = :seller_id`, not `SELECT * FROM campaignmetric WHERE SellerID = 12345`. (The seller IDs themselves are logged as a separate field for cohort analysis, but the SQL text is the template form.)
@@ -61,7 +63,7 @@ This is not a marketing data play. We don't sell it, don't share it with third p
 
 - **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering.
 - **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Data stays inside MixShift infrastructure.
-- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, IP whitelist requests, and table-access requests. These are forwarded server-side from the same Supabase events table — a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
+- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table — a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
 
 ## Retention
 
@@ -93,7 +95,7 @@ When you've opted out, the harness still writes events to its local queue file (
 
 When the plugin exits beta, we'll move from "collection is on by default" to "opt-in only" — meaning a customer affirmatively chooses to share usage data. The privacy disclosure here will be updated at that time.
 
-Beta status is published in the plugin's `version` field. As of `0.3.0`, the plugin is pre-beta; the production-grade release will be tagged at `1.0.0`.
+Beta status is published in the plugin's `version` field. Today the plugin is pre-beta (releases in the `0.5.x` line); the production-grade release will be tagged at `1.0.0`.
 
 ## Questions
 

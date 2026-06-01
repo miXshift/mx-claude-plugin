@@ -67,38 +67,34 @@ We don't currently publish `@mixshift/harness` to the public npm registry, since
 
 ---
 
-## Step — Auth setup
+## Step — Sign in
 
-Same auth flow as the plugin paths, just driven directly via the CLI. Interactive prompts work in your own terminal (the harness detects TTY):
-
-```bash
-mixshift auth setup
-```
-
-You'll be prompted for email, MySQL host, port, user, schema, and password (masked). The harness writes credentials to `~/.mixshift/auth/credentials`.
-
-For scripted / CI use, pass `--from-file` and `--password-file`:
+The recommended path is token-based browser sign-in:
 
 ```bash
-mixshift auth setup \
-  --from-file ~/.mixshift/creds.yaml \
-  --password-file ~/.mixshift/pw.txt \
-  --request-whitelist
+mixshift auth login --person-label you@yourcompany.com
 ```
 
-YAML schema:
+This opens your default browser via PKCE, you sign in with your MixShift account, and tokens write to `~/.mixshift/auth/credentials`. Takes about 30 seconds. No raw database passwords on disk, no IP whitelist setup.
 
-```yaml
-email: you@example.com
-mysql:
-  host: db.mydashapplications.studio
-  port: 3306
-  user: yourmixshiftuser
-  database: yourmixshiftschema
-  password: ""   # leave empty; harness uses --password-file
+If your environment can't open a browser (headless server, container, SSH session), the harness auto-falls-back to a device-code flow and prints a URL you can open elsewhere. To force the device-code mode up front:
+
+```bash
+mixshift auth login --person-label you@yourcompany.com --mode device
 ```
 
-Full details: [`docs/auth-setup.md`](../auth-setup.md).
+For development against a non-prod auth service:
+
+```bash
+mixshift auth login \
+  --person-label dev@example.com \
+  --api-base http://localhost:8080 \
+  --client-id mx-claude-plugin-dev
+```
+
+**Legacy raw-MySQL path (still supported):** If you need direct MySQL credentials (e.g. for tooling outside the plugin, or you're maintaining an existing CI pipeline), the original `mixshift auth setup` flow continues to work — interactive prompts in your own terminal, or `--from-file` + `--password-file` for scripted use. See [`docs/auth-setup.md`](../auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup) for the details.
+
+Full reference: [`docs/auth-setup.md`](../auth-setup.md).
 
 ---
 
@@ -177,7 +173,7 @@ During the beta, the harness sends anonymized usage events to MixShift (skills i
 
 ## What's next
 
-- [Auth setup deep dive](../auth-setup.md) — the full credentials flow, share-with-team patterns, IP whitelist
+- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in + the legacy raw-MySQL path
 - [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions
 - [Repo README](../../README.md) — high-level architecture + license + contributing

@@ -1,123 +1,244 @@
-# Auth setup
+# Authentication
 
-This doc explains what `mixshift auth setup` does, the two ways to drive it (chat-orchestrated vs CLI), how the `--from-file` + `--password-file` mechanism works, and how the IP whitelist flow handles first-time connections.
+This doc covers signing in to the MixShift warehouse from the plugin. The recommended path is the **token-based browser sign-in** (`mixshift auth login`) — no raw database credentials, no IP whitelist setup. The legacy raw-MySQL path (`mixshift auth setup`) is still available for backward compatibility and is documented at the bottom.
 
 The auth flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
 
 ---
 
-## What auth setup does
+## What sign-in does
 
-In one sentence: writes a credentials file at `~/.mixshift/auth/credentials` containing your MySQL connection details, validates that the credentials work, and (if needed) asks MixShift ops to grant your IP access to the warehouse.
+In one sentence: opens your browser, has you sign in with your MixShift account, and stores a short-lived token at `~/.mixshift/auth/credentials` so the plugin can talk to your MixShift warehouse on your behalf.
 
 Concretely:
 
-1. **Collects inputs:** your email + MySQL host / port / username / schema / password.
-2. **Validates the shape:** required fields present, port in range, host reachable.
-3. **Writes profile:** `~/.mixshift/profile.yaml` with your email.
-4. **Writes credentials:** `~/.mixshift/auth/credentials` with the MySQL connection bundle (`host`, `port`, `user`, `database`, `password`).
-5. **Tests the connection:** runs a trivial query against the warehouse to confirm everything works.
-6. **If the connection fails because your IP isn't whitelisted:** optionally posts a webhook to MixShift ops with your email + public IP. An operator grants access manually (usually within hours); you'll get an email when access is live.
+1. **Collects your work email** (`person_label`) — used to attribute your session in MixShift's admin tooling. Same email you use to log into MixShift is fine. Not stored as auth.
+2. **Opens a browser tab** at `https://mcp.mixshift.io/login`.
+3. **You sign in** with your MixShift account (email + password). Your credentials stay between you and the sign-in page — the plugin never sees them.
+4. **The sign-in page returns** a token pair (24h access + 30d refresh) to the plugin's local callback.
+5. **Tokens are written** to `~/.mixshift/auth/credentials` at mode `0600`.
+6. **Profile is updated** — `~/.mixshift/profile.yaml` gets your email so downstream commands (telemetry, feedback) know who you are.
+7. **Brand registry is auto-populated** — `~/.mixshift/clients/index.yaml` is built from the warehouse so every brand you have access to is immediately listable.
 
-After step 4, the plugin has everything it needs. Steps 5–6 are validation; you can skip them with `--skip-connection-test` for CI / scripted use.
-
----
-
-## Where the credentials come from
-
-MixShift issues warehouse credentials via a self-service page on the legacy platform:
-
-- **Default URL:** `https://www.mydashapplications.com/database-admin`
-- **Your tenant's URL:** if your MixShift account is on a tenant-specific subdomain (e.g. `yourcompany.mydashapplications.studio`), use that. The welcome screen prints the right URL for your tenant.
-- **Master password:** prompted when you load the credentials page. It's a value **shared across all MixShift customers** — it's a guard against accidental credential exposure (anyone with the URL but not the password can't see anything), not a per-user secret. `mixshift welcome` prints the master password too.
-
-The credentials page shows five values:
-
-- **HostName** — usually `db.mydashapplications.studio`, sometimes tenant-specific
-- **Username** — typically matches your MixShift tenant slug
-- **Port** — `3306`
-- **Schema** — usually matches Username; the canonical legacy schema is `dashamazon`
-- **Password** — your MySQL password (treat like any other production credential)
-
-You paste these into `mixshift auth setup`.
+After this, every plugin command uses the access token as a Bearer credential against `https://mcp.mixshift.io/api/query`. Expired access tokens auto-refresh in the background. If the refresh token expires or is revoked, you re-run sign-in.
 
 ---
 
-## How to run auth setup
+## How to sign in
 
-### Method 1 — Chat-orchestrated (Cowork + Claude Code, the recommended path)
+### Method 1 — Chat-driven (Cowork + Claude Code, the recommended path)
 
-In any Cowork or Claude Code chat, say:
+In any Cowork or Claude Code chat, say one of:
 
+- "welcome"
+- "sign in to mixshift"
+- "log me in"
 - "set up my credentials"
-- "run auth setup"
-- "configure mixshift"
 
-Claude triggers the `auth-setup` skill, which walks you through each value. For the password, **Claude will ask you to save it to a temp file on disk** instead of pasting it directly into chat — this keeps the password out of your chat transcript / scrollback.
-
-Typical flow:
+The chat-driven path handles sign-in inline: it asks for your work email, opens a browser tab, and confirms when you've finished. Typical flow:
 
 ```
-You:   set up my credentials
-Claude: Walks through email + host + port + username + schema.
-Claude: For the password, save it to a text file (e.g. /tmp/mixshift-pw.txt)
-        and tell me the path.
-You:   /tmp/mixshift-pw.txt
-Claude: Runs `mixshift auth setup --from-file <yaml> --password-file /tmp/mixshift-pw.txt`
-Claude: ✓ Auth setup complete.
+You:    welcome
+Claude: Welcome to the MixShift plugin. You'll need your MixShift
+        account (the same email + password you use to log into
+        MixShift). I'll set up a sign-in link for you in a moment.
+        What's your work email?
+You:    you@yourcompany.com
+Claude: Click this to sign in: https://mcp.mixshift.io/login?device_code=...
+        Use your MixShift login. Tell me when you're done.
+You:    [browser opens, you sign in with MixShift credentials, click confirm]
+You:    done
+Claude: ✓ Signed in as you@yourcompany.com. You have 8 active brands.
+        Try "explore my data" or "show my brands".
 ```
 
-Why the file path indirection? Two reasons:
-1. **Password isn't echoed.** It doesn't appear in chat history, Claude's context, or any logs.
-2. **Cowork / Claude Code Bash tools don't pass a TTY.** Interactive prompts would fail with "User force closed the prompt". The `--from-file` path bypasses prompts entirely.
+The chat-driven path uses the device-code variant of the flow under the hood — fits comfortably within Cowork's per-command time budget.
 
 ### Method 2 — CLI direct (terminal, no Claude)
 
-If you're in your own terminal (a real TTY), interactive prompts work:
+If you're in your own terminal:
+
+```bash
+mixshift auth login --person-label you@yourcompany.com
+```
+
+This opens your default browser via PKCE (Proof Key for Code Exchange), spins up a local callback server, and waits for you to complete sign-in. Returns when the browser callback hits.
+
+If your environment can't open a browser (headless WSL, container, SSH'd shell), the harness auto-falls-back to the device-code flow and prints a URL you can open on any device:
+
+```
+Browser didn't respond; switching to device-code flow.
+Open this URL on any machine: https://mcp.mixshift.io/login?device_code=...
+```
+
+### Method 3 — Scripted / CI
+
+The auto-detection in Method 2 makes most scripted use work without changes. To force a specific mode:
+
+```bash
+mixshift auth login \
+  --person-label you@yourcompany.com \
+  --mode device       # or `pkce`, `auto` (default)
+```
+
+For development against a non-prod auth service:
+
+```bash
+mixshift auth login \
+  --person-label dev@example.com \
+  --api-base http://localhost:8080 \
+  --client-id mx-claude-plugin-dev
+```
+
+---
+
+## File locations + ownership
+
+All auth state lives under `~/.mixshift/` on your local machine:
+
+```
+~/.mixshift/
+├── auth/
+│   └── credentials      # JSON, 0600 permissions — tokens + identity
+├── profile.yaml         # Your email + plugin defaults overrides
+├── clients/             # Per-brand context directories
+├── telemetry/           # Local event queue (when telemetry enabled)
+└── tmp/                 # Scratch space for prefetch artifacts
+```
+
+The `~/.mixshift/` directory is **per-OS-user**. Cowork doesn't share filesystem state across users; same for Claude Code. If two users on the same machine both want to use the plugin, each one's tokens are scoped to their own `~/`.
+
+Inside `auth/credentials` (after a successful login):
+
+```json
+{
+  "schema_version": 2,
+  "created_at": "2026-05-27T17:00:00.000Z",
+  "datahub": {
+    "api_base": "https://mcp.mixshift.io",
+    "access_token": "eyJ... (JWT, 24h TTL)",
+    "refresh_token": "<48-byte base64url, 30d TTL>",
+    "expires_at": "2026-05-28T17:00:00.000Z",
+    "refresh_expires_at": "2026-06-26T17:00:00.000Z",
+    "user_id": "3",
+    "email": "amazon+clients@dashapplications.com",
+    "person_label": "you@yourcompany.com",
+    "device_label": "your-hostname",
+    "client_id": "mx-claude-plugin"
+  }
+}
+```
+
+The plugin holds tokens, not passwords. Your actual MixShift password is entered on the sign-in page in your browser and never touches the plugin or Claude.
+
+---
+
+## Token lifecycle
+
+| Token | Lifetime | What happens at expiry |
+|---|---|---|
+| **Access token** (JWT) | 24h | The plugin auto-refreshes ~60s before expiry. Transparent to you. |
+| **Refresh token** | 30d | When this expires, re-run `mixshift auth login`. Same flow. |
+
+Refresh tokens are **one-time-use** — replaying a rotated refresh token revokes every active session for your user as a defense against token theft. The plugin's refresh logic is gated by a singleton so concurrent requests can't accidentally trigger this.
+
+If you ever see "Your session expired. Run `mixshift auth login`." in chat or terminal, the refresh token expired or was revoked. Re-running sign-in gets you a fresh pair.
+
+---
+
+## Switching accounts
+
+To switch which MixShift account the plugin uses, just re-run sign-in with a different `person_label`:
+
+```bash
+mixshift auth login --person-label different@company.com
+```
+
+In chat: "sign in as different@company.com" or just re-run the welcome.
+
+The new sign-in overwrites the `datahub` block in `~/.mixshift/auth/credentials`. The old session is left dangling on the auth service until its 30d refresh expires (or you explicitly run `mixshift auth logout` if/when we ship that).
+
+---
+
+## What sign-in does NOT need
+
+- **No raw MySQL credentials.** You don't fetch a host, username, port, or password from anywhere. The auth service holds the database connection server-side.
+- **No master password.** That was a guard for the legacy credential-retrieval page; the token flow doesn't use it.
+- **No IP whitelist.** The auth service runs from a single static egress IP that's pre-whitelisted on the warehouse. Your IP is irrelevant.
+- **No password in chat.** Your MixShift password is entered on the browser sign-in page; it never goes through chat or any plugin command.
+- **No file path juggling.** No `--password-file`, no temp YAML, no command-line credentials.
+
+---
+
+## Verifying it works
+
+After sign-in, the plugin auto-runs a test query and displays your brand count. To verify manually:
+
+```bash
+mixshift data run-query "SELECT NOW() AS db_time, USER() AS db_user"
+```
+
+Or in chat: *"show me one row from any table"*.
+
+Either should return a single row of metadata, confirming the warehouse is reachable.
+
+---
+
+## Troubleshooting
+
+**Browser didn't open / nothing happened after I ran `mixshift auth login`.**
+PKCE attempts to open your default browser via the OS's native handler (`xdg-open`, `start`, `open`). If that fails — headless environment, container, SSH session — the harness auto-falls-back to the device-code flow and prints a URL. Open that URL on any device with a browser. If you want to force the fallback up front: `--mode device`.
+
+**Sign-in page shows "session expired" or won't accept my credentials.**
+The auth page session is short. If you opened the link and let it sit for >5 minutes, re-run `mixshift auth login` to get a fresh URL. If your MixShift credentials are wrong, the sign-in page surfaces the failure — same recovery as the MixShift app itself.
+
+**"Your session expired. Run `mixshift auth login`."**
+Your refresh token expired (>30d since last sign-in) or was revoked by the server (e.g. replay protection triggered by a refresh-token race). Run `mixshift auth login` to get a fresh pair.
+
+**The browser callback hangs or times out.**
+PKCE binds an ephemeral port on `127.0.0.1` and waits 10 minutes for the callback. If your firewall blocks localhost callbacks (rare), you'll see a timeout. Switch to `--mode device` to bypass.
+
+**I'm in chat (Cowork / Claude Code) and the sign-in URL never appeared.**
+The chat-driven flow runs `mixshift auth device-init` via Bash to get the URL. If that command failed, you'll see an error in chat. Most common cause: the harness CLI isn't on PATH inside that chat host. Try `mixshift welcome` first to confirm the CLI is reachable.
+
+**Connection works in the terminal but Claude says "no datahub credentials" in chat.**
+The `~/.mixshift/auth/credentials` file is per-OS-user. Cowork's chat backend may run as a different OS user than your terminal. Run `mixshift auth login` from inside the chat host (via Bash tool) so the credentials land in the right `~/.mixshift/`.
+
+---
+
+## Legacy raw-MySQL path (`mixshift auth setup`)
+
+The legacy path uses raw MySQL credentials retrieved from a MixShift portal page, with a per-user IP whitelist on the warehouse. It's still in the harness for backward compatibility and continues to work — but new installs should use `auth login`. The legacy flow is appropriate when:
+
+- You need direct MySQL connection details for tooling outside the plugin (e.g. MySQL Workbench, a custom BI tool).
+- Your environment can't reach `mcp.mixshift.io` for some reason.
+- You're explicitly maintaining a CI pipeline that already has the raw-MySQL setup wired.
+
+For everything else, use `auth login`.
+
+### How the legacy path works
+
+Same end state — credentials at `~/.mixshift/auth/credentials` — but with different contents (a `mysql` block instead of a `datahub` block), and a per-user IP whitelist step.
+
+Run in a terminal:
 
 ```bash
 mixshift auth setup
 ```
 
-The harness prompts for each field. Password input is masked with `*`.
+Interactive TTY prompts walk you through:
+- **Email** (for telemetry + IP whitelist requests)
+- **HostName, Username, Port, Schema, Password** — fetched from `https://www.mydashapplications.com/database-admin` after entering the shared "master password" prompted there.
 
-### Method 3 — Fully scripted (CI / automation / shared rollout)
+If your IP isn't whitelisted yet, pass `--request-whitelist` to auto-fire a webhook to MixShift ops, who'll grant access manually (typically within a few hours).
 
-Same `--from-file` + `--password-file` flow that the chat-orchestrated path uses internally:
+For non-interactive / scripted use, see `mixshift auth setup --from-file <yaml> --password-file <path>` — same mechanism the (now-retired) chat-orchestrated path used. The legacy CLI command remains available; the chat surface no longer drives it.
 
-```bash
-mixshift auth setup \
-  --from-file creds.yaml \
-  --password-file pw.txt \
-  --request-whitelist
-```
+### Pre-bundling credentials for a team (legacy path)
 
-YAML schema:
+For team-wide deployments of the legacy path (multi-user agency / org with shared MySQL creds), the admin can pre-bundle:
 
-```yaml
-email: you@example.com
-mysql:
-  host: db.mydashapplications.studio
-  port: 3306
-  user: yourmixshiftuser
-  database: yourmixshiftschema
-  password: ""   # leave empty; harness uses --password-file
-```
-
-The password file is just the password text — no quotes, no labels. The harness aggressively normalizes editor-noise: strips UTF-8 BOM, strips all trailing CR/LF (Notepad-on-Windows habitually adds both; we account for that).
-
-`--request-whitelist` makes the harness auto-fire the IP whitelist webhook if the connection test fails. Without it, the harness asks for confirmation first; with it, no prompt needed.
-
----
-
-## Pre-bundling credentials for a team
-
-This is the "share with my team" pattern useful for [Cowork organization installs](./install/cowork-organization.md). Today, MixShift legacy uses **a single MySQL login per customer organization** — every user at your org enters the same values. Without pre-bundling, that's 5 people typing the same 5 values; with pre-bundling, it's one command per user.
-
-**Admin side (do once):**
-
-1. Get credentials from the MixShift portal.
-2. Save them to `mixshift-creds.yaml` (substitute real values):
+1. Save credentials to `mixshift-creds.yaml`:
 
    ```yaml
    email: REPLACE@WITH-YOUR-EMAIL   # each user sets their own
@@ -129,14 +250,9 @@ This is the "share with my team" pattern useful for [Cowork organization install
      password: ""
    ```
 
-3. Save the password to `mixshift-password.txt` (just the password, nothing else).
-4. Share both files via your team's secrets manager (1Password, Doppler, encrypted Slack, etc.). Treat the password file like any other production credential.
-
-**User side (each teammate):**
-
-1. Download both files locally.
-2. Edit `mixshift-creds.yaml` to substitute their own email at `email:`.
-3. Run:
+2. Save the password to `mixshift-password.txt` (just the password, no quotes / labels).
+3. Share both via your team's secrets manager.
+4. Each user downloads, edits `mixshift-creds.yaml` to set their own `email:`, and runs:
 
    ```bash
    mixshift auth setup \
@@ -145,92 +261,15 @@ This is the "share with my team" pattern useful for [Cowork organization install
      --request-whitelist
    ```
 
-That's it. One command per user. The harness writes `~/.mixshift/auth/credentials` on their machine and tests the connection.
+Each user still goes through their own IP whitelist if their public IP isn't yet on the allowlist.
 
-Each user still goes through their own IP whitelist if their public IP isn't yet on the allowlist. IP whitelists are per-IP, not per-MixShift-org.
-
----
-
-## IP whitelist flow
-
-The MixShift warehouse is firewalled — connections from non-allowlisted IPs are rejected at the network level. First-time users will hit this.
-
-What happens:
-
-1. `mixshift auth setup` writes the credentials, then tests the connection.
-2. If the connection fails with a "host not allowed" error, the harness exits with code `3` (= "credentials saved, waiting on whitelist") and prints a message asking whether to send a whitelist request.
-3. If you say yes (or pass `--request-whitelist` upfront), the harness:
-   - Detects your public IP via `https://api.ipify.org`.
-   - Posts a structured message to MixShift's Discord ops channel via webhook (URL is shipped in the plugin defaults; you can override via env var).
-   - Message includes: your email, your public IP, your MySQL host (so ops knows which warehouse), a timestamp.
-4. A MixShift operator manually grants your IP read access on the warehouse. Typically within a few hours during business hours.
-5. You'll get an email confirmation when access is live.
-6. Re-run any skill — connection should succeed.
-
-If you want to skip the auto-request and email someone manually, pass `--skip-connection-test` to `mixshift auth setup`. Credentials still get saved; you just don't auto-fire the webhook.
-
----
-
-## File locations + ownership
-
-All auth state lives under `~/.mixshift/` on your local machine:
-
-```
-~/.mixshift/
-├── auth/
-│   └── credentials      # YAML, 0600 permissions — read by every harness command
-├── profile.yaml         # Your email + plugin defaults overrides
-├── clients/             # Per-brand context directories (when you onboard brands)
-└── tmp/                 # Scratch space for prefetch artifacts
-```
-
-The `~/.mixshift/` directory is **per-OS-user**. Cowork doesn't share filesystem state across users; same for Claude Code. If two users on the same machine both want to use the plugin, each one's credentials are scoped to their own `~/`.
-
-Permissions:
-- `auth/credentials` is written with `0600` (owner read/write only).
-- The rest of `~/.mixshift/` is whatever your umask gives.
-
----
-
-## Updating credentials
-
-If MixShift rotates your password, or you've moved to a different host/schema, just re-run auth setup:
-
-```bash
-mixshift auth setup
-```
-
-It overwrites `~/.mixshift/auth/credentials` with the new values. No special "update" command needed — same flow as initial setup.
-
-In chat: "update my credentials" or "re-run auth setup".
-
----
-
-## Troubleshooting
-
-**"User force closed the prompt".**
-You're hitting the non-TTY detection. Either run `mixshift auth setup` in your own terminal (not through Claude Code or Cowork's Bash tool), OR use the chat-orchestrated `--from-file` flow.
-
-**"Password file is empty after stripping BOM and trailing newlines".**
-The text file you saved the password to has nothing in it after the harness normalizes editor artifacts. Open the file and confirm there's actual content. Notepad-on-Windows adds a CRLF when you save; the harness strips that, but if you only typed the password with no other content, double-check that the file isn't empty.
-
-**"Connection test failed: ER_ACCESS_DENIED_ERROR".**
-Username or password is wrong. Re-check the values on the credentials page; usernames are case-sensitive on some MySQL setups.
-
-**"Connection test failed: Host '...' is not allowed to connect to this MySQL server".**
-IP whitelist. See the IP whitelist flow section above.
-
-**"Connection test timed out".**
-Either the host is unreachable (network issue, VPN required, etc.) or your IP is silently dropped (whitelist + network filter combined). Try `mysql -h <host> -u <user> -p` directly from your terminal to confirm.
-
-**You want to test without writing files.**
-The harness writes `~/.mixshift/auth/credentials` unconditionally during setup — there's no dry-run mode today. Override the data dir with `--data-dir /tmp/test-mixshift` to write somewhere ephemeral.
+This pattern is unnecessary for the recommended `auth login` flow — each user just runs `mixshift auth login` and signs in with their MixShift account.
 
 ---
 
 ## What's next
 
-- [FAQ](./faq.md) — common questions about multi-user, data visibility, troubleshooting
+- [FAQ](./faq.md) — common questions about multi-user setups, troubleshooting
 - [Privacy & telemetry](./privacy.md) — what the plugin collects during beta, how to opt out
 - [Cowork personal install](./install/cowork-personal.md)
 - [Cowork organization install](./install/cowork-organization.md)
