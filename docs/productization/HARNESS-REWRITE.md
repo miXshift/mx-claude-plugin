@@ -4,6 +4,8 @@
 **Scope:** Replace the legacy Python harness (the 13 scripts dropped during the fork) with a Node/TypeScript implementation that works across Cowork, Claude Code, and a future Claude.ai chat path.
 **Out of scope:** Skill prompt changes, SQL changes, brand management UX (covered in BRAND-MANAGEMENT.md).
 
+> **Auth status (shipped 0.5.x):** The token-based sign-in path (sketched below as the "v2 Data Hub" `DataHubTokenProvider`) shipped early and is now the default. `mixshift auth login` runs a browser PKCE / device-code flow against the mx-legacy-auth service and stores access + refresh tokens locally. The raw-MySQL-creds provider is legacy (still reachable via `mixshift auth setup`). The shipped auth code lives in `src/lib/auth/` (`login-flow.ts`, `credentials.ts`, `client-id.ts`, `schema.ts`) as functional modules, which diverged from the `mysql-creds.ts` / `keychain.ts` class sketch in this draft. See `docs/auth-setup.md`.
+
 ---
 
 ## Why rewrite
@@ -76,9 +78,12 @@ plugins/mixshift-ai/
       mcp-server.ts                     ← MCP wrapper (later)
       lib/
         auth/
-          provider.ts                   ← AuthProvider interface
-          mysql-creds.ts                ← plaintext file provider (v1)
-          keychain.ts                   ← optional OS keychain (v2)
+          login-flow.ts                 ← token sign-in: PKCE + device-code [shipped]
+          credentials.ts                ← read/write/refresh tokens, v2 schema [shipped]
+          client-id.ts                  ← surface attribution [shipped]
+          schema.ts                     ← credentials file schema + guards [shipped]
+          mysql-creds.ts                ← legacy raw-MySQL provider
+          keychain.ts                   ← optional OS keychain (opt-in)
         context/
           read.ts                       ← load context.yaml
           write.ts                      ← write + atomic
@@ -177,7 +182,11 @@ mixshift ui                             Local web UI (Claude Code only)
 
 mixshift profile show                   Print ~/.mixshift/profile.yaml
 mixshift profile set <key> <value>      Edit profile fields safely
-mixshift auth setup                     Run user onboarding (MySQL creds, IP whitelist)
+mixshift auth login                     Token sign-in (browser PKCE / device-code) [default]
+  --person-label <email>                  self-attested actor email
+  [--mode <auto|pkce|device>]             default auto: PKCE, device fallback
+  [--api-base <url>] [--client-id <id>]   dev overrides
+mixshift auth setup                     Legacy raw-MySQL onboarding (creds, IP whitelist)
 ```
 
 All commands:
@@ -248,14 +257,15 @@ interface AuthProvider {
   setupInteractive(): Promise<void>; // walk through onboarding
 }
 
-// v1
+// shipped default — token sign-in against mx-legacy-auth
+// (implemented as functional modules in src/lib/auth/, not this exact class)
+class DataHubTokenProvider implements AuthProvider { ... }
+
+// legacy — raw-MySQL creds, still supported via `auth setup`
 class MysqlCredsProvider implements AuthProvider { ... }
 
-// v1 optional
+// optional opt-in
 class OsKeychainProvider implements AuthProvider { ... }
-
-// v2 (Data Hub)
-class DataHubTokenProvider implements AuthProvider { ... }
 ```
 
 Skills never see credentials. They call `auth.getDbConnection()`. Swapping providers is invisible to skills.
@@ -270,11 +280,11 @@ Order is intentional — each builds on the previous and is independently testab
 
 2. **`mixshift profile show` + `mixshift profile set`**. Reads / writes `~/.mixshift/profile.yaml`. First end-to-end file I/O. Tests path resolution + env overrides. ~3 hours.
 
-3. **`mixshift auth setup`**. MySQL creds flow; IP whitelist requests emitted as telemetry events and fanned out to the ops Discord channel server-side. First real onboarding step. ~6 hours.
+3. **`mixshift auth login`** (shipped) **+ legacy `mixshift auth setup`**. Token sign-in is the default onboarding step: browser PKCE / device-code against mx-legacy-auth, tokens stored locally at `~/.mixshift/auth/credentials`. The legacy raw-MySQL `auth setup` flow (creds + IP-whitelist requests emitted as telemetry and fanned to the ops Discord channel server-side) remains for the raw-MySQL path. ~6 hours.
 
 4. **`mixshift validate <brand>`**. Loads `_template/context.yaml` or a real brand context, validates against `_schema/context.schema.yaml`. First skill-relevant function. Test with the template + intentionally broken fixtures. ~4 hours.
 
-5. **`mixshift brand discover`**. Connects to MySQL via the auth provider, queries `seller` table, writes `index.yaml`. First warehouse-touching step. **Sam tests this against dashamazon.** ~5 hours.
+5. **`mixshift brand discover`**. Connects to the warehouse via the auth provider (token path: queries route through mx-legacy-auth's `/api/query`), queries `seller` table, writes `index.yaml`. First warehouse-touching step. **Sam tests this against dashamazon.** ~5 hours.
 
 6. **`mixshift bootstrap` + `mixshift prefetch` for `account-cold-start`**. End-to-end cold-start path. Sam onboards one of his real brands. ~1 day.
 
@@ -306,7 +316,7 @@ Model version is pinned in CI for snapshot stability. Bumping models = re-baseli
 
 1. **Single repo or workspace?** Should the harness be its own workspace inside the plugin (`harness/package.json` with own `node_modules`), or just a folder of TypeScript that the plugin runtime transpiles on demand? Workspace is cleaner; on-demand is lighter. Lean workspace.
 2. **Compile step for plugin distribution?** Do we ship compiled JS, or expect the plugin runtime to transpile TS at install? Affects user install time vs CI complexity. Lean compile in CI, ship JS.
-3. **MySQL client.** `mysql2` is the standard. Any reason to prefer the existing `mysql-mcp-server` shim (call MCP instead of speaking MySQL directly)? Probably yes for v1 — reuses the existing MCP config and surfaces queries through the same audit channel. Decision: route through MCP.
+3. **MySQL client.** `mysql2` is the standard. Any reason to prefer the existing `mysql-mcp-server` shim (call MCP instead of speaking MySQL directly)? Probably yes for v1 — reuses the existing MCP config and surfaces queries through the same audit channel. Decision: route through MCP. **(Resolved by the token path: queries now route through mx-legacy-auth's `/api/query` over HTTPS with a Bearer token; the harness no longer opens a direct `mysql2` socket on the token path.)**
 4. **Where does `mixshift` get installed?** Likely as a `bin` entry in the harness package, made available via the plugin's runtime path resolution. Need to test in both Claude Code and Cowork.
 5. **Backward compat with legacy SKILL.md `python scripts/X.py` invocations.** Every SKILL.md needs updating to call `mixshift X ...` instead. One coordinated commit once the CLI surface is settled. Track which skills are updated in this doc as we go.
 

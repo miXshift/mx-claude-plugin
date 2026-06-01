@@ -20,9 +20,11 @@ Today the plugin assumes a single internal operator running skills against a fix
 
 ## The two onboarding events
 
+> **Auth status (shipped 0.5.x):** User onboarding is now token-based browser sign-in against the mx-legacy-auth service (`mixshift auth login`). The raw-MySQL-creds + per-user IP-whitelist flow described in early drafts of this doc is legacy: still supported via `mixshift auth setup`, but no longer the default. See `docs/auth-setup.md`.
+
 | Event | Frequency | What gets configured |
 |---|---|---|
-| **User onboarding** | Once per install | MySQL creds, IP whitelist, output adapters, Flask UI password, telemetry consent. Lives in `~/.mixshift/profile.yaml` and `~/.mixshift/auth/`. |
+| **User onboarding** | Once per install | MixShift account sign-in (browser PKCE / device-code, yielding access + refresh tokens), output adapters, Flask UI password, telemetry consent. Lives in `~/.mixshift/profile.yaml` and `~/.mixshift/auth/`. |
 | **Brand onboarding (cold-start)** | Once per brand, repeated for each new client added | Account type, ACOS/TACOS targets, posture, sub-brand structure, naming patterns, capture rate calibration. Lives in `~/.mixshift/clients/<brand-slug>/context.yaml`. |
 
 User onboarding is a one-shot. Brand onboarding runs 1-to-N times depending on portfolio size.
@@ -35,8 +37,9 @@ User onboarding is a one-shot. Brand onboarding runs 1-to-N times depending on p
 ~/.mixshift/                            # MIXSHIFT_DATA_DIR override available
   profile.yaml                          # user-level config
   auth/
-    credentials.enc                     # encrypted DB creds (today) /
-                                        # bearer token (Data Hub later)
+    credentials                         # token sign-in: access + refresh tokens
+                                        # (mode 0600). Legacy raw-MySQL creds, when
+                                        # used, live in this file's mysql block.
   clients/
     index.yaml                          # portfolio overview, see schema below
     example-brand/
@@ -69,7 +72,7 @@ User onboarding is a one-shot. Brand onboarding runs 1-to-N times depending on p
 
 ## Brand discovery: pull from `seller` table
 
-The user does **not** manually enter brand slugs or seller IDs. After MySQL onboarding succeeds, the plugin queries the warehouse:
+The user does **not** manually enter brand slugs or seller IDs. After sign-in succeeds, the plugin queries the warehouse:
 
 ```sql
 SELECT
@@ -402,8 +405,10 @@ Additional event types:
 
 ```
 plugin.installed                  ← first run, OS, plugin version
-auth.mysql.attempted/succeeded/failed
-auth.ip_whitelist.requested/granted
+auth.signin.started/succeeded/failed     ← token browser sign-in (default path)
+auth.token.refresh_failed                ← stale-session friction
+auth.mysql.attempted/succeeded/failed    ← legacy raw-MySQL path only
+auth.ip_whitelist.requested/granted      ← legacy raw-MySQL path only
 brand.discovered                  ← list of available brands from seller table
 brand.activated/archived/renamed/split/merged
 brand.cold_start.started/step_completed/abandoned/completed
@@ -568,7 +573,7 @@ The plugin's read path should already abstract storage behind an interface (`Bra
 
 - **Harness language**: Node/TypeScript. No Python required for default install. Specific skills may declare Python dep via `uv` if they need real statistical work; most won't.
 - **Slug mutability**: slugs are user-facing labels, fully mutable. `SellerID` is canonical identity. Rename/split/merge are first-class operations.
-- **Credentials at rest**: plaintext file at 0600 (or Windows ACL equivalent) is the v1 default. Trust boundary = user's home directory; IP whitelist is the second factor. OS keychain available as opt-in via `profile.yaml: { credential_store: keychain }` for users who want it.
+- **Credentials at rest**: token sign-in stores access + refresh tokens in a plaintext file at 0600 (or Windows ACL equivalent) at `~/.mixshift/auth/credentials`. Trust boundary = user's home directory; the short-lived (24h) access token plus server-side refresh-replay revocation replaces the legacy per-user IP whitelist as the second factor, and the raw DB password never lands on disk. OS keychain remains available as opt-in via `profile.yaml: { credential_store: keychain }`. Legacy raw-MySQL creds, when that path is used, live in the same file's `mysql` block.
 - **Multi-account brands**: one brand folder can hold N entries in `accounts[]` (SC + VC, multiple marketplaces). User can split into separate brands if they want separate operational treatment.
 - **Telemetry posture**: aggressive in beta — plaintext brand slugs, full payloads, friction signals, recommendation reactions, manual edit deltas. Existing user agreements cover this. Promoted to GA with narrower defaults once we know what we actually use.
 - **Skill shaping**: overlay (`skill_config` in context.yaml) for v1. Skill forking via `~/.mixshift/skills/custom/` is the v1.5+ escape hatch when overlay is insufficient.
