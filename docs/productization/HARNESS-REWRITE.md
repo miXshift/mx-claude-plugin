@@ -286,7 +286,7 @@ Order is intentional — each builds on the previous and is independently testab
 
 5. **`mixshift brand discover`**. Connects to the warehouse via the auth provider (token path: queries route through mx-legacy-auth's `/api/query`), queries `seller` table, writes `index.yaml`. First warehouse-touching step. **Sam tests this against dashamazon.** ~5 hours.
 
-6. **`mixshift bootstrap` + `mixshift prefetch` for `account-cold-start`**. End-to-end cold-start path. Sam onboards one of his real brands. ~1 day.
+6. **`mixshift bootstrap` + `mixshift prefetch` for `mx-account-cold-start`**. End-to-end cold-start path. Sam onboards one of his real brands. ~1 day.
 
 7. **`mixshift render` with the `local-html` and `inline-markdown` adapters**. Plumbs structured sidecar → HTML/markdown output. Replaces the old "skill writes HTML" pattern. ~1 day.
 
@@ -294,7 +294,7 @@ Order is intentional — each builds on the previous and is independently testab
 
 9. **`mixshift ui`** — Claude Code only Express+Vite UI. ~2-3 days, deferred until after we have working skill execution.
 
-Milestones 1-6 are the critical path to "Sam runs `account-cold-start` end-to-end against his real warehouse and gets a populated `~/.mixshift/clients/<slug>/` directory." That's the first acceptance gate.
+Milestones 1-6 are the critical path to "Sam runs `mx-account-cold-start` end-to-end against his real warehouse and gets a populated `~/.mixshift/clients/<slug>/` directory." That's the first acceptance gate.
 
 ---
 

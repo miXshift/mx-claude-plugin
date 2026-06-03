@@ -5,7 +5,7 @@ This directory is a **schema-conforming starter** for a brand context. It is NOT
 ## Purpose
 
 1. **Validator reference.** `context.schema.yaml` validators run against this file to confirm the schema itself is self-consistent.
-2. **User-facing example.** A new user can read these files to see what a populated brand context looks like before running `account-cold-start`.
+2. **User-facing example.** A new user can read these files to see what a populated brand context looks like before running `mx-account-cold-start`.
 3. **Skill documentation.** `SKILL.md` files point at `shared/clients/_template/context.yaml` for structural illustration without exposing real customer data.
 
 ## Files
@@ -22,7 +22,7 @@ This directory is a **schema-conforming starter** for a brand context. It is NOT
 1. User onboards (MySQL creds + IP whitelist).
 2. Plugin queries the warehouse `seller` table to list available brands.
 3. User selects which brands to manage.
-4. For each selected brand, plugin runs account-cold-start, which:
+4. For each selected brand, plugin runs mx-account-cold-start, which:
    a. Loads this template
    b. Populates fields from warehouse data (SellerID, account_type, etc.)
    c. Walks the AM through Phase 2 questions for the rest
@@ -37,7 +37,7 @@ When the schema gains a new required or optional field:
 
 1. Update `_schema/context.schema.yaml`
 2. Update this template (`context.yaml`) to include the field with a placeholder
-3. Update `account-cold-start` to populate the new field at run time
+3. Update `mx-account-cold-start` to populate the new field at run time
 4. Document the field in `_schema/context.schema.yaml`'s `note:` blocks
 5. Bump `schema_version` if the change is breaking
 

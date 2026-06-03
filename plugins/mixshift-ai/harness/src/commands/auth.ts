@@ -656,7 +656,7 @@ async function promptInputs(
   // Interactive prompts require a TTY. Claude Code's Bash tool doesn't
   // pass one through, so we'd fail with "User force closed the prompt"
   // a few prompts in. Detect early and give a clear error pointing at
-  // the right path (chat surface should use auth-login skill instead).
+  // the right path (chat surface should use mx-auth-login skill instead).
   if (!process.stdin.isTTY) {
     throw new Error(
       'Interactive prompts require a TTY (a real terminal). It looks like ' +
@@ -664,7 +664,7 @@ async function promptInputs(
         'Claude Code Bash tool.\n\n' +
         'Three options:\n' +
         '  1. Recommended: in Claude chat, say "sign in to mixshift" — ' +
-        'the auth-login skill drives the token-based browser flow (no ' +
+        'the mx-auth-login skill drives the token-based browser flow (no ' +
         'TTY prompts needed, no raw MySQL credentials).\n' +
         '  2. Run "mixshift auth login" in your own terminal — same ' +
         'browser flow as the chat skill.\n' +

@@ -1,0 +1,67 @@
+schema_version: 1
+skill_id: mx-data-explore
+display_name: Explore + Export Your Warehouse Data
+version: "0.1.1"
+description: >
+  Conversational data exploration and CSV export over the MixShift
+  warehouse. Read-only. Does not require brand cold-start -- only auth
+  setup and (optionally) brand discovery to find SellerIDs.
+
+# Tier 1 = informational, read-only. No durable production artifacts.
+# Modeled as per_account because the user is exploring data for an account
+# they have warehouse access to; not strictly tied to a specific brand
+# context.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [db_read, file_read, file_write]
+side_effect_policy: artifact_write   # writes CSV exports to ~/.mixshift/output/
+review_required: never
+sql_ids: []   # ad-hoc queries; no library SQL
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift data list-tables
+  - mixshift data describe
+  - mixshift data sample
+  - mixshift data export
+  - mixshift data query
+  - mixshift brand discover
+  - mixshift feedback
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: csv-export
+    type: json_artifact   # CSVs are user-facing exports; closest schema type
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - explore my data
+  - show me my data
+  - what tables can I query
+  - export to CSV
+  - export data
+  - sample data
+  - run a query
+  - query my warehouse
+  - what brands do I have access to
+notes: >
+  Lowest-friction entry point in the plugin. Partners who haven't onboarded
+  specific brands can still use it as long as their MySQL credentials work
+  and they know (or can discover) a SellerID.
+
+  Access errors on specific tables (ER_TABLEACCESS_DENIED_ERROR) classify
+  as exit code 4 and surface a "send access request to MixShift ops" prompt
+  via the feedback webhook.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login` if not,
+      or the legacy `mixshift auth setup` for the raw-MySQL path)
+    - ~/.mixshift/profile.yaml with user.email (created by either sign-in flow)
+  Optional state:
+    - ~/.mixshift/clients/<slug>/context.yaml -- when the user references a brand
+      by slug rather than SellerID.
+
+  CSV exports land at ~/.mixshift/output/<table>-<date>.csv (or a user-specified
+  path).

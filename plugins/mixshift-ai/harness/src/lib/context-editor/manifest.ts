@@ -132,7 +132,7 @@ export const BRAND_CONTEXT_MANIFEST: BrandContextEntry[] = [
       label: 'Monthly sales target',
       prompt: 'Monthly total sales target for {brand_name} (USD)?',
       help:
-        'Used by monthly-performance-report and the portfolio scorecard. ' +
+        'Used by mx-monthly-report and the portfolio scorecard. ' +
         'Total ordered revenue across all marketplaces. Leave empty if ' +
         'this brand operates without a monthly sales goal.',
       type: 'int',

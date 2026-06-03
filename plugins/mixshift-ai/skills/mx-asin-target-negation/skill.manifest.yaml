@@ -1,0 +1,66 @@
+schema_version: 1
+skill_id: mx-asin-target-negation
+display_name: ASIN Target Negation Review
+version: "1.6.0"
+description: >
+  Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
+  and other Product Attribute Targeting paths. Suppresses ASINs already under manual targeting,
+  evaluates PDP and form-factor overlap, joins lifetime performance at location granularity,
+  and separates clean negate candidates from review and watch buckets.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - negation.asin_negation.pre_check_lifetime_orders_threshold absent (HARD GATE)
+  - corpora/conq_asins.csv absent (Layer 1 suppression mask unavailable — surface warning)
+sql_ids:
+  - ANEG-01
+  - ANEG-02
+  - ANEG-03
+  - ANEG-04
+pre_execution:
+  enabled: true
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
+  batch_plan:
+    - round: 1
+      parallel: [ANEG-01, ANEG-02, ANEG-03, ANEG-04]
+      notes: >
+        All 4 queries are independent with fixed params known upfront. ANEG-01 is the
+        Corpus Layer 2 positive-examples pre-check. ANEG-02 is the window PAT pull.
+        ANEG-03 is the manual-target suppression mask. ANEG-04 is the lifetime performance
+        join (UNION of keywordtargetingmetric + targetexpressionsmetric by location).
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - negation.lane_rules
+  - negation.protected_terms
+  - negation.asin_negation.pre_check_lifetime_orders_threshold
+  - sub_brands
+  - campaign_structure.naming_pattern
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - posture.stance
+  - structural_events
+optional_context_fields:
+  - corpora   # manual conquest ASIN lists by item group (corpus layer 1)
+artifacts:
+  - name: mx-asin-target-negation.html
+    type: report_html
+verdict_range: [OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - run asin negation review
+  - asin target negations
+  - pdp overlap review
+  - phase 2 negations
+  - asin exact negations
+notes: >
+  ANEG-04 queries both keywordtargetingmetric and targetexpressionsmetric and UNIONs before
+  aggregating. Manual asinSameAs/asinCategorySameAs CONQ/PROF targets record performance in
+  targetexpressionsmetric only -- querying only keywordtargetingmetric will undercount orders.
+  Location-granular lifetime data is required for negate decisions; account-wide aggregates
+  are context only.

@@ -3,14 +3,14 @@
 #
 # Purpose: when a brand has an established monthly report convention, this
 # file declares the section list, ordering, and variants the brand expects.
-# The monthly-performance-report skill consults this during report-data.json
+# The mx-monthly-report skill consults this during report-data.json
 # assembly to match the brand's house style.
 #
-# Provenance: produced by account-cold-start when the AM uploads a
+# Provenance: produced by mx-account-cold-start when the AM uploads a
 # reference report (Phase 2 sub-step: Reporting Style Intake). Editable by
 # AMs over time as the brand's preferences evolve.
 #
-# When this file is absent, monthly-performance-report uses canonical
+# When this file is absent, mx-monthly-report uses canonical
 # defaults (the section list it would assemble for a generic brand).
 
 schema_version: 1
@@ -120,6 +120,6 @@ shapes:
 # Notes for AMs
 # ---------------------------------------------------------------------------
 # Edit this file directly to refine the brand's reporting style over time.
-# Changes apply on the next monthly-performance-report run. To regenerate
+# Changes apply on the next mx-monthly-report run. To regenerate
 # from a fresh reference report, re-run cold-start with --mode style-refresh
 # (when implemented).

@@ -2,7 +2,7 @@
 
 A Claude plugin for MixShift customers — Amazon advertising + retail data exploration and analytical workflows, built by [MixShift](https://mixshift.ai).
 
-**Status:** Pre-beta. The `data-explore` skill (query / sample / export your MixShift warehouse) is the initial launch surface. Analytical skills (daily health checks, bid management, search-term workflows, etc.) are present in the codebase but staged behind vetting and not yet enabled for general customer use.
+**Status:** Pre-beta. The `mx-data-explore` skill (query / sample / export your MixShift warehouse) is the initial launch surface. Analytical skills (daily health checks, bid management, search-term workflows, etc.) are present in the codebase but staged behind vetting and not yet enabled for general customer use.
 
 ---
 
@@ -46,28 +46,28 @@ The plugin ships **18 skills**. Each is invoked naturally in chat — say what y
 | Skill | What it does |
 |---|---|
 | `welcome` | First-run orientation + your current state + suggested next steps. |
-| `auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
-| `data-explore` | Query, sample, and CSV-export your MixShift warehouse — Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
-| `amazon-report-pull` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Fetches data the warehouse may not hold yet, or a known report for a specific time frame. Read-only. |
+| `mx-auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
+| `mx-data-explore` | Query, sample, and CSV-export your MixShift warehouse — Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
+| `mx-report-pull` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Fetches data the warehouse may not hold yet, or a known report for a specific time frame. Read-only. |
 | `feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
-| `competitive-analysis` | Research-driven SWOT + competitor positioning + pricing-tier maps. Web-based, no warehouse data required. |
-| `account-cold-start` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. |
+| `mx-competitive-analysis` | Research-driven SWOT + competitor positioning + pricing-tier maps. Web-based, no warehouse data required. |
+| `mx-account-cold-start` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. |
 
-### Require brand context (run `account-cold-start <brand>` first)
+### Require brand context (run `mx-account-cold-start <brand>` first)
 
 | Skill | What it does |
 |---|---|
-| `daily-health-check` | Comprehensive daily exception-based account review — spend / ACoS anomalies via percentile-based confidence intervals, broken into campaign-type / objective / item-group cuts. |
-| `runaway-spend-check` | Acute daily keyword-level overspend detection — flags T-1 spikes + zero-conversion runaways. |
-| `keyword-bid-health` | Weekly keyword-level bid review — scale-up candidates with proven conversions, pullback candidates on high-ACoS. |
-| `monthly-performance-report` | MoM / YoY performance report in MixShift's analytical voice, H-Bridge efficiency, item-group highlights, forecast beat/miss, Looking Ahead. |
-| `portfolio-quick-scan` | Multi-brand daily triage. One status card per brand: do I need to log in today? GREEN / YELLOW / RED verdicts. |
-| `search-term-negation` | Search-term irrelevance analysis + surgical negative keywords. |
-| `search-term-harvest` | Promote high-performing auto / broad search terms to explicit keyword targeting. |
-| `search-term-data-pull` | Pure data-extraction layer for search-term analysis (consumed by negation + harvest). |
-| `phrase-negative-discovery` | Phrase-negative candidates from n-gram decomposition of the search-term corpus. |
-| `asin-target-negation` | Phase 2 negation review for ASIN targets matched through auto / category / PAT paths. |
-| `ppc-relevance-check` | Semantic relevance classification for search terms and ASIN targets — separate from threshold logic. |
+| `mx-daily-health-check` | Comprehensive daily exception-based account review — spend / ACoS anomalies via percentile-based confidence intervals, broken into campaign-type / objective / item-group cuts. |
+| `mx-runaway-spend-check` | Acute daily keyword-level overspend detection — flags T-1 spikes + zero-conversion runaways. |
+| `mx-keyword-bid-health` | Weekly keyword-level bid review — scale-up candidates with proven conversions, pullback candidates on high-ACoS. |
+| `mx-monthly-report` | MoM / YoY performance report in MixShift's analytical voice, H-Bridge efficiency, item-group highlights, forecast beat/miss, Looking Ahead. |
+| `mx-portfolio-quick-scan` | Multi-brand daily triage. One status card per brand: do I need to log in today? GREEN / YELLOW / RED verdicts. |
+| `mx-search-term-negation` | Search-term irrelevance analysis + surgical negative keywords. |
+| `mx-search-term-harvest` | Promote high-performing auto / broad search terms to explicit keyword targeting. |
+| `mx-search-term-data-pull` | Pure data-extraction layer for search-term analysis (consumed by negation + harvest). |
+| `mx-phrase-negative-discovery` | Phrase-negative candidates from n-gram decomposition of the search-term corpus. |
+| `mx-asin-target-negation` | Phase 2 negation review for ASIN targets matched through auto / category / PAT paths. |
+| `mx-ppc-relevance-check` | Semantic relevance classification for search terms and ASIN targets — separate from threshold logic. |
 
 ## Requirements
 

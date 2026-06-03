@@ -28,12 +28,12 @@ optional_top_level:
   - delivery
   - open_gaps
   - posture                 # bid-health, runaway-spend, monthly-report consume
-  - paused_campaigns        # search-term-harvest, asin-target-negation
-  - campaign_structure      # search-term-harvest, daily-health-check
-  - attribution_rule        # monthly-performance-report (per-account override)
-  - negation                # phrase-negative-discovery, search-term-negation,
-                            # ppc-relevance-check, asin-target-negation
-  - reporting               # monthly-performance-report (audience, voice flags)
+  - paused_campaigns        # mx-search-term-harvest, mx-asin-target-negation
+  - campaign_structure      # mx-search-term-harvest, mx-daily-health-check
+  - attribution_rule        # mx-monthly-report (per-account override)
+  - negation                # mx-phrase-negative-discovery, mx-search-term-negation,
+                            # mx-ppc-relevance-check, mx-asin-target-negation
+  - reporting               # mx-monthly-report (audience, voice flags)
   - thresholds              # generic numeric knobs not tied to a single skill
   - detected_anomalies      # cold-start v2.3 — advisory findings from automated
                             # enrichment; rewritten on each delta-mode run
@@ -97,7 +97,7 @@ shapes:
       Distinct from typed structural_events[] / brand_terms — those require AM
       confirmation before promotion. detected_anomalies is rewritten on every
       delta-mode run and is treated as transient AI output. Lives in
-      tmp/<brand>-account-cold-start-<date>.enrichment.json (NOT in
+      tmp/<brand>-mx-account-cold-start-<date>.enrichment.json (NOT in
       context.yaml directly), so the AM-curated context.yaml stays clean.
 
       stockout_candidates[]: list of {asin, item_name, started, ended,
@@ -148,8 +148,8 @@ shapes:
     enums:
       stance: [scale, efficiency, defend, clear_bleed]
     note: |
-      Drives bid-adjustment magnitude in keyword-bid-health and
-      runaway-spend-check. multiplier ∈ [0.0, 1.0] — fraction of computed
+      Drives bid-adjustment magnitude in mx-keyword-bid-health and
+      mx-runaway-spend-check. multiplier ∈ [0.0, 1.0] — fraction of computed
       excess-spend bid cut to apply. 1.0 = full cut (clear_bleed),
       0.5 = half (efficiency), 0.2 = light (scale).
 
@@ -158,7 +158,7 @@ shapes:
     note: |
       naming_pattern uses {Token} placeholders, e.g.
       "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}".
-      Skills that parse CampaignName (search-term-harvest, daily-health-check
+      Skills that parse CampaignName (mx-search-term-harvest, mx-daily-health-check
       dimensional tables) must use this pattern, not hardcoded splits.
 
   negation:
@@ -167,10 +167,10 @@ shapes:
     note: |
       protected_terms: list of substrings that must NEVER be exact-negated
       (general anchors like "flask", "bottle", "example-brand"). Used by
-      search-term-negation and phrase-negative-discovery to fail closed.
+      mx-search-term-negation and mx-phrase-negative-discovery to fail closed.
       lane_rules: per-item-group relevant/mismatch term dictionaries; drives
-      BORDERLINE classification in search-term-negation and conflict detection
-      in phrase-negative-discovery. Keyed by item-group slug.
+      BORDERLINE classification in mx-search-term-negation and conflict detection
+      in mx-phrase-negative-discovery. Keyed by item-group slug.
       competitor_brands (cold-start v2.4.6+): source-backed competitor or
       reference brand names/prefixes. Used by the renderer as the Competitive /
       Reference Brand Dictionary, and by enrich-context.py to suppress
@@ -181,6 +181,6 @@ shapes:
   reporting:
     note: |
       audience: {executive | account_manager | analyst} — drives narrative
-      depth and acronym density in monthly-performance-report.
+      depth and acronym density in mx-monthly-report.
       voice_lint: list of regex patterns that fail the pre-publication gate
       (em-dash, hedging adverbs, MoM/YoY label absence on a percentage).

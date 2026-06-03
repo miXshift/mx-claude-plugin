@@ -6,7 +6,7 @@
  *   2. Stockout window stitching (CS-29 + CS-30)
  *   3. Brand-name typo clustering (CS-31)
  *
- * Writes the combined artifact to `runs/account-cold-start/<date>/<date>.
+ * Writes the combined artifact to `runs/mx-account-cold-start/<date>/<date>.
  * enrichment.json`.
  *
  * Current state (0.5.0): SHELL ONLY. The three enrichers are stubs that
@@ -54,7 +54,7 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
     .description(
       'Run Phase 1.5 enrichment: settlement curve from CS-28, stockout ' +
         'windows from CS-29+CS-30, brand-name typo clusters from CS-31. ' +
-        'Writes runs/account-cold-start/<date>/<date>.enrichment.json. Read ' +
+        'Writes runs/mx-account-cold-start/<date>/<date>.enrichment.json. Read ' +
         "by the cold-start renderer (Detected Anomalies section) + the " +
         '`brand merge-delta` patcher.',
     )
@@ -77,7 +77,7 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
           const prefetchPath = join(
             brandDir(brand.slug, root.dataDir),
             'runs',
-            'account-cold-start',
+            'mx-account-cold-start',
             runDate,
             'data.json',
           );
@@ -88,7 +88,7 @@ export function registerBrandEnrichCommand(brandCmd: Command): void {
           } catch {
             return emitError(
               root.json,
-              `No prefetch artifact at ${prefetchPath}. Run \`mixshift prefetch --skill account-cold-start --brand ${brand.slug} --date ${runDate}\` first.`,
+              `No prefetch artifact at ${prefetchPath}. Run \`mixshift prefetch --skill mx-account-cold-start --brand ${brand.slug} --date ${runDate}\` first.`,
             );
           }
 

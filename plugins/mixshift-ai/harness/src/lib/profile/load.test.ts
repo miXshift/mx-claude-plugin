@@ -57,8 +57,8 @@ describe('saveProfile + loadProfile round-trip', () => {
     profile.telemetry.install_id = '550e8400-e29b-41d4-a716-446655440000';
     profile.telemetry.acknowledged_at = '2026-05-17T12:00:00.000Z';
     profile.output.per_skill = {
-      'daily-health-check': 'local-html',
-      'monthly-performance-report': {
+      'mx-daily-health-check': 'local-html',
+      'mx-monthly-report': {
         claude_code: 'google-doc',
         cowork: 'google-doc',
       },
@@ -75,8 +75,8 @@ describe('saveProfile + loadProfile round-trip', () => {
     expect(loaded.profile.telemetry.acknowledged_at).toBe(
       '2026-05-17T12:00:00.000Z',
     );
-    expect(loaded.profile.output.per_skill['daily-health-check']).toBe('local-html');
-    expect(loaded.profile.output.per_skill['monthly-performance-report']).toEqual({
+    expect(loaded.profile.output.per_skill['mx-daily-health-check']).toBe('local-html');
+    expect(loaded.profile.output.per_skill['mx-monthly-report']).toEqual({
       claude_code: 'google-doc',
       cowork: 'google-doc',
     });

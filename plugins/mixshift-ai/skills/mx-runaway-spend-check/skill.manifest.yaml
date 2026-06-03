@@ -1,0 +1,61 @@
+schema_version: 1
+skill_id: mx-runaway-spend-check
+display_name: Runaway Spend Check
+version: "0.2.0"
+description: >
+  Daily keyword-level acute runaway spend detection. Flags keywords where T-1 spend
+  spiked materially versus the T-30 baseline, or where high-spend keywords generated
+  zero conversions against their historical performance. Second step in the keyword
+  bid management workflow after the daily health check.
+run_kind: per_account
+cadence: daily
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
+side_effect_policy: recommendation_only
+review_required: always
+escalation_conditions:
+  - required context fields missing or null (HARD GATE)
+  - anomaly_detection_settings row absent for SellerID (HARD GATE)
+  - data freshness > 2 days (acute check -- stale data produces false negatives)
+  - prior-run sidecar absent
+sql_ids:
+  - RSC-01    # Keyword T-1 + T-30 baseline
+  - DHC-04    # Account-level CI thresholds (anomaly_detection_settings)
+pre_execution:
+  enabled: true
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
+  batch_plan:
+    - round: 1
+      parallel: [RSC-01, DHC-04]
+      notes: >
+        Both queries are seller-scoped and independent. Run in parallel to
+        minimize prefetch latency. DHC-04 returns CI thresholds the skill
+        applies to RSC-01's keyword rows.
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - posture.stance
+  - posture.multiplier
+  - bid_health.pullback_threshold_pct
+  - structural_events
+  - attribution_rule
+optional_context_fields:
+  - paused_campaigns   # explicit [] means no known paused campaigns
+artifacts:
+  - name: runaway-spend.html
+    type: report_html
+verdict_range: [GREEN, YELLOW, RED]
+pricing_tier: pro
+trigger_phrases:
+  - run runaway spend check
+  - check for runaway keywords
+  - identify overspending keywords
+  - runaway spend
+notes: >
+  RSC-01 is the keyword T-1 + T-30 baseline query (one round trip per seller).
+  DHC-04 is reused from mx-daily-health-check for the account-level CI thresholds.
+  Both are batched in Round 1 of prefetch. Acute detection logic (CI breach,
+  zero-conversion flag, structural-event downgrade) lives in the skill model,
+  not the SQL.

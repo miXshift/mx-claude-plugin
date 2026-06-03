@@ -3,7 +3,7 @@
 # This file is a STARTER, not a runtime context. Real per-brand contexts live at
 # ~/.mixshift/clients/<brand-slug>/context.yaml on the user's machine.
 #
-# Run `account-cold-start` to generate a populated context.yaml for a real brand.
+# Run `mx-account-cold-start` to generate a populated context.yaml for a real brand.
 # This template exists so that:
 #   1. Schema validators have a known-good reference
 #   2. Users can read a complete example before running cold-start
@@ -55,7 +55,7 @@ management:
   tacos_in_bottom_line: true             # surface TACOS in skill Bottom Lines
 
 # posture
-#   Drives bid-adjustment magnitude in keyword-bid-health and runaway-spend-check.
+#   Drives bid-adjustment magnitude in mx-keyword-bid-health and mx-runaway-spend-check.
 #   stance ∈ {scale, efficiency, defend, clear_bleed}.
 #   multiplier ∈ [0.0, 1.0] — fraction of computed excess-spend bid cut to apply.
 posture:
@@ -63,8 +63,8 @@ posture:
   multiplier: 0.5
 
 # goals
-#   Monthly / quarterly sales targets. Drives pacing math in daily-health-check
-#   and monthly-performance-report.
+#   Monthly / quarterly sales targets. Drives pacing math in mx-daily-health-check
+#   and mx-monthly-report.
 goals:
   monthly_total_sales_target: 100000     # USD
   quarterly_total_sales_target: 300000   # USD
@@ -83,7 +83,7 @@ campaign_structure:
     - SCALE
 
 # bid_health
-#   Thresholds for keyword-bid-health.
+#   Thresholds for mx-keyword-bid-health.
 bid_health:
   scale_threshold_pct: 50                 # ACOS below target by this % → scale bid up
   pullback_threshold_pct: 50              # ACOS above target by this % → reduce bid
@@ -101,7 +101,7 @@ bid_health:
 
 # brand_terms (optional, populated by cold-start enrichment)
 #   Canonical brand spellings and known variants. Drives brand-vs-non-brand
-#   classification in search-term-negation, phrase-negative-discovery.
+#   classification in mx-search-term-negation, mx-phrase-negative-discovery.
 # brand_terms:
 #   canonical:
 #     - your-brand
@@ -151,7 +151,7 @@ bid_health:
 #   reports_local_dir: "~/.mixshift/output/<your-brand-slug>"
 #   archive_dir: "~/.mixshift/clients/<your-brand-slug>/runs"
 
-# reporting (optional, drives monthly-performance-report)
+# reporting (optional, drives mx-monthly-report)
 # reporting:
 #   audience: account_manager           # executive | account_manager | analyst
 #   voice_lint:                          # regex patterns that fail the pre-publication gate

@@ -48,8 +48,8 @@ User onboarding is a one-shot. Brand onboarding runs 1-to-N times depending on p
       brand-intelligence.yaml           # competitive / catalog metadata
       corpora/                          # searchable text for the brand
       runs/
-        2026-05-13-daily-health-check.json
-        2026-05-13-keyword-bid-health.json
+        2026-05-13-mx-daily-health-check.json
+        2026-05-13-mx-keyword-bid-health.json
         ...
     example-brand/
     example-brand/
@@ -57,7 +57,7 @@ User onboarding is a one-shot. Brand onboarding runs 1-to-N times depending on p
   tmp/                                  # per-run scratch (data, context snapshots)
   output/                               # rendered reports (when adapter=local-html)
     example-brand/
-      2026-05-13-daily-health-check.html
+      2026-05-13-mx-daily-health-check.html
   templates/                            # optional user overrides for renderer
 ```
 
@@ -145,7 +145,7 @@ brands:
     context_freshness: fresh                # fresh | aging | stale
 
     last_skill_run:
-      skill_id: daily-health-check
+      skill_id: mx-daily-health-check
       at: 2026-05-13T07:00:00Z
       verdict: GREEN
 
@@ -190,9 +190,9 @@ brands:
 
 ## Cold-start triggers
 
-Three entry paths, all converge on the same `account-cold-start` skill execution:
+Three entry paths, all converge on the same `mx-account-cold-start` skill execution:
 
-1. **JIT from skill preflight** — user runs `/daily-health-check acmecorp`, plugin sees no context.yaml for `acmecorp`, prompts to onboard.
+1. **JIT from skill preflight** — user runs `/mx-daily-health-check acmecorp`, plugin sees no context.yaml for `acmecorp`, prompts to onboard.
 2. **Explicit slash command** — `/mixshift-brands add <slug>` for upfront onboarding.
 3. **Bulk import** — `/mixshift-brands add --from-file brands.yaml` for agency migration from another tool.
 
@@ -209,7 +209,7 @@ For all three paths cold-start:
 Parcel cold-start by skill. Today it runs 31 queries to cover everything. Future split:
 
 - `CS-base` — seller identity, account type, naming structure (~5 queries, always runs first)
-- `CS-daily-health-check`, `CS-search-term-negation`, etc. — only the queries that specific skill needs beyond base
+- `CS-mx-daily-health-check`, `CS-mx-search-term-negation`, etc. — only the queries that specific skill needs beyond base
 
 First skill triggered for a brand runs `CS-base` + that skill's subset. Subsequent skills run only their subset. Decision gate: build this once we have a single agency complaining about onboard time at scale.
 
@@ -322,13 +322,13 @@ output:
   # Per-skill overrides — explicit destination for specific skills
   # All fields optional; falls back to default_by_surface
   per_skill:
-    monthly-performance-report:
+    mx-monthly-report:
       claude_code: google-doc       # narrative report, user wants to edit
       cowork: google-doc
-    search-term-negation:
+    mx-search-term-negation:
       claude_code: csv              # imported into Amazon
       cowork: csv
-    # daily-health-check, portfolio-quick-scan, etc. → TBD per surface;
+    # mx-daily-health-check, mx-portfolio-quick-scan, etc. → TBD per surface;
     # use default_by_surface until we've tuned them with beta data
 ```
 
@@ -378,7 +378,7 @@ Full-fidelity events. Plaintext brand slugs, full skill inputs/outputs, prompt +
   "ts": "2026-05-13T07:00:00Z",
   "user_email": "operator@agency.com",
   "plugin_version": "0.2.1",
-  "skill_id": "daily-health-check",
+  "skill_id": "mx-daily-health-check",
   "skill_version": "0.1.1",
   "brand_slug": "example-brand",
   "brand_accounts": [
@@ -396,7 +396,7 @@ Full-fidelity events. Plaintext brand slugs, full skill inputs/outputs, prompt +
   "recommendations": [
     { "type": "hold_posture", "magnitude": null, "confidence": 0.92 }
   ],
-  "output_path": "~/.mixshift/output/example-brand/2026-05-13-daily-health-check.html",
+  "output_path": "~/.mixshift/output/example-brand/2026-05-13-mx-daily-health-check.html",
   "sidecar_json_excerpt": { ... headline metrics ... }
 }
 ```
@@ -453,16 +453,16 @@ Skills ship from MixShift with a canonical default. Per-brand customization happ
 ```yaml
 # ~/.mixshift/clients/example-brand/context.yaml (excerpt)
 skill_config:
-  daily-health-check:
+  mx-daily-health-check:
     acos_target_pct: 25                  # override management.acos_target_pct for this skill only
     severity_threshold: aggressive       # plugin-defined enum
     suppress_dimensions: [item_group]    # skip a section of the report
 
-  keyword-bid-health:
+  mx-keyword-bid-health:
     bid_floor_p_percentile: 35           # override default P25 spend floor
     posture_multiplier: 1.2
 
-  search-term-negation:
+  mx-search-term-negation:
     relevance_check_required: true       # force LLM relevance pass on all tiers, not just ambiguous
     excluded_campaigns: ["HP-Brand-*"]
 ```
@@ -481,7 +481,7 @@ If a user genuinely needs to fork a skill (different logic, not just different t
 ```
 ~/.mixshift/skills/
   custom/
-    daily-health-check-example-brand/
+    mx-daily-health-check-example-brand/
       SKILL.md                # forked, user-owned
       skill.manifest.yaml
 ```
@@ -503,12 +503,12 @@ Skills today produce **signals** — recommendations with magnitude, confidence,
 
 ```
 [Skill]                       [Signal]                    [Engine]
-keyword-bid-health    → bid_change(kw, +12%, conf=0.88)   → MixShift Bid Engine (OSS)
+mx-keyword-bid-health    → bid_change(kw, +12%, conf=0.88)   → MixShift Bid Engine (OSS)
                                                           → or Amazon Ads MCP (write)
-search-term-negation  → add_negative(term, exact, scope)  → Negation Engine
+mx-search-term-negation  → add_negative(term, exact, scope)  → Negation Engine
                                                           → or Amazon Ads MCP (write)
-runaway-spend-check   → pause_keyword(kw, reason)         → Bid Engine emergency stop
-asin-target-negation  → negate_asin(asin, scope)          → Negation Engine
+mx-runaway-spend-check   → pause_keyword(kw, reason)         → Bid Engine emergency stop
+mx-asin-target-negation  → negate_asin(asin, scope)          → Negation Engine
 ```
 
 ### Design constraints

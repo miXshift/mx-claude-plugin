@@ -1,4 +1,4 @@
-# Curated catalog of warehouse tables that the `data-explore` skill knows
+# Curated catalog of warehouse tables that the `mx-data-explore` skill knows
 # how to talk to. This is a subset of `shared/tables.yaml` (the full
 # schema dump used for drift checking); this file annotates each table
 # with a description, category, and scoping hints (seller-id requirement,

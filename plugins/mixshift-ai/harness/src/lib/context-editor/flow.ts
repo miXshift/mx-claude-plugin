@@ -29,7 +29,7 @@
  *
  * 3. GATING: context.yaml must already exist (cold-start has run).
  *    Editing brand config on a not-yet-cold-started brand returns an
- *    error pointing at /account-cold-start.
+ *    error pointing at /mx-account-cold-start.
  *
  * 4. last_updated BUMP: every successful write updates
  *    context.yaml::last_updated to today's date. Keeps the freshness

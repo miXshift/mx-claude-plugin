@@ -1,0 +1,58 @@
+schema_version: 1
+skill_id: feedback
+display_name: Send Feedback to MixShift
+version: "0.1.0"
+description: >
+  One-line entry point for sending feedback to MixShift -- bug reports,
+  feature requests, comments, "this is broken", "I wish this did X". Routes
+  through the `mixshift feedback` CLI, which sends to the MixShift Discord
+  ops channel + records the feedback in Supabase for the engineering team
+  to triage and act on. Works alongside any other skill -- mid-session
+  feedback is fine.
+
+# Modeled as per_account because the trigger_phrases include account-oriented
+# entry points; the skill itself is account-agnostic but lives in the
+# per-account family for discovery.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read]
+side_effect_policy: none
+review_required: never
+sql_ids: []
+
+harness_commands:
+  - mixshift feedback "<message>" --category <bug|feature_request|comment|other>
+
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - send feedback
+  - send feedback to mixshift
+  - submit feedback
+  - i have feedback
+  - report a bug
+  - report bug
+  - file a bug
+  - bug report
+  - feature request
+  - i have a feature request
+  - i wish this could
+  - this is broken
+  - this isnt working
+  - tell mixshift
+  - let mixshift know
+  - mixshift feedback
+  - rate this plugin
+  - flag an issue
+notes: >
+  Lives at risk_tier 1 -- informational only, no DB calls, no durable artifacts
+  on the customer machine. Submits to MixShift's Discord ops channel (real-time
+  alert) and Supabase events table (for analyzable feedback firehose).
+  Requires the user to be signed in first (via `mixshift auth login` or the
+  legacy `mixshift auth setup` CLI) so we have an email to attach to the
+  feedback. If they're not signed in, surface that gap and redirect to the
+  mx-auth-login skill.

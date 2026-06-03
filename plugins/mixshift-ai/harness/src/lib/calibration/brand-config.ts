@@ -7,13 +7,13 @@
  * numbers per the sovereignty rule):
  *
  *   ```yaml
- *   daily-health-check:
+ *   mx-daily-health-check:
  *     objective: growth
  *     nb_acos_target: 0.32
  *     hero_skus: [B07XYZ123, B08ABC456]
  *     dampening: 0.6
  *
- *   runaway-spend-check:
+ *   mx-runaway-spend-check:
  *     daily_spend_floor: 50
  *     # User-added comment — preserved by yaml lib? No. See "extras" below.
  *
@@ -36,7 +36,7 @@
  * Extras (user-added keys)
  * --------------------------------------------------------------------------
  *
- * Inside a skill block (e.g. `daily-health-check.{...}`), any key not in
+ * Inside a skill block (e.g. `mx-daily-health-check.{...}`), any key not in
  * the skill's calibration manifest is considered an "extra". Extras are:
  *   - Round-tripped on read/write (preserved verbatim)
  *   - Available to skill code via `getSkillConfig(...).extras`

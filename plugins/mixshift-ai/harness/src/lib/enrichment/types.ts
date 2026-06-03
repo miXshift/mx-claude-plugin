@@ -1,7 +1,7 @@
 /**
  * Phase 1.5 enrichment output shapes.
  *
- * Three analyses, written together to `runs/account-cold-start/<date>/
+ * Three analyses, written together to `runs/mx-account-cold-start/<date>/
  * <date>.enrichment.json`:
  *
  *   1. daily_settlement_curve  — from CS-28 (attribution settlement math)

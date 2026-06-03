@@ -6,7 +6,7 @@
  * the two JSON sidecars (headline + review).
  *
  * Called by `mixshift brand render-context <slug>` and (in the future) by
- * post_execution hook of the account-cold-start manifest.
+ * post_execution hook of the mx-account-cold-start manifest.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -252,31 +252,31 @@ function computeSkillReadiness(
 
   const skills: Array<{ skill: string; status: string; tone: 'complete' | 'partial' | 'missing' | 'runtime'; notes: string }> = [
     {
-      skill: 'daily-health-check',
+      skill: 'mx-daily-health-check',
       status: requiredOk ? 'Ready' : 'Blocked by context',
       tone: requiredOk ? 'complete' : 'missing',
       notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
     },
     {
-      skill: 'runaway-spend-check',
+      skill: 'mx-runaway-spend-check',
       status: requiredOk ? 'Ready' : 'Blocked by context',
       tone: requiredOk ? 'complete' : 'missing',
       notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
     },
     {
-      skill: 'keyword-bid-health',
+      skill: 'mx-keyword-bid-health',
       status: requiredOk ? 'Ready' : 'Blocked by context',
       tone: requiredOk ? 'complete' : 'missing',
       notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
     },
     {
-      skill: 'monthly-performance-report',
+      skill: 'mx-monthly-report',
       status: hasManagement && hasCalibration ? 'Ready' : 'Ready with caveats',
       tone: hasManagement && hasCalibration ? 'complete' : 'partial',
       notes: hasCalibration ? 'Capture-rate calibration available.' : 'Calibration not enabled — MoM/YoY uses raw aggregates.',
     },
     {
-      skill: 'competitive-analysis',
+      skill: 'mx-competitive-analysis',
       status: sources.brand_intelligence ? 'Ready' : 'Ready with caveats',
       tone: sources.brand_intelligence ? 'complete' : 'partial',
       notes: sources.brand_intelligence ? 'Brand intelligence populated.' : 'brand-intelligence.yaml missing — analysis runs without research backing.',

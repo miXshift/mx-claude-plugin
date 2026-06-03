@@ -195,7 +195,7 @@ export function isStale(
 /**
  * Mark a brand as cold-started in the registry. Persisted atomically;
  * idempotent (calling twice with the same slug just re-stamps the time).
- * Called from account-cold-start's bootstrapBrand on success.
+ * Called from mx-account-cold-start's bootstrapBrand on success.
  */
 export async function markBrandColdStarted(
   slug: string,

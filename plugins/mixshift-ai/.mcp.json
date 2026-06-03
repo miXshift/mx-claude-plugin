@@ -16,7 +16,7 @@
     "    error classification, CSV export, and access-denied → Discord",
     "    webhook flow. Claude would naturally pick the MCP path over the",
     "    skill path because it's one fewer tool call, defeating the value",
-    "    of the data-explore skill.",
+    "    of the mx-data-explore skill.",
     "",
     "Future: register a MixShift-built MCP server that:",
     "  - Reads creds from ~/.mixshift/auth/credentials.json",

@@ -16,7 +16,7 @@ schema_version: 1
 #   <plugin>/runs/<brand-slug>/<skill-name>/<YYYY-MM-DD>-<run-id>.json
 # Where:
 #   - brand-slug matches shared/clients/<brand-slug>/
-#   - skill-name is the skill directory name (e.g., daily-health-check)
+#   - skill-name is the skill directory name (e.g., mx-daily-health-check)
 #   - YYYY-MM-DD is the data date the run covers (NOT the wall-clock run time)
 #   - run-id is a 6-char hash for disambiguating same-day reruns
 #
@@ -50,7 +50,7 @@ shapes:
       - per_account: standard skill run against one client. context_snapshot
         requires account_type, seller_id, primary_metric, acos_target_pct,
         attribution_window_days. brand_slug = the client slug.
-      - portfolio: cross-account scan (e.g., portfolio-quick-scan). The
+      - portfolio: cross-account scan (e.g., mx-portfolio-quick-scan). The
         per-account fields are NOT required; instead, portfolio_account_count
         and portfolio_config_path become required. brand_slug = "portfolio"
         or a portfolio identifier.

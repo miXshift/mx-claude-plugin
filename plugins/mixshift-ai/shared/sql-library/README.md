@@ -32,7 +32,7 @@ Each `.sql` file MUST:
    -- ID: DHC-01
    -- Purpose: Campaign-level metrics across T-1/T-7/T-30/MTD windows
    -- Params: :seller_id, :account_type, :run_date
-   -- Consumers: daily-health-check (Batch A)
+   -- Consumers: mx-daily-health-check (Batch A)
    -- Tier: 1 (data)
    ```
 2. Use `:named_params` (not `?` positional). Parameter names must match the
@@ -49,19 +49,19 @@ Each `.sql` file MUST:
 
 | Skill | Prefix |
 |---|---|
-| account-cold-start | CS |
-| daily-health-check | DHC |
-| keyword-bid-health | KBH |
-| runaway-spend-check | RSC |
-| monthly-performance-report | MPR |
-| search-term-harvest | STH |
-| search-term-negation | STN |
-| phrase-negative-discovery | PND |
-| asin-target-negation | ANEG |
-| ppc-relevance-check | PRC |
-| portfolio-quick-scan | PQS |
-| competitive-analysis | COMP |
-| search-term-data-pull | STDP |
+| mx-account-cold-start | CS |
+| mx-daily-health-check | DHC |
+| mx-keyword-bid-health | KBH |
+| mx-runaway-spend-check | RSC |
+| mx-monthly-report | MPR |
+| mx-search-term-harvest | STH |
+| mx-search-term-negation | STN |
+| mx-phrase-negative-discovery | PND |
+| mx-asin-target-negation | ANEG |
+| mx-ppc-relevance-check | PRC |
+| mx-portfolio-quick-scan | PQS |
+| mx-competitive-analysis | COMP |
+| mx-search-term-data-pull | STDP |
 
 Cross-skill / shared queries get the prefix `LIB`.
 

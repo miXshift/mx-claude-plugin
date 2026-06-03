@@ -6,169 +6,169 @@ queries:
   - id: DHC-01
     file: DHC-01.sql
     purpose: Account-level spend/sales/orders across T-1/T-7/T-30/MTD/TACOS windows in one query.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-02
     file: DHC-02.sql
     purpose: SC total sales windows (T-1/T-7/T-30/MTD) from business_reports_dpst_date.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-03
     file: DHC-03.sql
     purpose: VC ordered revenue windows (T-1/T-7/T-30/MTD) from vendor_sales_manufacturing_asin.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-04
     file: DHC-04.sql
     purpose: CI thresholds and pre-computed pacing/MTD per metric (anomaly_detection_settings).
-    consumers: [daily-health-check, runaway-spend-check]
+    consumers: [mx-daily-health-check, mx-runaway-spend-check]
     tier: 1
 
   - id: DHC-05
     file: DHC-05.sql
     purpose: T-30 daily actuals + means for CI percentile computation (anomaly_detection_MV).
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-06
     file: DHC-06.sql
     purpose: Per-CampaignType T-1/T-7/T-30 metrics from campaignmetric.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-07
     file: DHC-07.sql
     purpose: Per-Objective T-1/T-7/T-30 metrics (campaignmetric JOIN campaign).
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-08
     file: DHC-08.sql
     purpose: Per-ItemGroup T-1/T-7/T-30 metrics (campaignmetric JOIN campaign).
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-09
     file: DHC-09.sql
     purpose: Per-Brand T-1/T-7/T-30 metrics (campaignmetric JOIN campaign), conditional.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-10
     file: DHC-10.sql
     purpose: Data-lag check — campaign-level vs keyword-level T-1 spend totals.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-11
     file: DHC-11.sql
     purpose: Budget cap follow-up — campaigns at >=90% utilization yesterday.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-12
     file: DHC-12.sql
     purpose: Inventory follow-up — at-risk ASINs by days of supply / alert / sellable qty.
-    consumers: [daily-health-check]
+    consumers: [mx-daily-health-check]
     tier: 1
 
   - id: CS-01
     file: CS-01.sql
     purpose: Confirm seller identity and merchant type (SC/VC) for cold-start scope.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-02
     file: CS-02.sql
     purpose: SC 14-month revenue baseline (sales, units, sessions, CVR) by month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-03
     file: CS-03.sql
     purpose: VC 12-month revenue baseline (ordered revenue, units) by month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-04
     file: CS-04.sql
     purpose: 12-month account-level ACOS baseline by month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-05
     file: CS-05.sql
     purpose: 12-month ACOS by campaign type and month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-06
     file: CS-06.sql
     purpose: SC SP attribution-window comparison (1d vs 7d) for prior full month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-07
     file: CS-07.sql
     purpose: VC SP attribution-window comparison (1d vs 14d) for prior full month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-08
     file: CS-08.sql
     purpose: Daily 1d-vs-7d SP ACOS calibration distribution over T-104..T-7.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-09
     file: CS-09.sql
     purpose: VC sub-brand x item group structure with ASIN counts and target ACOS.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-10
     file: CS-10.sql
     purpose: SC item-group derivation from CampaignName trailing token (heuristic).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-11
     file: CS-11.sql
     purpose: VC sub-brand monthly ordered-revenue split over T-12 months.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-12
     file: CS-12.sql
     purpose: VC item group revenue concentration for the most recent full month.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-13
     file: CS-13.sql
     purpose: VC monthly ASP by sub-brand x item group (T-12 months).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-14
     file: CS-14.sql
     purpose: Brand vs NonBrand spend split (trailing 6 months) via CampaignName tags.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-15
     file: CS-15.sql
     purpose: T-30 vs T-90 daily average spend trend.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-16
     file: CS-16.sql
     purpose: SC inventory history monthly counts (low/zero quantity rows) over T-14 months.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       mws_inventory_history confirmed as empty-column stub in tables.yaml (verified
@@ -179,25 +179,25 @@ queries:
   - id: CS-17
     file: CS-17.sql
     purpose: Same-SKU vs Other-SKU cross-sell ratio per CampaignType (recent full month).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-18
     file: CS-18.sql
     purpose: SC ads-share / ACOS / TACOS stability check by month over T-14 months.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-19
     file: CS-19.sql
     purpose: VC brand catalog — distinct CustomBrand/Brand/ItemGroup with ASIN counts.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-20
     file: CS-20.sql
     purpose: SC brand catalog -- distinct brands and enabled ASIN counts (campaign x productad).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       Fixed 2026-04-27: original source targeted business_reports_dpst_date.Brand/.Asin,
@@ -207,49 +207,49 @@ queries:
   - id: CS-21
     file: CS-21.sql
     purpose: Enabled negative-keyword inventory by campaign / ad group.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-22
     file: CS-22.sql
     purpose: Per-campaign T-30 budget utilization (top spenders).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-23
     file: CS-23.sql
     purpose: T-30 keyword spend concentration with 14d attributed orders.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-24
     file: CS-24.sql
     purpose: Campaign-level T-30 objective classification via CampaignName tags.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-25
     file: CS-25.sql
     purpose: VC ASINs missing ItemGroup tagging.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-26
     file: CS-26.sql
     purpose: T-90 ordered revenue for a specified ASIN list (active-subset filter).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-27
     file: CS-27.sql
     purpose: Campaign-objective completeness — T-30 spending campaigns lacking objective tag.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-28
     file: CS-28.sql
     purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for cold-start v2.3 enrichment.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       Expands the CS-06/CS-07 single improvement_pts number into a daily curve
@@ -260,7 +260,7 @@ queries:
   - id: CS-29
     file: CS-29.sql
     purpose: Inventory-health historical snapshots for stockout-window detection (trailing 365d, FBA-only).
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       Pre-filtered to "in trouble" rows so the enrichment step only has to group
@@ -271,7 +271,7 @@ queries:
   - id: CS-30
     file: CS-30.sql
     purpose: Daily account-level ad metrics (spend, sales, ACOS, clicks, orders, CVR, CTR) over trailing 365 days.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       Drives change-point detection on revenue / ACOS / CVR series during
@@ -281,7 +281,7 @@ queries:
   - id: CS-31
     file: CS-31.sql
     purpose: Account-level converting search-term corpus (trailing 90d) for brand-name typo detection.
-    consumers: [account-cold-start]
+    consumers: [mx-account-cold-start]
     tier: 1
     notes: |
       Cold-start enrichment uses this for Levenshtein 1-2 hits vs brand_terms
@@ -291,43 +291,43 @@ queries:
   - id: ANEG-01
     file: ANEG-01.sql
     purpose: ASIN-target candidates for negation review (lifetime + recent window).
-    consumers: [asin-target-negation]
+    consumers: [mx-asin-target-negation]
     tier: 1
 
   - id: ANEG-02
     file: ANEG-02.sql
     purpose: Phase 0 window pull — PAT-only rows from keywordtargetingmetric for negation review window.
-    consumers: [asin-target-negation]
+    consumers: [mx-asin-target-negation]
     tier: 1
 
   - id: ANEG-03
     file: ANEG-03.sql
     purpose: Phase 1 manual ASIN-target suppression set — currently enabled positive targets on the account.
-    consumers: [asin-target-negation]
+    consumers: [mx-asin-target-negation]
     tier: 1
 
   - id: ANEG-04
     file: ANEG-04.sql
     purpose: Phase 3 lifetime performance by location — UNIONs keywordtargetingmetric and targetexpressionsmetric for ASINs that passed PDP relevance.
-    consumers: [asin-target-negation]
+    consumers: [mx-asin-target-negation]
     tier: 1
 
   - id: STH-01
     file: STH-01.sql
     purpose: Explicit-keyword exclusion mask — every enabled positive keyword targeting row across exact/phrase/broad.
-    consumers: [search-term-harvest]
+    consumers: [mx-search-term-harvest]
     tier: 1
 
   - id: STN-01
     file: STN-01.sql
     purpose: Window search-term performance pull at (campaign, ad group, keyword, ST, match type) grain for negation review.
-    consumers: [search-term-negation]
+    consumers: [mx-search-term-negation]
     tier: 1
 
   - id: STN-02
     file: STN-02.sql
     purpose: ASIN-target cleanup UPDATE — extract bare ASIN from KeywordText into SearchTerm on caller scratch table.
-    consumers: [search-term-negation]
+    consumers: [mx-search-term-negation]
     tier: 1
     notes: |
       Operates on caller-prepared scratch table `search_term_data` (not in
@@ -337,97 +337,97 @@ queries:
   - id: STN-03
     file: STN-03.sql
     purpose: Historical T-30/T-60 performance for a single search term (UNION) for borderline-term review.
-    consumers: [search-term-negation]
+    consumers: [mx-search-term-negation]
     tier: 1
 
   - id: STN-04
     file: STN-04.sql
     purpose: Theme analysis — pull all search terms containing a theme substring per (campaign, ST) for phrase-negative assessment.
-    consumers: [search-term-negation]
+    consumers: [mx-search-term-negation]
     tier: 1
 
   - id: MPR-01
     file: MPR-01.sql
     purpose: VC monthly ad totals (SP+SB+SD) for current, prior, prior-year months.
-    consumers: [monthly-performance-report]
+    consumers: [mx-monthly-report]
     tier: 1
 
   - id: MPR-02
     file: MPR-02.sql
     purpose: SC monthly ad totals from daily campaignmetric with 7d/14d attribution CASE.
-    consumers: [monthly-performance-report]
+    consumers: [mx-monthly-report]
     tier: 1
 
   - id: STDP-01
     file: STDP-01.sql
     purpose: Existing-negatives exclusion mask — all enabled negative keywords on the account.
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-02
     file: STDP-02.sql
     purpose: Manual ASIN-target dedup mask — enabled positive PAT rows on the account.
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-03
     file: STDP-03.sql
     purpose: Window search-term report pull (per-(campaign, adgroup, kw, ST) aggregation).
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-04
     file: STDP-04.sql
     purpose: Lifetime per-SearchTerm aggregate for Stream 1 (Keyword Targeting).
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-05
     file: STDP-05.sql
     purpose: Lifetime SearchTerm x CampaignName grain (Stream 1) for item-group derivation.
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-06
     file: STDP-06.sql
     purpose: Lifetime full-location grain (Stream 1) — one row per ST x exact ad-group target.
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: STDP-07
     file: STDP-07.sql
     purpose: Lifetime per-ASIN-target aggregate for Stream 2 (Product Attribute Targeting).
-    consumers: [search-term-data-pull]
+    consumers: [mx-search-term-data-pull]
     tier: 1
 
   - id: KBH-01
     file: KBH-01.sql
     purpose: T-30 keyword performance (spend, ad sales, ACOS, conversions, clicks, cpc_t30) for enabled non-VCPM campaigns. Parameterized by :lookback_days; default 30.
-    consumers: [keyword-bid-health]
+    consumers: [mx-keyword-bid-health]
     tier: 1
 
   - id: KBH-01a
     file: KBH-01a.sql
     purpose: T-7 keyword performance (spend, ad sales, ACOS, conversions, clicks, cpc_t7) for enabled non-VCPM campaigns. Lookback hardcoded to 7 days; _t7 column aliases.
-    consumers: [keyword-bid-health]
+    consumers: [mx-keyword-bid-health]
     tier: 1
 
   - id: KBH-02
     file: KBH-02.sql
     purpose: Current bid + Amazon bid guidance (SuggestedBid, BidRangeStart, BidRangeEnd) per enabled keyword.
-    consumers: [keyword-bid-health]
+    consumers: [mx-keyword-bid-health]
     tier: 1
 
   - id: KBH-03
     file: KBH-03.sql
     purpose: Lifetime keyword performance (spend, ad sales, ACOS, conversions, lifetime_clicks, lifetime_cpc) for enabled non-VCPM campaigns. No date filter -- all history.
-    consumers: [keyword-bid-health]
+    consumers: [mx-keyword-bid-health]
     tier: 1
 
   - id: LIB-PT-01
     file: LIB-PT-01.sql
     purpose: Price-test ASIN-level sales/units/sessions comparison between two windows.
-    consumers: [daily-health-check, runaway-spend-check]
+    consumers: [mx-daily-health-check, mx-runaway-spend-check]
     tier: 1
     notes: |
       Cross-skill query. Use when context.yaml::structural_events includes an
@@ -436,10 +436,10 @@ queries:
   - id: RSC-01
     file: RSC-01.sql
     purpose: Acute keyword runaway detection -- T-1 keyword performance with T-30 baseline in one query.
-    consumers: [runaway-spend-check]
+    consumers: [mx-runaway-spend-check]
     tier: 1
     notes: |
       Returns one row per (KeywordText, MatchType, CampaignName, AdGroupName) tuple
-      with T-1 and T-30 metrics side-by-side. Used by runaway-spend-check Step 2-3 to
+      with T-1 and T-30 metrics side-by-side. Used by mx-runaway-spend-check Step 2-3 to
       identify CI breaches and zero-conversion flags. Pair with DHC-04 for the
       account-level CI thresholds.

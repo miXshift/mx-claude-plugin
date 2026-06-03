@@ -1,6 +1,6 @@
 /**
  * Manage `profile.brands.key` — the user-curated subset of brands that
- * portfolio-level skills (e.g. portfolio-quick-scan) default to. Distinct
+ * portfolio-level skills (e.g. mx-portfolio-quick-scan) default to. Distinct
  * from the warehouse-derived registry at ~/.mixshift/clients/index.yaml,
  * which lists every brand the user can access.
  *

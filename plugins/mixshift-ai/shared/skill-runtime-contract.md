@@ -20,7 +20,7 @@ are not optional for the assigned tier.
 ### Tier 1 — Informational
 - **Definition:** Read-only output. Human-readable insight or research. No durable
   files written. No production-facing recommendations.
-- **Examples:** competitive-analysis, ppc-relevance-check
+- **Examples:** mx-competitive-analysis, mx-ppc-relevance-check
 - **Controls:**
   - Preflight: none required
   - Output: human-reviewable on request
@@ -30,8 +30,8 @@ are not optional for the assigned tier.
 ### Tier 2 — Artifact-Writing
 - **Definition:** Writes durable files (context.yaml, HTML reports, JSON artifacts,
   CSVs) to `tmp/` or `shared/clients/<brand>/`. No direct production mutation.
-- **Examples:** account-cold-start, search-term-data-pull, monthly-performance-report,
-  portfolio-quick-scan
+- **Examples:** mx-account-cold-start, mx-search-term-data-pull, mx-monthly-report,
+  mx-portfolio-quick-scan
 - **Controls:**
   - Preflight: validate required context fields before execution (HARD GATE)
   - Output: human review before downstream skills consume new context files
@@ -44,9 +44,9 @@ are not optional for the assigned tier.
 - **Definition:** Output directly drives bid changes, negation lists, keyword
   promotions, campaign structure changes, or pauses. Even when execution is manual,
   the skill artifact IS the production instruction.
-- **Examples:** daily-health-check, runaway-spend-check, keyword-bid-health,
-  search-term-harvest, search-term-negation, asin-target-negation,
-  phrase-negative-discovery
+- **Examples:** mx-daily-health-check, mx-runaway-spend-check, mx-keyword-bid-health,
+  mx-search-term-harvest, mx-search-term-negation, mx-asin-target-negation,
+  mx-phrase-negative-discovery
 - **Controls:**
   - Preflight: mandatory — validate all required context fields, confirm data
     freshness, confirm prior-run sidecar loaded (HARD GATE on all three)
@@ -188,7 +188,7 @@ mechanism (email, Slack, UI) is out of scope for this contract; the rules are no
 | review_required | ❌ | Add to manifest schema and all 13 manifests |
 | Preflight checklist | Partial | Tier 3 hard gates exist in prose; template not standardized |
 | Artifact spill threshold | ❌ | Add to pre-fetch-data.py |
-| Run sidecar | ✅ | Schema defined; account-cold-start emits; not all skills emit |
+| Run sidecar | ✅ | Schema defined; mx-account-cold-start emits; not all skills emit |
 | Audit trail | Partial | Sidecar schema solid; not universally emitted |
 | Human review rules | Partial | Informal in SKILL.md; not machine-readable |
 

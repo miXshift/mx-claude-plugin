@@ -191,7 +191,7 @@ export function registerTelemetryCommands(program: Command): void {
         'are rejected with a list of valid ones.',
     )
     .option('--payload-json <json>', 'Free-form JSON object payload')
-    .option('--skill <id>', 'Skill ID context (e.g. data-explore, feedback)')
+    .option('--skill <id>', 'Skill ID context (e.g. mx-data-explore, feedback)')
     .option('--trigger-phrase <text>', 'User phrase that triggered this event')
     .option('--outcome <s>', 'ok | failed | timeout | deferred | skipped')
     .option('--duration-ms <n>', 'Duration in milliseconds')

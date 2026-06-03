@@ -67,7 +67,7 @@ export async function mergeEnrichmentIntoContext(
       status: 'no_enrichment',
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/account-cold-start/${runDate}/${runDate}.enrichment.json`,
+      enrichment_path: `runs/mx-account-cold-start/${runDate}/${runDate}.enrichment.json`,
     };
   }
   if (!enrichment.daily_settlement_curve) {
@@ -75,7 +75,7 @@ export async function mergeEnrichmentIntoContext(
       status: 'no_curve',
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/account-cold-start/${runDate}/${runDate}.enrichment.json`,
+      enrichment_path: `runs/mx-account-cold-start/${runDate}/${runDate}.enrichment.json`,
     };
   }
 
@@ -89,7 +89,7 @@ export async function mergeEnrichmentIntoContext(
         status: 'context_missing',
         context_path: ctxPath,
         fields_updated: [],
-        enrichment_path: `runs/account-cold-start/${runDate}/${runDate}.enrichment.json`,
+        enrichment_path: `runs/mx-account-cold-start/${runDate}/${runDate}.enrichment.json`,
       };
     }
     throw err;
@@ -111,7 +111,7 @@ export async function mergeEnrichmentIntoContext(
     status: 'ok',
     context_path: ctxPath,
     fields_updated: fieldsUpdated,
-    enrichment_path: `runs/account-cold-start/${runDate}/${runDate}.enrichment.json`,
+    enrichment_path: `runs/mx-account-cold-start/${runDate}/${runDate}.enrichment.json`,
   };
 }
 

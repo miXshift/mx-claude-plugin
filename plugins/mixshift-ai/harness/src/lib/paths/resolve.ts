@@ -127,7 +127,7 @@ export function enrichmentPath(
   return join(
     brandDir(brandSlug, dataDirOverride),
     'runs',
-    'account-cold-start',
+    'mx-account-cold-start',
     runDate,
     `${runDate}.enrichment.json`,
   );

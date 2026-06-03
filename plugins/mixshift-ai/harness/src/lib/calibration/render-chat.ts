@@ -285,7 +285,7 @@ export function renderValidationIssues(
  * Short message confirming the persistence decision after a run. Goes in
  * chat after the skill output. Examples:
  *
- *   "Saved your edits to Skratch's daily-health-check config."
+ *   "Saved your edits to Skratch's mx-daily-health-check config."
  *   "Used your edits for this run only. Run again to re-set on Skratch."
  *   "Ran with existing config."
  */

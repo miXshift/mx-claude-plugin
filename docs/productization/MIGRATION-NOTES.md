@@ -30,7 +30,7 @@ None of these are skill execution references — they ended up in `references/` 
 - `hcam-vercel-deployment.md` — file is explicitly marked DEPRECATED in its own header. The productized plugin will not use Vercel for output. Removed.
 
 ### Legacy Python harness
-- `plugins/mixshift-ai/scripts/*` — 13 Python scripts: `bootstrap-context.py`, `enrich-context.py`, `pre-fetch-data.py`, `render-keyword-bid-health.py`, `report-append.py`, `validate-context.py`, `merge-context-delta.py`, `compare-sidecars.py`, `check-sql-drift.py`, `render-brand-context.py`, `run-readiness.py`, `skill_version.py`, `write-sidecar.py`.
+- `plugins/mixshift-ai/scripts/*` — 13 Python scripts: `bootstrap-context.py`, `enrich-context.py`, `pre-fetch-data.py`, `render-mx-keyword-bid-health.py`, `report-append.py`, `validate-context.py`, `merge-context-delta.py`, `compare-sidecars.py`, `check-sql-drift.py`, `render-brand-context.py`, `run-readiness.py`, `skill_version.py`, `write-sidecar.py`.
 - Decision: will be rewritten in TypeScript per the productization plan. The original Python implementation remains in the upstream repository as a reference.
 
 ---
@@ -81,7 +81,7 @@ Returns zero hits.
 - `.claude-plugin/marketplace.json` (marketplace listing)
 - `plugins/mixshift-ai/.claude-plugin/plugin.json` (after scrubbing one phrase)
 - `plugins/mixshift-ai/.mcp.json` (warehouse MCP shim)
-- All `skill.manifest.yaml` files (except `monthly-performance-report` which mentioned voice attribution)
+- All `skill.manifest.yaml` files (except `mx-monthly-report` which mentioned voice attribution)
 - `shared/sql-library/*.sql` (66 queries, all unqualified table references)
 - `shared/skill-runtime-contract.md` (risk-tier governance, already generic)
 - `shared/skill-manifest.schema.yaml`, `shared/run-sidecar.schema.yaml`

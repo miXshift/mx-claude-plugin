@@ -14,7 +14,7 @@
  * Per-query failures don't abort the whole run — we capture the
  * failure shape in the output so the skill can decide how to react
  * (e.g., a missing-table error from one query shouldn't sink an entire
- * daily-health-check run). The runner returns a per-query result list
+ * mx-daily-health-check run). The runner returns a per-query result list
  * with `ok: true | false` so callers can branch.
  */
 
@@ -265,7 +265,7 @@ async function executeOne(
   const { sql, params } = substituteParams(rawSql, allParams);
 
   // Pass the catalog ID into runQuery so the QueryExecuted event gets
-  // tagged with query_id (vs ad-hoc / data-explore queries which leave
+  // tagged with query_id (vs ad-hoc / mx-data-explore queries which leave
   // query_id unset). Lets us group library-SQL performance separately.
   const result = await runQuery<Record<string, unknown>>(sql, params, {
     dataDirOverride,

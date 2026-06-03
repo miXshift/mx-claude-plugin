@@ -1,0 +1,45 @@
+schema_version: 1
+skill_id: mx-ppc-relevance-check
+display_name: PPC Relevance Check
+version: "1.1.0"
+description: >
+  Semantic relevance classification for search terms and ASIN targets. Operates on a
+  provided list of search terms or the Tier B/C set from phase 1 exact-term negation.
+  Classification only -- no negation recommendations. Output is a verdict table with
+  confidence scores and reasoning per term.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write
+review_required: never
+sql_ids: []   # pure consumer; consumes mx-search-term-negation sidecar via upstream_skills
+required_context_fields:
+  - accounts[*].seller_id
+  - sub_brands
+  - brand_terms
+  - negation.protected_terms
+  - negation.lane_rules
+  - negation.asin_negation.pre_check_lifetime_orders_threshold
+optional_context_fields:
+  - corpora   # ASIN corpora for ASIN relevance phase
+upstream_skills:
+  - mx-search-term-negation
+artifacts:
+  - name: mx-ppc-relevance-check.html
+    type: report_html
+verdict_range: [OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - run relevance check
+  - check relevance
+  - ppc relevance
+  - semantic relevance check
+notes: >
+  This skill is a pure consumer; it operates on a provided search-term list (typically
+  the Tier B/C set from mx-search-term-negation Phase 1) and runs no DB queries.
+  Upstream sidecar consumption is tracked via `upstream_skills` and recorded in the
+  emitted sidecar's `sql_calls` as an UPSTREAM:<skill-id> pseudo-entry for drift-chain
+  detection. Relevance is a semantic judgment, not a data judgment; data informs but does
+  not determine the verdict. Calibration candidates should be reviewed with the account
+  manager and added to negation.lane_rules in context.yaml after approval.

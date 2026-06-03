@@ -166,26 +166,26 @@ No. The plugin is a query interface to your MixShift warehouse — if MixShift's
 
 ### What's the data freshness?
 
-Depends on the source. Ad metrics typically update daily (T-1 freshness). Seller Central ops data has a 1-day settlement lag; Vendor Central has 2 days. The `data-explore` skill doesn't enforce freshness — it returns whatever's in the warehouse. The analytical skills (when enabled) check freshness and surface warnings or hard-gate based on the recency of the source.
+Depends on the source. Ad metrics typically update daily (T-1 freshness). Seller Central ops data has a 1-day settlement lag; Vendor Central has 2 days. The `mx-data-explore` skill doesn't enforce freshness — it returns whatever's in the warehouse. The analytical skills (when enabled) check freshness and surface warnings or hard-gate based on the recency of the source.
 
-### Are the analytical skills (daily-health-check, runaway-spend-check, etc.) available?
+### Are the analytical skills (mx-daily-health-check, mx-runaway-spend-check, etc.) available?
 
 Present in the codebase but **not yet enabled for general customer use** during pre-beta. We're vetting each skill end-to-end with real brand contexts before opening them broadly. The launch surface today is:
 
 - `welcome` — first-run orientation
-- `auth-login` — browser-based sign-in
-- `data-explore` — ad-hoc query / sample / export
+- `mx-auth-login` — browser-based sign-in
+- `mx-data-explore` — ad-hoc query / sample / export
 - `brand discover` + `brand add` — brand onboarding plumbing
 - `feedback` — send feedback / bug reports / feature requests
-- `competitive-analysis` — research-driven SWOT (web-based, no warehouse data required)
+- `mx-competitive-analysis` — research-driven SWOT (web-based, no warehouse data required)
 
 The analytical skills will be opened in subsequent releases as each one is validated. Watch the changelog / release notes.
 
 ### What's cold-start and why do I need it?
 
-**Cold-start teaches the plugin about your brand.** It's a one-time setup (~3–5 minutes per brand) that runs structured queries against your warehouse + walks you through a short intake — your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it.
+**Cold-start teaches the plugin about your brand.** It's a one-time setup (~3–5 minutes per brand) that runs structured queries against your warehouse + walks you through a short intake — your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (mx-daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it.
 
-**Without cold-start**, the analytical skills are locked. You can still use `data-explore` to query and export anything, but skills like *"run daily health check on Hydrapak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
+**Without cold-start**, the analytical skills are locked. You can still use `mx-data-explore` to query and export anything, but skills like *"run daily health check on Hydrapak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
 
 **To run it:** in chat, say *"cold start Hydrapak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/` — preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, cold-start state stays).
 
@@ -293,8 +293,8 @@ Three equally-good ways, depending on where you are:
 
 | Path | Use |
 |---|---|
-| **In chat** (Cowork / Claude Code) | `/feedback` slash command — Claude walks you through it. Or just say things like "send feedback to mixshift: the export is slow", "report a bug: X is broken", "feature request: I wish this could Y". |
-| **Mid-skill** | If you're using `data-explore` (or any skill) and hit a pain, just say "this is frustrating because..." or "I wish this did..." — Claude will offer to file feedback without making you leave the session. |
+| **In chat** (Cowork / Claude Code) | `/mx-feedback` slash command — Claude walks you through it. Or just say things like "send feedback to mixshift: the export is slow", "report a bug: X is broken", "feature request: I wish this could Y". |
+| **Mid-skill** | If you're using `mx-data-explore` (or any skill) and hit a pain, just say "this is frustrating because..." or "I wish this did..." — Claude will offer to file feedback without making you leave the session. |
 | **Terminal** | `mixshift feedback "your message" --category bug` (or `feature_request`, `comment`). |
 
 Feedback routes to two places: a real-time post to MixShift's Discord ops channel (so a human sees it quickly) and the telemetry events table (so engineering can analyze patterns across customers). Both happen automatically — you don't pick.

@@ -167,7 +167,7 @@ function renderWelcome(args: {
     lines.push('                    / "export <brand>\'s campaigns to CSV"');
     lines.push('        Terminal:   mixshift data list-tables  (or sample / export / query)');
     lines.push('');
-    lines.push('    • Onboard a brand for the analytical skills (daily-health-check, etc.):');
+    lines.push('    • Onboard a brand for the analytical skills (mx-daily-health-check, etc.):');
     lines.push('        In chat:    "onboard <brand-slug>" — Claude bootstraps the brand');
     lines.push('                    then say "run account cold start for <brand-slug>"');
     lines.push('                    to walk through AM intake.');
@@ -191,7 +191,7 @@ function renderWelcome(args: {
 
   // First-time / partially-completed setup walkthrough.
   //
-  // The token-based auth-login flow doesn't need the user to retrieve
+  // The token-based mx-auth-login flow doesn't need the user to retrieve
   // raw MySQL credentials anymore, so the welcome shrinks to two steps:
   // sign in, try something. The legacy raw-MySQL CLI command
   // (`mixshift auth setup`) is still available for users who need it
@@ -417,7 +417,7 @@ function renderWelcomeChat(args: {
 
   // First-run / partially-set-up branch.
   //
-  // The token-based auth-login flow doesn't need users to retrieve raw
+  // The token-based mx-auth-login flow doesn't need users to retrieve raw
   // MySQL credentials anymore, so the welcome shrinks to two steps:
   // sign in, try something. The `cr` (credential_retrieval) defaults
   // are still loaded and JSON-emitted for backward compat; not surfaced
@@ -431,7 +431,7 @@ function renderWelcomeChat(args: {
 
   // Step 1 — Sign in. Short and direct: what, why, how.
   // The welcome skill orchestrates the actual sign-in inline (see
-  // skills/welcome/SKILL.md), so this copy primes the user for what's
+  // skills/mx-welcome/SKILL.md), so this copy primes the user for what's
   // about to happen rather than telling them to invoke another phrase.
   lines.push('### Step 1 — Sign in to MixShift');
   lines.push('');

@@ -233,7 +233,7 @@ export function registerBrandCommands(program: Command): void {
           }
           if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
             footerLines.push(
-              `No brands cold-started yet — analytical skills (daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`,
+              `No brands cold-started yet — analytical skills (mx-daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`,
             );
           }
           process.stderr.write('\n' + footerLines.join('\n') + '\n\n');
@@ -257,7 +257,7 @@ export function registerBrandCommands(program: Command): void {
     .command('add <slug>')
     .description(
       'Bootstrap a brand context directory from warehouse data. ' +
-        'Run /account-cold-start <slug> in Claude afterwards to complete AM intake.',
+        'Run /mx-account-cold-start <slug> in Claude afterwards to complete AM intake.',
     )
     .option('--force', 'overwrite an existing brand directory', false)
     .option(
@@ -337,7 +337,7 @@ export function registerBrandCommands(program: Command): void {
                   narrative_path: result.narrative_path,
                   written_files: result.written_files,
                   account_count: result.context.accounts.length,
-                  next_step: `Run /account-cold-start ${match.slug} in Claude to complete AM intake.`,
+                  next_step: `Run /mx-account-cold-start ${match.slug} in Claude to complete AM intake.`,
                 },
                 null,
                 2,
@@ -349,7 +349,7 @@ export function registerBrandCommands(program: Command): void {
                 `    accounts:  ${result.context.accounts.length}\n` +
                 `    context:   ${result.context_path}\n` +
                 `    narrative: ${result.narrative_path}\n` +
-                `\nNext: run \`/account-cold-start ${match.slug}\` in Claude.\n` +
+                `\nNext: run \`/mx-account-cold-start ${match.slug}\` in Claude.\n` +
                 `      The skill walks you through AM intake (positioning,\n` +
                 `      goals, structural events) and fills in everything\n` +
                 `      the bootstrap couldn't derive from the warehouse.\n`,
@@ -557,7 +557,7 @@ export function registerBrandCommands(program: Command): void {
 
   // `mixshift brand enrich <slug>` — Phase 1.5 enrichment runner.
   // Settlement curve + stockout windows + brand-typo clusters from CS-28-31.
-  // Writes runs/account-cold-start/<date>/<date>.enrichment.json.
+  // Writes runs/mx-account-cold-start/<date>/<date>.enrichment.json.
   registerBrandEnrichCommand(brand);
 
   // `mixshift brand merge-delta <slug>` — patches settlement curve from the

@@ -17,7 +17,7 @@ describe('writeSidecar', () => {
 
   it('writes a valid per_account sidecar at the canonical path', async () => {
     const result = await writeSidecar({
-      skill: 'runaway-spend-check',
+      skill: 'mx-runaway-spend-check',
       skill_version: '0.2.0',
       brand_slug: 'testbrand',
       run_kind: 'per_account',
@@ -43,7 +43,7 @@ describe('writeSidecar', () => {
     expect(result.sidecar_path).toBe(
       sidecarPath({
         brand_slug: 'testbrand',
-        skill: 'runaway-spend-check',
+        skill: 'mx-runaway-spend-check',
         data_date: '2026-04-24',
         run_id: 'abc123',
         dataDirOverride: dataDir,
@@ -52,7 +52,7 @@ describe('writeSidecar', () => {
 
     const written = JSON.parse(await readFile(result.sidecar_path, 'utf-8'));
     expect(written.run_id).toBe('abc123');
-    expect(written.skill).toBe('runaway-spend-check');
+    expect(written.skill).toBe('mx-runaway-spend-check');
     expect(written.verdict).toBe('GREEN');
     // sql_calls should be normalized to {id, params_hash}
     expect(written.sql_calls[0].id).toBe('RSC-01');
@@ -150,7 +150,7 @@ describe('writeSidecar', () => {
 
   it('accepts portfolio run_kind when the right keys are present', async () => {
     const result = await writeSidecar({
-      skill: 'portfolio-quick-scan',
+      skill: 'mx-portfolio-quick-scan',
       skill_version: '0.1.0',
       brand_slug: 'portfolio',
       run_kind: 'portfolio',

@@ -82,7 +82,7 @@ describe('readBrandConfig', () => {
 
   it('preserves user-added passthrough fields', async () => {
     const yaml = `
-daily-health-check:
+mx-daily-health-check:
   objective: growth
   dampening: 0.6
   custom_field: "user-added value"
@@ -90,7 +90,7 @@ daily-health-check:
 `;
     await writeFile(join(brandDir, 'config.yaml'), yaml, 'utf-8');
     const r = await readBrandConfig('skratch', testDir);
-    expect(r.config['daily-health-check']).toMatchObject({
+    expect(r.config['mx-daily-health-check']).toMatchObject({
       objective: 'growth',
       dampening: 0.6,
       custom_field: 'user-added value',
@@ -148,12 +148,12 @@ describe('saveSkillConfig + resetSkillConfig', () => {
   it('writes a new skill block', async () => {
     await saveSkillConfig(
       'skratch',
-      'daily-health-check',
+      'mx-daily-health-check',
       { objective: 'growth', dampening: 0.6 },
       testDir,
     );
     const { config } = await readBrandConfig('skratch', testDir);
-    expect(config['daily-health-check']).toEqual({
+    expect(config['mx-daily-health-check']).toEqual({
       objective: 'growth',
       dampening: 0.6,
     });

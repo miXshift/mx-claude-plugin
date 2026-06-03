@@ -73,7 +73,7 @@ Now you should see the "you are already set up" view with four actions:
 - Onboard a brand for analytical skills (pre-beta — not generally enabled yet)
 - Re-run sign-in (if you need to switch accounts)
 
-Then try the data-explore skill:
+Then try the mx-data-explore skill:
 
 - "what tables can I query"
 - "show me a sample of campaignmetric for seller [your SellerID]"

@@ -4,7 +4,7 @@ schema_version: 1
 
 required:
   - schema_version
-  - skill_id          # matches directory name, e.g. daily-health-check
+  - skill_id          # matches directory name, e.g. mx-daily-health-check
   - display_name      # human-readable title
   - version           # semver string
   - description       # 1-3 sentences, no em dashes
@@ -44,7 +44,7 @@ shapes:
       Skills that produce structured output (reports, data artifacts) without
       a go/no-go call use [OBSERVATIONAL] only.
       Skills with actionable exception logic use [GREEN, YELLOW, RED] (or subset).
-      account-cold-start uses [] (produces context, not a verdict).
+      mx-account-cold-start uses [] (produces context, not a verdict).
 
   risk_tier:
     enum: [1, 2, 3]
