@@ -57328,10 +57328,16 @@ function renderUpdateBanner(result, format = "terminal") {
     );
     lines2.push(">");
     lines2.push(
-      "> **In Cowork:** Settings \u2192 Plugins \u2192 uninstall and reinstall `mixshift-ai`. (Org-managed installs may auto-sync within ~30 min; restart Cowork to force a fetch.)"
+      "> **In Cowork:** Settings \u2192 Plugins \u2192 uninstall and reinstall `mixshift-ai`. (Org-managed installs may auto-sync within ~30 min.)"
     );
     lines2.push(">");
-    lines2.push("> **In Claude Code:** `/plugin update mixshift-ai`");
+    lines2.push(
+      "> **In Claude Code:** in your terminal, run `claude plugin marketplace update mixshift` to refresh the catalog first, then `claude plugin update mixshift-ai`."
+    );
+    lines2.push(">");
+    lines2.push(
+      "> **Then load it:** start a new conversation (in Cowork, fully quit and reopen the app). A new chat in the same window is not enough: a running session keeps the plugin version it started with, so the update only takes effect in a fresh session."
+    );
     if (result.releaseUrl) {
       lines2.push(">");
       lines2.push(`> Release notes: ${result.releaseUrl}`);
@@ -57346,11 +57352,17 @@ function renderUpdateBanner(result, format = "terminal") {
   lines.push("");
   lines.push("  In Cowork:");
   lines.push("    Settings \u2192 Plugins \u2192 uninstall and reinstall mixshift-ai.");
-  lines.push("    (Org-managed installs may auto-sync within ~30 min;");
-  lines.push("     restart Cowork to force a fetch.)");
+  lines.push("    (Org-managed installs may auto-sync within ~30 min.)");
   lines.push("");
-  lines.push("  In Claude Code:");
-  lines.push("    /plugin update mixshift-ai");
+  lines.push("  In Claude Code (run both in your terminal):");
+  lines.push("    claude plugin marketplace update mixshift");
+  lines.push("    claude plugin update mixshift-ai");
+  lines.push("");
+  lines.push("  Then load it:");
+  lines.push("    Start a new session (in Cowork, fully quit and reopen the app).");
+  lines.push("    A new chat in the same window is not enough: a running session");
+  lines.push("    keeps the plugin version it started with, so the update only");
+  lines.push("    takes effect in a fresh session.");
   if (result.releaseUrl) {
     lines.push("");
     lines.push(`  Release notes: ${result.releaseUrl}`);

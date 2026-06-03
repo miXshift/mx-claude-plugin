@@ -101,7 +101,7 @@ Use the same email + password you use to log into MixShift. If those don't work,
 Your refresh token expired (>30d since last sign-in) or was revoked. Just say "sign in to mixshift" again and the chat skill drives a fresh sign-in.
 
 **Plugin update available.**
-In Cowork: Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. Cowork pulls the latest marketplace manifest. Same auth credentials carry over across updates.
+In Cowork: Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. Cowork pulls the latest marketplace manifest. Then fully quit and reopen Cowork so the new version actually loads: a running session keeps the plugin version it started with, so the update only takes effect after a restart (a new conversation in the same session is not enough). Same auth credentials carry over across updates.
 
 **Plugin shows an old version even after Check for updates / Sync automatically.**
 Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub"). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.

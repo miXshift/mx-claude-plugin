@@ -176,9 +176,15 @@ export function compareVersions(a: string, b: string): number {
  *     `mixshift welcome --format chat`)
  *
  * Copy intentionally covers both Cowork (UI uninstall+reinstall + optional
- * org-managed auto-sync note) and Claude Code (`/plugin update` slash).
- * Other surfaces fall through to the same content; CLI users updating from
- * source don't usually see this banner anyway (their `current` matches
+ * org-managed auto-sync note) and Claude Code (refresh the marketplace catalog
+ * first with `claude plugin marketplace update mixshift`, then
+ * `claude plugin update mixshift-ai` — the refresh avoids a stale-catalog race
+ * where the update reinstalls the same old version), and closes with the
+ * critical "start a new session" step: a running session keeps the plugin
+ * binary it materialized at startup, so an in-place update never takes effect
+ * until the user opens a fresh session (a new chat in the same window is not
+ * enough). Other surfaces fall through to the same content; CLI users updating
+ * from source don't usually see this banner anyway (their `current` matches
  * what they just built).
  */
 export function renderUpdateBanner(
@@ -194,10 +200,21 @@ export function renderUpdateBanner(
     lines.push('>');
     lines.push(
       '> **In Cowork:** Settings → Plugins → uninstall and reinstall `mixshift-ai`. ' +
-        '(Org-managed installs may auto-sync within ~30 min; restart Cowork to force a fetch.)',
+        '(Org-managed installs may auto-sync within ~30 min.)',
     );
     lines.push('>');
-    lines.push('> **In Claude Code:** `/plugin update mixshift-ai`');
+    lines.push(
+      '> **In Claude Code:** in your terminal, run ' +
+        '`claude plugin marketplace update mixshift` to refresh the catalog first, ' +
+        'then `claude plugin update mixshift-ai`.',
+    );
+    lines.push('>');
+    lines.push(
+      '> **Then load it:** start a new conversation (in Cowork, fully quit and ' +
+        'reopen the app). A new chat in the same window is not enough: a running ' +
+        'session keeps the plugin version it started with, so the update only ' +
+        'takes effect in a fresh session.',
+    );
     if (result.releaseUrl) {
       lines.push('>');
       lines.push(`> Release notes: ${result.releaseUrl}`);
@@ -213,11 +230,17 @@ export function renderUpdateBanner(
   lines.push('');
   lines.push('  In Cowork:');
   lines.push('    Settings → Plugins → uninstall and reinstall mixshift-ai.');
-  lines.push('    (Org-managed installs may auto-sync within ~30 min;');
-  lines.push('     restart Cowork to force a fetch.)');
+  lines.push('    (Org-managed installs may auto-sync within ~30 min.)');
   lines.push('');
-  lines.push('  In Claude Code:');
-  lines.push('    /plugin update mixshift-ai');
+  lines.push('  In Claude Code (run both in your terminal):');
+  lines.push('    claude plugin marketplace update mixshift');
+  lines.push('    claude plugin update mixshift-ai');
+  lines.push('');
+  lines.push('  Then load it:');
+  lines.push('    Start a new session (in Cowork, fully quit and reopen the app).');
+  lines.push('    A new chat in the same window is not enough: a running session');
+  lines.push('    keeps the plugin version it started with, so the update only');
+  lines.push('    takes effect in a fresh session.');
   if (result.releaseUrl) {
     lines.push('');
     lines.push(`  Release notes: ${result.releaseUrl}`);

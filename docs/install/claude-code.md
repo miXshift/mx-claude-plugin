@@ -96,15 +96,16 @@ mixshift brand discover --json
 
 ## Updates
 
-```
-/plugin update mixshift-ai
-```
-
-Or to update all installed plugins:
+Run both in your terminal. The first refreshes your local copy of the marketplace catalog; the second installs the newest version it now sees:
 
 ```
-/plugin update --all
+claude plugin marketplace update mixshift
+claude plugin update mixshift-ai
 ```
+
+Refreshing the catalog first matters: `claude plugin update` installs whatever version your local catalog knows about, so without the refresh it can reinstall the version you already have. To update every installed plugin at once, use `claude plugin update --all` (still refresh first).
+
+**Then load it: start a new session.** An update never takes effect in a running session, which keeps the plugin version it started with. Fully quit the `claude` process and relaunch; opening a new chat in the same process is not enough.
 
 Tokens carry over across plugin updates.
 

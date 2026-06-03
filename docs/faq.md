@@ -305,8 +305,10 @@ We read every piece during beta. Bugs typically get a response within a couple b
 
 - **Cowork personal install:** Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. (See "How do I get back to the Directory modal" above if you can't find this surface.)
 - **Cowork organization install:** org admin re-publishes from Organization settings → Plugins.
-- **Claude Code:** `/plugin update mixshift-ai`.
+- **Claude Code:** in your terminal, run `claude plugin marketplace update mixshift` to refresh the catalog first, then `claude plugin update mixshift-ai`. (Refreshing first matters: an update without it can reinstall the same version when your local catalog is stale.)
 - **CLI direct:** `git pull && npm install && npm run build`.
+
+**Then load the new version: start a new session.** A running session keeps the plugin version it started with, so an update never takes effect until you open a fresh one. In Claude Code, fully quit the `claude` process and relaunch; a new chat in the same process is not enough. In Cowork, fully quit and reopen the app.
 
 Auth credentials carry over across updates.
 

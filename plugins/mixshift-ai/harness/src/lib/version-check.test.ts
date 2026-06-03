@@ -339,7 +339,7 @@ describe('renderUpdateBanner', () => {
     ).toBe('');
   });
 
-  it('terminal format includes Cowork + Claude Code paths', () => {
+  it('terminal format includes Cowork + Claude Code paths and the new-session step', () => {
     const banner = renderUpdateBanner(
       {
         current: '0.5.0',
@@ -355,7 +355,14 @@ describe('renderUpdateBanner', () => {
     expect(banner).toContain('0.5.4');
     expect(banner).toContain('Cowork');
     expect(banner).toContain('Claude Code');
-    expect(banner).toContain('/plugin update mixshift-ai');
+    // Two-step CLI path: refresh the catalog first to dodge the stale-catalog
+    // race (an update without a refresh can reinstall the same old version).
+    expect(banner).toContain('claude plugin marketplace update mixshift');
+    expect(banner).toContain('claude plugin update mixshift-ai');
+    // The critical "load it" step: a running session is frozen to its snapshot.
+    expect(banner).toContain('Then load it');
+    expect(banner).toContain('new session');
+    expect(banner).toContain('not enough');
     expect(banner).toContain(
       'https://github.com/foo/bar/releases/tag/v0.5.4',
     );
@@ -377,7 +384,12 @@ describe('renderUpdateBanner', () => {
     expect(banner).toContain('**0.5.0**');
     expect(banner).toContain('**0.5.4**');
     expect(banner).toContain('`mixshift-ai`');
-    expect(banner).toContain('`/plugin update mixshift-ai`');
+    expect(banner).toContain('`claude plugin marketplace update mixshift`');
+    expect(banner).toContain('`claude plugin update mixshift-ai`');
+    // The critical "load it" step: a running session is frozen to its snapshot.
+    expect(banner).toContain('**Then load it:**');
+    expect(banner).toContain('new conversation');
+    expect(banner).toContain('not enough');
   });
 });
 
