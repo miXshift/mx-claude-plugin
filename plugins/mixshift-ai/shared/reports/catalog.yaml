@@ -1,0 +1,1092 @@
+# Amazon SP-API on-demand report catalog.
+#
+# This is the PLUGIN-side description of every report type the report-pull
+# capability can request. It is intentionally exhaustive and carries NO
+# exclusions: even reports that are commonly restricted (order/returns/PII)
+# or that a given tenant can't access are listed here. We never pre-filter on
+# a guess. The service decides — reactively, at fetch time — what a given
+# tenant + merchant is actually allowed to pull, and returns a typed failure
+# `kind` (restricted_report, reauth_required, spapi_not_configured, ...) that
+# the skill surfaces. See harness/src/lib/amazon/reports.ts.
+#
+# Field reference (see lib/reports/catalog.ts for the typed shape):
+#   report_type        Amazon enum, sent verbatim on the wire. The key field.
+#   title              Short human label for menus / listings.
+#   purpose            One line: what's in it + what it's good for.
+#   applies_to         seller | vendor | both  (which merchant kind it's valid for)
+#   document_format    tsv | json  (how the retrieved bytes are encoded)
+#   window             required | optional | forbidden
+#                        required  = Amazon rejects the request without a window
+#                        optional  = window narrows results, not mandatory
+#                        forbidden = snapshot report; Amazon rejects a window
+#   window_notes       max span / lag / granularity rules for the window
+#   warehouse_coverage have | partial | none  (does MixShift already hold this?)
+#                        HINT ONLY — never a gate. `partial` = different grain
+#                        or freshness; the report may still be worth pulling.
+#   group              display grouping
+#   report_options     report-type-specific knobs, passed to Amazon untouched
+#   parse_hints        how to read the bytes once retrieved
+#   notes              caveats (deprecations, regional limits, PII variants)
+
+schema_version: 1
+last_updated: 2026-06-03
+
+reports:
+  # =========================================================================
+  # Orders (Seller)
+  # The "general" variants are NON-PII and broadly available. A PII-enriched
+  # variant of these exists but needs Amazon's RDT/PII role, which MixShift
+  # does not hold; if a caller requests PII fields the service returns
+  # restricted_report. Default (general) format is fine for most analysis.
+  # =========================================================================
+  - report_type: GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL
+    title: All Orders by Order Date (flat file)
+    purpose: Order-line rows keyed to the date the order was placed. Best for sales/order-volume analysis over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required. Keep spans <= ~30 days for reliability; very old data may be unavailable.
+    warehouse_coverage: partial
+    group: Orders
+    report_options: []
+    parse_hints: Tab-separated with a header row; may carry a UTF-8 BOM on the first cell. Money/qty columns are strings — cast on read.
+    notes: General (non-PII) variant. PII fields (buyer name/address) require an RDT role MixShift does not hold and will fail as restricted_report.
+
+  - report_type: GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL
+    title: All Orders by Last Update (flat file)
+    purpose: Same order-line rows but keyed to last-modified time. Use to catch status changes (cancellations, refunds) since a prior pull.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required; window applies to last-update timestamp, not order date.
+    warehouse_coverage: partial
+    group: Orders
+    report_options: []
+    parse_hints: TSV with header row; possible UTF-8 BOM. One row per order line; an order can appear under multiple updates across pulls.
+    notes: General (non-PII) variant.
+
+  - report_type: GET_XML_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL
+    title: All Orders by Order Date (XML)
+    purpose: XML form of all-orders-by-order-date. Prefer the flat-file variant unless you specifically need XML structure.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: Same windowing as the flat-file variant.
+    warehouse_coverage: partial
+    group: Orders
+    report_options: []
+    parse_hints: Bytes are XML despite the tsv wire field name. Parse as XML, not tab-separated.
+    notes: General (non-PII) variant.
+
+  - report_type: GET_XML_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL
+    title: All Orders by Last Update (XML)
+    purpose: XML form keyed to last-modified time. Prefer the flat-file variant unless XML is required.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: Window applies to last-update timestamp.
+    warehouse_coverage: partial
+    group: Orders
+    report_options: []
+    parse_hints: Bytes are XML; parse accordingly.
+    notes: General (non-PII) variant.
+
+  - report_type: GET_FLAT_FILE_ARCHIVED_ORDERS_DATA_BY_ORDER_DATE
+    title: Archived Orders by Order Date (flat file)
+    purpose: Orders older than the standard retention window, by order date. Use for long-horizon backfills.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: For historical ranges beyond the live all-orders window.
+    warehouse_coverage: partial
+    group: Orders
+    report_options: []
+    parse_hints: TSV with header row; possible UTF-8 BOM.
+
+  - report_type: GET_FLAT_FILE_ACTIONABLE_ORDER_DATA_SHIPPING
+    title: Actionable Order Data (shipping)
+    purpose: Unshipped / actionable MFN orders that need fulfillment action.
+    applies_to: seller
+    document_format: tsv
+    window: optional
+    warehouse_coverage: none
+    group: Orders
+    report_options: []
+    parse_hints: TSV with header row. Snapshot-ish of currently actionable orders.
+
+  - report_type: GET_FLAT_FILE_PENDING_ORDERS_DATA
+    title: Pending Orders (flat file)
+    purpose: Orders in pending state (payment not yet cleared). Snapshot of current pending queue.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Orders
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot, no date window.
+
+  - report_type: GET_PENDING_ORDERS_DATA
+    title: Pending Orders (XML)
+    purpose: XML form of the pending-orders snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Orders
+    report_options: []
+    parse_hints: Bytes are XML; parse accordingly.
+
+  - report_type: GET_CONVERGED_FLAT_FILE_PENDING_ORDERS_DATA
+    title: Converged Pending Orders (flat file)
+    purpose: Pending orders across converged (FBA + MFN) fulfillment. Snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Orders
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  # =========================================================================
+  # Sales & Traffic (Business Reports)
+  # =========================================================================
+  - report_type: GET_SALES_AND_TRAFFIC_REPORT
+    title: Sales & Traffic Business Report
+    purpose: Sessions, page views, units, sales, buy-box %, conversion — by date and/or ASIN. The core business-report surface.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: start/end required. dateGranularity controls the time bucket.
+    warehouse_coverage: have
+    group: Sales & Traffic
+    report_options:
+      - key: dateGranularity
+        example: DAY
+        note: DAY | WEEK | MONTH. Omit asinGranularity for date-only roll-up.
+      - key: asinGranularity
+        example: CHILD
+        note: PARENT | CHILD | SKU. Sets the ASIN grain of the byAsin section.
+    parse_hints: JSON object with salesAndTrafficByDate[] and salesAndTrafficByAsin[] arrays. Nested salesByAsin / trafficByAsin objects per row.
+    notes: MixShift warehouse already holds the date-grain version (business_reports_dpst_date). Pull on demand mainly for ASIN-grain or windows the warehouse hasn't loaded.
+
+  # =========================================================================
+  # Listings / Catalog (Seller)
+  # =========================================================================
+  - report_type: GET_MERCHANT_LISTINGS_ALL_DATA
+    title: All Listings
+    purpose: Every active + inactive listing with SKU, ASIN, price, quantity, status. Full catalog snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; possible UTF-8 BOM. Current-state snapshot.
+
+  - report_type: GET_MERCHANT_LISTINGS_DATA
+    title: Active Listings
+    purpose: Active listings only (open offers). SKU/ASIN/price/quantity snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  - report_type: GET_MERCHANT_LISTINGS_INACTIVE_DATA
+    title: Inactive Listings
+    purpose: Listings that are not currently buyable (out of stock, closed, suppressed).
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  - report_type: GET_MERCHANT_LISTINGS_DATA_LITE
+    title: Active Listings (lite)
+    purpose: Active listings, trimmed column set (SKU, ASIN, price, quantity). Faster/smaller than the full variant.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; fewer columns than GET_MERCHANT_LISTINGS_DATA.
+
+  - report_type: GET_MERCHANT_LISTINGS_DATA_LITER
+    title: Active Listings (liter)
+    purpose: Active listings, minimal columns (SKU + quantity). Smallest catalog snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; minimal columns.
+
+  - report_type: GET_MERCHANT_CANCELLED_LISTINGS_DATA
+    title: Cancelled Listings
+    purpose: Listings that were cancelled/closed. Use to audit removed SKUs.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_MERCHANTS_LISTINGS_FYP_REPORT
+    title: Suppressed Listings (Fix Your Products)
+    purpose: Listings Amazon has suppressed plus the reason, so you can fix and relist.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; includes a suppression-reason column.
+
+  - report_type: GET_FLAT_FILE_OPEN_LISTINGS_DATA
+    title: Open Listings (flat file)
+    purpose: Open offers with price + quantity. Lightweight active-listing snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_REFERRAL_FEE_PREVIEW_REPORT
+    title: Referral Fee Preview
+    purpose: Estimated referral fees per active listing. Use to model fee burden across the catalog.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row; estimated-fee columns are strings.
+
+  - report_type: GET_PAN_EU_OFFER_STATUS
+    title: Pan-EU Offer Status
+    purpose: Pan-European FBA offer eligibility/status per ASIN. EU marketplaces only.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row. EU regions only; will be empty/invalid elsewhere.
+
+  - report_type: GET_MFN_PAN_EU_OFFER_STATUS
+    title: MFN Pan-EU Offer Status
+    purpose: Pan-EU status for merchant-fulfilled offers.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row. EU regions only.
+
+  - report_type: GET_FLAT_FILE_GEO_OPPORTUNITIES
+    title: Geographic Sales Opportunities
+    purpose: Regions where demand outpaces local availability (placement/expansion opportunities).
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Listings
+    report_options: []
+    parse_hints: TSV with header row.
+
+  # =========================================================================
+  # FBA Inventory
+  # Most are current-state snapshots (window forbidden). MixShift's
+  # mws_inventory_history is a thin stub, so coverage is partial at best.
+  # =========================================================================
+  - report_type: GET_AFN_INVENTORY_DATA
+    title: FBA Inventory (current)
+    purpose: Current Amazon-fulfilled (AFN) sellable quantity per SKU/ASIN. The everyday "what's in FBA right now" snapshot.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  - report_type: GET_AFN_INVENTORY_DATA_BY_COUNTRY
+    title: FBA Inventory by Country
+    purpose: AFN sellable quantity split by destination country. For EU/multi-country FBA.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; one row per SKU x country.
+
+  - report_type: GET_FBA_INVENTORY_AGED_DATA
+    title: FBA Inventory Health (aged)
+    purpose: Age buckets, sell-through, days of supply, storage-fee exposure, excess units. The inventory-health workhorse.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; many derived columns (sell-through, weeks of cover). Snapshot.
+
+  - report_type: GET_EXCESS_INVENTORY_DATA
+    title: Excess Inventory
+    purpose: Units flagged as excess with recommended action (markdown/removal).
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; includes recommended-action column.
+
+  - report_type: GET_FBA_INVENTORY_PLANNING_DATA
+    title: FBA Inventory Planning
+    purpose: Planning view — inbound, available, reserved, researching, unfulfillable, plus age and fee projections.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; wide column set. Snapshot.
+
+  - report_type: GET_RESTOCK_INVENTORY_RECOMMENDATIONS_REPORT
+    title: Restock Inventory Recommendations
+    purpose: Amazon's recommended reorder quantities and dates per SKU. Drives replenishment.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; recommendation columns are strings.
+
+  - report_type: GET_FBA_MYI_UNSUPPRESSED_INVENTORY_DATA
+    title: Manage Inventory (active)
+    purpose: Manage-FBA-Inventory snapshot for active (unsuppressed) listings covering available, inbound, and reserved.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  - report_type: GET_FBA_MYI_ALL_INVENTORY_DATA
+    title: Manage Inventory (all)
+    purpose: Manage-FBA-Inventory snapshot including suppressed listings.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; current-state snapshot.
+
+  - report_type: GET_RESERVED_INVENTORY_DATA
+    title: Reserved Inventory
+    purpose: Units reserved (customer order, FC transfer, FC processing) and not currently sellable.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; reserved-reason breakdown columns.
+
+  - report_type: GET_STRANDED_INVENTORY_UI_DATA
+    title: Stranded Inventory
+    purpose: Inventory in FCs with no active listing (stranded) plus the reason. Recover lost availability.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; includes stranded-reason column.
+
+  - report_type: GET_STRANDED_INVENTORY_LOADER_DATA
+    title: Stranded Inventory Loader
+    purpose: Bulk-fix template for relisting stranded inventory.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV loader/template format; intended for edit-and-upload, less for analysis.
+
+  - report_type: GET_FBA_FULFILLMENT_CURRENT_INVENTORY_DATA
+    title: FBA Current Inventory (detail)
+    purpose: Per-FC current inventory detail.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; snapshot.
+
+  - report_type: GET_FBA_FULFILLMENT_INVENTORY_RECEIPTS_DATA
+    title: FBA Inventory Receipts
+    purpose: Units received into FCs over a window. Inbound reconciliation.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; one row per receipt event.
+
+  - report_type: GET_FBA_FULFILLMENT_INVENTORY_SUMMARY_DATA
+    title: FBA Inventory Summary
+    purpose: Summary of inventory events over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FBA_FULFILLMENT_INVENTORY_ADJUSTMENTS_DATA
+    title: FBA Inventory Adjustments
+    purpose: Inventory adjustment events (lost/found/damaged) over a window. Pairs with reimbursements.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row; one row per adjustment with reason code.
+
+  - report_type: GET_FBA_FULFILLMENT_INVENTORY_HEALTH_DATA
+    title: FBA Inventory Health (events)
+    purpose: Historical inventory-health metrics over a window (vs the aged-data snapshot).
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: partial
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FBA_RECOMMENDED_REMOVAL_DATA
+    title: Recommended Removal
+    purpose: SKUs Amazon recommends removing (long-term-storage / unsellable risk).
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Inventory
+    report_options: []
+    parse_hints: TSV with header row.
+
+  # =========================================================================
+  # FBA Sales & Fulfillment
+  # =========================================================================
+  - report_type: GET_AMAZON_FULFILLED_SHIPMENTS_DATA_GENERAL
+    title: Amazon-Fulfilled Shipments
+    purpose: FBA shipment-line detail (ship date, SKU, qty, prices, FC, destination region). Core FBA sales detail.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required; keep spans modest.
+    warehouse_coverage: partial
+    group: FBA Sales
+    report_options: []
+    parse_hints: TSV with header row; possible UTF-8 BOM. General (non-PII) variant — buyer PII columns require an RDT role MixShift lacks.
+
+  - report_type: GET_FBA_FULFILLMENT_CUSTOMER_SHIPMENT_SALES_DATA
+    title: FBA Customer Shipment Sales
+    purpose: FBA sales by customer shipment over a window — units, revenue, FC.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: partial
+    group: FBA Sales
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FBA_FULFILLMENT_CUSTOMER_SHIPMENT_PROMOTION_DATA
+    title: FBA Promotions
+    purpose: Promotion discounts applied to FBA customer shipments over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Sales
+    report_options: []
+    parse_hints: TSV with header row; one row per promotion application.
+
+  - report_type: GET_FBA_FULFILLMENT_CUSTOMER_TAXES_DATA
+    title: FBA Customer Taxes
+    purpose: Tax collected on FBA customer shipments over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Sales
+    report_options: []
+    parse_hints: TSV with header row.
+
+  # =========================================================================
+  # FBA Returns & Replacements
+  # =========================================================================
+  - report_type: GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA
+    title: FBA Customer Returns
+    purpose: FBA returns over a window — ASIN, qty, return reason, disposition (sellable/defective).
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Returns
+    report_options: []
+    parse_hints: TSV with header row; reason + disposition columns drive return-rate analysis.
+
+  - report_type: GET_FBA_FULFILLMENT_CUSTOMER_SHIPMENT_REPLACEMENT_DATA
+    title: FBA Replacements
+    purpose: Replacement units shipped to customers over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Returns
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE
+    title: MFN Returns by Return Date
+    purpose: Merchant-fulfilled (seller-shipped) returns over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required (return date).
+    warehouse_coverage: none
+    group: Returns
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_XML_RETURNS_DATA_BY_RETURN_DATE
+    title: MFN Returns by Return Date (XML)
+    purpose: XML form of MFN returns. Prefer the flat-file variant.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Returns
+    report_options: []
+    parse_hints: Bytes are XML; parse accordingly.
+
+  - report_type: GET_CSV_MFN_PRIME_RETURNS_REPORT
+    title: MFN Prime Returns
+    purpose: Returns for Seller-Fulfilled Prime orders over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Returns
+    report_options: []
+    parse_hints: CSV/TSV with header row.
+
+  # =========================================================================
+  # FBA Fees, Removals & Reimbursements
+  # =========================================================================
+  - report_type: GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA
+    title: FBA Fee Preview (estimated)
+    purpose: Estimated per-unit FBA fulfillment + referral fees per SKU. Margin modeling.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row; estimated-fee columns are strings. Snapshot of current fee estimates.
+
+  - report_type: GET_FBA_REIMBURSEMENTS_DATA
+    title: FBA Reimbursements
+    purpose: Amazon reimbursements (lost/damaged/fee error) over a window. Pairs with inventory adjustments.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row; reason + amount columns.
+
+  - report_type: GET_FBA_STORAGE_FEE_CHARGES_DATA
+    title: FBA Monthly Storage Fees
+    purpose: Monthly storage fees charged per SKU. Storage-cost analysis.
+    applies_to: seller
+    document_format: tsv
+    window: optional
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row; per-SKU per-month fee rows.
+
+  - report_type: GET_FBA_FULFILLMENT_LONGTERM_STORAGE_FEE_CHARGES_DATA
+    title: FBA Long-Term Storage Fees
+    purpose: Long-term storage (aged-inventory surcharge) fees per SKU over a window.
+    applies_to: seller
+    document_format: tsv
+    window: optional
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DATA
+    title: Removal Order Detail
+    purpose: Removal/disposal order line detail over a window (requested removals).
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA
+    title: Removal Shipment Detail
+    purpose: Shipment detail for executed removals/disposals over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: FBA Fees
+    report_options: []
+    parse_hints: TSV with header row.
+
+  # =========================================================================
+  # Settlement / Finance
+  # NOTE: settlement reports are generated automatically by Amazon on the
+  # settlement schedule — they CANNOT be requested on demand via startReport.
+  # The service exposes the most recent already-generated settlement when
+  # asked. Expect this to behave differently from on-demand report types.
+  # =========================================================================
+  - report_type: GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE
+    title: Settlement Report (flat file)
+    purpose: Disbursement-level financial settlement — every transaction (sales, fees, refunds) in a settlement period.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Settlement
+    report_options: []
+    parse_hints: TSV with header row; first rows carry settlement totals, remaining rows are line items.
+    notes: Auto-generated on Amazon's settlement cycle; not requestable on demand. The service returns the latest available settlement.
+
+  - report_type: GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2
+    title: Settlement Report (flat file v2)
+    purpose: V2 layout of the flat-file settlement report.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Settlement
+    report_options: []
+    parse_hints: TSV with header row.
+    notes: Auto-generated; not requestable on demand.
+
+  - report_type: GET_V2_SETTLEMENT_REPORT_DATA_XML
+    title: Settlement Report (XML)
+    purpose: XML form of the financial settlement report.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Settlement
+    report_options: []
+    parse_hints: Bytes are XML; parse accordingly.
+    notes: Auto-generated; not requestable on demand.
+
+  # =========================================================================
+  # Performance / Account Health / Feedback
+  # =========================================================================
+  - report_type: GET_V2_SELLER_PERFORMANCE_REPORT
+    title: Seller Performance (Account Health)
+    purpose: Account-health metrics — ODR, policy violations, late shipment, cancellation rates.
+    applies_to: seller
+    document_format: json
+    window: forbidden
+    warehouse_coverage: none
+    group: Account Health
+    report_options: []
+    parse_hints: JSON object with performance metric sections; current-state snapshot.
+
+  - report_type: GET_V1_SELLER_PERFORMANCE_REPORT
+    title: Seller Performance (v1)
+    purpose: Legacy v1 account-health report. Prefer v2.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Account Health
+    report_options: []
+    parse_hints: Legacy format; prefer GET_V2_SELLER_PERFORMANCE_REPORT.
+    notes: Deprecated in favor of v2.
+
+  - report_type: GET_SELLER_FEEDBACK_DATA
+    title: Seller Feedback
+    purpose: Buyer feedback ratings + comments over a window.
+    applies_to: seller
+    document_format: tsv
+    window: optional
+    warehouse_coverage: none
+    group: Account Health
+    report_options: []
+    parse_hints: TSV with header row; star rating + free-text comment columns.
+
+  # =========================================================================
+  # Tax (VAT / GST)
+  # =========================================================================
+  - report_type: GET_VAT_TRANSACTION_DATA
+    title: VAT Transactions
+    purpose: VAT-relevant transaction detail over a window. EU/UK tax compliance.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Tax
+    report_options: []
+    parse_hints: TSV with header row. EU/UK marketplaces.
+
+  - report_type: GET_FLAT_FILE_VAT_INVOICE_DATA_REPORT
+    title: VAT Invoice Data (VIDR)
+    purpose: Invoice-level VAT data over a window for invoicing/compliance.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Tax
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_GST_MTR_B2B_CUSTOM
+    title: GST B2B (India)
+    purpose: India GST merchant tax report, B2B transactions, over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required. India marketplace only.
+    warehouse_coverage: none
+    group: Tax
+    report_options: []
+    parse_hints: TSV with header row. India only.
+
+  - report_type: GET_GST_MTR_B2C_CUSTOM
+    title: GST B2C (India)
+    purpose: India GST merchant tax report, B2C transactions, over a window.
+    applies_to: seller
+    document_format: tsv
+    window: required
+    window_notes: start/end required. India marketplace only.
+    warehouse_coverage: none
+    group: Tax
+    report_options: []
+    parse_hints: TSV with header row. India only.
+
+  # =========================================================================
+  # Brand Analytics (JSON) — requires Brand Registry enrollment on the
+  # merchant. If not enrolled, expect restricted_report from the service.
+  # =========================================================================
+  - report_type: GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT
+    title: Brand Analytics — Search Terms
+    purpose: Top search terms with the top 3 clicked ASINs + click/conversion share. Keyword-demand intelligence.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window must align to the reportPeriod boundary (week/month/quarter).
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: WEEK | MONTH | QUARTER. start/end must align to this period.
+    parse_hints: JSON with a dataByDepartmentAndSearchTerm[] (or similar) array; each row has searchTerm + ranked clicked ASINs.
+    notes: Requires Brand Registry. Not enrolled -> restricted_report.
+
+  - report_type: GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT
+    title: Brand Analytics — Search Query Performance
+    purpose: Per-query funnel for your brand's ASINs — impressions, clicks, cart-adds, purchases + share.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window aligns to reportPeriod.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: WEEK | MONTH | QUARTER.
+    parse_hints: JSON with per-query funnel objects (impression/click/cartAdd/purchase counts + median price + share).
+    notes: Requires Brand Registry. Not enrolled -> restricted_report.
+
+  - report_type: GET_BRAND_ANALYTICS_MARKET_BASKET_REPORT
+    title: Brand Analytics — Market Basket
+    purpose: Products most often purchased together with your ASINs. Cross-sell/bundle insight.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window aligns to reportPeriod.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: MONTH
+        note: WEEK | MONTH | QUARTER.
+    parse_hints: JSON with purchased-together pairs + combination %.
+    notes: Requires Brand Registry.
+
+  - report_type: GET_BRAND_ANALYTICS_REPEAT_PURCHASE_REPORT
+    title: Brand Analytics — Repeat Purchase
+    purpose: Repeat-purchase behavior and customer counts for your ASINs over a period.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window aligns to reportPeriod.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: QUARTER
+        note: WEEK | MONTH | QUARTER.
+    parse_hints: JSON with order/customer counts + repeat % per ASIN.
+    notes: Requires Brand Registry.
+
+  - report_type: GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT
+    title: Brand Analytics — Item Comparison
+    purpose: Items most often viewed in the same session as your ASINs. Consideration-set insight.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window aligns to reportPeriod.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: WEEK | MONTH | QUARTER.
+    parse_hints: JSON with compared-ASIN rows + comparison %.
+    notes: Requires Brand Registry.
+
+  - report_type: GET_BRAND_ANALYTICS_ALTERNATE_PURCHASE_REPORT
+    title: Brand Analytics — Alternate Purchase
+    purpose: Items customers bought instead of your ASINs (competitive substitution).
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window aligns to reportPeriod.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: WEEK | MONTH | QUARTER.
+    parse_hints: JSON with alternate-ASIN rows + purchase %.
+    notes: Requires Brand Registry.
+
+  # =========================================================================
+  # Vendor (JSON) — for Vendor Central (1P) merchants only. Seller selectors
+  # will fail merchant_not_found / restricted; pick a Vendor merchant.
+  # =========================================================================
+  - report_type: GET_VENDOR_SALES_REPORT
+    title: Vendor Sales
+    purpose: 1P sourcing/manufacturing sales — shipped + ordered revenue/units, by period. Core vendor revenue surface.
+    applies_to: vendor
+    document_format: json
+    window: required
+    window_notes: start/end required; align to reportPeriod. Vendor data lags ~48-72h, so set the end window about 3 days back to land on settled numbers (a too-recent end returns thin or empty rows).
+    warehouse_coverage: have
+    group: Vendor
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: DAY | WEEK | MONTH | QUARTER | YEAR.
+      - key: distributorView
+        example: MANUFACTURING
+        note: MANUFACTURING | SOURCING.
+      - key: sellingProgram
+        example: RETAIL
+        note: RETAIL | BUSINESS | FRESH.
+    parse_hints: JSON with salesByAsin[] / salesAggregate. Pair the three reportOptions; mismatched combos return empty.
+    notes: MixShift warehouse holds vendor sales (vendor_sales_manufacturing_asin). Pull on demand for windows/views not loaded.
+
+  - report_type: GET_VENDOR_INVENTORY_REPORT
+    title: Vendor Inventory
+    purpose: 1P inventory health — sellable on hand, unsellable, open PO, sell-through, weeks of cover.
+    applies_to: vendor
+    document_format: json
+    window: required
+    window_notes: align to reportPeriod.
+    warehouse_coverage: partial
+    group: Vendor
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: DAY | WEEK | MONTH.
+      - key: distributorView
+        example: MANUFACTURING
+        note: MANUFACTURING | SOURCING.
+      - key: sellingProgram
+        example: RETAIL
+        note: RETAIL | BUSINESS | FRESH.
+    parse_hints: JSON with inventoryByAsin[] + aggregate; sourcing vs manufacturing change the meaning of the quantities.
+
+  - report_type: GET_VENDOR_TRAFFIC_REPORT
+    title: Vendor Traffic
+    purpose: 1P glance views (detail-page traffic) by ASIN over a period.
+    applies_to: vendor
+    document_format: json
+    window: required
+    window_notes: align to reportPeriod.
+    warehouse_coverage: none
+    group: Vendor
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: DAY | WEEK | MONTH.
+    parse_hints: JSON with trafficByAsin[] (glanceViews) + aggregate.
+
+  - report_type: GET_VENDOR_NET_PURE_PRODUCT_MARGIN_REPORT
+    title: Vendor Net Pure Product Margin
+    purpose: 1P net pure product margin (NPPM) by ASIN over a period.
+    applies_to: vendor
+    document_format: json
+    window: required
+    window_notes: align to reportPeriod.
+    warehouse_coverage: none
+    group: Vendor
+    report_options:
+      - key: reportPeriod
+        example: MONTH
+        note: WEEK | MONTH | QUARTER | YEAR.
+    parse_hints: JSON with margin metrics by ASIN + aggregate.
+
+  - report_type: GET_VENDOR_REAL_TIME_INVENTORY_REPORT
+    title: Vendor Real-Time Inventory
+    purpose: Near-real-time 1P inventory availability by ASIN. Faster cadence than the standard inventory report.
+    applies_to: vendor
+    document_format: json
+    window: optional
+    warehouse_coverage: none
+    group: Vendor
+    report_options:
+      - key: reportPeriod
+        example: DAY
+        note: Real-time cadence; reportPeriod may be constrained.
+    parse_hints: JSON; availability by ASIN + timestamp.
+
+  - report_type: GET_VENDOR_FORECASTING_REPORT
+    title: Vendor Forecasting
+    purpose: Amazon's demand forecast (mean + percentile bands) for your 1P ASINs.
+    applies_to: vendor
+    document_format: json
+    window: optional
+    warehouse_coverage: none
+    group: Vendor
+    report_options:
+      - key: sellingProgram
+        example: RETAIL
+        note: RETAIL | BUSINESS | FRESH.
+    parse_hints: JSON with forecastByAsin[] (mean + p70/p80/p90 bands across future weeks).
+
+  # =========================================================================
+  # Promotions / Coupons (Seller)
+  # =========================================================================
+  - report_type: GET_PROMOTION_PERFORMANCE_REPORT
+    title: Promotion Performance
+    purpose: Performance of promotions (deals, price discounts) over a window — units, sales, redemptions.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Promotions
+    report_options: []
+    parse_hints: JSON with per-promotion performance rows.
+
+  - report_type: GET_COUPON_PERFORMANCE_REPORT
+    title: Coupon Performance
+    purpose: Coupon performance over a window — clips, redemptions, sales, spend.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: start/end required.
+    warehouse_coverage: none
+    group: Promotions
+    report_options: []
+    parse_hints: JSON with per-coupon performance rows.
+
+  # =========================================================================
+  # B2B (Seller)
+  # =========================================================================
+  - report_type: GET_B2B_PRODUCT_OPPORTUNITIES_RECOMMENDED_FOR_YOU
+    title: B2B Product Opportunities (recommended)
+    purpose: B2B demand opportunities for products you already sell.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: B2B
+    report_options: []
+    parse_hints: TSV with header row.
+
+  - report_type: GET_B2B_PRODUCT_OPPORTUNITIES_NOT_YET_ON_AMAZON
+    title: B2B Product Opportunities (not yet on Amazon)
+    purpose: B2B demand for products you don't yet list. Assortment expansion.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: B2B
+    report_options: []
+    parse_hints: TSV with header row.
+
+  # =========================================================================
+  # Reference / Catalog
+  # =========================================================================
+  - report_type: GET_XML_BROWSE_TREE_DATA
+    title: Browse Tree (category map)
+    purpose: Marketplace browse-node hierarchy. Reference data for categorization/mapping.
+    applies_to: seller
+    document_format: tsv
+    window: forbidden
+    warehouse_coverage: none
+    group: Reference
+    report_options:
+      - key: marketplaceIds
+        example: ATVPDKIKX0DER
+        note: Browse tree is per-marketplace; pass the target marketplace.
+    parse_hints: Bytes are XML (nested browse nodes); parse as XML.

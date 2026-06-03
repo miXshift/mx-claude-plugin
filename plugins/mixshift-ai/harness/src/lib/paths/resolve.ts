@@ -145,6 +145,41 @@ export function outputDir(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'output');
 }
 
+/**
+ * Root for fetched SP-API report documents.
+ *   ~/.mixshift/reports/
+ * Distinct from `output/` (ad-hoc CSV exports of warehouse queries) so the
+ * two surfaces don't collide and a user can `ls ~/.mixshift/reports` to see
+ * everything they've pulled on demand.
+ */
+export function reportsDir(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'reports');
+}
+
+/**
+ * On-disk home for one fetched report document:
+ *   ~/.mixshift/reports/<scope>/<date>-<reportType>.<ext>
+ *
+ * `scope`      — brand slug when the merchant maps to a known brand, else the
+ *                amazonSellerId (so reports for a merchant not yet in the
+ *                brand registry still get a stable, greppable home).
+ * `runDate`    — YYYY-MM-DD the document was retrieved (not the data window).
+ * `reportType` — the Amazon GET_* enum, used verbatim so the filename is
+ *                self-describing.
+ * `ext`        — 'tsv' for flat-file reports, 'json' for vendor / Brand
+ *                Analytics. The service returns bytes as-is; the caller picks
+ *                the extension from the catalog's document_format.
+ */
+export function reportOutputPath(
+  scope: string,
+  runDate: string,
+  reportType: string,
+  ext: 'tsv' | 'json',
+  dataDirOverride?: string,
+): string {
+  return join(reportsDir(dataDirOverride), scope, `${runDate}-${reportType}.${ext}`);
+}
+
 export function telemetryDir(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'telemetry');
 }

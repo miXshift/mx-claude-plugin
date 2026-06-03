@@ -10418,6 +10418,12 @@ function indexPath(dataDirOverride) {
 function outputDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "output");
 }
+function reportsDir(dataDirOverride) {
+  return join4(resolveDataDir(dataDirOverride), "reports");
+}
+function reportOutputPath(scope, runDate, reportType, ext, dataDirOverride) {
+  return join4(reportsDir(dataDirOverride), scope, `${runDate}-${reportType}.${ext}`);
+}
 function telemetryDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "telemetry");
 }
@@ -42494,7 +42500,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join15(tree) {
+      function join16(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -42520,7 +42526,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join15(parse4(query2));
+        tree = join16(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -47208,6 +47214,16 @@ var EventName = {
   FeedbackSubmitted: "feedback.submitted",
   FeedbackDetectedImplicit: "feedback.detected_implicit",
   TableAccessRequested: "table_access.requested",
+  // Amazon SP-API on-demand reports (lib/amazon/reports.ts + `mixshift amazon`).
+  // Privacy: these capture report_type + duration + outcome only — NEVER the
+  // document bytes (which can contain order/customer rows) and never the
+  // amazonSellerId in a way that leaks customer identity beyond what auth.*
+  // already links.
+  AmazonMerchantsListed: "amazon.merchants_listed",
+  ReportStarted: "report.started",
+  ReportPolled: "report.polled",
+  ReportRetrieved: "report.retrieved",
+  ReportFailed: "report.failed",
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: "warm_start.served"
 };
@@ -49922,9 +49938,9 @@ function computeVerdict(args) {
 }
 async function loadAuditLabels() {
   const { existsSync: existsSync3 } = await import("node:fs");
-  const { fileURLToPath: fileURLToPath5 } = await import("node:url");
+  const { fileURLToPath: fileURLToPath6 } = await import("node:url");
   const { parse: parse4 } = await import("node:path");
-  let dir = dirname12(fileURLToPath5(import.meta.url));
+  let dir = dirname12(fileURLToPath6(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
     const candidate = join7(
@@ -58681,6 +58697,916 @@ function emitError7(json2, message) {
   process.exitCode = 1;
 }
 
+// src/commands/amazon.ts
+import { writeFile as writeFile17, mkdir as mkdir19 } from "node:fs/promises";
+import { dirname as dirname24, resolve as resolvePath2 } from "node:path";
+
+// src/lib/amazon/reports.ts
+init_credentials();
+function isReportFailure(x) {
+  return x.ok === false;
+}
+async function listMerchants(opts = {}) {
+  const r = await amazonRequest(
+    { method: "GET", path: "/api/amazon/merchants" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = Array.isArray(r.json) ? r.json : r.json.merchants ?? [];
+  const merchants = Array.isArray(raw) ? raw : [];
+  return { ok: true, merchants };
+}
+async function startReport(input, opts = {}) {
+  const body = {
+    reportType: input.reportType
+  };
+  if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
+  if (input.start) body.start = input.start;
+  if (input.end) body.end = input.end;
+  if (input.marketplace) body.marketplace = input.marketplace;
+  if (input.reportOptions) body.reportOptions = input.reportOptions;
+  const r = await amazonRequest(
+    { method: "POST", path: "/api/amazon/reports", body },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  const runId = typeof json2.runId === "string" ? json2.runId : void 0;
+  if (!runId) {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The service accepted the report request but did not return a run handle. Try again, or contact MixShift ops if it persists.",
+      message: `start response missing runId: ${safeJsonPreview(r.json)}`
+    };
+  }
+  return {
+    ok: true,
+    runId,
+    status: typeof json2.status === "string" ? json2.status : void 0
+  };
+}
+async function pollReport(runId, opts = {}) {
+  const r = await amazonRequest(
+    { method: "GET", path: `/api/amazon/reports/${encodeURIComponent(runId)}` },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  return {
+    ok: true,
+    ready: json2.ready === true,
+    status: typeof json2.status === "string" ? json2.status : "UNKNOWN",
+    reportId: typeof json2.reportId === "string" ? json2.reportId : void 0
+  };
+}
+async function getReportDocument(runId, opts = {}) {
+  const r = await amazonRequest(
+    {
+      method: "GET",
+      path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`
+    },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 12e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  const ready = json2.ready === true;
+  return {
+    ok: true,
+    ready,
+    status: typeof json2.status === "string" ? json2.status : void 0,
+    // Wire field is `tsv` regardless of TSV-vs-JSON content (see file header).
+    document: typeof json2.tsv === "string" ? json2.tsv : void 0,
+    rowCountEstimate: numOrUndef(json2.rowCountEstimate)
+  };
+}
+async function amazonRequest(spec, opts) {
+  const resolved = await resolveBaseAndToken(opts);
+  if ("ok" in resolved) return resolved;
+  const { apiBase, tokenProvider } = resolved;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 3e4;
+  const doFetch = async (bearer) => {
+    try {
+      const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
+        method: spec.method,
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          ...spec.body ? { "Content-Type": "application/json" } : {}
+        },
+        body: spec.body ? JSON.stringify(spec.body) : void 0,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return { res: res2 };
+    } catch (err) {
+      return { networkError: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  let token;
+  try {
+    token = await tokenProvider(false);
+  } catch (err) {
+    return sessionFailureFromError(err);
+  }
+  let attempt = await doFetch(token);
+  if ("networkError" in attempt) return hostUnreachable(attempt.networkError);
+  let res = attempt.res;
+  if (res.status === 401) {
+    try {
+      token = await tokenProvider(true);
+    } catch (err) {
+      return sessionFailureFromError(err);
+    }
+    attempt = await doFetch(token);
+    if ("networkError" in attempt) return hostUnreachable(attempt.networkError);
+    res = attempt.res;
+    if (res.status === 401) {
+      return {
+        ok: false,
+        kind: "session_expired",
+        friendly: "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate.",
+        httpStatus: 401
+      };
+    }
+  }
+  let json2;
+  try {
+    json2 = await res.json();
+  } catch {
+    return statusOnlyFailure(res.status);
+  }
+  if (isServerFailureEnvelope(json2)) {
+    return toReportFailure(json2, res.status);
+  }
+  if (!res.ok) {
+    return statusOnlyFailure(res.status, safeJsonPreview(json2));
+  }
+  return { ok: true, json: json2 };
+}
+async function resolveBaseAndToken(opts) {
+  let apiBase = opts.apiBaseOverride;
+  if (!apiBase) {
+    const { credentials } = await loadCredentials(opts.dataDirOverride);
+    if (!credentials?.datahub) {
+      return {
+        ok: false,
+        kind: "not_authenticated",
+        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) before pulling reports.'
+      };
+    }
+    apiBase = credentials.datahub.api_base;
+  }
+  const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
+  return { apiBase, tokenProvider };
+}
+var KNOWN_KINDS = /* @__PURE__ */ new Set([
+  "spapi_not_configured",
+  "reauth_required",
+  "restricted_report",
+  "merchant_not_found",
+  "throttled",
+  "report_fatal",
+  "host_unreachable",
+  "not_authenticated",
+  "session_expired",
+  "unknown"
+]);
+function isServerFailureEnvelope(json2) {
+  return typeof json2 === "object" && json2 !== null && json2.ok === false;
+}
+function toReportFailure(json2, httpStatus) {
+  const rawKind = typeof json2.kind === "string" ? json2.kind : "";
+  const kind = KNOWN_KINDS.has(rawKind) ? rawKind : "unknown";
+  const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
+  const message = typeof json2.message === "string" ? json2.message : void 0;
+  return {
+    ok: false,
+    kind,
+    friendly: serverFriendly ?? defaultFriendly(kind),
+    message,
+    amazonSellerId: strOrUndef(json2.amazonSellerId),
+    reportType: strOrUndef(json2.reportType),
+    retryAfterMs: numOrUndef(json2.retryAfterMs),
+    reportId: strOrUndef(json2.reportId),
+    status: strOrUndef(json2.status),
+    httpStatus
+  };
+}
+function statusOnlyFailure(httpStatus, detail) {
+  const kind = statusToKind(httpStatus);
+  return {
+    ok: false,
+    kind,
+    friendly: defaultFriendly(kind),
+    message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
+    httpStatus
+  };
+}
+function statusToKind(httpStatus) {
+  switch (httpStatus) {
+    case 403:
+      return "restricted_report";
+    case 404:
+      return "merchant_not_found";
+    case 409:
+      return "reauth_required";
+    case 429:
+      return "throttled";
+    case 503:
+      return "spapi_not_configured";
+    case 502:
+    case 504:
+      return "host_unreachable";
+    default:
+      return "unknown";
+  }
+}
+function hostUnreachable(message) {
+  return {
+    ok: false,
+    kind: "host_unreachable",
+    friendly: "The MixShift service is unreachable. Check your network or try again in a minute.",
+    message
+  };
+}
+function sessionFailureFromError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const expired = /expired|refresh/i.test(message);
+  return {
+    ok: false,
+    kind: expired ? "session_expired" : "not_authenticated",
+    friendly: expired ? "Your MixShift session expired. Run `mixshift auth login` to re-authenticate." : "You're not signed in to MixShift. Run `mixshift auth login` first.",
+    message
+  };
+}
+function defaultFriendly(kind) {
+  switch (kind) {
+    case "spapi_not_configured":
+      return "Amazon SP-API isn't enabled for this MixShift account yet. Contact MixShift ops to turn on on-demand report pulls.";
+    case "reauth_required":
+      return "This Amazon merchant needs to be re-authorized in MixShift before reports can be pulled. Re-connect the account in the MixShift app, then retry.";
+    case "restricted_report":
+      return "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report.";
+    case "merchant_not_found":
+      return "No Amazon merchant matched that selector. Run `mixshift amazon merchants` to see which merchants you can pull for.";
+    case "throttled":
+      return "Amazon is rate-limiting report requests right now. Wait a moment and retry.";
+    case "report_fatal":
+      return "Amazon could not generate this report (it returned a FATAL or CANCELLED status). This usually means the report type does not apply to this merchant, or the requested window is invalid.";
+    case "host_unreachable":
+      return "The MixShift service is unreachable. Check your network or try again in a minute.";
+    case "not_authenticated":
+      return "You're not signed in to MixShift. Run `mixshift auth login` first.";
+    case "session_expired":
+      return "Your MixShift session expired. Run `mixshift auth login` to re-authenticate.";
+    case "unknown":
+    default:
+      return "The report request failed unexpectedly. Try again shortly.";
+  }
+}
+function strOrUndef(v) {
+  return typeof v === "string" ? v : void 0;
+}
+function numOrUndef(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : void 0;
+}
+function safeJsonPreview(json2) {
+  try {
+    const s = JSON.stringify(json2);
+    return s.length > 300 ? s.slice(0, 300) + "..." : s;
+  } catch {
+    return String(json2);
+  }
+}
+
+// src/lib/reports/catalog.ts
+var import_yaml18 = __toESM(require_dist(), 1);
+import { readFile as readFile24 } from "node:fs/promises";
+import { dirname as dirname23, join as join15 } from "node:path";
+import { fileURLToPath as fileURLToPath5 } from "node:url";
+async function loadReportCatalog(overridePath) {
+  const candidates = overridePath ? [overridePath] : candidatePaths4();
+  for (const path2 of candidates) {
+    try {
+      const raw = await readFile24(path2, "utf-8");
+      const parsed = (0, import_yaml18.parse)(raw);
+      if (!parsed?.reports) continue;
+      return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
+    } catch (err) {
+      if (isFileNotFoundError15(err)) continue;
+      throw err;
+    }
+  }
+  return [];
+}
+async function findReportType(reportType, overridePath) {
+  const all = await loadReportCatalog(overridePath);
+  return all.find((r) => r.reportType === reportType) ?? null;
+}
+function normalize2(raw) {
+  return {
+    reportType: raw.report_type,
+    title: raw.title ?? raw.report_type,
+    purpose: raw.purpose ?? "",
+    appliesTo: normalizeAppliesTo(raw.applies_to),
+    documentFormat: raw.document_format === "json" ? "json" : "tsv",
+    window: normalizeWindow(raw.window),
+    windowNotes: raw.window_notes,
+    warehouseCoverage: normalizeCoverage(raw.warehouse_coverage),
+    group: raw.group,
+    reportOptions: normalizeOptions(raw.report_options),
+    parseHints: raw.parse_hints,
+    notes: raw.notes
+  };
+}
+function normalizeAppliesTo(v) {
+  return v === "seller" || v === "vendor" ? v : "both";
+}
+function normalizeWindow(v) {
+  return v === "required" || v === "forbidden" ? v : "optional";
+}
+function normalizeCoverage(v) {
+  return v === "have" || v === "partial" ? v : "none";
+}
+function normalizeOptions(v) {
+  if (!Array.isArray(v)) return [];
+  return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
+}
+function candidatePaths4() {
+  const here = dirname23(fileURLToPath5(import.meta.url));
+  const candidates = [];
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    candidates.push(join15(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname23(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return candidates;
+}
+function isFileNotFoundError15(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/commands/amazon.ts
+init_resolve();
+var EXIT_NOT_READY = 10;
+function registerAmazonCommands(program3) {
+  const amazon = program3.command("amazon").description(
+    "Pull Amazon SP-API reports on demand (read-only). Catalog-driven; fetches data MixShift may not already hold, for any window you need."
+  );
+  registerMerchants(amazon);
+  registerListReports(amazon);
+  registerDescribeReport(amazon);
+  const report = amazon.command("report").description("Start, poll, and fetch a report run.");
+  registerReportStart(report);
+  registerReportPoll(report);
+  registerReportGet(report);
+  registerReportRun(report);
+}
+function registerMerchants(amazon) {
+  amazon.command("merchants").description("List the Amazon merchants (seller/vendor accounts) you can pull reports for.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listMerchants({ dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackFailure(EventName.AmazonMerchantsListed, result, startedAt, root.dataDir);
+        return emitFailure(result, !!root.json);
+      }
+      await track(
+        {
+          event_name: EventName.AmazonMerchantsListed,
+          outcome: "ok",
+          duration_ms: Date.now() - startedAt,
+          payload: { count: result.merchants.length }
+        },
+        root.dataDir
+      );
+      if (root.json) {
+        writeJson({ status: "ok", merchants: result.merchants });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.merchants.length} merchant(s)
+
+`);
+        process.stdout.write(renderMerchants(result.merchants) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerListReports(amazon) {
+  amazon.command("list-reports").description("Browse the report catalog (every report type, grouped).").option("--applies-to <kind>", "filter: seller | vendor").option("--group <name>", 'filter to one display group (e.g. "FBA Inventory")').action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const all = await loadReportCatalog();
+        const filtered = all.filter((e) => {
+          if (opts.appliesTo && e.appliesTo !== opts.appliesTo && e.appliesTo !== "both") {
+            return false;
+          }
+          if (opts.group && e.group !== opts.group) return false;
+          return true;
+        });
+        if (root.json) {
+          writeJson({ status: "ok", count: filtered.length, reports: filtered });
+        } else {
+          process.stderr.write(`
+\u2713 ${filtered.length} report type(s)
+`);
+          process.stdout.write(renderReportList(filtered) + "\n");
+        }
+        return;
+      } catch (err) {
+        emitError8(err, !!root.json);
+      }
+    }
+  );
+}
+function registerDescribeReport(amazon) {
+  amazon.command("describe-report <reportType>").description("Show purpose, window rules, options, and parse hints for one report type.").action(async (reportType, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const entry = await findReportType(reportType);
+      if (!entry) {
+        throw new Error(
+          `"${reportType}" is not in the report catalog. Run \`mixshift amazon list-reports\` to see valid report types.`
+        );
+      }
+      if (root.json) {
+        writeJson({ status: "ok", report: entry });
+      } else {
+        process.stdout.write(renderReportDetail(entry) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerReportStart(report) {
+  report.command("start").description(
+    "Kick off a report run. Returns a runId immediately (does not wait for the document). Poll it with `amazon report poll <runId>`."
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.").requiredOption("--type <reportType>", "Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601).").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.").option("--option <key=value>", "reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK", collectKV, {}).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const reportType = opts.type ?? "";
+    try {
+      const input = {
+        amazonSellerId: opts.sellerId,
+        reportType,
+        start: opts.start,
+        end: opts.end,
+        marketplace: opts.marketplace,
+        reportOptions: Object.keys(opts.option).length > 0 ? opts.option : void 0
+      };
+      const result = await startReport(input, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir, reportType);
+        return emitFailure(result, !!root.json);
+      }
+      await track(
+        {
+          event_name: EventName.ReportStarted,
+          outcome: "ok",
+          duration_ms: Date.now() - startedAt,
+          payload: { report_type: reportType, status: result.status }
+        },
+        root.dataDir
+      );
+      if (root.json) {
+        writeJson({ status: "ok", run_id: result.runId, report_status: result.status });
+      } else {
+        process.stdout.write(
+          `
+\u2713 Report run started.
+  - run_id: ${result.runId}
+` + (result.status ? `  - status: ${result.status}
+` : "") + `
+Next: \`mixshift amazon report poll ${result.runId}\` until ready, then \`amazon report get ${result.runId} --out <file>\`.
+`
+        );
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerReportPoll(report) {
+  report.command("poll <runId>").description("Check whether a run is done. Returns {ready, status}. Gate on `ready`, not `status`.").action(async (runId, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await pollReport(runId, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
+        return emitFailure(result, !!root.json);
+      }
+      await track(
+        {
+          event_name: EventName.ReportPolled,
+          outcome: "ok",
+          duration_ms: Date.now() - startedAt,
+          payload: { ready: result.ready, status: result.status }
+        },
+        root.dataDir
+      );
+      if (root.json) {
+        writeJson({
+          status: "ok",
+          ready: result.ready,
+          report_status: result.status,
+          report_id: result.reportId
+        });
+      } else {
+        process.stdout.write(
+          `
+${result.ready ? "\u2713 ready" : "\u2022 not ready yet"}  (status: ${result.status})
+` + (result.ready ? `
+Next: \`mixshift amazon report get ${runId} --out <file>\`.
+` : `
+Poll again in a few seconds.
+`)
+        );
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerReportGet(report) {
+  report.command("get <runId>").description(
+    "Fetch the report document. Safe to call before ready (returns ready:false, exit 10 \u2014 keep polling). With --out, writes the bytes to a file."
+  ).option("--out <path>", "write the document to this file (otherwise streams to stdout)").action(async (runId, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await getReportDocument(runId, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
+        return emitFailure(result, !!root.json);
+      }
+      if (!result.ready) {
+        await track(
+          {
+            event_name: EventName.ReportPolled,
+            outcome: "deferred",
+            duration_ms: Date.now() - startedAt,
+            payload: { ready: false, status: result.status, via: "get" }
+          },
+          root.dataDir
+        );
+        if (root.json) {
+          writeJson({ status: "ok", ready: false, report_status: result.status });
+        } else {
+          process.stdout.write(
+            `
+\u2022 not ready yet (status: ${result.status ?? "unknown"}). Poll again, then re-run get.
+`
+          );
+        }
+        process.exitCode = EXIT_NOT_READY;
+        return;
+      }
+      const document = result.document ?? "";
+      const bytes = Buffer.byteLength(document, "utf-8");
+      if (opts.out) {
+        const outPath = resolvePath2(opts.out);
+        await mkdir19(dirname24(outPath), { recursive: true });
+        await writeFile17(outPath, document, "utf-8");
+        await trackRetrieved(startedAt, bytes, root.dataDir);
+        if (root.json) {
+          writeJson({ status: "ok", ready: true, out_path: outPath, bytes });
+        } else {
+          process.stderr.write(`
+\u2713 wrote ${bytes} bytes to ${outPath}
+`);
+        }
+        return;
+      }
+      await trackRetrieved(startedAt, bytes, root.dataDir);
+      if (root.json) {
+        writeJson({ status: "ok", ready: true, bytes, document });
+      } else {
+        process.stderr.write(`
+\u2713 ${bytes} bytes (use --out <file> to save)
+`);
+        process.stdout.write(document);
+        if (!document.endsWith("\n")) process.stdout.write("\n");
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerReportRun(report) {
+  report.command("run").description(
+    "Convenience: start + poll-until-ready + get, in one blocking call. TERMINAL-ONLY \u2014 it can run for minutes, which exceeds the ~45s Bash ceiling on chat surfaces. In chat, use start/poll/get separately."
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.").requiredOption("--type <reportType>", "Amazon report type enum").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601)").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601)").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId").option("--option <key=value>", "reportOptions knob (repeatable)", collectKV, {}).option("--out <path>", "output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)").option("--interval-ms <ms>", "poll interval", parseIntOpt, 5e3).option("--max-wait-ms <ms>", "give up after this long", parseIntOpt, 3e5).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const reportType = opts.type ?? "";
+    const sellerId = opts.sellerId ?? "";
+    const clientOpts = { dataDirOverride: root.dataDir };
+    try {
+      if (!root.json) {
+        process.stderr.write(
+          `
+\u2022 Running ${reportType} for ${sellerId || "your merchant"} (blocking up to ${Math.round(opts.maxWaitMs / 1e3)}s)...
+`
+        );
+      }
+      const started = await startReport(
+        {
+          amazonSellerId: opts.sellerId,
+          reportType,
+          start: opts.start,
+          end: opts.end,
+          marketplace: opts.marketplace,
+          reportOptions: Object.keys(opts.option).length > 0 ? opts.option : void 0
+        },
+        clientOpts
+      );
+      if (isReportFailure(started)) {
+        await trackFailure(EventName.ReportFailed, started, startedAt, root.dataDir, reportType);
+        return emitFailure(started, !!root.json);
+      }
+      await track(
+        {
+          event_name: EventName.ReportStarted,
+          outcome: "ok",
+          duration_ms: Date.now() - startedAt,
+          payload: { report_type: reportType, status: started.status, via: "run" }
+        },
+        root.dataDir
+      );
+      const runId = started.runId;
+      const deadline = startedAt + opts.maxWaitMs;
+      let polls = 0;
+      let lastStatus = started.status ?? "UNKNOWN";
+      while (Date.now() < deadline) {
+        const poll = await pollReport(runId, clientOpts);
+        if (isReportFailure(poll)) {
+          await trackFailure(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
+          return emitFailure(poll, !!root.json);
+        }
+        polls += 1;
+        lastStatus = poll.status;
+        if (poll.ready) break;
+        if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})
+`);
+        await sleep(opts.intervalMs);
+      }
+      const finalPoll = await pollReport(runId, clientOpts);
+      if (isReportFailure(finalPoll)) {
+        await trackFailure(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
+        return emitFailure(finalPoll, !!root.json);
+      }
+      if (!finalPoll.ready) {
+        await track(
+          {
+            event_name: EventName.ReportPolled,
+            outcome: "timeout",
+            duration_ms: Date.now() - startedAt,
+            payload: { report_type: reportType, status: lastStatus, polls, via: "run" }
+          },
+          root.dataDir
+        );
+        const msg = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${finalPoll.status}). The run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${runId}\`.`;
+        if (root.json) {
+          writeJson({ status: "error", failure_kind: "timeout", run_id: runId, report_status: finalPoll.status, message: msg });
+        } else {
+          process.stderr.write(`
+\u2717 ${msg}
+`);
+        }
+        process.exitCode = EXIT_NOT_READY;
+        return;
+      }
+      const doc = await getReportDocument(runId, clientOpts);
+      if (isReportFailure(doc)) {
+        await trackFailure(EventName.ReportFailed, doc, startedAt, root.dataDir, reportType);
+        return emitFailure(doc, !!root.json);
+      }
+      const document = doc.document ?? "";
+      const bytes = Buffer.byteLength(document, "utf-8");
+      const outPath = resolvePath2(
+        opts.out ?? await defaultOutPath(sellerId, reportType, root.dataDir)
+      );
+      await mkdir19(dirname24(outPath), { recursive: true });
+      await writeFile17(outPath, document, "utf-8");
+      await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
+      if (root.json) {
+        writeJson({ status: "ok", ready: true, run_id: runId, out_path: outPath, bytes, polls });
+      } else {
+        process.stderr.write(
+          `
+\u2713 ${reportType} done in ${((Date.now() - startedAt) / 1e3).toFixed(1)}s (${polls} poll(s))
+  wrote ${bytes} bytes to ${outPath}
+`
+        );
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+async function trackRetrieved(startedAt, bytes, dataDir, reportType) {
+  await track(
+    {
+      event_name: EventName.ReportRetrieved,
+      outcome: "ok",
+      duration_ms: Date.now() - startedAt,
+      // bytes is a size, not content — safe. No document bytes, no sellerId.
+      payload: { bytes, ...reportType ? { report_type: reportType } : {} }
+    },
+    dataDir
+  );
+}
+async function trackFailure(eventName, failure, startedAt, dataDir, reportType) {
+  await track(
+    {
+      event_name: eventName,
+      outcome: "failed",
+      error_class: failure.kind,
+      duration_ms: Date.now() - startedAt,
+      payload: {
+        kind: failure.kind,
+        ...reportType ? { report_type: reportType } : {},
+        ...failure.httpStatus ? { http_status: failure.httpStatus } : {}
+      }
+    },
+    dataDir
+  );
+}
+function writeJson(obj) {
+  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+}
+function emitFailure(failure, json2) {
+  if (json2) {
+    writeJson({
+      status: "error",
+      failure_kind: failure.kind,
+      message: failure.friendly,
+      detail: failure.message,
+      http_status: failure.httpStatus,
+      amazon_seller_id: failure.amazonSellerId,
+      report_type: failure.reportType,
+      retry_after_ms: failure.retryAfterMs
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure.friendly}
+`);
+  }
+  process.exitCode = exitCodeForKind(failure.kind);
+}
+function emitError8(err, json2) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json2) {
+    writeJson({ status: "error", message });
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function exitCodeForKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    // sign in / re-login (run `mixshift auth login`)
+    case "restricted_report":
+      return 4;
+    // Amazon needs an RDT/PII role MixShift lacks
+    case "reauth_required":
+      return 5;
+    // merchant grant lapsed — reconnect this merchant
+    case "spapi_not_configured":
+      return 6;
+    // SP-API not enabled for this tenant
+    case "merchant_not_found":
+      return 7;
+    // selector matched no merchant
+    case "throttled":
+      return 8;
+    // Amazon rate limit — retry later
+    case "report_fatal":
+      return 9;
+    // Amazon returned FATAL / CANCELLED
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
+function renderMerchants(merchants) {
+  if (merchants.length === 0) {
+    return "_(no merchants \u2014 your tenant may not have any connected Amazon accounts yet)_";
+  }
+  const cols = ["amazonSellerId", "name", "type", "region", "marketplace", "authorized"];
+  const header = "| " + cols.join(" | ") + " |";
+  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const rows = merchants.map(
+    (m) => "| " + [
+      m.amazonSellerId,
+      mdCell(m.name),
+      m.merchantType,
+      m.merchantRegion,
+      m.marketplaceId,
+      m.authorized ? "yes" : "no"
+    ].join(" | ") + " |"
+  );
+  return [header, sep, ...rows].join("\n");
+}
+function renderReportList(entries) {
+  if (entries.length === 0) return "\n_(no report types match)_\n";
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const g = e.group ?? "Other";
+    const list = byGroup.get(g) ?? [];
+    list.push(e);
+    byGroup.set(g, list);
+  }
+  const lines = [];
+  for (const [group, list] of byGroup) {
+    lines.push("");
+    lines.push(`## ${group}`);
+    for (const e of list) {
+      const tags = [
+        e.appliesTo !== "both" ? e.appliesTo : "",
+        e.documentFormat,
+        e.window === "required" ? "window-required" : e.window === "forbidden" ? "no-window" : "",
+        e.warehouseCoverage !== "none" ? `warehouse:${e.warehouseCoverage}` : ""
+      ].filter(Boolean).join(", ");
+      lines.push(`- \`${e.reportType}\`  \u2014  ${e.purpose}` + (tags ? `  *(${tags})*` : ""));
+    }
+  }
+  return lines.join("\n");
+}
+function renderReportDetail(e) {
+  const lines = [];
+  lines.push("");
+  lines.push(`# ${e.title}`);
+  lines.push(`\`${e.reportType}\``);
+  lines.push("");
+  lines.push(e.purpose);
+  lines.push("");
+  lines.push(`- **applies to**: ${e.appliesTo}`);
+  lines.push(`- **document format**: ${e.documentFormat}`);
+  lines.push(`- **window**: ${e.window}${e.windowNotes ? ` \u2014 ${e.windowNotes}` : ""}`);
+  lines.push(`- **warehouse coverage**: ${e.warehouseCoverage}`);
+  if (e.reportOptions.length > 0) {
+    lines.push(`- **reportOptions**:`);
+    for (const o of e.reportOptions) {
+      lines.push(
+        `    - \`${o.key}\`${o.example ? ` (e.g. ${o.example})` : ""}${o.note ? ` \u2014 ${o.note}` : ""}`
+      );
+    }
+  }
+  if (e.parseHints) lines.push(`- **parse hints**: ${e.parseHints}`);
+  if (e.notes) lines.push(`- **notes**: ${e.notes}`);
+  return lines.join("\n");
+}
+function mdCell(v) {
+  return String(v).replace(/\|/g, "\\|");
+}
+function collectKV(value, prev) {
+  const eq = value.indexOf("=");
+  if (eq < 0) {
+    throw new Error(`--option must be key=value (got "${value}")`);
+  }
+  const key = value.slice(0, eq).trim();
+  const val = value.slice(eq + 1);
+  if (!key) throw new Error(`--option key is empty in "${value}"`);
+  return { ...prev, [key]: val };
+}
+function parseIntOpt(v) {
+  const n = Number.parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`Expected a non-negative integer, got "${v}"`);
+  return n;
+}
+async function defaultOutPath(sellerId, reportType, dataDir) {
+  const entry = await findReportType(reportType);
+  const ext = entry?.documentFormat === "json" ? "json" : "tsv";
+  const scope = sellerId || "unknown-merchant";
+  return reportOutputPath(scope, todayISO6(), reportType, ext, dataDir);
+}
+function todayISO6() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function sleep(ms) {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
 // src/cli.ts
 init_load();
 init_save();
@@ -58710,6 +59636,7 @@ registerWelcomeCommand(program2);
 registerVersionCommand(program2);
 registerTelemetryCommands(program2);
 registerSkillCommands(program2);
+registerAmazonCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();

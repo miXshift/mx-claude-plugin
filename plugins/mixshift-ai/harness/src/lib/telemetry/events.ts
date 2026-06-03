@@ -126,6 +126,17 @@ export const EventName = {
   FeedbackDetectedImplicit: 'feedback.detected_implicit',
   TableAccessRequested: 'table_access.requested',
 
+  // Amazon SP-API on-demand reports (lib/amazon/reports.ts + `mixshift amazon`).
+  // Privacy: these capture report_type + duration + outcome only — NEVER the
+  // document bytes (which can contain order/customer rows) and never the
+  // amazonSellerId in a way that leaks customer identity beyond what auth.*
+  // already links.
+  AmazonMerchantsListed: 'amazon.merchants_listed',
+  ReportStarted: 'report.started',
+  ReportPolled: 'report.polled',
+  ReportRetrieved: 'report.retrieved',
+  ReportFailed: 'report.failed',
+
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 } as const;

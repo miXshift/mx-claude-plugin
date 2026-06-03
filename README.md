@@ -39,7 +39,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **17 skills**. Each is invoked naturally in chat — say what you want and Claude picks the right one. Two tiers based on whether the skill needs a brand-context build first:
+The plugin ships **18 skills**. Each is invoked naturally in chat — say what you want and Claude picks the right one. Two tiers based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -48,6 +48,7 @@ The plugin ships **17 skills**. Each is invoked naturally in chat — say what y
 | `welcome` | First-run orientation + your current state + suggested next steps. |
 | `auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
 | `data-explore` | Query, sample, and CSV-export your MixShift warehouse — Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
+| `amazon-report-pull` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Fetches data the warehouse may not hold yet, or a known report for a specific time frame. Read-only. |
 | `feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
 | `competitive-analysis` | Research-driven SWOT + competitor positioning + pricing-tier maps. Web-based, no warehouse data required. |
 | `account-cold-start` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. |
