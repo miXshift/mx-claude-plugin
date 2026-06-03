@@ -689,10 +689,7 @@ async function promptInputs(
       '# To connect, you need your MySQL credentials from MixShift:\n' +
       `#   1. Open  ${cr.url_default}\n` +
       `#      (or your tenant: ${cr.url_tenant_pattern})\n` +
-      (cr.master_password
-        ? `#   2. Enter the master password when prompted:\n` +
-          `#        ${cr.master_password}\n`
-        : '#   2. Sign in if prompted.\n') +
+      '#   2. Sign in if prompted.\n' +
       `#   3. Copy HostName, Username, Port, Schema, and Password from the page.\n` +
       '\n' +
       (cr.notes ? `# ${cr.notes.replace(/\n/g, '\n# ')}\n\n` : '\n'),

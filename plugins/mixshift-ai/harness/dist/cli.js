@@ -45379,7 +45379,6 @@ var init_schema3 = __esm({
     credentialRetrieval = external_exports.object({
       url_default: external_exports.string().default("https://www.mydashapplications.com/database-admin"),
       url_tenant_pattern: external_exports.string().default("https://<your-company>.mydashapplications.com/database-admin"),
-      master_password: external_exports.string().default(""),
       notes: external_exports.string().default("")
     });
     defaultsSchema = external_exports.object({
@@ -45399,7 +45398,6 @@ var init_schema3 = __esm({
         credential_retrieval: credentialRetrieval.default({
           url_default: "https://www.mydashapplications.com/database-admin",
           url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
-          master_password: "",
           notes: ""
         })
       }).default({
@@ -45412,7 +45410,6 @@ var init_schema3 = __esm({
         credential_retrieval: {
           url_default: "https://www.mydashapplications.com/database-admin",
           url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
-          master_password: "",
           notes: ""
         }
       }),
@@ -55071,9 +55068,8 @@ For scripted / CI use, pass --from-file <path> with a YAML/JSON file containing 
 # To connect, you need your MySQL credentials from MixShift:
 #   1. Open  ${cr.url_default}
 #      (or your tenant: ${cr.url_tenant_pattern})
-` + (cr.master_password ? `#   2. Enter the master password when prompted:
-#        ${cr.master_password}
-` : "#   2. Sign in if prompted.\n") + `#   3. Copy HostName, Username, Port, Schema, and Password from the page.
+#   2. Sign in if prompted.
+#   3. Copy HostName, Username, Port, Schema, and Password from the page.
 
 ` + (cr.notes ? `# ${cr.notes.replace(/\n/g, "\n# ")}
 
@@ -57385,7 +57381,7 @@ function registerWelcomeCommand(program3) {
     const { profile, source: profileSource } = await loadProfile(root.dataDir);
     const { credentials } = await loadCredentials(root.dataDir);
     const cr = defaults.auth.credential_retrieval;
-    const authReady = !!credentials?.mysql;
+    const authReady = !!credentials?.datahub || !!credentials?.mysql;
     const profileReady = profileSource === "file" && !!profile.user?.email;
     if (root.json) {
       process.stdout.write(
@@ -57396,8 +57392,7 @@ function registerWelcomeCommand(program3) {
             profile_ready: profileReady,
             credential_retrieval: {
               url_default: cr.url_default,
-              url_tenant_pattern: cr.url_tenant_pattern,
-              master_password: cr.master_password
+              url_tenant_pattern: cr.url_tenant_pattern
             },
             next_step: authReady ? "mixshift brand discover" : "mixshift auth login"
           },

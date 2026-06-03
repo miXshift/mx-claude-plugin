@@ -46,18 +46,13 @@ auth:
     port: 3306
     database: dashamazon
 
-  # How the user retrieves their MySQL credentials. The plugin surfaces this
-  # in `mixshift auth setup` and `mixshift welcome` so users see the URL
-  # and master password right when they need them.
-  #
-  # The master password is "same for everyone" — it's a soft second blocker
-  # so logged-in MixShift users don't accidentally see DB creds, not a real
-  # secret. Customers find the same value if they navigate to the page
-  # directly; shipping it in the plugin defaults saves a step.
+  # How the user retrieves their MySQL credentials (legacy raw-MySQL flow).
+  # Surfaced by `mixshift auth setup` so users see the URL when they need
+  # it. Token-based sign-in (`mixshift auth login`) is the default path now
+  # and does not use this block.
   credential_retrieval:
     url_default: https://www.mydashapplications.com/database-admin
     url_tenant_pattern: https://<your-company>.mydashapplications.com/database-admin
-    master_password: Dash!applications4you
     notes: |
       The `www` URL works for most users via the wildcard SSL on
       mydashapplications.com. If it doesn't recognize your logged-in

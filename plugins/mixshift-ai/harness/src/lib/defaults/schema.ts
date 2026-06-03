@@ -27,7 +27,6 @@ const credentialRetrieval = z.object({
   url_tenant_pattern: z
     .string()
     .default('https://<your-company>.mydashapplications.com/database-admin'),
-  master_password: z.string().default(''),
   notes: z.string().default(''),
 });
 
@@ -49,7 +48,6 @@ export const defaultsSchema = z.object({
       credential_retrieval: credentialRetrieval.default({
         url_default: 'https://www.mydashapplications.com/database-admin',
         url_tenant_pattern: 'https://<your-company>.mydashapplications.com/database-admin',
-        master_password: '',
         notes: '',
       }),
     })
@@ -63,7 +61,6 @@ export const defaultsSchema = z.object({
       credential_retrieval: {
         url_default: 'https://www.mydashapplications.com/database-admin',
         url_tenant_pattern: 'https://<your-company>.mydashapplications.com/database-admin',
-        master_password: '',
         notes: '',
       },
     }),
