@@ -44,6 +44,15 @@
 import { loadDotenvIfPresent } from './lib/env/load-dotenv.js';
 await loadDotenvIfPresent();
 
+// Honor the sandbox egress proxy (Cowork / Claude Code set
+// https_proxy=http://localhost:3128). Node's global fetch ignores those by
+// default, so without this every fetch in a sandbox attempts a direct
+// connection and fails with a murky "fetch failed". No-op outside a
+// proxied environment. Must run before any fetch CALL — command actions
+// (where fetch happens) run later, during parseAsync. See lib/net/proxy.ts.
+import { installProxyDispatcherIfConfigured } from './lib/net/proxy.js';
+installProxyDispatcherIfConfigured();
+
 import { Command } from 'commander';
 import { getPluginVersion } from './lib/plugin-version.js';
 import { registerProfileCommands } from './commands/profile.js';
@@ -62,6 +71,7 @@ import { registerVersionCommand } from './commands/version.js';
 import { registerTelemetryCommands } from './commands/telemetry.js';
 import { registerSkillCommands } from './commands/skill.js';
 import { registerAmazonCommands } from './commands/amazon.js';
+import { registerDoctorCommand } from './commands/doctor.js';
 import {
   hasAcknowledgedConsent,
   markConsentAcknowledged,
@@ -111,6 +121,7 @@ registerVersionCommand(program);
 registerTelemetryCommands(program);
 registerSkillCommands(program);
 registerAmazonCommands(program);
+registerDoctorCommand(program);
 
 // First-run cross-cutting telemetry chore: show the consent notice once
 // per install. Idempotent on subsequent runs. Skipped silently when

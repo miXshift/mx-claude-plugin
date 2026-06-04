@@ -19,6 +19,8 @@ import {
   runDiscoveryAndPersist,
   countByActivity,
 } from '../lib/clients/index.js';
+import { networkErrorMessage } from '../lib/net/classify.js';
+import { resolveApiBaseHost } from '../lib/net/api-base.js';
 
 interface RootOptions {
   json?: boolean;
@@ -339,7 +341,10 @@ function registerLoginSubcommand(auth: Command): void {
         );
         return;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = networkErrorMessage(
+          err,
+          resolveApiBaseHost(opts.apiBase),
+        );
         await track(
           {
             event_name: EventName.AuthFailed,
@@ -478,7 +483,10 @@ function registerDeviceInitSubcommand(auth: Command): void {
         process.stdout.write(JSON.stringify(result, null, 2) + '\n');
         return;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = networkErrorMessage(
+          err,
+          resolveApiBaseHost(opts.apiBase),
+        );
         process.stdout.write(
           JSON.stringify({ ok: false, error: message }, null, 2) + '\n',
         );
@@ -549,7 +557,10 @@ function registerDevicePollSubcommand(auth: Command): void {
           process.stdout.write(JSON.stringify(result, null, 2) + '\n');
           return;
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = networkErrorMessage(
+            err,
+            resolveApiBaseHost(opts.apiBase),
+          );
           process.stdout.write(
             JSON.stringify({ ok: false, error: message }, null, 2) + '\n',
           );

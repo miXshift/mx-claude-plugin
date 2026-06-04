@@ -20,6 +20,7 @@
     "@inquirer/prompts": "^8.4.3",
     "commander": "^12.1.0",
     "mysql2": "^3.22.3",
+    "undici": "^6.21.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

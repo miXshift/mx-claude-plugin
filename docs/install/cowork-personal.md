@@ -106,6 +106,14 @@ In Cowork: Customize → **+** next to Personal plugins → Directory modal → 
 **Plugin shows an old version even after Check for updates / Sync automatically.**
 Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub"). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.
 
+**Sign-in fails with "fetch failed" or a "403 from proxy" error.**
+Your Cowork environment is blocking the plugin's outbound connection to the MixShift service. Cowork runs plugin commands in a sandbox whose network is locked down by default, so the MixShift host has to be on the egress allowlist. First, diagnose it: say "run mixshift doctor" (or run `mixshift doctor` in a terminal). It detects the sandbox proxy, probes the service, and tells you exactly which domains need allowlisting.
+
+The required domains are `mcp.mixshift.io` (everything depends on it) and `*.amazonaws.com` (report downloads). Who adds them depends on your setup:
+
+- **If your Cowork seat is part of a Team/Enterprise org:** you can't change the network allowlist yourself; it's an org-admin setting. Send your admin the [Organization install troubleshooting](./cowork-organization.md#troubleshooting) section — they add the domains under Organization settings → Capabilities → Code execution, then you **start a new conversation** (the change only applies to conversations created after it).
+- **If you're running standalone Claude Code (not Cowork):** add the domains yourself in `~/.claude/settings.json` under `sandbox.network.allowedDomains` (unless managed settings set `allowManagedDomainsOnly: true`, in which case it's admin-controlled). See the [CLI install notes](./cli-direct.md#a-note-on-sandbox-egress).
+
 ---
 
 ## A note on telemetry

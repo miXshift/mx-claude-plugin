@@ -92,6 +92,22 @@ The PKCE flow tries to open the user's default browser via the OS-native handler
 **My team is asking whether they all see the same data.**
 Yes. MixShift's legacy backing model is a single MySQL login per customer org, so once authenticated every team member sees the full merchant set. Per-user roles + scoped data access are coming in MixShift 2.0. The chat-driven sign-in still has each user enter their own work email (`person_label`) so MixShift admin tooling can see WHO ran what session — that's attribution, not authorization.
 
+**Sign-in or any command fails with "fetch failed", and your org enforces network restrictions.**
+This is the single most common org-rollout blocker. Symptoms: the welcome / sign-in step returns a bare `fetch failed`, or a command errors with something like `403 from proxy after CONNECT`, or `mixshift doctor` reports the service is "NOT reachable" with an egress-proxy note.
+
+Root cause: Cowork Team/Enterprise runs plugin Bash commands inside a sandbox whose outbound network is **deny-by-default**. The plugin talks to MixShift's service over HTTPS from that sandbox, so the service host must be on the egress allowlist. If it isn't, every network call the plugin makes is blocked at the proxy before it ever leaves the machine. (This is separate from Cowork's web-fetch / connector traffic, which uses a different, non-gated path. That is why a connector can reach the internet while the plugin cannot.)
+
+Fix (org admin):
+
+1. Open **Organization settings** → **Capabilities** → **Code execution**.
+2. Add these domains to the network allowlist:
+   - `mcp.mixshift.io` — **required.** Auth, device flow, every warehouse query, report start/poll, and feedback. Nothing works without it.
+   - `*.amazonaws.com` — **required for report pulls.** SP-API report downloads come back as presigned S3 URLs the plugin fetches directly, so S3 egress is needed for the `amazon-report-pull` workflow. (If you don't use report pulls, sign-in and queries work without it, but add it anyway so reports don't fail later.)
+   - Optional, safe to omit: `github.com` + `raw.githubusercontent.com` (plugin version check only), and your telemetry endpoint (best-effort usage events; `MIXSHIFT_TELEMETRY=0` disables it).
+3. **Start a NEW conversation.** Network settings are applied at session creation, so an existing chat will not pick up the change. This trips people up constantly: the allowlist edit is correct, but the open chat is still running under the old policy. A fresh conversation is required.
+
+To confirm the fix end-to-end, have a teammate run `mixshift doctor` in a new conversation. It detects whether an egress proxy is active, probes the service `/health` endpoint through it, and prints the exact allowlist remediation if the host is still blocked. A clean "reachable" line means sign-in will work.
+
 ---
 
 ## A note on telemetry

@@ -52,8 +52,8 @@ import {
   runDiscoveryAndPersist,
   countByActivity,
 } from '../clients/index.js';
+import { DEFAULT_API_BASE } from '../net/api-base.js';
 
-const DEFAULT_API_BASE = 'https://mcp.mixshift.io';
 const PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
 const DEVICE_POLL_INTERVAL_MS = 3_000;
 const DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1000;

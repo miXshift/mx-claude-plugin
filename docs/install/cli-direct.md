@@ -165,6 +165,24 @@ Your PATH isn't persisted. Add the `export PATH=...` line to your shell rc file 
 **You want to test a fork / development branch.**
 Clone, `git checkout <branch>`, then `npm install && npm run build`. The bin/mixshift wrapper forwards to whichever `dist/cli.js` is in your local working tree.
 
+**Any command fails with "fetch failed" or a "403 from proxy after CONNECT".**
+You're running inside a network-restricted sandbox (most often Claude Code's Bash sandbox). The MixShift host has to be on the egress allowlist. Run `mixshift doctor` for the exact remediation. See [A note on sandbox egress](#a-note-on-sandbox-egress) below. In a plain terminal with normal outbound access, this error means something else (DNS, VPN, or the service being down) and `mixshift doctor` will tell you which.
+
+---
+
+## A note on sandbox egress
+
+If you run this CLI inside a network-restricted sandbox, outbound traffic is forced through an egress proxy that is **deny-by-default**. The CLI talks to the MixShift service (`mcp.mixshift.io`) and, for report pulls, to presigned S3 URLs (`*.amazonaws.com`), so both must be on the allowlist or every command fails with a bare `fetch failed`.
+
+The two environments where this applies:
+
+- **Standalone Claude Code:** add the domains in `~/.claude/settings.json` under `sandbox.network.allowedDomains`, unless managed settings set `allowManagedDomainsOnly: true` (then it's admin-controlled). The minimal set is `mcp.mixshift.io` and `*.amazonaws.com`.
+- **A plain terminal / CI runner:** normally no proxy is involved, so this doesn't apply. If your CI host does enforce egress filtering, allowlist the same two domains there.
+
+`mixshift doctor` is the fastest way to tell which situation you're in: it reports whether a proxy is active, probes the service `/health` endpoint, and prints the precise allowlist fix when the host is blocked.
+
+**Caveat — this does NOT fix the plugin inside Cowork.** Installing the CLI standalone on your PATH is unrelated to what Cowork runs. Cowork executes its own bundled copy of the plugin inside its own sandbox, governed by its own network policy. If your problem is "the plugin fails to reach MixShift inside Cowork," fixing it is a Cowork-side allowlist change, not a CLI install. See [Cowork organization install](./cowork-organization.md#troubleshooting) (admin allowlist) or [Cowork personal install](./cowork-personal.md#troubleshooting).
+
 ---
 
 ## A note on telemetry
