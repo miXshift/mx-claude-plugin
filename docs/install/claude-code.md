@@ -21,18 +21,22 @@ You can install the plugin into any Claude Code session — it lives on your loc
 In any Claude Code session, run:
 
 ```
-/plugin marketplace add miXshift/mx-claude-plugin
+/plugin marketplace add https://github.com/miXshift/mx-claude-plugin
 ```
 
 Claude Code fetches the marketplace manifest from the public GitHub repo. This is a per-user operation — only your Claude Code install knows about the marketplace, not anyone else's.
 
+> **Use the full HTTPS URL, not the `owner/repo` shorthand.** The shorthand (`miXshift/mx-claude-plugin`) expands to an SSH clone URL (`git@github.com:...`), which fails with "Permission denied (publickey)" unless you have GitHub SSH keys configured. The HTTPS URL clones without any key setup.
+>
+> Run this on its own. Do not paste it together with the install command on the next line, or the add command will swallow the second line as part of the URL.
+
 ## Step 2 — Install the plugin
 
 ```
-/plugin install mixshift-ai@mx-claude-plugin
+/plugin install mixshift-ai@mixshift
 ```
 
-(The `@mx-claude-plugin` suffix tells Claude Code which marketplace to install from. Necessary if you have multiple marketplaces registered, harmless otherwise.)
+(The `@mixshift` suffix is the marketplace's name: the `name` field in its manifest, which is `mixshift`, **not** the GitHub repo name. Step 1 confirms it: the add prints "Successfully added marketplace: mixshift". The suffix tells Claude Code which marketplace to install from. It is necessary if you have multiple marketplaces registered, harmless otherwise.)
 
 Confirm:
 
@@ -115,6 +119,14 @@ Tokens carry over across plugin updates.
 
 **"Marketplace not found" when running `/plugin marketplace add`.**
 Confirm the GitHub repo is reachable from your machine: `curl -sI https://github.com/miXshift/mx-claude-plugin/blob/main/.claude-plugin/marketplace.json` should return a 200 (or redirect). If you're behind a corporate proxy, configure `git` to use it; Claude Code uses `git` under the hood for marketplace fetches.
+
+**A fresh install shows an old version (e.g. you expected the latest but `/plugin` lists an older number).**
+`/plugin marketplace add` is a no-op if a marketplace of that name is already registered; it does **not** re-fetch an existing local clone. So if you (or a previous session) added `mixshift` before, a later `add` reuses the stale clone and installs whatever version it was pinned at. Fix: refresh the clone, then update the plugin, then restart:
+```
+claude plugin marketplace update mixshift
+claude plugin update mixshift-ai
+```
+Confirm what your local clone is actually pinned at with `git -C ~/.claude/plugins/marketplaces/mixshift log --oneline -1`, and what's installed in `~/.claude/plugins/installed_plugins.json` (`version` + `gitCommitSha`). As always, the new version only loads after a full restart.
 
 **"command not found: mixshift" after install.**
 Claude Code should auto-add the plugin's `bin/` directory to the Bash tool's PATH. If it doesn't, you have two workarounds:
