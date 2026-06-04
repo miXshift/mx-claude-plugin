@@ -2,12 +2,17 @@
  * Load the Amazon SP-API report catalog from
  * `plugins/mixshift-ai/shared/reports/catalog.yaml`.
  *
- * The catalog is the plugin-side description of *which* reports exist, what
- * each is for, and how to call/parse it. It is deliberately exhaustive: it
- * lists every report type with NO exclusions. We do not pre-filter on guesses
- * about what's restricted or unavailable for a given tenant — that's the
- * service's job, enforced reactively at fetch time and surfaced to the caller
- * as a typed failure `kind` (see lib/amazon/reports.ts). The catalog's role is
+ * The catalog is a plugin-side CONVENIENCE CACHE describing *which* reports we
+ * already know about, what each is for, and how to call/parse it. It is NOT the
+ * source of truth and NOT a gate. The real definition of every report type
+ * (schema, reportOptions, window rules) is Amazon's public SP-API docs, and the
+ * service decides reactively at fetch time what a given tenant is allowed to
+ * pull, surfacing a typed failure `kind` (see lib/amazon/reports.ts). A report
+ * type missing from the cache is still fully pullable: `findReportType` returns
+ * null, callers must treat that as "not cached yet" (look it up in the SP-API
+ * docs) rather than "invalid." We never pre-filter on guesses about what's
+ * restricted. The cache aims to be broad so the agent rarely has to fall back
+ * to the docs, but breadth is a goal, not a guarantee. The catalog's role is
  * purely descriptive: titles, purpose, who it applies to (seller/vendor),
  * document format, window rules, reportOptions hints, warehouse-coverage tag,
  * and parse hints.
@@ -133,6 +138,11 @@ export async function loadReportCatalog(
 /**
  * Look up a single catalog entry by its exact Amazon report type enum.
  * Case-sensitive — the enum is sent verbatim, so we match it verbatim.
+ *
+ * Returns null when the type is not in the cache. null means "not cached yet,"
+ * NOT "invalid": the type may still be a real, pullable report; resolve it
+ * from Amazon's public SP-API docs. Callers must not treat null as a hard
+ * rejection (see registerDescribeReport's soft fallback in commands/amazon.ts).
  */
 export async function findReportType(
   reportType: string,

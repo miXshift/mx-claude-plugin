@@ -6493,7 +6493,7 @@ var require_client_h2 = __commonJS({
   "node_modules/undici/lib/dispatcher/client-h2.js"(exports, module) {
     "use strict";
     var assert2 = __require("node:assert");
-    var { pipeline } = __require("node:stream");
+    var { pipeline: pipeline2 } = __require("node:stream");
     var util = require_util();
     var {
       RequestContentLengthMismatchError,
@@ -6940,7 +6940,7 @@ var require_client_h2 = __commonJS({
     }
     function writeStream(abort, socket, expectsPayload, h2stream, body, client, request, contentLength) {
       assert2(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
-      const pipe2 = pipeline(
+      const pipe2 = pipeline2(
         body,
         h2stream,
         (err) => {
@@ -8984,7 +8984,7 @@ var require_readable = __commonJS({
   "node_modules/undici/lib/api/readable.js"(exports, module) {
     "use strict";
     var assert2 = __require("node:assert");
-    var { Readable } = __require("node:stream");
+    var { Readable: Readable2 } = __require("node:stream");
     var { RequestAbortedError, NotSupportedError, InvalidArgumentError: InvalidArgumentError2, AbortError } = require_errors();
     var util = require_util();
     var { ReadableStreamFrom } = require_util();
@@ -8996,7 +8996,7 @@ var require_readable = __commonJS({
     var kContentLength = Symbol("kContentLength");
     var noop = () => {
     };
-    var BodyReadable = class extends Readable {
+    var BodyReadable = class extends Readable2 {
       constructor({
         resume,
         abort,
@@ -9338,7 +9338,7 @@ var require_api_request = __commonJS({
   "node_modules/undici/lib/api/api-request.js"(exports, module) {
     "use strict";
     var assert2 = __require("node:assert");
-    var { Readable } = require_readable();
+    var { Readable: Readable2 } = require_readable();
     var { InvalidArgumentError: InvalidArgumentError2, RequestAbortedError } = require_errors();
     var util = require_util();
     var { getResolveErrorBodyCallback } = require_util3();
@@ -9433,7 +9433,7 @@ var require_api_request = __commonJS({
         const parsedHeaders = responseHeaders === "raw" ? util.parseHeaders(rawHeaders) : headers;
         const contentType = parsedHeaders["content-type"];
         const contentLength = parsedHeaders["content-length"];
-        const res = new Readable({
+        const res = new Readable2({
           resume,
           abort,
           contentType,
@@ -9748,7 +9748,7 @@ var require_api_pipeline = __commonJS({
   "node_modules/undici/lib/api/api-pipeline.js"(exports, module) {
     "use strict";
     var {
-      Readable,
+      Readable: Readable2,
       Duplex,
       PassThrough
     } = __require("node:stream");
@@ -9762,7 +9762,7 @@ var require_api_pipeline = __commonJS({
     var { addSignal, removeSignal } = require_abort_signal();
     var assert2 = __require("node:assert");
     var kResume = Symbol("resume");
-    var PipelineRequest = class extends Readable {
+    var PipelineRequest = class extends Readable2 {
       constructor() {
         super({ autoDestroy: true });
         this[kResume] = null;
@@ -9779,7 +9779,7 @@ var require_api_pipeline = __commonJS({
         callback(err);
       }
     };
-    var PipelineResponse = class extends Readable {
+    var PipelineResponse = class extends Readable2 {
       constructor(resume) {
         super({ autoDestroy: true });
         this[kResume] = resume;
@@ -9930,7 +9930,7 @@ var require_api_pipeline = __commonJS({
         util.destroy(ret, err);
       }
     };
-    function pipeline(opts, handler) {
+    function pipeline2(opts, handler) {
       try {
         const pipelineHandler = new PipelineHandler(opts, handler);
         this.dispatch({ ...opts, body: pipelineHandler.req }, pipelineHandler);
@@ -9939,7 +9939,7 @@ var require_api_pipeline = __commonJS({
         return new PassThrough().destroy(err);
       }
     }
-    module.exports = pipeline;
+    module.exports = pipeline2;
   }
 });
 
@@ -13104,7 +13104,7 @@ var require_fetch = __commonJS({
       subresourceSet
     } = require_constants3();
     var EE = __require("node:events");
-    var { Readable, pipeline, finished } = __require("node:stream");
+    var { Readable: Readable2, pipeline: pipeline2, finished } = __require("node:stream");
     var { addAbortListener, isErrored, isReadable, bufferToLowerCasedHeaderName } = require_util();
     var { dataURLProcessor, serializeAMimeType, minimizeSupportedMimeType } = require_data_url();
     var { getGlobalDispatcher } = require_global2();
@@ -14005,7 +14005,7 @@ var require_fetch = __commonJS({
                 headersList.append(bufferToLowerCasedHeaderName(rawHeaders[i]), rawHeaders[i + 1].toString("latin1"), true);
               }
               location = headersList.get("location", true);
-              this.body = new Readable({ read: resume });
+              this.body = new Readable2({ read: resume });
               const decoders = [];
               const willFollow = location && request.redirect === "follow" && redirectStatusSet.has(status);
               if (request.method !== "HEAD" && request.method !== "CONNECT" && !nullBodyStatus.includes(status) && !willFollow) {
@@ -14048,7 +14048,7 @@ var require_fetch = __commonJS({
                 status,
                 statusText,
                 headersList,
-                body: decoders.length ? pipeline(this.body, ...decoders, (err) => {
+                body: decoders.length ? pipeline2(this.body, ...decoders, (err) => {
                   if (err) {
                     this.onError(err);
                   }
@@ -18012,7 +18012,7 @@ ${value}`;
 var require_eventsource = __commonJS({
   "node_modules/undici/lib/web/eventsource/eventsource.js"(exports, module) {
     "use strict";
-    var { pipeline } = __require("node:stream");
+    var { pipeline: pipeline2 } = __require("node:stream");
     var { fetching } = require_fetch();
     var { makeRequest } = require_request2();
     var { webidl } = require_webidl();
@@ -18170,7 +18170,7 @@ var require_eventsource = __commonJS({
               ));
             }
           });
-          pipeline(
+          pipeline2(
             response.body.stream,
             eventSourceStream,
             (error51) => {
@@ -58873,7 +58873,7 @@ var require_query2 = __commonJS({
     "use strict";
     var process5 = __require("process");
     var Timers = __require("timers");
-    var Readable = __require("stream").Readable;
+    var Readable2 = __require("stream").Readable;
     var Command2 = require_command2();
     var Packets = require_packets();
     var getTextParser = require_text_parser();
@@ -59115,7 +59115,7 @@ var require_query2 = __commonJS({
       stream(options) {
         options = options || /* @__PURE__ */ Object.create(null);
         options.objectMode = true;
-        const stream = new Readable({
+        const stream = new Readable2({
           ...options,
           emitClose: true,
           autoDestroy: true,
@@ -60978,7 +60978,7 @@ var require_connection2 = __commonJS({
     var Tls = __require("tls");
     var Timers = __require("timers");
     var EventEmitter = __require("events").EventEmitter;
-    var Readable = __require("stream").Readable;
+    var Readable2 = __require("stream").Readable;
     var Queue = require_denque();
     var SqlString = require_lib();
     var { createLRU } = require_lib2();
@@ -61761,7 +61761,7 @@ var require_connection2 = __commonJS({
       }
       createBinlogStream(opts) {
         let test = 1;
-        const stream = new Readable({ objectMode: true });
+        const stream = new Readable2({ objectMode: true });
         stream._read = function() {
           return {
             data: test++
@@ -77174,12 +77174,16 @@ function emitError7(json2, message) {
 }
 
 // src/commands/amazon.ts
-import { writeFile as writeFile17, mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname24, resolve as resolvePath2 } from "node:path";
+import { resolve as resolvePath2 } from "node:path";
 
 // src/lib/amazon/reports.ts
 init_credentials();
-import { gunzipSync } from "node:zlib";
+import { createWriteStream as createWriteStream2 } from "node:fs";
+import { mkdir as mkdir19 } from "node:fs/promises";
+import { dirname as dirname23 } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createGunzip, gunzipSync } from "node:zlib";
 function isReportFailure(x) {
   return x.ok === false;
 }
@@ -77241,7 +77245,7 @@ async function pollReport(runId, opts = {}) {
     reportId: typeof json2.reportId === "string" ? json2.reportId : void 0
   };
 }
-async function getReportDocument(runId, opts = {}) {
+async function getReportDocumentMeta(runId, opts = {}) {
   const r = await amazonRequest(
     {
       method: "GET",
@@ -77254,25 +77258,69 @@ async function getReportDocument(runId, opts = {}) {
   const ready = json2.ready === true;
   const status = typeof json2.status === "string" ? json2.status : void 0;
   const timings = parseTimings(json2.timings);
-  const docMeta = parseDocumentMeta(json2.document);
-  if (!ready || !docMeta) {
-    return { ok: true, ready, status, timings };
+  const document = parseDocumentMeta(json2.document);
+  return { ok: true, ready, status, document, timings };
+}
+async function getReportDocument(runId, opts = {}) {
+  const meta3 = await getReportDocumentMeta(runId, opts);
+  if (!meta3.ok) return meta3;
+  if (!meta3.ready || !meta3.document) {
+    return { ok: true, ready: meta3.ready, status: meta3.status, timings: meta3.timings };
   }
   const fetched = await fetchDocumentBytes(
-    docMeta.url,
-    docMeta.compressionAlgorithm,
+    meta3.document.url,
+    meta3.document.compressionAlgorithm,
     opts
   );
   if (!fetched.ok) return fetched;
   return {
     ok: true,
     ready: true,
-    status,
+    status: meta3.status,
     document: fetched.text,
     bytes: fetched.bytes,
-    reportDocumentId: docMeta.reportDocumentId,
-    compressionAlgorithm: docMeta.compressionAlgorithm,
-    timings
+    reportDocumentId: meta3.document.reportDocumentId,
+    compressionAlgorithm: meta3.document.compressionAlgorithm,
+    timings: meta3.timings
+  };
+}
+async function streamReportDocumentToFile(document, outPath, opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 12e4;
+  let res;
+  try {
+    res = await fetchImpl(document.url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+  if (!res.ok) return presignedFetchFailure(res.status);
+  if (!res.body) {
+    return hostUnreachable("the report download returned an empty response body");
+  }
+  await mkdir19(dirname23(outPath), { recursive: true });
+  const out = createWriteStream2(outPath);
+  const source = Readable.fromWeb(
+    res.body
+  );
+  try {
+    if (document.compressionAlgorithm === "GZIP") {
+      await pipeline(source, createGunzip(), out);
+    } else {
+      await pipeline(source, out);
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The report download failed while streaming to disk. Try fetching it again; if it persists, contact MixShift ops.",
+      message: `stream-to-file failed: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  return {
+    ok: true,
+    bytes: out.bytesWritten,
+    compressionAlgorithm: document.compressionAlgorithm,
+    reportDocumentId: document.reportDocumentId
   };
 }
 function parseDocumentMeta(v) {
@@ -77299,6 +77347,16 @@ function parseTimings(v) {
   }
   return t;
 }
+var MAX_INLINE_DOCUMENT_BYTES = 25 * 1024 * 1024;
+var DocumentTooLargeError = class extends Error {
+  constructor(bytesSeen) {
+    super(
+      `document exceeds the ${MAX_INLINE_DOCUMENT_BYTES}-byte inline cap (saw >= ${bytesSeen} bytes)`
+    );
+    this.bytesSeen = bytesSeen;
+    this.name = "DocumentTooLargeError";
+  }
+};
 async function fetchDocumentBytes(url2, compressionAlgorithm, opts) {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 12e4;
@@ -77308,20 +77366,12 @@ async function fetchDocumentBytes(url2, compressionAlgorithm, opts) {
   } catch (err) {
     return hostUnreachable(err instanceof Error ? err.message : String(err));
   }
-  if (!res.ok) {
-    const expired = res.status === 403 || res.status === 410;
-    return {
-      ok: false,
-      kind: "unknown",
-      friendly: expired ? "The report download link expired before it could be fetched. The report itself is still ready \u2014 re-run `mixshift amazon report get <runId>` for a fresh link." : `Could not download the report document (HTTP ${res.status}). Try fetching it again.`,
-      message: `presigned document fetch returned HTTP ${res.status}`,
-      httpStatus: res.status
-    };
-  }
+  if (!res.ok) return presignedFetchFailure(res.status);
   let raw;
   try {
-    raw = Buffer.from(await res.arrayBuffer());
+    raw = await readCapped(res, MAX_INLINE_DOCUMENT_BYTES);
   } catch (err) {
+    if (err instanceof DocumentTooLargeError) return documentTooLarge();
     return hostUnreachable(err instanceof Error ? err.message : String(err));
   }
   let buf;
@@ -77335,7 +77385,49 @@ async function fetchDocumentBytes(url2, compressionAlgorithm, opts) {
       message: `gunzip failed: ${err instanceof Error ? err.message : String(err)}`
     };
   }
+  if (buf.length > MAX_INLINE_DOCUMENT_BYTES) return documentTooLarge();
   return { ok: true, text: buf.toString("utf8"), bytes: buf.length };
+}
+async function readCapped(res, cap) {
+  const body = res.body;
+  if (body && typeof body[Symbol.asyncIterator] === "function") {
+    const chunks = [];
+    let total = 0;
+    for await (const chunk of body) {
+      total += chunk.byteLength;
+      if (total > cap) {
+        try {
+          await body.cancel();
+        } catch {
+        }
+        throw new DocumentTooLargeError(total);
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+  const ab = await res.arrayBuffer();
+  if (ab.byteLength > cap) throw new DocumentTooLargeError(ab.byteLength);
+  return Buffer.from(ab);
+}
+function presignedFetchFailure(status) {
+  const expired = status === 403 || status === 410;
+  return {
+    ok: false,
+    kind: "unknown",
+    friendly: expired ? "The report download link expired before it could be fetched. The report itself is still ready; re-run `mixshift amazon report get <runId>` for a fresh link." : `Could not download the report document (HTTP ${status}). Try fetching it again.`,
+    message: `presigned document fetch returned HTTP ${status}`,
+    httpStatus: status
+  };
+}
+function documentTooLarge() {
+  const mb = Math.round(MAX_INLINE_DOCUMENT_BYTES / (1024 * 1024));
+  return {
+    ok: false,
+    kind: "unknown",
+    friendly: `This report is larger than the inline limit (${mb} MB), so it was not returned to the screen. Re-run with \`--out <file>\` to stream it straight to disk; the --out path handles reports of any size.`,
+    message: `document exceeds the ${MAX_INLINE_DOCUMENT_BYTES}-byte inline cap; use --out`
+  };
 }
 async function amazonRequest(spec, opts) {
   const resolved = await resolveBaseAndToken(opts);
@@ -77558,7 +77650,7 @@ function safeJsonPreview(json2) {
 // src/lib/reports/catalog.ts
 var import_yaml18 = __toESM(require_dist(), 1);
 import { readFile as readFile24 } from "node:fs/promises";
-import { dirname as dirname23, join as join15 } from "node:path";
+import { dirname as dirname24, join as join15 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
@@ -77609,12 +77701,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname23(fileURLToPath5(import.meta.url));
+  const here = dirname24(fileURLToPath5(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
     candidates.push(join15(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname23(dir);
+    const parent = dirname24(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -77708,12 +77800,15 @@ function registerDescribeReport(amazon) {
     try {
       const entry = await findReportType(reportType);
       if (!entry) {
-        throw new Error(
-          `"${reportType}" is not in the report catalog. Run \`mixshift amazon list-reports\` to see valid report types.`
-        );
+        if (root.json) {
+          writeJson({ status: "ok", known: false, report_type: reportType });
+        } else {
+          process.stdout.write(renderUnknownReport(reportType) + "\n");
+        }
+        return;
       }
       if (root.json) {
-        writeJson({ status: "ok", report: entry });
+        writeJson({ status: "ok", known: true, report: entry });
       } else {
         process.stdout.write(renderReportDetail(entry) + "\n");
       }
@@ -77818,54 +77913,47 @@ Poll again in a few seconds.
 }
 function registerReportGet(report) {
   report.command("get <runId>").description(
-    "Fetch the report document. Safe to call before ready (returns ready:false, exit 10 \u2014 keep polling). With --out, writes the bytes to a file."
-  ).option("--out <path>", "write the document to this file (otherwise streams to stdout)").action(async (runId, opts, cmd) => {
+    "Fetch the report document. Safe to call before ready (returns ready:false, exit 10, keep polling). With --out, streams the document straight to the file in chunks (any size); without --out, prints a size-capped copy to stdout. Prefer --out so document size is never a concern."
+  ).option("--out <path>", "stream the document to this file (recommended; handles reports of any size)").action(async (runId, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
+    const clientOpts = { dataDirOverride: root.dataDir };
     try {
-      const result = await getReportDocument(runId, { dataDirOverride: root.dataDir });
+      if (opts.out) {
+        const meta3 = await getReportDocumentMeta(runId, clientOpts);
+        if (isReportFailure(meta3)) {
+          await trackFailure(EventName.ReportFailed, meta3, startedAt, root.dataDir);
+          return emitFailure(meta3, !!root.json);
+        }
+        if (!meta3.ready || !meta3.document) {
+          return emitNotReady(meta3.status, startedAt, root.dataDir, !!root.json);
+        }
+        const outPath = resolvePath2(opts.out);
+        const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
+        if (isReportFailure(streamed)) {
+          await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir);
+          return emitFailure(streamed, !!root.json);
+        }
+        await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
+        if (root.json) {
+          writeJson({ status: "ok", ready: true, out_path: outPath, bytes: streamed.bytes });
+        } else {
+          process.stderr.write(`
+\u2713 wrote ${streamed.bytes} bytes to ${outPath}
+`);
+        }
+        return;
+      }
+      const result = await getReportDocument(runId, clientOpts);
       if (isReportFailure(result)) {
         await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
         return emitFailure(result, !!root.json);
       }
       if (!result.ready) {
-        await track(
-          {
-            event_name: EventName.ReportPolled,
-            outcome: "deferred",
-            duration_ms: Date.now() - startedAt,
-            payload: { ready: false, status: result.status, via: "get" }
-          },
-          root.dataDir
-        );
-        if (root.json) {
-          writeJson({ status: "ok", ready: false, report_status: result.status });
-        } else {
-          process.stdout.write(
-            `
-\u2022 not ready yet (status: ${result.status ?? "unknown"}). Poll again, then re-run get.
-`
-          );
-        }
-        process.exitCode = EXIT_NOT_READY;
-        return;
+        return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
       }
       const document = result.document ?? "";
-      const bytes = Buffer.byteLength(document, "utf-8");
-      if (opts.out) {
-        const outPath = resolvePath2(opts.out);
-        await mkdir19(dirname24(outPath), { recursive: true });
-        await writeFile17(outPath, document, "utf-8");
-        await trackRetrieved(startedAt, bytes, root.dataDir);
-        if (root.json) {
-          writeJson({ status: "ok", ready: true, out_path: outPath, bytes });
-        } else {
-          process.stderr.write(`
-\u2713 wrote ${bytes} bytes to ${outPath}
-`);
-        }
-        return;
-      }
+      const bytes = result.bytes ?? Buffer.byteLength(document, "utf-8");
       await trackRetrieved(startedAt, bytes, root.dataDir);
       if (root.json) {
         writeJson({ status: "ok", ready: true, bytes, document });
@@ -77881,6 +77969,27 @@ function registerReportGet(report) {
       emitError8(err, !!root.json);
     }
   });
+}
+function emitNotReady(status, startedAt, dataDir, json2) {
+  void track(
+    {
+      event_name: EventName.ReportPolled,
+      outcome: "deferred",
+      duration_ms: Date.now() - startedAt,
+      payload: { ready: false, status, via: "get" }
+    },
+    dataDir
+  );
+  if (json2) {
+    writeJson({ status: "ok", ready: false, report_status: status });
+  } else {
+    process.stdout.write(
+      `
+\u2022 not ready yet (status: ${status ?? "unknown"}). Poll again, then re-run get.
+`
+    );
+  }
+  process.exitCode = EXIT_NOT_READY;
 }
 function registerReportRun(report) {
   report.command("run").description(
@@ -77967,18 +78076,41 @@ function registerReportRun(report) {
         process.exitCode = EXIT_NOT_READY;
         return;
       }
-      const doc = await getReportDocument(runId, clientOpts);
-      if (isReportFailure(doc)) {
-        await trackFailure(EventName.ReportFailed, doc, startedAt, root.dataDir, reportType);
-        return emitFailure(doc, !!root.json);
+      const meta3 = await getReportDocumentMeta(runId, clientOpts);
+      if (isReportFailure(meta3)) {
+        await trackFailure(EventName.ReportFailed, meta3, startedAt, root.dataDir, reportType);
+        return emitFailure(meta3, !!root.json);
       }
-      const document = doc.document ?? "";
-      const bytes = Buffer.byteLength(document, "utf-8");
+      if (!meta3.ready || !meta3.document) {
+        await track(
+          {
+            event_name: EventName.ReportPolled,
+            outcome: "deferred",
+            duration_ms: Date.now() - startedAt,
+            payload: { ready: false, status: meta3.status, via: "run" }
+          },
+          root.dataDir
+        );
+        const msg = `The report reported ready but its document was not available yet (status: ${meta3.status ?? "unknown"}). The run handle is still valid; fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
+        if (root.json) {
+          writeJson({ status: "ok", ready: false, run_id: runId, report_status: meta3.status, message: msg });
+        } else {
+          process.stderr.write(`
+\u2022 ${msg}
+`);
+        }
+        process.exitCode = EXIT_NOT_READY;
+        return;
+      }
       const outPath = resolvePath2(
         opts.out ?? await defaultOutPath(sellerId, reportType, root.dataDir)
       );
-      await mkdir19(dirname24(outPath), { recursive: true });
-      await writeFile17(outPath, document, "utf-8");
+      const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
+      if (isReportFailure(streamed)) {
+        await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
+        return emitFailure(streamed, !!root.json);
+      }
+      const bytes = streamed.bytes;
       await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
       if (root.json) {
         writeJson({ status: "ok", ready: true, run_id: runId, out_path: outPath, bytes, polls });
@@ -78178,6 +78310,18 @@ function renderReportDetail(e) {
   if (e.parseHints) lines.push(`- **parse hints**: ${e.parseHints}`);
   if (e.notes) lines.push(`- **notes**: ${e.notes}`);
   return lines.join("\n");
+}
+function renderUnknownReport(reportType) {
+  return [
+    "",
+    `# ${reportType}`,
+    "",
+    "Not in the local report catalog yet. That does not mean it cannot be pulled: the catalog is a convenience cache, not the list of allowed reports, and `report start` accepts any report type.",
+    "",
+    `To pull it now: look up this report type in Amazon's public SP-API documentation (the report schema, its \`reportOptions\`, and any data-window rules are published and are NOT credential-gated), then run \`mixshift amazon report start --type ${reportType} ...\` with the options the docs call for.`,
+    "",
+    "If it is a report worth keeping, propose a new entry for `shared/reports/catalog.yaml` so the next caller gets it from the cache."
+  ].join("\n");
 }
 function mdCell(v) {
   return String(v).replace(/\|/g, "\\|");

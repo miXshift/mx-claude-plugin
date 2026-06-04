@@ -269,8 +269,12 @@ mixshift amazon report run   ...same flags as start... [--out <path>]
   (boolean), never on the `status` string.**
 - `report get <runId>` fetches the document once ready. It is safe to call
   before ready: it returns `ready: false` and exit code 10 (not an error),
-  so you can use it as the poll itself. With `--out`, it writes the bytes to a
-  file; without `--out`, it streams to stdout.
+  so you can use it as the poll itself. **With `--out`, it streams the document
+  straight to the file in chunks, so a report of ANY size lands on disk** (it
+  never buffers the whole thing in memory, so there is no size ceiling and no
+  crash on multi-GB reports). Without `--out`, it prints a size-capped copy to
+  stdout. **Default to `--out`** so document size is never the user's concern;
+  reserve the no-`--out` path for a quick peek at a small result.
 - `report run` does start + poll-until-ready + get in one blocking call. It is
   **TERMINAL-ONLY** (see the Cowork constraint below).
 
@@ -375,7 +379,31 @@ You:  1. Resolve merchant (must have Brand Registry; if Amazon rejects with
            --type GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT \
            --option reportPeriod=WEEK \
            --start 2026-05-25 --end 2026-05-31 --json
-      4. Poll, then get. This one is JSON (--out a .json file).
+      4. Poll, then get with --out (this one is JSON; use a .json file).
+         The Search Terms report has NO server-side filter, so the whole
+         marketplace term set comes back and it can be very large. Always
+         pull it with --out (it streams to disk at any size).
+```
+
+**Filtering to a set of products (use Search Catalog Performance, not Search
+Terms).** If the user wants Brand Analytics narrowed to specific ASINs, the
+clean answer is `GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT`, which
+takes a real server-side `asins` filter (a space-separated ASIN list). The
+Search Terms report has no filter at all, so do not promise filtering there.
+```
+User: "Brand Analytics search performance for just these 3 ASINs, last week"
+You:  1. Resolve merchant (Brand Registry required, same as above).
+      2. describe-report GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT.
+         Note the window rule: a WEEK window must run Sunday to Saturday and
+         cannot span two periods.
+      3. Start with reportPeriod + the asins filter (space-separated, so quote
+         the whole value):
+         mixshift amazon report start --seller-id <id> \
+           --type GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT \
+           --option reportPeriod=WEEK \
+           --option "asins=B0XXXX1111 B0XXXX2222 B0XXXX3333" \
+           --start 2026-05-25 --end 2026-05-31 --json
+      4. Poll, then get with --out (JSON).
 ```
 
 ### Pattern 4 - Vendor report
@@ -416,12 +444,12 @@ You:  Always use --out so the bytes land on disk. Default location is
 
 ## Reactive error handling (branch on failure_kind, never on HTTP status)
 
-We do **not** pre-filter the catalog. The catalog lists every report type with
-no exclusions. Amazon (via the service) decides reactively what this tenant and
-merchant may actually pull, and the harness returns a **typed failure** you
-relay to the user. In `--json` the field is `failure_kind`; in human output the
-friendly message is printed to stderr. Each kind also maps to a distinct exit
-code for terminal scripts.
+We do **not** pre-filter the catalog, and the catalog is a **convenience cache,
+not a gate** (see "When a report type is not in the catalog" below). Amazon (via
+the service) decides reactively what this tenant and merchant may actually pull,
+and the harness returns a **typed failure** you relay to the user. In `--json`
+the field is `failure_kind`; in human output the friendly message is printed to
+stderr. Each kind also maps to a distinct exit code for terminal scripts.
 
 | `failure_kind` | Exit | What it means / what to tell the user |
 |---|---|---|
@@ -447,12 +475,47 @@ PII variant Amazon rejects it as `restricted_report`. Relay that and offer the
 non-PII form. Do not pre-emptively refuse these reports, and do not retry the
 restricted variant.
 
-**The size cap:** the service caps a single returned document at roughly
-**10 MB**. A pull that exceeds it comes back as `unknown` (not a dedicated
-kind). When you see `unknown` on a report you would expect to be large (all
-orders over a wide window, a busy merchant's Sales and Traffic at ASIN grain),
-suspect size first: narrow the date range and pull in chunks (for example, one
-month at a time), then stitch the pieces together locally.
+**Document size is not a problem when you use `--out`.** The `--out` path
+streams the document straight to disk in chunks, so a report of any size (even
+multi-GB marketplace-wide pulls like Brand Analytics Search Terms) lands on the
+file with no ceiling and no crash. The **only** size limit is on the no-`--out`
+path: when you fetch without `--out`, the inline/stdout copy is capped (~25 MB)
+so it can never overflow, and an oversized document fails cleanly with a
+friendly "re-run with `--out <file>`" message rather than crashing. The fix is
+always the same: add `--out`. This is why you should default to `--out` for any
+real report and reserve the no-`--out` path for a quick peek at a small result.
+You do not need to narrow the window to dodge a size limit when writing to a
+file; only chunk a pull if the user actually wants smaller files.
+
+## When a report type is not in the catalog
+
+The catalog (`shared/reports/catalog.yaml`, surfaced by `list-reports` and
+`describe-report`) is a **convenience cache, not the list of allowed reports**.
+It is broad, but it does not have to contain a report type for you to pull it.
+The real source of truth for what reports exist and how to call them is
+**Amazon's public SP-API documentation** (the report-type enums, their
+`reportOptions`, and their data-window rules are all published and are NOT
+credential-gated).
+
+So when a user names a report that is not in the catalog:
+
+1. `describe-report <type>` on an unknown type does **not** error. It returns a
+   soft result (`known: false` in `--json`) telling you to look the type up in
+   the SP-API docs. Treat that as "not cached yet," never as "invalid."
+2. **Resolve it from Amazon's public SP-API docs yourself.** Find the report
+   type's required/optional `reportOptions` and its window rule (required vs
+   forbidden, and any boundary like "week must be Sunday to Saturday").
+3. **Drive the pull immediately** with `report start --type <type>` plus the
+   options the docs call for. `report start` passes any report type straight
+   through, so a catalog miss never blocks a pull.
+4. If it is a report worth keeping, **propose a new `catalog.yaml` entry** (the
+   same fields as the existing entries: `report_type`, `applies_to`,
+   `document_format`, `window` + `window_notes`, `report_options`, `notes`) so
+   the next caller gets it from the cache. This is how the "universal catalog"
+   grows over time.
+
+Do not tell the user a report "is not available" just because it is absent from
+the catalog. Absent means uncached, not unavailable.
 
 ## Output persistence and formatting
 

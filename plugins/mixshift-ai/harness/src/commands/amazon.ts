@@ -32,13 +32,14 @@
  */
 
 import type { Command } from 'commander';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { dirname, resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath } from 'node:path';
 import {
   listMerchants,
   startReport,
   pollReport,
   getReportDocument,
+  getReportDocumentMeta,
+  streamReportDocumentToFile,
   isReportFailure,
   type ReportFailure,
   type ReportFailureKind,
@@ -173,13 +174,22 @@ function registerDescribeReport(amazon: Command): void {
       try {
         const entry = await findReportType(reportType);
         if (!entry) {
-          throw new Error(
-            `"${reportType}" is not in the report catalog. ` +
-              `Run \`mixshift amazon list-reports\` to see valid report types.`,
-          );
+          // Catalog MISS is not an error. The catalog is a convenience cache,
+          // not the source of truth; Amazon's public SP-API docs are. Emit a
+          // soft, informational result that points the agent at the docs (where
+          // the report's schema, reportOptions, and window rules are public and
+          // not credential-gated) so it can drive the pull immediately and
+          // propose a catalog entry. `report start` already passes unknown
+          // types straight through, so a miss never blocks a pull.
+          if (root.json) {
+            writeJson({ status: 'ok', known: false, report_type: reportType });
+          } else {
+            process.stdout.write(renderUnknownReport(reportType) + '\n');
+          }
+          return;
         }
         if (root.json) {
-          writeJson({ status: 'ok', report: entry });
+          writeJson({ status: 'ok', known: true, report: entry });
         } else {
           process.stdout.write(renderReportDetail(entry) + '\n');
         }
@@ -321,59 +331,58 @@ function registerReportGet(report: Command): void {
     .command('get <runId>')
     .description(
       'Fetch the report document. Safe to call before ready (returns ready:false, ' +
-        'exit 10 — keep polling). With --out, writes the bytes to a file.',
+        'exit 10, keep polling). With --out, streams the document straight to ' +
+        'the file in chunks (any size); without --out, prints a size-capped ' +
+        'copy to stdout. Prefer --out so document size is never a concern.',
     )
-    .option('--out <path>', 'write the document to this file (otherwise streams to stdout)')
+    .option('--out <path>', 'stream the document to this file (recommended; handles reports of any size)')
     .action(async (runId: string, opts: { out?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
+      const clientOpts = { dataDirOverride: root.dataDir };
       try {
-        const result = await getReportDocument(runId, { dataDirOverride: root.dataDir });
+        // --out path: stream to disk. Never materialize the document as a
+        // string, so a multi-GB report lands on disk without the V8
+        // string-length crash. Fetch metadata only (readiness + presigned URL),
+        // then pipe the body through gunzip into the file.
+        if (opts.out) {
+          const meta = await getReportDocumentMeta(runId, clientOpts);
+          if (isReportFailure(meta)) {
+            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir);
+            return emitFailure(meta, !!root.json);
+          }
+          if (!meta.ready || !meta.document) {
+            return emitNotReady(meta.status, startedAt, root.dataDir, !!root.json);
+          }
+
+          const outPath = resolvePath(opts.out);
+          const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
+          if (isReportFailure(streamed)) {
+            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir);
+            return emitFailure(streamed, !!root.json);
+          }
+          await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
+          if (root.json) {
+            writeJson({ status: 'ok', ready: true, out_path: outPath, bytes: streamed.bytes });
+          } else {
+            process.stderr.write(`\n✓ wrote ${streamed.bytes} bytes to ${outPath}\n`);
+          }
+          return;
+        }
+
+        // No --out: print a size-capped inline copy to stdout. Oversized
+        // documents fail cleanly (pointing at --out) instead of crashing.
+        const result = await getReportDocument(runId, clientOpts);
         if (isReportFailure(result)) {
           await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
           return emitFailure(result, !!root.json);
         }
-
         if (!result.ready) {
-          // Not an error — the poll-across-calls pattern. Distinct exit code.
-          await track(
-            {
-              event_name: EventName.ReportPolled,
-              outcome: 'deferred',
-              duration_ms: Date.now() - startedAt,
-              payload: { ready: false, status: result.status, via: 'get' },
-            },
-            root.dataDir,
-          );
-          if (root.json) {
-            writeJson({ status: 'ok', ready: false, report_status: result.status });
-          } else {
-            process.stdout.write(
-              `\n• not ready yet (status: ${result.status ?? 'unknown'}). Poll again, then re-run get.\n`,
-            );
-          }
-          process.exitCode = EXIT_NOT_READY;
-          return;
+          return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
         }
 
         const document = result.document ?? '';
-        const bytes = Buffer.byteLength(document, 'utf-8');
-
-        if (opts.out) {
-          const outPath = resolvePath(opts.out);
-          await mkdir(dirname(outPath), { recursive: true });
-          // Write bytes as-is — never transcode. Flat files may carry a UTF-8
-          // BOM; we preserve it.
-          await writeFile(outPath, document, 'utf-8');
-          await trackRetrieved(startedAt, bytes, root.dataDir);
-          if (root.json) {
-            writeJson({ status: 'ok', ready: true, out_path: outPath, bytes });
-          } else {
-            process.stderr.write(`\n✓ wrote ${bytes} bytes to ${outPath}\n`);
-          }
-          return;
-        }
-
+        const bytes = result.bytes ?? Buffer.byteLength(document, 'utf-8');
         await trackRetrieved(startedAt, bytes, root.dataDir);
         if (root.json) {
           writeJson({ status: 'ok', ready: true, bytes, document });
@@ -387,6 +396,33 @@ function registerReportGet(report: Command): void {
         emitError(err, !!root.json);
       }
     });
+}
+
+/** Emit the "run isn't done yet" result (NOT an error) and set the distinct
+ *  EXIT_NOT_READY code. Shared by the --out and stdout paths of `report get`. */
+function emitNotReady(
+  status: string | undefined,
+  startedAt: number,
+  dataDir: string | undefined,
+  json: boolean,
+): void {
+  void track(
+    {
+      event_name: EventName.ReportPolled,
+      outcome: 'deferred',
+      duration_ms: Date.now() - startedAt,
+      payload: { ready: false, status, via: 'get' },
+    },
+    dataDir,
+  );
+  if (json) {
+    writeJson({ status: 'ok', ready: false, report_status: status });
+  } else {
+    process.stdout.write(
+      `\n• not ready yet (status: ${status ?? 'unknown'}). Poll again, then re-run get.\n`,
+    );
+  }
+  process.exitCode = EXIT_NOT_READY;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,21 +539,49 @@ function registerReportRun(report: Command): void {
           return;
         }
 
-        // 3. fetch the document
-        const doc = await getReportDocument(runId, clientOpts);
-        if (isReportFailure(doc)) {
-          await trackFailure(EventName.ReportFailed, doc, startedAt, root.dataDir, reportType);
-          return emitFailure(doc, !!root.json);
+        // 3. fetch the document: always stream to a file (any size, no V8
+        // string-length crash). Fetch metadata only, then pipe the presigned
+        // body through gunzip into the destination.
+        const meta = await getReportDocumentMeta(runId, clientOpts);
+        if (isReportFailure(meta)) {
+          await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, reportType);
+          return emitFailure(meta, !!root.json);
         }
-        const document = doc.document ?? '';
-        const bytes = Buffer.byteLength(document, 'utf-8');
+        if (!meta.ready || !meta.document) {
+          // We just confirmed ready above, so this is an unexpected race; treat
+          // it as not-ready so the run handle stays usable.
+          await track(
+            {
+              event_name: EventName.ReportPolled,
+              outcome: 'deferred',
+              duration_ms: Date.now() - startedAt,
+              payload: { ready: false, status: meta.status, via: 'run' },
+            },
+            root.dataDir,
+          );
+          const msg =
+            `The report reported ready but its document was not available yet ` +
+            `(status: ${meta.status ?? 'unknown'}). The run handle is still valid; ` +
+            `fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
+          if (root.json) {
+            writeJson({ status: 'ok', ready: false, run_id: runId, report_status: meta.status, message: msg });
+          } else {
+            process.stderr.write(`\n• ${msg}\n`);
+          }
+          process.exitCode = EXIT_NOT_READY;
+          return;
+        }
 
         // default out path: scope by amazonSellerId, ext by catalog format.
         const outPath = resolvePath(
           opts.out ?? (await defaultOutPath(sellerId, reportType, root.dataDir)),
         );
-        await mkdir(dirname(outPath), { recursive: true });
-        await writeFile(outPath, document, 'utf-8');
+        const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
+        if (isReportFailure(streamed)) {
+          await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
+          return emitFailure(streamed, !!root.json);
+        }
+        const bytes = streamed.bytes;
 
         await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
         if (root.json) {
@@ -764,6 +828,31 @@ function renderReportDetail(e: ReportCatalogEntry): string {
   if (e.parseHints) lines.push(`- **parse hints**: ${e.parseHints}`);
   if (e.notes) lines.push(`- **notes**: ${e.notes}`);
   return lines.join('\n');
+}
+
+/** Rendered when describe-report is asked about a type not in the catalog. The
+ *  catalog is a cache, not a gate: this is informational, not an error. It tells
+ *  the agent the type is still pullable and to resolve its requirements from
+ *  Amazon's public SP-API docs (report schema / reportOptions / window rules are
+ *  public), then propose adding it to the catalog so the cache grows. */
+function renderUnknownReport(reportType: string): string {
+  return [
+    '',
+    `# ${reportType}`,
+    '',
+    'Not in the local report catalog yet. That does not mean it cannot be ' +
+      'pulled: the catalog is a convenience cache, not the list of allowed ' +
+      'reports, and `report start` accepts any report type.',
+    '',
+    'To pull it now: look up this report type in Amazon\'s public SP-API ' +
+      'documentation (the report schema, its `reportOptions`, and any data-window ' +
+      'rules are published and are NOT credential-gated), then run ' +
+      `\`mixshift amazon report start --type ${reportType} ...\` with the ` +
+      'options the docs call for.',
+    '',
+    'If it is a report worth keeping, propose a new entry for ' +
+      '`shared/reports/catalog.yaml` so the next caller gets it from the cache.',
+  ].join('\n');
 }
 
 function mdCell(v: string): string {

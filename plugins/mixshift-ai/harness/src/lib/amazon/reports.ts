@@ -48,7 +48,12 @@
  * carried through as `httpStatus` for diagnostics only.
  */
 
-import { gunzipSync } from 'node:zlib';
+import { createWriteStream } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { createGunzip, gunzipSync } from 'node:zlib';
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 
@@ -229,6 +234,32 @@ export interface GetReportDocumentResult {
   timings?: ReportTimings;
 }
 
+/** Metadata-only result of the document GET: readiness + Amazon's presigned
+ *  URL, WITHOUT downloading the bytes. This is the large-report-safe entry
+ *  point. Pass `document` to streamReportDocumentToFile to write the bytes to
+ *  disk in chunks, never materializing them as a string (which would crash
+ *  toString() at V8's ~2 GB string limit on multi-GB reports). */
+export interface GetReportDocumentMetaResult {
+  ok: true;
+  /** False when the report isn't done yet (NOT an error; keep polling). */
+  ready: boolean;
+  status?: string;
+  /** Present only when ready AND the service returned a usable presigned URL. */
+  document?: DocumentMeta;
+  timings?: ReportTimings;
+}
+
+/** Result of streaming a presigned document straight to a file. */
+export interface StreamReportDocumentResult {
+  ok: true;
+  /** Bytes written to disk (decompressed, post-gunzip when GZIP). */
+  bytes: number;
+  /** The presigned object's compression. Informational once written. */
+  compressionAlgorithm?: string | null;
+  /** Amazon's reportDocumentId, for support cross-reference. */
+  reportDocumentId?: string;
+}
+
 export interface ReportClientOptions {
   /** Forwarded to credential resolution (the --data-dir override). */
   dataDirOverride?: string;
@@ -353,18 +384,17 @@ export async function pollReport(
 }
 
 /**
- * Fetch the document. Safe to call before the report is ready — returns
- * { ok:true, ready:false } in that case (poll-across-calls pattern).
- *
- * When ready, the service returns Amazon's short-lived presigned URL (never
- * the bytes). This function fetches that URL directly with NO auth header,
- * gunzips when the service reports GZIP, and returns the decoded text in
- * `document` so callers do not have to know about the two-step fetch.
+ * Metadata-only document fetch: the document GET, WITHOUT downloading the
+ * bytes. Safe to call before the report is ready (returns ready:false, which
+ * is NOT an error). When ready, `document` carries Amazon's short-lived
+ * presigned URL. Pair this with streamReportDocumentToFile for the
+ * large-report-safe path (the --out flow); getReportDocument is the
+ * convenience that also downloads + decodes a size-capped inline copy.
  */
-export async function getReportDocument(
+export async function getReportDocumentMeta(
   runId: string,
   opts: ReportClientOptions = {},
-): Promise<GetReportDocumentResult | ReportFailure> {
+): Promise<GetReportDocumentMetaResult | ReportFailure> {
   const r = await amazonRequest(
     {
       method: 'GET',
@@ -382,17 +412,38 @@ export async function getReportDocument(
   const ready = json.ready === true;
   const status = typeof json.status === 'string' ? json.status : undefined;
   const timings = parseTimings(json.timings);
-  const docMeta = parseDocumentMeta(json.document);
+  const document = parseDocumentMeta(json.document);
+  // `document` is undefined until ready (and until the presigned URL exists),
+  // which callers treat as "keep polling."
+  return { ok: true, ready, status, document, timings };
+}
+
+/**
+ * Fetch + decode an INLINE copy of the document. A convenience for small docs
+ * and the stdout path. Safe to call before ready (returns ready:false).
+ *
+ * IMPORTANT: this materializes the decoded document as a single JS string, so
+ * it enforces an inline size cap (MAX_INLINE_DOCUMENT_BYTES) and fails cleanly
+ * on anything larger, pointing the caller at --out. It will NOT crash on a
+ * multi-GB report the way an unbounded toString() would. For arbitrarily large
+ * reports use getReportDocumentMeta + streamReportDocumentToFile instead.
+ */
+export async function getReportDocument(
+  runId: string,
+  opts: ReportClientOptions = {},
+): Promise<GetReportDocumentResult | ReportFailure> {
+  const meta = await getReportDocumentMeta(runId, opts);
+  if (!meta.ok) return meta;
 
   // Not ready (or no document yet): keep polling. NOT an error.
-  if (!ready || !docMeta) {
-    return { ok: true, ready, status, timings };
+  if (!meta.ready || !meta.document) {
+    return { ok: true, ready: meta.ready, status: meta.status, timings: meta.timings };
   }
 
-  // Ready: fetch Amazon's presigned URL ourselves and decode it.
+  // Ready: fetch Amazon's presigned URL ourselves and decode a capped copy.
   const fetched = await fetchDocumentBytes(
-    docMeta.url,
-    docMeta.compressionAlgorithm,
+    meta.document.url,
+    meta.document.compressionAlgorithm,
     opts,
   );
   if (!fetched.ok) return fetched;
@@ -400,16 +451,80 @@ export async function getReportDocument(
   return {
     ok: true,
     ready: true,
-    status,
+    status: meta.status,
     document: fetched.text,
     bytes: fetched.bytes,
-    reportDocumentId: docMeta.reportDocumentId,
-    compressionAlgorithm: docMeta.compressionAlgorithm,
-    timings,
+    reportDocumentId: meta.document.reportDocumentId,
+    compressionAlgorithm: meta.document.compressionAlgorithm,
+    timings: meta.timings,
   };
 }
 
-interface DocumentMeta {
+/**
+ * Stream a presigned report document straight to a file, in chunks, never
+ * materializing it as a string. THIS is the large-report-safe path behind
+ * --out on `report get` / `report run`: it pipes Amazon's presigned response
+ * body through a gunzip transform (when GZIP) into the destination file, so a
+ * report of any size lands on disk without the V8 string-length crash.
+ *
+ * Sends NO Authorization header (presigned link; a Bearer makes S3 reject it).
+ * A non-2xx (e.g. an expired link) surfaces as a friendly re-fetch failure.
+ * The parent directory is created if missing.
+ */
+export async function streamReportDocumentToFile(
+  document: DocumentMeta,
+  outPath: string,
+  opts: ReportClientOptions = {},
+): Promise<StreamReportDocumentResult | ReportFailure> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+
+  let res: Response;
+  try {
+    res = await fetchImpl(document.url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+  if (!res.ok) return presignedFetchFailure(res.status);
+  if (!res.body) {
+    return hostUnreachable('the report download returned an empty response body');
+  }
+
+  await mkdir(dirname(outPath), { recursive: true });
+  const out = createWriteStream(outPath);
+  const source = Readable.fromWeb(
+    res.body as Parameters<typeof Readable.fromWeb>[0],
+  );
+
+  try {
+    if (document.compressionAlgorithm === 'GZIP') {
+      await pipeline(source, createGunzip(), out);
+    } else {
+      await pipeline(source, out);
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      kind: 'unknown',
+      friendly:
+        'The report download failed while streaming to disk. Try fetching it ' +
+        'again; if it persists, contact MixShift ops.',
+      message: `stream-to-file failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  return {
+    ok: true,
+    bytes: out.bytesWritten,
+    compressionAlgorithm: document.compressionAlgorithm,
+    reportDocumentId: document.reportDocumentId,
+  };
+}
+
+/** Amazon's presigned-document descriptor, returned by getReportDocumentMeta
+ *  when a run is ready. `url` is short-lived (minutes). Hand this to
+ *  streamReportDocumentToFile to download the bytes without buffering them. */
+export interface DocumentMeta {
   reportDocumentId?: string;
   url: string;
   compressionAlgorithm: string | null;
@@ -446,10 +561,31 @@ function parseTimings(v: unknown): ReportTimings | undefined {
 
 type DocBytesResult = { ok: true; text: string; bytes: number } | ReportFailure;
 
-/** Fetch Amazon's presigned document URL directly and decode it. Sends NO
- *  Authorization header (it is a presigned S3 link; the Bearer would make S3
- *  reject it). Gunzips when the service reported GZIP. A non-2xx (e.g. an
- *  expired link) surfaces as a friendly "re-fetch" failure rather than bytes. */
+/** Inline-decode cap for getReportDocument / fetchDocumentBytes. A document
+ *  larger than this is NOT decoded to a string (that would risk crashing
+ *  toString() at V8's ~2 GB string limit, kMaxInt); the caller is told to use
+ *  --out, which streams to disk with no size limit. 25 MB comfortably covers
+ *  the small status-and-peek case while staying far below the string ceiling. */
+const MAX_INLINE_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+/** Thrown by readCapped when the download exceeds the inline cap. Carries the
+ *  byte count seen so far (>= the cap) for the log message. */
+class DocumentTooLargeError extends Error {
+  constructor(public readonly bytesSeen: number) {
+    super(
+      `document exceeds the ${MAX_INLINE_DOCUMENT_BYTES}-byte inline cap ` +
+        `(saw >= ${bytesSeen} bytes)`,
+    );
+    this.name = 'DocumentTooLargeError';
+  }
+}
+
+/** Fetch Amazon's presigned document URL directly and decode a SIZE-CAPPED
+ *  inline copy. Sends NO Authorization header (it is a presigned S3 link; the
+ *  Bearer would make S3 reject it). Gunzips when the service reported GZIP. A
+ *  non-2xx (e.g. an expired link) surfaces as a friendly "re-fetch" failure; a
+ *  document over the inline cap fails cleanly pointing at --out, rather than
+ *  buffering multiple GB and crashing toString(). */
 async function fetchDocumentBytes(
   url: string,
   compressionAlgorithm: string | null,
@@ -465,26 +601,16 @@ async function fetchDocumentBytes(
     return hostUnreachable(err instanceof Error ? err.message : String(err));
   }
 
-  if (!res.ok) {
-    const expired = res.status === 403 || res.status === 410;
-    return {
-      ok: false,
-      kind: 'unknown',
-      friendly: expired
-        ? 'The report download link expired before it could be fetched. The ' +
-          'report itself is still ready — re-run `mixshift amazon report get ' +
-          '<runId>` for a fresh link.'
-        : `Could not download the report document (HTTP ${res.status}). Try ` +
-          'fetching it again.',
-      message: `presigned document fetch returned HTTP ${res.status}`,
-      httpStatus: res.status,
-    };
-  }
+  if (!res.ok) return presignedFetchFailure(res.status);
 
+  // Read with a byte cap so an oversized document fails cleanly instead of
+  // buffering multiple GB. The --out path (streamReportDocumentToFile) streams
+  // to disk and has no such limit.
   let raw: Buffer;
   try {
-    raw = Buffer.from(await res.arrayBuffer());
+    raw = await readCapped(res, MAX_INLINE_DOCUMENT_BYTES);
   } catch (err) {
+    if (err instanceof DocumentTooLargeError) return documentTooLarge();
     return hostUnreachable(err instanceof Error ? err.message : String(err));
   }
 
@@ -502,7 +628,77 @@ async function fetchDocumentBytes(
     };
   }
 
+  // A small compressed payload can still inflate past the cap. Guard the
+  // decoded length too so we never hand toString() a multi-GB buffer.
+  if (buf.length > MAX_INLINE_DOCUMENT_BYTES) return documentTooLarge();
+
   return { ok: true, text: buf.toString('utf8'), bytes: buf.length };
+}
+
+/** Read a Response body into a Buffer, aborting once `cap` bytes is exceeded.
+ *  Consumes the body chunk-by-chunk so an oversized document is cancelled
+ *  mid-download rather than fully buffered. Falls back to a capped
+ *  arrayBuffer() read when the body isn't async-iterable. */
+async function readCapped(res: Response, cap: number): Promise<Buffer> {
+  const body = res.body as
+    | (ReadableStream<Uint8Array> & AsyncIterable<Uint8Array>)
+    | null;
+  if (
+    body &&
+    typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function'
+  ) {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of body) {
+      total += chunk.byteLength;
+      if (total > cap) {
+        try {
+          await body.cancel();
+        } catch {
+          /* best-effort cancel; we are throwing regardless */
+        }
+        throw new DocumentTooLargeError(total);
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+  const ab = await res.arrayBuffer();
+  if (ab.byteLength > cap) throw new DocumentTooLargeError(ab.byteLength);
+  return Buffer.from(ab);
+}
+
+/** A non-2xx from the presigned S3 fetch. 403/410 means the short-lived link
+ *  expired (the report itself is still DONE; re-fetch for a fresh link). */
+function presignedFetchFailure(status: number): ReportFailure {
+  const expired = status === 403 || status === 410;
+  return {
+    ok: false,
+    kind: 'unknown',
+    friendly: expired
+      ? 'The report download link expired before it could be fetched. The ' +
+        'report itself is still ready; re-run `mixshift amazon report get ' +
+        '<runId>` for a fresh link.'
+      : `Could not download the report document (HTTP ${status}). Try ` +
+        'fetching it again.',
+    message: `presigned document fetch returned HTTP ${status}`,
+    httpStatus: status,
+  };
+}
+
+/** The document is too large to decode inline. Tell the caller to stream it to
+ *  a file with --out, which has no size limit. */
+function documentTooLarge(): ReportFailure {
+  const mb = Math.round(MAX_INLINE_DOCUMENT_BYTES / (1024 * 1024));
+  return {
+    ok: false,
+    kind: 'unknown',
+    friendly:
+      `This report is larger than the inline limit (${mb} MB), so it was not ` +
+      'returned to the screen. Re-run with `--out <file>` to stream it straight ' +
+      'to disk; the --out path handles reports of any size.',
+    message: `document exceeds the ${MAX_INLINE_DOCUMENT_BYTES}-byte inline cap; use --out`,
+  };
 }
 
 // ---------------------------------------------------------------------------

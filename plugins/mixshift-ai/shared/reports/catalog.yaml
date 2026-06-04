@@ -1,13 +1,23 @@
 # Amazon SP-API on-demand report catalog.
 #
-# This is the PLUGIN-side description of every report type the report-pull
-# capability can request. It is intentionally exhaustive and carries NO
-# exclusions: even reports that are commonly restricted (order/returns/PII)
-# or that a given tenant can't access are listed here. We never pre-filter on
-# a guess. The service decides — reactively, at fetch time — what a given
-# tenant + merchant is actually allowed to pull, and returns a typed failure
-# `kind` (restricted_report, reauth_required, spapi_not_configured, ...) that
-# the skill surfaces. See harness/src/lib/amazon/reports.ts.
+# This is a PLUGIN-side CONVENIENCE CACHE of report types the report-pull
+# capability can request. It is NOT the source of truth and NOT a gate: the
+# real definition of every report type (schema, reportOptions, window rules)
+# is Amazon's public SP-API documentation, and the service decides at fetch
+# time what a given tenant + merchant is actually allowed to pull. A report
+# type missing from this file is still fully pullable: `report start` passes
+# any type straight through, and `describe-report` on an unknown type returns
+# a soft "look it up in the SP-API docs" result, not an error. The agent
+# resolves unknown types from the public docs, drives the pull, and proposes a
+# new entry here so the cache grows over time.
+#
+# This cache aims to be BROAD (many common report types, including ones that
+# are commonly restricted) precisely so the agent rarely has to fall back to
+# the docs, but breadth is a goal, not a guarantee, and there are no
+# exclusions: we never pre-filter on a guess. The service decides reactively
+# and returns a typed failure `kind` (restricted_report, reauth_required,
+# spapi_not_configured, ...) that the skill surfaces. See
+# harness/src/lib/amazon/reports.ts.
 #
 # Field reference (see lib/reports/catalog.ts for the typed shape):
 #   report_type        Amazon enum, sent verbatim on the wire. The key field.
@@ -29,7 +39,7 @@
 #   notes              caveats (deprecations, regional limits, PII variants)
 
 schema_version: 1
-last_updated: 2026-06-03
+last_updated: 2026-06-04
 
 reports:
   # =========================================================================
@@ -835,6 +845,25 @@ reports:
         example: WEEK
         note: WEEK | MONTH | QUARTER. start/end must align to this period.
     parse_hints: JSON with a dataByDepartmentAndSearchTerm[] (or similar) array; each row has searchTerm + ranked clicked ASINs.
+    notes: Requires Brand Registry. Not enrolled -> restricted_report. No server-side filter; the whole marketplace term set comes back (can be very large -> always pull with --out).
+
+  - report_type: GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT
+    title: "Brand Analytics: Search Catalog Performance"
+    purpose: Per-ASIN search-funnel performance for your catalog. Shows how your products perform across the search terms shoppers used to find them. Supports an ASIN filter.
+    applies_to: seller
+    document_format: json
+    window: required
+    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday and cannot span two periods.
+    warehouse_coverage: none
+    group: Brand Analytics
+    report_options:
+      - key: reportPeriod
+        example: WEEK
+        note: WEEK | MONTH | QUARTER. start/end must align to this period.
+      - key: asins
+        example: B0XXXX1111 B0XXXX2222
+        note: Optional. Space-separated ASIN list, a REAL server-side filter that narrows the report to just those products. This is the clean way to filter to a set of products (the Search Terms report has no such filter).
+    parse_hints: JSON with per-ASIN search-funnel rows (impressions/clicks/cart-adds/purchases + share) for the period.
     notes: Requires Brand Registry. Not enrolled -> restricted_report.
 
   - report_type: GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT

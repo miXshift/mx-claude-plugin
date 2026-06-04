@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -9,6 +9,8 @@ import {
   startReport,
   pollReport,
   getReportDocument,
+  getReportDocumentMeta,
+  streamReportDocumentToFile,
   type ReportClientOptions,
 } from './reports.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
@@ -347,6 +349,155 @@ describe('getReportDocument', () => {
       .mockResolvedValueOnce(bytesResponse(403, Buffer.from('AccessDenied')));
 
     const r = await getReportDocument('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.httpStatus).toBe(403);
+      expect(r.friendly).toMatch(/expired/i);
+    }
+  });
+
+  it('fails cleanly (not a crash) when the inline document exceeds the cap, pointing at --out', async () => {
+    // A document larger than the inline cap must NOT be materialized as a
+    // string (that is the V8 kMaxInt crash). getReportDocument caps the read
+    // and returns a friendly "use --out" failure instead. 26 MB clears the
+    // 25 MB cap.
+    const huge = Buffer.alloc(26 * 1024 * 1024, 0x41);
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          ready: true,
+          status: 'DONE',
+          document: {
+            url: 'https://s3.amazonaws.com/big?sig=abc',
+            compressionAlgorithm: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(bytesResponse(200, huge));
+
+    const r = await getReportDocument('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('unknown');
+      expect(r.friendly).toMatch(/--out/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getReportDocumentMeta: readiness + presigned URL, WITHOUT downloading bytes
+// ---------------------------------------------------------------------------
+
+describe('getReportDocumentMeta', () => {
+  it('returns the document descriptor and does NOT fetch the bytes', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        ready: true,
+        status: 'DONE',
+        document: {
+          reportDocumentId: 'doc-meta',
+          url: 'https://s3.amazonaws.com/report?sig=meta',
+          compressionAlgorithm: 'GZIP',
+        },
+      }),
+    );
+    const r = await getReportDocumentMeta('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.ready).toBe(true);
+      expect(r.document).toMatchObject({
+        reportDocumentId: 'doc-meta',
+        url: 'https://s3.amazonaws.com/report?sig=meta',
+        compressionAlgorithm: 'GZIP',
+      });
+    }
+    // Only the metadata call, never the presigned S3 download.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns ready:false with no document when called early', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, ready: false, status: 'IN_PROGRESS' }));
+    const r = await getReportDocumentMeta('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.ready).toBe(false);
+      expect(r.document).toBeUndefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// streamReportDocumentToFile: pipe the presigned body to disk (any size)
+// ---------------------------------------------------------------------------
+
+describe('streamReportDocumentToFile', () => {
+  it('streams an uncompressed document to a file and reports bytes', async () => {
+    const tsv = 'order-id\tdate\n123\t2026-05-01\n';
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from(tsv, 'utf8')));
+    const outPath = join(testDir, 'nested', 'report.tsv');
+
+    const r = await streamReportDocumentToFile(
+      {
+        reportDocumentId: 'doc-1',
+        url: 'https://s3.amazonaws.com/report?sig=abc',
+        compressionAlgorithm: null,
+      },
+      outPath,
+      { fetchImpl },
+    );
+
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.bytes).toBe(Buffer.byteLength(tsv));
+      expect(r.reportDocumentId).toBe('doc-1');
+    }
+    // The bytes actually landed on disk (parent dir was created).
+    expect(await readFile(outPath, 'utf8')).toBe(tsv);
+
+    // Presigned fetch carried NO Authorization header.
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = ((init as RequestInit | undefined)?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('gunzips a GZIP document while streaming to disk', async () => {
+    const tsv = 'sku\tunits\nABC\t42\n';
+    const gz = gzipSync(Buffer.from(tsv, 'utf8'));
+    const fetchImpl = vi.fn().mockResolvedValueOnce(bytesResponse(200, gz));
+    const outPath = join(testDir, 'report.gz.tsv');
+
+    const r = await streamReportDocumentToFile(
+      {
+        url: 'https://s3.amazonaws.com/report.gz?sig=xyz',
+        compressionAlgorithm: 'GZIP',
+      },
+      outPath,
+      { fetchImpl },
+    );
+
+    expect(r.ok).toBe(true);
+    // File holds the DECOMPRESSED bytes.
+    expect(await readFile(outPath, 'utf8')).toBe(tsv);
+  });
+
+  it('surfaces an expired presigned link (403) as a friendly re-fetch failure', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(bytesResponse(403, Buffer.from('AccessDenied')));
+    const outPath = join(testDir, 'never-written.tsv');
+
+    const r = await streamReportDocumentToFile(
+      { url: 'https://s3.amazonaws.com/report?sig=expired', compressionAlgorithm: null },
+      outPath,
+      { fetchImpl },
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.httpStatus).toBe(403);
