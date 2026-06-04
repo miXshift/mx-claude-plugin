@@ -58710,6 +58710,7 @@ import { dirname as dirname24, resolve as resolvePath2 } from "node:path";
 
 // src/lib/amazon/reports.ts
 init_credentials();
+import { gunzipSync } from "node:zlib";
 function isReportFailure(x) {
   return x.ok === false;
 }
@@ -58728,6 +58729,10 @@ async function startReport(input, opts = {}) {
     reportType: input.reportType
   };
   if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
+  if (input.legacySellerId !== void 0 && input.legacySellerId !== null && input.legacySellerId !== "") {
+    const n = typeof input.legacySellerId === "string" ? Number(input.legacySellerId) : input.legacySellerId;
+    body.legacySellerId = typeof n === "number" && Number.isFinite(n) ? n : input.legacySellerId;
+  }
   if (input.start) body.start = input.start;
   if (input.end) body.end = input.end;
   if (input.marketplace) body.marketplace = input.marketplace;
@@ -58773,19 +58778,95 @@ async function getReportDocument(runId, opts = {}) {
       method: "GET",
       path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`
     },
-    { ...opts, timeoutMs: opts.timeoutMs ?? 12e4 }
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
   const json2 = r.json;
   const ready = json2.ready === true;
+  const status = typeof json2.status === "string" ? json2.status : void 0;
+  const timings = parseTimings(json2.timings);
+  const docMeta = parseDocumentMeta(json2.document);
+  if (!ready || !docMeta) {
+    return { ok: true, ready, status, timings };
+  }
+  const fetched = await fetchDocumentBytes(
+    docMeta.url,
+    docMeta.compressionAlgorithm,
+    opts
+  );
+  if (!fetched.ok) return fetched;
   return {
     ok: true,
-    ready,
-    status: typeof json2.status === "string" ? json2.status : void 0,
-    // Wire field is `tsv` regardless of TSV-vs-JSON content (see file header).
-    document: typeof json2.tsv === "string" ? json2.tsv : void 0,
-    rowCountEstimate: numOrUndef(json2.rowCountEstimate)
+    ready: true,
+    status,
+    document: fetched.text,
+    bytes: fetched.bytes,
+    reportDocumentId: docMeta.reportDocumentId,
+    compressionAlgorithm: docMeta.compressionAlgorithm,
+    timings
   };
+}
+function parseDocumentMeta(v) {
+  if (typeof v !== "object" || v === null) return void 0;
+  const o = v;
+  const url2 = typeof o.url === "string" ? o.url : void 0;
+  if (!url2) return void 0;
+  return {
+    url: url2,
+    reportDocumentId: strOrUndef(o.reportDocumentId),
+    compressionAlgorithm: typeof o.compressionAlgorithm === "string" ? o.compressionAlgorithm : null
+  };
+}
+function parseTimings(v) {
+  if (typeof v !== "object" || v === null) return void 0;
+  const o = v;
+  const t = {
+    createdTime: strOrUndef(o.createdTime),
+    processingStartTime: strOrUndef(o.processingStartTime),
+    processingEndTime: strOrUndef(o.processingEndTime)
+  };
+  if (!t.createdTime && !t.processingStartTime && !t.processingEndTime) {
+    return void 0;
+  }
+  return t;
+}
+async function fetchDocumentBytes(url2, compressionAlgorithm, opts) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 12e4;
+  let res;
+  try {
+    res = await fetchImpl(url2, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+  if (!res.ok) {
+    const expired = res.status === 403 || res.status === 410;
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: expired ? "The report download link expired before it could be fetched. The report itself is still ready \u2014 re-run `mixshift amazon report get <runId>` for a fresh link." : `Could not download the report document (HTTP ${res.status}). Try fetching it again.`,
+      message: `presigned document fetch returned HTTP ${res.status}`,
+      httpStatus: res.status
+    };
+  }
+  let raw;
+  try {
+    raw = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+  let buf;
+  try {
+    buf = compressionAlgorithm === "GZIP" ? gunzipSync(raw) : raw;
+  } catch (err) {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The report downloaded but could not be decompressed. Try fetching it again; if it persists, contact MixShift ops.",
+      message: `gunzip failed: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  return { ok: true, text: buf.toString("utf8"), bytes: buf.length };
 }
 async function amazonRequest(spec, opts) {
   const resolved = await resolveBaseAndToken(opts);
@@ -58896,8 +58977,27 @@ function toReportFailure(json2, httpStatus) {
     retryAfterMs: numOrUndef(json2.retryAfterMs),
     reportId: strOrUndef(json2.reportId),
     status: strOrUndef(json2.status),
+    candidates: parseCandidates(json2.candidates),
     httpStatus
   };
+}
+function parseCandidates(v) {
+  if (!Array.isArray(v)) return void 0;
+  const out = [];
+  for (const item of v) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item;
+    const legacySellerId = typeof o.legacySellerId === "number" || typeof o.legacySellerId === "string" ? o.legacySellerId : void 0;
+    out.push({
+      legacySellerId,
+      amazonSellerId: strOrUndef(o.amazonSellerId),
+      marketplaceId: strOrUndef(o.marketplaceId) ?? null,
+      countryCode: strOrUndef(o.countryCode) ?? null,
+      marketplaceName: strOrUndef(o.marketplaceName) ?? null,
+      name: strOrUndef(o.name)
+    });
+  }
+  return out.length > 0 ? out : void 0;
 }
 function statusOnlyFailure(httpStatus, detail) {
   const kind = statusToKind(httpStatus);
@@ -59157,13 +59257,14 @@ function registerDescribeReport(amazon) {
 function registerReportStart(report) {
   report.command("start").description(
     "Kick off a report run. Returns a runId immediately (does not wait for the document). Poll it with `amazon report poll <runId>`."
-  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.").requiredOption("--type <reportType>", "Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601).").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.").option("--option <key=value>", "reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK", collectKV, {}).action(async (opts, cmd) => {
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces; prevents the service re-resolving to the wrong marketplace.").requiredOption("--type <reportType>", "Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601).").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.").option("--option <key=value>", "reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK", collectKV, {}).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const reportType = opts.type ?? "";
     try {
       const input = {
         amazonSellerId: opts.sellerId,
+        legacySellerId: opts.legacySellerId,
         reportType,
         start: opts.start,
         end: opts.end,
@@ -59315,7 +59416,7 @@ function registerReportGet(report) {
 function registerReportRun(report) {
   report.command("run").description(
     "Convenience: start + poll-until-ready + get, in one blocking call. TERMINAL-ONLY \u2014 it can run for minutes, which exceeds the ~45s Bash ceiling on chat surfaces. In chat, use start/poll/get separately."
-  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.").requiredOption("--type <reportType>", "Amazon report type enum").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601)").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601)").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId").option("--option <key=value>", "reportOptions knob (repeatable)", collectKV, {}).option("--out <path>", "output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)").option("--interval-ms <ms>", "poll interval", parseIntOpt, 5e3).option("--max-wait-ms <ms>", "give up after this long", parseIntOpt, 3e5).action(async (opts, cmd) => {
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces.").requiredOption("--type <reportType>", "Amazon report type enum").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601)").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601)").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId").option("--option <key=value>", "reportOptions knob (repeatable)", collectKV, {}).option("--out <path>", "output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)").option("--interval-ms <ms>", "poll interval", parseIntOpt, 5e3).option("--max-wait-ms <ms>", "give up after this long", parseIntOpt, 3e5).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const reportType = opts.type ?? "";
@@ -59332,6 +59433,7 @@ function registerReportRun(report) {
       const started = await startReport(
         {
           amazonSellerId: opts.sellerId,
+          legacySellerId: opts.legacySellerId,
           reportType,
           start: opts.start,
           end: opts.end,
@@ -59466,14 +59568,30 @@ function emitFailure(failure, json2) {
       http_status: failure.httpStatus,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
-      retry_after_ms: failure.retryAfterMs
+      retry_after_ms: failure.retryAfterMs,
+      // Multi-marketplace merchant_not_found: the rows to disambiguate with.
+      candidates: failure.candidates
     });
   } else {
     process.stderr.write(`
 \u2717 ${failure.friendly}
 `);
+    if (failure.candidates && failure.candidates.length > 0) {
+      process.stderr.write(renderCandidates(failure.candidates));
+    }
   }
   process.exitCode = exitCodeForKind(failure.kind);
+}
+function renderCandidates(candidates) {
+  const lines = ["\n  This seller trades in several marketplaces. Re-run with one of:"];
+  for (const c of candidates) {
+    const where = [c.countryCode, c.marketplaceName].filter((s) => !!s).join(" ");
+    const idPart = c.marketplaceId ? ` (${c.marketplaceId})` : "";
+    const legacy = c.legacySellerId != null ? `--legacy-seller-id ${c.legacySellerId}` : "";
+    lines.push(`    - ${legacy}  \u2192  ${where}${idPart}`.replace(/\s+→/, " \u2192"));
+  }
+  lines.push("");
+  return lines.join("\n") + "\n";
 }
 function emitError8(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
@@ -59519,20 +59637,29 @@ function renderMerchants(merchants) {
   if (merchants.length === 0) {
     return "_(no merchants \u2014 your tenant may not have any connected Amazon accounts yet)_";
   }
-  const cols = ["amazonSellerId", "name", "type", "region", "marketplace", "authorized"];
+  const hasLegacy = merchants.some(
+    (m) => m.legacySellerId !== void 0 && m.legacySellerId !== null && m.legacySellerId !== ""
+  );
+  const cols = ["amazonSellerId"];
+  if (hasLegacy) cols.push("legacySellerId");
+  cols.push("name", "type", "region", "marketplace", "authorized");
   const header = "| " + cols.join(" | ") + " |";
   const sep = "| " + cols.map(() => "---").join(" | ") + " |";
-  const rows = merchants.map(
-    (m) => "| " + [
-      m.amazonSellerId,
-      mdCell(m.name),
-      m.merchantType,
-      m.merchantRegion,
-      m.marketplaceId,
-      m.authorized ? "yes" : "no"
-    ].join(" | ") + " |"
-  );
+  const rows = merchants.map((m) => {
+    const cells = [m.amazonSellerId];
+    if (hasLegacy) cells.push(m.legacySellerId != null ? String(m.legacySellerId) : "");
+    cells.push(mdCell(m.name), m.merchantType, m.merchantRegion, renderMarketplaceCell(m));
+    cells.push(m.authorized ? "yes" : "no");
+    return "| " + cells.join(" | ") + " |";
+  });
   return [header, sep, ...rows].join("\n");
+}
+function renderMarketplaceCell(m) {
+  const label = [m.countryCode, m.marketplaceName].filter((s) => !!s).map((s) => mdCell(s)).join(" ");
+  const id = m.marketplaceId;
+  if (label && id) return `${label} (${id})`;
+  if (label) return label;
+  return id ?? "";
 }
 function renderReportList(entries) {
   if (entries.length === 0) return "\n_(no report types match)_\n";

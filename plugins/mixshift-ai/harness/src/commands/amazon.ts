@@ -196,6 +196,7 @@ function registerDescribeReport(amazon: Command): void {
 
 interface StartCliOptions {
   sellerId?: string;
+  legacySellerId?: string;
   type?: string;
   start?: string;
   end?: string;
@@ -211,6 +212,7 @@ function registerReportStart(report: Command): void {
         'the document). Poll it with `amazon report poll <runId>`.',
     )
     .option('--seller-id <amazonSellerId>', 'Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.')
+    .option('--legacy-seller-id <id>', 'exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces; prevents the service re-resolving to the wrong marketplace.')
     .requiredOption('--type <reportType>', 'Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT')
     .option('--start <date>', 'data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.')
     .option('--end <date>', 'data window end (YYYY-MM-DD or ISO 8601).')
@@ -223,6 +225,7 @@ function registerReportStart(report: Command): void {
       try {
         const input: StartReportInput = {
           amazonSellerId: opts.sellerId,
+          legacySellerId: opts.legacySellerId,
           reportType,
           start: opts.start,
           end: opts.end,
@@ -405,6 +408,7 @@ function registerReportRun(report: Command): void {
         'ceiling on chat surfaces. In chat, use start/poll/get separately.',
     )
     .option('--seller-id <amazonSellerId>', 'Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.')
+    .option('--legacy-seller-id <id>', 'exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces.')
     .requiredOption('--type <reportType>', 'Amazon report type enum')
     .option('--start <date>', 'data window start (YYYY-MM-DD or ISO 8601)')
     .option('--end <date>', 'data window end (YYYY-MM-DD or ISO 8601)')
@@ -430,6 +434,7 @@ function registerReportRun(report: Command): void {
         const started = await startReport(
           {
             amazonSellerId: opts.sellerId,
+            legacySellerId: opts.legacySellerId,
             reportType,
             start: opts.start,
             end: opts.end,
@@ -595,11 +600,32 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
+      // Multi-marketplace merchant_not_found: the rows to disambiguate with.
+      candidates: failure.candidates,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
+    if (failure.candidates && failure.candidates.length > 0) {
+      process.stderr.write(renderCandidates(failure.candidates));
+    }
   }
   process.exitCode = exitCodeForKind(failure.kind);
+}
+
+/** Render the candidate rows from a multi-marketplace `merchant_not_found` so
+ *  the caller can re-run pinned to an exact record. */
+function renderCandidates(candidates: NonNullable<ReportFailure['candidates']>): string {
+  const lines = ['\n  This seller trades in several marketplaces. Re-run with one of:'];
+  for (const c of candidates) {
+    const where = [c.countryCode, c.marketplaceName]
+      .filter((s): s is string => !!s)
+      .join(' ');
+    const idPart = c.marketplaceId ? ` (${c.marketplaceId})` : '';
+    const legacy = c.legacySellerId != null ? `--legacy-seller-id ${c.legacySellerId}` : '';
+    lines.push(`    - ${legacy}  →  ${where}${idPart}`.replace(/\s+→/, ' →'));
+  }
+  lines.push('');
+  return lines.join('\n') + '\n';
 }
 
 /** Generic (thrown Error) path — mirrors data.ts emitError. */
@@ -650,23 +676,41 @@ function renderMerchants(merchants: MerchantView[]): string {
   if (merchants.length === 0) {
     return '_(no merchants — your tenant may not have any connected Amazon accounts yet)_';
   }
-  const cols = ['amazonSellerId', 'name', 'type', 'region', 'marketplace', 'authorized'];
+  // The service lists one row per (account, marketplace) and pre-filters to
+  // SP-API-active rows, so every row here is already active. We surface
+  // legacySellerId (the exact per-marketplace disambiguator used to pin
+  // attribution) as its own column when present, fold countryCode +
+  // marketplaceName + marketplaceId into one marketplace cell, and show
+  // `authorized` (false == Amazon access lost; warn before pulling).
+  const hasLegacy = merchants.some(
+    (m) =>
+      m.legacySellerId !== undefined && m.legacySellerId !== null && m.legacySellerId !== '',
+  );
+  const cols = ['amazonSellerId'];
+  if (hasLegacy) cols.push('legacySellerId');
+  cols.push('name', 'type', 'region', 'marketplace', 'authorized');
+
   const header = '| ' + cols.join(' | ') + ' |';
   const sep = '| ' + cols.map(() => '---').join(' | ') + ' |';
-  const rows = merchants.map(
-    (m) =>
-      '| ' +
-      [
-        m.amazonSellerId,
-        mdCell(m.name),
-        m.merchantType,
-        m.merchantRegion,
-        m.marketplaceId,
-        m.authorized ? 'yes' : 'no',
-      ].join(' | ') +
-      ' |',
-  );
+  const rows = merchants.map((m) => {
+    const cells: string[] = [m.amazonSellerId];
+    if (hasLegacy) cells.push(m.legacySellerId != null ? String(m.legacySellerId) : '');
+    cells.push(mdCell(m.name), m.merchantType, m.merchantRegion, renderMarketplaceCell(m));
+    cells.push(m.authorized ? 'yes' : 'no');
+    return '| ' + cells.join(' | ') + ' |';
+  });
   return [header, sep, ...rows].join('\n');
+}
+
+function renderMarketplaceCell(m: MerchantView): string {
+  const label = [m.countryCode, m.marketplaceName]
+    .filter((s): s is string => !!s)
+    .map((s) => mdCell(s))
+    .join(' ');
+  const id = m.marketplaceId;
+  if (label && id) return `${label} (${id})`;
+  if (label) return label;
+  return id ?? '';
 }
 
 function renderReportList(entries: ReportCatalogEntry[]): string {

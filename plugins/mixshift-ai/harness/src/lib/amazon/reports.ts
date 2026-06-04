@@ -15,13 +15,13 @@
  *     envelope handling, the report catalog + parse hints.
  *   - SERVICE side: which merchants are authorized, which reports are
  *     restricted, secret handling, talking to Amazon. We never see SP-API
- *     credentials; we send a Bearer token and a report request, and get
- *     document bytes back.
+ *     credentials; we send a Bearer token and a report request, and the service
+ *     hands back Amazon's short-lived presigned download URL (never the bytes).
  *
  * Lifecycle (keyed by `runId`, a service-minted UUID):
  *   startReport  → POST   /api/amazon/reports                 → { runId }
  *   pollReport   → GET    /api/amazon/reports/:runId          → { ready, status }
- *   getReport... → GET    /api/amazon/reports/:runId/document → { ready, tsv? }
+ *   getReport... → GET    /api/amazon/reports/:runId/document → { ready, document?:{ url, ... } }
  *
  * `ready` (boolean) is the signal — do NOT parse Amazon's status string to
  * decide done-ness. `getReportDocument` is safe to call early: before the
@@ -30,16 +30,25 @@
  * blocking loop (Cowork caps Bash at ~45s — same constraint that forced the
  * two-phase device-code auth flow).
  *
- * Document bytes: flat-file reports are TSV (sometimes with a UTF-8 BOM);
- * vendor reports and Brand Analytics are JSON. The wire field is named `tsv`
- * regardless of the actual format; the service returns bytes as-is and we do
- * not transcode. The catalog's `document_format` tells callers which it is.
+ * Document fetch (a real gotcha): the service NEVER returns bytes inline. When
+ * `ready`, `getReportDocument`'s response carries `document: { url,
+ * compressionAlgorithm, reportDocumentId }`, where `url` is Amazon's presigned
+ * S3 link (short-lived, minutes). THIS module fetches that URL directly — with
+ * NO Authorization header (it is presigned; sending the Bearer makes S3 reject
+ * it) — then gunzips when `compressionAlgorithm === 'GZIP'`, and returns the
+ * decoded text in `document`. Flat-file reports decode to TSV (sometimes with a
+ * UTF-8 BOM); vendor reports and Brand Analytics decode to JSON. We do not
+ * transcode; the catalog's `document_format` tells callers which it is. If the
+ * presigned URL has expired, re-call `getReportDocument` for a fresh one (the
+ * underlying report stays DONE).
  *
  * Failure envelope (any call): { ok:false, kind, friendly, message?, ...extra }.
  * Callers branch on `kind`, never on HTTP status — the service normalizes
  * Amazon's many failure modes into a small set of kinds. The HTTP status is
  * carried through as `httpStatus` for diagnostics only.
  */
+
+import { gunzipSync } from 'node:zlib';
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 
@@ -48,21 +57,55 @@ import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 // ---------------------------------------------------------------------------
 
 /** A merchant the signed-in tenant can pull reports for. Mirrors the service
- *  MerchantView. Keys on `amazonSellerId`; the warehouse keys on an internal
- *  SellerID / AmazonSellerID, so mapping a brand → merchant needs a join
- *  (handled by the brand registry / CLI, not here). */
+ *  MerchantView. The service lists one row per (account, marketplace) and gates
+ *  the list to SP-API-active rows only (legacy IsMwsUser = 1), so every row
+ *  returned here is already active — there is no separate active flag to check.
+ *
+ *  Disambiguation: one `amazonSellerId` (Amazon's merchant token) is SHARED
+ *  across a seller's marketplaces, so a seller live in US / CA / MX / BR shows
+ *  up as four rows that share an `amazonSellerId` but each have a distinct
+ *  `legacySellerId` + `marketplaceId`. `amazonSellerId` alone is therefore NOT
+ *  a unique selector: a report-start that sends only the shared token lets the
+ *  service re-resolve and can attribute the run to the wrong marketplace.
+ *  `legacySellerId` is the exact, per-marketplace record id and the
+ *  deterministic disambiguator — carry it through report-start (it takes
+ *  precedence over sellerId + marketplace). */
 export interface MerchantView {
   amazonSellerId: string;
   name: string;
   merchantType: 'Seller' | 'Vendor';
   merchantRegion: string;
-  /** Primary marketplace for this merchant, or null when the service can't
-   *  determine one. */
+  /** Real Amazon marketplace id for THIS row, e.g. ATVPDKIKX0DER. The service
+   *  now populates it on every row (COALESCE of the seller's own value with the
+   *  marketplace lookup). */
   marketplaceId: string | null;
-  /** True when the SP-API authorization is live. False == the user revoked
-   *  access or the grant lapsed; reports will fail with reauth_required until
-   *  re-connected. */
+  /** Marketplace country code for this row, e.g. US / CA / MX / BR. */
+  countryCode?: string | null;
+  /** Marketplace display name (e.g. "Amazon.com"), when the service provides
+   *  it. Display-only. */
+  marketplaceName?: string | null;
+  /** Exact per-marketplace warehouse seller record id (warehouse `seller.ID`).
+   *  UNIQUE per (account, marketplace) even when `amazonSellerId` is shared.
+   *  The authoritative disambiguator: carry it through report-start. */
+  legacySellerId?: number | string | null;
+  /** True when the SP-API authorization is live. False == Amazon access was
+   *  lost (`iLostAccess`) and the merchant must be re-authorized in the
+   *  MixShift platform before reports can be pulled (otherwise reports fail
+   *  with reauth_required). This is the signal to warn on before a pull. */
   authorized: boolean;
+}
+
+/** One candidate row returned in a `merchant_not_found` failure when a shared
+ *  `amazonSellerId` trades in several marketplaces and no `marketplace` /
+ *  `legacySellerId` was given to disambiguate. Re-run report-start with one of
+ *  these `legacySellerId`s (or the matching `marketplace`). */
+export interface MerchantCandidate {
+  legacySellerId?: number | string;
+  amazonSellerId?: string;
+  marketplaceId?: string | null;
+  countryCode?: string | null;
+  marketplaceName?: string | null;
+  name?: string;
 }
 
 /** Kinds the service emits, plus two local-only kinds for client-side states
@@ -94,6 +137,10 @@ export interface ReportFailure {
   retryAfterMs?: number;
   reportId?: string;
   status?: string;
+  /** On `merchant_not_found` when the seller is multi-marketplace: the rows to
+   *  choose from. Re-run report-start with one row's `legacySellerId` (or the
+   *  matching `marketplace`). */
+  candidates?: MerchantCandidate[];
   /** HTTP status of the failing call — diagnostics only; do not branch on it. */
   httpStatus?: number;
 }
@@ -106,9 +153,17 @@ export interface ListMerchantsResult {
 export interface StartReportInput {
   /** Which merchant to pull for. The plugin keys merchants on amazonSellerId
    *  (from `listMerchants`); on the wire it goes as `sellerId`. Optional when
-   *  the tenant has exactly one merchant (the service infers it); required and
-   *  exact-match when there's more than one. */
+   *  the tenant has exactly one merchant (the service infers it); required when
+   *  there's more than one. NOTE: a shared amazonSellerId is NOT unique across
+   *  marketplaces — pair it with `legacySellerId` (and/or `marketplace`) so the
+   *  service targets the intended record rather than re-resolving and guessing. */
   amazonSellerId?: string;
+  /** Exact per-marketplace warehouse seller record id (`legacySellerId` from
+   *  `listMerchants`). When present this is the AUTHORITATIVE disambiguator: it
+   *  pins the run to one record so the service does not re-resolve a shared
+   *  amazonSellerId to the wrong marketplace. Send it whenever the merchants
+   *  row provides one; goes on the wire as `legacySellerId`. */
+  legacySellerId?: number | string;
   /** Amazon report type enum, e.g. GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL. */
   reportType: string;
   /** Report window. YYYY-MM-DD or ISO 8601. Required by some report types,
@@ -143,19 +198,35 @@ export interface PollReportResult {
   reportId?: string;
 }
 
+/** Amazon's own report timestamps, passed straight through by the service.
+ *  All optional: Amazon omits a field until that phase completes. Use them to
+ *  record the true data window / processing latency. */
+export interface ReportTimings {
+  createdTime?: string;
+  processingStartTime?: string;
+  processingEndTime?: string;
+}
+
 export interface GetReportDocumentResult {
   ok: true;
   /** False when the report isn't done yet (this is NOT an error; keep
    *  polling). True when `document` is populated. */
   ready: boolean;
   status?: string;
-  /** Document bytes as a string (TSV or JSON per the catalog). Undefined
-   *  while `ready` is false. May carry a leading UTF-8 BOM for flat files;
-   *  strip before parsing if your parser doesn't. */
+  /** Decoded document text (TSV or JSON per the catalog). This module fetched
+   *  Amazon's presigned URL and gunzipped it for you. Undefined while `ready`
+   *  is false. May carry a leading UTF-8 BOM for flat files; strip before
+   *  parsing if your parser doesn't. */
   document?: string;
-  /** Service's row-count estimate for the document, when provided. Useful for
-   *  a quick size sanity-check before parsing. Absent for JSON reports. */
-  rowCountEstimate?: number;
+  /** Decoded byte length of `document` (post-gunzip). Present when `ready`. */
+  bytes?: number;
+  /** Amazon's reportDocumentId, for cross-referencing in support. */
+  reportDocumentId?: string;
+  /** The compression Amazon applied to the presigned object ("GZIP" | null).
+   *  Informational once decoded. */
+  compressionAlgorithm?: string | null;
+  /** Amazon's create / processing timestamps, when present. */
+  timings?: ReportTimings;
 }
 
 export interface ReportClientOptions {
@@ -207,14 +278,32 @@ export async function startReport(
   opts: ReportClientOptions = {},
 ): Promise<StartReportResult | ReportFailure> {
   // Wire shape per the service handoff doc (POST /api/amazon/reports):
-  //   { reportType, sellerId?, marketplace?, start?, end?, reportOptions? }
+  //   { reportType, sellerId?, legacySellerId?, marketplace?, start?, end?, reportOptions? }
   // The plugin's internal field is amazonSellerId; it goes on the wire as
-  // `sellerId`. Omit any field that's absent so the service applies its
-  // defaults (e.g. single-merchant sellerId inference, default marketplace).
+  // `sellerId`. `legacySellerId` (when present) is the exact per-marketplace
+  // record id and the authoritative disambiguator — it stops the service
+  // re-resolving a shared sellerId to the wrong marketplace. Omit any field
+  // that's absent so the service applies its defaults (e.g. single-merchant
+  // sellerId inference, default marketplace).
   const body: Record<string, unknown> = {
     reportType: input.reportType,
   };
   if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
+  if (
+    input.legacySellerId !== undefined &&
+    input.legacySellerId !== null &&
+    input.legacySellerId !== ''
+  ) {
+    // The warehouse `seller.ID` is numeric; the CLI passes it as a string. Send
+    // it as a number when it is purely numeric (the service's example payloads
+    // use a JSON number), else pass through as-is.
+    const n =
+      typeof input.legacySellerId === 'string'
+        ? Number(input.legacySellerId)
+        : input.legacySellerId;
+    body.legacySellerId =
+      typeof n === 'number' && Number.isFinite(n) ? n : input.legacySellerId;
+  }
   if (input.start) body.start = input.start;
   if (input.end) body.end = input.end;
   if (input.marketplace) body.marketplace = input.marketplace;
@@ -265,8 +354,12 @@ export async function pollReport(
 
 /**
  * Fetch the document. Safe to call before the report is ready — returns
- * { ok:true, ready:false } in that case (poll-across-calls pattern). When
- * ready, `document` holds the bytes as a string.
+ * { ok:true, ready:false } in that case (poll-across-calls pattern).
+ *
+ * When ready, the service returns Amazon's short-lived presigned URL (never
+ * the bytes). This function fetches that URL directly with NO auth header,
+ * gunzips when the service reports GZIP, and returns the decoded text in
+ * `document` so callers do not have to know about the two-step fetch.
  */
 export async function getReportDocument(
   runId: string,
@@ -277,24 +370,139 @@ export async function getReportDocument(
       method: 'GET',
       path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`,
     },
-    { ...opts, timeoutMs: opts.timeoutMs ?? 120_000 },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
   const json = r.json as {
     ready?: unknown;
     status?: unknown;
-    tsv?: unknown;
-    rowCountEstimate?: unknown;
+    document?: unknown;
+    timings?: unknown;
   };
   const ready = json.ready === true;
+  const status = typeof json.status === 'string' ? json.status : undefined;
+  const timings = parseTimings(json.timings);
+  const docMeta = parseDocumentMeta(json.document);
+
+  // Not ready (or no document yet): keep polling. NOT an error.
+  if (!ready || !docMeta) {
+    return { ok: true, ready, status, timings };
+  }
+
+  // Ready: fetch Amazon's presigned URL ourselves and decode it.
+  const fetched = await fetchDocumentBytes(
+    docMeta.url,
+    docMeta.compressionAlgorithm,
+    opts,
+  );
+  if (!fetched.ok) return fetched;
+
   return {
     ok: true,
-    ready,
-    status: typeof json.status === 'string' ? json.status : undefined,
-    // Wire field is `tsv` regardless of TSV-vs-JSON content (see file header).
-    document: typeof json.tsv === 'string' ? json.tsv : undefined,
-    rowCountEstimate: numOrUndef(json.rowCountEstimate),
+    ready: true,
+    status,
+    document: fetched.text,
+    bytes: fetched.bytes,
+    reportDocumentId: docMeta.reportDocumentId,
+    compressionAlgorithm: docMeta.compressionAlgorithm,
+    timings,
   };
+}
+
+interface DocumentMeta {
+  reportDocumentId?: string;
+  url: string;
+  compressionAlgorithm: string | null;
+}
+
+/** Parse the `document` sub-object the service returns when ready. Returns
+ *  undefined when there is no usable URL (treated as not-ready upstream). */
+function parseDocumentMeta(v: unknown): DocumentMeta | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  const url = typeof o.url === 'string' ? o.url : undefined;
+  if (!url) return undefined;
+  return {
+    url,
+    reportDocumentId: strOrUndef(o.reportDocumentId),
+    compressionAlgorithm:
+      typeof o.compressionAlgorithm === 'string' ? o.compressionAlgorithm : null,
+  };
+}
+
+function parseTimings(v: unknown): ReportTimings | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  const t: ReportTimings = {
+    createdTime: strOrUndef(o.createdTime),
+    processingStartTime: strOrUndef(o.processingStartTime),
+    processingEndTime: strOrUndef(o.processingEndTime),
+  };
+  if (!t.createdTime && !t.processingStartTime && !t.processingEndTime) {
+    return undefined;
+  }
+  return t;
+}
+
+type DocBytesResult = { ok: true; text: string; bytes: number } | ReportFailure;
+
+/** Fetch Amazon's presigned document URL directly and decode it. Sends NO
+ *  Authorization header (it is a presigned S3 link; the Bearer would make S3
+ *  reject it). Gunzips when the service reported GZIP. A non-2xx (e.g. an
+ *  expired link) surfaces as a friendly "re-fetch" failure rather than bytes. */
+async function fetchDocumentBytes(
+  url: string,
+  compressionAlgorithm: string | null,
+  opts: ReportClientOptions,
+): Promise<DocBytesResult> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+
+  let res: Response;
+  try {
+    res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+
+  if (!res.ok) {
+    const expired = res.status === 403 || res.status === 410;
+    return {
+      ok: false,
+      kind: 'unknown',
+      friendly: expired
+        ? 'The report download link expired before it could be fetched. The ' +
+          'report itself is still ready — re-run `mixshift amazon report get ' +
+          '<runId>` for a fresh link.'
+        : `Could not download the report document (HTTP ${res.status}). Try ` +
+          'fetching it again.',
+      message: `presigned document fetch returned HTTP ${res.status}`,
+      httpStatus: res.status,
+    };
+  }
+
+  let raw: Buffer;
+  try {
+    raw = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    return hostUnreachable(err instanceof Error ? err.message : String(err));
+  }
+
+  let buf: Buffer;
+  try {
+    buf = compressionAlgorithm === 'GZIP' ? gunzipSync(raw) : raw;
+  } catch (err) {
+    return {
+      ok: false,
+      kind: 'unknown',
+      friendly:
+        'The report downloaded but could not be decompressed. Try fetching it ' +
+        'again; if it persists, contact MixShift ops.',
+      message: `gunzip failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  return { ok: true, text: buf.toString('utf8'), bytes: buf.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,8 +693,33 @@ function toReportFailure(
     retryAfterMs: numOrUndef(json.retryAfterMs),
     reportId: strOrUndef(json.reportId),
     status: strOrUndef(json.status),
+    candidates: parseCandidates(json.candidates),
     httpStatus,
   };
+}
+
+/** Pass through the `candidates` array the service attaches to a multi-
+ *  marketplace `merchant_not_found`. Keeps only the fields we render/forward. */
+function parseCandidates(v: unknown): MerchantCandidate[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: MerchantCandidate[] = [];
+  for (const item of v) {
+    if (typeof item !== 'object' || item === null) continue;
+    const o = item as Record<string, unknown>;
+    const legacySellerId =
+      typeof o.legacySellerId === 'number' || typeof o.legacySellerId === 'string'
+        ? o.legacySellerId
+        : undefined;
+    out.push({
+      legacySellerId,
+      amazonSellerId: strOrUndef(o.amazonSellerId),
+      marketplaceId: strOrUndef(o.marketplaceId) ?? null,
+      countryCode: strOrUndef(o.countryCode) ?? null,
+      marketplaceName: strOrUndef(o.marketplaceName) ?? null,
+      name: strOrUndef(o.name),
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** Fallback when an infra layer answered with a bare status (no envelope). */

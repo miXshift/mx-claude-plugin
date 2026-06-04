@@ -12,7 +12,7 @@ description: >
   through the bundled harness CLI. Does NOT require brand cold-start, only that
   the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   author: "MixShift"
 trigger_phrases:
   - pull a report
@@ -182,18 +182,61 @@ mixshift amazon merchants            # human table
 mixshift amazon merchants --json     # structured, for matching by name
 ```
 
-The output has these columns: `amazonSellerId`, `name`, `type`
-(Seller/Vendor), `region`, `marketplace`, `authorized`.
+The base columns are: `amazonSellerId`, `legacySellerId`, `name`, `type`
+(Seller/Vendor), `region`, `marketplace`, `authorized`. Two things to know:
+
+- **`legacySellerId` is always present** and is the exact per-marketplace
+  warehouse record id. It is the deterministic disambiguator: prefer it over
+  `amazonSellerId` + `--marketplace` whenever you have it (which is always).
+- **The list is already pre-filtered to SP-API-active merchants.** Every row
+  you see can be pulled, so there is no separate "active" column to check.
+  `authorized` is now meaningful: `authorized: no` means the merchant's Amazon
+  access grant has lapsed and the pull may fail with `reauth_required`. Treat
+  it as the warn-before-you-pull signal.
+
+### One seller-id can span several marketplaces
+
+A single `amazonSellerId` is **not** unique per row. The same merchant token
+fans out to one record per marketplace (US, CA, MX, BR, and so on), and each is
+a distinct warehouse record with its own `legacySellerId`. If you pick a brand
+and pass only its `amazonSellerId`, the service has to guess which marketplace
+you meant, and it can attribute the run to the wrong one (for example Brazil
+instead of US) even though the report data still comes back correct. Carry the
+full identity so attribution is exact.
 
 To pull for a brand the user names:
 
 1. Run `amazon merchants --json`.
 2. Match the user's brand wording against the `name` field (case-insensitive,
-   allow partial / fuzzy matches; ask to disambiguate if more than one hits).
-3. Use that row's `amazonSellerId` for `report start --seller-id`.
-4. If the matched row has `authorized: false`, warn the user before pulling:
-   the SP-API grant for that merchant has lapsed and the pull will fail with
+   allow partial / fuzzy matches).
+3. Look at **all** rows that match. If the same `amazonSellerId` appears on more
+   than one row, that is the multi-marketplace fan-out. Pick the row for the
+   marketplace the user wants; if it is not obvious (and they did not name a
+   country), show the matching rows and ask which marketplace.
+4. From the chosen row, carry identity end to end. The cleanest pin is the
+   single deterministic key:
+   - pass `--legacy-seller-id <legacySellerId>` (always present, and the
+     service treats it as the authoritative record id).
+
+   `--legacy-seller-id` alone uniquely identifies the row, so you do not need
+   anything else with it. If for some reason you are working from a row without
+   a `legacySellerId`, fall back to `--seller-id <amazonSellerId>` **plus**
+   `--marketplace <marketplaceId>` together; never the seller token by itself.
+5. If the chosen row reports `authorized: no`, warn the user before pulling: the
+   SP-API grant for that merchant may have lapsed and the pull can fail with
    `reauth_required` until it is re-connected in the MixShift app.
+
+If you do pass only a shared `--seller-id` and it is ambiguous, the service
+returns `merchant_not_found` with a **candidates** list (one entry per
+marketplace, each with its `legacySellerId`). The harness prints these as ready
+to-run hints; pick the right marketplace and re-run with that
+`--legacy-seller-id`.
+
+**Hard rule: never downgrade a specific row to the bare shared key.** Once you
+have identified the marketplace row the user meant, send its `--legacy-seller-id`
+(or, lacking that, `--seller-id` together with `--marketplace`). Do not send the
+bare `--seller-id` alone. The seller token by itself is ambiguous and invites
+mis-attribution.
 
 If no merchant matches, run `amazon merchants` and show the user the list
 rather than guessing an ID.
@@ -209,6 +252,7 @@ mixshift amazon list-reports [--applies-to seller|vendor] [--group <name>]
 mixshift amazon describe-report <reportType>
 
 mixshift amazon report start [--seller-id <amazonSellerId>] --type <reportType>
+                             [--legacy-seller-id <id>]
                              [--start <date>] [--end <date>]
                              [--marketplace <id>]
                              [--option <key=value> ...]
@@ -240,8 +284,12 @@ So in chat, **never block**. Run start, poll, and get as **separate tool
 calls**, each of which returns in well under a second:
 
 ```bash
-# 1. Start the run (returns immediately with a run_id)
+# 1. Start the run (returns immediately with a run_id).
+#    Carry full identity from the chosen `amazon merchants` row: --seller-id,
+#    --marketplace, and --legacy-seller-id (when the row has one), so the run is
+#    attributed to the exact merchant + marketplace and not re-guessed.
 mixshift amazon report start --seller-id A2EUQ1WTGCTBG2 \
+  --marketplace ATVPDKIKX0DER \
   --type GET_SALES_AND_TRAFFIC_REPORT \
   --start 2026-05-01 --end 2026-05-31 \
   --option dateGranularity=DAY --json

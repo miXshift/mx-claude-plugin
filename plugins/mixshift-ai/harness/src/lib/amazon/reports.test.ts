@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import {
   listMerchants,
@@ -45,6 +46,12 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+// The presigned-URL fetch returns raw bytes (not JSON). Used to mock the
+// second hop in getReportDocument: the direct S3 download.
+function bytesResponse(status: number, body: Buffer | Uint8Array): Response {
+  return new Response(body, { status });
+}
+
 // ---------------------------------------------------------------------------
 // listMerchants
 // ---------------------------------------------------------------------------
@@ -81,6 +88,39 @@ describe('listMerchants', () => {
     const r = await listMerchants(injected(fetchImpl));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.merchants).toHaveLength(1);
+  });
+
+  it('passes through the disambiguation fields when the service sends them', async () => {
+    // One amazonSellerId fans out per marketplace; legacySellerId is the exact
+    // per-marketplace record id and the deterministic disambiguator. The list is
+    // pre-gated to SP-API-active rows, so there is no separate active flag, and
+    // authorized is meaningful (false == grant lapsed). The client must carry
+    // legacySellerId / marketplaceId / countryCode / marketplaceName untouched.
+    const merchant = {
+      amazonSellerId: 'A1F8PIDV939RA2',
+      name: 'Skratch Labs',
+      merchantType: 'Seller' as const,
+      merchantRegion: 'NA',
+      marketplaceId: 'ATVPDKIKX0DER',
+      marketplaceName: 'United States',
+      countryCode: 'US',
+      legacySellerId: 71,
+      authorized: false,
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, merchants: [merchant] }));
+    const r = await listMerchants(injected(fetchImpl));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.merchants[0]).toMatchObject({
+        legacySellerId: 71,
+        marketplaceId: 'ATVPDKIKX0DER',
+        marketplaceName: 'United States',
+        countryCode: 'US',
+        authorized: false,
+      });
+    }
   });
 });
 
@@ -126,6 +166,33 @@ describe('startReport', () => {
     expect(body.dataStartTime).toBeUndefined();
     expect(body.dataEndTime).toBeUndefined();
     expect(body.marketplaceIds).toBeUndefined();
+    // legacySellerId is only sent when provided.
+    expect('legacySellerId' in body).toBe(false);
+  });
+
+  it('forwards legacySellerId on the wire when provided', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, runId: 'run-uuid' }));
+    const r = await startReport(
+      {
+        amazonSellerId: 'A1F8PIDV939RA2',
+        legacySellerId: 71,
+        reportType: 'GET_AMAZON_FULFILLED_SHIPMENTS_DATA_GENERAL',
+        marketplace: 'US',
+      },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(true);
+    const [, init] = fetchImpl.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    // legacySellerId pins attribution to the exact per-marketplace record so the
+    // service does not re-resolve a shared sellerId to the wrong marketplace.
+    expect(body).toMatchObject({
+      sellerId: 'A1F8PIDV939RA2',
+      legacySellerId: 71,
+      marketplace: 'US',
+    });
   });
 
   it('omits sellerId when amazonSellerId is absent (single-merchant inference)', async () => {
@@ -195,22 +262,95 @@ describe('getReportDocument', () => {
     }
   });
 
-  it('returns the document bytes from the `tsv` field + rowCountEstimate when ready', async () => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(200, {
-        ok: true,
-        ready: true,
-        status: 'DONE',
-        tsv: 'order-id\tdate\n123\t2026-05-01\n',
-        rowCountEstimate: 1,
-      }),
-    );
+  it('fetches the presigned URL itself and returns the decoded (uncompressed) document', async () => {
+    const tsv = 'order-id\tdate\n123\t2026-05-01\n';
+    const fetchImpl = vi
+      .fn()
+      // 1) metadata call -> service hands back a presigned URL, never bytes.
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          ready: true,
+          status: 'DONE',
+          document: {
+            reportDocumentId: 'doc-1',
+            url: 'https://s3.amazonaws.com/report?sig=abc',
+            compressionAlgorithm: null,
+          },
+        }),
+      )
+      // 2) the direct S3 download -> raw bytes.
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from(tsv, 'utf8')));
+
     const r = await getReportDocument('run-uuid', injected(fetchImpl));
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.ready).toBe(true);
-      expect(r.document).toContain('order-id\tdate');
-      expect(r.rowCountEstimate).toBe(1);
+      expect(r.document).toBe(tsv);
+      expect(r.bytes).toBe(Buffer.byteLength(tsv));
+      expect(r.reportDocumentId).toBe('doc-1');
+    }
+
+    // The S3 hop hit the presigned URL with NO Authorization header (a Bearer
+    // would make S3 reject the presigned request).
+    const [docUrl, docInit] = fetchImpl.mock.calls[1];
+    expect(docUrl).toBe('https://s3.amazonaws.com/report?sig=abc');
+    const headers = ((docInit as RequestInit | undefined)?.headers ?? {}) as Record<
+      string,
+      string
+    >;
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('gunzips the document when compressionAlgorithm is GZIP', async () => {
+    const tsv = 'sku\tunits\nABC\t42\n';
+    const gz = gzipSync(Buffer.from(tsv, 'utf8'));
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          ready: true,
+          status: 'DONE',
+          document: {
+            reportDocumentId: 'doc-2',
+            url: 'https://s3.amazonaws.com/report.gz?sig=xyz',
+            compressionAlgorithm: 'GZIP',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(bytesResponse(200, gz));
+
+    const r = await getReportDocument('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.ready).toBe(true);
+      expect(r.document).toBe(tsv);
+      expect(r.compressionAlgorithm).toBe('GZIP');
+    }
+  });
+
+  it('surfaces an expired presigned link (403) as a friendly re-fetch failure', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          ready: true,
+          status: 'DONE',
+          document: {
+            url: 'https://s3.amazonaws.com/report?sig=expired',
+            compressionAlgorithm: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(bytesResponse(403, Buffer.from('AccessDenied')));
+
+    const r = await getReportDocument('run-uuid', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.httpStatus).toBe(403);
+      expect(r.friendly).toMatch(/expired/i);
     }
   });
 });
@@ -268,6 +408,48 @@ describe('failure envelope mapping', () => {
     if (!r.ok) {
       expect(r.kind).toBe('throttled');
       expect(r.retryAfterMs).toBe(5000);
+    }
+  });
+
+  it('maps merchant_not_found (404) + carries the marketplace candidates', async () => {
+    // A shared amazonSellerId fans out per marketplace. When the caller did not
+    // pin one, the service answers 404 with one candidate per marketplace, each
+    // carrying its deterministic legacySellerId for an exact re-run.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(404, {
+        ok: false,
+        kind: 'merchant_not_found',
+        friendly: 'This seller trades in several marketplaces.',
+        candidates: [
+          {
+            legacySellerId: 71,
+            amazonSellerId: 'A1F8PIDV939RA2',
+            marketplaceId: 'ATVPDKIKX0DER',
+            marketplaceName: 'United States',
+            name: 'Skratch Labs',
+          },
+          {
+            legacySellerId: 419,
+            amazonSellerId: 'A1F8PIDV939RA2',
+            marketplaceId: 'A2Q3Y263D00KWC',
+            marketplaceName: 'Brazil',
+            name: 'Skratch Labs',
+          },
+        ],
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1F8PIDV939RA2', reportType: 'GET_X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('merchant_not_found');
+      expect(r.candidates).toHaveLength(2);
+      expect(r.candidates?.[0]).toMatchObject({
+        legacySellerId: 71,
+        marketplaceName: 'United States',
+      });
     }
   });
 
