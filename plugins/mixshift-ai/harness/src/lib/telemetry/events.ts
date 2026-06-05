@@ -137,6 +137,15 @@ export const EventName = {
   ReportRetrieved: 'report.retrieved',
   ReportFailed: 'report.failed',
 
+  // Amazon SP-API Pricing batch endpoints (lib/amazon/pricing.ts +
+  // `mixshift amazon pricing`). Privacy: capture operation + item counts +
+  // duration + outcome — never the responses payload (which carries seller
+  // pricing data).
+  AmazonPricingStarted: 'amazon.pricing.started',
+  AmazonPricingPolled: 'amazon.pricing.polled',
+  AmazonPricingRetrieved: 'amazon.pricing.retrieved',
+  AmazonPricingFailed: 'amazon.pricing.failed',
+
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 } as const;

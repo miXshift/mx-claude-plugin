@@ -53,6 +53,7 @@ import {
 } from '../lib/reports/catalog.js';
 import { reportOutputPath } from '../lib/paths/resolve.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { registerAmazonPricingCommands } from './amazon-pricing.js';
 
 interface RootOptions {
   json?: boolean;
@@ -84,6 +85,10 @@ export function registerAmazonCommands(program: Command): void {
   registerReportPoll(report);
   registerReportGet(report);
   registerReportRun(report);
+
+  // SP-API Pricing batch surface (FOEP + Competitive Summary). Verbatim
+  // Amazon operation names; sync (default) or --async. Sibling of report.
+  registerAmazonPricingCommands(amazon);
 }
 
 // ---------------------------------------------------------------------------

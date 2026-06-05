@@ -711,15 +711,23 @@ interface RequestSpec {
   body?: Record<string, unknown>;
 }
 
-type RequestSuccess = { ok: true; json: unknown };
+export type AmazonRequestSpec = RequestSpec;
+export type AmazonRequestSuccess = { ok: true; json: unknown };
+type RequestSuccess = AmazonRequestSuccess;
 
 /**
  * One authenticated round-trip to the report surface, with the same token
  * lifecycle as the query path: send the Bearer; on a mid-session 401,
  * force-refresh once and retry; map network/DNS/TLS failures to
  * host_unreachable; map a server failure envelope to a typed ReportFailure.
+ *
+ * Exported so sibling client modules (pricing, future catalog/orders/...) can
+ * reuse the auth + retry + envelope-mapping plumbing without duplicating it.
+ * Same staged-refactor principle as the service side: build new domain
+ * clients against this transport; do not re-route reports through anything
+ * different until we have a second user proving the shape is right.
  */
-async function amazonRequest(
+export async function amazonRequest(
   spec: RequestSpec,
   opts: ReportClientOptions,
 ): Promise<RequestSuccess | ReportFailure> {
