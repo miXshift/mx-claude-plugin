@@ -86,6 +86,15 @@ Confirm the repo is public (it must be for the GitHub source type). Check the pu
 **Plugin installs but `mixshift welcome` returns "command not found".**
 Cowork didn't PATH-register the plugin's `bin/` directory for that user's seat. File a Cowork support ticket — this is the documented behavior. Workaround: invoke the harness via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
 
+**A user's plugin seems stuck on an old version after an update was published.**
+Two common causes:
+
+1. The user's Cowork desktop was already running when the update was pushed. Cowork loads the plugin bundle at session start, so a running session keeps the old version. Have them fully quit + reopen Cowork (not just start a new chat).
+
+2. Their local plugin cache at `~/.claude/plugins/cache/mixshift/mixshift-ai/` may be stale, empty, or out-of-sync with `installed_plugins.json`. Have them uninstall + reinstall from Customize → Directory to force a fresh extract. Auth credentials in `~/.mixshift/` carry over.
+
+If the symptom is specifically "This plugin doesn't have any skills or agents" in the Customize panel, see the [personal install troubleshooting](./cowork-personal.md#troubleshooting) for the same fix.
+
 **One user's sign-in browser tab won't open / sign-in stalls.**
 The PKCE flow tries to open the user's default browser via the OS-native handler. If that fails (rare — headless WSL, container, etc.), the harness auto-falls-back to a device-code flow and prints a URL. Claude surfaces it in chat — the user can open it on any device with a browser.
 

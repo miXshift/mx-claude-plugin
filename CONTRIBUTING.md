@@ -36,6 +36,61 @@ If the CLA is a blocker for you, please reach out before investing time in a PR.
 
 (To be filled in as the productization work lands. For now, the plugin is in pre-beta and not yet ready for outside development. Watch the repo for updates.)
 
+## Releasing
+
+The plugin's release mechanics have known friction with Cowork's plugin update path (see [`docs/install/cowork-personal.md` troubleshooting](docs/install/cowork-personal.md#troubleshooting) for user-facing workarounds). To keep release state internally consistent, every version bump must update three places together. If any drift, the install lands wrong in a different way (see "Drift consequences" below).
+
+**Quick checklist:**
+
+- [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
+- [ ] `.claude-plugin/marketplace.json` version bumped (same value)
+- [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed
+- [ ] Release commit titled `release: X.Y.Z <summary>`
+- [ ] Annotated tag `mixshift-ai--vX.Y.Z`
+- [ ] Branch + tag pushed to origin together
+- [ ] Post-release Cowork desktop sanity check
+
+### Pre-flight build
+
+From `plugins/mixshift-ai/harness/`:
+
+```bash
+npm run typecheck
+npm run test
+npm run validate-manifests
+npm run check-skills
+npm run build
+```
+
+The build rewrites `harness/dist/cli.js` and `harness/dist/build-meta.json`. Commit those alongside the version bumps below.
+
+### Files in the release commit
+
+1. **`plugins/mixshift-ai/.claude-plugin/plugin.json`**: bump `version`.
+2. **`.claude-plugin/marketplace.json`**: bump `plugins[0].version` to match.
+3. **`plugins/mixshift-ai/harness/dist/cli.js`** + **`harness/dist/build-meta.json`**: the rebuilt bundle, so shipped code matches the new manifest.
+
+Subject convention: `release: X.Y.Z <one-line summary>` (matches existing log).
+
+### Drift consequences
+
+- Only `plugin.json` bumped: runtime reports the new version, but Cowork's Directory listing shows the old number.
+- Only `marketplace.json` bumped: Directory listing shows the new number, but the runtime still identifies as old, and the install record pins the old commit.
+- Only `dist/cli.js` bumped: manifests claim the old version while users run the new code.
+
+### Tag and push
+
+```bash
+git tag -a mixshift-ai--vX.Y.Z -m "X.Y.Z <summary>"
+git push origin main mixshift-ai--vX.Y.Z
+```
+
+Branch and tag go to origin together. Pushing the branch alone leaves the marketplace able to list the new version but unable to anchor it.
+
+### Post-release sanity check
+
+In Cowork desktop: fully quit + reopen, then Customize → Directory → check for updates. The new version should appear; install should pull a working bundle. If you hit "This plugin doesn't have any skills or agents," the version label sticks at the previous number, or the install seems to roll back across sessions, see [the install troubleshooting](docs/install/cowork-personal.md#troubleshooting) for known Cowork-side workarounds.
+
 ## Reporting issues
 
 Please use GitHub Issues for:

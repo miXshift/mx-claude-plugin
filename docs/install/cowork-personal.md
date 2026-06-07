@@ -106,6 +106,13 @@ In Cowork: Customize → **+** next to Personal plugins → Directory modal → 
 **Plugin shows an old version even after Check for updates / Sync automatically.**
 Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub"). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.
 
+**"This plugin doesn't have any skills or agents" in the Customize panel after a restart or after manually cleaning up plugin files.**
+This usually means Cowork's plugin cache extraction (`~/.claude/plugins/cache/mixshift/mixshift-ai/<version>/`) is empty or missing while the install record (`~/.claude/plugins/installed_plugins.json`) still points at that path. Triggered most commonly by manually deleting the cache directory, or by a botched update where the new version's files never landed.
+
+Fix: in the Customize panel, click the three-dot menu next to `mixshift-ai` and choose **Uninstall**, then reinstall from the Directory modal. This forces Cowork to re-extract the plugin from its marketplace clone into a fresh cache directory. Auth credentials in `~/.mixshift/` are unaffected, so no re-sign-in.
+
+If that doesn't help, the marketplace clone itself may be stale (Cowork doesn't always auto-fetch new origin commits on restart). Also remove + re-add the marketplace (Directory → three-dot menu next to `mx-claude-plugin` → **Remove**, then "Add marketplace from GitHub" again) to force Cowork to re-clone from origin.
+
 **Sign-in fails with "fetch failed" or a "403 from proxy" error.**
 Your Cowork environment is blocking the plugin's outbound connection to the MixShift service. Cowork runs plugin commands in a sandbox whose network is locked down by default, so the MixShift host has to be on the egress allowlist. First, diagnose it: say "run mixshift doctor" (or run `mixshift doctor` in a terminal). It detects the sandbox proxy, probes the service, and tells you exactly which domains need allowlisting.
 
