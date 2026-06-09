@@ -274,6 +274,20 @@ export async function pollDeviceFlow(
         opts.dataDirOverride,
       );
 
+      // Link install_id ↔ email server-side. Fires alongside
+      // AuthLoginCompleted so the install→email linkage is visible in
+      // both Discord and analytics for every successful auth, including
+      // the chat-driven device-code path (which previously skipped this
+      // emission and left install_ids stuck as "anonymous" in fan-out).
+      await track(
+        {
+          event_name: EventName.UserIdentified,
+          email: result.email,
+          person_label: result.personLabel,
+        },
+        opts.dataDirOverride,
+      );
+
       // Mirror person_label into profile.user.email — see
       // syncProfileEmailBestEffort docstring for the why.
       await syncProfileEmailBestEffort(
@@ -437,6 +451,20 @@ export async function runAuthLogin(
         api_base: resolved.apiBase,
         client_id: resolved.clientId,
       },
+    },
+    resolved.dataDirOverride,
+  );
+
+  // Link install_id ↔ email server-side. Fires alongside
+  // AuthLoginCompleted so the install→email linkage is visible in both
+  // Discord and analytics for every successful auth. Moved here from
+  // commands/auth.ts so the chat-driven device-code path (auth
+  // device-init + device-poll, via pollDeviceFlow above) also emits it.
+  await track(
+    {
+      event_name: EventName.UserIdentified,
+      email: result.email,
+      person_label: result.personLabel,
     },
     resolved.dataDirOverride,
   );

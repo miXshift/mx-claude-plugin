@@ -72598,6 +72598,14 @@ async function pollDeviceFlow(opts) {
         },
         opts.dataDirOverride
       );
+      await track(
+        {
+          event_name: EventName.UserIdentified,
+          email: result.email,
+          person_label: result.personLabel
+        },
+        opts.dataDirOverride
+      );
       await syncProfileEmailBestEffort(
         result.personLabel,
         opts.dataDirOverride
@@ -72709,6 +72717,14 @@ Browser didn't respond (${msg}). Switching to device-code flow. Open the URL bel
         api_base: resolved.apiBase,
         client_id: resolved.clientId
       }
+    },
+    resolved.dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.UserIdentified,
+      email: result.email,
+      person_label: result.personLabel
     },
     resolved.dataDirOverride
   );
@@ -73308,14 +73324,6 @@ function registerLoginSubcommand(auth) {
         dataDirOverride: root.dataDir
       });
       renderLoginResult(result, !!root.json);
-      await track(
-        {
-          event_name: EventName.UserIdentified,
-          email: result.email,
-          person_label: result.personLabel
-        },
-        root.dataDir
-      );
       return;
     } catch (err) {
       const message = networkErrorMessage(

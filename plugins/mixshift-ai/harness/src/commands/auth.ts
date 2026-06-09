@@ -331,14 +331,9 @@ function registerLoginSubcommand(auth: Command): void {
 
         renderLoginResult(result, !!root.json);
 
-        await track(
-          {
-            event_name: EventName.UserIdentified,
-            email: result.email,
-            person_label: result.personLabel,
-          },
-          root.dataDir,
-        );
+        // UserIdentified is emitted inside runAuthLogin (lib/auth/login-flow.ts)
+        // alongside AuthLoginCompleted, so both the PKCE path and the chat
+        // device-code path (auth device-init + device-poll) get it for free.
         return;
       } catch (err) {
         const message = networkErrorMessage(
