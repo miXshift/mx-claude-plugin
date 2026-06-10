@@ -4,6 +4,7 @@ import { loadProfile } from '../lib/profile/load.js';
 import { loadCredentials } from '../lib/auth/credentials.js';
 import { readIndex, countByActivity } from '../lib/clients/index.js';
 import { loadKeyBrands } from '../lib/clients/key-brands.js';
+import { loadBrain } from '../lib/brain/read.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { checkForUpdate, renderUpdateBanner } from '../lib/version-check.js';
 
@@ -78,6 +79,7 @@ export function registerWelcomeCommand(program: Command): void {
         cold_started: number;
         key: number;
         key_cold_started: number; // intersection: keys that are also cold-started
+        key_brain_populated: number; // keys with a Tier-2 brand-brain on disk
         first_key_display_name: string | null;
         first_key_uncold_display_name: string | null; // first key brand that ISN'T cold-started
       } | null = null;
@@ -93,10 +95,18 @@ export function registerWelcomeCommand(program: Command): void {
             const firstKey = keyEntries[0] ?? null;
             const firstUncold =
               keyEntries.find((e) => !e.cold_started) ?? null;
+            // Brain population is per key slug; N is small (curated list)
+            // so sequential loads are fine.
+            let brainPopulated = 0;
+            for (const k of keys) {
+              const brain = await loadBrain(k.slug, root.dataDir);
+              if (brain.ok && brain.brain.sources.seller) brainPopulated++;
+            }
             brandCounts = {
               ...base,
               key: keys.length,
               key_cold_started: keyEntries.filter((e) => e.cold_started).length,
+              key_brain_populated: brainPopulated,
               first_key_display_name: firstKey?.display_name ?? null,
               first_key_uncold_display_name: firstUncold?.display_name ?? null,
             };
@@ -281,6 +291,7 @@ function renderWelcomeChat(args: {
     cold_started: number;
     key: number;
     key_cold_started: number;
+    key_brain_populated: number;
     first_key_display_name: string | null;
     first_key_uncold_display_name: string | null;
   } | null;
@@ -331,6 +342,23 @@ function renderWelcomeChat(args: {
         `You have access to **${brandCounts.active} active brand(s)**${dormantSuffix}.${keyClause}`,
       );
       lines.push('');
+
+      // Brain population status (states B/C/D; key list exists). The
+      // brain is the Tier-2 auto pre-fill, distinct from cold-start.
+      if (brandCounts.key > 0) {
+        const pending = brandCounts.key - brandCounts.key_brain_populated;
+        if (pending > 0) {
+          lines.push(
+            `Brand brains populated for **${brandCounts.key_brain_populated} of ${brandCounts.key}** key brand(s). ` +
+              `${pending} pending: run \`mixshift brand brain fetch <slug>\` to fill them in (normally automatic when you key a brand).`,
+          );
+        } else {
+          lines.push(
+            `Brand brains populated for **all ${brandCounts.key}** key brand(s).`,
+          );
+        }
+        lines.push('');
+      }
     }
 
     // State-specific content

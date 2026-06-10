@@ -181,8 +181,51 @@ describe('saveBrain + loadBrain round-trip', () => {
 });
 
 describe('resolveAcosTargetPct precedence', () => {
-  // True Tier-3-wins coverage (schema-valid context fixture) lands with
-  // the DHC consumption step, which needs a full context fixture anyway.
+  it('prefers Tier 3: a schema-valid context.yaml beats the brain value', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
+    try {
+      await saveBrain(assembledAop(), dir); // brain says 25
+      const brandDir = join(dir, 'clients', 'backpackers-pantry');
+      await mkdir(brandDir, { recursive: true });
+      const validContext = {
+        schema_version: 1,
+        brand_slug: 'backpackers-pantry',
+        brand_name: "Backpacker's Pantry",
+        last_updated: '2026-06-10',
+        accounts: [
+          {
+            seller_id: 574,
+            seller_name: 'American Outdoor Products',
+            account_type: 'SC',
+            status: 'active',
+            role: 'primary',
+          },
+        ],
+        sources: {
+          ad_metrics: 'campaignmetric',
+          ops_revenue: 'business_reports_dpst_date',
+          ops_revenue_field: 'SalesAmount',
+          ops_units_field: 'UnitsOrdered',
+          ops_date_field: 'DateTime',
+        },
+        management: {
+          primary_metric: 'ACOS',
+          acos_target_pct: 22,
+          attribution_window_days: 14,
+        },
+      };
+      await writeFile(
+        join(brandDir, 'context.yaml'),
+        stringifyYaml(validContext),
+        'utf-8',
+      );
+      const resolved = await resolveAcosTargetPct('backpackers-pantry', dir);
+      expect(resolved).toMatchObject({ value: 22, source: 'context' });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('falls through to the brain when context.yaml exists but fails schema validation', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
