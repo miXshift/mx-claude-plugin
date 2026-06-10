@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-report-pull
 display_name: Amazon Report Pull
-version: "0.3.0"
+version: "0.4.0"
 description: >
   Pull Amazon SP-API reports on demand, directly from Amazon, for any
   merchant and window. The report analogue of mx-data-explore: a
@@ -67,6 +67,13 @@ trigger_phrases:
   - what amazon reports are available
   - get data amazon doesn't have in the warehouse
   - pull fresh data from amazon
+  - buy box price
+  - featured offer price
+  - featured offer expected price
+  - foep
+  - what price wins the buy box
+  - competitive pricing summary
+  - competitor prices for my asins
 notes: >
   Lifecycle: every pull is keyed by a service-minted run_id. In chat
   surfaces, never block -- run start / poll / get as separate tool calls
@@ -93,7 +100,11 @@ notes: >
   `amazon report` (same Bearer token, same typed-failure envelope):
   FOEP is keyed by SKU, competitive summary by ASIN. Sync mode caps at
   200 items; `--async` returns a run_id polled via poll-run and fetched
-  via get-run-result.
+  via get-run-result. Pricing merchant flags are --amazon-seller-id /
+  --legacy-seller-id (no --seller-id on this surface), and done-ness is
+  status DONE from poll-run: no `ready` boolean, no exit-10 convention.
+  In chat, keep sync calls to ~40 items (the service paces batches of 40
+  at ~35s); larger lists go --async.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
