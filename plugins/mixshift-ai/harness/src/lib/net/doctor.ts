@@ -147,6 +147,7 @@ async function resolveApiBase(
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
     if (credentials?.datahub?.api_base) return credentials.datahub.api_base;
+    if (credentials?.service?.api_base) return credentials.service.api_base;
   } catch {
     // Unreadable / malformed credentials should never break a diagnostic.
   }

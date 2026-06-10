@@ -493,9 +493,16 @@ async function resolveCreds(
   // mysql stays around as a fallback for the same install, but new
   // logins are token-based).
   if (credentials?.datahub) return credentials.datahub;
+  // Service (machine) credential: same token-based query path as datahub.
+  // Only api_base is consumed here; the Bearer comes from
+  // getValidAccessToken, which handles the client_credentials mint.
+  if (credentials?.service) {
+    return { api_base: credentials.service.api_base, access_token: 'service' } as DatahubCreds;
+  }
   if (credentials?.mysql) return credentials.mysql;
   throw new Error(
-    'No credentials configured. Run `mixshift auth login` (recommended) ' +
+    'No credentials configured. Run `mixshift auth login` (recommended), ' +
+      '`mixshift auth service-setup` for unattended runs, ' +
       'or `mixshift auth setup` for the legacy path.',
   );
 }

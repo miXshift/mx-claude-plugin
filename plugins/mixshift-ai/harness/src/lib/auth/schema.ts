@@ -71,6 +71,26 @@ export const datahubCredsSchema = z.object({
   client_id: z.string().regex(/^[a-z0-9-]{1,64}$/).default('mx-claude-plugin'),
 });
 
+// --- service (machine) credentials ------------------------------------------
+//
+// Admin-issued static client credentials for unattended runs (Cowork
+// scheduled tasks, cloud-env automations, CI). Used with the OAuth
+// client_credentials grant against {api_base}/oauth/token: the harness
+// mints short-lived (~1h) access tokens on demand and caches them next to
+// this file. Unlike the datahub block there is NO refresh token and nothing
+// rotates on use, so the block works from read-only credential stores and
+// fresh sandboxes. Issued + revoked + rotated by a tenant admin at
+// {api_base}/admin.
+
+export const serviceCredsSchema = z.object({
+  api_base: z.url(),
+  client_id: z.string().regex(/^svc_[A-Za-z0-9_-]{8,}$/),
+  client_secret: z.string().min(20),
+  /** Informational copy of the admin-side label (svc:...); used as the
+   *  person_label stand-in for telemetry attribution. */
+  label: z.string().min(1).optional(),
+});
+
 // --- credentials envelope --------------------------------------------------
 
 export const credentialsSchema = z.object({
@@ -78,10 +98,12 @@ export const credentialsSchema = z.object({
   created_at: z.iso.datetime(),
   mysql: mysqlCredsSchema.optional(),
   datahub: datahubCredsSchema.optional(),
+  service: serviceCredsSchema.optional(),
 });
 
 export type MysqlCreds = z.infer<typeof mysqlCredsSchema>;
 export type DatahubCreds = z.infer<typeof datahubCredsSchema>;
+export type ServiceCreds = z.infer<typeof serviceCredsSchema>;
 export type Credentials = z.infer<typeof credentialsSchema>;
 
 /**
