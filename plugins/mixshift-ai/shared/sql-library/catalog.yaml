@@ -443,3 +443,20 @@ queries:
       with T-1 and T-30 metrics side-by-side. Used by mx-runaway-spend-check Step 2-3 to
       identify CI breaches and zero-conversion flags. Pair with DHC-04 for the
       account-level CI thresholds.
+
+  # --- Brand-brain pulls (background discovery pipeline) ----------------
+  # dispatch: sproc entries carry no .sql file in this repo. The query
+  # body lives warehouse-side as a stored procedure (private
+  # mx-warehouse-sprocs repo); the harness invokes it by name through the
+  # standard query endpoint. See internal/SP-MIGRATION.md +
+  # internal/BACKGROUND-DISCOVERY.md.
+
+  - id: BRAIN-SELLER
+    dispatch: sproc
+    sproc: sp_brain_seller_fetch
+    purpose: Seller-level brand-brain pull (identity, targets, budget, marketplace metadata, data freshness) for key-brand background discovery.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      First-slice brain source. Scoped by the brand's seller ids (second
+      CALL argument). Returns one row per seller id.

@@ -133,24 +133,98 @@ describe('groupIntoBrands — AOP-style same-name grouping (no regression)', () 
     expect(groups[0]!.accounts).toHaveLength(4);
   });
 
-  it('ignores MerchantAlias differences when canonical key agrees', () => {
+});
+
+describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
+  it('groups by curated alias, not Name: AOP rows aliased Backpacker\'s Pantry', () => {
+    // The canonical real-world case from BRAND-BRAIN.md: storefront Name
+    // is "American Outdoor Products", AM-curated alias is the brand.
     const rows = [
       row({
         seller_id: 1,
         seller_name: 'American Outdoor Products',
-        merchant_alias: "backpacker's pantry",
+        merchant_alias: "Backpacker's Pantry",
         marketplace: 'US',
       }),
       row({
         seller_id: 2,
         seller_name: 'American Outdoor Products',
-        merchant_alias: "backpacker's pantry CA",
+        merchant_alias: "Backpacker's Pantry",
         marketplace: 'CA',
       }),
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
-    expect(groups[0]!.slug).toBe('american-outdoor-products');
+    expect(groups[0]!.slug).toBe('backpackers-pantry');
+    expect(groups[0]!.display_name).toBe("Backpacker's Pantry");
+  });
+
+  it('collapses alias variants with marketplace suffixes like Name variants', () => {
+    const rows = [
+      row({ seller_id: 1, merchant_alias: "Backpacker's Pantry", marketplace: 'US' }),
+      row({ seller_id: 2, merchant_alias: "Backpacker's Pantry - CA", marketplace: 'CA' }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.slug).toBe('backpackers-pantry');
+  });
+
+  it('splits on genuinely distinct aliases (bare suffix without separator)', () => {
+    // "backpacker's pantry CA" has no " - " or ", " separator, so the CA
+    // is treated as part of the brand label. Distinct keys → two entries.
+    // Self-heals when the AM normalizes the alias and re-discovers.
+    const rows = [
+      row({ seller_id: 1, merchant_alias: "backpacker's pantry", marketplace: 'US' }),
+      row({ seller_id: 2, merchant_alias: "backpacker's pantry CA", marketplace: 'CA' }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(2);
+  });
+
+  it('splits when alias curation is partial across a brand\'s rows', () => {
+    // Documented consequence: one row aliased, sibling row not → the
+    // aliased row keys on the alias, the bare row falls back to Name.
+    // Two entries until the AM fills in the missing alias.
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: "Backpacker's Pantry",
+        marketplace: 'US',
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: null,
+        marketplace: 'CA',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.slug).sort()).toEqual([
+      'american-outdoor-products',
+      'backpackers-pantry',
+    ]);
+  });
+
+  it('prefers the shortest alias over any Name for display', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'HydraPak, LLC',
+        merchant_alias: 'Hydrapak',
+        marketplace: 'US',
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'Hydrapak - CA',
+        merchant_alias: 'Hydrapak - CA',
+        marketplace: 'CA',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.display_name).toBe('Hydrapak');
   });
 });
 

@@ -13,14 +13,53 @@ import { pluginPath } from './plugin-root.js';
 import { parse as parseYaml } from 'yaml';
 import { formatZodError } from '../profile/format-error.js';
 
-const queryEntrySchema = z.object({
-  id: z.string().min(1),
-  file: z.string().min(1),
-  purpose: z.string().min(1),
-  consumers: z.array(z.string()).default([]),
-  tier: z.number().int().min(1).max(3).default(1),
-  notes: z.string().optional(),
-});
+/**
+ * Per-entry dispatch: which backend executes this query.
+ *
+ *   - sql:   read the `.sql` file from this repo and send the text
+ *            through `/api/query` (the original path).
+ *   - sproc: the query body lives warehouse-side as a stored procedure
+ *            (private `mx-warehouse-sprocs` repo). The harness sends
+ *            `CALL <sproc>(?, ?)` through the same `/api/query`; no SQL
+ *            text ships in this public repo. See internal/SP-MIGRATION.md.
+ *
+ * The enum is deliberately open-ended: the MixShift 2.0 backend lands as
+ * a new member (e.g. `mx2`) + a new branch in lib/data/dispatch.ts, and
+ * migrating a query is a one-line catalog flip; skills don't change.
+ */
+const dispatchSchema = z.enum(['sql', 'sproc']).default('sql');
+
+const queryEntrySchema = z
+  .object({
+    id: z.string().min(1),
+    /** Path to the .sql body, relative to sql-library/. Required for
+     *  dispatch: sql; omitted for dispatch: sproc (body is warehouse-side). */
+    file: z.string().min(1).optional(),
+    purpose: z.string().min(1),
+    consumers: z.array(z.string()).default([]),
+    tier: z.number().int().min(1).max(3).default(1),
+    notes: z.string().optional(),
+    dispatch: dispatchSchema,
+    /** Stored-procedure name (e.g. sp_brain_seller_fetch). Required for
+     *  dispatch: sproc. */
+    sproc: z.string().regex(/^sp_[a-z0-9_]+$/).optional(),
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.dispatch === 'sql' && !entry.file) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `query ${entry.id}: dispatch "sql" requires a "file"`,
+        path: ['file'],
+      });
+    }
+    if (entry.dispatch === 'sproc' && !entry.sproc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `query ${entry.id}: dispatch "sproc" requires a "sproc" name`,
+        path: ['sproc'],
+      });
+    }
+  });
 
 const catalogSchema = z.object({
   schema_version: z.literal(1),
@@ -30,6 +69,9 @@ const catalogSchema = z.object({
 
 export type QueryEntry = z.infer<typeof queryEntrySchema>;
 export type Catalog = z.infer<typeof catalogSchema>;
+
+/** Exported for schema unit tests (lib/data/dispatch.test.ts). */
+export const _schemas = { queryEntrySchema, catalogSchema };
 
 let catalogCache: Catalog | undefined;
 
@@ -91,6 +133,16 @@ export async function readQuerySql(
   id: string,
 ): Promise<{ id: string; sql: string; header: string }> {
   const entry = await getQueryEntry(id);
+  if (!entry.file) {
+    // dispatch: sproc entries carry no SQL body in this repo. Callers
+    // should route through lib/data/dispatch.ts (runDispatched), which
+    // builds the CALL statement or resolves the local dev fallback.
+    throw new Error(
+      `Query ${id} is dispatch:"${entry.dispatch}" with no .sql file in the ` +
+        `public repo (body lives warehouse-side as ${entry.sproc ?? 'a stored procedure'}). ` +
+        `Execute it via runDispatched() instead of readQuerySql().`,
+    );
+  }
   const path = pluginPath('shared', 'sql-library', entry.file);
   let raw: string;
   try {

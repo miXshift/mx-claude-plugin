@@ -21,9 +21,8 @@
 import { loadSkillManifest, resolveBatchPlan } from './manifest.js';
 import { loadBrandContext } from '../context/load.js';
 import { buildStandardParams } from './params.js';
-import { readQuerySql } from './sql-library.js';
-import { substituteParams, findReferencedParams } from './substitute.js';
-import { runQuery, type DataQueryResult } from '../data/query-runner.js';
+import { runDispatched, MissingParamsError } from '../data/dispatch.js';
+import { type DataQueryResult } from '../data/query-runner.js';
 import { writePrefetchArtifacts, type QueryRunOutput } from './artifacts.js';
 import { track, EventName } from '../telemetry/index.js';
 
@@ -227,53 +226,26 @@ type ExecuteResult =
   | { id: string; ok: false; queryResult: DataQueryResult<Record<string, unknown>> & { ok: false } };
 
 /**
- * Thrown when a query references params we couldn't compute. Carries
- * the list of missing names so the runner can classify the outcome as
- * `deferred` (skill provides them) vs. `failed` (real misconfiguration).
+ * Execute one catalog query through the dispatch registry
+ * (lib/data/dispatch.ts). The registry resolves whether the query runs
+ * as library SQL text or as a warehouse-side stored procedure
+ * (dispatch: sproc), so migrated queries flip without touching this
+ * runner. Missing-param validation lives in the dispatcher; the
+ * MissingParamsError it throws is caught by runPrefetch's per-query
+ * wrapper and classified as `deferred`.
  */
-class MissingParamsError extends Error {
-  missing_params: string[];
-  constructor(id: string, missing: string[]) {
-    super(
-      `Query ${id} references missing param(s): ${missing.join(', ')}. ` +
-        `The skill must provide these via paramOverrides on a follow-up ` +
-        `prefetch, or run the query inline via \`mixshift data query\`. ` +
-        `Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ` +
-        `ASIN set), or a conditional query (LIB-PT-01 only applies during ` +
-        `an active price_test event).`,
-    );
-    this.missing_params = missing;
-  }
-}
-
 async function executeOne(
   id: string,
   allParams: Record<string, unknown>,
   dataDirOverride?: string,
 ): Promise<ExecuteResult> {
-  const { sql: rawSql } = await readQuerySql(id);
-
-  // Validate: every param referenced in the SQL must be defined.
-  // Missing params throw a specially-typed error so the caller can
-  // classify the outcome as `deferred` rather than `failed`.
-  const referenced = findReferencedParams(rawSql);
-  const missing = referenced.filter((p) => !(p in allParams));
-  if (missing.length > 0) {
-    throw new MissingParamsError(id, missing);
-  }
-
-  const { sql, params } = substituteParams(rawSql, allParams);
-
-  // Pass the catalog ID into runQuery so the QueryExecuted event gets
-  // tagged with query_id (vs ad-hoc / mx-data-explore queries which leave
-  // query_id unset). Lets us group library-SQL performance separately.
-  const result = await runQuery<Record<string, unknown>>(sql, params, {
+  const result = await runDispatched<Record<string, unknown>>(id, {
+    params: allParams,
     dataDirOverride,
-    query_id: id,
   });
 
   if (!result.ok) {
-    return { id, ok: false, queryResult: result };
+    return { id, ok: false, queryResult: result.failure };
   }
 
   return {
@@ -283,8 +255,8 @@ async function executeOne(
       id,
       rows: result.rows,
       duration_ms: result.durationMs,
-      params,
-      display_sql: sql,
+      params: result.boundParams,
+      display_sql: result.displaySql,
     },
   };
 }

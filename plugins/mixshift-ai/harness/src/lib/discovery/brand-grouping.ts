@@ -1,24 +1,34 @@
 /**
  * Group discovered seller rows into proposed brand entries.
  *
- * Grouping signal: a CANONICAL KEY derived from the warehouse `Name`
- * column (exposed as `seller_name` in SellerRow). The Name is the
- * brand label as stored in the warehouse — initially copied from the
- * Amazon storefront (`MerchantAlias`), but user-editable for curated
- * entries like "American Outdoor Products" overriding the default
- * storefront name "Backpacker's Pantry".
+ * Grouping signal: a CANONICAL KEY derived from the warehouse
+ * `MerchantAlias` column when present, falling back to `Name`
+ * (`seller_name`) when the alias is null/empty. Per the BRAND-BRAIN.md
+ * spec, `MerchantAlias` is the AM-curated canonical brand display;
+ * e.g. alias "Backpacker's Pantry" on seller rows whose storefront
+ * `Name` is "American Outdoor Products". When an AM has curated the
+ * alias, it is the brand identity; `Name` is the storefront/legal
+ * label and only used when no alias exists. (Switched from Name-first
+ * 2026-06-10, task #62.)
  *
- * Warehouse Names vary across marketplaces and account types for the
- * same legal brand. Examples observed:
+ * Consequence worth knowing: alias curation should be CONSISTENT
+ * across a brand's seller rows. If one marketplace row has the alias
+ * set and a sibling row has it empty, the two derive different keys
+ * and split into separate brand entries. That split is visible (two
+ * entries in the discover list) and self-heals when the AM fills in
+ * the missing alias and re-discovers.
+ *
+ * Warehouse labels vary across marketplaces and account types for the
+ * same legal brand. Examples observed in `Name`:
  *   - "Hydrapak" (VC US)
  *   - "Hydrapak - CA" (VC Canada — marketplace suffix)
  *   - "Hydrapak - DE Sporting Goods - (Pan-EU)" (VC Germany)
  *   - "HydraPak, LLC" (SC US/CA/MX — corporate suffix)
  *
- * Exact-name grouping (the previous behavior) split these into six
- * separate brand entries. Users have to mentally consolidate. The
- * canonical key strips marketplace + corporate suffixes so they
- * collapse to one entry.
+ * Exact-name grouping (the original behavior) split these into six
+ * separate brand entries. The canonical key strips marketplace +
+ * corporate suffixes so they collapse to one entry, whichever source
+ * column the label came from.
  *
  * Canonical key derivation (see `canonicalBrandKey`):
  *   1. Lowercase, normalize unicode
@@ -28,14 +38,11 @@
  *   4. Strip trailing corporate suffix (LLC / Inc / etc.)
  *   5. Strip non-alphanumeric to hyphens
  *
- * Display name comes from the longest variant in the group (richest
- * representation, usually the "Hydrapak - DE Sporting Goods" form), but
- * the slug uses the canonical key directly. Users still see all the
- * underlying accounts via the per-row marketplace + account_type, so no
- * information is lost.
- *
- * `MerchantAlias` is preserved on each account row for reference but
- * not used for grouping.
+ * Display name prefers the shortest curated alias in the group, then
+ * the shortest `Name` when no row has an alias. The slug uses the
+ * canonical key directly. Users still see all the underlying accounts
+ * via the per-row marketplace + account_type, so no information is
+ * lost.
  *
  * Slug suggestions come from the canonical key (already slug-shaped).
  * Collisions (rare — would require two legally-distinct brands with the
@@ -59,11 +66,11 @@ export interface BrandSuggestion {
 
 export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
   // Bucket rows by canonical brand key. Different marketplace-suffixed
-  // names ("Hydrapak", "Hydrapak - CA", "HydraPak, LLC") collapse to
+  // labels ("Hydrapak", "Hydrapak - CA", "HydraPak, LLC") collapse to
   // the same key ("hydrapak") and land in one brand entry.
   const byCanonical = new Map<string, SellerRow[]>();
   for (const r of rows) {
-    const key = canonicalBrandKey(r.seller_name);
+    const key = canonicalBrandKey(brandLabel(r));
     const bucket = byCanonical.get(key) ?? [];
     bucket.push(r);
     byCanonical.set(key, bucket);
@@ -97,8 +104,18 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
 }
 
 /**
- * Strip marketplace + corporate suffixes from a warehouse seller_name to
- * produce a canonical brand grouping key. Exported for unit tests.
+ * The brand label a row groups under: the AM-curated `MerchantAlias`
+ * when present, else the warehouse `Name`. Single source of truth for
+ * both the grouping key and the display-name picker.
+ */
+function brandLabel(r: SellerRow): string {
+  return r.merchant_alias || r.seller_name;
+}
+
+/**
+ * Strip marketplace + corporate suffixes from a warehouse brand label
+ * (MerchantAlias or Name) to produce a canonical brand grouping key.
+ * Exported for unit tests.
  *
  * The shape of the key is also a valid slug (matches /^[a-z][a-z0-9-]*$/)
  * so it doubles as the brand slug; no extra slugify pass needed.
@@ -135,16 +152,23 @@ export function canonicalBrandKey(name: string): string {
 
 /**
  * Pick the cleanest display name from a group of accounts that share a
- * canonical key. Prefers the shortest name (least marketplace suffix
- * noise) but falls back to the first if there's a tie.
+ * canonical key. Prefers curated aliases (shortest one, least
+ * marketplace suffix noise); falls back to the shortest `Name` when no
+ * row in the group has an alias.
  *
- *   ["Hydrapak", "Hydrapak - CA", "HydraPak, LLC"] → "Hydrapak"
- *   ["American Outdoor Products"] (×4)            → "American Outdoor Products"
+ *   aliases ["Backpacker's Pantry"] (×4)           → "Backpacker's Pantry"
+ *   names ["Hydrapak", "Hydrapak - CA", "HydraPak, LLC"] → "Hydrapak"
+ *   ["American Outdoor Products"] (×4)             → "American Outdoor Products"
  */
 function pickDisplayName(accounts: SellerRow[]): string {
-  const names = accounts.map((a) => a.seller_name).filter(Boolean);
-  if (names.length === 0) return 'Unknown brand';
-  return names.reduce((best, cur) =>
+  const aliases = accounts
+    .map((a) => a.merchant_alias)
+    .filter((a): a is string => Boolean(a));
+  const pool = aliases.length > 0
+    ? aliases
+    : accounts.map((a) => a.seller_name).filter(Boolean);
+  if (pool.length === 0) return 'Unknown brand';
+  return pool.reduce((best, cur) =>
     cur.length < best.length ? cur : best,
   );
 }
