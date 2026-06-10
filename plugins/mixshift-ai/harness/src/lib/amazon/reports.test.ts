@@ -11,7 +11,9 @@ import {
   getReportDocument,
   getReportDocumentMeta,
   streamReportDocumentToFile,
+  exitCodeForKind,
   type ReportClientOptions,
+  type ReportFailureKind,
 } from './reports.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
@@ -683,6 +685,33 @@ describe('credential resolution from disk', () => {
     expect((init as RequestInit).headers).toMatchObject({
       Authorization: 'Bearer eyJfresh.token',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// exitCodeForKind — the kind → exit-code contract shared by every surface
+// that emits ReportFailure, documented in the mx-report-pull failure table
+// ---------------------------------------------------------------------------
+
+describe('exitCodeForKind', () => {
+  it('maps every kind to the exit code documented in the skill failure table', () => {
+    // A full Record so adding a ReportFailureKind without deciding its exit
+    // code fails to compile.
+    const documented: Record<ReportFailureKind, number> = {
+      not_authenticated: 2,
+      session_expired: 2,
+      restricted_report: 4,
+      reauth_required: 5,
+      spapi_not_configured: 6,
+      merchant_not_found: 7,
+      throttled: 8,
+      report_fatal: 9,
+      host_unreachable: 1,
+      unknown: 1,
+    };
+    for (const [kind, code] of Object.entries(documented)) {
+      expect(exitCodeForKind(kind as ReportFailureKind)).toBe(code);
+    }
   });
 });
 

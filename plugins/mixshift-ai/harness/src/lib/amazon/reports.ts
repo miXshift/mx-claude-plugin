@@ -285,6 +285,38 @@ export function isReportFailure(
   return x.ok === false;
 }
 
+/**
+ * Map a failure kind to an exit code so terminal scripts can branch. Chat
+ * reads the typed kind from --json instead. The one mapping for every command
+ * surface that emits ReportFailure (reports, pricing) — the codes are a
+ * documented contract in the mx-report-pull skill, so the surfaces must not
+ * drift apart. Mirrors data.ts using 4 for the "Amazon won't let us" case
+ * (restricted) like access_denied_table=4.
+ */
+export function exitCodeForKind(kind: ReportFailureKind): number {
+  switch (kind) {
+    case 'not_authenticated':
+    case 'session_expired':
+      return 2; // sign in / re-login (run `mixshift auth login`)
+    case 'restricted_report':
+      return 4; // Amazon needs an RDT/PII role MixShift lacks
+    case 'reauth_required':
+      return 5; // merchant grant lapsed — reconnect this merchant
+    case 'spapi_not_configured':
+      return 6; // SP-API not enabled for this tenant
+    case 'merchant_not_found':
+      return 7; // selector matched no merchant
+    case 'throttled':
+      return 8; // Amazon rate limit — retry later
+    case 'report_fatal':
+      return 9; // Amazon returned FATAL / CANCELLED
+    case 'host_unreachable':
+    case 'unknown':
+    default:
+      return 1;
+  }
+}
+
 /** List merchants the signed-in tenant can pull reports for. */
 export async function listMerchants(
   opts: ReportClientOptions = {},

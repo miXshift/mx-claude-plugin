@@ -23,6 +23,7 @@
 
 import {
   amazonRequest,
+  exitCodeForKind,
   isReportFailure,
   type ReportClientOptions,
   type ReportFailure,
@@ -271,5 +272,5 @@ export async function getPricingRunResult<T = FoepResponseItem | CompetitiveSumm
 // Re-exports
 // ---------------------------------------------------------------------------
 
-export { isReportFailure };
+export { exitCodeForKind, isReportFailure };
 export type { ReportFailure };
