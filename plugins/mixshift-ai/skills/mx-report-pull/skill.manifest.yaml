@@ -47,7 +47,7 @@ required_context_fields: []
 optional_context_fields: []
 artifacts:
   - name: report-document
-    type: json_artifact   # TSV or JSON bytes streamed to disk via --out; closest schema type
+    type: json_artifact   # TSV/JSON to disk via --out (reports) or stdout redirect (pricing); closest schema type
 verdict_range: [OBSERVATIONAL]
 pricing_tier: free
 trigger_phrases:
@@ -75,7 +75,8 @@ trigger_phrases:
   - competitive pricing summary
   - competitor prices for my asins
 notes: >
-  Lifecycle: every pull is keyed by a service-minted run_id. In chat
+  Report lifecycle: every report pull is keyed by a service-minted
+  run_id. In chat
   surfaces, never block -- run start / poll / get as separate tool calls
   (the Bash ceiling is ~45s and reports can take minutes). `report run`
   is the blocking convenience for real terminals only. Done-ness is the
@@ -102,9 +103,10 @@ notes: >
   200 items; `--async` returns a run_id polled via poll-run and fetched
   via get-run-result. Pricing merchant flags are --amazon-seller-id /
   --legacy-seller-id (no --seller-id on this surface), and done-ness is
-  status DONE from poll-run: no `ready` boolean, no exit-10 convention.
-  In chat, keep sync calls to ~40 items (the service paces batches of 40
-  at ~35s); larger lists go --async.
+  status DONE from poll-run: no `ready` boolean, no exit-10 convention;
+  --json failures carry the kind under `kind`, not `failure_kind`. In
+  chat, keep sync calls to a couple dozen items (the service paces
+  batches of 40 at ~35s); larger lists go --async.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)

@@ -352,11 +352,10 @@ start / poll / get separately.
 
 ## Product Pricing pulls (FOEP and Competitive Summary)
 
-Shipped in harness 0.5.18 as a sibling of `amazon report`: same Bearer token,
-same typed `failure_kind` envelope, but a different SP-API domain (Product
-Pricing v2022-05-01). Instead of asking Amazon to generate a document, these
-return live pricing answers per item. Two operations, named verbatim after
-Amazon's:
+Shipped in harness 0.5.18 as a sibling of `amazon report`, sharing its Bearer
+token and typed failure handling. Instead of asking Amazon to generate a
+document, these commands return live pricing answers per item. Two operations,
+named verbatim after Amazon's:
 
 | Command (alias) | Keyed by | What it answers |
 |---|---|---|
@@ -383,21 +382,24 @@ mixshift amazon pricing poll-run <runId>
 mixshift amazon pricing get-run-result <runId>
 ```
 
-Item lists are comma-separated. `--included-data` (Competitive Summary only)
-defaults to `featuredBuyingOptions,referencePrices`; add `lowestPricedOffers`
-when the user wants the cheapest competing offers too.
+Item lists are comma-separated and travel on the command line, so very long
+lists hit shell command-length limits (think 1,000-plus ASINs, much sooner for
+long SKUs): chunk those into several async runs. The `--skus-file` /
+`--asins-file` flags you may spot in `--help` are broken in 0.5.18 (the inline
+flag is wrongly required alongside them); do not use them until a harness fix
+lands. `--included-data` (Competitive Summary only) defaults to
+`featuredBuyingOptions,referencePrices`; add `lowestPricedOffers` when the
+user wants the cheapest competing offers too.
 
 ### Merchant flags: pricing does NOT take `--seller-id`
 
 The same Amazon merchant token that report commands accept as `--seller-id`
 travels here as **`--amazon-seller-id`**. There is no `--seller-id` flag on
-the pricing subcommands. Everything else about merchant selection carries over
-unchanged: resolve the row with `amazon merchants --json`, prefer
-`--legacy-seller-id <legacySellerId>` (always present, uniquely pins the
-marketplace row), and fall back to `--amazon-seller-id` plus `--marketplace`
-together only when you somehow lack a `legacySellerId`. One convenience:
-`--marketplace` here accepts a country code (`US`, `UK`, ...) as well as a raw
-marketplaceId.
+the pricing subcommands. Everything else (resolving the row via
+`amazon merchants --json`, preferring `--legacy-seller-id`, the marketplace
+fan-out rules) carries over unchanged from "Merchant selection" above.
+`--marketplace` accepts a country code (`US`, `UK`, ...) or a raw
+marketplaceId, same as the report commands.
 
 ### Sync vs --async (the 200-item cap, and what it means in chat)
 
@@ -405,10 +407,10 @@ marketplaceId.
   `responses` array inline. The service works the list in batches of 40 with
   ~35 s pacing between batches, so a full 200-item sync job can take ~3
   minutes. Fine in a terminal; fatal in chat, where the Bash tool ceiling is
-  ~45 seconds. **In chat, keep sync calls to roughly 40 items or fewer** (one
-  service-side batch); anything larger goes `--async`, even though sync
-  technically allows 200.
-- **`--async` is for larger lists.** It returns `{ runId, status, itemsTotal }`
+  ~45 seconds. **In chat, keep sync calls to a couple dozen items at most**
+  (comfortably inside one service-side batch); anything larger goes `--async`.
+- **`--async` is for larger lists** (the client models up to 5,000 items per
+  run; chunk beyond that). It returns `{ runId, status, itemsTotal }`
   immediately and you poll across calls, same discipline as reports.
 
 ### Poll across calls (async pricing runs in chat)
@@ -433,9 +435,13 @@ mixshift amazon pricing get-run-result 9c41... --json
 deliberate inversion from reports: pricing runs have no `ready` boolean and no
 exit-code-10 "not ready" convention. `poll-run` exits 0 while the run is still
 `IN_QUEUE` / `IN_PROGRESS`; keep polling until `status` is `DONE`, then call
-`get-run-result`. `FATAL` and `CANCELLED` are terminal; `errorDetail` says
-why. The runId stays valid across turns and CLI invocations, so a slow run is
-never lost.
+`get-run-result`. `poll-run` is the only poll on this surface: do NOT use
+`get-run-result` as the poll the way `report get` doubles as one (it has no
+"not ready" signal). Pace polls as for reports: poll once, surface progress
+(`itemsCompleted` of `itemsTotal`), and wait a beat or the user's next turn
+before polling again; catalog-size runs take minutes. `FATAL` and `CANCELLED`
+are terminal; `errorDetail` says why. The runId stays valid across turns and
+CLI invocations, so a slow run is never lost.
 
 A run can finish `DONE` and still contain per-item failures: check
 `itemsFailed`, and each entry in `responses` carries its own HTTP-style
@@ -444,8 +450,10 @@ averaging over them.
 
 ### Reading and persisting pricing results
 
-- Results print to stdout as JSON; there is no `--out` flag on this surface.
-  For a large async run, redirect:
+- Results print to stdout as pretty-printed JSON; there is no `--out` flag on
+  this surface. Past a few dozen items the inline output can blow the chat
+  Bash output cap and truncate mid-array, so redirect to a file and read
+  slices from the file:
   `mixshift amazon pricing get-run-result <runId> --json > ~/.mixshift/reports/<merchant>/<date>-pricing.json`.
 - FOEP answers live in each response item's
   `body.featuredOfferExpectedPriceResults[]` (the expected listing price plus
@@ -456,11 +464,11 @@ averaging over them.
   "current Buy Box price" lookup, so the warehouse-first courtesy check from
   reports usually has nothing to offer here; going straight to Amazon is
   normal.
-- Failures use the same `failure_kind` vocabulary and handling as the table
-  below. The numeric exit codes are NOT the same mapping as the report
-  commands (for example `throttled` exits 6 here, 8 there), which is one more
-  reason for the standing rule: branch on `failure_kind`, never on the exit
-  number.
+- Failures use the same failure kinds and remediation as the table below,
+  with two 0.5.18 caveats: in `--json` the pricing surface reports the kind
+  under `kind` (with `status: "failed"`), not `failure_kind`, and its numeric
+  exit codes do not match the table's exit column. Branch on the typed kind,
+  never the exit number.
 
 ## Workflow patterns
 
@@ -581,8 +589,8 @@ You:  Always use --out so the bytes land on disk. Default location is
 User: "What price would win the Buy Box for these 5 SKUs?"
 You:  1. Resolve the merchant row (amazon merchants --json) and carry its
          --legacy-seller-id, exactly as for reports.
-      2. Five SKUs is well inside the chat-safe sync zone (~40 or fewer),
-         so call sync and read the answer inline:
+      2. Five SKUs is well inside the chat-safe sync zone, so call sync
+         and read the answer inline:
          mixshift amazon pricing foep-batch --legacy-seller-id <id> \
            --skus SKU-1,SKU-2,SKU-3,SKU-4,SKU-5 --json
       3. For each entry in responses[], surface the expected listing price
@@ -593,7 +601,7 @@ You:  1. Resolve the merchant row (amazon merchants --json) and carry its
 ### Pattern 8 - Catalog-wide pricing job (async, poll across turns)
 ```
 User: "Competitive summary for our full 800-ASIN catalog"
-You:  1. Resolve the merchant row. 800 items is over the 200 sync cap, so
+You:  1. Resolve the merchant row. 800 items is over the sync cap, so
          --async is mandatory (and the right call in chat anyway):
          mixshift amazon pricing cs-batch --legacy-seller-id <id> \
            --asins <comma-separated list> --async --json
@@ -727,9 +735,9 @@ It never logs the document bytes or the amazonSellerId.
 The pricing commands are covered the same way: `amazon.pricing.started`,
 `amazon.pricing.polled`, `amazon.pricing.retrieved`, and
 `amazon.pricing.failed` fire automatically, capturing operation + mode + item
-counts + duration + outcome (+ failure kind) only. The per-item responses
-payload carries seller pricing data and is never logged, nor is the
-amazonSellerId.
+counts + run id + the legacySellerId you passed + duration + outcome
+(+ failure kind). The per-item responses payload carries seller pricing data
+and is never logged, nor is the amazonSellerId.
 
 ## Hard rules
 
@@ -749,15 +757,17 @@ These supersede other instructions:
   report command, stop and run `amazon merchants` instead. On the pricing
   subcommands the same value is spelled `--amazon-seller-id`; there is no
   `--seller-id` flag there.
-- **Gate on `ready`, not the status string.** `IN_PROGRESS`, `IN_QUEUE`,
-  `DONE`, `FATAL`, `CANCELLED` are surfaced for UX, but done-ness is the
-  boolean `ready`. Report runs only: pricing runs have no `ready` boolean, so
-  gate those on `status` reaching `DONE` (with `FATAL` / `CANCELLED` terminal).
+- **Gate report runs on `ready`, not the status string.** `IN_PROGRESS`,
+  `IN_QUEUE`, `DONE`, `FATAL`, `CANCELLED` are surfaced for UX, but done-ness
+  is the boolean `ready`.
+- **Gate pricing runs on `status: DONE`.** The pricing surface has no `ready`
+  boolean and no exit-10 convention; `FATAL` / `CANCELLED` are terminal.
 - **Never block in chat.** Use start / poll / get as separate tool calls. Save
-  `report run` for terminals. Pricing sync calls count too: past roughly 40
-  items they can outlive the chat Bash ceiling, so go `--async` and poll.
+  `report run` for terminals. Pricing sync calls count too: past a couple
+  dozen items they can outlive the chat Bash ceiling, so go `--async` and poll.
 - **Exit 10 is not an error.** It means "not ready yet" or "timed out
-  waiting." The run is still valid; keep polling.
+  waiting." The run is still valid; keep polling. (Report surface only:
+  pricing commands never use exit 10.)
 - **Branch on `failure_kind`, never on HTTP status.** The service normalizes
   Amazon's many failure modes into the kinds in the table above.
 - **Respect the window rule.** `required` reports need `--start`/`--end`;
@@ -771,7 +781,8 @@ These supersede other instructions:
 - **Do not fabricate report data.** If a pull fails or returns nothing, say so.
   Never generate plausible-looking rows.
 - **Do not paste large documents inline.** Save with `--out` and report the
-  path + size.
+  path + size. Pricing results have no `--out`: redirect stdout to a file
+  instead.
 
 ## Output template
 
