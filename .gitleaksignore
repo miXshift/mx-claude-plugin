@@ -1,0 +1,12 @@
+# Known, accepted historical findings. One fingerprint per line:
+#   <commit>:<file>:<rule-id>:<line>
+# Only add a fingerprint here after the secret has been rotated/killed.
+# Rewriting public git history is worse than acknowledging the leak.
+
+# The May 2026 IP-whitelist Discord webhook leak (the incident GitGuardian
+# flagged; see the gitleaks.yml header comment). Lives only in history:
+# the plugins/mixshift-amazon-ppc/ directory was removed when the plugin
+# was rebuilt as mixshift-ai, and the webhook was superseded by the
+# server-side Supabase->Discord fan-out (no webhook URL ships in the
+# plugin anymore).
+876aa7ad385d644f4d1b380d4478bf70587c5586:plugins/mixshift-amazon-ppc/.mixshift-defaults.yaml:discord-webhook-url:20
