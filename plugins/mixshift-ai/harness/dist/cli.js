@@ -65776,6 +65776,11 @@ var EventName = {
   ReportPolled: "report.polled",
   ReportRetrieved: "report.retrieved",
   ReportFailed: "report.failed",
+  // Service-credential setup (`mixshift auth service-setup`). Fired after
+  // the service block is persisted so a fresh data dir's synthetic
+  // plugin.installed event attributes to the svc: label instead of landing
+  // as an anonymous install. payload: {label, verified, via}.
+  AuthServiceSetupCompleted: "auth.service_setup_completed",
   // Amazon SP-API Pricing batch endpoints (lib/amazon/pricing.ts +
   // `mixshift amazon pricing`). Privacy: capture operation + item counts +
   // duration + outcome — never the responses payload (which carries seller
@@ -65859,9 +65864,9 @@ async function track(input, dataDirOverride) {
     const os = detectOs();
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const userEmail = profile.user?.email;
-    const datahubPersonLabel = await readDatahubPersonLabelBestEffort(
-      dataDirOverride
-    );
+    const attribution = await readAttributionBestEffort(dataDirOverride);
+    const datahubPersonLabel = attribution.personLabel;
+    const automationPayload = attribution.automation ? { automation: true } : {};
     if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
       const synthetic = {
         event_name: EventName.PluginInstalled,
@@ -65876,7 +65881,7 @@ async function track(input, dataDirOverride) {
         ts: nowIso,
         // Marker so analytics can distinguish "synthetic on first-track"
         // from a hypothetical future direct track(PluginInstalled) call.
-        payload: { synthetic: true, triggered_by: input.event_name }
+        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload }
       };
       await enqueueEvent(synthetic, dataDirOverride);
     }
@@ -65891,7 +65896,7 @@ async function track(input, dataDirOverride) {
       os,
       node_version: process.version,
       ts: nowIso,
-      payload: input.payload ?? {},
+      payload: { ...input.payload ?? {}, ...automationPayload },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -65934,12 +65939,17 @@ function readSurfaceFlag() {
   if (eq) return eq.slice("--surface=".length);
   return void 0;
 }
-async function readDatahubPersonLabelBestEffort(dataDirOverride) {
+async function readAttributionBestEffort(dataDirOverride) {
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
-    return credentials?.datahub?.person_label ?? credentials?.service?.label;
+    const human = credentials?.datahub?.person_label;
+    const service = credentials?.service;
+    return {
+      personLabel: human ?? service?.label ?? service?.client_id,
+      automation: Boolean(service) && !human
+    };
   } catch {
-    return void 0;
+    return { personLabel: void 0, automation: false };
   }
 }
 
@@ -73224,6 +73234,53 @@ init_format_error();
 init_schema2();
 init_credentials();
 
+// src/lib/auth/setup-code.ts
+var EXCHANGE_TIMEOUT_MS = 3e4;
+async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
+  let res;
+  try {
+    res = await fetchImpl(`${apiBase}/oauth/service-setup/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setup_code: setupCode.trim() }),
+      signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS)
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not reach ${apiBase}/oauth/service-setup/exchange: ${message}. Check your network and retry.`
+    );
+  }
+  if (res.status === 429) {
+    throw new Error("Too many attempts at the exchange endpoint. Wait a minute and retry.");
+  }
+  if (res.status === 400) {
+    const body = await res.json().catch(() => ({}));
+    if (body.error === "invalid_setup_code") {
+      throw new Error(
+        "That setup code is unknown, expired, or already used. Codes are single-use and last 10 minutes; ask your admin to mint a fresh one at /admin and try again."
+      );
+    }
+    throw new Error("The exchange endpoint rejected the request (invalid_request).");
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/oauth/service-setup/exchange returned HTTP ${res.status}: ${body.slice(0, 300)}`
+    );
+  }
+  const json2 = await res.json();
+  if (!json2.client_id || !json2.client_secret) {
+    throw new Error("Exchange succeeded but the response carried no credential.");
+  }
+  return {
+    client_id: json2.client_id,
+    client_secret: json2.client_secret,
+    ...json2.label ? { label: json2.label } : {},
+    ...json2.scopes ? { scopes: json2.scopes } : {}
+  };
+}
+
 // src/lib/net/classify.ts
 function describeFetchFailure(err, host) {
   const e = err ?? {};
@@ -73538,30 +73595,51 @@ Try: \`mixshift data run-query "SELECT 1"\` to verify warehouse access.
 }
 function registerServiceSetupSubcommand(auth) {
   auth.command("service-setup").description(
-    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Get client_id + client_secret from your tenant admin. Secret via --client-secret-file or the MIXSHIFT_CLIENT_SECRET env var, never as an argument."
-  ).option("--api-base <url>", "mx-legacy-auth service URL.", "https://mcp.mixshift.io").option("--client-id <id>", "Service client id (svc_...).").option(
+    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from your tenant admin (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_CLIENT_SECRET, never argv."
+  ).option("--api-base <url>", "mx-legacy-auth service URL.", "https://mcp.mixshift.io").option(
+    "--setup-code <code>",
+    "One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin."
+  ).option("--client-id <id>", "Service client id (svc_...). Raw path only.").option(
     "--client-secret-file <path>",
-    "File containing the client secret (whitespace-trimmed)."
+    "File containing the client secret (whitespace-trimmed). Raw path only."
   ).option("--label <label>", "Informational label, e.g. svc:my-cron (for telemetry).").option("--skip-verify", "Save without minting a test token.", false).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      if (!opts.clientId) {
-        throw new Error("--client-id is required (svc_... from your tenant admin).");
-      }
-      let secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
-      if (opts.clientSecretFile) {
-        secret = (await readFile15(opts.clientSecretFile, "utf-8")).trim();
-      }
-      if (!secret) {
-        throw new Error(
-          "No client secret supplied. Pass --client-secret-file <path> or set the MIXSHIFT_CLIENT_SECRET env var."
-        );
+      const apiBase = opts.apiBase ?? "https://mcp.mixshift.io";
+      let clientId;
+      let secret;
+      let label = opts.label;
+      let via;
+      if (opts.setupCode) {
+        const exchanged = await exchangeSetupCode(apiBase, opts.setupCode);
+        clientId = exchanged.client_id;
+        secret = exchanged.client_secret;
+        label = label ?? exchanged.label;
+        via = "setup_code";
+      } else {
+        if (!opts.clientId) {
+          throw new Error(
+            "Pass --setup-code SVC-XXXX-XXXX (preferred, from your admin) or --client-id svc_... with the secret via file/env."
+          );
+        }
+        clientId = opts.clientId;
+        secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
+        via = secret ? "env" : "secret_file";
+        if (opts.clientSecretFile) {
+          secret = (await readFile15(opts.clientSecretFile, "utf-8")).trim();
+          via = "secret_file";
+        }
+        if (!secret) {
+          throw new Error(
+            "No client secret supplied. Pass --client-secret-file <path> or set the MIXSHIFT_CLIENT_SECRET env var."
+          );
+        }
       }
       const service = serviceCredsSchema.parse({
-        api_base: opts.apiBase,
-        client_id: opts.clientId,
+        api_base: apiBase,
+        client_id: clientId,
         client_secret: secret,
-        ...opts.label ? { label: opts.label } : {}
+        ...label ? { label } : {}
       });
       const { path: path2 } = await saveService(service, root.dataDir);
       let verified = false;
@@ -73569,10 +73647,22 @@ function registerServiceSetupSubcommand(auth) {
         await getValidAccessToken(root.dataDir, true);
         verified = true;
       }
+      await track(
+        {
+          event_name: EventName.AuthServiceSetupCompleted,
+          outcome: verified ? "ok" : "skipped",
+          payload: {
+            label: service.label ?? service.client_id,
+            verified,
+            via
+          }
+        },
+        root.dataDir
+      );
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
-            { status: "ok", path: path2, client_id: service.client_id, verified },
+            { status: "ok", path: path2, client_id: service.client_id, label: service.label, verified, via },
             null,
             2
           ) + "\n"

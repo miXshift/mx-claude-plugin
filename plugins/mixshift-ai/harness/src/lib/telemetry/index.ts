@@ -55,13 +55,16 @@ export async function track(
     const os = detectOs();
     const nowIso = new Date().toISOString();
     const userEmail = profile.user?.email;
-    // Auto-resolve person_label from datahub creds when caller didn't pass
-    // one. Best-effort — pre-auth events / corrupted creds files fall
-    // through silently. Keeps the per-employee actor visible on
-    // QueryExecuted / QueryFailed without every caller threading it through.
-    const datahubPersonLabel = await readDatahubPersonLabelBestEffort(
-      dataDirOverride,
-    );
+    // Auto-resolve attribution from on-disk credentials when the caller
+    // didn't pass one. Best-effort — pre-auth events / corrupted creds files
+    // fall through silently. Human installs attribute via
+    // datahub.person_label; automation installs (service block) attribute
+    // via the svc: label AND get an `automation: true` payload marker so
+    // the Discord fan-out and analytics can tell machine traffic from
+    // anonymous humans.
+    const attribution = await readAttributionBestEffort(dataDirOverride);
+    const datahubPersonLabel = attribution.personLabel;
+    const automationPayload = attribution.automation ? { automation: true } : {};
 
     // If this is the first time install_id has been created on this
     // machine, enqueue a synthetic plugin.installed event ALONGSIDE the
@@ -88,7 +91,7 @@ export async function track(
         ts: nowIso,
         // Marker so analytics can distinguish "synthetic on first-track"
         // from a hypothetical future direct track(PluginInstalled) call.
-        payload: { synthetic: true, triggered_by: input.event_name },
+        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload },
       };
       await enqueueEvent(synthetic, dataDirOverride);
     }
@@ -104,7 +107,7 @@ export async function track(
       os,
       node_version: process.version,
       ts: nowIso,
-      payload: input.payload ?? {},
+      payload: { ...(input.payload ?? {}), ...automationPayload },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -190,16 +193,24 @@ function readSurfaceFlag(): string | undefined {
  * Never throws. Wraps the file I/O so a missing or broken credentials
  * file can't take down telemetry.
  */
-async function readDatahubPersonLabelBestEffort(
+async function readAttributionBestEffort(
   dataDirOverride?: string,
-): Promise<string | undefined> {
+): Promise<{ personLabel: string | undefined; automation: boolean }> {
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
-    // Service installs attribute events to the credential's svc: label so
-    // automation traffic is identifiable in telemetry.
-    return credentials?.datahub?.person_label ?? credentials?.service?.label;
+    const human = credentials?.datahub?.person_label;
+    const service = credentials?.service;
+    // Service installs attribute events to the credential's svc: label (or
+    // its client_id when the label was omitted) so automation traffic is
+    // identifiable in telemetry. A human session on the same dir wins for
+    // the person label, but the automation marker still reflects that a
+    // service credential is configured here.
+    return {
+      personLabel: human ?? service?.label ?? service?.client_id,
+      automation: Boolean(service) && !human,
+    };
   } catch {
-    return undefined;
+    return { personLabel: undefined, automation: false };
   }
 }
 

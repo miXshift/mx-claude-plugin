@@ -15,6 +15,7 @@ import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { serviceCredsSchema } from '../lib/auth/schema.js';
 import { saveService, getValidAccessToken } from '../lib/auth/credentials.js';
+import { exchangeSetupCode } from '../lib/auth/setup-code.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
 import {
@@ -443,6 +444,7 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
 
 interface ServiceSetupOptions {
   apiBase?: string;
+  setupCode?: string;
   clientId?: string;
   clientSecretFile?: string;
   label?: string;
@@ -452,51 +454,83 @@ interface ServiceSetupOptions {
 /**
  * `mixshift auth service-setup` — configure an admin-issued machine
  * credential (OAuth client_credentials) for unattended runs: Cowork
- * scheduled tasks, cloud automations, CI. A tenant admin creates the
- * credential at {api_base}/admin and hands over client_id + client_secret.
+ * scheduled tasks, cloud automations, CI.
  *
- * The secret is NEVER taken as a CLI argument (argv leaks into shell
- * history and process listings). Supply it via --client-secret-file or the
- * MIXSHIFT_CLIENT_SECRET env var.
+ * Preferred path: `--setup-code SVC-XXXX-XXXX`. The admin mints a one-time
+ * code at {api_base}/admin; the exchange creates the credential server-side
+ * and delivers the secret straight into credentials.json. Nobody handles
+ * the secret, and the code in argv is fine by design (single-use, 10-min
+ * TTL, burned by the exchange).
+ *
+ * Raw path (CI / secret managers): --client-id plus the secret via
+ * --client-secret-file or the MIXSHIFT_CLIENT_SECRET env var. The raw
+ * secret is NEVER taken as a CLI argument.
  */
 function registerServiceSetupSubcommand(auth: Command): void {
   auth
     .command('service-setup')
     .description(
       'Configure a service credential for unattended runs (scheduled ' +
-        'tasks, cloud automations, CI). Get client_id + client_secret from ' +
-        'your tenant admin. Secret via --client-secret-file or the ' +
-        'MIXSHIFT_CLIENT_SECRET env var, never as an argument.',
+        'tasks, cloud automations, CI). Preferred: --setup-code from your ' +
+        'tenant admin (one-time, no secret handling). Raw path: --client-id ' +
+        'plus --client-secret-file or MIXSHIFT_CLIENT_SECRET, never argv.',
     )
     .option('--api-base <url>', 'mx-legacy-auth service URL.', 'https://mcp.mixshift.io')
-    .option('--client-id <id>', 'Service client id (svc_...).')
+    .option(
+      '--setup-code <code>',
+      'One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin.',
+    )
+    .option('--client-id <id>', 'Service client id (svc_...). Raw path only.')
     .option(
       '--client-secret-file <path>',
-      'File containing the client secret (whitespace-trimmed).',
+      'File containing the client secret (whitespace-trimmed). Raw path only.',
     )
     .option('--label <label>', 'Informational label, e.g. svc:my-cron (for telemetry).')
     .option('--skip-verify', 'Save without minting a test token.', false)
     .action(async (opts: ServiceSetupOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       try {
-        if (!opts.clientId) {
-          throw new Error('--client-id is required (svc_... from your tenant admin).');
+        const apiBase = opts.apiBase ?? 'https://mcp.mixshift.io';
+        let clientId: string;
+        let secret: string;
+        let label = opts.label;
+        let via: 'setup_code' | 'secret_file' | 'env';
+
+        if (opts.setupCode) {
+          // Preferred: burn the one-time code; the credential is created at
+          // exchange time and the secret goes straight to disk below.
+          const exchanged = await exchangeSetupCode(apiBase, opts.setupCode);
+          clientId = exchanged.client_id;
+          secret = exchanged.client_secret;
+          label = label ?? exchanged.label;
+          via = 'setup_code';
+        } else {
+          if (!opts.clientId) {
+            throw new Error(
+              'Pass --setup-code SVC-XXXX-XXXX (preferred, from your admin) ' +
+                'or --client-id svc_... with the secret via file/env.',
+            );
+          }
+          clientId = opts.clientId;
+          secret = process.env.MIXSHIFT_CLIENT_SECRET ?? '';
+          via = secret ? 'env' : 'secret_file';
+          if (opts.clientSecretFile) {
+            secret = (await readFile(opts.clientSecretFile, 'utf-8')).trim();
+            via = 'secret_file';
+          }
+          if (!secret) {
+            throw new Error(
+              'No client secret supplied. Pass --client-secret-file <path> or ' +
+                'set the MIXSHIFT_CLIENT_SECRET env var.',
+            );
+          }
         }
-        let secret = process.env.MIXSHIFT_CLIENT_SECRET ?? '';
-        if (opts.clientSecretFile) {
-          secret = (await readFile(opts.clientSecretFile, 'utf-8')).trim();
-        }
-        if (!secret) {
-          throw new Error(
-            'No client secret supplied. Pass --client-secret-file <path> or ' +
-              'set the MIXSHIFT_CLIENT_SECRET env var.',
-          );
-        }
+
         const service = serviceCredsSchema.parse({
-          api_base: opts.apiBase,
-          client_id: opts.clientId,
+          api_base: apiBase,
+          client_id: clientId,
           client_secret: secret,
-          ...(opts.label ? { label: opts.label } : {}),
+          ...(label ? { label } : {}),
         });
         const { path } = await saveService(service, root.dataDir);
 
@@ -508,10 +542,27 @@ function registerServiceSetupSubcommand(auth: Command): void {
           verified = true;
         }
 
+        // Tracked AFTER the service block is on disk, so when this is the
+        // first-ever command in a fresh data dir (the scheduled-task case),
+        // the synthetic plugin.installed event riding alongside attributes
+        // to the svc: label instead of landing as an anonymous install.
+        await track(
+          {
+            event_name: EventName.AuthServiceSetupCompleted,
+            outcome: verified ? 'ok' : 'skipped',
+            payload: {
+              label: service.label ?? service.client_id,
+              verified,
+              via,
+            },
+          },
+          root.dataDir,
+        );
+
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
-              { status: 'ok', path, client_id: service.client_id, verified },
+              { status: 'ok', path, client_id: service.client_id, label: service.label, verified, via },
               null,
               2,
             ) + '\n',

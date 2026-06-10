@@ -137,6 +137,12 @@ export const EventName = {
   ReportRetrieved: 'report.retrieved',
   ReportFailed: 'report.failed',
 
+  // Service-credential setup (`mixshift auth service-setup`). Fired after
+  // the service block is persisted so a fresh data dir's synthetic
+  // plugin.installed event attributes to the svc: label instead of landing
+  // as an anonymous install. payload: {label, verified, via}.
+  AuthServiceSetupCompleted: 'auth.service_setup_completed',
+
   // Amazon SP-API Pricing batch endpoints (lib/amazon/pricing.ts +
   // `mixshift amazon pricing`). Privacy: capture operation + item counts +
   // duration + outcome — never the responses payload (which carries seller

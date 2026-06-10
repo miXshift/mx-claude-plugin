@@ -217,25 +217,37 @@ The `~/.mixshift/auth/credentials` file is per-OS-user. Cowork's chat backend ma
 
 A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at `https://mcp.mixshift.io/admin`. It is scoped read-only, revocable instantly, and rotatable with zero downtime. Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
 
-### Setup
+### Setup (default: one-time setup code, no secret handling)
 
-1. Ask your tenant admin to create a credential at `https://mcp.mixshift.io/admin` (they pick a label like `svc:nightly-foep-watch` and the scopes). They hand you the `client_id` (starts with `svc_`) and the one-time `client_secret`.
-2. Where the automation runs:
+The easiest path is chat-driven: in the Claude workspace where the automation will run, say *"set up a service credential"* and the `mx-auth-service-setup` skill drives everything below.
+
+1. Your tenant admin clicks **Create service credential** at `https://mcp.mixshift.io/admin` (they pick a label like `nightly-foep-watch`). The admin gets a one-time **setup code** (`SVC-XXXX-XXXX`, valid 10 minutes).
+2. Paste the code where the automation runs (chat is fine: the code is single-use and expires; nobody ever sees the secret):
 
    ```bash
-   # Secret from a file (recommended):
-   mixshift auth service-setup \
-     --client-id svc_abc123... \
-     --client-secret-file /path/to/secret.txt \
-     --label svc:nightly-foep-watch
-
-   # Or from the environment (CI secret managers):
-   MIXSHIFT_CLIENT_SECRET=... mixshift auth service-setup --client-id svc_abc123...
+   mixshift auth service-setup --setup-code SVC-XXXX-XXXX
    ```
 
-   The secret is never accepted as a command-line argument (argv leaks into shell history and process listings). Setup verifies by minting a real token before declaring success.
+   The exchange creates the credential server-side at that moment and writes it directly into this machine's credentials file, then verifies by minting a real token.
 
 3. Done. Every plugin command now authenticates as the service credential when no human sign-in is present. Data queries, report pulls, and pricing calls all work identically.
+
+### Setup (raw secret, for CI / secret managers)
+
+When a pipeline holds the secret itself, the admin uses "Create with raw secret" at `/admin` instead and you deliver it via file or env:
+
+```bash
+# Secret from a file:
+mixshift auth service-setup \
+  --client-id svc_abc123... \
+  --client-secret-file /path/to/secret.txt \
+  --label svc:nightly-foep-watch
+
+# Or from the environment (CI secret managers):
+MIXSHIFT_CLIENT_SECRET=... mixshift auth service-setup --client-id svc_abc123...
+```
+
+The raw secret is never accepted as a command-line argument (argv leaks into shell history and process listings). Delete the secret file after setup verifies; the credential lives in the credentials file from then on.
 
 ### How it works
 

@@ -1,17 +1,20 @@
 schema_version: 1
 skill_id: mx-auth-service-setup
 display_name: MixShift Service Credential Setup
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Chat-orchestrated setup of an admin-issued service credential (OAuth
   client_credentials) so MixShift skills run unattended: scheduled Cowork
-  tasks, warehouse/SP-API crons, CI, cloud automations. Claude resolves the
-  workspace + MIXSHIFT_DATA_DIR anchoring (Cowork sandbox homes do not
-  persist; the project folder does), walks the user through creating the
-  credential at mcp.mixshift.io/admin, handles the secret handoff without
-  ever putting it in argv, runs `mixshift auth service-setup` itself,
-  verifies via a real token mint, deletes the secret file, and wires the
-  schedule to the same data dir. Interactive sign-in remains mx-auth-login.
+  tasks, warehouse/SP-API crons, CI, cloud automations. Default flow is the
+  one-time SETUP CODE: the admin mints SVC-XXXX-XXXX at
+  mcp.mixshift.io/admin, the user pastes it in chat (safe by design:
+  single-use, 10-minute TTL), and Claude exchanges it so the credential is
+  created server-side and lands directly in credentials.json - no secret
+  handling anywhere. Claude also resolves the workspace +
+  MIXSHIFT_DATA_DIR anchoring (Cowork sandbox homes do not persist; the
+  project folder does), verifies via a real token mint, and wires the
+  schedule to the same data dir. Raw client_id+secret-file path remains
+  for CI / secret managers. Interactive sign-in remains mx-auth-login.
 
 run_kind: per_account
 cadence: on_demand
@@ -22,7 +25,8 @@ review_required: never
 sql_ids: []
 
 harness_commands:
-  - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path> --label <label> --json
+  - mixshift auth service-setup --setup-code <SVC-XXXX-XXXX> --json   # default: one-time code exchange
+  - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path> --label <label> --json   # raw fallback (CI)
   - mixshift data run-query "SELECT NOW() AS db_time" --json   # post-setup verification
 
 required_context_fields: []
