@@ -1,8 +1,12 @@
 # Authentication
 
-This doc covers signing in to the MixShift warehouse from the plugin. The recommended path is the **token-based browser sign-in** (`mixshift auth login`) — no raw database credentials, no IP whitelist setup. The legacy raw-MySQL path (`mixshift auth setup`) is still available for backward compatibility and is documented at the bottom.
+This doc covers signing in to the MixShift warehouse from the plugin. Three paths:
 
-The auth flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
+1. **Token-based browser sign-in** (`mixshift auth login`) — the recommended path for humans. No raw database credentials, no IP whitelist setup.
+2. **Service credentials** (`mixshift auth service-setup`) — for unattended runs: scheduled Cowork tasks, cloud automations, CI. No browser, no human at run time. See [Service credentials](#service-credentials-unattended-runs).
+3. **Legacy raw-MySQL** (`mixshift auth setup`) — backward compatibility only, documented at the bottom.
+
+The interactive flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
 
 ---
 
@@ -137,8 +141,9 @@ The plugin holds tokens, not passwords. Your actual MixShift password is entered
 
 | Token | Lifetime | What happens at expiry |
 |---|---|---|
-| **Access token** (JWT) | 24h | The plugin auto-refreshes ~60s before expiry. Transparent to you. |
+| **Access token** (JWT, sign-in) | 24h | The plugin auto-refreshes ~60s before expiry. Transparent to you. |
 | **Refresh token** | 30d | When this expires, re-run `mixshift auth login`. Same flow. |
+| **Access token** (service credential) | ~1h | The plugin re-mints automatically from the static credential. Nothing for you to do, ever. |
 
 Refresh tokens are **one-time-use** — replaying a rotated refresh token revokes every active session for your user as a defense against token theft. The plugin's refresh logic is gated by a singleton so concurrent requests can't accidentally trigger this.
 
@@ -203,6 +208,53 @@ The chat-driven flow runs `mixshift auth device-init` via Bash to get the URL. I
 
 **Connection works in the terminal but Claude says "no datahub credentials" in chat.**
 The `~/.mixshift/auth/credentials` file is per-OS-user. Cowork's chat backend may run as a different OS user than your terminal. Run `mixshift auth login` from inside the chat host (via Bash tool) so the credentials land in the right `~/.mixshift/`.
+
+---
+
+## Service credentials (unattended runs)
+
+`mixshift auth login` needs a human in a browser, and the tokens it stores rotate on refresh. Neither works for automation: a scheduled Cowork task wakes in a fresh sandbox with nobody at the keyboard, a cloud job reads its secrets from a read-only env, and CI has no browser anywhere. Service credentials cover exactly that.
+
+A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at `https://mcp.mixshift.io/admin`. It is scoped read-only, revocable instantly, and rotatable with zero downtime. Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
+
+### Setup
+
+1. Ask your tenant admin to create a credential at `https://mcp.mixshift.io/admin` (they pick a label like `svc:nightly-foep-watch` and the scopes). They hand you the `client_id` (starts with `svc_`) and the one-time `client_secret`.
+2. Where the automation runs:
+
+   ```bash
+   # Secret from a file (recommended):
+   mixshift auth service-setup \
+     --client-id svc_abc123... \
+     --client-secret-file /path/to/secret.txt \
+     --label svc:nightly-foep-watch
+
+   # Or from the environment (CI secret managers):
+   MIXSHIFT_CLIENT_SECRET=... mixshift auth service-setup --client-id svc_abc123...
+   ```
+
+   The secret is never accepted as a command-line argument (argv leaks into shell history and process listings). Setup verifies by minting a real token before declaring success.
+
+3. Done. Every plugin command now authenticates as the service credential when no human sign-in is present. Data queries, report pulls, and pricing calls all work identically.
+
+### How it works
+
+- The credential is written to the `service` block of `~/.mixshift/auth/credentials` (mode 0600).
+- At run time the plugin mints a short-lived (~1h) access token from `https://mcp.mixshift.io/oauth/token` and caches it at `~/.mixshift/auth/service-token-cache.json`. Near expiry it just mints again.
+- If you ALSO have a human sign-in (`datahub` block) on the same machine, the human session wins. The service credential is the fallback for environments where no one signed in.
+- Telemetry and MixShift audit logs attribute the automation's activity to the credential's `svc:` label, so the admin can always see which automation did what.
+
+### Scheduled Cowork tasks specifically
+
+Configure once inside the scheduled task's workspace (the same place your `MIXSHIFT_DATA_DIR` points, if you use one). Because the credential is static, a fresh sandbox only needs to read the credentials file; there is no browser step and no token rotation to break mid-run.
+
+### When it stops working
+
+One failure mode: HTTP 401 from the token endpoint, which means the credential was **revoked** or **rotated** past its overlap window. The error message says exactly that. Fix: your tenant admin checks the credential at `https://mcp.mixshift.io/admin`, and you re-run `mixshift auth service-setup` with the current secret. The plugin never deletes the block itself; only an admin action can invalidate it.
+
+### Rotation (admin side)
+
+Admins rotate without downtime: rotate at `/admin` (both old and new secrets work during the overlap), update the automation's secret at your own pace, verify it mints, then confirm the rotation (old secret dies). Revocation is instant and kills new token mints immediately.
 
 ---
 
