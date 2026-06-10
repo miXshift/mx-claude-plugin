@@ -13,7 +13,7 @@ description: >
   summary). Read-only, routes through the bundled harness CLI. Does NOT require
   brand cold-start, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.4.0"
+  version: "0.4.1"
   author: "MixShift"
 trigger_phrases:
   - pull a report
@@ -465,10 +465,11 @@ averaging over them.
   reports usually has nothing to offer here; going straight to Amazon is
   normal.
 - Failures use the same failure kinds and remediation as the table below,
-  with two 0.5.18 caveats: in `--json` the pricing surface reports the kind
-  under `kind` (with `status: "failed"`), not `failure_kind`, and its numeric
-  exit codes do not match the table's exit column. Branch on the typed kind,
-  never the exit number.
+  and the same numeric exit codes: the harness shares one exit-code mapping
+  across the report and pricing commands, so the table's exit column applies
+  on both surfaces. One 0.5.18 caveat remains: in `--json` the pricing
+  surface reports the kind under `kind` (with `status: "failed"`), not
+  `failure_kind`. Branch on the typed kind, never the exit number.
 
 ## Workflow patterns
 
