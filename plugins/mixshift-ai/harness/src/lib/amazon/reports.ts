@@ -62,9 +62,11 @@ import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 // ---------------------------------------------------------------------------
 
 /** A merchant the signed-in tenant can pull reports for. Mirrors the service
- *  MerchantView. The service lists one row per (account, marketplace) and gates
- *  the list to SP-API-active rows only (legacy IsMwsUser = 1), so every row
- *  returned here is already active — there is no separate active flag to check.
+ *  MerchantView. The service lists one row per (account, marketplace), gated
+ *  on a stored SP-API authorization. SP-API tokens are REGION-scoped, so the
+ *  list includes every marketplace row the seller's region token covers — not
+ *  just the rows MixShift pulls on a cron (`cronActive`). A row with
+ *  cronActive=false is still fully pullable on demand.
  *
  *  Disambiguation: one `amazonSellerId` (Amazon's merchant token) is SHARED
  *  across a seller's marketplaces, so a seller live in US / CA / MX / BR shows
@@ -98,6 +100,11 @@ export interface MerchantView {
    *  MixShift platform before reports can be pulled (otherwise reports fail
    *  with reauth_required). This is the signal to warn on before a pull. */
   authorized: boolean;
+  /** True when this row is activated for MixShift's SCHEDULED cron pulls
+   *  (legacy IsMwsUser). Display/filter signal only — NOT an auth gate; rows
+   *  with cronActive=false are still pullable on demand. Optional because
+   *  older service deploys do not send it. */
+  cronActive?: boolean;
 }
 
 /** One candidate row returned in a `merchant_not_found` failure when a shared

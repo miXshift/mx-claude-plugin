@@ -54,6 +54,7 @@ import {
 import { reportOutputPath } from '../lib/paths/resolve.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerAmazonPricingCommands } from './amazon-pricing.js';
+import { registerAmazonSpApiCommands } from './amazon-spapi.js';
 
 interface RootOptions {
   json?: boolean;
@@ -89,6 +90,11 @@ export function registerAmazonCommands(program: Command): void {
   // SP-API Pricing batch surface (FOEP + Competitive Summary). Verbatim
   // Amazon operation names; sync (default) or --async. Sibling of report.
   registerAmazonPricingCommands(amazon);
+
+  // Generic SP-API call surface: `amazon operations` (browse the service's
+  // operation catalog) + `amazon call <operation>` (execute one). Covers the
+  // read-operation long tail beyond reports and pricing.
+  registerAmazonSpApiCommands(amazon);
 }
 
 // ---------------------------------------------------------------------------
@@ -716,19 +722,23 @@ function renderMerchants(merchants: MerchantView[]): string {
   if (merchants.length === 0) {
     return '_(no merchants — your tenant may not have any connected Amazon accounts yet)_';
   }
-  // The service lists one row per (account, marketplace) and pre-filters to
-  // SP-API-active rows, so every row here is already active. We surface
-  // legacySellerId (the exact per-marketplace disambiguator used to pin
-  // attribution) as its own column when present, fold countryCode +
-  // marketplaceName + marketplaceId into one marketplace cell, and show
-  // `authorized` (false == Amazon access lost; warn before pulling).
+  // The service lists one row per (account, marketplace) whose seller has a
+  // stored SP-API authorization. Tokens are region-scoped, so rows that are
+  // NOT on a MixShift cron (cronActive=false) still appear and are pullable
+  // on demand. We surface legacySellerId (the exact per-marketplace
+  // disambiguator used to pin attribution) as its own column when present,
+  // fold countryCode + marketplaceName + marketplaceId into one marketplace
+  // cell, show `authorized` (false == Amazon access lost; warn before
+  // pulling), and show `cron` when the service sends cronActive.
   const hasLegacy = merchants.some(
     (m) =>
       m.legacySellerId !== undefined && m.legacySellerId !== null && m.legacySellerId !== '',
   );
+  const hasCron = merchants.some((m) => typeof m.cronActive === 'boolean');
   const cols = ['amazonSellerId'];
   if (hasLegacy) cols.push('legacySellerId');
   cols.push('name', 'type', 'region', 'marketplace', 'authorized');
+  if (hasCron) cols.push('cron');
 
   const header = '| ' + cols.join(' | ') + ' |';
   const sep = '| ' + cols.map(() => '---').join(' | ') + ' |';
@@ -737,6 +747,7 @@ function renderMerchants(merchants: MerchantView[]): string {
     if (hasLegacy) cells.push(m.legacySellerId != null ? String(m.legacySellerId) : '');
     cells.push(mdCell(m.name), m.merchantType, m.merchantRegion, renderMarketplaceCell(m));
     cells.push(m.authorized ? 'yes' : 'no');
+    if (hasCron) cells.push(m.cronActive === true ? 'yes' : m.cronActive === false ? 'no' : '');
     return '| ' + cells.join(' | ') + ' |';
   });
   return [header, sep, ...rows].join('\n');

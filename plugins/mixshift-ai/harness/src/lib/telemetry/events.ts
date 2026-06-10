@@ -152,6 +152,12 @@ export const EventName = {
   AmazonPricingRetrieved: 'amazon.pricing.retrieved',
   AmazonPricingFailed: 'amazon.pricing.failed',
 
+  // Generic SP-API call surface (lib/amazon/spapi-call.ts + `mixshift amazon
+  // operations|call`). Privacy: capture operation id + duration + outcome
+  // only — never the payload (it carries seller-level business data).
+  AmazonSpApiOperationsListed: 'amazon.spapi.operations_listed',
+  AmazonSpApiCalled: 'amazon.spapi.called',
+
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 } as const;
