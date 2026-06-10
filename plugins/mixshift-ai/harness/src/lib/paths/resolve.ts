@@ -70,6 +70,24 @@ export function narrativePath(brandSlug: string, dataDirOverride?: string): stri
 }
 
 /**
+ * Tier-2 Brand Brain document (auto-discovered facts + derived patterns;
+ * see lib/brain/schema.ts). Distinct from context.yaml (Tier 3,
+ * AM-confirmed) which always wins on conflict.
+ */
+export function brainPath(brandSlug: string, dataDirOverride?: string): string {
+  return join(brandDir(brandSlug, dataDirOverride), 'brand-brain.yaml');
+}
+
+/**
+ * Background brain-fetch progress file. Written by `mixshift brand brain
+ * fetch`; polled by the chat surface for up to ~90s after a key-add so it
+ * can render the "discovery done" line without blocking the user.
+ */
+export function brainStatusPath(brandSlug: string, dataDirOverride?: string): string {
+  return join(brandDir(brandSlug, dataDirOverride), '.brain-status.json');
+}
+
+/**
  * Per-brand OCL (Objective Level Configuration) file. Stores user-tuned
  * defaults for each skill keyed by skill_id. Sovereign post-edit — see
  * lib/calibration/brand-config.ts for the read/write contract.
