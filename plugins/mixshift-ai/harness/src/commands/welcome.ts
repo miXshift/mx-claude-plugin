@@ -34,12 +34,13 @@ export function registerWelcomeCommand(program: Command): void {
       const { credentials } = await loadCredentials(root.dataDir);
 
       const cr = defaults.auth.credential_retrieval;
-      // Auth-ready when EITHER credential block is present: v2 `datahub`
-      // (token flow via `mixshift auth login`) or v1 legacy `mysql`. Matches
-      // the coexistence model in auth/schema.ts and every other consumer
-      // (query-runner, getValidAccessToken). Checking `mysql` alone made
-      // token-only installs misreport "not signed in".
-      const authReady = !!credentials?.datahub || !!credentials?.mysql;
+      // Auth-ready when ANY credential block is present: v2 `datahub`
+      // (token flow via `mixshift auth login`), `service` (admin-issued
+      // machine credential for unattended runs), or v1 legacy `mysql`.
+      // Matches the coexistence model in auth/schema.ts and every other
+      // consumer (query-runner, getValidAccessToken).
+      const authReady =
+        !!credentials?.datahub || !!credentials?.service || !!credentials?.mysql;
       const profileReady = profileSource === 'file' && !!profile.user?.email;
 
       if (root.json) {

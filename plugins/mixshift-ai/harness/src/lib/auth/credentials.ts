@@ -15,8 +15,8 @@
  * with zero user action.
  */
 
-import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, readFile, rename, writeFile, chmod, unlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { credentialsPath } from '../paths/resolve.js';
 import { formatZodError } from '../profile/format-error.js';
 import {
@@ -24,6 +24,7 @@ import {
   newCredentials,
   type Credentials,
   type DatahubCreds,
+  type ServiceCreds,
 } from './schema.js';
 
 export interface LoadResult {
@@ -150,6 +151,25 @@ export async function clearDatahub(
   await saveCredentials(next, dataDirOverride);
 }
 
+/**
+ * Persist a `service` block (admin-issued machine credential). Merges into
+ * any existing credentials file, preserving the other blocks. Also drops any
+ * stale cached service token so the next call mints fresh against the new
+ * credential.
+ */
+export async function saveService(
+  service: ServiceCreds,
+  dataDirOverride?: string,
+): Promise<{ path: string }> {
+  const existing = await loadOrInit(dataDirOverride);
+  const saved = await saveCredentials(
+    { ...existing, schema_version: 2, service },
+    dataDirOverride,
+  );
+  await unlink(serviceTokenCachePath(dataDirOverride)).catch(() => {});
+  return saved;
+}
+
 // ---------------------------------------------------------------------------
 // getValidAccessToken — returns a non-expired access_token, refreshing if
 // needed. The refresh is gated by an in-flight singleton so concurrent
@@ -196,9 +216,19 @@ export async function getValidAccessToken(
   forceRefresh: boolean = false,
 ): Promise<string> {
   const { credentials } = await loadCredentials(dataDirOverride);
+
+  // Machine path: no user session on disk, but an admin-issued service
+  // credential is configured. Mint (or reuse a cached) short-lived access
+  // token via the OAuth client_credentials grant. The datahub block wins
+  // when both exist: a human session is the more specific intent.
   if (!credentials?.datahub) {
+    if (credentials?.service) {
+      return getServiceAccessToken(credentials.service, dataDirOverride, forceRefresh);
+    }
     throw new Error(
-      'No datahub credentials found. Run `mixshift auth login` to sign in.',
+      'No credentials found. Run `mixshift auth login` to sign in, or ' +
+        '`mixshift auth service-setup` to configure a service credential ' +
+        'for unattended runs.',
     );
   }
 
@@ -288,6 +318,154 @@ async function doRefresh(
   };
   await saveDatahub(updated, dataDirOverride);
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Service (machine) tokens — OAuth client_credentials grant.
+//
+// The service credential is STATIC (nothing rotates on use), so the only
+// state to manage is a cached access token: minted tokens live ~1h and CLI
+// invocations are short-lived processes, so the cache lives on disk next to
+// credentials.json (mode 0600). A fresh sandbox with only the credentials
+// file still works: it just mints on first use.
+// ---------------------------------------------------------------------------
+
+const SERVICE_TOKEN_SAFETY_MARGIN_MS = 60_000;
+const SERVICE_MINT_TIMEOUT_MS = 30_000;
+
+/** Exported for tests (mirror of _refreshState for the mint path). */
+export const _serviceMintState: { inFlight: Promise<string> | null } = {
+  inFlight: null,
+};
+
+export function serviceTokenCachePath(dataDirOverride?: string): string {
+  return join(dirname(credentialsPath(dataDirOverride)), 'service-token-cache.json');
+}
+
+interface ServiceTokenCache {
+  access_token: string;
+  expires_at: string; // ISO-8601
+  client_id: string;
+}
+
+async function getServiceAccessToken(
+  service: ServiceCreds,
+  dataDirOverride: string | undefined,
+  forceRefresh: boolean,
+): Promise<string> {
+  if (!forceRefresh) {
+    const cached = await readServiceTokenCache(dataDirOverride);
+    // client_id check: a re-pointed credential must not reuse the old token.
+    if (cached && cached.client_id === service.client_id) {
+      const fresh =
+        Date.parse(cached.expires_at) - Date.now() > SERVICE_TOKEN_SAFETY_MARGIN_MS;
+      if (fresh) return cached.access_token;
+    }
+  }
+
+  if (_serviceMintState.inFlight) {
+    return _serviceMintState.inFlight;
+  }
+  _serviceMintState.inFlight = doMintServiceToken(service, dataDirOverride).finally(() => {
+    _serviceMintState.inFlight = null;
+  });
+  return _serviceMintState.inFlight;
+}
+
+async function doMintServiceToken(
+  service: ServiceCreds,
+  dataDirOverride: string | undefined,
+): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${service.api_base}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: service.client_id,
+        client_secret: service.client_secret,
+      }),
+      signal: AbortSignal.timeout(SERVICE_MINT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not reach ${service.api_base}/oauth/token: ${message}. ` +
+        `Check your network or try again in a minute.`,
+    );
+  }
+
+  if (res.status === 401) {
+    // Static credential rejected: revoked, or rotated past the overlap
+    // window. NOT cleared locally — only a tenant admin can fix this.
+    throw new Error(
+      'Service credential rejected (revoked, or rotated without updating ' +
+        'this machine). Ask your tenant admin to check the credential at ' +
+        `${service.api_base}/admin, then re-run \`mixshift auth service-setup\` ` +
+        'with the current secret.',
+    );
+  }
+  if (res.status === 429) {
+    throw new Error(
+      'Token endpoint rate limit hit. Wait a minute and retry.',
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '<unreadable>');
+    throw new Error(
+      `/oauth/token returned HTTP ${res.status}: ${body.slice(0, 500)}`,
+    );
+  }
+
+  const json = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) {
+    throw new Error('/oauth/token returned no access_token.');
+  }
+  const expiresInSec = typeof json.expires_in === 'number' ? json.expires_in : 3600;
+  await writeServiceTokenCache(
+    {
+      access_token: json.access_token,
+      expires_at: new Date(Date.now() + expiresInSec * 1000).toISOString(),
+      client_id: service.client_id,
+    },
+    dataDirOverride,
+  );
+  return json.access_token;
+}
+
+async function readServiceTokenCache(
+  dataDirOverride?: string,
+): Promise<ServiceTokenCache | null> {
+  try {
+    const raw = await readFile(serviceTokenCachePath(dataDirOverride), 'utf-8');
+    const parsed = JSON.parse(raw) as ServiceTokenCache;
+    if (
+      typeof parsed.access_token === 'string' &&
+      typeof parsed.expires_at === 'string' &&
+      typeof parsed.client_id === 'string'
+    ) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null; // missing or corrupt cache = just mint fresh
+  }
+}
+
+async function writeServiceTokenCache(
+  cache: ServiceTokenCache,
+  dataDirOverride?: string,
+): Promise<void> {
+  const path = serviceTokenCachePath(dataDirOverride);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile(tmpPath, JSON.stringify(cache, null, 2) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  await chmod(tmpPath, 0o600);
+  await rename(tmpPath, path);
 }
 
 function isFileNotFoundError(err: unknown): boolean {

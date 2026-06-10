@@ -828,16 +828,21 @@ async function resolveBaseAndToken(
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    if (!credentials?.datahub) {
+    // datahub (user session) wins; service (machine credential) is the
+    // unattended fallback. getValidAccessToken applies the same precedence
+    // for the Bearer itself.
+    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base) {
       return {
         ok: false,
         kind: 'not_authenticated',
         friendly:
           "You're not signed in to MixShift. Run `mixshift auth login` (or " +
-          'say "sign in to MixShift" in chat) before pulling reports.',
+          'say "sign in to MixShift" in chat) before pulling reports. For ' +
+          'unattended runs, configure `mixshift auth service-setup`.',
       };
     }
-    apiBase = credentials.datahub.api_base;
+    apiBase = base;
   }
   const tokenProvider =
     opts.tokenProvider ??

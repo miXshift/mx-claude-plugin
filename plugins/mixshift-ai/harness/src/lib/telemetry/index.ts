@@ -195,7 +195,9 @@ async function readDatahubPersonLabelBestEffort(
 ): Promise<string | undefined> {
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
-    return credentials?.datahub?.person_label;
+    // Service installs attribute events to the credential's svc: label so
+    // automation traffic is identifiable in telemetry.
+    return credentials?.datahub?.person_label ?? credentials?.service?.label;
   } catch {
     return undefined;
   }

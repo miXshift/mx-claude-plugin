@@ -13,6 +13,8 @@ import {
 } from '../lib/auth/login-flow.js';
 import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
+import { serviceCredsSchema } from '../lib/auth/schema.js';
+import { saveService, getValidAccessToken } from '../lib/auth/credentials.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
 import {
@@ -59,6 +61,7 @@ export function registerAuthCommands(program: Command): void {
   registerLoginSubcommand(auth);
   registerDeviceInitSubcommand(auth);
   registerDevicePollSubcommand(auth);
+  registerServiceSetupSubcommand(auth);
 
   auth
     .command('setup')
@@ -437,6 +440,104 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
 // machine-friendly primitives designed for skill orchestration, not
 // direct human use. Humans should keep using `mixshift auth login`.
 // ---------------------------------------------------------------------------
+
+interface ServiceSetupOptions {
+  apiBase?: string;
+  clientId?: string;
+  clientSecretFile?: string;
+  label?: string;
+  skipVerify?: boolean;
+}
+
+/**
+ * `mixshift auth service-setup` — configure an admin-issued machine
+ * credential (OAuth client_credentials) for unattended runs: Cowork
+ * scheduled tasks, cloud automations, CI. A tenant admin creates the
+ * credential at {api_base}/admin and hands over client_id + client_secret.
+ *
+ * The secret is NEVER taken as a CLI argument (argv leaks into shell
+ * history and process listings). Supply it via --client-secret-file or the
+ * MIXSHIFT_CLIENT_SECRET env var.
+ */
+function registerServiceSetupSubcommand(auth: Command): void {
+  auth
+    .command('service-setup')
+    .description(
+      'Configure a service credential for unattended runs (scheduled ' +
+        'tasks, cloud automations, CI). Get client_id + client_secret from ' +
+        'your tenant admin. Secret via --client-secret-file or the ' +
+        'MIXSHIFT_CLIENT_SECRET env var, never as an argument.',
+    )
+    .option('--api-base <url>', 'mx-legacy-auth service URL.', 'https://mcp.mixshift.io')
+    .option('--client-id <id>', 'Service client id (svc_...).')
+    .option(
+      '--client-secret-file <path>',
+      'File containing the client secret (whitespace-trimmed).',
+    )
+    .option('--label <label>', 'Informational label, e.g. svc:my-cron (for telemetry).')
+    .option('--skip-verify', 'Save without minting a test token.', false)
+    .action(async (opts: ServiceSetupOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      try {
+        if (!opts.clientId) {
+          throw new Error('--client-id is required (svc_... from your tenant admin).');
+        }
+        let secret = process.env.MIXSHIFT_CLIENT_SECRET ?? '';
+        if (opts.clientSecretFile) {
+          secret = (await readFile(opts.clientSecretFile, 'utf-8')).trim();
+        }
+        if (!secret) {
+          throw new Error(
+            'No client secret supplied. Pass --client-secret-file <path> or ' +
+              'set the MIXSHIFT_CLIENT_SECRET env var.',
+          );
+        }
+        const service = serviceCredsSchema.parse({
+          api_base: opts.apiBase,
+          client_id: opts.clientId,
+          client_secret: secret,
+          ...(opts.label ? { label: opts.label } : {}),
+        });
+        const { path } = await saveService(service, root.dataDir);
+
+        let verified = false;
+        if (!opts.skipVerify) {
+          // Proves the credential mints before we call it configured. Throws
+          // with an actionable message on 401 (revoked/rotated) or network.
+          await getValidAccessToken(root.dataDir, true);
+          verified = true;
+        }
+
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              { status: 'ok', path, client_id: service.client_id, verified },
+              null,
+              2,
+            ) + '\n',
+          );
+        } else {
+          process.stderr.write(
+            `\n✓ Service credential saved to ${path}\n` +
+              (verified
+                ? '✓ Verified: minted a test access token via /oauth/token\n'
+                : '• Skipped verification (--skip-verify)\n') +
+              `\nUnattended runs now authenticate as ${service.label ?? service.client_id}.\n`,
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: 'error', message }, null, 2) + '\n',
+          );
+        } else {
+          process.stderr.write(`error: ${message}\n`);
+        }
+        process.exitCode = 1;
+      }
+    });
+}
 
 interface DeviceInitCliOptions {
   personLabel?: string;

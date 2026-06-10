@@ -1,18 +1,21 @@
 schema_version: 1
 skill_id: mx-auth-login
 display_name: MixShift Auth Login
-version: "0.1.0"
+version: "0.2.0"
 description: >
-  Sign the user in to the MixShift warehouse via the mx-legacy-auth
-  service (token-based). On shell-capable surfaces (Cowork, Claude Code,
-  terminal) drives the harness `mixshift auth login` command, which
-  opens a browser (PKCE) or falls back to device-code on browser-open
-  failure. On no-shell surfaces (claude.ai web, etc.) uses the
-  unauthenticated `mixshift_auth_start` / `mixshift_auth_complete`
-  MCP tools directly. Collects a self-attested work email
-  (person_label) for per-employee session attribution. Replaces the
-  legacy chat-driven raw-MySQL flow; the CLI `mixshift auth setup`
-  command remains for users who need the legacy path.
+  Authenticate against the MixShift warehouse via the mx-legacy-auth
+  service (token-based). Routes by scenario: interactive sign-in
+  (device-code orchestration on shell-capable surfaces; PKCE browser
+  flow from a terminal) when a human is present, admin-issued service
+  credentials (OAuth client_credentials via `mixshift auth
+  service-setup`) for unattended runs like scheduled Cowork tasks and
+  CI, and a paste-token direct mode (/login?mode=direct) on claude.ai
+  web where no shell exists. Collects a self-attested work email
+  (person_label) for per-employee session attribution on interactive
+  paths; service credentials attribute via their admin-chosen svc:
+  label. Replaces the legacy chat-driven raw-MySQL flow; the CLI
+  `mixshift auth setup` command remains for users who need the legacy
+  path.
 
 # Account-agnostic but lives in the per-account skill family for
 # discovery (parity with auth-setup).
@@ -26,13 +29,18 @@ sql_ids: []
 
 harness_commands:
   - mixshift auth login --person-label <email>
-  - mixshift data run-query "SELECT 1"   # post-login verification
+  - mixshift auth device-init --person-label <email>
+  - mixshift auth device-poll <device_code> --person-label <email>
+  - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path>
+  - mixshift data run-query "SELECT 1"   # post-setup verification
 
 required_context_fields: []
 optional_context_fields: []
 artifacts:
   - name: credentials
-    type: json_artifact   # ~/.mixshift/auth/credentials, datahub block
+    type: json_artifact   # ~/.mixshift/auth/credentials, datahub and/or service block
+  - name: service_token_cache
+    type: json_artifact   # ~/.mixshift/auth/service-token-cache.json (service installs only)
 verdict_range: [OBSERVATIONAL]
 pricing_tier: free
 trigger_phrases:
@@ -48,14 +56,29 @@ trigger_phrases:
   - set up mixshift credentials
   - configure mixshift
   - authenticate mixshift
+  - set up a service credential
+  - service credential
+  - auth for my scheduled task
+  - unattended auth
+  - headless auth
+  - auth for automation
 notes: >
   Token-based replacement for the legacy auth-setup chat flow.
-  Credentials envelope is v2 (`schema_version: 2`) with a `datahub`
-  block holding {access_token, refresh_token, expires_at,
-  refresh_expires_at, user_id, email, person_label, device_label,
-  client_id, api_base}. The legacy `mysql` block coexists during the
-  rollout window; the query-runner prefers `datahub` when both
-  are present.
+  Credentials envelope is v2 (`schema_version: 2`). Interactive
+  sign-ins write a `datahub` block holding {access_token,
+  refresh_token, expires_at, refresh_expires_at, user_id, email,
+  person_label, device_label, client_id, api_base}. Service installs
+  write a `service` block holding {api_base, client_id (svc_...),
+  client_secret, label}; the harness mints ~1h access tokens on
+  demand via POST /oauth/token (grant_type=client_credentials) and
+  caches them at service-token-cache.json. Precedence when multiple
+  blocks coexist: datahub, then service, then legacy mysql.
+
+  The claude.ai path is /login?mode=direct (user pastes the access
+  token into the connector config). The old mixshift_auth_start /
+  mixshift_auth_complete MCP tools were REMOVED from the service when
+  auth moved to the HTTP transport layer; any instructions
+  referencing them are stale.
 
   client_id resolves via env var (`MIXSHIFT_PLUGIN_CLIENT_ID`),
   defaulting to `mx-claude-plugin`. Plugin developers set the env to

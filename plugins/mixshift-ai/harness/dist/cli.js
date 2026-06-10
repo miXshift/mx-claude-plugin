@@ -60904,7 +60904,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join16(tree) {
+      function join17(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -60930,7 +60930,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join16(parse4(query2));
+        tree = join17(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -63380,7 +63380,7 @@ function newCredentials() {
 function isDatahubCreds(c) {
   return "access_token" in c;
 }
-var mysqlCredsSchema, datahubCredsSchema, credentialsSchema;
+var mysqlCredsSchema, datahubCredsSchema, serviceCredsSchema, credentialsSchema;
 var init_schema2 = __esm({
   "src/lib/auth/schema.ts"() {
     "use strict";
@@ -63404,18 +63404,27 @@ var init_schema2 = __esm({
       device_label: external_exports.string().min(1),
       client_id: external_exports.string().regex(/^[a-z0-9-]{1,64}$/).default("mx-claude-plugin")
     });
+    serviceCredsSchema = external_exports.object({
+      api_base: external_exports.url(),
+      client_id: external_exports.string().regex(/^svc_[A-Za-z0-9_-]{8,}$/),
+      client_secret: external_exports.string().min(20),
+      /** Informational copy of the admin-side label (svc:...); used as the
+       *  person_label stand-in for telemetry attribution. */
+      label: external_exports.string().min(1).optional()
+    });
     credentialsSchema = external_exports.object({
       schema_version: external_exports.union([external_exports.literal(1), external_exports.literal(2)]),
       created_at: external_exports.iso.datetime(),
       mysql: mysqlCredsSchema.optional(),
-      datahub: datahubCredsSchema.optional()
+      datahub: datahubCredsSchema.optional(),
+      service: serviceCredsSchema.optional()
     });
   }
 });
 
 // src/lib/auth/credentials.ts
-import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod } from "node:fs/promises";
-import { dirname as dirname3 } from "node:path";
+import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod, unlink } from "node:fs/promises";
+import { dirname as dirname3, join as join5 } from "node:path";
 async function loadCredentials(dataDirOverride) {
   const path2 = credentialsPath(dataDirOverride);
   let raw;
@@ -63480,11 +63489,24 @@ async function clearDatahub(dataDirOverride) {
   delete next.datahub;
   await saveCredentials(next, dataDirOverride);
 }
+async function saveService(service, dataDirOverride) {
+  const existing = await loadOrInit(dataDirOverride);
+  const saved = await saveCredentials(
+    { ...existing, schema_version: 2, service },
+    dataDirOverride
+  );
+  await unlink(serviceTokenCachePath(dataDirOverride)).catch(() => {
+  });
+  return saved;
+}
 async function getValidAccessToken(dataDirOverride, forceRefresh = false) {
   const { credentials } = await loadCredentials(dataDirOverride);
   if (!credentials?.datahub) {
+    if (credentials?.service) {
+      return getServiceAccessToken(credentials.service, dataDirOverride, forceRefresh);
+    }
     throw new Error(
-      "No datahub credentials found. Run `mixshift auth login` to sign in."
+      "No credentials found. Run `mixshift auth login` to sign in, or `mixshift auth service-setup` to configure a service credential for unattended runs."
     );
   }
   if (!forceRefresh) {
@@ -63546,10 +63568,102 @@ async function doRefresh(current, dataDirOverride) {
   await saveDatahub(updated, dataDirOverride);
   return updated;
 }
+function serviceTokenCachePath(dataDirOverride) {
+  return join5(dirname3(credentialsPath(dataDirOverride)), "service-token-cache.json");
+}
+async function getServiceAccessToken(service, dataDirOverride, forceRefresh) {
+  if (!forceRefresh) {
+    const cached4 = await readServiceTokenCache(dataDirOverride);
+    if (cached4 && cached4.client_id === service.client_id) {
+      const fresh = Date.parse(cached4.expires_at) - Date.now() > SERVICE_TOKEN_SAFETY_MARGIN_MS;
+      if (fresh) return cached4.access_token;
+    }
+  }
+  if (_serviceMintState.inFlight) {
+    return _serviceMintState.inFlight;
+  }
+  _serviceMintState.inFlight = doMintServiceToken(service, dataDirOverride).finally(() => {
+    _serviceMintState.inFlight = null;
+  });
+  return _serviceMintState.inFlight;
+}
+async function doMintServiceToken(service, dataDirOverride) {
+  let res;
+  try {
+    res = await fetch(`${service.api_base}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "client_credentials",
+        client_id: service.client_id,
+        client_secret: service.client_secret
+      }),
+      signal: AbortSignal.timeout(SERVICE_MINT_TIMEOUT_MS)
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not reach ${service.api_base}/oauth/token: ${message}. Check your network or try again in a minute.`
+    );
+  }
+  if (res.status === 401) {
+    throw new Error(
+      `Service credential rejected (revoked, or rotated without updating this machine). Ask your tenant admin to check the credential at ${service.api_base}/admin, then re-run \`mixshift auth service-setup\` with the current secret.`
+    );
+  }
+  if (res.status === 429) {
+    throw new Error(
+      "Token endpoint rate limit hit. Wait a minute and retry."
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(
+      `/oauth/token returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  const json2 = await res.json();
+  if (!json2.access_token) {
+    throw new Error("/oauth/token returned no access_token.");
+  }
+  const expiresInSec = typeof json2.expires_in === "number" ? json2.expires_in : 3600;
+  await writeServiceTokenCache(
+    {
+      access_token: json2.access_token,
+      expires_at: new Date(Date.now() + expiresInSec * 1e3).toISOString(),
+      client_id: service.client_id
+    },
+    dataDirOverride
+  );
+  return json2.access_token;
+}
+async function readServiceTokenCache(dataDirOverride) {
+  try {
+    const raw = await readFile4(serviceTokenCachePath(dataDirOverride), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.access_token === "string" && typeof parsed.expires_at === "string" && typeof parsed.client_id === "string") {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+async function writeServiceTokenCache(cache, dataDirOverride) {
+  const path2 = serviceTokenCachePath(dataDirOverride);
+  await mkdir2(dirname3(path2), { recursive: true, mode: 448 });
+  const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile2(tmpPath, JSON.stringify(cache, null, 2) + "\n", {
+    encoding: "utf-8",
+    mode: 384
+  });
+  await chmod(tmpPath, 384);
+  await rename2(tmpPath, path2);
+}
 function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
-var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState;
+var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState, SERVICE_TOKEN_SAFETY_MARGIN_MS, SERVICE_MINT_TIMEOUT_MS, _serviceMintState;
 var init_credentials = __esm({
   "src/lib/auth/credentials.ts"() {
     "use strict";
@@ -63559,6 +63673,11 @@ var init_credentials = __esm({
     REFRESH_SAFETY_MARGIN_MS = 6e4;
     REFRESH_REQUEST_TIMEOUT_MS = 3e4;
     _refreshState = {
+      inFlight: null
+    };
+    SERVICE_TOKEN_SAFETY_MARGIN_MS = 6e4;
+    SERVICE_MINT_TIMEOUT_MS = 3e4;
+    _serviceMintState = {
       inFlight: null
     };
   }
@@ -63837,7 +63956,7 @@ var init_schema3 = __esm({
 
 // src/lib/defaults/load.ts
 import { readFile as readFile6 } from "node:fs/promises";
-import { dirname as dirname6, join as join5 } from "node:path";
+import { dirname as dirname6, join as join6 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 async function loadPluginDefaults(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths2();
@@ -63874,7 +63993,7 @@ function candidatePaths2() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 6; i++) {
-    candidates.push(join5(dir, ".mixshift-defaults.yaml"));
+    candidates.push(join6(dir, ".mixshift-defaults.yaml"));
     const parent = dirname6(dir);
     if (parent === dir) break;
     dir = parent;
@@ -64156,9 +64275,9 @@ __export(flush_log_exports, {
   tailFlushLog: () => tailFlushLog
 });
 import { appendFile as appendFile2, mkdir as mkdir17, readFile as readFile21 } from "node:fs/promises";
-import { join as join14, dirname as dirname21 } from "node:path";
+import { join as join15, dirname as dirname21 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join14(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join15(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
@@ -65797,7 +65916,7 @@ function readSurfaceFlag() {
 async function readDatahubPersonLabelBestEffort(dataDirOverride) {
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
-    return credentials?.datahub?.person_label;
+    return credentials?.datahub?.person_label ?? credentials?.service?.label;
   } catch {
     return void 0;
   }
@@ -65813,7 +65932,7 @@ import { promisify } from "node:util";
 var import_yaml8 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir6, readFile as readFile8, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink } from "node:fs/promises";
+import { mkdir as mkdir6, readFile as readFile8, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink as unlink2 } from "node:fs/promises";
 import { dirname as dirname8 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
@@ -65911,7 +66030,7 @@ async function resetSkillConfig(brandSlug, skillId, dataDirOverride) {
   delete next[skillId];
   if (Object.keys(next).length === 0) {
     try {
-      await unlink(path2);
+      await unlink2(path2);
     } catch {
     }
     return { existed: true, path: path2 };
@@ -66018,7 +66137,7 @@ init_resolve();
 // src/lib/render/design-system.ts
 import { readFile as readFile9 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname9, join as join6, parse as parse3 } from "node:path";
+import { dirname as dirname9, join as join7, parse as parse3 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function designSystemDir() {
   if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
@@ -66027,8 +66146,8 @@ function designSystemDir() {
   let dir = dirname9(fileURLToPath3(import.meta.url));
   const root = parse3(dir).root;
   for (let i = 0; i < 8; i++) {
-    const candidate = join6(dir, "assets", "design-system");
-    if (existsSync2(join6(candidate, "colors_and_type.css"))) {
+    const candidate = join7(dir, "assets", "design-system");
+    if (existsSync2(join7(candidate, "colors_and_type.css"))) {
       return candidate;
     }
     if (dir === root) break;
@@ -66040,7 +66159,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile9(join6(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile9(join7(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -66048,7 +66167,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile9(join6(designSystemDir(), filename), "utf-8");
+  const raw = await readFile9(join7(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -68140,20 +68259,20 @@ import { promisify as promisify2 } from "node:util";
 // src/lib/render/brand-context-composer.ts
 init_resolve();
 import { mkdir as mkdir9, writeFile as writeFile9 } from "node:fs/promises";
-import { join as join8 } from "node:path";
+import { join as join9 } from "node:path";
 
 // src/lib/render/brand-context-report.ts
 var import_yaml10 = __toESM(require_dist(), 1);
 init_resolve();
 import { readFile as readFile11, readdir as readdir2, stat as stat3 } from "node:fs/promises";
-import { dirname as dirname12, join as join7 } from "node:path";
+import { dirname as dirname12, join as join8 } from "node:path";
 async function readBrandContextSources(brandSlug, runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const narPath = narrativePath(brandSlug, dataDirOverride);
   const dir = brandDir(brandSlug, dataDirOverride);
-  const briPath = join7(dir, "brand-intelligence.yaml");
-  const corporaPath = join7(dir, "corpora");
-  const enrichmentPath2 = join7(
+  const briPath = join8(dir, "brand-intelligence.yaml");
+  const corporaPath = join8(dir, "corpora");
+  const enrichmentPath2 = join8(
     dir,
     "runs",
     "mx-account-cold-start",
@@ -68363,7 +68482,7 @@ async function loadAuditLabels() {
   let dir = dirname12(fileURLToPath6(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
-    const candidate = join7(
+    const candidate = join8(
       dir,
       "shared",
       "clients",
@@ -68410,9 +68529,9 @@ async function summarizeCorpora(dirPath) {
     for (const f of entries) {
       if (!f.endsWith(".csv")) continue;
       try {
-        const s = await stat3(join7(dirPath, f));
+        const s = await stat3(join8(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile11(join7(dirPath, f), "utf-8");
+        const raw = await readFile11(join8(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -68914,9 +69033,9 @@ async function composeBrandContextReport(args) {
   const review = composeReviewJson(state);
   const dir = brandDir(args.brandSlug, args.dataDirOverride);
   await mkdir9(dir, { recursive: true });
-  const htmlPath = join8(dir, "brand-context.html");
-  const headlinePath = join8(dir, "brand-context.headline.json");
-  const reviewPath = join8(dir, "brand-context.review.json");
+  const htmlPath = join9(dir, "brand-context.html");
+  const headlinePath = join9(dir, "brand-context.headline.json");
+  const reviewPath = join9(dir, "brand-context.review.json");
   await Promise.all([
     writeFile9(htmlPath, html, "utf-8"),
     writeFile9(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
@@ -69219,7 +69338,7 @@ function emitError3(json2, message) {
 
 // src/commands/brand-enrich.ts
 import { readFile as readFile13 } from "node:fs/promises";
-import { join as join9 } from "node:path";
+import { join as join10 } from "node:path";
 
 // src/lib/enrichment/storage.ts
 init_resolve();
@@ -69760,7 +69879,7 @@ function registerBrandEnrichCommand(brandCmd) {
           return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
         }
         const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const prefetchPath = join9(
+        const prefetchPath = join10(
           brandDir(brand.slug, root.dataDir),
           "runs",
           "mx-account-cold-start",
@@ -73078,6 +73197,8 @@ function isPkceBrowserOpenError(err) {
 
 // src/commands/auth.ts
 init_format_error();
+init_schema2();
+init_credentials();
 
 // src/lib/net/classify.ts
 function describeFetchFailure(err, host) {
@@ -73119,6 +73240,7 @@ function registerAuthCommands(program3) {
   registerLoginSubcommand(auth);
   registerDeviceInitSubcommand(auth);
   registerDevicePollSubcommand(auth);
+  registerServiceSetupSubcommand(auth);
   auth.command("setup").description("Walk through interactive auth onboarding (one-time per user)").option("--non-interactive", "fail if input is required (for CI)", false).option(
     "--from-file <path>",
     "read inputs from a YAML / JSON file instead of prompting"
@@ -73389,6 +73511,70 @@ function renderLoginResult(result, json2) {
 Try: \`mixshift data run-query "SELECT 1"\` to verify warehouse access.
 `
   );
+}
+function registerServiceSetupSubcommand(auth) {
+  auth.command("service-setup").description(
+    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Get client_id + client_secret from your tenant admin. Secret via --client-secret-file or the MIXSHIFT_CLIENT_SECRET env var, never as an argument."
+  ).option("--api-base <url>", "mx-legacy-auth service URL.", "https://mcp.mixshift.io").option("--client-id <id>", "Service client id (svc_...).").option(
+    "--client-secret-file <path>",
+    "File containing the client secret (whitespace-trimmed)."
+  ).option("--label <label>", "Informational label, e.g. svc:my-cron (for telemetry).").option("--skip-verify", "Save without minting a test token.", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      if (!opts.clientId) {
+        throw new Error("--client-id is required (svc_... from your tenant admin).");
+      }
+      let secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
+      if (opts.clientSecretFile) {
+        secret = (await readFile15(opts.clientSecretFile, "utf-8")).trim();
+      }
+      if (!secret) {
+        throw new Error(
+          "No client secret supplied. Pass --client-secret-file <path> or set the MIXSHIFT_CLIENT_SECRET env var."
+        );
+      }
+      const service = serviceCredsSchema.parse({
+        api_base: opts.apiBase,
+        client_id: opts.clientId,
+        client_secret: secret,
+        ...opts.label ? { label: opts.label } : {}
+      });
+      const { path: path2 } = await saveService(service, root.dataDir);
+      let verified = false;
+      if (!opts.skipVerify) {
+        await getValidAccessToken(root.dataDir, true);
+        verified = true;
+      }
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            { status: "ok", path: path2, client_id: service.client_id, verified },
+            null,
+            2
+          ) + "\n"
+        );
+      } else {
+        process.stderr.write(
+          `
+\u2713 Service credential saved to ${path2}
+` + (verified ? "\u2713 Verified: minted a test access token via /oauth/token\n" : "\u2022 Skipped verification (--skip-verify)\n") + `
+Unattended runs now authenticate as ${service.label ?? service.client_id}.
+`
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({ status: "error", message }, null, 2) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exitCode = 1;
+    }
+  });
 }
 function registerDeviceInitSubcommand(auth) {
   auth.command("device-init").description(
@@ -74391,22 +74577,25 @@ async function resolveCreds2(options) {
   if (options.creds) return options.creds;
   const { credentials } = await loadCredentials(options.dataDirOverride);
   if (credentials?.datahub) return credentials.datahub;
+  if (credentials?.service) {
+    return { api_base: credentials.service.api_base, access_token: "service" };
+  }
   if (credentials?.mysql) return credentials.mysql;
   throw new Error(
-    "No credentials configured. Run `mixshift auth login` (recommended) or `mixshift auth setup` for the legacy path."
+    "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir12, writeFile as writeFile12, rename as rename9 } from "node:fs/promises";
-import { dirname as dirname15, join as join10 } from "node:path";
+import { dirname as dirname15, join as join11 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir12(runDir, { recursive: true });
-  const dataJsonPath = join10(runDir, "data.json");
-  const dataMdPath = join10(runDir, "data.md");
+  const dataJsonPath = join11(runDir, "data.json");
+  const dataMdPath = join11(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -74432,7 +74621,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join10(
+  return join11(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -74815,7 +75004,7 @@ import { readFile as readFile18 } from "node:fs/promises";
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir13, writeFile as writeFile13, rename as rename10 } from "node:fs/promises";
-import { join as join11, dirname as dirname16 } from "node:path";
+import { join as join12, dirname as dirname16 } from "node:path";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -74953,7 +75142,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join11(
+  return join12(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -75079,7 +75268,7 @@ import { resolve as resolvePath } from "node:path";
 // src/lib/data/tables-catalog.ts
 var import_yaml16 = __toESM(require_dist(), 1);
 import { readFile as readFile19 } from "node:fs/promises";
-import { dirname as dirname17, join as join12 } from "node:path";
+import { dirname as dirname17, join as join13 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
@@ -75118,7 +75307,7 @@ function candidatePaths3() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join12(dir, "shared", "data-tables.yaml"));
+    candidates.push(join13(dir, "shared", "data-tables.yaml"));
     const parent = dirname17(dir);
     if (parent === dir) break;
     dir = parent;
@@ -75711,14 +75900,14 @@ init_credentials();
 // src/lib/version-check.ts
 import { readFile as readFile20, writeFile as writeFile15, mkdir as mkdir16 } from "node:fs/promises";
 import { dirname as dirname20 } from "node:path";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 init_resolve();
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join13(resolveDataDir(dataDirOverride), "version-check.json");
+  return join14(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
@@ -75866,7 +76055,7 @@ function registerWelcomeCommand(program3) {
     const { profile, source: profileSource } = await loadProfile(root.dataDir);
     const { credentials } = await loadCredentials(root.dataDir);
     const cr = defaults.auth.credential_retrieval;
-    const authReady = !!credentials?.datahub || !!credentials?.mysql;
+    const authReady = !!credentials?.datahub || !!credentials?.service || !!credentials?.mysql;
     const profileReady = profileSource === "file" && !!profile.user?.email;
     if (root.json) {
       process.stdout.write(
@@ -77512,14 +77701,15 @@ async function resolveBaseAndToken(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    if (!credentials?.datahub) {
+    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base) {
       return {
         ok: false,
         kind: "not_authenticated",
-        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) before pulling reports.'
+        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) before pulling reports. For unattended runs, configure `mixshift auth service-setup`.'
       };
     }
-    apiBase = credentials.datahub.api_base;
+    apiBase = base;
   }
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
@@ -77666,7 +77856,7 @@ function safeJsonPreview(json2) {
 // src/lib/reports/catalog.ts
 var import_yaml18 = __toESM(require_dist(), 1);
 import { readFile as readFile24 } from "node:fs/promises";
-import { dirname as dirname24, join as join15 } from "node:path";
+import { dirname as dirname24, join as join16 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
@@ -77721,7 +77911,7 @@ function candidatePaths4() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join15(dir, "shared", "reports", "catalog.yaml"));
+    candidates.push(join16(dir, "shared", "reports", "catalog.yaml"));
     const parent = dirname24(dir);
     if (parent === dir) break;
     dir = parent;
@@ -78919,6 +79109,7 @@ async function resolveApiBase(override, dataDirOverride) {
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
     if (credentials?.datahub?.api_base) return credentials.datahub.api_base;
+    if (credentials?.service?.api_base) return credentials.service.api_base;
   } catch {
   }
   return DEFAULT_API_BASE;
