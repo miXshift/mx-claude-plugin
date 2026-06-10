@@ -81,16 +81,17 @@ pre_execution:
         - CS-25
         - CS-26
         - CS-27
-        - { id: CS-28, enrichment: true }
-        - { id: CS-29, enrichment: true }
-        - { id: CS-30, enrichment: true }
-        - { id: CS-31, enrichment: true }
+        - CS-28   # v2.3 enrichment
+        - CS-29   # v2.3 enrichment
+        - CS-30   # v2.3 enrichment
+        - CS-31   # v2.3 enrichment
       notes: >
         CS-16 through CS-27 are independent structure and calibration queries.
         CS-19/CS-25 apply to VC accounts only; CS-20 applies to SC accounts only.
         CS-16 stub noted -- include for completeness.
-        CS-28/29/30/31 are v2.3 enrichment queries (tagged enrichment: true so delta-mode runs
-        can filter to them): CS-28 daily attribution settlement curve (campaign type x DOW),
+        CS-28/29/30/31 are v2.3 enrichment queries (batch_plan entries are plain SQL-ID
+        strings per schema; delta-mode runs filter to CS-28..31 by ID, see `mixshift brand
+        enrich`): CS-28 daily attribution settlement curve (campaign type x DOW),
         CS-29 inventory-health historical snapshots for stockout window detection (FBA-only;
         pre-filtered to in-trouble rows), CS-30 daily account ad metrics over trailing 365 days
         for stockout-window impact scoring, CS-31 trailing-90-day converting search-term corpus for

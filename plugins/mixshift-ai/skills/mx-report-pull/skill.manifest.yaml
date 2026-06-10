@@ -1,0 +1,106 @@
+schema_version: 1
+skill_id: mx-report-pull
+display_name: Amazon Report Pull
+version: "0.3.0"
+description: >
+  Pull Amazon SP-API reports on demand, directly from Amazon, for any
+  merchant and window. The report analogue of mx-data-explore: a
+  catalog-driven workhorse for fetching data MixShift may not already
+  hold in the warehouse, or a known report for a specific ad-hoc time
+  frame, so the user can analyze it, build with it, combine it with
+  existing data, or store it for later workflows. Covers Seller Central
+  flat-file reports (orders, listings, FBA inventory, FBA fees, returns,
+  settlement), Sales and Traffic, Brand Analytics (JSON), and Vendor
+  Central reports (JSON), plus the SP-API Product Pricing batch surface
+  (featured offer expected price, competitive summary). Read-only,
+  routes through the bundled harness CLI. Does NOT require brand
+  cold-start, only that the user has signed in (`mixshift auth login`).
+
+# Tier 1 = informational, read-only against Amazon and the service.
+# Modeled as per_account because every pull targets a specific merchant
+# (amazonSellerId / legacySellerId), though no brand context is consumed.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+# bash harness invocations are implicit; web_search is for resolving
+# uncatalogued report types from Amazon's public SP-API docs.
+allowed_tools: [file_read, file_write, web_search]
+side_effect_policy: artifact_write   # saves report documents to ~/.mixshift/reports/
+review_required: never
+sql_ids: []   # no library SQL; warehouse-first coverage checks route through mx-data-explore
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift amazon merchants
+  - mixshift amazon list-reports
+  - mixshift amazon describe-report <reportType>
+  - mixshift amazon report start --type <reportType>
+  - mixshift amazon report poll <runId>
+  - mixshift amazon report get <runId> --out <path>
+  - mixshift amazon report run   # blocking convenience, terminal-only
+  - mixshift amazon pricing get-featured-offer-expected-price-batch
+  - mixshift amazon pricing get-competitive-summary-batch
+  - mixshift amazon pricing poll-run <runId>
+  - mixshift amazon pricing get-run-result <runId>
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: report-document
+    type: json_artifact   # TSV or JSON bytes streamed to disk via --out; closest schema type
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - pull a report
+  - pull an amazon report
+  - get a report from amazon
+  - fetch a report
+  - request a report
+  - sales and traffic report
+  - brand analytics report
+  - search terms report
+  - vendor sales report
+  - fba inventory report
+  - all orders report
+  - settlement report
+  - what reports can I pull
+  - what amazon reports are available
+  - get data amazon doesn't have in the warehouse
+  - pull fresh data from amazon
+notes: >
+  Lifecycle: every pull is keyed by a service-minted run_id. In chat
+  surfaces, never block -- run start / poll / get as separate tool calls
+  (the Bash ceiling is ~45s and reports can take minutes). `report run`
+  is the blocking convenience for real terminals only. Done-ness is the
+  boolean `ready`, never the status string; exit code 10 means "not
+  ready yet" and is NOT an error. Default to `--out` so documents of any
+  size stream to disk (the no-`--out` stdout copy is capped ~25 MB).
+
+  Merchant identity: `--seller-id` is the amazonSellerId from
+  `mixshift amazon merchants`, never the numeric warehouse SellerID.
+  One amazonSellerId fans out to one row per marketplace; prefer
+  `--legacy-seller-id` (always present, deterministic) or pass
+  `--seller-id` together with `--marketplace`.
+
+  Failures are typed: branch on `failure_kind` (not_authenticated,
+  restricted_report, reauth_required, spapi_not_configured,
+  merchant_not_found, throttled, report_fatal, ...), never on HTTP
+  status. The report catalog (shared/reports/catalog.yaml) is a
+  convenience cache, not a gate: uncatalogued report types still pull
+  via `report start --type`, resolved from Amazon's public SP-API docs.
+
+  Pricing subcommands shipped in harness 0.5.18 as a sibling of
+  `amazon report` (same Bearer token, same typed-failure envelope):
+  FOEP is keyed by SKU, competitive summary by ASIN. Sync mode caps at
+  200 items; `--async` returns a run_id polled via poll-run and fetched
+  via get-run-result.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - SP-API enabled for the tenant; calls fail with spapi_not_configured
+      otherwise (user contacts MixShift ops).
+
+  Warehouse-first courtesy: when a request plausibly overlaps warehouse
+  data, check coverage via mx-data-explore and offer the user the choice
+  before pulling. It is a courtesy, not a gate -- never refuse a
+  requested pull.
