@@ -27,12 +27,6 @@ trigger_phrases:
   - set up mixshift credentials
   - configure mixshift
   - authenticate mixshift
-  - set up a service credential
-  - service credential
-  - auth for my scheduled task
-  - unattended auth
-  - headless auth
-  - auth for automation
 ---
 
 # Auth (chat-orchestrated, token-based)
@@ -46,7 +40,7 @@ Ask yourself one question: **will a human be present every time this credential 
 | Signals in the conversation | Route |
 |---|---|
 | User wants to query data now, says "sign in", first-run welcome | **Path A** (interactive, device-code) — the default |
-| "scheduled task", "cron", "runs at 9am", "automation", "CI", "when I'm not around", "service credential", auth failing inside a scheduled Cowork task | **Path C** (service credential) |
+| "scheduled task", "cron", "runs at 9am", "automation", "CI", "when I'm not around", "service credential", auth failing inside a scheduled Cowork task | **Invoke the `mx-auth-service-setup` skill** — it orchestrates the whole machine-credential flow |
 | claude.ai web / no Bash tool available | **Path D** (direct mode, paste token) |
 
 When in doubt, ask: *"Is this for you to use right now, or for something that runs on its own (a schedule, automation, CI)?"* One question, then route. A user setting up a scheduled skill usually needs BOTH: their own interactive sign-in for building it, and a service credential so the schedule survives without them.
@@ -120,36 +114,11 @@ Default max-wait is 30s (fits comfortably under Cowork's Bash timeout). The CLI 
 - `{ "state": "pending" }` — user hasn't completed sign-in yet. Ask politely (*"Still finishing? I'll check again."*) and re-call `device-poll` with the same `device_code`. Repeat up to a few times before bailing.
 - `{ "state": "expired", "error": "<reason>" }` — device code is no longer valid (typically 10 min limit on the server side). Restart from Step A1 with a fresh `device-init`.
 
-## Path C — Service credential (unattended runs)
+## Path C — Service credential (unattended runs): delegate
 
-For scheduled Cowork tasks, cloud automations, and CI. The credential is a static `client_id` (starts with `svc_`) + `client_secret` pair that a **tenant admin** creates. It never needs a browser, never rotates on use, and survives fresh sandboxes and restarts.
+Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at /admin, secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
 
-**Step C1 — Get the credential from the admin.**
-
-> *"Your MixShift admin creates this at https://mcp.mixshift.io/admin: sign in with the tenant account, create a service credential (give it a name like `svc:nightly-foep-watch`), and copy the client_id and the one-time secret. If you ARE the admin, do that now and come back."*
-
-**Step C2 — Deliver the secret WITHOUT pasting it in chat.**
-
-The secret must reach the machine as a file or an environment variable. Chat transcripts persist, so a secret pasted into chat is a secret you should consider shared. Offer the two clean options:
-
-> *"Save the secret to a file in this workspace yourself (e.g. `secret.txt` via your file manager — not through me), or export it as `MIXSHIFT_CLIENT_SECRET` in the environment. Tell me the file name when it's there and give me the client_id."*
-
-If the user pastes the secret into chat anyway: proceed (don't make them feel bad), but after setup succeeds tell them plainly: *"Since the secret passed through chat, have your admin rotate it at /admin when convenient — rotation is zero-downtime."*
-
-**Step C3 — Run setup:**
-
-```bash
-mixshift auth service-setup \
-  --client-id <svc_... from the admin> \
-  --client-secret-file <path the user gave you> \
-  --label <the svc: name the admin chose>
-```
-
-(Or with `MIXSHIFT_CLIENT_SECRET` set, omit `--client-secret-file`.) The command verifies by minting a real token before declaring success. Delete the secret file afterward if the user wants (`rm <path>`); the credential is already stored at `~/.mixshift/auth/credentials`.
-
-**Step C4 — Understand precedence (tell the user only if relevant):** if a human sign-in (`datahub` block) also exists on this machine, the human session wins and the service credential is the fallback. For a scheduled task's workspace where nobody signs in, the service credential is what runs.
-
-**Failure mode (the only one):** HTTP 401 `invalid_client` means the credential was revoked or rotated past its overlap window. The fix is admin-side: *"Ask your admin to check the credential at https://mcp.mixshift.io/admin, then re-run service-setup with the current secret."* Never delete the local block yourself.
+One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` block) and a service credential both exist in the same data dir, the human session wins and the service credential is the fallback.
 
 ## Path D — claude.ai web (no Bash, MCP connector)
 

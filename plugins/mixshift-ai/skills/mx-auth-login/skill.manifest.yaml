@@ -56,12 +56,6 @@ trigger_phrases:
   - set up mixshift credentials
   - configure mixshift
   - authenticate mixshift
-  - set up a service credential
-  - service credential
-  - auth for my scheduled task
-  - unattended auth
-  - headless auth
-  - auth for automation
 notes: >
   Token-based replacement for the legacy auth-setup chat flow.
   Credentials envelope is v2 (`schema_version: 2`). Interactive

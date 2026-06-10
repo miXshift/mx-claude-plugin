@@ -1,0 +1,64 @@
+schema_version: 1
+skill_id: mx-auth-service-setup
+display_name: MixShift Service Credential Setup
+version: "0.1.0"
+description: >
+  Chat-orchestrated setup of an admin-issued service credential (OAuth
+  client_credentials) so MixShift skills run unattended: scheduled Cowork
+  tasks, warehouse/SP-API crons, CI, cloud automations. Claude resolves the
+  workspace + MIXSHIFT_DATA_DIR anchoring (Cowork sandbox homes do not
+  persist; the project folder does), walks the user through creating the
+  credential at mcp.mixshift.io/admin, handles the secret handoff without
+  ever putting it in argv, runs `mixshift auth service-setup` itself,
+  verifies via a real token mint, deletes the secret file, and wires the
+  schedule to the same data dir. Interactive sign-in remains mx-auth-login.
+
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [file_read, file_write]   # bash invocations are implicit
+side_effect_policy: context_write   # writes credentials.json + service-token-cache.json under the chosen data dir
+review_required: never
+sql_ids: []
+
+harness_commands:
+  - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path> --label <label> --json
+  - mixshift data run-query "SELECT NOW() AS db_time" --json   # post-setup verification
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: credentials
+    type: json_artifact   # <data-dir>/auth/credentials, service block
+  - name: service_token_cache
+    type: json_artifact   # <data-dir>/auth/service-token-cache.json
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - set up a service credential
+  - service credential
+  - service token
+  - service account token
+  - auth for my scheduled task
+  - scheduled task auth
+  - unattended auth
+  - headless auth
+  - auth for automation
+  - schedule this skill
+  - make this run on a schedule
+  - run this daily without me
+  - set up a scheduled task
+  - cron auth
+notes: >
+  Companion to mx-auth-login: that skill covers humans present at run time
+  (rotating refresh tokens); this one covers machines (static admin-issued
+  client credentials, nothing rotates on use, survives read-only stores and
+  fresh sandboxes). The credential is created by a tenant admin at
+  {api_base}/admin; the secret reaches the harness via file or the chat
+  fallback (file written with a file tool, never echo), and the file is
+  deleted after `verified: true` because the credential then lives in the
+  data dir's credentials.json. The single recurring failure mode for
+  schedules is a MIXSHIFT_DATA_DIR mismatch between setup and the scheduled
+  run; Step 0/5 exist to prevent it. Server-side mechanics:
+  mx-legacy-auth /oauth/token grant_type=client_credentials, ~1h access
+  tokens, dual-secret zero-downtime rotation at /admin.

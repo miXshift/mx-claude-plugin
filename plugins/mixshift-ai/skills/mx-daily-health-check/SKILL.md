@@ -525,6 +525,15 @@ If you cannot point to specific query data supporting a causal claim, describe t
 
 All SQL queries are pre-fetched before skill execution. Do not read the references/ folder during skill execution.
 
+## Running this on a schedule (unattended)
+
+If the user wants this health check on a schedule (a Cowork scheduled task, a
+daily cron), a browser sign-in will NOT survive: scheduled sandboxes start
+fresh with no session. Before wiring the schedule, invoke the
+`mx-auth-service-setup` skill to configure an admin-issued service credential
+in this workspace; it also anchors credentials to the project folder via
+MIXSHIFT_DATA_DIR so they persist across sandbox restarts.
+
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
 At the START of this skill, run:
