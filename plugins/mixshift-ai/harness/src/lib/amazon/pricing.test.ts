@@ -7,10 +7,11 @@ import {
   startCompetitiveSummaryBatch,
   pollPricingRun,
   getPricingRunResult,
+  exitCodeForKind as pricingExitCodeForKind,
   isReportFailure,
 } from './pricing.js';
 import { _refreshState } from '../auth/credentials.js';
-import type { ReportClientOptions } from './reports.js';
+import { exitCodeForKind, type ReportClientOptions } from './reports.js';
 
 /**
  * Plugin-side pricing client tests. Verify the HTTP request shapes the client
@@ -337,5 +338,18 @@ describe('pollPricingRun + getPricingRunResult', () => {
     expect(fetchImpl.mock.calls[0][0]).toBe(
       'https://svc.test/api/amazon/pricing/runs/run-1/result',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exit-code contract
+// ---------------------------------------------------------------------------
+
+describe('exit codes', () => {
+  it('shares the one exitCodeForKind with the report surface (no drift)', () => {
+    // 0.5.18 shipped a second, divergent kind→code mapping on this surface.
+    // The mapping is a documented contract in mx-report-pull, so pricing must
+    // re-export the report one, not define its own.
+    expect(pricingExitCodeForKind).toBe(exitCodeForKind);
   });
 });

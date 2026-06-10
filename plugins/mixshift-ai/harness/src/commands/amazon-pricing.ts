@@ -29,6 +29,7 @@ import {
   startCompetitiveSummaryBatch,
   pollPricingRun,
   getPricingRunResult,
+  exitCodeForKind,
   isReportFailure,
   type CompetitiveSummaryIncludedData,
   type ReportFailure,
@@ -41,32 +42,6 @@ interface RootOptions {
 }
 
 type Operation = 'foep_batch' | 'competitive_summary_batch';
-
-/** Map a typed failure to a non-zero exit code so terminal scripts can react. */
-function exitCodeForKind(kind: ReportFailure['kind']): number {
-  switch (kind) {
-    case 'not_authenticated':
-    case 'session_expired':
-      return 2;
-    case 'reauth_required':
-      return 3;
-    case 'restricted_report':
-      return 4;
-    case 'merchant_not_found':
-      return 5;
-    case 'throttled':
-      return 6;
-    case 'host_unreachable':
-      return 7;
-    case 'spapi_not_configured':
-      return 8;
-    case 'report_fatal':
-      return 9;
-    case 'unknown':
-    default:
-      return 1;
-  }
-}
 
 export function registerAmazonPricingCommands(amazon: Command): void {
   const pricing = amazon
