@@ -65789,6 +65789,11 @@ var EventName = {
   AmazonPricingPolled: "amazon.pricing.polled",
   AmazonPricingRetrieved: "amazon.pricing.retrieved",
   AmazonPricingFailed: "amazon.pricing.failed",
+  // Generic SP-API call surface (lib/amazon/spapi-call.ts + `mixshift amazon
+  // operations|call`). Privacy: capture operation id + duration + outcome
+  // only — never the payload (it carries seller-level business data).
+  AmazonSpApiOperationsListed: "amazon.spapi.operations_listed",
+  AmazonSpApiCalled: "amazon.spapi.called",
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: "warm_start.served"
 };
@@ -78631,6 +78636,271 @@ function writeJson(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
 
+// src/commands/amazon-spapi.ts
+import { readFile as readFile27 } from "node:fs/promises";
+
+// src/lib/amazon/spapi-call.ts
+async function listOperations(family, opts = {}) {
+  const qs = family ? `?family=${encodeURIComponent(family)}` : "";
+  const r = await amazonRequest(
+    { method: "GET", path: `/api/amazon/spapi/operations${qs}` },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.operations;
+  const operations = Array.isArray(raw) ? raw : [];
+  return { ok: true, operations };
+}
+async function spapiCall(input, opts = {}) {
+  const body = { operation: input.operation };
+  if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
+  if (input.legacySellerId !== void 0 && input.legacySellerId !== null && input.legacySellerId !== "") {
+    const n = typeof input.legacySellerId === "string" ? Number(input.legacySellerId) : input.legacySellerId;
+    body.legacySellerId = typeof n === "number" && Number.isFinite(n) ? n : input.legacySellerId;
+  }
+  if (input.marketplace) body.marketplace = input.marketplace;
+  if (input.pathParams && Object.keys(input.pathParams).length > 0) {
+    body.pathParams = input.pathParams;
+  }
+  if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
+  if (input.body !== void 0) body.body = input.body;
+  const r = await amazonRequest(
+    { method: "POST", path: "/api/amazon/spapi/call", body },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  if (typeof json2.operation !== "string") {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The service accepted the call but returned an unrecognized shape. Try again, or contact MixShift ops if it persists.",
+      message: `call response missing operation echo`
+    };
+  }
+  return {
+    ok: true,
+    operation: json2.operation,
+    amazonSellerId: String(json2.amazonSellerId ?? ""),
+    legacySellerId: Number(json2.legacySellerId ?? 0),
+    marketplaceId: String(json2.marketplaceId ?? ""),
+    payload: json2.payload
+  };
+}
+
+// src/commands/amazon-spapi.ts
+function registerAmazonSpApiCommands(amazon) {
+  registerOperations(amazon);
+  registerCall(amazon);
+}
+function registerOperations(amazon) {
+  amazon.command("operations").description(
+    "Browse the directly callable SP-API operations (beyond reports and pricing). Read the notes before calling: they carry required params and gotchas."
+  ).option("--family <name>", 'filter to one family (e.g. "Data Kiosk", "Catalog Items")').action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listOperations(opts.family, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackSpApi(EventName.AmazonSpApiOperationsListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind
+        });
+        return emitFailure2(result, !!root.json);
+      }
+      await trackSpApi(EventName.AmazonSpApiOperationsListed, "ok", startedAt, root.dataDir, {
+        count: result.operations.length,
+        ...opts.family ? { family: opts.family } : {}
+      });
+      if (root.json) {
+        writeJson2({ status: "ok", count: result.operations.length, operations: result.operations });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.operations.length} operation(s)
+
+`);
+        process.stdout.write(renderOperations(result.operations) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function registerCall(amazon) {
+  amazon.command("call <operation>").description(
+    "Execute one cataloged SP-API operation (read-only). Run `amazon operations` first for the operation id and its parameter notes."
+  ).option("--seller-id <id>", "AmazonSellerID from `amazon merchants`").option(
+    "--legacy-seller-id <id>",
+    "exact per-marketplace seller record id (authoritative disambiguator)"
+  ).option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").option(
+    "--query <k=v>",
+    "query param per the operation notes (repeatable; csv values pass through)",
+    collectKv,
+    {}
+  ).option(
+    "--path <k=v>",
+    "path placeholder, e.g. --path asin=B0CV4JLCVZ (repeatable)",
+    collectKv,
+    {}
+  ).option("--body-file <file>", "JSON request body from a file (body-required operations)").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").action(async (operation, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      let body;
+      if (opts.bodyFile && opts.body) {
+        return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
+      }
+      if (opts.bodyFile) {
+        body = JSON.parse(await readFile27(opts.bodyFile, "utf8"));
+      } else if (opts.body) {
+        body = JSON.parse(opts.body);
+      }
+      const input = {
+        operation,
+        amazonSellerId: opts.sellerId,
+        legacySellerId: opts.legacySellerId,
+        marketplace: opts.marketplace,
+        pathParams: opts.path,
+        query: opts.query,
+        ...body !== void 0 ? { body } : {}
+      };
+      const result = await spapiCall(input, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackSpApi(EventName.AmazonSpApiCalled, "failed", startedAt, root.dataDir, {
+          operation,
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        });
+        return emitFailure2(result, !!root.json);
+      }
+      await trackSpApi(EventName.AmazonSpApiCalled, "ok", startedAt, root.dataDir, { operation });
+      if (root.json) {
+        writeJson2({
+          status: "ok",
+          operation: result.operation,
+          amazon_seller_id: result.amazonSellerId,
+          legacy_seller_id: result.legacySellerId,
+          marketplace_id: result.marketplaceId,
+          payload: result.payload
+        });
+      } else {
+        process.stderr.write(
+          `
+\u2713 ${result.operation} (${result.amazonSellerId} / ${result.marketplaceId})
+
+`
+        );
+        process.stdout.write(JSON.stringify(result.payload, null, 2) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError8(err, !!root.json);
+    }
+  });
+}
+function collectKv(pair, acc) {
+  const idx = pair.indexOf("=");
+  if (idx <= 0) {
+    throw new Error(`Expected k=v, got '${pair}'.`);
+  }
+  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
+  return acc;
+}
+async function trackSpApi(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson2(obj) {
+  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+}
+function emitFailure2(failure, json2) {
+  if (json2) {
+    writeJson2({
+      status: "error",
+      failure_kind: failure.kind,
+      message: failure.friendly,
+      detail: failure.message,
+      http_status: failure.httpStatus,
+      candidates: failure.candidates
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure.friendly}
+`);
+    if (failure.message) process.stderr.write(`  ${failure.message}
+`);
+  }
+  process.exitCode = exitCodeForKind2(failure.kind);
+}
+function emitError8(err, json2) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json2) {
+    writeJson2({ status: "error", message });
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function exitCodeForKind2(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    case "restricted_report":
+      return 4;
+    case "reauth_required":
+      return 5;
+    case "spapi_not_configured":
+      return 6;
+    case "merchant_not_found":
+      return 7;
+    case "throttled":
+      return 8;
+    case "report_fatal":
+      return 9;
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
+function renderOperations(operations) {
+  if (operations.length === 0) {
+    return "_(no operations matched \u2014 check the --family spelling against `amazon operations`)_";
+  }
+  const byFamily = /* @__PURE__ */ new Map();
+  for (const op of operations) {
+    const list = byFamily.get(op.family) ?? [];
+    list.push(op);
+    byFamily.set(op.family, list);
+  }
+  const blocks = [];
+  for (const [family, ops] of byFamily) {
+    blocks.push(`## ${family}`);
+    for (const op of ops) {
+      const flags = [
+        op.method !== "GET" ? op.method : null,
+        op.body === "required" ? "body required" : null,
+        op.deprecation ? "DEPRECATED" : null
+      ].filter(Boolean).join(", ");
+      blocks.push(`- **${op.id}** (${op.version}${flags ? `; ${flags}` : ""}): ${op.summary}`);
+      if (op.notes) blocks.push(`  - notes: ${op.notes}`);
+      if (op.deprecation) blocks.push(`  - deprecation: ${op.deprecation}`);
+    }
+    blocks.push("");
+  }
+  return blocks.join("\n").trimEnd();
+}
+
 // src/commands/amazon.ts
 var EXIT_NOT_READY = 10;
 function registerAmazonCommands(program3) {
@@ -78646,6 +78916,7 @@ function registerAmazonCommands(program3) {
   registerReportGet(report);
   registerReportRun(report);
   registerAmazonPricingCommands(amazon);
+  registerAmazonSpApiCommands(amazon);
 }
 function registerMerchants(amazon) {
   amazon.command("merchants").description("List the Amazon merchants (seller/vendor accounts) you can pull reports for.").action(async (_opts, cmd) => {
@@ -78655,7 +78926,7 @@ function registerMerchants(amazon) {
       const result = await listMerchants({ dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.AmazonMerchantsListed, result, startedAt, root.dataDir);
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       await track(
         {
@@ -78667,7 +78938,7 @@ function registerMerchants(amazon) {
         root.dataDir
       );
       if (root.json) {
-        writeJson2({ status: "ok", merchants: result.merchants });
+        writeJson3({ status: "ok", merchants: result.merchants });
       } else {
         process.stderr.write(`
 \u2713 ${result.merchants.length} merchant(s)
@@ -78677,7 +78948,7 @@ function registerMerchants(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -78695,7 +78966,7 @@ function registerListReports(amazon) {
           return true;
         });
         if (root.json) {
-          writeJson2({ status: "ok", count: filtered.length, reports: filtered });
+          writeJson3({ status: "ok", count: filtered.length, reports: filtered });
         } else {
           process.stderr.write(`
 \u2713 ${filtered.length} report type(s)
@@ -78704,7 +78975,7 @@ function registerListReports(amazon) {
         }
         return;
       } catch (err) {
-        emitError8(err, !!root.json);
+        emitError9(err, !!root.json);
       }
     }
   );
@@ -78716,20 +78987,20 @@ function registerDescribeReport(amazon) {
       const entry = await findReportType(reportType);
       if (!entry) {
         if (root.json) {
-          writeJson2({ status: "ok", known: false, report_type: reportType });
+          writeJson3({ status: "ok", known: false, report_type: reportType });
         } else {
           process.stdout.write(renderUnknownReport(reportType) + "\n");
         }
         return;
       }
       if (root.json) {
-        writeJson2({ status: "ok", known: true, report: entry });
+        writeJson3({ status: "ok", known: true, report: entry });
       } else {
         process.stdout.write(renderReportDetail(entry) + "\n");
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -78753,7 +79024,7 @@ function registerReportStart(report) {
       const result = await startReport(input, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, reportType);
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       await track(
         {
@@ -78765,7 +79036,7 @@ function registerReportStart(report) {
         root.dataDir
       );
       if (root.json) {
-        writeJson2({ status: "ok", run_id: result.runId, report_status: result.status });
+        writeJson3({ status: "ok", run_id: result.runId, report_status: result.status });
       } else {
         process.stdout.write(
           `
@@ -78779,7 +79050,7 @@ Next: \`mixshift amazon report poll ${result.runId}\` until ready, then \`amazon
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -78791,7 +79062,7 @@ function registerReportPoll(report) {
       const result = await pollReport(runId, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir);
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       await track(
         {
@@ -78803,7 +79074,7 @@ function registerReportPoll(report) {
         root.dataDir
       );
       if (root.json) {
-        writeJson2({
+        writeJson3({
           status: "ok",
           ready: result.ready,
           report_status: result.status,
@@ -78822,7 +79093,7 @@ Poll again in a few seconds.
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -78838,7 +79109,7 @@ function registerReportGet(report) {
         const meta3 = await getReportDocumentMeta(runId, clientOpts);
         if (isReportFailure(meta3)) {
           await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir);
-          return emitFailure2(meta3, !!root.json);
+          return emitFailure3(meta3, !!root.json);
         }
         if (!meta3.ready || !meta3.document) {
           return emitNotReady(meta3.status, startedAt, root.dataDir, !!root.json);
@@ -78847,11 +79118,11 @@ function registerReportGet(report) {
         const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
         if (isReportFailure(streamed)) {
           await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir);
-          return emitFailure2(streamed, !!root.json);
+          return emitFailure3(streamed, !!root.json);
         }
         await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
         if (root.json) {
-          writeJson2({ status: "ok", ready: true, out_path: outPath, bytes: streamed.bytes });
+          writeJson3({ status: "ok", ready: true, out_path: outPath, bytes: streamed.bytes });
         } else {
           process.stderr.write(`
 \u2713 wrote ${streamed.bytes} bytes to ${outPath}
@@ -78862,7 +79133,7 @@ function registerReportGet(report) {
       const result = await getReportDocument(runId, clientOpts);
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir);
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       if (!result.ready) {
         return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
@@ -78871,7 +79142,7 @@ function registerReportGet(report) {
       const bytes = result.bytes ?? Buffer.byteLength(document, "utf-8");
       await trackRetrieved(startedAt, bytes, root.dataDir);
       if (root.json) {
-        writeJson2({ status: "ok", ready: true, bytes, document });
+        writeJson3({ status: "ok", ready: true, bytes, document });
       } else {
         process.stderr.write(`
 \u2713 ${bytes} bytes (use --out <file> to save)
@@ -78881,7 +79152,7 @@ function registerReportGet(report) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -78896,7 +79167,7 @@ function emitNotReady(status, startedAt, dataDir, json2) {
     dataDir
   );
   if (json2) {
-    writeJson2({ status: "ok", ready: false, report_status: status });
+    writeJson3({ status: "ok", ready: false, report_status: status });
   } else {
     process.stdout.write(
       `
@@ -78937,7 +79208,7 @@ function registerReportRun(report) {
       );
       if (isReportFailure(started)) {
         await trackFailure2(EventName.ReportFailed, started, startedAt, root.dataDir, reportType);
-        return emitFailure2(started, !!root.json);
+        return emitFailure3(started, !!root.json);
       }
       await track(
         {
@@ -78956,7 +79227,7 @@ function registerReportRun(report) {
         const poll = await pollReport(runId, clientOpts);
         if (isReportFailure(poll)) {
           await trackFailure2(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
-          return emitFailure2(poll, !!root.json);
+          return emitFailure3(poll, !!root.json);
         }
         polls += 1;
         lastStatus = poll.status;
@@ -78968,7 +79239,7 @@ function registerReportRun(report) {
       const finalPoll = await pollReport(runId, clientOpts);
       if (isReportFailure(finalPoll)) {
         await trackFailure2(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
-        return emitFailure2(finalPoll, !!root.json);
+        return emitFailure3(finalPoll, !!root.json);
       }
       if (!finalPoll.ready) {
         await track(
@@ -78982,7 +79253,7 @@ function registerReportRun(report) {
         );
         const msg = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${finalPoll.status}). The run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${runId}\`.`;
         if (root.json) {
-          writeJson2({ status: "error", failure_kind: "timeout", run_id: runId, report_status: finalPoll.status, message: msg });
+          writeJson3({ status: "error", failure_kind: "timeout", run_id: runId, report_status: finalPoll.status, message: msg });
         } else {
           process.stderr.write(`
 \u2717 ${msg}
@@ -78994,7 +79265,7 @@ function registerReportRun(report) {
       const meta3 = await getReportDocumentMeta(runId, clientOpts);
       if (isReportFailure(meta3)) {
         await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, reportType);
-        return emitFailure2(meta3, !!root.json);
+        return emitFailure3(meta3, !!root.json);
       }
       if (!meta3.ready || !meta3.document) {
         await track(
@@ -79008,7 +79279,7 @@ function registerReportRun(report) {
         );
         const msg = `The report reported ready but its document was not available yet (status: ${meta3.status ?? "unknown"}). The run handle is still valid; fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
         if (root.json) {
-          writeJson2({ status: "ok", ready: false, run_id: runId, report_status: meta3.status, message: msg });
+          writeJson3({ status: "ok", ready: false, run_id: runId, report_status: meta3.status, message: msg });
         } else {
           process.stderr.write(`
 \u2022 ${msg}
@@ -79023,12 +79294,12 @@ function registerReportRun(report) {
       const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
       if (isReportFailure(streamed)) {
         await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
-        return emitFailure2(streamed, !!root.json);
+        return emitFailure3(streamed, !!root.json);
       }
       const bytes = streamed.bytes;
       await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
       if (root.json) {
-        writeJson2({ status: "ok", ready: true, run_id: runId, out_path: outPath, bytes, polls });
+        writeJson3({ status: "ok", ready: true, run_id: runId, out_path: outPath, bytes, polls });
       } else {
         process.stderr.write(
           `
@@ -79039,7 +79310,7 @@ function registerReportRun(report) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -79071,12 +79342,12 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType)
     dataDir
   );
 }
-function writeJson2(obj) {
+function writeJson3(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
-function emitFailure2(failure, json2) {
+function emitFailure3(failure, json2) {
   if (json2) {
-    writeJson2({
+    writeJson3({
       status: "error",
       failure_kind: failure.kind,
       message: failure.friendly,
@@ -79096,7 +79367,7 @@ function emitFailure2(failure, json2) {
       process.stderr.write(renderCandidates(failure.candidates));
     }
   }
-  process.exitCode = exitCodeForKind2(failure.kind);
+  process.exitCode = exitCodeForKind3(failure.kind);
 }
 function renderCandidates(candidates) {
   const lines = ["\n  This seller trades in several marketplaces. Re-run with one of:"];
@@ -79109,17 +79380,17 @@ function renderCandidates(candidates) {
   lines.push("");
   return lines.join("\n") + "\n";
 }
-function emitError8(err, json2) {
+function emitError9(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
-    writeJson2({ status: "error", message });
+    writeJson3({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
   }
   process.exitCode = 1;
 }
-function exitCodeForKind2(kind) {
+function exitCodeForKind3(kind) {
   switch (kind) {
     case "not_authenticated":
     case "session_expired":
@@ -79156,9 +79427,11 @@ function renderMerchants(merchants) {
   const hasLegacy = merchants.some(
     (m) => m.legacySellerId !== void 0 && m.legacySellerId !== null && m.legacySellerId !== ""
   );
+  const hasCron = merchants.some((m) => typeof m.cronActive === "boolean");
   const cols = ["amazonSellerId"];
   if (hasLegacy) cols.push("legacySellerId");
   cols.push("name", "type", "region", "marketplace", "authorized");
+  if (hasCron) cols.push("cron");
   const header = "| " + cols.join(" | ") + " |";
   const sep = "| " + cols.map(() => "---").join(" | ") + " |";
   const rows = merchants.map((m) => {
@@ -79166,6 +79439,7 @@ function renderMerchants(merchants) {
     if (hasLegacy) cells.push(m.legacySellerId != null ? String(m.legacySellerId) : "");
     cells.push(mdCell(m.name), m.merchantType, m.merchantRegion, renderMarketplaceCell(m));
     cells.push(m.authorized ? "yes" : "no");
+    if (hasCron) cells.push(m.cronActive === true ? "yes" : m.cronActive === false ? "no" : "");
     return "| " + cells.join(" | ") + " |";
   });
   return [header, sep, ...rows].join("\n");
