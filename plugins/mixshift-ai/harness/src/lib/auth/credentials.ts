@@ -321,6 +321,45 @@ async function doRefresh(
 }
 
 // ---------------------------------------------------------------------------
+// Replaced-session revocation.
+//
+// Each sign-in mints a NEW session server-side; the server deliberately does
+// NOT revoke other sessions on login (the tenant login is shared, so that
+// would log out coworkers). But when THIS machine re-logs in, it is about to
+// overwrite its own datahub block — the one session we can revoke precisely,
+// because we still hold its refresh token. Best-effort: a failure just leaves
+// the old row to age out via the 30d idle expiry.
+// ---------------------------------------------------------------------------
+
+const REPLACED_SESSION_LOGOUT_TIMEOUT_MS = 5_000;
+
+/**
+ * Revoke the session this machine is about to replace. Called by the login
+ * flows immediately before persisting a NEW datahub block. Never throws.
+ * Returns true when the old session was revoked, false when there was
+ * nothing to revoke or the call failed (both fine).
+ */
+export async function revokeReplacedSession(
+  dataDirOverride?: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const old = credentials?.datahub;
+    if (!old?.refresh_token || !old?.api_base) return false;
+    const res = await fetchImpl(`${old.api_base}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: old.refresh_token }),
+      signal: AbortSignal.timeout(REPLACED_SESSION_LOGOUT_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Service (machine) tokens — OAuth client_credentials grant.
 //
 // The service credential is STATIC (nothing rotates on use), so the only

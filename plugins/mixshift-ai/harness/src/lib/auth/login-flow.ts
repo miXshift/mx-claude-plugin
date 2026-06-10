@@ -42,7 +42,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { hostname } from 'node:os';
 import { spawn } from 'node:child_process';
 
-import { saveDatahub } from './credentials.js';
+import { saveDatahub, revokeReplacedSession } from './credentials.js';
 import { resolveClientId } from './client-id.js';
 import type { DatahubCreds } from './schema.js';
 import { loadProfile } from '../profile/load.js';
@@ -244,6 +244,9 @@ export async function pollDeviceFlow(
         openBrowser: defaultOpenBrowser,
       };
       const datahub = toDatahubCreds(resolved, poll);
+      // Revoke the session this machine is replacing (best-effort) so
+      // re-logins don't accumulate orphan rows in the admin session list.
+      await revokeReplacedSession(opts.dataDirOverride);
       await saveDatahub(datahub, opts.dataDirOverride);
 
       const result: AuthLoginResult = {
@@ -527,6 +530,7 @@ async function runPkceLogin(opts: ResolvedOptions): Promise<AuthLoginResult> {
     );
 
     const datahub = toDatahubCreds(opts, exchanged);
+    await revokeReplacedSession(opts.dataDirOverride);
     await saveDatahub(datahub, opts.dataDirOverride);
 
     return {
@@ -792,6 +796,7 @@ async function runDeviceLogin(
     }
     if (poll.state === 'approved') {
       const datahub = toDatahubCreds(opts, poll);
+      await revokeReplacedSession(opts.dataDirOverride);
       await saveDatahub(datahub, opts.dataDirOverride);
       return {
         ok: true,

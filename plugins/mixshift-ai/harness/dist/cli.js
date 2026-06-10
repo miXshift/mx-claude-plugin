@@ -60904,7 +60904,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join17(tree) {
+      function join18(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -60930,7 +60930,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join17(parse4(query2));
+        tree = join18(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -63568,6 +63568,22 @@ async function doRefresh(current, dataDirOverride) {
   await saveDatahub(updated, dataDirOverride);
   return updated;
 }
+async function revokeReplacedSession(dataDirOverride, fetchImpl = fetch) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const old = credentials?.datahub;
+    if (!old?.refresh_token || !old?.api_base) return false;
+    const res = await fetchImpl(`${old.api_base}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: old.refresh_token }),
+      signal: AbortSignal.timeout(REPLACED_SESSION_LOGOUT_TIMEOUT_MS)
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 function serviceTokenCachePath(dataDirOverride) {
   return join5(dirname3(credentialsPath(dataDirOverride)), "service-token-cache.json");
 }
@@ -63663,7 +63679,7 @@ async function writeServiceTokenCache(cache, dataDirOverride) {
 function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
-var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState, SERVICE_TOKEN_SAFETY_MARGIN_MS, SERVICE_MINT_TIMEOUT_MS, _serviceMintState;
+var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState, REPLACED_SESSION_LOGOUT_TIMEOUT_MS, SERVICE_TOKEN_SAFETY_MARGIN_MS, SERVICE_MINT_TIMEOUT_MS, _serviceMintState;
 var init_credentials = __esm({
   "src/lib/auth/credentials.ts"() {
     "use strict";
@@ -63675,6 +63691,7 @@ var init_credentials = __esm({
     _refreshState = {
       inFlight: null
     };
+    REPLACED_SESSION_LOGOUT_TIMEOUT_MS = 5e3;
     SERVICE_TOKEN_SAFETY_MARGIN_MS = 6e4;
     SERVICE_MINT_TIMEOUT_MS = 3e4;
     _serviceMintState = {
@@ -63829,7 +63846,7 @@ __export(brand_grouping_exports, {
 function groupIntoBrands(rows) {
   const byCanonical = /* @__PURE__ */ new Map();
   for (const r of rows) {
-    const key = canonicalBrandKey(r.seller_name);
+    const key = canonicalBrandKey(brandLabel(r));
     const bucket = byCanonical.get(key) ?? [];
     bucket.push(r);
     byCanonical.set(key, bucket);
@@ -63852,6 +63869,9 @@ function groupIntoBrands(rows) {
   }
   return suggestions;
 }
+function brandLabel(r) {
+  return r.merchant_alias || r.seller_name;
+}
 function canonicalBrandKey(name) {
   let s = name.split(/\s+[-–—]\s+|,\s+/)[0] ?? name;
   s = s.toLowerCase().normalize("NFKD");
@@ -63863,9 +63883,10 @@ function canonicalBrandKey(name) {
   return s;
 }
 function pickDisplayName(accounts) {
-  const names = accounts.map((a) => a.seller_name).filter(Boolean);
-  if (names.length === 0) return "Unknown brand";
-  return names.reduce(
+  const aliases = accounts.map((a) => a.merchant_alias).filter((a) => Boolean(a));
+  const pool = aliases.length > 0 ? aliases : accounts.map((a) => a.seller_name).filter(Boolean);
+  if (pool.length === 0) return "Unknown brand";
+  return pool.reduce(
     (best, cur) => cur.length < best.length ? cur : best
   );
 }
@@ -64274,10 +64295,10 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir17, readFile as readFile21 } from "node:fs/promises";
-import { join as join15, dirname as dirname21 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir17, readFile as readFile22 } from "node:fs/promises";
+import { join as join16, dirname as dirname21 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join15(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join16(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
@@ -64293,7 +64314,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile21(path2, "utf-8");
+    const raw = await readFile22(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -72690,6 +72711,7 @@ async function pollDeviceFlow(opts) {
         openBrowser: defaultOpenBrowser
       };
       const datahub = toDatahubCreds(resolved, poll);
+      await revokeReplacedSession(opts.dataDirOverride);
       await saveDatahub(datahub, opts.dataDirOverride);
       const result = {
         ok: true,
@@ -72888,6 +72910,7 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
       pkce.verifier
     );
     const datahub = toDatahubCreds(opts, exchanged);
+    await revokeReplacedSession(opts.dataDirOverride);
     await saveDatahub(datahub, opts.dataDirOverride);
     return {
       ok: true,
@@ -73057,6 +73080,7 @@ MixShift device-code login
     }
     if (poll.state === "approved") {
       const datahub = toDatahubCreds(opts, poll);
+      await revokeReplacedSession(opts.dataDirOverride);
       await saveDatahub(datahub, opts.dataDirOverride);
       return {
         ok: true,
@@ -74085,18 +74109,44 @@ function readNumberFromUnknownObject(obj, key, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+// src/lib/data/dispatch.ts
+import { readFile as readFile18, access as access2 } from "node:fs/promises";
+import { join as join11 } from "node:path";
+
 // src/lib/prefetch/sql-library.ts
 init_zod();
 import { readFile as readFile17 } from "node:fs/promises";
 var import_yaml15 = __toESM(require_dist(), 1);
 init_format_error();
+var dispatchSchema = external_exports.enum(["sql", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
-  file: external_exports.string().min(1),
+  /** Path to the .sql body, relative to sql-library/. Required for
+   *  dispatch: sql; omitted for dispatch: sproc (body is warehouse-side). */
+  file: external_exports.string().min(1).optional(),
   purpose: external_exports.string().min(1),
   consumers: external_exports.array(external_exports.string()).default([]),
   tier: external_exports.number().int().min(1).max(3).default(1),
-  notes: external_exports.string().optional()
+  notes: external_exports.string().optional(),
+  dispatch: dispatchSchema,
+  /** Stored-procedure name (e.g. sp_brain_seller_fetch). Required for
+   *  dispatch: sproc. */
+  sproc: external_exports.string().regex(/^sp_[a-z0-9_]+$/).optional()
+}).superRefine((entry, ctx) => {
+  if (entry.dispatch === "sql" && !entry.file) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `query ${entry.id}: dispatch "sql" requires a "file"`,
+      path: ["file"]
+    });
+  }
+  if (entry.dispatch === "sproc" && !entry.sproc) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `query ${entry.id}: dispatch "sproc" requires a "sproc" name`,
+      path: ["sproc"]
+    });
+  }
 });
 var catalogSchema = external_exports.object({
   schema_version: external_exports.literal(1),
@@ -74140,6 +74190,11 @@ async function getQueryEntry(id) {
 }
 async function readQuerySql(id) {
   const entry = await getQueryEntry(id);
+  if (!entry.file) {
+    throw new Error(
+      `Query ${id} is dispatch:"${entry.dispatch}" with no .sql file in the public repo (body lives warehouse-side as ${entry.sproc ?? "a stored procedure"}). Execute it via runDispatched() instead of readQuerySql().`
+    );
+  }
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
@@ -74586,16 +74641,118 @@ async function resolveCreds2(options) {
   );
 }
 
+// src/lib/data/dispatch.ts
+var SPROC_SQL_DIR_ENV = "MIXSHIFT_SPROC_SQL_DIR";
+var MissingParamsError = class extends Error {
+  missing_params;
+  constructor(id, missing) {
+    super(
+      `Query ${id} references missing param(s): ${missing.join(", ")}. Provide them via paramOverrides on a follow-up call, or run the query inline via \`mixshift data query\`. Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ASIN set), or a conditional query (LIB-PT-01 only applies during an active price_test event).`
+    );
+    this.missing_params = missing;
+  }
+};
+async function resolveLocalSprocSql(sprocName, env = process.env) {
+  const dir = env[SPROC_SQL_DIR_ENV];
+  if (!dir) return void 0;
+  const path2 = join11(dir, `${sprocName}.sql`);
+  try {
+    await access2(path2);
+  } catch {
+    return void 0;
+  }
+  return readFile18(path2, "utf-8");
+}
+function buildCallSql(sprocName) {
+  return `CALL ${sprocName}(?, ?)`;
+}
+async function runDispatched(id, opts = {}) {
+  const entry = await getQueryEntry(id);
+  if (entry.dispatch === "sproc") {
+    const localSql = await resolveLocalSprocSql(entry.sproc);
+    if (localSql !== void 0) {
+      return runSqlText(id, stripSqlHeader(localSql), opts, "sproc_local_dev");
+    }
+    return runSproc(id, entry, opts);
+  }
+  const { sql } = await readQuerySql(id);
+  return runSqlText(id, sql, opts, "sql");
+}
+async function runSproc(id, entry, opts) {
+  const { seller_ids: paramsSellerIds, ...restParams } = opts.params ?? {};
+  const sellerIds = opts.sellerIds ?? (Array.isArray(paramsSellerIds) ? paramsSellerIds : []);
+  const sql = buildCallSql(entry.sproc);
+  const bound = [JSON.stringify(restParams), JSON.stringify(sellerIds)];
+  const result = await runQuery(sql, bound, {
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs,
+    query_id: id
+  });
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch: "sproc", failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch: "sproc",
+    displaySql: sql,
+    boundParams: { p_params: restParams, p_seller_ids: sellerIds }
+  };
+}
+async function runSqlText(id, rawSql, opts, usedDispatch) {
+  const allParams = opts.params ?? {};
+  const referenced = findReferencedParams(rawSql);
+  const missing = referenced.filter((p) => !(p in allParams));
+  if (missing.length > 0) {
+    throw new MissingParamsError(id, missing);
+  }
+  const { sql, params } = substituteParams(rawSql, allParams);
+  const result = await runQuery(sql, params, {
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs,
+    query_id: id
+  });
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch, failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch,
+    displaySql: sql,
+    boundParams: params
+  };
+}
+function stripSqlHeader(raw) {
+  const lines = raw.split(/\r?\n/);
+  let headerEnd = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line.startsWith("--") || line.trim() === "") {
+      headerEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  return lines.slice(headerEnd).join("\n").trim();
+}
+
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir12, writeFile as writeFile12, rename as rename9 } from "node:fs/promises";
-import { dirname as dirname15, join as join11 } from "node:path";
+import { dirname as dirname15, join as join12 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir12(runDir, { recursive: true });
-  const dataJsonPath = join11(runDir, "data.json");
-  const dataMdPath = join11(runDir, "data.md");
+  const dataJsonPath = join12(runDir, "data.json");
+  const dataMdPath = join12(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -74621,7 +74778,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join11(
+  return join12(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -74839,29 +74996,13 @@ async function runPrefetch(opts) {
     has_deferred
   };
 }
-var MissingParamsError = class extends Error {
-  missing_params;
-  constructor(id, missing) {
-    super(
-      `Query ${id} references missing param(s): ${missing.join(", ")}. The skill must provide these via paramOverrides on a follow-up prefetch, or run the query inline via \`mixshift data query\`. Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ASIN set), or a conditional query (LIB-PT-01 only applies during an active price_test event).`
-    );
-    this.missing_params = missing;
-  }
-};
 async function executeOne(id, allParams, dataDirOverride) {
-  const { sql: rawSql } = await readQuerySql(id);
-  const referenced = findReferencedParams(rawSql);
-  const missing = referenced.filter((p) => !(p in allParams));
-  if (missing.length > 0) {
-    throw new MissingParamsError(id, missing);
-  }
-  const { sql, params } = substituteParams(rawSql, allParams);
-  const result = await runQuery(sql, params, {
-    dataDirOverride,
-    query_id: id
+  const result = await runDispatched(id, {
+    params: allParams,
+    dataDirOverride
   });
   if (!result.ok) {
-    return { id, ok: false, queryResult: result };
+    return { id, ok: false, queryResult: result.failure };
   }
   return {
     id,
@@ -74870,8 +75011,8 @@ async function executeOne(id, allParams, dataDirOverride) {
       id,
       rows: result.rows,
       duration_ms: result.durationMs,
-      params,
-      display_sql: sql
+      params: result.boundParams,
+      display_sql: result.displaySql
     }
   };
 }
@@ -74999,12 +75140,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile18 } from "node:fs/promises";
+import { readFile as readFile19 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir13, writeFile as writeFile13, rename as rename10 } from "node:fs/promises";
-import { join as join12, dirname as dirname16 } from "node:path";
+import { join as join13, dirname as dirname16 } from "node:path";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -75142,7 +75283,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join12(
+  return join13(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -75192,7 +75333,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile18(opts.inputFile, "utf-8");
+      const raw = await readFile19(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -75267,14 +75408,14 @@ import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
 var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile19 } from "node:fs/promises";
-import { dirname as dirname17, join as join13 } from "node:path";
+import { readFile as readFile20 } from "node:fs/promises";
+import { dirname as dirname17, join as join14 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile19(path2, "utf-8");
+      const raw = await readFile20(path2, "utf-8");
       const parsed = (0, import_yaml16.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
@@ -75307,7 +75448,7 @@ function candidatePaths3() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join13(dir, "shared", "data-tables.yaml"));
+    candidates.push(join14(dir, "shared", "data-tables.yaml"));
     const parent = dirname17(dir);
     if (parent === dir) break;
     dir = parent;
@@ -75898,23 +76039,23 @@ init_load();
 init_credentials();
 
 // src/lib/version-check.ts
-import { readFile as readFile20, writeFile as writeFile15, mkdir as mkdir16 } from "node:fs/promises";
+import { readFile as readFile21, writeFile as writeFile15, mkdir as mkdir16 } from "node:fs/promises";
 import { dirname as dirname20 } from "node:path";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 init_resolve();
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join14(resolveDataDir(dataDirOverride), "version-check.json");
+  return join15(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
   const cachePath = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile20(cachePath, "utf-8");
+    const raw = await readFile21(cachePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -76640,7 +76781,7 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml17 = __toESM(require_dist(), 1);
-import { readFile as readFile22 } from "node:fs/promises";
+import { readFile as readFile23 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -76805,7 +76946,7 @@ function getByPath2(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile22(path2, "utf-8");
+    const raw = await readFile23(path2, "utf-8");
     return (0, import_yaml17.parse)(raw);
   } catch {
     return null;
@@ -76911,7 +77052,7 @@ function indexConfirmationEntries(payload) {
 
 // src/commands/skill.ts
 init_resolve();
-import { mkdir as mkdir18, readFile as readFile23, writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir18, readFile as readFile24, writeFile as writeFile16 } from "node:fs/promises";
 import { dirname as dirname22 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
@@ -77333,7 +77474,7 @@ ${candidates}`
 }
 async function readJsonIfExists2(path2) {
   try {
-    const raw = await readFile23(path2, "utf-8");
+    const raw = await readFile24(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -77855,14 +77996,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile24 } from "node:fs/promises";
-import { dirname as dirname24, join as join16 } from "node:path";
+import { readFile as readFile25 } from "node:fs/promises";
+import { dirname as dirname24, join as join17 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile24(path2, "utf-8");
+      const raw = await readFile25(path2, "utf-8");
       const parsed = (0, import_yaml18.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
@@ -77911,7 +78052,7 @@ function candidatePaths4() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join16(dir, "shared", "reports", "catalog.yaml"));
+    candidates.push(join17(dir, "shared", "reports", "catalog.yaml"));
     const parent = dirname24(dir);
     if (parent === dir) break;
     dir = parent;
@@ -77926,7 +78067,7 @@ function isFileNotFoundError15(err) {
 init_resolve();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile25 } from "node:fs/promises";
+import { readFile as readFile26 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -78332,7 +78473,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile25(file2, "utf8");
+    const text = await readFile26(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
