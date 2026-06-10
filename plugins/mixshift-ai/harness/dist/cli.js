@@ -65794,6 +65794,12 @@ var EventName = {
   // only — never the payload (it carries seller-level business data).
   AmazonSpApiOperationsListed: "amazon.spapi.operations_listed",
   AmazonSpApiCalled: "amazon.spapi.called",
+  // Amazon Ads API call surface (lib/amazon/ads-call.ts + `mixshift ads`).
+  // Same privacy rule: operation id + duration + outcome only — never the
+  // payload (campaign/keyword/bid data is seller-level business data).
+  AdsProfilesListed: "ads.profiles_listed",
+  AdsOperationsListed: "ads.operations_listed",
+  AdsCalled: "ads.called",
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: "warm_start.served"
 };
@@ -77628,6 +77634,37 @@ import { createGunzip, gunzipSync } from "node:zlib";
 function isReportFailure(x) {
   return x.ok === false;
 }
+function exitCodeForKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    // sign in / re-login (run `mixshift auth login`)
+    case "restricted_report":
+      return 4;
+    // Amazon needs an RDT/PII role MixShift lacks
+    case "reauth_required":
+      return 5;
+    // merchant grant lapsed — reconnect this merchant
+    case "spapi_not_configured":
+    case "ads_not_configured":
+      return 6;
+    // the relevant Amazon API is not enabled on the service
+    case "merchant_not_found":
+      return 7;
+    // selector matched no merchant
+    case "throttled":
+      return 8;
+    // Amazon rate limit — retry later
+    case "report_fatal":
+      return 9;
+    // Amazon returned FATAL / CANCELLED
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
 async function listMerchants(opts = {}) {
   const r = await amazonRequest(
     { method: "GET", path: "/api/amazon/merchants" },
@@ -77952,6 +77989,7 @@ async function resolveBaseAndToken(opts) {
 }
 var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "spapi_not_configured",
+  "ads_not_configured",
   "reauth_required",
   "restricted_report",
   "merchant_not_found",
@@ -78053,6 +78091,8 @@ function defaultFriendly(kind) {
   switch (kind) {
     case "spapi_not_configured":
       return "Amazon SP-API isn't enabled for this MixShift account yet. Contact MixShift ops to turn on on-demand report pulls.";
+    case "ads_not_configured":
+      return "The Amazon Ads API isn't enabled on the MixShift service yet. Contact MixShift ops.";
     case "reauth_required":
       return "This Amazon merchant needs to be re-authorized in MixShift before reports can be pulled. Re-connect the account in the MixShift app, then retry.";
     case "restricted_report":
@@ -78251,30 +78291,6 @@ async function getPricingRunResult(runId, opts = {}) {
 }
 
 // src/commands/amazon-pricing.ts
-function exitCodeForKind(kind) {
-  switch (kind) {
-    case "not_authenticated":
-    case "session_expired":
-      return 2;
-    case "reauth_required":
-      return 3;
-    case "restricted_report":
-      return 4;
-    case "merchant_not_found":
-      return 5;
-    case "throttled":
-      return 6;
-    case "host_unreachable":
-      return 7;
-    case "spapi_not_configured":
-      return 8;
-    case "report_fatal":
-      return 9;
-    case "unknown":
-    default:
-      return 1;
-  }
-}
 function registerAmazonPricingCommands(amazon) {
   const pricing = amazon.command("pricing").description(
     "SP-API Product Pricing batch endpoints (FOEP + Competitive Summary). Verbatim Amazon operation names. Sync (default) or --async."
@@ -78838,7 +78854,7 @@ function emitFailure2(failure, json2) {
     if (failure.message) process.stderr.write(`  ${failure.message}
 `);
   }
-  process.exitCode = exitCodeForKind2(failure.kind);
+  process.exitCode = exitCodeForKind(failure.kind);
 }
 function emitError8(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
@@ -78849,29 +78865,6 @@ function emitError8(err, json2) {
 `);
   }
   process.exitCode = 1;
-}
-function exitCodeForKind2(kind) {
-  switch (kind) {
-    case "not_authenticated":
-    case "session_expired":
-      return 2;
-    case "restricted_report":
-      return 4;
-    case "reauth_required":
-      return 5;
-    case "spapi_not_configured":
-      return 6;
-    case "merchant_not_found":
-      return 7;
-    case "throttled":
-      return 8;
-    case "report_fatal":
-      return 9;
-    case "host_unreachable":
-    case "unknown":
-    default:
-      return 1;
-  }
 }
 function renderOperations(operations) {
   if (operations.length === 0) {
@@ -79367,7 +79360,7 @@ function emitFailure3(failure, json2) {
       process.stderr.write(renderCandidates(failure.candidates));
     }
   }
-  process.exitCode = exitCodeForKind3(failure.kind);
+  process.exitCode = exitCodeForKind(failure.kind);
 }
 function renderCandidates(candidates) {
   const lines = ["\n  This seller trades in several marketplaces. Re-run with one of:"];
@@ -79389,36 +79382,6 @@ function emitError9(err, json2) {
 `);
   }
   process.exitCode = 1;
-}
-function exitCodeForKind3(kind) {
-  switch (kind) {
-    case "not_authenticated":
-    case "session_expired":
-      return 2;
-    // sign in / re-login (run `mixshift auth login`)
-    case "restricted_report":
-      return 4;
-    // Amazon needs an RDT/PII role MixShift lacks
-    case "reauth_required":
-      return 5;
-    // merchant grant lapsed — reconnect this merchant
-    case "spapi_not_configured":
-      return 6;
-    // SP-API not enabled for this tenant
-    case "merchant_not_found":
-      return 7;
-    // selector matched no merchant
-    case "throttled":
-      return 8;
-    // Amazon rate limit — retry later
-    case "report_fatal":
-      return 9;
-    // Amazon returned FATAL / CANCELLED
-    case "host_unreachable":
-    case "unknown":
-    default:
-      return 1;
-  }
 }
 function renderMerchants(merchants) {
   if (merchants.length === 0) {
@@ -79541,6 +79504,310 @@ function todayISO6() {
 }
 function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
+}
+
+// src/commands/ads.ts
+import { readFile as readFile28 } from "node:fs/promises";
+
+// src/lib/amazon/ads-call.ts
+async function listAdsProfiles(opts = {}) {
+  const r = await amazonRequest(
+    { method: "GET", path: "/api/amazon/ads/profiles" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.profiles;
+  const profiles = Array.isArray(raw) ? raw : [];
+  return { ok: true, profiles };
+}
+async function listAdsOperations(family, opts = {}) {
+  const qs = family ? `?family=${encodeURIComponent(family)}` : "";
+  const r = await amazonRequest(
+    { method: "GET", path: `/api/amazon/ads/operations${qs}` },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.operations;
+  const operations = Array.isArray(raw) ? raw : [];
+  return { ok: true, operations };
+}
+async function adsCall(input, opts = {}) {
+  const body = { operation: input.operation };
+  if (input.profileId) body.profileId = input.profileId;
+  if (input.legacySellerId !== void 0 && input.legacySellerId !== null && input.legacySellerId !== "") {
+    const n = typeof input.legacySellerId === "string" ? Number(input.legacySellerId) : input.legacySellerId;
+    body.legacySellerId = typeof n === "number" && Number.isFinite(n) ? n : input.legacySellerId;
+  }
+  if (input.sellerId) body.sellerId = input.sellerId;
+  if (input.marketplace) body.marketplace = input.marketplace;
+  if (input.pathParams && Object.keys(input.pathParams).length > 0) {
+    body.pathParams = input.pathParams;
+  }
+  if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
+  if (input.body !== void 0) body.body = input.body;
+  if (input.contentTypeOverride) body.contentTypeOverride = input.contentTypeOverride;
+  const r = await amazonRequest(
+    { method: "POST", path: "/api/amazon/ads/call", body },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  if (typeof json2.operation !== "string") {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The service accepted the call but returned an unrecognized shape. Try again, or contact MixShift ops if it persists.",
+      message: "ads call response missing operation echo"
+    };
+  }
+  return {
+    ok: true,
+    operation: json2.operation,
+    profileId: String(json2.profileId ?? ""),
+    legacySellerId: Number(json2.legacySellerId ?? 0),
+    marketplaceId: json2.marketplaceId == null ? null : String(json2.marketplaceId),
+    payload: json2.payload
+  };
+}
+
+// src/commands/ads.ts
+function registerAdsCommands(program3) {
+  const ads = program3.command("ads").description(
+    "Call the Amazon Ads API (read-only): reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations."
+  );
+  registerProfiles(ads);
+  registerOperations2(ads);
+  registerCall2(ads);
+}
+function registerProfiles(ads) {
+  ads.command("profiles").description("List the Ads profiles you can call for (one per advertiser account + marketplace).").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listAdsProfiles({ dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackAds(EventName.AdsProfilesListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind
+        });
+        return emitFailure4(result, !!root.json);
+      }
+      await trackAds(EventName.AdsProfilesListed, "ok", startedAt, root.dataDir, {
+        count: result.profiles.length
+      });
+      if (root.json) {
+        writeJson4({ status: "ok", count: result.profiles.length, profiles: result.profiles });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.profiles.length} profile(s)
+
+`);
+        process.stdout.write(renderProfiles(result.profiles) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError10(err, !!root.json);
+    }
+  });
+}
+function registerOperations2(ads) {
+  ads.command("operations").description(
+    "Browse the callable Ads API operations. Read the notes before calling: they carry body vs query conventions and media types."
+  ).option("--family <name>", 'filter to one family (e.g. "Reporting", "Sponsored Products")').action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listAdsOperations(opts.family, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackAds(EventName.AdsOperationsListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind
+        });
+        return emitFailure4(result, !!root.json);
+      }
+      await trackAds(EventName.AdsOperationsListed, "ok", startedAt, root.dataDir, {
+        count: result.operations.length,
+        ...opts.family ? { family: opts.family } : {}
+      });
+      if (root.json) {
+        writeJson4({ status: "ok", count: result.operations.length, operations: result.operations });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.operations.length} operation(s)
+
+`);
+        process.stdout.write(renderOperations2(result.operations) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError10(err, !!root.json);
+    }
+  });
+}
+function registerCall2(ads) {
+  ads.command("call <operation>").description(
+    "Execute one cataloged Ads API operation (read-only). Run `ads operations` first for the operation id and its notes."
+  ).option("--profile-id <id>", "Ads profileId from `ads profiles`").option(
+    "--legacy-seller-id <id>",
+    "exact per-marketplace seller record id (same ids as `amazon merchants`)"
+  ).option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").option(
+    "--query <k=v>",
+    "query param (SD lists, sb.list_keywords; repeatable)",
+    collectKv2,
+    {}
+  ).option("--path <k=v>", "path placeholder, e.g. --path reportId=... (repeatable)", collectKv2, {}).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option("--content-type <vnd>", "advanced: override the cataloged vnd media type").action(async (operation, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      let body;
+      if (opts.bodyFile && opts.body) {
+        return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
+      }
+      if (opts.bodyFile) {
+        body = JSON.parse(await readFile28(opts.bodyFile, "utf8"));
+      } else if (opts.body) {
+        body = JSON.parse(opts.body);
+      }
+      const input = {
+        operation,
+        profileId: opts.profileId,
+        legacySellerId: opts.legacySellerId,
+        sellerId: opts.sellerId,
+        marketplace: opts.marketplace,
+        pathParams: opts.path,
+        query: opts.query,
+        ...body !== void 0 ? { body } : {},
+        ...opts.contentType ? { contentTypeOverride: opts.contentType } : {}
+      };
+      const result = await adsCall(input, { dataDirOverride: root.dataDir });
+      if (isReportFailure(result)) {
+        await trackAds(EventName.AdsCalled, "failed", startedAt, root.dataDir, {
+          operation,
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        });
+        return emitFailure4(result, !!root.json);
+      }
+      await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, { operation });
+      if (root.json) {
+        writeJson4({
+          status: "ok",
+          operation: result.operation,
+          profile_id: result.profileId,
+          legacy_seller_id: result.legacySellerId,
+          marketplace_id: result.marketplaceId,
+          payload: result.payload
+        });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.operation} (profile ${result.profileId})
+
+`);
+        process.stdout.write(JSON.stringify(result.payload, null, 2) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError10(err, !!root.json);
+    }
+  });
+}
+function collectKv2(pair, acc) {
+  const idx = pair.indexOf("=");
+  if (idx <= 0) {
+    throw new Error(`Expected k=v, got '${pair}'.`);
+  }
+  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
+  return acc;
+}
+async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson4(obj) {
+  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+}
+function emitFailure4(failure, json2) {
+  if (json2) {
+    writeJson4({
+      status: "error",
+      failure_kind: failure.kind,
+      message: failure.friendly,
+      detail: failure.message,
+      http_status: failure.httpStatus,
+      candidates: failure.candidates
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure.friendly}
+`);
+    if (failure.message) process.stderr.write(`  ${failure.message}
+`);
+  }
+  process.exitCode = exitCodeForKind(failure.kind);
+}
+function emitError10(err, json2) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json2) {
+    writeJson4({ status: "error", message });
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function renderProfiles(profiles) {
+  if (profiles.length === 0) {
+    return "_(no Ads profiles: this tenant has no connected advertising logins with profile ids)_";
+  }
+  const cols = ["profileId", "legacySellerId", "name", "type", "region", "marketplace"];
+  const header = "| " + cols.join(" | ") + " |";
+  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const rows = profiles.map((p) => {
+    const marketplace = [p.countryCode, p.marketplaceName ?? p.marketplaceId].filter((s) => !!s).join(" ");
+    return "| " + [
+      p.profileId,
+      String(p.legacySellerId),
+      mdCell2(p.name),
+      p.merchantType,
+      p.merchantRegion,
+      mdCell2(marketplace)
+    ].join(" | ") + " |";
+  });
+  return [header, sep, ...rows].join("\n");
+}
+function renderOperations2(operations) {
+  if (operations.length === 0) {
+    return "_(no operations matched: check the --family spelling against `ads operations`)_";
+  }
+  const byFamily = /* @__PURE__ */ new Map();
+  for (const op of operations) {
+    const list = byFamily.get(op.family) ?? [];
+    list.push(op);
+    byFamily.set(op.family, list);
+  }
+  const blocks = [];
+  for (const [family, ops] of byFamily) {
+    blocks.push(`## ${family}`);
+    for (const op of ops) {
+      const flags = [
+        op.method !== "GET" ? op.method : null,
+        op.body === "required" ? "body required" : op.body === "optional" ? "body optional" : null
+      ].filter(Boolean).join(", ");
+      blocks.push(`- **${op.id}**${flags ? ` (${flags})` : ""}: ${op.summary}`);
+      if (op.notes) blocks.push(`  - notes: ${op.notes}`);
+    }
+    blocks.push("");
+  }
+  return blocks.join("\n").trimEnd();
+}
+function mdCell2(s) {
+  return s.replaceAll("|", "\\|");
 }
 
 // src/lib/net/doctor.ts
@@ -79752,6 +80019,7 @@ registerVersionCommand(program2);
 registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 registerAmazonCommands(program2);
+registerAdsCommands(program2);
 registerDoctorCommand(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
