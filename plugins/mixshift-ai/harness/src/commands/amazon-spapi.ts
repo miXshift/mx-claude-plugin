@@ -32,8 +32,8 @@ import {
 } from '../lib/amazon/spapi-call.js';
 import {
   isReportFailure,
+  exitCodeForKind,
   type ReportFailure,
-  type ReportFailureKind,
 } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
@@ -247,33 +247,6 @@ function emitError(err: unknown, json: boolean): void {
     process.stderr.write(`error: ${message}\n`);
   }
   process.exitCode = 1;
-}
-
-/** Local copy of amazon.ts's kind->exit-code map (it is not exported; the
- *  in-flight fix/unify-report-exit-codes branch consolidates the copies —
- *  fold this one in when it lands). */
-function exitCodeForKind(kind: ReportFailureKind): number {
-  switch (kind) {
-    case 'not_authenticated':
-    case 'session_expired':
-      return 2;
-    case 'restricted_report':
-      return 4;
-    case 'reauth_required':
-      return 5;
-    case 'spapi_not_configured':
-      return 6;
-    case 'merchant_not_found':
-      return 7;
-    case 'throttled':
-      return 8;
-    case 'report_fatal':
-      return 9;
-    case 'host_unreachable':
-    case 'unknown':
-    default:
-      return 1;
-  }
 }
 
 // ---------------------------------------------------------------------------
