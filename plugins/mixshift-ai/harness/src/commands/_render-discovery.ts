@@ -60,11 +60,12 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
   return lines.join('\n');
 }
 
-function summarizeAccountTypes(types: ('SC' | 'VC' | 'unknown')[]): string {
+function summarizeAccountTypes(types: ('SC' | 'VC' | 'DSP' | 'unknown')[]): string {
   const counts = countBy(types);
   const parts: string[] = [];
   if (counts['SC']) parts.push(counts['SC'] === 1 ? 'SC' : `SC×${counts['SC']}`);
   if (counts['VC']) parts.push(counts['VC'] === 1 ? 'VC' : `VC×${counts['VC']}`);
+  if (counts['DSP']) parts.push(counts['DSP'] === 1 ? 'DSP' : `DSP×${counts['DSP']}`);
   if (counts['unknown']) parts.push(`?×${counts['unknown']}`);
   return parts.join(',') || '?';
 }

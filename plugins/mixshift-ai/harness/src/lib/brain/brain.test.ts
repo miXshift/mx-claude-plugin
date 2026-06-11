@@ -5,7 +5,13 @@ import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
 import { brandBrainSchema } from './schema.js';
-import { assembleBrain, assembleSellerSection, hashRows } from './assemble.js';
+import {
+  assembleBrain,
+  assembleSellerSection,
+  assembleCatalogSection,
+  assembleCampaignSection,
+  hashRows,
+} from './assemble.js';
 import { loadBrain, saveBrain, resolveAcosTargetPct } from './read.js';
 import { applyObservations, recordObservations } from './observe.js';
 
@@ -118,6 +124,96 @@ describe('assembleBrain', () => {
       value: ['B00TEST'],
       count: 1,
     });
+  });
+});
+
+describe('assembleCatalogSection', () => {
+  it('merges SC and VC channels: distinct ASINs, SC Brand + VC CustomBrand fallback', () => {
+    const sc = [
+      { ASIN: 'B001', SKU: 'SKU-1', Brand: "Backpacker's Pantry", ItemGroup: 'Chews' },
+      { ASIN: 'B001', SKU: 'SKU-1B', Brand: "Backpacker's Pantry", ItemGroup: 'Chews' },
+      { ASIN: 'B002', SKU: 'SKU-2', Brand: "Backpacker's Pantry", ItemGroup: 'Hydration' },
+    ];
+    const vc = [
+      { Asin: 'B003', CustomBrand: 'Astronaut Foods', Brand: 'AmazonDerived', ItemGroup: 'Freeze Dried' },
+      { Asin: 'B004', CustomBrand: null, Brand: 'AmazonDerived', ItemGroup: 'Freeze Dried' },
+    ];
+    const section = assembleCatalogSection(sc, vc);
+    expect(section.asin_count).toBe(4); // B001 deduped across its 2 SKUs
+    expect(section.sku_count).toBe(3);
+    expect(section.sub_brands).toEqual([
+      'AmazonDerived', // VC fallback when CustomBrand is null
+      'Astronaut Foods',
+      "Backpacker's Pantry",
+    ]);
+    expect(section.item_groups).toEqual(['Chews', 'Freeze Dried', 'Hydration']);
+    expect(section.hero_asins_deferred).toBe(true);
+  });
+
+  it('sku_count is null when the SC source did not run, 0 when it ran empty', () => {
+    expect(assembleCatalogSection(null, [{ Asin: 'B1' }]).sku_count).toBeNull();
+    expect(assembleCatalogSection([], [{ Asin: 'B1' }]).sku_count).toBe(0);
+  });
+
+  it('tolerates empty inputs', () => {
+    const section = assembleCatalogSection([], []);
+    expect(section.asin_count).toBe(0);
+    expect(section.sub_brands).toEqual([]);
+  });
+});
+
+describe('assembleCampaignSection', () => {
+  it('aggregates counts, distincts, and percentages', () => {
+    const rows = [
+      { Objective: 'defend', ItemGroup: 'Chews', Brand: 'BP', State: 'enabled', BidOptimization: 'smart', BrandEntityId: 'E1' },
+      { Objective: 'harvest', ItemGroup: 'Chews', Brand: 'BP', State: 'paused', BidOptimization: 'manual', BrandEntityId: 'E1' },
+      { Objective: 'defend', ItemGroup: 'Hydration', Brand: 'AF', State: 'enabled', BidOptimization: 'smart', BrandEntityId: null },
+    ];
+    const section = assembleCampaignSection(rows);
+    expect(section.campaign_count).toBe(3);
+    expect(section.paused_campaign_count).toBe(1);
+    expect(section.distinct_objectives).toEqual(['defend', 'harvest']);
+    expect(section.distinct_item_groups).toEqual(['Chews', 'Hydration']);
+    expect(section.distinct_brands).toEqual(['AF', 'BP']);
+    expect(section.smart_default_adoption_pct).toBe(67); // 2 of 3 known
+    expect(section.brand_entity_id_presence_pct).toBe(67); // 2 of 3 rows
+  });
+
+  it('returns null percentages when underlying signals are absent', () => {
+    expect(assembleCampaignSection([]).smart_default_adoption_pct).toBeNull();
+    expect(assembleCampaignSection([]).brand_entity_id_presence_pct).toBeNull();
+    const noBidColumn = assembleCampaignSection([
+      { Objective: 'defend', State: 'enabled' },
+    ]);
+    expect(noBidColumn.smart_default_adoption_pct).toBeNull();
+    expect(noBidColumn.brand_entity_id_presence_pct).toBe(0);
+  });
+});
+
+describe('assembleBrain with slice-2 sources', () => {
+  it('renders sections + source metas only for provided sources, schema-valid', () => {
+    const brain = assembleBrain({
+      brandSlug: 'backpackers-pantry',
+      sellerRows: [aopRow],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@test',
+      now: NOW,
+      catalogSc: {
+        rows: [{ ASIN: 'B001', SKU: 'S1', Brand: 'BP', ItemGroup: 'Chews' }],
+        sproc: 'sp_brain_catalog_fetch_sc',
+      },
+      campaign: {
+        rows: [{ Objective: 'defend', State: 'enabled' }],
+        sproc: 'sp_brain_campaign_fetch',
+      },
+    });
+    const parsed = brandBrainSchema.parse(brain);
+    expect(parsed.catalog?.asin_count).toBe(1);
+    expect(parsed.campaign_structure?.campaign_count).toBe(1);
+    expect(parsed.sources.catalog_sc?.sproc).toBe('sp_brain_catalog_fetch_sc');
+    expect(parsed.sources.campaign?.row_count).toBe(1);
+    expect(parsed.sources.catalog_vc).toBeUndefined();
+    expect(parsed.catalog?.sku_count).toBe(1);
   });
 });
 

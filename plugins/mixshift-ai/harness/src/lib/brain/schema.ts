@@ -85,6 +85,48 @@ export const brainSellerSchema = z.object({
 export type BrainSeller = z.infer<typeof brainSellerSchema>;
 
 /**
+ * Catalog facts (source class S1), AGGREGATED. The brain never stores
+ * per-ASIN row dumps; it stores the shape of the catalog. SC rows come
+ * from sp_brain_catalog_fetch_sc (mws_items), VC rows from
+ * sp_brain_catalog_fetch_vc (vendor_items); both merge into this one
+ * section. Sub-brand source: SC uses Brand; VC prefers the AM-set
+ * CustomBrand, falling back to the Amazon-derived Brand.
+ */
+export const brainCatalogSchema = z.object({
+  /** Distinct ASINs across SC + VC rows. */
+  asin_count: z.number().int().min(0),
+  /** Distinct SC SKUs (VC has no SKU grain). Null when no SC source ran. */
+  sku_count: z.number().int().min(0).nullable(),
+  sub_brands: z.array(z.string()),
+  item_groups: z.array(z.string()),
+  /** Hero-ASIN ranking needs SP-MIGRATION Phase 2 activity pulls. */
+  hero_asins_deferred: z.literal(true),
+});
+
+export type BrainCatalog = z.infer<typeof brainCatalogSchema>;
+
+/**
+ * Campaign-structure facts (source class S1 + light S2 derivations),
+ * AGGREGATED from sp_brain_campaign_fetch rows (enabled + paused
+ * campaigns). Percentages are whole numbers 0-100.
+ */
+export const brainCampaignStructureSchema = z.object({
+  campaign_count: z.number().int().min(0),
+  paused_campaign_count: z.number().int().min(0),
+  distinct_objectives: z.array(z.string()),
+  distinct_item_groups: z.array(z.string()),
+  distinct_brands: z.array(z.string()),
+  /** % of campaigns on smart/default bid optimization. Derivation
+   *  assumption (BidOptimization value semantics) is flagged in the SP
+   *  draft; verify against real warehouse values. */
+  smart_default_adoption_pct: z.number().min(0).max(100).nullable(),
+  /** % of campaigns carrying a BrandEntityId. */
+  brand_entity_id_presence_pct: z.number().min(0).max(100).nullable(),
+});
+
+export type BrainCampaignStructure = z.infer<typeof brainCampaignStructureSchema>;
+
+/**
  * One S3 observation aggregate: what skills have noticed, merged by
  * field path. Single observations never present as facts; `count` and
  * `confidence` carry the weight. See lib/brain/observe.ts for the
@@ -116,9 +158,15 @@ export const brandBrainSchema = z.object({
   generator: z.string(),
   sources: z.object({
     seller: brainSourceMetaSchema.optional(),
-    // catalog + campaign source metas land with later slices.
+    catalog_sc: brainSourceMetaSchema.optional(),
+    catalog_vc: brainSourceMetaSchema.optional(),
+    campaign: brainSourceMetaSchema.optional(),
   }),
   seller: brainSellerSchema.optional(),
+  /** Present when at least one catalog source (SC or VC) fetched ok. */
+  catalog: brainCatalogSchema.optional(),
+  /** Present when the campaign source fetched ok. */
+  campaign_structure: brainCampaignStructureSchema.optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),

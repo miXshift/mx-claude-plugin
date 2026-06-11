@@ -451,6 +451,34 @@ queries:
   # standard query endpoint. See internal/SP-MIGRATION.md +
   # internal/BACKGROUND-DISCOVERY.md.
 
+  - id: BRAIN-CATALOG-SC
+    dispatch: sproc
+    sproc: sp_brain_catalog_fetch_sc
+    purpose: SC catalog shape pull (in-catalog items with brand/group/label taxonomy) for key-brand background discovery. Aggregated client-side; the brain stores distincts and counts only.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by the brand's SC seller ids (second CALL argument).
+
+  - id: BRAIN-CATALOG-VC
+    dispatch: sproc
+    sproc: sp_brain_catalog_fetch_vc
+    purpose: VC catalog shape pull (vendor items with custom-brand/group/label taxonomy) for key-brand background discovery. Aggregated client-side.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by the brand's VC seller ids (second CALL argument).
+
+  - id: BRAIN-CAMPAIGN
+    dispatch: sproc
+    sproc: sp_brain_campaign_fetch
+    purpose: Campaign-structure pull (enabled and paused campaigns with objective/group/brand taxonomy and structure flags) for key-brand background discovery. Aggregated client-side.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by all of the brand's seller ids (SC, VC, and DSP seats all
+      carry campaign rows).
+
   - id: BRAIN-SELLER
     dispatch: sproc
     sproc: sp_brain_seller_fetch

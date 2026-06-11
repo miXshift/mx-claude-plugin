@@ -151,15 +151,30 @@ function renderFetchResult(
     return;
   }
   switch (result.status) {
-    case 'complete':
+    case 'complete': {
+      const parts = [
+        `${result.summary.row_count} seller row(s)`,
+        `ACoS target ${result.summary.acos_target_pct ?? 'not set in platform'}`,
+      ];
+      if (result.summary.asin_count !== null) {
+        parts.push(`${result.summary.asin_count} catalog ASIN(s)`);
+      }
+      if (result.summary.campaign_count !== null) {
+        parts.push(`${result.summary.campaign_count} campaign(s)`);
+      }
+      parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
       process.stdout.write(
-        `\n✓ Brand brain populated for ${slug} ` +
-          `(${result.summary.row_count} seller row(s), ` +
-          `ACoS target ${result.summary.acos_target_pct ?? 'not set in platform'}, ` +
-          `${result.summary.duration_ms}ms via ${result.summary.used_dispatch}).\n` +
+        `\n✓ Brand brain populated for ${slug} (${parts.join(', ')}).\n` +
           `  ${result.path}\n`,
       );
+      if (result.summary.failed_sources.length > 0) {
+        process.stdout.write(
+          `  ⚠ Source(s) failed and were skipped: ${result.summary.failed_sources.join(', ')}. ` +
+            `Retry later with \`mixshift brand brain refresh ${slug}\`.\n`,
+        );
+      }
       break;
+    }
     case 'skipped_fresh':
       process.stdout.write(
         `\n• Brain for ${slug} is fresh (fetched ${result.fetched_at}; ` +

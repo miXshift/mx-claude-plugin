@@ -28,21 +28,67 @@ const sellerRow = {
   MarketPlaceName: 'Amazon.com',
 };
 
-function dispatchOk(rows: Array<Record<string, unknown>> = [sellerRow]) {
+const scCatalogRow = {
+  ASIN: 'B00AAA111',
+  SKU: 'BP-CHEW-01',
+  Brand: "Backpacker's Pantry",
+  ItemGroup: 'Energy Chews',
+};
+
+const campaignRow = {
+  Objective: 'defend',
+  ItemGroup: 'Energy Chews',
+  Brand: "Backpacker's Pantry",
+  State: 'enabled',
+  BidOptimization: 'smart',
+  BrandEntityId: 'ENTITY123',
+};
+
+function ok(id: string, rows: Array<Record<string, unknown>>) {
   return {
     ok: true as const,
-    id: 'BRAIN-SELLER',
+    id,
     rows,
     rowCount: rows.length,
     durationMs: 12,
     usedDispatch: 'sproc' as const,
-    displaySql: 'CALL sp_brain_seller_fetch(?, ?)',
+    displaySql: `CALL ${id}(?, ?)`,
     boundParams: {},
   };
 }
 
+function failed(id: string, message: string) {
+  return {
+    ok: false as const,
+    id,
+    usedDispatch: 'sproc' as const,
+    failure: { ok: false as const, kind: 'unknown', message, friendly: message },
+  };
+}
+
+/** Route the dispatch mock by query id; unrouted ids return empty-ok. */
+function routeDispatch(
+  routes: Record<string, ReturnType<typeof ok> | ReturnType<typeof failed>>,
+) {
+  runDispatchedMock.mockImplementation(async (id: string) => {
+    return (routes[id] ?? ok(id, [])) as never;
+  });
+}
+
+interface FixtureAccount {
+  seller_id: number;
+  account_type: 'SC' | 'VC' | 'DSP' | 'unknown';
+}
+
 /** Minimal valid clients/index.yaml registry with one brand. */
-async function writeIndexFixture(dir: string, slug = 'backpackers-pantry') {
+async function writeIndexFixture(
+  dir: string,
+  accounts: FixtureAccount[] = [
+    { seller_id: 574, account_type: 'SC' },
+    { seller_id: 575, account_type: 'SC' },
+  ],
+  slug = 'backpackers-pantry',
+) {
   const index = {
     schema_version: 1,
     discovered_at: NOW.toISOString(),
@@ -55,32 +101,18 @@ async function writeIndexFixture(dir: string, slug = 'backpackers-pantry') {
         is_dormant: false,
         cold_started: false,
         cold_started_at: null,
-        accounts: [
-          {
-            seller_id: 574,
-            seller_name: 'American Outdoor Products',
-            merchant_alias: "Backpacker's Pantry",
-            account_type: 'SC',
-            marketplace: 'US',
-            region: 'NA',
-            is_active: true,
-            is_mws_user: true,
-            ads_active: true,
-            retail_active: true,
-          },
-          {
-            seller_id: 575,
-            seller_name: 'American Outdoor Products',
-            merchant_alias: "Backpacker's Pantry",
-            account_type: 'SC',
-            marketplace: 'CA',
-            region: 'NA',
-            is_active: true,
-            is_mws_user: true,
-            ads_active: true,
-            retail_active: true,
-          },
-        ],
+        accounts: accounts.map((a) => ({
+          seller_id: a.seller_id,
+          seller_name: 'American Outdoor Products',
+          merchant_alias: "Backpacker's Pantry",
+          account_type: a.account_type,
+          marketplace: 'US',
+          region: 'NA',
+          is_active: true,
+          is_mws_user: true,
+          ads_active: true,
+          retail_active: true,
+        })),
       },
     ],
   };
@@ -97,15 +129,28 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
+function callIds(): string[] {
+  return runDispatchedMock.mock.calls.map(([id]) => id as string);
+}
+
+function callFor(id: string) {
+  const call = runDispatchedMock.mock.calls.find(([cid]) => cid === id);
+  return call ? (call[1] as { params?: Record<string, unknown> }) : undefined;
+}
+
 beforeEach(() => {
   runDispatchedMock.mockReset();
 });
 
-describe('fetchBrandBrain', () => {
-  it('happy path: fetches, assembles, persists, writes complete status', async () => {
+describe('fetchBrandBrain — multi-source orchestration', () => {
+  it('SC-only brand: fans out to seller + catalog_sc + campaign (no VC)', async () => {
     await withTempDir(async (dir) => {
       await writeIndexFixture(dir);
-      runDispatchedMock.mockResolvedValueOnce(dispatchOk());
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
 
       const result = await fetchBrandBrain({
         slug: 'backpackers-pantry',
@@ -118,30 +163,182 @@ describe('fetchBrandBrain', () => {
         expect(result.summary).toMatchObject({
           row_count: 1,
           acos_target_pct: 25,
-          merchant_alias: "Backpacker's Pantry",
-          used_dispatch: 'sproc',
+          asin_count: 1,
+          campaign_count: 1,
+          failed_sources: [],
         });
       }
 
-      // seller_ids passed via params (serves both sproc + local-dev paths)
-      const [, opts] = runDispatchedMock.mock.calls[0]!;
-      expect(opts!.params).toEqual({ seller_ids: [574, 575] });
+      const ids = callIds();
+      expect(ids).toContain('BRAIN-SELLER');
+      expect(ids).toContain('BRAIN-CATALOG-SC');
+      expect(ids).toContain('BRAIN-CAMPAIGN');
+      expect(ids).not.toContain('BRAIN-CATALOG-VC');
+
+      expect(callFor('BRAIN-SELLER')!.params).toEqual({ seller_ids: [574, 575] });
+      expect(callFor('BRAIN-CATALOG-SC')!.params).toEqual({ seller_ids: [574, 575] });
+      expect(callFor('BRAIN-CAMPAIGN')!.params).toEqual({ seller_ids: [574, 575] });
 
       const brain = await loadBrain('backpackers-pantry', dir);
       expect(brain.ok).toBe(true);
       if (brain.ok) {
-        expect(brain.brain.seller?.acos_target_pct).toBe(25);
-        expect(brain.brain.generator).toMatch(/^plugin@/);
-        expect(brain.brain.sources.seller?.sproc).toBe('sp_brain_seller_fetch');
+        expect(brain.brain.catalog).toMatchObject({
+          asin_count: 1,
+          sub_brands: ["Backpacker's Pantry"],
+          item_groups: ['Energy Chews'],
+        });
+        expect(brain.brain.campaign_structure).toMatchObject({
+          campaign_count: 1,
+          distinct_objectives: ['defend'],
+          smart_default_adoption_pct: 100,
+          brand_entity_id_presence_pct: 100,
+        });
+        expect(brain.brain.sources.catalog_sc?.sproc).toBe('sp_brain_catalog_fetch_sc');
+        expect(brain.brain.sources.campaign?.sproc).toBe('sp_brain_campaign_fetch');
+        expect(brain.brain.sources.catalog_vc).toBeUndefined();
       }
 
-      const statusRaw = await readFile(
-        join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
-        'utf-8',
+      const status = JSON.parse(
+        await readFile(
+          join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
+          'utf-8',
+        ),
       );
-      const status = JSON.parse(statusRaw);
       expect(status.status).toBe('complete');
-      expect(status.summary.row_count).toBe(1);
+      expect(status.summary.asin_count).toBe(1);
+    });
+  });
+
+  it('mixed SC+VC+DSP brand: catalog splits by type, campaign covers all seats', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir, [
+        { seller_id: 574, account_type: 'SC' },
+        { seller_id: 580, account_type: 'VC' },
+        { seller_id: 590, account_type: 'DSP' },
+      ]);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CATALOG-VC': ok('BRAIN-CATALOG-VC', [
+          { Asin: 'B00VVV222', CustomBrand: 'Astronaut Foods', ItemGroup: 'Freeze Dried' },
+        ]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'backpackers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+
+      expect(callFor('BRAIN-SELLER')!.params).toEqual({
+        seller_ids: [574, 580, 590],
+      });
+      expect(callFor('BRAIN-CATALOG-SC')!.params).toEqual({ seller_ids: [574] });
+      expect(callFor('BRAIN-CATALOG-VC')!.params).toEqual({ seller_ids: [580] });
+      expect(callFor('BRAIN-CAMPAIGN')!.params).toEqual({
+        seller_ids: [574, 580, 590],
+      });
+
+      const brain = await loadBrain('backpackers-pantry', dir);
+      if (brain.ok) {
+        // SC Brand + VC CustomBrand merge into sub_brands
+        expect(brain.brain.catalog?.sub_brands).toEqual([
+          'Astronaut Foods',
+          "Backpacker's Pantry",
+        ]);
+        expect(brain.brain.catalog?.asin_count).toBe(2);
+      } else {
+        expect.fail('brain should load');
+      }
+    });
+  });
+
+  it('DSP-only brand: no catalog calls, campaign still runs', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir, [{ seller_id: 590, account_type: 'DSP' }]);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'backpackers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      const ids = callIds();
+      expect(ids).not.toContain('BRAIN-CATALOG-SC');
+      expect(ids).not.toContain('BRAIN-CATALOG-VC');
+      expect(ids).toContain('BRAIN-CAMPAIGN');
+
+      const brain = await loadBrain('backpackers-pantry', dir);
+      if (brain.ok) {
+        expect(brain.brain.catalog).toBeUndefined();
+        expect(brain.brain.campaign_structure?.campaign_count).toBe(1);
+      }
+    });
+  });
+
+  it('partial failure: campaign source fails, brain still completes with failed_sources', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CAMPAIGN': failed('BRAIN-CAMPAIGN', 'PROCEDURE sp_brain_campaign_fetch does not exist'),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'backpackers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status === 'complete') {
+        expect(result.summary.failed_sources).toEqual(['campaign']);
+        expect(result.summary.asin_count).toBe(1);
+        expect(result.summary.campaign_count).toBeNull();
+      }
+
+      const brain = await loadBrain('backpackers-pantry', dir);
+      if (brain.ok) {
+        expect(brain.brain.campaign_structure).toBeUndefined();
+        expect(brain.brain.sources.campaign).toBeUndefined();
+        expect(brain.brain.catalog?.asin_count).toBe(1);
+      }
+    });
+  });
+
+  it('seller failure is fatal: writes failed status, no brain document', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': failed('BRAIN-SELLER', 'PROCEDURE sp_brain_seller_fetch does not exist'),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'backpackers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('failed');
+
+      const status = JSON.parse(
+        await readFile(
+          join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
+          'utf-8',
+        ),
+      );
+      expect(status.status).toBe('failed');
+      expect(status.error).toContain('sp_brain_seller_fetch');
+
+      const brain = await loadBrain('backpackers-pantry', dir);
+      expect(brain.ok).toBe(false);
     });
   });
 
@@ -161,7 +358,6 @@ describe('fetchBrandBrain', () => {
   it('skips inside the TTL window and honors refresh override', async () => {
     await withTempDir(async (dir) => {
       await writeIndexFixture(dir);
-      // Seed a brain fetched 1 day ago (inside the 30d TTL).
       const seeded = assembleBrain({
         brandSlug: 'backpackers-pantry',
         sellerRows: [sellerRow],
@@ -182,7 +378,9 @@ describe('fetchBrandBrain', () => {
       }
       expect(runDispatchedMock).not.toHaveBeenCalled();
 
-      runDispatchedMock.mockResolvedValueOnce(dispatchOk());
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+      });
       const forced = await fetchBrandBrain({
         slug: 'backpackers-pantry',
         refresh: true,
@@ -190,7 +388,6 @@ describe('fetchBrandBrain', () => {
         now: NOW,
       });
       expect(forced.status).toBe('complete');
-      expect(runDispatchedMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -205,7 +402,7 @@ describe('fetchBrandBrain', () => {
         now: new Date(NOW.getTime() - (BRAIN_TTL_DAYS + 1) * 24 * 60 * 60 * 1000),
       });
       await saveBrain(old, dir);
-      runDispatchedMock.mockResolvedValueOnce(dispatchOk());
+      routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
 
       const result = await fetchBrandBrain({
         slug: 'backpackers-pantry',
@@ -238,7 +435,7 @@ describe('fetchBrandBrain', () => {
         ],
       );
       await saveBrain(seeded, dir);
-      runDispatchedMock.mockResolvedValueOnce(dispatchOk());
+      routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
 
       await fetchBrandBrain({
         slug: 'backpackers-pantry',
@@ -255,43 +452,6 @@ describe('fetchBrandBrain', () => {
       } else {
         expect.fail('brain should load after re-fetch');
       }
-    });
-  });
-
-  it('classifies dispatch failures and writes a failed status file', async () => {
-    await withTempDir(async (dir) => {
-      await writeIndexFixture(dir);
-      runDispatchedMock.mockResolvedValueOnce({
-        ok: false,
-        id: 'BRAIN-SELLER',
-        usedDispatch: 'sproc',
-        failure: {
-          ok: false,
-          kind: 'unknown',
-          message: 'PROCEDURE sp_brain_seller_fetch does not exist',
-          friendly: 'PROCEDURE sp_brain_seller_fetch does not exist',
-        },
-      });
-
-      const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
-        dataDirOverride: dir,
-        now: NOW,
-      });
-      expect(result.status).toBe('failed');
-
-      const status = JSON.parse(
-        await readFile(
-          join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
-          'utf-8',
-        ),
-      );
-      expect(status.status).toBe('failed');
-      expect(status.error).toContain('sp_brain_seller_fetch');
-
-      // No brain document written on failure.
-      const brain = await loadBrain('backpackers-pantry', dir);
-      expect(brain.ok).toBe(false);
     });
   });
 });

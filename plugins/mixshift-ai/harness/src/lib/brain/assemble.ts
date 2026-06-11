@@ -13,13 +13,24 @@ import {
   BRAIN_SCHEMA_VERSION,
   type BrandBrain,
   type BrainSeller,
+  type BrainCatalog,
+  type BrainCampaignStructure,
   type BrainSourceMeta,
 } from './schema.js';
 
-/** Raw row shape as returned by sp_brain_seller_fetch (or the local dev
+/** Raw row shape as returned by the brain SPs (or the local dev
  *  fallback SQL). Values arrive untyped from the wire; normalization is
  *  defensive. */
 export type RawSellerRow = Record<string, unknown>;
+export type RawCatalogRow = Record<string, unknown>;
+export type RawCampaignRow = Record<string, unknown>;
+
+/** Rows + provenance for one fetched source. */
+export interface SourceInput<Row> {
+  rows: Row[];
+  /** Which procedure/query produced the rows (provenance). */
+  sproc: string;
+}
 
 export interface AssembleBrainInput {
   brandSlug: string;
@@ -33,30 +44,57 @@ export interface AssembleBrainInput {
   /** Carried forward from the previous document so a re-fetch never
    *  drops accumulated S3 observations. */
   previousObservations?: BrandBrain['observations'];
+  /** Slice-2 sources. Omitted = source not applicable or failed; the
+   *  corresponding section + source meta are simply absent. */
+  catalogSc?: SourceInput<RawCatalogRow>;
+  catalogVc?: SourceInput<RawCatalogRow>;
+  campaign?: SourceInput<RawCampaignRow>;
 }
 
 /**
- * Assemble the first-slice document (seller source only). Later slices
- * extend the input with catalog/campaign rows and add their sections;
- * the envelope shape stays stable.
+ * Assemble the brain document from whichever sources fetched. Seller is
+ * the spine (always present); catalog/campaign sections render only
+ * when their sources are provided. The envelope shape stays stable as
+ * sources grow.
  */
 export function assembleBrain(input: AssembleBrainInput): BrandBrain {
   const now = input.now ?? new Date();
   const seller = assembleSellerSection(input.sellerRows);
-  const sellerMeta: BrainSourceMeta = {
-    sproc: input.sellerSproc,
+
+  const meta = <Row,>(src: SourceInput<Row>): BrainSourceMeta => ({
+    sproc: src.sproc,
     fetched_at: now.toISOString(),
-    row_count: input.sellerRows.length,
-    source_hash: hashRows(input.sellerRows),
+    row_count: src.rows.length,
+    source_hash: hashRows(src.rows as Array<Record<string, unknown>>),
+  });
+
+  const sources: BrandBrain['sources'] = {
+    seller: meta({ rows: input.sellerRows, sproc: input.sellerSproc }),
   };
+  if (input.catalogSc) sources.catalog_sc = meta(input.catalogSc);
+  if (input.catalogVc) sources.catalog_vc = meta(input.catalogVc);
+  if (input.campaign) sources.campaign = meta(input.campaign);
+
+  const hasCatalog = input.catalogSc || input.catalogVc;
 
   return {
     schema_version: BRAIN_SCHEMA_VERSION,
     brand_slug: input.brandSlug,
     generated_at: now.toISOString(),
     generator: input.generator,
-    sources: { seller: sellerMeta },
+    sources,
     seller,
+    ...(hasCatalog
+      ? {
+          catalog: assembleCatalogSection(
+            input.catalogSc?.rows ?? null,
+            input.catalogVc?.rows ?? null,
+          ),
+        }
+      : {}),
+    ...(input.campaign
+      ? { campaign_structure: assembleCampaignSection(input.campaign.rows) }
+      : {}),
     observations: input.previousObservations ?? {},
   };
 }
@@ -94,6 +132,111 @@ export function assembleSellerSection(rows: RawSellerRow[]): BrainSeller {
     },
     primary_seller_id: toNumber(primary.ID),
   };
+}
+
+/**
+ * Merge SC + VC catalog rows into the aggregated catalog section. The
+ * brain stores the SHAPE of the catalog (distincts + counts), never
+ * per-ASIN dumps. `null` rows = that channel's source didn't run (vs an
+ * empty array = ran and returned nothing).
+ *
+ * Sub-brand sources per the locked design: SC rows use `Brand`
+ * (mws_items); VC rows prefer the AM-set `CustomBrand`, falling back to
+ * the Amazon-derived `Brand`.
+ *
+ * Exported for unit tests.
+ */
+export function assembleCatalogSection(
+  scRows: RawCatalogRow[] | null,
+  vcRows: RawCatalogRow[] | null,
+): BrainCatalog {
+  const asins = new Set<string>();
+  const subBrands = new Set<string>();
+  const itemGroups = new Set<string>();
+  const skus = new Set<string>();
+
+  for (const r of scRows ?? []) {
+    addIf(asins, toTrimmedString(r.ASIN ?? r.Asin));
+    addIf(skus, toTrimmedString(r.SKU));
+    addIf(subBrands, toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  for (const r of vcRows ?? []) {
+    addIf(asins, toTrimmedString(r.Asin ?? r.ASIN));
+    addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+
+  return {
+    asin_count: asins.size,
+    sku_count: scRows === null ? null : skus.size,
+    sub_brands: [...subBrands].sort(),
+    item_groups: [...itemGroups].sort(),
+    hero_asins_deferred: true,
+  };
+}
+
+/**
+ * Aggregate enabled+paused campaign rows into the campaign-structure
+ * section. Percentages are whole numbers.
+ *
+ * smart_default_adoption_pct derivation ASSUMPTION (flagged in the SP
+ * draft, verify against real warehouse values): a campaign counts as
+ * "smart/default bidding" when its BidOptimization value lowercases to
+ * one of the SMART_BID_VALUES below. Computed over rows with a non-null
+ * BidOptimization; null when no row carries the column.
+ *
+ * Exported for unit tests.
+ */
+export function assembleCampaignSection(
+  rows: RawCampaignRow[],
+): BrainCampaignStructure {
+  const objectives = new Set<string>();
+  const itemGroups = new Set<string>();
+  const brands = new Set<string>();
+  let paused = 0;
+  let bidKnown = 0;
+  let bidSmart = 0;
+  let brandEntity = 0;
+
+  for (const r of rows) {
+    addIf(objectives, toTrimmedString(r.Objective));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+    addIf(brands, toTrimmedString(r.Brand));
+    if (toTrimmedString(r.State)?.toLowerCase() === 'paused') paused++;
+    const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
+    if (bid !== null && bid !== undefined) {
+      bidKnown++;
+      if (SMART_BID_VALUES.has(bid)) bidSmart++;
+    }
+    if (toTrimmedString(r.BrandEntityId)) brandEntity++;
+  }
+
+  return {
+    campaign_count: rows.length,
+    paused_campaign_count: paused,
+    distinct_objectives: [...objectives].sort(),
+    distinct_item_groups: [...itemGroups].sort(),
+    distinct_brands: [...brands].sort(),
+    smart_default_adoption_pct:
+      bidKnown > 0 ? Math.round((bidSmart / bidKnown) * 100) : null,
+    brand_entity_id_presence_pct:
+      rows.length > 0 ? Math.round((brandEntity / rows.length) * 100) : null,
+  };
+}
+
+const SMART_BID_VALUES = new Set([
+  'smart',
+  'default',
+  'auto',
+  'optimized',
+  'enabled',
+  'true',
+  '1',
+]);
+
+function addIf(set: Set<string>, v: string | null | undefined): void {
+  if (v) set.add(v);
 }
 
 /**

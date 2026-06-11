@@ -21,7 +21,7 @@ export interface SellerRow {
   seller_name: string;
   amazon_seller_id: string | null;
   merchant_alias: string | null;
-  account_type: 'SC' | 'VC' | 'unknown';
+  account_type: 'SC' | 'VC' | 'DSP' | 'unknown';
   marketplace: string | null;
   region: string | null;
   agency_name: string | null;
@@ -137,16 +137,18 @@ function normalizeRow(raw: RawSellerRow): SellerRow {
 }
 
 /**
- * Map the raw `MerchantType` string to the SC/VC enum the rest of the
- * harness uses. Treats "seller" / "vendor" case-insensitively. Anything
+ * Map the raw `MerchantType` string to the SC/VC/DSP enum the rest of
+ * the harness uses. Treats values case-insensitively. "Agency" rows are
+ * DSP seats (their own ProfileId, no seller catalog). Anything
  * unrecognized comes back as "unknown" — the consumer decides whether to
  * surface or skip.
  */
-function normalizeAccountType(raw: string | null): 'SC' | 'VC' | 'unknown' {
+function normalizeAccountType(raw: string | null): 'SC' | 'VC' | 'DSP' | 'unknown' {
   if (!raw) return 'unknown';
   const s = raw.trim().toLowerCase();
   if (s === 'seller' || s === 'sellercentral' || s === 'sc') return 'SC';
   if (s === 'vendor' || s === 'vendorcentral' || s === 'vc') return 'VC';
+  if (s === 'agency' || s === 'dsp') return 'DSP';
   return 'unknown';
 }
 
