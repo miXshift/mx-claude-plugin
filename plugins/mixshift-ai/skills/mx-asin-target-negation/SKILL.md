@@ -422,6 +422,31 @@ mixshift sidecar write --input-file /tmp/aneg-sidecar-input.json
 `mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 
+## Applying ASIN negations (optional, requires explicit user confirmation)
+
+The negate/review/watch buckets are recommendations. When the user asks to
+apply the clean-negate bucket, use the audited Ads write surface:
+
+1. Build the change set from the approved ASINs at their matched locations.
+   Ad-group level: `sp.create_negative_targets` with
+   `{ "negativeTargetingClauses": [ { "campaignId": "...", "adGroupId": "...",
+   "state": "ENABLED", "expression": [ { "type": "ASIN_SAME_AS",
+   "value": "B0..." } ] } ] }`. Campaign level:
+   `sp.create_campaign_negative_targets`. Use the Amazon ids from the pulled
+   rows; resolve missing ids via `mixshift ads call sp.list_campaigns` /
+   `sp.list_ad_groups`.
+2. Dry-run it (the default; nothing reaches Amazon):
+   `mixshift ads call sp.create_negative_targets --legacy-seller-id <id> --body-file negations.json --json`
+3. Show the user the preview and ask for explicit confirmation of this exact
+   set. Only the clean-negate bucket is eligible; review/watch ASINs never go
+   in a change set without their own explicit user decision.
+4. Only after the user confirms, re-run the SAME command with `--commit`.
+   Report per-item success/error counts and the `audit_id`.
+
+Hard rules: never pass `--commit` without the user's confirmation of this
+specific change set; cap change sets at 200 items per call; on
+`insufficient_scope` hand the user the negation list for manual application.
+
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
 At the START of this skill, run:

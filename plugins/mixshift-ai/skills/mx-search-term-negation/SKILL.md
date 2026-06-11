@@ -301,6 +301,30 @@ mixshift sidecar write --input-file /tmp/stn-sidecar-input.json
 
 *Skill version: 1.1 — ported from upstream with full domain logic preserved*
 
+## Applying negatives (optional, requires explicit user confirmation)
+
+Negation verdicts are recommendations. When the user asks to apply approved
+negatives, use the audited Ads write surface instead of manual entry:
+
+1. Build the change set from the approved terms at their matched locations.
+   Ad-group level: `sp.create_negative_keywords` with
+   `{ "negativeKeywords": [ { "campaignId": "...", "adGroupId": "...",
+   "keywordText": "...", "matchType": "NEGATIVE_EXACT", "state": "ENABLED" } ] }`.
+   Campaign level: `sp.create_campaign_negative_keywords`. Use the Amazon
+   campaign/ad-group ids from the pulled rows; resolve missing ids via
+   `mixshift ads call sp.list_campaigns` / `sp.list_ad_groups`.
+2. Dry-run it (the default; nothing reaches Amazon):
+   `mixshift ads call sp.create_negative_keywords --legacy-seller-id <id> --body-file negatives.json --json`
+3. Show the user the preview and ask for explicit confirmation of this exact
+   set. Phrase negatives have blast radius: NEGATIVE_PHRASE entries deserve a
+   second look in the preview before anyone confirms.
+4. Only after the user confirms, re-run the SAME command with `--commit`.
+   Report per-item success/error counts and the `audit_id`.
+
+Hard rules: never pass `--commit` without the user's confirmation of this
+specific change set; cap change sets at 200 items per call; on
+`insufficient_scope` hand the user the negation list for manual application.
+
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
 At the START of this skill, run:
