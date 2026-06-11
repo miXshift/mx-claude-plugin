@@ -294,6 +294,29 @@ mixshift sidecar write --input-file /tmp/kbh-sidecar-input.json
 5. Summary metrics + verdict
 6. Bottom Line with structural-event and WoW drift context
 
+## Applying bid changes (optional, requires explicit user confirmation)
+
+The verdict tables are recommendations. When the user asks to apply some or
+all bid changes, use the audited Ads write surface instead of manual entry:
+
+1. Build the change set from the rows the user selected. `sp.update_keywords`
+   takes `{ "keywords": [ { "keywordId": "...", "bid": <new bid> } ] }`. Use
+   each row's keyword id from the KBH data pull; if a row carries only
+   campaign/ad-group/keyword text, resolve the id first via
+   `mixshift ads call sp.list_keywords` with a filter body.
+2. Dry-run it (the default; nothing reaches Amazon):
+   `mixshift ads call sp.update_keywords --legacy-seller-id <id> --body-file changes.json --json`
+3. Show the user the preview AND the `before_state` snapshot (current bids),
+   then ask for explicit confirmation of this exact change set. Never skip
+   this step, and never include bids that were not in the confirmed table.
+4. Only after the user confirms, re-run the SAME command with `--commit`.
+   Report per-item success/error counts and the `audit_id`.
+
+Hard rules: never pass `--commit` without the user's confirmation of this
+specific change set; cap change sets at 200 items per call (split larger
+sets); on `insufficient_scope` the credential cannot write, so hand the user
+the change list for manual application instead.
+
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
 At the START of this skill, run:
