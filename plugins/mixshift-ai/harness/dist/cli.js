@@ -77653,6 +77653,9 @@ function exitCodeForKind(kind) {
     case "merchant_not_found":
       return 7;
     // selector matched no merchant
+    case "insufficient_scope":
+      return 11;
+    // credential lacks a required scope (e.g. ads:write)
     case "throttled":
       return 8;
     // Amazon rate limit — retry later
@@ -77990,6 +77993,7 @@ async function resolveBaseAndToken(opts) {
 var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "spapi_not_configured",
   "ads_not_configured",
+  "insufficient_scope",
   "reauth_required",
   "restricted_report",
   "merchant_not_found",
@@ -78093,6 +78097,8 @@ function defaultFriendly(kind) {
       return "Amazon SP-API isn't enabled for this MixShift account yet. Contact MixShift ops to turn on on-demand report pulls.";
     case "ads_not_configured":
       return "The Amazon Ads API isn't enabled on the MixShift service yet. Contact MixShift ops.";
+    case "insufficient_scope":
+      return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
     case "reauth_required":
       return "This Amazon merchant needs to be re-authorized in MixShift before reports can be pulled. Re-connect the account in the MixShift app, then retry.";
     case "restricted_report":
@@ -79546,6 +79552,7 @@ async function adsCall(input, opts = {}) {
   if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
   if (input.body !== void 0) body.body = input.body;
   if (input.contentTypeOverride) body.contentTypeOverride = input.contentTypeOverride;
+  if (input.dryRun !== void 0) body.dryRun = input.dryRun;
   const r = await amazonRequest(
     { method: "POST", path: "/api/amazon/ads/call", body },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
@@ -79566,14 +79573,19 @@ async function adsCall(input, opts = {}) {
     profileId: String(json2.profileId ?? ""),
     legacySellerId: Number(json2.legacySellerId ?? 0),
     marketplaceId: json2.marketplaceId == null ? null : String(json2.marketplaceId),
-    payload: json2.payload
+    payload: json2.payload,
+    ...typeof json2.dryRun === "boolean" ? { dryRun: json2.dryRun } : {},
+    ...typeof json2.itemsCount === "number" ? { itemsCount: json2.itemsCount } : {},
+    ...typeof json2.auditId === "string" ? { auditId: json2.auditId } : {},
+    ...json2.beforeState !== void 0 ? { beforeState: json2.beforeState } : {},
+    ...json2.preview !== void 0 ? { preview: json2.preview } : {}
   };
 }
 
 // src/commands/ads.ts
 function registerAdsCommands(program3) {
   const ads = program3.command("ads").description(
-    "Call the Amazon Ads API (read-only): reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations."
+    "Call the Amazon Ads API: reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations, and audited writes (bids, negatives, campaign creation; dry-run by default, --commit to apply)."
   );
   registerProfiles(ads);
   registerOperations2(ads);
@@ -79644,7 +79656,7 @@ function registerOperations2(ads) {
 }
 function registerCall2(ads) {
   ads.command("call <operation>").description(
-    "Execute one cataloged Ads API operation (read-only). Run `ads operations` first for the operation id and its notes."
+    "Execute one cataloged Ads API operation. Run `ads operations` first for the operation id and its notes. Write operations preview by default (dry run); pass --commit to apply, ONLY after the user confirmed the preview."
   ).option("--profile-id <id>", "Ads profileId from `ads profiles`").option(
     "--legacy-seller-id <id>",
     "exact per-marketplace seller record id (same ids as `amazon merchants`)"
@@ -79653,7 +79665,10 @@ function registerCall2(ads) {
     "query param (SD lists, sb.list_keywords; repeatable)",
     collectKv2,
     {}
-  ).option("--path <k=v>", "path placeholder, e.g. --path reportId=... (repeatable)", collectKv2, {}).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option("--content-type <vnd>", "advanced: override the cataloged vnd media type").action(async (operation, opts, cmd) => {
+  ).option("--path <k=v>", "path placeholder, e.g. --path reportId=... (repeatable)", collectKv2, {}).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option("--content-type <vnd>", "advanced: override the cataloged vnd media type").option(
+    "--commit",
+    "WRITE operations: actually apply the change set (default is a dry-run preview that mutates nothing). Use only after explicit user confirmation."
+  ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
@@ -79675,18 +79690,25 @@ function registerCall2(ads) {
         pathParams: opts.path,
         query: opts.query,
         ...body !== void 0 ? { body } : {},
-        ...opts.contentType ? { contentTypeOverride: opts.contentType } : {}
+        ...opts.contentType ? { contentTypeOverride: opts.contentType } : {},
+        // Only --commit sends dryRun:false; otherwise the service's own
+        // dry-run default is the contract (and reads ignore it entirely).
+        ...opts.commit ? { dryRun: false } : {}
       };
       const result = await adsCall(input, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackAds(EventName.AdsCalled, "failed", startedAt, root.dataDir, {
           operation,
           kind: result.kind,
+          ...opts.commit ? { committed: true } : {},
           ...result.httpStatus ? { http_status: result.httpStatus } : {}
         });
         return emitFailure4(result, !!root.json);
       }
-      await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, { operation });
+      await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, {
+        operation,
+        ...typeof result.dryRun === "boolean" ? { dry_run: result.dryRun } : {}
+      });
       if (root.json) {
         writeJson4({
           status: "ok",
@@ -79694,8 +79716,34 @@ function registerCall2(ads) {
           profile_id: result.profileId,
           legacy_seller_id: result.legacySellerId,
           marketplace_id: result.marketplaceId,
-          payload: result.payload
+          ...typeof result.dryRun === "boolean" ? { dry_run: result.dryRun } : {},
+          ...typeof result.itemsCount === "number" ? { items_count: result.itemsCount } : {},
+          ...result.auditId ? { audit_id: result.auditId } : {},
+          ...result.beforeState !== void 0 ? { before_state: result.beforeState } : {},
+          ...result.preview !== void 0 ? { preview: result.preview } : {},
+          ...result.payload !== void 0 ? { payload: result.payload } : {}
         });
+      } else if (result.dryRun === true) {
+        process.stderr.write(
+          `
+\u2713 DRY RUN ${result.operation} (profile ${result.profileId}): ${result.itemsCount ?? "?"} item(s) validated, nothing applied.
+` + (result.auditId ? `  audit: ${result.auditId}
+` : "") + `  Re-run with --commit AFTER the user confirms this change set.
+
+`
+        );
+        process.stdout.write(
+          JSON.stringify({ preview: result.preview, beforeState: result.beforeState }, null, 2) + "\n"
+        );
+      } else if (result.dryRun === false) {
+        process.stderr.write(
+          `
+\u2713 COMMITTED ${result.operation} (profile ${result.profileId}): ${result.itemsCount ?? "?"} item(s) sent. audit: ${result.auditId ?? "n/a"}
+  Amazon responds per item; check success/error arrays below.
+
+`
+        );
+        process.stdout.write(JSON.stringify(result.payload, null, 2) + "\n");
       } else {
         process.stderr.write(`
 \u2713 ${result.operation} (profile ${result.profileId})

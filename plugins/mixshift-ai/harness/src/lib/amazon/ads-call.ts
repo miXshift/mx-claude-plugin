@@ -2,12 +2,22 @@
  * Client for the Amazon Ads API call surface on mx-legacy-auth
  * (https://mcp.mixshift.io). Sibling of spapi-call.ts on the same
  * amazonRequest transport (Bearer, 401-refresh-retry, envelope mapping).
- * Phase 2: READ operations only.
+ * Covers reads AND the audited write surface (catalog entries marked
+ * write: true: bid updates, negatives, campaign creation, ...).
  *
  * Three calls:
  *   listAdsProfiles   → GET  /api/amazon/ads/profiles
  *   listAdsOperations → GET  /api/amazon/ads/operations[?family=...]
  *   adsCall           → POST /api/amazon/ads/call
+ *
+ * WRITE SAFETY (service-enforced, mirrored here): write operations default
+ * to dryRun=true. A dry-run call validates, snapshots current state, logs an
+ * audit row, and returns { dryRun: true, preview, beforeState?, auditId? }
+ * WITHOUT touching Amazon. Only an explicit `dryRun: false` commits, and the
+ * skill layer must put the preview in front of the user and get their
+ * confirmation first. Commits return Amazon's multi-status response (partial
+ * failure is normal: summarize per-item success/error counts) plus the
+ * auditId of the mcp_ads_changes row holding the pre-write snapshot.
  *
  * Profile selection mirrors the SP-API surfaces: `legacySellerId` pins the
  * exact (advertiser, marketplace) row (same ids as `amazon merchants`), or
@@ -21,8 +31,10 @@
  * download urls inside payloads are presigned: fetch them WITHOUT auth
  * headers and gunzip.
  *
- * Failure kinds are shared with reports.ts, plus `ads_not_configured`
- * (the service has no Ads app credentials set).
+ * Failure kinds are shared with reports.ts, plus `ads_not_configured` (the
+ * service has no Ads app credentials set) and `insufficient_scope` (the
+ * credential lacks ads:write; user sessions hold it, machine credentials
+ * need an explicit grant).
  */
 
 import {
@@ -55,13 +67,15 @@ export interface AdsOperationView {
   id: string;
   family: string;
   operation: string;
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   pathTemplate: string;
   /** false = account-level (profiles.list); true = profile-scoped. */
   profileScope: boolean;
   /** vnd media type the service sends; override per call if Amazon revs it. */
   contentType?: string;
   body?: 'required' | 'optional';
+  /** True = mutating: ads:write scope, dryRun default, audit-logged. */
+  write?: boolean;
   summary: string;
   notes?: string;
   docsUrl: string;
@@ -97,6 +111,12 @@ export interface AdsCallInput {
   body?: unknown;
   /** Advanced: override the cataloged vnd media type. */
   contentTypeOverride?: string;
+  /**
+   * Write operations only. The service defaults to TRUE (preview, no
+   * mutation). Pass false ONLY after the user confirmed the previewed
+   * change set. Ignored on reads.
+   */
+  dryRun?: boolean;
 }
 
 export interface AdsCallSuccess {
@@ -105,8 +125,18 @@ export interface AdsCallSuccess {
   profileId: string;
   legacySellerId: number;
   marketplaceId: string | null;
-  /** Amazon's response body, verbatim. Shape per the operation's docsUrl. */
-  payload: unknown;
+  /** Amazon's response body, verbatim. Absent on dry runs. */
+  payload?: unknown;
+  /** Write calls only: whether this was a preview (true) or a commit (false). */
+  dryRun?: boolean;
+  /** Write calls only: size of the proposed/applied change set. */
+  itemsCount?: number;
+  /** Write calls only: mcp_ads_changes audit row id (the rollback handle). */
+  auditId?: string;
+  /** Updates only (best-effort): pre-write snapshot of the targeted entities. */
+  beforeState?: unknown;
+  /** Dry runs only: the validated change set echoed back. */
+  preview?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +173,7 @@ export async function listAdsOperations(
   return { ok: true, operations };
 }
 
-/** Execute one cataloged Ads operation. Read-only in this phase. */
+/** Execute one cataloged Ads operation (reads, or writes under the dryRun contract). */
 export async function adsCall(
   input: AdsCallInput,
   opts: ReportClientOptions = {},
@@ -170,6 +200,9 @@ export async function adsCall(
   if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
   if (input.body !== undefined) body.body = input.body;
   if (input.contentTypeOverride) body.contentTypeOverride = input.contentTypeOverride;
+  // Only send dryRun when the caller set it explicitly; the service's own
+  // default (TRUE for writes) is the safety contract.
+  if (input.dryRun !== undefined) body.dryRun = input.dryRun;
 
   const r = await amazonRequest(
     { method: 'POST', path: '/api/amazon/ads/call', body },
@@ -194,5 +227,10 @@ export async function adsCall(
     legacySellerId: Number(json.legacySellerId ?? 0),
     marketplaceId: json.marketplaceId == null ? null : String(json.marketplaceId),
     payload: json.payload,
+    ...(typeof json.dryRun === 'boolean' ? { dryRun: json.dryRun } : {}),
+    ...(typeof json.itemsCount === 'number' ? { itemsCount: json.itemsCount } : {}),
+    ...(typeof json.auditId === 'string' ? { auditId: json.auditId } : {}),
+    ...(json.beforeState !== undefined ? { beforeState: json.beforeState } : {}),
+    ...(json.preview !== undefined ? { preview: json.preview } : {}),
   };
 }
