@@ -180,11 +180,12 @@ export function assembleCatalogSection(
  * Aggregate enabled+paused campaign rows into the campaign-structure
  * section. Percentages are whole numbers.
  *
- * smart_default_adoption_pct derivation ASSUMPTION (flagged in the SP
- * draft, verify against real warehouse values): a campaign counts as
- * "smart/default bidding" when its BidOptimization value lowercases to
- * one of the SMART_BID_VALUES below. Computed over rows with a non-null
- * BidOptimization; null when no row carries the column.
+ * smart_default_adoption_pct: share of ALL campaigns whose
+ * BidOptimization flag is set. Verified against the warehouse
+ * 2026-06-12: the column is a nullable '1' flag (NULL / '' = off,
+ * '1' = smart bidding on), so the denominator is every campaign row,
+ * not just rows carrying a value. The SMART_BID_VALUES set keeps a few
+ * defensive synonyms in case the convention ever changes.
  *
  * Exported for unit tests.
  */
@@ -195,7 +196,6 @@ export function assembleCampaignSection(
   const itemGroups = new Set<string>();
   const brands = new Set<string>();
   let paused = 0;
-  let bidKnown = 0;
   let bidSmart = 0;
   let brandEntity = 0;
 
@@ -205,10 +205,7 @@ export function assembleCampaignSection(
     addIf(brands, toTrimmedString(r.Brand));
     if (toTrimmedString(r.State)?.toLowerCase() === 'paused') paused++;
     const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
-    if (bid !== null && bid !== undefined) {
-      bidKnown++;
-      if (SMART_BID_VALUES.has(bid)) bidSmart++;
-    }
+    if (bid && SMART_BID_VALUES.has(bid)) bidSmart++;
     if (toTrimmedString(r.BrandEntityId)) brandEntity++;
   }
 
@@ -219,7 +216,7 @@ export function assembleCampaignSection(
     distinct_item_groups: [...itemGroups].sort(),
     distinct_brands: [...brands].sort(),
     smart_default_adoption_pct:
-      bidKnown > 0 ? Math.round((bidSmart / bidKnown) * 100) : null,
+      rows.length > 0 ? Math.round((bidSmart / rows.length) * 100) : null,
     brand_entity_id_presence_pct:
       rows.length > 0 ? Math.round((brandEntity / rows.length) * 100) : null,
   };

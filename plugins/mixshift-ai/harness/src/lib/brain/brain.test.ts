@@ -179,13 +179,24 @@ describe('assembleCampaignSection', () => {
     expect(section.brand_entity_id_presence_pct).toBe(67); // 2 of 3 rows
   });
 
-  it('returns null percentages when underlying signals are absent', () => {
+  it('treats the BidOptimization flag as off when NULL or empty (verified warehouse convention)', () => {
+    // Real column values 2026-06-12: NULL / '' = off, '1' = smart on.
+    const section = assembleCampaignSection([
+      { State: 'enabled', BidOptimization: '1' },
+      { State: 'enabled', BidOptimization: null },
+      { State: 'enabled', BidOptimization: '' },
+      { State: 'enabled' },
+    ]);
+    expect(section.smart_default_adoption_pct).toBe(25); // 1 of 4 campaigns
+  });
+
+  it('returns null percentages only when there are no campaigns at all', () => {
     expect(assembleCampaignSection([]).smart_default_adoption_pct).toBeNull();
     expect(assembleCampaignSection([]).brand_entity_id_presence_pct).toBeNull();
     const noBidColumn = assembleCampaignSection([
       { Objective: 'defend', State: 'enabled' },
     ]);
-    expect(noBidColumn.smart_default_adoption_pct).toBeNull();
+    expect(noBidColumn.smart_default_adoption_pct).toBe(0);
     expect(noBidColumn.brand_entity_id_presence_pct).toBe(0);
   });
 });
