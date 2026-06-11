@@ -126,6 +126,7 @@ export type ReportFailureKind =
   // --- service-emitted ---
   | 'spapi_not_configured' // 503 — SP-API not enabled for this tenant
   | 'ads_not_configured' // 503 — Amazon Ads API creds not set on the service
+  | 'insufficient_scope' // 403 — credential lacks a required scope (ads:write)
   | 'reauth_required' // 409 — merchant grant lapsed; +amazonSellerId
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
@@ -315,6 +316,8 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
       return 6; // the relevant Amazon API is not enabled on the service
     case 'merchant_not_found':
       return 7; // selector matched no merchant
+    case 'insufficient_scope':
+      return 11; // credential lacks a required scope (e.g. ads:write)
     case 'throttled':
       return 8; // Amazon rate limit — retry later
     case 'report_fatal':
@@ -899,6 +902,7 @@ async function resolveBaseAndToken(
 const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'spapi_not_configured',
   'ads_not_configured',
+  'insufficient_scope',
   'reauth_required',
   'restricted_report',
   'merchant_not_found',
@@ -1045,6 +1049,12 @@ function defaultFriendly(kind: ReportFailureKind): string {
       return (
         "The Amazon Ads API isn't enabled on the MixShift service yet. " +
         'Contact MixShift ops.'
+      );
+    case 'insufficient_scope':
+      return (
+        'This credential lacks a scope this call requires (writes need ' +
+        'ads:write). Signed-in user sessions hold it; machine credentials ' +
+        'must be issued with it explicitly by a MixShift admin.'
       );
     case 'reauth_required':
       return (

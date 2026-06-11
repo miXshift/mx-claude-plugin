@@ -707,6 +707,7 @@ describe('exitCodeForKind', () => {
       merchant_not_found: 7,
       throttled: 8,
       report_fatal: 9,
+      insufficient_scope: 11,
       host_unreachable: 1,
       unknown: 1,
     };

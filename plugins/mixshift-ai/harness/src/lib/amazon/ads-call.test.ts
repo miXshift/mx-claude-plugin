@@ -188,3 +188,95 @@ describe('adsCall', () => {
     expect(tokenProvider).toHaveBeenNthCalledWith(2, true);
   });
 });
+
+describe('adsCall writes (dryRun contract)', () => {
+  it('omits dryRun from the wire unless the caller set it (the service default is the contract)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        operation: 'sp.update_keywords',
+        profileId: 'P1',
+        legacySellerId: 623,
+        marketplaceId: 'ATVPDKIKX0DER',
+        dryRun: true,
+        itemsCount: 1,
+        auditId: 'aud-1',
+        preview: { keywords: [{ keywordId: 'K1', bid: 2.05 }] },
+      }),
+    );
+    const r = await adsCall(
+      {
+        operation: 'sp.update_keywords',
+        legacySellerId: 623,
+        body: { keywords: [{ keywordId: 'K1', bid: 2.05 }] },
+      },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(true);
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect('dryRun' in sent).toBe(false);
+    if (r.ok) {
+      expect(r.dryRun).toBe(true);
+      expect(r.itemsCount).toBe(1);
+      expect(r.auditId).toBe('aud-1');
+      expect(r.preview).toEqual({ keywords: [{ keywordId: 'K1', bid: 2.05 }] });
+      expect(r.payload).toBeUndefined();
+    }
+  });
+
+  it('sends dryRun:false only on explicit commit and parses the commit response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        operation: 'sp.update_keywords',
+        profileId: 'P1',
+        legacySellerId: 623,
+        marketplaceId: 'ATVPDKIKX0DER',
+        dryRun: false,
+        itemsCount: 1,
+        auditId: 'aud-2',
+        beforeState: { keywords: [{ keywordId: 'K1', bid: 2.05 }] },
+        payload: { keywords: { success: [{ keywordId: 'K1', index: 0 }], error: [] } },
+      }),
+    );
+    const r = await adsCall(
+      {
+        operation: 'sp.update_keywords',
+        legacySellerId: 623,
+        body: { keywords: [{ keywordId: 'K1', bid: 2.1 }] },
+        dryRun: false,
+      },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(true);
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(sent.dryRun).toBe(false);
+    if (r.ok) {
+      expect(r.dryRun).toBe(false);
+      expect(r.auditId).toBe('aud-2');
+      expect(r.beforeState).toEqual({ keywords: [{ keywordId: 'K1', bid: 2.05 }] });
+      expect(r.payload).toEqual({ keywords: { success: [{ keywordId: 'K1', index: 0 }], error: [] } });
+    }
+  });
+
+  it('maps insufficient_scope to the typed kind with its own exit code', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(403, {
+        ok: false,
+        kind: 'insufficient_scope',
+        friendly: 'This credential lacks the ads:write scope.',
+        required_scope: 'ads:write',
+      }),
+    );
+    const r = await adsCall(
+      { operation: 'sp.update_keywords', legacySellerId: 623, body: { keywords: [] }, dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('insufficient_scope');
+      expect(exitCodeForKind(r.kind)).toBe(11);
+      expect(r.friendly).toMatch(/ads:write/);
+    }
+  });
+});
