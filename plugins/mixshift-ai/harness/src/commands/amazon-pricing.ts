@@ -35,6 +35,11 @@ import {
   type ReportFailure,
 } from '../lib/amazon/pricing.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import {
+  listPricingRuns,
+  recordPricingRun,
+  updatePricingRunStatus,
+} from '../lib/amazon/pricing-handles.js';
 
 interface RootOptions {
   json?: boolean;
@@ -55,6 +60,7 @@ export function registerAmazonPricingCommands(amazon: Command): void {
   registerCompetitiveSummaryCommand(pricing);
   registerPollRunCommand(pricing);
   registerGetRunResultCommand(pricing);
+  registerRunsCommand(pricing);
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +75,7 @@ function registerFoepCommand(pricing: Command): void {
       'Featured Offer Expected Price (FOEP): what your SKU would have to be priced at to win the Buy Box. ' +
         'Keyed by SKU. Sync cap 200; --async for larger jobs.',
     )
-    .requiredOption(
+    .option(
       '--skus <list>',
       'Comma-separated SKUs (e.g. ABC-123,XYZ-7). Mutually exclusive with --skus-file.',
     )
@@ -100,6 +106,19 @@ function registerFoepCommand(pricing: Command): void {
             await trackFailure('foep_batch', 'async', skus.length, result, startedAt, root.dataDir);
             return emitFailure(result, !!root.json);
           }
+          // Persist the handle so a later shell call (or a fresh sandbox with
+          // an anchored data dir) can resume: `mixshift amazon pricing runs`.
+          await recordPricingRun(
+            {
+              run_id: result.runId,
+              operation: 'foep_batch',
+              items_total: result.itemsTotal,
+              status: result.status,
+              ...(opts.legacySellerId ? { legacy_seller_id: opts.legacySellerId } : {}),
+              ...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
+            },
+            root.dataDir,
+          );
           await track(
             {
               event_name: EventName.AmazonPricingStarted,
@@ -120,7 +139,8 @@ function registerFoepCommand(pricing: Command): void {
             process.stdout.write(
               `\nrunId: ${result.runId}\nstatus: ${result.status}\nitems: ${result.itemsTotal}\n\n` +
                 `Poll with: mixshift amazon pricing poll-run ${result.runId}\n` +
-                `Get result: mixshift amazon pricing get-run-result ${result.runId}\n`,
+                `Get result: mixshift amazon pricing get-run-result ${result.runId}\n` +
+                `Handle saved to pricing-runs.json; any later call can list it: mixshift amazon pricing runs\n`,
             );
           return;
         }
@@ -178,7 +198,7 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
       'Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, ' +
         'optional lowest-priced offers. Keyed by ASIN. Sync cap 200; --async for larger jobs.',
     )
-    .requiredOption('--asins <list>', 'Comma-separated ASINs. Mutually exclusive with --asins-file.')
+    .option('--asins <list>', 'Comma-separated ASINs. Mutually exclusive with --asins-file.')
     .option('--asins-file <path>', 'File with one ASIN per line.')
     .option('--marketplace <code>', 'Country code or raw marketplaceId.')
     .option('--amazon-seller-id <id>', 'AmazonSellerID.')
@@ -222,6 +242,17 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
             );
             return emitFailure(result, !!root.json);
           }
+          await recordPricingRun(
+            {
+              run_id: result.runId,
+              operation: 'competitive_summary_batch',
+              items_total: result.itemsTotal,
+              status: result.status,
+              ...(opts.legacySellerId ? { legacy_seller_id: opts.legacySellerId } : {}),
+              ...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
+            },
+            root.dataDir,
+          );
           await track(
             {
               event_name: EventName.AmazonPricingStarted,
@@ -242,7 +273,8 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
             process.stdout.write(
               `\nrunId: ${result.runId}\nstatus: ${result.status}\nitems: ${result.itemsTotal}\n\n` +
                 `Poll with: mixshift amazon pricing poll-run ${result.runId}\n` +
-                `Get result: mixshift amazon pricing get-run-result ${result.runId}\n`,
+                `Get result: mixshift amazon pricing get-run-result ${result.runId}\n` +
+                `Handle saved to pricing-runs.json; any later call can list it: mixshift amazon pricing runs\n`,
             );
           return;
         }
@@ -312,6 +344,9 @@ function registerPollRunCommand(pricing: Command): void {
       const startedAt = Date.now();
       try {
         const result = await pollPricingRun(runId, { dataDirOverride: root.dataDir });
+        if (!isReportFailure(result)) {
+          await updatePricingRunStatus(runId, result.status, root.dataDir);
+        }
         if (isReportFailure(result)) {
           await track(
             {
@@ -354,6 +389,9 @@ function registerGetRunResultCommand(pricing: Command): void {
       const startedAt = Date.now();
       try {
         const result = await getPricingRunResult(runId, { dataDirOverride: root.dataDir });
+        if (!isReportFailure(result)) {
+          await updatePricingRunStatus(runId, result.status, root.dataDir);
+        }
         if (isReportFailure(result)) {
           await track(
             {
@@ -382,6 +420,52 @@ function registerGetRunResultCommand(pricing: Command): void {
           root.dataDir,
         );
         writeJson(result);
+      } catch (err) {
+        emitGenericError(err, !!root.json);
+      }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// runs — list locally recorded async run handles
+// ---------------------------------------------------------------------------
+
+function registerRunsCommand(pricing: Command): void {
+  pricing
+    .command('runs')
+    .description(
+      'List async pricing runs recorded on this machine (newest first). ' +
+        'Recovery surface for scheduled/sandboxed contexts: a submit in one shell call ' +
+        'can be polled from any later call, even a fresh session.',
+    )
+    .option('--limit <n>', 'Max handles to show (default 10).')
+    .action(async (opts: { limit?: string }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      try {
+        const { runs, path } = await listPricingRuns(root.dataDir);
+        const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
+        const shown = runs.slice(0, limit);
+        if (root.json) {
+          writeJson({ runs: shown, total_recorded: runs.length, ledger_path: path });
+          return;
+        }
+        if (shown.length === 0) {
+          process.stdout.write(
+            `No recorded pricing runs (ledger: ${path}).\n` +
+              'Async submits record here automatically: mixshift amazon pricing foep-batch --async ...\n',
+          );
+          return;
+        }
+        for (const r of shown) {
+          process.stdout.write(
+            `${r.run_id}  ${r.operation}  status=${r.status}  items=${r.items_total}` +
+              `${r.legacy_seller_id ? `  seller=${r.legacy_seller_id}` : ''}  submitted=${r.submitted_at}\n`,
+          );
+        }
+        process.stdout.write(
+          `\nResume with: mixshift amazon pricing poll-run <runId>  |  get-run-result <runId>\n` +
+            `Statuses are last-seen on THIS machine; poll-run refreshes from the server.\n`,
+        );
       } catch (err) {
         emitGenericError(err, !!root.json);
       }

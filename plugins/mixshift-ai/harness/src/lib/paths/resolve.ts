@@ -52,6 +52,11 @@ export function clientsDir(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'clients');
 }
 
+/** Local ledger of async pricing run handles (see lib/amazon/pricing-handles.ts). */
+export function pricingRunsPath(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'pricing-runs.json');
+}
+
 export function brandDir(brandSlug: string, dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), brandSlug);
 }

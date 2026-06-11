@@ -28786,6 +28786,9 @@ function credentialsPath(dataDirOverride) {
 function clientsDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "clients");
 }
+function pricingRunsPath(dataDirOverride) {
+  return join4(resolveDataDir(dataDirOverride), "pricing-runs.json");
+}
 function brandDir(brandSlug, dataDirOverride) {
   return join4(clientsDir(dataDirOverride), brandSlug);
 }
@@ -78208,7 +78211,7 @@ function isFileNotFoundError15(err) {
 init_resolve();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile26 } from "node:fs/promises";
+import { readFile as readFile27 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -78296,6 +78299,55 @@ async function getPricingRunResult(runId, opts = {}) {
   return r.json;
 }
 
+// src/lib/amazon/pricing-handles.ts
+init_resolve();
+import { mkdir as mkdir20, readFile as readFile26, rename as rename11, writeFile as writeFile17 } from "node:fs/promises";
+import { dirname as dirname25 } from "node:path";
+var MAX_HANDLES = 50;
+async function loadLedger(path2) {
+  try {
+    const raw = await readFile26(path2, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (h) => typeof h === "object" && h !== null && typeof h.run_id === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+async function saveLedger(path2, handles) {
+  await mkdir20(dirname25(path2), { recursive: true });
+  const tmp = `${path2}.tmp`;
+  await writeFile17(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename11(tmp, path2);
+}
+async function recordPricingRun(input, dataDirOverride) {
+  try {
+    const path2 = pricingRunsPath(dataDirOverride);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const ledger = await loadLedger(path2);
+    const rest = ledger.filter((h) => h.run_id !== input.run_id);
+    await saveLedger(path2, [{ ...input, submitted_at: now, updated_at: now }, ...rest].slice(0, MAX_HANDLES));
+  } catch {
+  }
+}
+async function updatePricingRunStatus(runId, status, dataDirOverride) {
+  try {
+    const path2 = pricingRunsPath(dataDirOverride);
+    const ledger = await loadLedger(path2);
+    const idx = ledger.findIndex((h) => h.run_id === runId);
+    if (idx === -1) return;
+    ledger[idx] = { ...ledger[idx], status, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+    await saveLedger(path2, ledger);
+  } catch {
+  }
+}
+async function listPricingRuns(dataDirOverride) {
+  const path2 = pricingRunsPath(dataDirOverride);
+  return { runs: await loadLedger(path2), path: path2 };
+}
+
 // src/commands/amazon-pricing.ts
 function registerAmazonPricingCommands(amazon) {
   const pricing = amazon.command("pricing").description(
@@ -78305,11 +78357,12 @@ function registerAmazonPricingCommands(amazon) {
   registerCompetitiveSummaryCommand(pricing);
   registerPollRunCommand(pricing);
   registerGetRunResultCommand(pricing);
+  registerRunsCommand(pricing);
 }
 function registerFoepCommand(pricing) {
   pricing.command("get-featured-offer-expected-price-batch").alias("foep-batch").description(
     "Featured Offer Expected Price (FOEP): what your SKU would have to be priced at to win the Buy Box. Keyed by SKU. Sync cap 200; --async for larger jobs."
-  ).requiredOption(
+  ).option(
     "--skus <list>",
     "Comma-separated SKUs (e.g. ABC-123,XYZ-7). Mutually exclusive with --skus-file."
   ).option("--skus-file <path>", "File with one SKU per line. Mutually exclusive with --skus.").option("--marketplace <code>", "Country code (US, UK, ...) or raw marketplaceId.").option("--amazon-seller-id <id>", "AmazonSellerID from `amazon merchants`.").option("--legacy-seller-id <id>", "Exact legacySellerId (seller.ID). Authoritative disambiguator.").option("--async", "Async mode: returns a runId; poll separately.").action(async (opts, cmd) => {
@@ -78334,6 +78387,17 @@ function registerFoepCommand(pricing) {
           await trackFailure("foep_batch", "async", skus.length, result2, startedAt, root.dataDir);
           return emitFailure(result2, !!root.json);
         }
+        await recordPricingRun(
+          {
+            run_id: result2.runId,
+            operation: "foep_batch",
+            items_total: result2.itemsTotal,
+            status: result2.status,
+            ...opts.legacySellerId ? { legacy_seller_id: opts.legacySellerId } : {},
+            ...opts.marketplace ? { marketplace: opts.marketplace } : {}
+          },
+          root.dataDir
+        );
         await track(
           {
             event_name: EventName.AmazonPricingStarted,
@@ -78359,6 +78423,7 @@ items: ${result2.itemsTotal}
 
 Poll with: mixshift amazon pricing poll-run ${result2.runId}
 Get result: mixshift amazon pricing get-run-result ${result2.runId}
+Handle saved to pricing-runs.json; any later call can list it: mixshift amazon pricing runs
 `
           );
         return;
@@ -78397,7 +78462,7 @@ Get result: mixshift amazon pricing get-run-result ${result2.runId}
 function registerCompetitiveSummaryCommand(pricing) {
   pricing.command("get-competitive-summary-batch").alias("cs-batch").description(
     "Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, optional lowest-priced offers. Keyed by ASIN. Sync cap 200; --async for larger jobs."
-  ).requiredOption("--asins <list>", "Comma-separated ASINs. Mutually exclusive with --asins-file.").option("--asins-file <path>", "File with one ASIN per line.").option("--marketplace <code>", "Country code or raw marketplaceId.").option("--amazon-seller-id <id>", "AmazonSellerID.").option("--legacy-seller-id <id>", "Exact legacySellerId.").option(
+  ).option("--asins <list>", "Comma-separated ASINs. Mutually exclusive with --asins-file.").option("--asins-file <path>", "File with one ASIN per line.").option("--marketplace <code>", "Country code or raw marketplaceId.").option("--amazon-seller-id <id>", "AmazonSellerID.").option("--legacy-seller-id <id>", "Exact legacySellerId.").option(
     "--included-data <list>",
     "Comma-separated: featuredBuyingOptions,referencePrices,lowestPricedOffers"
   ).option("--async", "Async mode.").action(async (opts, cmd) => {
@@ -78434,6 +78499,17 @@ function registerCompetitiveSummaryCommand(pricing) {
           );
           return emitFailure(result2, !!root.json);
         }
+        await recordPricingRun(
+          {
+            run_id: result2.runId,
+            operation: "competitive_summary_batch",
+            items_total: result2.itemsTotal,
+            status: result2.status,
+            ...opts.legacySellerId ? { legacy_seller_id: opts.legacySellerId } : {},
+            ...opts.marketplace ? { marketplace: opts.marketplace } : {}
+          },
+          root.dataDir
+        );
         await track(
           {
             event_name: EventName.AmazonPricingStarted,
@@ -78459,6 +78535,7 @@ items: ${result2.itemsTotal}
 
 Poll with: mixshift amazon pricing poll-run ${result2.runId}
 Get result: mixshift amazon pricing get-run-result ${result2.runId}
+Handle saved to pricing-runs.json; any later call can list it: mixshift amazon pricing runs
 `
           );
         return;
@@ -78511,6 +78588,9 @@ function registerPollRunCommand(pricing) {
     const startedAt = Date.now();
     try {
       const result = await pollPricingRun(runId, { dataDirOverride: root.dataDir });
+      if (!isReportFailure(result)) {
+        await updatePricingRunStatus(runId, result.status, root.dataDir);
+      }
       if (isReportFailure(result)) {
         await track(
           {
@@ -78549,6 +78629,9 @@ function registerGetRunResultCommand(pricing) {
     const startedAt = Date.now();
     try {
       const result = await getPricingRunResult(runId, { dataDirOverride: root.dataDir });
+      if (!isReportFailure(result)) {
+        await updatePricingRunStatus(runId, result.status, root.dataDir);
+      }
       if (isReportFailure(result)) {
         await track(
           {
@@ -78582,6 +78665,44 @@ function registerGetRunResultCommand(pricing) {
     }
   });
 }
+function registerRunsCommand(pricing) {
+  pricing.command("runs").description(
+    "List async pricing runs recorded on this machine (newest first). Recovery surface for scheduled/sandboxed contexts: a submit in one shell call can be polled from any later call, even a fresh session."
+  ).option("--limit <n>", "Max handles to show (default 10).").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const { runs, path: path2 } = await listPricingRuns(root.dataDir);
+      const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
+      const shown = runs.slice(0, limit);
+      if (root.json) {
+        writeJson({ runs: shown, total_recorded: runs.length, ledger_path: path2 });
+        return;
+      }
+      if (shown.length === 0) {
+        process.stdout.write(
+          `No recorded pricing runs (ledger: ${path2}).
+Async submits record here automatically: mixshift amazon pricing foep-batch --async ...
+`
+        );
+        return;
+      }
+      for (const r of shown) {
+        process.stdout.write(
+          `${r.run_id}  ${r.operation}  status=${r.status}  items=${r.items_total}${r.legacy_seller_id ? `  seller=${r.legacy_seller_id}` : ""}  submitted=${r.submitted_at}
+`
+        );
+      }
+      process.stdout.write(
+        `
+Resume with: mixshift amazon pricing poll-run <runId>  |  get-run-result <runId>
+Statuses are last-seen on THIS machine; poll-run refreshes from the server.
+`
+      );
+    } catch (err) {
+      emitGenericError(err, !!root.json);
+    }
+  });
+}
 async function loadItemList(inline, file2) {
   if (inline && file2) {
     throw new Error("Pass --skus / --asins OR the --*-file variant, not both.");
@@ -78590,7 +78711,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile26(file2, "utf8");
+    const text = await readFile27(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -78659,7 +78780,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile27 } from "node:fs/promises";
+import { readFile as readFile28 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -78773,7 +78894,7 @@ function registerCall(amazon) {
         return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile27(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile28(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -79513,7 +79634,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile28 } from "node:fs/promises";
+import { readFile as readFile29 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -79677,7 +79798,7 @@ function registerCall2(ads) {
         return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile28(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile29(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }

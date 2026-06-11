@@ -382,12 +382,11 @@ mixshift amazon pricing poll-run <runId>
 mixshift amazon pricing get-run-result <runId>
 ```
 
-Item lists are comma-separated and travel on the command line, so very long
-lists hit shell command-length limits (think 1,000-plus ASINs, much sooner for
-long SKUs): chunk those into several async runs. The `--skus-file` /
-`--asins-file` flags you may spot in `--help` are broken in 0.5.18 (the inline
-flag is wrongly required alongside them); do not use them until a harness fix
-lands. `--included-data` (Competitive Summary only) defaults to
+Item lists travel inline (comma-separated) or via `--skus-file` /
+`--asins-file` (one item per line, `#` comments allowed; fixed in 0.5.28,
+broken in 0.5.18-0.5.27). Prefer the file flags past a couple dozen items:
+they sidestep shell command-length limits entirely. `--included-data`
+(Competitive Summary only) defaults to
 `featuredBuyingOptions,referencePrices`; add `lowestPricedOffers` when the
 user wants the cheapest competing offers too.
 
@@ -447,6 +446,35 @@ A run can finish `DONE` and still contain per-item failures: check
 `itemsFailed`, and each entry in `responses` carries its own HTTP-style
 `status` and `errors`. Report partial failures to the user instead of
 averaging over them.
+
+### Recovering a run after the process died (scheduled tasks)
+
+Every `--async` submit is recorded to `<data dir>/pricing-runs.json` (0.5.28+),
+and the server persists every run independently, so a killed process loses
+NOTHING. From any later shell call, even a brand-new session with no memory of
+the submit:
+
+```bash
+mixshift amazon pricing runs            # newest first: runId, op, last-seen status
+mixshift amazon pricing poll-run <id>   # refreshes status from the server
+mixshift amazon pricing get-run-result <id> --json > result.json
+```
+
+This is the backbone of the **scheduled-task pattern** (Cowork scheduled runs,
+where each Bash call is capped around 45 s and a sync batch can be killed
+mid-flight):
+
+1. First call: submit with `--async` (returns in ~1 s). Do nothing else.
+2. Next call(s): `pricing runs` to find the handle if you do not have the
+   runId, then `poll-run` once per call until `DONE`.
+3. Final call: `get-run-result` redirected to a file.
+
+Never run a large sync batch inside a scheduled task; submit async and spread
+the poll over separate calls instead of shrinking the batch size. The ledger
+lives in the data dir, so the anchored `MIXSHIFT_DATA_DIR` that keeps service
+credentials alive across fresh sandboxes (see mx-auth-service-setup) keeps run
+handles alive too. Statuses shown by `pricing runs` are last-seen on this
+machine; `poll-run` is the source of truth.
 
 ### Reading and persisting pricing results
 
