@@ -148,7 +148,14 @@ describe('bootstrapBrand', () => {
     ]);
     await expect(
       bootstrapBrand(s, { dataDirOverride: testDir }),
-    ).rejects.toThrow(/MerchantType outside SC \/ VC/);
+    ).rejects.toThrow(/none of the 2 accounts are SC or VC/);
+  });
+
+  it('throws for DSP-only brands (no seller catalog; not cold-startable yet)', async () => {
+    const s = suggestion([row({ account_type: 'DSP' })]);
+    await expect(
+      bootstrapBrand(s, { dataDirOverride: testDir }),
+    ).rejects.toThrow(/none of the 1 accounts are SC or VC/);
   });
 
   it('filters out unknown account_type rows but proceeds if at least one SC/VC remains', async () => {
