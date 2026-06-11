@@ -125,6 +125,7 @@ export interface MerchantCandidate {
 export type ReportFailureKind =
   // --- service-emitted ---
   | 'spapi_not_configured' // 503 — SP-API not enabled for this tenant
+  | 'ads_not_configured' // 503 — Amazon Ads API creds not set on the service
   | 'reauth_required' // 409 — merchant grant lapsed; +amazonSellerId
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
@@ -310,7 +311,8 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
     case 'reauth_required':
       return 5; // merchant grant lapsed — reconnect this merchant
     case 'spapi_not_configured':
-      return 6; // SP-API not enabled for this tenant
+    case 'ads_not_configured':
+      return 6; // the relevant Amazon API is not enabled on the service
     case 'merchant_not_found':
       return 7; // selector matched no merchant
     case 'throttled':
@@ -896,6 +898,7 @@ async function resolveBaseAndToken(
 
 const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'spapi_not_configured',
+  'ads_not_configured',
   'reauth_required',
   'restricted_report',
   'merchant_not_found',
@@ -1037,6 +1040,11 @@ function defaultFriendly(kind: ReportFailureKind): string {
       return (
         "Amazon SP-API isn't enabled for this MixShift account yet. Contact " +
         'MixShift ops to turn on on-demand report pulls.'
+      );
+    case 'ads_not_configured':
+      return (
+        "The Amazon Ads API isn't enabled on the MixShift service yet. " +
+        'Contact MixShift ops.'
       );
     case 'reauth_required':
       return (

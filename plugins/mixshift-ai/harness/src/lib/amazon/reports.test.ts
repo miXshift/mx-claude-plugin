@@ -703,6 +703,7 @@ describe('exitCodeForKind', () => {
       restricted_report: 4,
       reauth_required: 5,
       spapi_not_configured: 6,
+      ads_not_configured: 6,
       merchant_not_found: 7,
       throttled: 8,
       report_fatal: 9,

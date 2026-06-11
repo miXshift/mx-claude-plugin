@@ -158,6 +158,13 @@ export const EventName = {
   AmazonSpApiOperationsListed: 'amazon.spapi.operations_listed',
   AmazonSpApiCalled: 'amazon.spapi.called',
 
+  // Amazon Ads API call surface (lib/amazon/ads-call.ts + `mixshift ads`).
+  // Same privacy rule: operation id + duration + outcome only — never the
+  // payload (campaign/keyword/bid data is seller-level business data).
+  AdsProfilesListed: 'ads.profiles_listed',
+  AdsOperationsListed: 'ads.operations_listed',
+  AdsCalled: 'ads.called',
+
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 } as const;

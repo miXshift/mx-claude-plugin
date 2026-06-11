@@ -71,6 +71,7 @@ import { registerVersionCommand } from './commands/version.js';
 import { registerTelemetryCommands } from './commands/telemetry.js';
 import { registerSkillCommands } from './commands/skill.js';
 import { registerAmazonCommands } from './commands/amazon.js';
+import { registerAdsCommands } from './commands/ads.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import {
   hasAcknowledgedConsent,
@@ -121,6 +122,7 @@ registerVersionCommand(program);
 registerTelemetryCommands(program);
 registerSkillCommands(program);
 registerAmazonCommands(program);
+registerAdsCommands(program);
 registerDoctorCommand(program);
 
 // First-run cross-cutting telemetry chore: show the consent notice once
