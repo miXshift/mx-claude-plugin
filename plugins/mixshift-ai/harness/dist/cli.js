@@ -68314,6 +68314,21 @@ var brainSellerSchema = external_exports.object({
    *  stays in the registry (index.yaml), not here. */
   primary_seller_id: external_exports.number().int().nullable()
 });
+var brainHeroAsinSchema = external_exports.object({
+  asin: external_exports.string(),
+  title: external_exports.string().nullable(),
+  ordered_revenue_365d: external_exports.number(),
+  units_365d: external_exports.number().int().nullable(),
+  /** Current FBA sellable units from the latest mws_inventory_health
+   *  snapshot (SC only; the live `Available` field, not the deprecated
+   *  SellableQuantity). FBA on-hand ONLY by decision (2026-06-12) —
+   *  merchant-fulfilled stock (mws_items.ItemQuantityAvailable) is omitted
+   *  in v1. Null when no inventory row joins. */
+  sellable_qty: external_exports.number().int().nullable(),
+  /** Days of supply on that snapshot (tightest populated). Null when
+   *  absent. */
+  days_of_supply: external_exports.number().int().nullable()
+});
 var brainCatalogSchema = external_exports.object({
   /** Distinct ASINs across SC + VC rows. */
   asin_count: external_exports.number().int().min(0),
@@ -68321,8 +68336,23 @@ var brainCatalogSchema = external_exports.object({
   sku_count: external_exports.number().int().min(0).nullable(),
   sub_brands: external_exports.array(external_exports.string()),
   item_groups: external_exports.array(external_exports.string()),
-  /** Hero-ASIN ranking needs SP-MIGRATION Phase 2 activity pulls. */
-  hero_asins_deferred: external_exports.literal(true)
+  /** Top sellers by trailing-365d revenue, per channel. A channel key is
+   *  present only when its hero source ran. Replaces hero_asins_deferred. */
+  top_asins: external_exports.object({
+    sc: external_exports.array(brainHeroAsinSchema).optional(),
+    vc: external_exports.array(brainHeroAsinSchema).optional()
+  }).optional(),
+  /** Legacy marker from the pre-hero brain (slices 1-2). Optional now that
+   *  top_asins populates; kept so brains written before this slice still
+   *  validate without a re-fetch. */
+  hero_asins_deferred: external_exports.literal(true).optional()
+});
+var brainRecentActivitySchema = external_exports.object({
+  spend_30d: external_exports.number().nullable(),
+  ad_sales_30d: external_exports.number().nullable(),
+  acos_30d: external_exports.number().nullable(),
+  /** When the window was computed (brain-fetch time). */
+  as_of: external_exports.iso.datetime()
 });
 var brainCampaignStructureSchema = external_exports.object({
   campaign_count: external_exports.number().int().min(0),
@@ -68355,13 +68385,19 @@ var brandBrainSchema = external_exports.object({
     seller: brainSourceMetaSchema.optional(),
     catalog_sc: brainSourceMetaSchema.optional(),
     catalog_vc: brainSourceMetaSchema.optional(),
-    campaign: brainSourceMetaSchema.optional()
+    campaign: brainSourceMetaSchema.optional(),
+    hero_sc: brainSourceMetaSchema.optional(),
+    hero_vc: brainSourceMetaSchema.optional(),
+    recent_activity: brainSourceMetaSchema.optional()
   }),
   seller: brainSellerSchema.optional(),
   /** Present when at least one catalog source (SC or VC) fetched ok. */
   catalog: brainCatalogSchema.optional(),
   /** Present when the campaign source fetched ok. */
   campaign_structure: brainCampaignStructureSchema.optional(),
+  /** Brand-wide ad-activity baseline (cached BRAIN-RECENT-ACTIVITY).
+   *  Present when the recent-activity source fetched ok. */
+  recent_activity: brainRecentActivitySchema.optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({})
@@ -68384,7 +68420,10 @@ function assembleBrain(input) {
   if (input.catalogSc) sources.catalog_sc = meta3(input.catalogSc);
   if (input.catalogVc) sources.catalog_vc = meta3(input.catalogVc);
   if (input.campaign) sources.campaign = meta3(input.campaign);
-  const hasCatalog = input.catalogSc || input.catalogVc;
+  if (input.heroSc) sources.hero_sc = meta3(input.heroSc);
+  if (input.heroVc) sources.hero_vc = meta3(input.heroVc);
+  if (input.recentActivity) sources.recent_activity = meta3(input.recentActivity);
+  const hasCatalog = input.catalogSc || input.catalogVc || input.heroSc || input.heroVc;
   return {
     schema_version: BRAIN_SCHEMA_VERSION,
     brand_slug: input.brandSlug,
@@ -68395,10 +68434,18 @@ function assembleBrain(input) {
     ...hasCatalog ? {
       catalog: assembleCatalogSection(
         input.catalogSc?.rows ?? null,
-        input.catalogVc?.rows ?? null
+        input.catalogVc?.rows ?? null,
+        input.heroSc?.rows ?? null,
+        input.heroVc?.rows ?? null
       )
     } : {},
     ...input.campaign ? { campaign_structure: assembleCampaignSection(input.campaign.rows) } : {},
+    ...input.recentActivity ? {
+      recent_activity: assembleRecentActivity(
+        input.recentActivity.rows[0],
+        now
+      )
+    } : {},
     observations: input.previousObservations ?? {}
   };
 }
@@ -68426,7 +68473,7 @@ function assembleSellerSection(rows) {
     primary_seller_id: toNumber2(primary.ID)
   };
 }
-function assembleCatalogSection(scRows, vcRows) {
+function assembleCatalogSection(scRows, vcRows, heroScRows = null, heroVcRows = null) {
   const asins = /* @__PURE__ */ new Set();
   const subBrands = /* @__PURE__ */ new Set();
   const itemGroups = /* @__PURE__ */ new Set();
@@ -68442,12 +68489,42 @@ function assembleCatalogSection(scRows, vcRows) {
     addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
     addIf(itemGroups, toTrimmedString(r.ItemGroup));
   }
+  const sc = heroScRows ? heroScRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const vc = heroVcRows ? heroVcRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const topAsins = sc || vc ? { ...sc ? { sc } : {}, ...vc ? { vc } : {} } : void 0;
   return {
     asin_count: asins.size,
     sku_count: scRows === null ? null : skus.size,
     sub_brands: [...subBrands].sort(),
     item_groups: [...itemGroups].sort(),
-    hero_asins_deferred: true
+    ...topAsins ? { top_asins: topAsins } : {}
+  };
+}
+function toHeroAsin(r) {
+  const asin = toTrimmedString(r.asin ?? r.ASIN ?? r.Asin);
+  if (!asin) return null;
+  return {
+    asin,
+    title: toTrimmedString(r.title ?? r.Title ?? r.ItemName),
+    ordered_revenue_365d: toNumber2(r.ordered_revenue_365d) ?? 0,
+    units_365d: toIntOrNull(r.units_365d),
+    // SC-only stock (VC hero rows omit these → null).
+    sellable_qty: toIntOrNull(r.sellable_qty),
+    days_of_supply: toIntOrNull(r.days_of_supply)
+  };
+}
+function isHeroAsin(v) {
+  return v !== null;
+}
+function assembleRecentActivity(row, now) {
+  const spend = toNumber2(row?.spend_30d);
+  const adSales = toNumber2(row?.ad_sales_30d);
+  const acos = spend !== null && adSales !== null && adSales !== 0 ? Math.round(spend / adSales * 1e4) / 100 : null;
+  return {
+    spend_30d: spend,
+    ad_sales_30d: adSales,
+    acos_30d: acos,
+    as_of: now.toISOString()
   };
 }
 function assembleCampaignSection(rows) {
@@ -68510,6 +68587,10 @@ function toNumber2(v) {
   if (v === null || v === void 0 || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+function toIntOrNull(v) {
+  const n = toNumber2(v);
+  return n === null ? null : Math.trunc(n);
 }
 function toBool(v) {
   if (v === null || v === void 0) return null;
@@ -68584,6 +68665,9 @@ var BRAIN_SELLER_QUERY_ID = "BRAIN-SELLER";
 var BRAIN_CATALOG_SC_QUERY_ID = "BRAIN-CATALOG-SC";
 var BRAIN_CATALOG_VC_QUERY_ID = "BRAIN-CATALOG-VC";
 var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
+var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
+var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
+var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
 async function fetchBrandBrain(opts) {
   const now = opts.now ?? /* @__PURE__ */ new Date();
   const t0 = Date.now();
@@ -68655,11 +68739,15 @@ async function fetchBrandBrain(opts) {
       return { ok: false, error: message };
     }
   };
-  const [sellerOut, scOut, vcOut, campaignOut] = await Promise.all([
+  const [sellerOut, scOut, vcOut, campaignOut, heroScOut, heroVcOut, recentOut] = await Promise.all([
     runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
     scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds) : Promise.resolve(null),
     vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds) : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds)
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
+    scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds) : Promise.resolve(null),
+    // Brand-level: every seller's ad rows roll into one baseline.
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds)
   ]);
   if (!sellerOut.ok) {
     return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
@@ -68668,6 +68756,9 @@ async function fetchBrandBrain(opts) {
   if (scOut && !scOut.ok) failedSources.push("catalog_sc");
   if (vcOut && !vcOut.ok) failedSources.push("catalog_vc");
   if (campaignOut && !campaignOut.ok) failedSources.push("campaign");
+  if (heroScOut && !heroScOut.ok) failedSources.push("hero_sc");
+  if (heroVcOut && !heroVcOut.ok) failedSources.push("hero_vc");
+  if (!recentOut.ok) failedSources.push("recent_activity");
   const sourceInput = async (queryId, out) => {
     if (!out || !out.ok) return void 0;
     const entry = await getQueryEntry(queryId);
@@ -68683,7 +68774,10 @@ async function fetchBrandBrain(opts) {
     previousObservations,
     catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
     catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
-    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut)
+    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
+    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
+    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
+    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut)
   });
   const { path: path2 } = await saveBrain(brain, dataDirOverride);
   const summary = {
@@ -68694,6 +68788,8 @@ async function fetchBrandBrain(opts) {
     duration_ms: Date.now() - t0,
     asin_count: brain.catalog?.asin_count ?? null,
     campaign_count: brain.campaign_structure?.campaign_count ?? null,
+    hero_asin_count: brain.catalog?.top_asins ? (brain.catalog.top_asins.sc?.length ?? 0) + (brain.catalog.top_asins.vc?.length ?? 0) : null,
+    has_recent_activity: brain.recent_activity !== void 0,
     failed_sources: failedSources
   };
   await writeBrainStatus(
@@ -68718,6 +68814,8 @@ async function fetchBrandBrain(opts) {
         has_acos_target: summary.acos_target_pct !== null,
         asin_count: summary.asin_count,
         campaign_count: summary.campaign_count,
+        hero_asin_count: summary.hero_asin_count,
+        has_recent_activity: summary.has_recent_activity,
         failed_sources: failedSources
       }
     },
@@ -68859,6 +68957,12 @@ function renderFetchResult(slug, result, json2) {
       }
       if (result.summary.campaign_count !== null) {
         parts.push(`${result.summary.campaign_count} campaign(s)`);
+      }
+      if (result.summary.hero_asin_count !== null) {
+        parts.push(`${result.summary.hero_asin_count} hero ASIN(s)`);
+      }
+      if (result.summary.has_recent_activity) {
+        parts.push("recent activity");
       }
       parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
       process.stdout.write(
