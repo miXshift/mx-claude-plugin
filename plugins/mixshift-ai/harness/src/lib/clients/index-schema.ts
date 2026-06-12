@@ -32,7 +32,7 @@ export const indexAccountSchema = z.object({
   seller_id: z.number().int(),
   seller_name: z.string(),
   merchant_alias: z.string().nullable(),
-  account_type: z.enum(['SC', 'VC', 'unknown']),
+  account_type: z.enum(['SC', 'VC', 'DSP', 'unknown']),
   marketplace: z.string().nullable(),
   region: z.string().nullable(),
   // Raw flags (mirrors source columns)

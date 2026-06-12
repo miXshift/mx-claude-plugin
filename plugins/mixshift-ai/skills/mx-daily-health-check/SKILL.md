@@ -101,7 +101,13 @@ Read these sources simultaneously:
 3. **`~/.mixshift/clients/<brand-slug>/runs/mx-daily-health-check/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip — no baseline yet.
 4. `~/.mixshift/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
 
-**Fail closed:** if the context snapshot is absent AND `context.yaml` is absent or missing `account_type`/`acos_target_pct`, stop and direct user to cold-start. Do not infer from prose.
+**Fail closed, with one Brand Brain exception:** if the context snapshot is absent AND `context.yaml` is absent or missing `account_type`, stop and direct the user to cold-start. Do not infer from prose.
+
+The exception covers exactly one field, the ACoS target. When everything else is available but `acos_target_pct` is missing, check the Tier-2 Brand Brain before stopping: run `mixshift brand brain status <brand-slug> --json` and read `brain.acos_target_pct`. If it is non-null, use it and label every number that depends on it, for example:
+
+> *ACoS target pre-filled from your MixShift platform setting (25%). Confirm or change it with `mixshift brand config <brand-slug>`.*
+
+If the brain value is also null (or no brain exists), stop and direct the user to cold-start, or to set the target via `mixshift brand config <brand-slug>`. Never invent a target.
 
 ### Step 1: Verify Data Completeness
 

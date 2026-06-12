@@ -55,13 +55,20 @@ export async function bootstrapBrand(
   const ctxPath = contextPath(suggestion.slug, options.dataDirOverride);
   const narrPath = narrativePath(suggestion.slug, options.dataDirOverride);
 
-  // 1. Filter out account rows we can't represent in the schema (account_type=unknown)
-  const validAccounts = suggestion.accounts.filter((a) => a.account_type !== 'unknown');
+  // 1. Keep only account rows the context schema can represent. SC/VC
+  //    only: DSP seats have no seller catalog and aren't cold-startable
+  //    yet (the context schema's account_type enum is SC|VC; DSP
+  //    analytical support is future work), and 'unknown' can't be
+  //    classified at all.
+  const validAccounts = suggestion.accounts.filter(
+    (a) => a.account_type === 'SC' || a.account_type === 'VC',
+  );
   if (validAccounts.length === 0) {
     throw new Error(
-      `Cannot bootstrap "${suggestion.slug}": all ${suggestion.accounts.length} accounts have ` +
-        `MerchantType outside SC / VC. Fix the warehouse seller table first, ` +
-        `then re-run \`mixshift brand discover\`.`,
+      `Cannot bootstrap "${suggestion.slug}": none of the ${suggestion.accounts.length} accounts ` +
+        `are SC or VC (DSP-only and unclassified brands aren't cold-startable yet). ` +
+        `If the MerchantType looks wrong, fix the warehouse seller table and ` +
+        `re-run \`mixshift brand discover\`.`,
     );
   }
 

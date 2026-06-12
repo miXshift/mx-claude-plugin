@@ -7,19 +7,23 @@ import { join } from 'node:path';
 // before importing the module under test.
 vi.mock('./query-runner.js', () => ({
   runQuery: vi.fn(),
+  runNamedQuery: vi.fn(),
 }));
 
-import { runQuery } from './query-runner.js';
+import { runQuery, runNamedQuery } from './query-runner.js';
 import {
   runDispatched,
   resolveLocalSprocSql,
+  resolveLocalNamedSql,
   buildCallSql,
   MissingParamsError,
   SPROC_SQL_DIR_ENV,
+  QUERY_PACK_DIR_ENV,
 } from './dispatch.js';
 import { _schemas, resetCatalogCache } from '../prefetch/sql-library.js';
 
 const runQueryMock = vi.mocked(runQuery);
+const runNamedQueryMock = vi.mocked(runNamedQuery);
 
 const okResult = (rows: Array<Record<string, unknown>> = [{ a: 1 }]) => ({
   ok: true as const,
@@ -30,12 +34,15 @@ const okResult = (rows: Array<Record<string, unknown>> = [{ a: 1 }]) => ({
 
 beforeEach(() => {
   runQueryMock.mockReset();
+  runNamedQueryMock.mockReset();
   resetCatalogCache();
   delete process.env[SPROC_SQL_DIR_ENV];
+  delete process.env[QUERY_PACK_DIR_ENV];
 });
 
 afterEach(() => {
   delete process.env[SPROC_SQL_DIR_ENV];
+  delete process.env[QUERY_PACK_DIR_ENV];
 });
 
 describe('catalog entry schema: dispatch fields', () => {
@@ -59,6 +66,28 @@ describe('catalog entry schema: dispatch fields', () => {
     });
     expect(entry.dispatch).toBe('sproc');
     expect(entry.file).toBeUndefined();
+  });
+
+  it('accepts a named entry with neither file nor sproc', () => {
+    const entry = queryEntrySchema.parse({
+      id: 'CS-28',
+      dispatch: 'named',
+      purpose: 'x',
+    });
+    expect(entry.dispatch).toBe('named');
+    expect(entry.file).toBeUndefined();
+    expect(entry.sproc).toBeUndefined();
+  });
+
+  it('accepts a named entry that retains its SP-era sproc name', () => {
+    const entry = queryEntrySchema.parse({
+      id: 'BRAIN-SELLER',
+      dispatch: 'named',
+      sproc: 'sp_brain_seller_fetch',
+      purpose: 'x',
+    });
+    expect(entry.dispatch).toBe('named');
+    expect(entry.sproc).toBe('sp_brain_seller_fetch');
   });
 
   it('rejects dispatch:sql without a file', () => {
@@ -125,87 +154,89 @@ describe('resolveLocalSprocSql', () => {
   });
 });
 
-describe('runDispatched sproc backend (BRAIN-SELLER, real catalog)', () => {
-  it('sends CALL with JSON-encoded params + seller ids through runQuery', async () => {
-    runQueryMock.mockResolvedValueOnce(okResult([{ MerchantAlias: 'BP' }]));
+describe('runDispatched named backend (BRAIN-SELLER, real catalog)', () => {
+  it('sends {id, sellerIds, params} through runNamedQuery', async () => {
+    runNamedQueryMock.mockResolvedValueOnce(okResult([{ MerchantAlias: 'BP' }]));
 
     const result = await runDispatched('BRAIN-SELLER', {
       params: { include_dormant: false },
       sellerIds: [574, 575],
     });
 
-    expect(runQueryMock).toHaveBeenCalledTimes(1);
-    const [sql, bound, opts] = runQueryMock.mock.calls[0]!;
-    expect(sql).toBe('CALL sp_brain_seller_fetch(?, ?)');
-    expect(bound).toEqual([
-      JSON.stringify({ include_dormant: false }),
-      JSON.stringify([574, 575]),
-    ]);
-    expect((opts as { query_id?: string }).query_id).toBe('BRAIN-SELLER');
+    expect(runNamedQueryMock).toHaveBeenCalledTimes(1);
+    expect(runQueryMock).not.toHaveBeenCalled();
+    const [id, opts] = runNamedQueryMock.mock.calls[0]!;
+    expect(id).toBe('BRAIN-SELLER');
+    expect(opts).toMatchObject({
+      sellerIds: [574, 575],
+      params: { include_dormant: false },
+    });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.usedDispatch).toBe('sproc');
+      expect(result.usedDispatch).toBe('named');
       expect(result.rows).toEqual([{ MerchantAlias: 'BP' }]);
-      expect(result.displaySql).toBe('CALL sp_brain_seller_fetch(?, ?)');
+      expect(result.displaySql).toContain('named query BRAIN-SELLER');
     }
   });
 
-  it('routes params.seller_ids to the second CALL arg when sellerIds is not given', async () => {
-    runQueryMock.mockResolvedValueOnce(okResult());
+  it('routes params.seller_ids to the top-level seller scope when sellerIds is not given', async () => {
+    runNamedQueryMock.mockResolvedValueOnce(okResult());
 
     await runDispatched('BRAIN-SELLER', {
       params: { seller_ids: [574], lookback_days: 30 },
     });
 
-    const [, bound] = runQueryMock.mock.calls[0]!;
-    expect(bound).toEqual([
-      JSON.stringify({ lookback_days: 30 }),
-      JSON.stringify([574]),
-    ]);
+    const [, opts] = runNamedQueryMock.mock.calls[0]!;
+    expect(opts).toMatchObject({
+      sellerIds: [574],
+      params: { lookback_days: 30 },
+    });
   });
 
   it('wraps classified failures with the dispatch label', async () => {
-    runQueryMock.mockResolvedValueOnce({
+    runNamedQueryMock.mockResolvedValueOnce({
       ok: false,
-      kind: 'unknown',
-      message: 'PROCEDURE sp_brain_seller_fetch does not exist',
-      friendly: 'PROCEDURE sp_brain_seller_fetch does not exist',
+      kind: 'unknown_query',
+      message: "No query pack entry with id 'BRAIN-SELLER'.",
+      friendly: "'BRAIN-SELLER' is not a known library query.",
+      durationMs: 3,
     });
 
     const result = await runDispatched('BRAIN-SELLER', { sellerIds: [574] });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.usedDispatch).toBe('sproc');
-      expect(result.failure.kind).toBe('unknown');
+      expect(result.usedDispatch).toBe('named');
+      expect(result.failure.kind).toBe('unknown_query');
     }
   });
 
-  it('uses the local dev fallback when MIXSHIFT_SPROC_SQL_DIR provides the body', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'mx-sproc-'));
+  it('prefers MIXSHIFT_QUERY_PACK_DIR/<id>.sql as the local dev fallback', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-pack-'));
     try {
       await writeFile(
-        join(dir, 'sp_brain_seller_fetch.sql'),
+        join(dir, 'BRAIN-SELLER.sql'),
         '-- local dev body\nSELECT * FROM seller WHERE ID IN (:seller_ids)',
       );
-      process.env[SPROC_SQL_DIR_ENV] = dir;
+      process.env[QUERY_PACK_DIR_ENV] = dir;
       runQueryMock.mockResolvedValueOnce(okResult());
 
       const result = await runDispatched('BRAIN-SELLER', {
         params: { seller_ids: [574, 575] },
       });
 
+      expect(runNamedQueryMock).not.toHaveBeenCalled();
       const [sql] = runQueryMock.mock.calls[0]!;
       // List param CSV-inlined by substituteParams; header stripped.
       expect(sql).toBe('SELECT * FROM seller WHERE ID IN (574, 575)');
       expect(result.ok).toBe(true);
-      if (result.ok) expect(result.usedDispatch).toBe('sproc_local_dev');
+      if (result.ok) expect(result.usedDispatch).toBe('named_local_dev');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('throws MissingParamsError from the local fallback when params are absent', async () => {
+  it('falls back to MIXSHIFT_SPROC_SQL_DIR/<sproc>.sql for SP-era dev dirs', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-sproc-'));
     try {
       await writeFile(
@@ -213,12 +244,72 @@ describe('runDispatched sproc backend (BRAIN-SELLER, real catalog)', () => {
         'SELECT * FROM seller WHERE ID IN (:seller_ids)',
       );
       process.env[SPROC_SQL_DIR_ENV] = dir;
+      runQueryMock.mockResolvedValueOnce(okResult());
+
+      const result = await runDispatched('BRAIN-SELLER', {
+        params: { seller_ids: [574] },
+      });
+
+      expect(runNamedQueryMock).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.usedDispatch).toBe('named_local_dev');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws MissingParamsError from the local fallback when params are absent', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-pack-'));
+    try {
+      await writeFile(
+        join(dir, 'BRAIN-SELLER.sql'),
+        'SELECT * FROM seller WHERE ID IN (:seller_ids)',
+      );
+      process.env[QUERY_PACK_DIR_ENV] = dir;
 
       await expect(runDispatched('BRAIN-SELLER', {})).rejects.toThrow(
         MissingParamsError,
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveLocalNamedSql', () => {
+  it('returns undefined when neither env var is set', async () => {
+    expect(
+      await resolveLocalNamedSql('BRAIN-SELLER', 'sp_brain_seller_fetch', {}),
+    ).toBeUndefined();
+  });
+
+  it('prefers the pack dir over the sproc dir when both resolve', async () => {
+    const packDir = await mkdtemp(join(tmpdir(), 'mx-pack-'));
+    const sprocDir = await mkdtemp(join(tmpdir(), 'mx-sproc-'));
+    try {
+      await writeFile(join(packDir, 'BRAIN-SELLER.sql'), 'SELECT 1');
+      await writeFile(join(sprocDir, 'sp_brain_seller_fetch.sql'), 'SELECT 2');
+      const sql = await resolveLocalNamedSql('BRAIN-SELLER', 'sp_brain_seller_fetch', {
+        [QUERY_PACK_DIR_ENV]: packDir,
+        [SPROC_SQL_DIR_ENV]: sprocDir,
+      });
+      expect(sql).toBe('SELECT 1');
+    } finally {
+      await rm(packDir, { recursive: true, force: true });
+      await rm(sprocDir, { recursive: true, force: true });
+    }
+  });
+
+  it('skips the sproc fallback when the entry has no sproc name', async () => {
+    const sprocDir = await mkdtemp(join(tmpdir(), 'mx-sproc-'));
+    try {
+      await writeFile(join(sprocDir, 'CS-28.sql'), 'SELECT 1');
+      const sql = await resolveLocalNamedSql('CS-28', undefined, {
+        [SPROC_SQL_DIR_ENV]: sprocDir,
+      });
+      expect(sql).toBeUndefined();
+    } finally {
+      await rm(sprocDir, { recursive: true, force: true });
     }
   });
 });

@@ -1,0 +1,293 @@
+/**
+ * Pure assembly: warehouse rows in, Brand Brain document out.
+ *
+ * No filesystem, no network, no environment reads. This function is the
+ * piece that moves server-side verbatim at the P2 promotion (the brain
+ * service runs the same assembly on cron); keeping it pure is what makes
+ * that move a transport swap instead of a rewrite. I/O lives in
+ * lib/brain/fetch.ts (client transport, P1).
+ */
+
+import { createHash } from 'node:crypto';
+import {
+  BRAIN_SCHEMA_VERSION,
+  type BrandBrain,
+  type BrainSeller,
+  type BrainCatalog,
+  type BrainCampaignStructure,
+  type BrainSourceMeta,
+} from './schema.js';
+
+/** Raw row shape as returned by the brain SPs (or the local dev
+ *  fallback SQL). Values arrive untyped from the wire; normalization is
+ *  defensive. */
+export type RawSellerRow = Record<string, unknown>;
+export type RawCatalogRow = Record<string, unknown>;
+export type RawCampaignRow = Record<string, unknown>;
+
+/** Rows + provenance for one fetched source. */
+export interface SourceInput<Row> {
+  rows: Row[];
+  /** Which procedure/query produced the rows (provenance). */
+  sproc: string;
+}
+
+export interface AssembleBrainInput {
+  brandSlug: string;
+  sellerRows: RawSellerRow[];
+  /** Which procedure/query produced sellerRows (provenance). */
+  sellerSproc: string;
+  /** e.g. `plugin@0.5.21`. P2 passes `brain-service@x.y`. */
+  generator: string;
+  /** Injected for determinism in tests; defaults to now. */
+  now?: Date;
+  /** Carried forward from the previous document so a re-fetch never
+   *  drops accumulated S3 observations. */
+  previousObservations?: BrandBrain['observations'];
+  /** Slice-2 sources. Omitted = source not applicable or failed; the
+   *  corresponding section + source meta are simply absent. */
+  catalogSc?: SourceInput<RawCatalogRow>;
+  catalogVc?: SourceInput<RawCatalogRow>;
+  campaign?: SourceInput<RawCampaignRow>;
+}
+
+/**
+ * Assemble the brain document from whichever sources fetched. Seller is
+ * the spine (always present); catalog/campaign sections render only
+ * when their sources are provided. The envelope shape stays stable as
+ * sources grow.
+ */
+export function assembleBrain(input: AssembleBrainInput): BrandBrain {
+  const now = input.now ?? new Date();
+  const seller = assembleSellerSection(input.sellerRows);
+
+  const meta = <Row,>(src: SourceInput<Row>): BrainSourceMeta => ({
+    sproc: src.sproc,
+    fetched_at: now.toISOString(),
+    row_count: src.rows.length,
+    source_hash: hashRows(src.rows as Array<Record<string, unknown>>),
+  });
+
+  const sources: BrandBrain['sources'] = {
+    seller: meta({ rows: input.sellerRows, sproc: input.sellerSproc }),
+  };
+  if (input.catalogSc) sources.catalog_sc = meta(input.catalogSc);
+  if (input.catalogVc) sources.catalog_vc = meta(input.catalogVc);
+  if (input.campaign) sources.campaign = meta(input.campaign);
+
+  const hasCatalog = input.catalogSc || input.catalogVc;
+
+  return {
+    schema_version: BRAIN_SCHEMA_VERSION,
+    brand_slug: input.brandSlug,
+    generated_at: now.toISOString(),
+    generator: input.generator,
+    sources,
+    seller,
+    ...(hasCatalog
+      ? {
+          catalog: assembleCatalogSection(
+            input.catalogSc?.rows ?? null,
+            input.catalogVc?.rows ?? null,
+          ),
+        }
+      : {}),
+    ...(input.campaign
+      ? { campaign_structure: assembleCampaignSection(input.campaign.rows) }
+      : {}),
+    observations: input.previousObservations ?? {},
+  };
+}
+
+/**
+ * Lift the seller section from the fetched rows. Multi-marketplace
+ * brands return one row per seller id; scalar fields lift from the
+ * PRIMARY row: the first row with a non-null ACOSTarget, else the first
+ * row. Per-account detail lives in the registry (index.yaml), not here.
+ *
+ * Exported for unit tests.
+ */
+export function assembleSellerSection(rows: RawSellerRow[]): BrainSeller {
+  const primary =
+    rows.find((r) => toNumber(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+
+  return {
+    merchant_alias: toTrimmedString(primary.MerchantAlias),
+    storefront_name: toTrimmedString(primary.Name),
+    acos_target_pct: toNumber(primary.ACOSTarget),
+    monthly_budget: toNumber(primary.MonthlyBudget),
+    marketplace: toTrimmedString(primary.MarketPlaceName),
+    merchant_region: toTrimmedString(primary.MerchantRegion),
+    agency_name: toTrimmedString(primary.AgencyName),
+    default_currency_code: toTrimmedString(primary.DefaultCurrencyCode),
+    i_brand_report_enabled: toBool(primary.iBrandReportEnabled),
+    i_running_initial_pull: toBool(primary.iRunningInitialPull),
+    data_freshness: {
+      ads_latest: toIso(primary.dtLatestRecordDate),
+      retail_latest: toIso(primary.dtMWSLatestRecordDate),
+    },
+    activated: {
+      ads: toIso(primary.dtActivatedOn),
+      retail: toIso(primary.dtMwsActivatedOn),
+    },
+    primary_seller_id: toNumber(primary.ID),
+  };
+}
+
+/**
+ * Merge SC + VC catalog rows into the aggregated catalog section. The
+ * brain stores the SHAPE of the catalog (distincts + counts), never
+ * per-ASIN dumps. `null` rows = that channel's source didn't run (vs an
+ * empty array = ran and returned nothing).
+ *
+ * Sub-brand sources per the locked design: SC rows use `Brand`
+ * (mws_items); VC rows prefer the AM-set `CustomBrand`, falling back to
+ * the Amazon-derived `Brand`.
+ *
+ * Exported for unit tests.
+ */
+export function assembleCatalogSection(
+  scRows: RawCatalogRow[] | null,
+  vcRows: RawCatalogRow[] | null,
+): BrainCatalog {
+  const asins = new Set<string>();
+  const subBrands = new Set<string>();
+  const itemGroups = new Set<string>();
+  const skus = new Set<string>();
+
+  for (const r of scRows ?? []) {
+    addIf(asins, toTrimmedString(r.ASIN ?? r.Asin));
+    addIf(skus, toTrimmedString(r.SKU));
+    addIf(subBrands, toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  for (const r of vcRows ?? []) {
+    addIf(asins, toTrimmedString(r.Asin ?? r.ASIN));
+    addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+
+  return {
+    asin_count: asins.size,
+    sku_count: scRows === null ? null : skus.size,
+    sub_brands: [...subBrands].sort(),
+    item_groups: [...itemGroups].sort(),
+    hero_asins_deferred: true,
+  };
+}
+
+/**
+ * Aggregate enabled+paused campaign rows into the campaign-structure
+ * section. Percentages are whole numbers.
+ *
+ * smart_default_adoption_pct: share of ALL campaigns whose
+ * BidOptimization flag is set. Verified against the warehouse
+ * 2026-06-12: the column is a nullable '1' flag (NULL / '' = off,
+ * '1' = smart bidding on), so the denominator is every campaign row,
+ * not just rows carrying a value. The SMART_BID_VALUES set keeps a few
+ * defensive synonyms in case the convention ever changes.
+ *
+ * Exported for unit tests.
+ */
+export function assembleCampaignSection(
+  rows: RawCampaignRow[],
+): BrainCampaignStructure {
+  const objectives = new Set<string>();
+  const itemGroups = new Set<string>();
+  const brands = new Set<string>();
+  let paused = 0;
+  let bidSmart = 0;
+  let brandEntity = 0;
+
+  for (const r of rows) {
+    addIf(objectives, toTrimmedString(r.Objective));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+    addIf(brands, toTrimmedString(r.Brand));
+    if (toTrimmedString(r.State)?.toLowerCase() === 'paused') paused++;
+    const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
+    if (bid && SMART_BID_VALUES.has(bid)) bidSmart++;
+    if (toTrimmedString(r.BrandEntityId)) brandEntity++;
+  }
+
+  return {
+    campaign_count: rows.length,
+    paused_campaign_count: paused,
+    distinct_objectives: [...objectives].sort(),
+    distinct_item_groups: [...itemGroups].sort(),
+    distinct_brands: [...brands].sort(),
+    smart_default_adoption_pct:
+      rows.length > 0 ? Math.round((bidSmart / rows.length) * 100) : null,
+    brand_entity_id_presence_pct:
+      rows.length > 0 ? Math.round((brandEntity / rows.length) * 100) : null,
+  };
+}
+
+const SMART_BID_VALUES = new Set([
+  'smart',
+  'default',
+  'auto',
+  'optimized',
+  'enabled',
+  'true',
+  '1',
+]);
+
+function addIf(set: Set<string>, v: string | null | undefined): void {
+  if (v) set.add(v);
+}
+
+/**
+ * Deterministic content hash of the normalized rows. Used as the source
+ * etag: identical warehouse data hashes identically across fetches, so
+ * "did anything change" is one string compare (and at P2, a conditional
+ * GET).
+ */
+export function hashRows(rows: RawSellerRow[]): string {
+  const canonical = JSON.stringify(
+    rows.map((r) =>
+      Object.keys(r)
+        .sort()
+        .map((k) => [k, normalizeForHash(r[k])]),
+    ),
+  );
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+function normalizeForHash(v: unknown): unknown {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'bigint') return v.toString();
+  return v ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Defensive coercion. Warehouse values arrive as numbers, numeric strings,
+// Date objects, ISO strings, 0/1 tinyints, or NULL depending on driver and
+// transport (mysql2 direct vs datahub JSON). Assembly must never throw on a
+// sparse or oddly-typed row.
+// ---------------------------------------------------------------------------
+
+function toTrimmedString(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  return s.length > 0 ? s : null;
+}
+
+function toNumber(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toBool(v: unknown): boolean | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'boolean') return v;
+  const n = toNumber(v);
+  if (n === null) return null;
+  return n !== 0;
+}
+
+function toIso(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}

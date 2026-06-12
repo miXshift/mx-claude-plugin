@@ -22,6 +22,8 @@ import {
 } from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
+import { registerBrandBrainCommands } from './brand-brain.js';
+import { spawnBrainFetchDetached } from '../lib/brain/spawn.js';
 import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
 import { registerBrandEnrichCommand } from './brand-enrich.js';
@@ -545,6 +547,12 @@ export function registerBrandCommands(program: Command): void {
   // Lives in a sibling file (brand-view.ts) to keep this file readable.
   registerBrandViewCommand(brand);
 
+  // `mixshift brand brain fetch|refresh|status <slug>` — Tier-2 Brand
+  // Brain background discovery (lib/brain/). Auto-triggered by
+  // `brand key add`; these commands cover retries + the chat polling
+  // surface.
+  registerBrandBrainCommands(brand);
+
   // `mixshift brand config <slug>` — confirm-on-edit flow for brand-level
   // context fields (ACoS/TACoS targets, attribution window, goals). Mirror
   // of the skill OCL surface, pointed at context.yaml instead of config.yaml.
@@ -594,6 +602,18 @@ export function registerBrandCommands(program: Command): void {
         results.push({ ...r, input });
       }
 
+      // Background brain pre-fill for newly-keyed brands (the trigger
+      // model in BACKGROUND-DISCOVERY): fire-and-forget detached
+      // fetches. Keying never blocks or fails on brain activity; a
+      // failed spawn just means the user runs
+      // `mixshift brand brain fetch <slug>` manually.
+      const brainSpawns = results
+        .filter((r) => r.status === 'added')
+        .map((r) => ({
+          slug: r.brand!.slug,
+          ...spawnBrainFetchDetached(r.brand!.slug, root.dataDir),
+        }));
+
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
@@ -611,6 +631,7 @@ export function registerBrandCommands(program: Command): void {
                 normalized_input: r.normalized_input,
               })),
               key_brands: results[results.length - 1]?.key_brands ?? [],
+              brain_fetch: brainSpawns,
             },
             null,
             2,
@@ -648,7 +669,23 @@ export function registerBrandCommands(program: Command): void {
       }
 
       const finalList = results[results.length - 1]?.key_brands ?? [];
-      lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}\n`);
+      lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}`);
+
+      const spawnedSlugs = brainSpawns.filter((s) => s.spawned).map((s) => s.slug);
+      const unspawned = brainSpawns.filter((s) => !s.spawned);
+      if (spawnedSlugs.length > 0) {
+        lines.push(
+          `\n  ⚙ Brain pre-fill running in the background for: ${spawnedSlugs.join(', ')}`,
+          `    Check progress: mixshift brand brain status <slug>`,
+        );
+      }
+      for (const s of unspawned) {
+        lines.push(
+          `\n  ⚠ Brain pre-fill not started for ${s.slug} (${s.reason}).`,
+          `    Run manually: mixshift brand brain fetch ${s.slug}`,
+        );
+      }
+      lines.push('');
       process.stderr.write(lines.join('\n'));
       process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
       return;

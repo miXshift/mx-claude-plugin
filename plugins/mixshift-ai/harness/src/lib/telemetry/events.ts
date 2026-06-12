@@ -101,6 +101,13 @@ export const EventName = {
   // Brand config editor (mixshift brand config <slug>)
   BrandConfigViewed: 'brand_config.viewed',
   BrandConfigEdited: 'brand_config.edited',
+  // Brand Brain Tier-2 background discovery (lib/brain/fetch.ts +
+  // `mixshift brand brain fetch`). Privacy: payloads carry slug, row
+  // counts, duration, dispatch path; never seller row contents.
+  BrainFetchStarted: 'brain.fetch_started',
+  BrainFetchCompleted: 'brain.fetch_completed',
+  BrainFetchFailed: 'brain.fetch_failed',
+  BrainFetchSkipped: 'brain.fetch_skipped',
 
   // Skill + query
   SkillInvoked: 'skill.invoked',

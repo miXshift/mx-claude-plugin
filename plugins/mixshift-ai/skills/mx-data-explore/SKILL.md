@@ -228,6 +228,18 @@ The harness accepts fuzzy input — display names, acronyms, prefixes, case-inse
 5. For ambiguous or not_found items, ask a clarifying question in the SAME response — don't make the user wait a turn. Example:
    > *"Got 3 of 4. 'Hydro' matched both Hydrapak and Hydro Cell — which did you mean?"*
 
+**After a successful key add: brain pre-fill runs in the background.**
+
+The `key add` output includes a line like "Brain pre-fill running in the background for: <slug>". This is the Brand Brain: the plugin pulls the brand's platform facts (ACoS target, identity, data freshness) so analytical skills have a head start before any cold-start. It usually finishes in a few seconds. Confirm the result for the user:
+
+1. Run `mixshift brand brain status <slug> --json`.
+2. If `status_file.status` is `complete`, add one line to your summary, for example:
+   > *"Brain pre-fill finished for Backpacker's Pantry: pulled your ACoS target (25%) from MixShift. Analytical skills can use it right away; cold-start still unlocks the full set."*
+   If `brain.acos_target_pct` is null, say the target is not set in the MixShift platform and they can add one later via `mixshift brand config <slug>`.
+3. If still `fetching`, wait about 5 seconds and poll again, up to roughly 90 seconds total. If it has not finished by then, say it is still running in the background and they can check anytime with `mixshift brand brain status <slug>`.
+4. If `failed`, surface the error plus the retry command `mixshift brand brain refresh <slug>`. Keying succeeded regardless; never treat a brain failure as a key-add failure.
+5. If the `key add` output instead shows "Brain pre-fill not started" with a reason, relay the manual command it suggests and move on.
+
 **Behavior when user has many active brands and no key set:**
 
 If the user runs `mixshift brand list` and the footer says "No key brands set" with active count >5, proactively offer: *"You've got 23 active brands. Day-to-day, do you focus on a smaller set? Tell me which ones (e.g. 'I manage Skratch, Hydro Cell, AOP, and Home IQ') and I'll mark them as key — portfolio skills will then default to those."*
