@@ -19,6 +19,7 @@
  */
 
 import { loadSkillManifest, resolveBatchPlan } from './manifest.js';
+import { getQueryEntry } from './sql-library.js';
 import { loadBrandContext } from '../context/load.js';
 import { buildStandardParams } from './params.js';
 import { runDispatched, MissingParamsError } from '../data/dispatch.js';
@@ -138,12 +139,26 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
           durationMs: r.output.duration_ms,
         });
       } else if ('ok' in r && !r.ok && 'queryResult' in r) {
-        // mysql / query failure with classified info
-        perQueryResults.push({
-          id: r.id,
-          status: 'failed',
-          error: r.queryResult.friendly,
-        });
+        // Classified query failure. A server-side `missing_params` is the
+        // named-query analogue of the client-side MissingParamsError
+        // below: a required param the batch didn't carry (typically a
+        // cross-query dependency the skill supplies on a follow-up pass).
+        // Classify it `deferred`, not `failed`, so it doesn't trip
+        // partial_failure — mirroring the dispatch:sql era exactly.
+        if (r.queryResult.kind === 'missing_params') {
+          perQueryResults.push({
+            id: r.id,
+            status: 'deferred',
+            missing_params: r.queryResult.missing_params,
+            error: r.queryResult.friendly,
+          });
+        } else {
+          perQueryResults.push({
+            id: r.id,
+            status: 'failed',
+            error: r.queryResult.friendly,
+          });
+        }
       } else if ('error' in r) {
         // Param-substitution / setup failure. Missing-params errors are
         // common for queries that depend on the output of another query
@@ -248,6 +263,17 @@ async function executeOne(
     return { id, ok: false, queryResult: result.failure };
   }
 
+  // Catalog purpose is the artifact's human-readable stand-in for the SQL
+  // on dispatch:named queries (whose text is server-side). Best-effort:
+  // runDispatched already resolved the entry, so this is a cached read,
+  // but never let a purpose lookup sink a successful query.
+  let purpose: string | undefined;
+  try {
+    purpose = (await getQueryEntry(id)).purpose;
+  } catch {
+    purpose = undefined;
+  }
+
   return {
     id,
     ok: true,
@@ -257,6 +283,8 @@ async function executeOne(
       duration_ms: result.durationMs,
       params: result.boundParams,
       display_sql: result.displaySql,
+      purpose,
+      revision: result.revision,
     },
   };
 }

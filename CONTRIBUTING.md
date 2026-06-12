@@ -42,6 +42,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 
 **Quick checklist:**
 
+- [ ] If this release flips any catalog query to `dispatch: named`: `npm run check-named-pack` passes (every named id resolves against the DEPLOYED auth-service pack — deploy the pack entries first, or users hit `unknown_query`)
 - [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
 - [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed
@@ -59,6 +60,7 @@ npm run typecheck
 npm run test
 npm run validate-manifests
 npm run check-skills
+npm run check-named-pack   # only gates dispatch:named flips; needs `mixshift auth login`
 npm run build
 ```
 

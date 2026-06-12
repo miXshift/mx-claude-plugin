@@ -35,8 +35,17 @@ export interface QueryRunOutput<Row = Record<string, unknown>> {
   duration_ms: number;
   /** Param map actually used (after substitution). For audit. */
   params: Record<string, unknown>;
-  /** SQL we executed, post list-inlining. Useful for failure forensics. */
+  /** SQL we executed, post list-inlining. Useful for failure forensics.
+   *  For dispatch:named queries this is a placeholder (the SQL is
+   *  server-side) — `purpose` + `revision` carry the forensic value. */
   display_sql: string;
+  /** Catalog purpose string. The human-readable stand-in for the SQL on
+   *  dispatch:named queries, so artifacts stay debuggable without
+   *  shipping the query text. */
+  purpose?: string;
+  /** dispatch:named only: the server-side entry's SQL content hash, so a
+   *  surprising number is attributable to an exact query revision. */
+  revision?: string;
 }
 
 export interface PrefetchArtifactInput {
@@ -79,6 +88,8 @@ export async function writePrefetchArtifacts(
         id: q.id,
         params: q.params,
         display_sql: q.display_sql,
+        ...(q.purpose ? { purpose: q.purpose } : {}),
+        ...(q.revision ? { revision: q.revision } : {}),
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows,
@@ -172,8 +183,10 @@ function renderQuerySection(q: QueryRunOutput): string {
   const lines: string[] = [];
   lines.push(`## ${q.id}`);
   lines.push('');
+  if (q.purpose) lines.push(`- **Purpose**: ${q.purpose}`);
   lines.push(`- **Rows**: ${q.rows.length}`);
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
+  if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }
