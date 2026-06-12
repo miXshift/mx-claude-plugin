@@ -33,9 +33,14 @@ export type DataQueryFailureKind =
   | 'host_unreachable'
   // Named-query surface (POST /api/named-query) only: the pack has no
   // entry for the requested id (plugin release ahead of service deploy) /
-  // the request failed the entry's seller-scope or param spec.
+  // the request was malformed against the entry's spec / a required param
+  // was absent. `missing_params` is distinct from `bad_params` because the
+  // prefetch runner maps it to `deferred` (a cross-query dependency the
+  // skill supplies on a follow-up pass), mirroring the client-side
+  // MissingParamsError contract from the dispatch:sql era.
   | 'unknown_query'
   | 'bad_params'
+  | 'missing_params'
   | 'unknown';
 
 export interface DataQuerySuccess<Row> {
@@ -43,6 +48,11 @@ export interface DataQuerySuccess<Row> {
   rows: Row[];
   rowCount: number;
   durationMs: number;
+  /** Named-query pack only: the executed entry's 8-hex SQL content hash.
+   *  Stamped into prefetch artifacts + telemetry so a result is
+   *  attributable to the exact server-side query text, which can change
+   *  without a plugin release. Undefined for raw-SQL / mysql paths. */
+  revision?: string;
 }
 
 export interface DataQueryFailure {
@@ -50,6 +60,8 @@ export interface DataQueryFailure {
   kind: DataQueryFailureKind;
   table_name?: string;
   raw_code?: string;
+  /** kind 'missing_params' only: the required param names that were absent. */
+  missing_params?: string[];
   message: string;
   /** Friendly, user-facing message — distinct from `message` which is raw. */
   friendly: string;
@@ -404,6 +416,10 @@ export interface NamedQueryOptions {
 
 interface NamedQueryWire extends DatahubQueryWire {
   id?: string;
+  /** Success: the entry's SQL content hash. */
+  revision?: string;
+  /** kind 'missing_params': the absent required param names. */
+  missing_params?: string[];
 }
 
 /**
@@ -474,11 +490,12 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
             auth_path: 'datahub',
             named_query: true,
             server_duration_ms: serverDuration,
+            revision: json.revision,
           },
         },
         options.dataDirOverride,
       );
-      return { ok: true, rows, rowCount, durationMs: serverDuration };
+      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json.revision };
     }
 
     const failure: DataQueryFailure = {
@@ -486,6 +503,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
       kind: (json.kind ?? 'unknown') as DataQueryFailureKind,
       table_name: json.table_name,
       raw_code: json.raw_code,
+      missing_params: json.missing_params,
       message: json.message ?? `Named query ${id} failed`,
       friendly: json.friendly ?? json.message ?? `Named query ${id} failed`,
       durationMs,

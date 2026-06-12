@@ -81,10 +81,15 @@ export interface DispatchSuccess<Row> {
   rowCount: number;
   durationMs: number;
   usedDispatch: UsedDispatch;
-  /** The statement that ran (post-substitution for sql; CALL for sproc). */
+  /** The statement that ran (post-substitution for sql; CALL for sproc;
+   *  a non-secret placeholder for named, whose SQL is server-side). */
   displaySql: string;
   /** The params that accompanied the statement (artifact logging). */
   boundParams: Record<string, unknown>;
+  /** Named dispatch only: the pack entry's SQL content hash, for artifact
+   *  + telemetry attribution (the server-side text can change without a
+   *  plugin release). Undefined for sql/sproc/local-dev paths. */
+  revision?: string;
 }
 
 export interface DispatchFailure {
@@ -236,8 +241,9 @@ async function runNamed<Row>(
     rowCount: result.rowCount,
     durationMs: result.durationMs,
     usedDispatch: 'named',
-    displaySql: `-- named query ${id} (SQL executes server-side)`,
+    displaySql: `-- named query ${id}@${result.revision ?? '?'} (SQL executes server-side)`,
     boundParams: { id, seller_ids: sellerIds, params: restParams },
+    revision: result.revision,
   };
 }
 

@@ -180,6 +180,22 @@ describe('runDispatched named backend (BRAIN-SELLER, real catalog)', () => {
     }
   });
 
+  it('carries the entry revision into the dispatch result + displaySql', async () => {
+    runNamedQueryMock.mockResolvedValueOnce({
+      ok: true,
+      rows: [],
+      rowCount: 0,
+      durationMs: 5,
+      revision: '211bbe1a',
+    });
+    const result = await runDispatched('BRAIN-SELLER', { sellerIds: [574] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.revision).toBe('211bbe1a');
+      expect(result.displaySql).toContain('@211bbe1a');
+    }
+  });
+
   it('routes params.seller_ids to the top-level seller scope when sellerIds is not given', async () => {
     runNamedQueryMock.mockResolvedValueOnce(okResult());
 

@@ -87,6 +87,38 @@ describe('runNamedQuery', () => {
     }
   });
 
+  it('passes the entry revision through on success', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ ok: true, rows: [], rowCount: 0, durationMs: 5, id: 'CS-28', revision: '211bbe1a' }),
+    );
+    const result = await runNamedQuery('CS-28', { creds: datahubCreds, params: { seller_id_list: [574] } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.revision).toBe('211bbe1a');
+  });
+
+  it('surfaces missing_params (kind + names) so the runner can defer it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          ok: false,
+          kind: 'missing_params',
+          missing_params: ['window_asin_set'],
+          message: "Query 'ANEG-04' is missing required param(s): window_asin_set.",
+          friendly: "Query 'ANEG-04' needs param(s) this request didn't carry: window_asin_set.",
+          durationMs: 0,
+          id: 'ANEG-04',
+        },
+        400,
+      ),
+    );
+    const result = await runNamedQuery('ANEG-04', { creds: datahubCreds, params: { seller_id: 1 } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('missing_params');
+      expect(result.missing_params).toEqual(['window_asin_set']);
+    }
+  });
+
   it('omits sellerIds from the body when the list is empty', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ ok: true, rows: [{ pong: 1 }], rowCount: 1, durationMs: 1, id: 'PING' }),
