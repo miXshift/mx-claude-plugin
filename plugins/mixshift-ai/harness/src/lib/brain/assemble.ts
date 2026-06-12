@@ -15,6 +15,8 @@ import {
   type BrainSeller,
   type BrainCatalog,
   type BrainCampaignStructure,
+  type BrainHeroAsin,
+  type BrainRecentActivity,
   type BrainSourceMeta,
 } from './schema.js';
 
@@ -49,6 +51,14 @@ export interface AssembleBrainInput {
   catalogSc?: SourceInput<RawCatalogRow>;
   catalogVc?: SourceInput<RawCatalogRow>;
   campaign?: SourceInput<RawCampaignRow>;
+  /** Slice-3 hero-ASIN sources (top sellers by trailing-365d revenue),
+   *  per channel. Fold into catalog.top_asins. */
+  heroSc?: SourceInput<RawCatalogRow>;
+  heroVc?: SourceInput<RawCatalogRow>;
+  /** Slice-3 recent-activity source: the single BRAIN-RECENT-ACTIVITY row
+   *  (trailing-30d ad spend/sales rolled up across all the brand's
+   *  sellers). */
+  recentActivity?: SourceInput<RawSellerRow>;
 }
 
 /**
@@ -74,8 +84,15 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
   if (input.catalogSc) sources.catalog_sc = meta(input.catalogSc);
   if (input.catalogVc) sources.catalog_vc = meta(input.catalogVc);
   if (input.campaign) sources.campaign = meta(input.campaign);
+  if (input.heroSc) sources.hero_sc = meta(input.heroSc);
+  if (input.heroVc) sources.hero_vc = meta(input.heroVc);
+  if (input.recentActivity) sources.recent_activity = meta(input.recentActivity);
 
-  const hasCatalog = input.catalogSc || input.catalogVc;
+  // Catalog section renders when any catalog OR hero source ran — hero
+  // ASINs hang off catalog.top_asins, and a brand could (in principle)
+  // have hero data without the taxonomy pull.
+  const hasCatalog =
+    input.catalogSc || input.catalogVc || input.heroSc || input.heroVc;
 
   return {
     schema_version: BRAIN_SCHEMA_VERSION,
@@ -89,11 +106,21 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
           catalog: assembleCatalogSection(
             input.catalogSc?.rows ?? null,
             input.catalogVc?.rows ?? null,
+            input.heroSc?.rows ?? null,
+            input.heroVc?.rows ?? null,
           ),
         }
       : {}),
     ...(input.campaign
       ? { campaign_structure: assembleCampaignSection(input.campaign.rows) }
+      : {}),
+    ...(input.recentActivity
+      ? {
+          recent_activity: assembleRecentActivity(
+            input.recentActivity.rows[0],
+            now,
+          ),
+        }
       : {}),
     observations: input.previousObservations ?? {},
   };
@@ -149,6 +176,8 @@ export function assembleSellerSection(rows: RawSellerRow[]): BrainSeller {
 export function assembleCatalogSection(
   scRows: RawCatalogRow[] | null,
   vcRows: RawCatalogRow[] | null,
+  heroScRows: RawCatalogRow[] | null = null,
+  heroVcRows: RawCatalogRow[] | null = null,
 ): BrainCatalog {
   const asins = new Set<string>();
   const subBrands = new Set<string>();
@@ -167,12 +196,68 @@ export function assembleCatalogSection(
     addIf(itemGroups, toTrimmedString(r.ItemGroup));
   }
 
+  const sc = heroScRows ? heroScRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const vc = heroVcRows ? heroVcRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const topAsins =
+    sc || vc ? { ...(sc ? { sc } : {}), ...(vc ? { vc } : {}) } : undefined;
+
   return {
     asin_count: asins.size,
     sku_count: scRows === null ? null : skus.size,
     sub_brands: [...subBrands].sort(),
     item_groups: [...itemGroups].sort(),
-    hero_asins_deferred: true,
+    ...(topAsins ? { top_asins: topAsins } : {}),
+  };
+}
+
+/**
+ * Map a hero-source row (BRAIN-HERO-SC / -VC) to the typed hero shape.
+ * Both sources alias to the same columns (asin, title,
+ * ordered_revenue_365d, units_365d). Rows arrive already ranked
+ * (ORDER BY revenue DESC LIMIT 20) so order is preserved.
+ */
+function toHeroAsin(r: RawCatalogRow): BrainHeroAsin | null {
+  const asin = toTrimmedString(r.asin ?? r.ASIN ?? r.Asin);
+  if (!asin) return null;
+  return {
+    asin,
+    title: toTrimmedString(r.title ?? r.Title ?? r.ItemName),
+    ordered_revenue_365d: toNumber(r.ordered_revenue_365d) ?? 0,
+    units_365d: toIntOrNull(r.units_365d),
+    // SC-only stock (VC hero rows omit these → null).
+    sellable_qty: toIntOrNull(r.sellable_qty),
+    days_of_supply: toIntOrNull(r.days_of_supply),
+  };
+}
+
+function isHeroAsin(v: BrainHeroAsin | null): v is BrainHeroAsin {
+  return v !== null;
+}
+
+/**
+ * Build the recent-activity baseline from the single BRAIN-RECENT-ACTIVITY
+ * row (trailing-30d ad spend + ad sales, brand-wide). ACoS is
+ * spend/sales*100, null when sales are zero. `row` may be undefined if the
+ * source returned no rows (a quiet brand returns one all-null row, so this
+ * is belt-and-suspenders).
+ *
+ * Exported for unit tests.
+ */
+export function assembleRecentActivity(
+  row: RawSellerRow | undefined,
+  now: Date,
+): BrainRecentActivity {
+  const spend = toNumber(row?.spend_30d);
+  const adSales = toNumber(row?.ad_sales_30d);
+  const acos =
+    spend !== null && adSales !== null && adSales !== 0
+      ? Math.round((spend / adSales) * 10000) / 100
+      : null;
+  return {
+    spend_30d: spend,
+    ad_sales_30d: adSales,
+    acos_30d: acos,
+    as_of: now.toISOString(),
   };
 }
 
@@ -276,6 +361,11 @@ function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function toIntOrNull(v: unknown): number | null {
+  const n = toNumber(v);
+  return n === null ? null : Math.trunc(n);
 }
 
 function toBool(v: unknown): boolean | null {

@@ -92,6 +92,31 @@ export type BrainSeller = z.infer<typeof brainSellerSchema>;
  * section. Sub-brand source: SC uses Brand; VC prefers the AM-set
  * CustomBrand, falling back to the Amazon-derived Brand.
  */
+/**
+ * One hero ASIN: a top seller by trailing-365d ordered revenue. Channel
+ * split (sc/vc) because a hybrid 1P+3P brand sells the same ASIN through
+ * both at different revenue. Sources: BRAIN-HERO-SC
+ * (business_reports_dpst_sku) / BRAIN-HERO-VC
+ * (vendor_sales_manufacturing_asin).
+ */
+export const brainHeroAsinSchema = z.object({
+  asin: z.string(),
+  title: z.string().nullable(),
+  ordered_revenue_365d: z.number(),
+  units_365d: z.number().int().nullable(),
+  /** Current FBA sellable units from the latest mws_inventory_health
+   *  snapshot (SC only; the live `Available` field, not the deprecated
+   *  SellableQuantity). FBA on-hand ONLY by decision (2026-06-12) —
+   *  merchant-fulfilled stock (mws_items.ItemQuantityAvailable) is omitted
+   *  in v1. Null when no inventory row joins. */
+  sellable_qty: z.number().int().nullable(),
+  /** Days of supply on that snapshot (tightest populated). Null when
+   *  absent. */
+  days_of_supply: z.number().int().nullable(),
+});
+
+export type BrainHeroAsin = z.infer<typeof brainHeroAsinSchema>;
+
 export const brainCatalogSchema = z.object({
   /** Distinct ASINs across SC + VC rows. */
   asin_count: z.number().int().min(0),
@@ -99,11 +124,39 @@ export const brainCatalogSchema = z.object({
   sku_count: z.number().int().min(0).nullable(),
   sub_brands: z.array(z.string()),
   item_groups: z.array(z.string()),
-  /** Hero-ASIN ranking needs SP-MIGRATION Phase 2 activity pulls. */
-  hero_asins_deferred: z.literal(true),
+  /** Top sellers by trailing-365d revenue, per channel. A channel key is
+   *  present only when its hero source ran. Replaces hero_asins_deferred. */
+  top_asins: z
+    .object({
+      sc: z.array(brainHeroAsinSchema).optional(),
+      vc: z.array(brainHeroAsinSchema).optional(),
+    })
+    .optional(),
+  /** Legacy marker from the pre-hero brain (slices 1-2). Optional now that
+   *  top_asins populates; kept so brains written before this slice still
+   *  validate without a re-fetch. */
+  hero_asins_deferred: z.literal(true).optional(),
 });
 
 export type BrainCatalog = z.infer<typeof brainCatalogSchema>;
+
+/**
+ * Recent ad-activity baseline (source class S1, cached from
+ * BRAIN-RECENT-ACTIVITY at brain-fetch time per BACKGROUND-DISCOVERY.md:
+ * "skill no longer re-pulls"). Brand-wide: trailing-30d ad spend + ad
+ * sales summed across ALL the brand's sellers (not a single account —
+ * the brand's ad activity may sit on any seat). acos is null when ad
+ * sales are zero (no division).
+ */
+export const brainRecentActivitySchema = z.object({
+  spend_30d: z.number().nullable(),
+  ad_sales_30d: z.number().nullable(),
+  acos_30d: z.number().nullable(),
+  /** When the window was computed (brain-fetch time). */
+  as_of: z.iso.datetime(),
+});
+
+export type BrainRecentActivity = z.infer<typeof brainRecentActivitySchema>;
 
 /**
  * Campaign-structure facts (source class S1 + light S2 derivations),
@@ -161,12 +214,18 @@ export const brandBrainSchema = z.object({
     catalog_sc: brainSourceMetaSchema.optional(),
     catalog_vc: brainSourceMetaSchema.optional(),
     campaign: brainSourceMetaSchema.optional(),
+    hero_sc: brainSourceMetaSchema.optional(),
+    hero_vc: brainSourceMetaSchema.optional(),
+    recent_activity: brainSourceMetaSchema.optional(),
   }),
   seller: brainSellerSchema.optional(),
   /** Present when at least one catalog source (SC or VC) fetched ok. */
   catalog: brainCatalogSchema.optional(),
   /** Present when the campaign source fetched ok. */
   campaign_structure: brainCampaignStructureSchema.optional(),
+  /** Brand-wide ad-activity baseline (cached BRAIN-RECENT-ACTIVITY).
+   *  Present when the recent-activity source fetched ok. */
+  recent_activity: brainRecentActivitySchema.optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),

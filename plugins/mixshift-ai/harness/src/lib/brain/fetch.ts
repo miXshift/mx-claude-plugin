@@ -40,6 +40,14 @@ const BRAIN_SELLER_QUERY_ID = 'BRAIN-SELLER';
 const BRAIN_CATALOG_SC_QUERY_ID = 'BRAIN-CATALOG-SC';
 const BRAIN_CATALOG_VC_QUERY_ID = 'BRAIN-CATALOG-VC';
 const BRAIN_CAMPAIGN_QUERY_ID = 'BRAIN-CAMPAIGN';
+const BRAIN_HERO_SC_QUERY_ID = 'BRAIN-HERO-SC';
+const BRAIN_HERO_VC_QUERY_ID = 'BRAIN-HERO-VC';
+/** Recent-activity baseline: trailing-30d ad spend/sales rolled up across
+ *  ALL the brand's sellers (BACKGROUND-DISCOVERY.md "skill no longer
+ *  re-pulls"). A dedicated brand-scoped entry, NOT DHC-01-on-primary —
+ *  that returned nulls for VC-primary brands whose ad activity sits on a
+ *  different seat. */
+const BRAIN_RECENT_ACTIVITY_QUERY_ID = 'BRAIN-RECENT-ACTIVITY';
 
 export interface BrainFetchOptions {
   slug: string;
@@ -71,8 +79,13 @@ export interface BrainFetchSummary {
   asin_count: number | null;
   /** Campaign rows when the campaign source ran; null otherwise. */
   campaign_count: number | null;
+  /** Total hero ASINs cached (SC + VC); null when no hero source ran. */
+  hero_asin_count: number | null;
+  /** True when the recent-activity baseline (DHC-01) cached ok. */
+  has_recent_activity: boolean;
   /** Non-fatal source failures (seller failing is fatal and surfaces as
-   *  status 'failed' instead). Names: catalog_sc | catalog_vc | campaign. */
+   *  status 'failed' instead). Names: catalog_sc | catalog_vc | campaign |
+   *  hero_sc | hero_vc | recent_activity. */
   failed_sources: string[];
 }
 
@@ -195,20 +208,29 @@ export async function fetchBrandBrain(
     }
   };
 
-  const [sellerOut, scOut, vcOut, campaignOut] = await Promise.all([
-    runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
-    scIds.length > 0
-      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds)
-      : Promise.resolve(null),
-    vcIds.length > 0
-      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds)
-      : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
-  ]);
+  const [sellerOut, scOut, vcOut, campaignOut, heroScOut, heroVcOut, recentOut] =
+    await Promise.all([
+      runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
+      scIds.length > 0
+        ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds)
+        : Promise.resolve(null),
+      vcIds.length > 0
+        ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds)
+        : Promise.resolve(null),
+      runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
+      scIds.length > 0
+        ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds)
+        : Promise.resolve(null),
+      vcIds.length > 0
+        ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds)
+        : Promise.resolve(null),
+      // Brand-level: every seller's ad rows roll into one baseline.
+      runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
+    ]);
 
-  // Seller is the spine: identity failure is fatal. Catalog/campaign
-  // failures are partial — the brain is still written with whatever
-  // succeeded, and the failures are reported, not swallowed.
+  // Seller is the spine: identity failure is fatal. Catalog/campaign/hero/
+  // activity failures are partial — the brain is still written with
+  // whatever succeeded, and the failures are reported, not swallowed.
   if (!sellerOut.ok) {
     return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
   }
@@ -216,6 +238,9 @@ export async function fetchBrandBrain(
   if (scOut && !scOut.ok) failedSources.push('catalog_sc');
   if (vcOut && !vcOut.ok) failedSources.push('catalog_vc');
   if (campaignOut && !campaignOut.ok) failedSources.push('campaign');
+  if (heroScOut && !heroScOut.ok) failedSources.push('hero_sc');
+  if (heroVcOut && !heroVcOut.ok) failedSources.push('hero_vc');
+  if (!recentOut.ok) failedSources.push('recent_activity');
 
   const sourceInput = async (
     queryId: string,
@@ -237,6 +262,9 @@ export async function fetchBrandBrain(
     catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
     catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
     campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
+    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
+    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
+    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
   });
   const { path } = await saveBrain(brain, dataDirOverride);
 
@@ -248,6 +276,11 @@ export async function fetchBrandBrain(
     duration_ms: Date.now() - t0,
     asin_count: brain.catalog?.asin_count ?? null,
     campaign_count: brain.campaign_structure?.campaign_count ?? null,
+    hero_asin_count: brain.catalog?.top_asins
+      ? (brain.catalog.top_asins.sc?.length ?? 0) +
+        (brain.catalog.top_asins.vc?.length ?? 0)
+      : null,
+    has_recent_activity: brain.recent_activity !== undefined,
     failed_sources: failedSources,
   };
   await writeBrainStatus(
@@ -272,6 +305,8 @@ export async function fetchBrandBrain(
         has_acos_target: summary.acos_target_pct !== null,
         asin_count: summary.asin_count,
         campaign_count: summary.campaign_count,
+        hero_asin_count: summary.hero_asin_count,
+        has_recent_activity: summary.has_recent_activity,
         failed_sources: failedSources,
       },
     },

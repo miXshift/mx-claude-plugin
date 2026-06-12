@@ -162,6 +162,12 @@ function renderFetchResult(
       if (result.summary.campaign_count !== null) {
         parts.push(`${result.summary.campaign_count} campaign(s)`);
       }
+      if (result.summary.hero_asin_count !== null) {
+        parts.push(`${result.summary.hero_asin_count} hero ASIN(s)`);
+      }
+      if (result.summary.has_recent_activity) {
+        parts.push('recent activity');
+      }
       parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
       process.stdout.write(
         `\n✓ Brand brain populated for ${slug} (${parts.join(', ')}).\n` +
