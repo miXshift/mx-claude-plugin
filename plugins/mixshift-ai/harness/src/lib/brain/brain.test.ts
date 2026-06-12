@@ -10,6 +10,7 @@ import {
   assembleSellerSection,
   assembleCatalogSection,
   assembleCampaignSection,
+  assembleRecentActivity,
   hashRows,
 } from './assemble.js';
 import { loadBrain, saveBrain, resolveAcosTargetPct } from './read.js';
@@ -147,7 +148,10 @@ describe('assembleCatalogSection', () => {
       "Backpacker's Pantry",
     ]);
     expect(section.item_groups).toEqual(['Chews', 'Freeze Dried', 'Hydration']);
-    expect(section.hero_asins_deferred).toBe(true);
+    // No hero rows passed -> no top_asins, and the legacy deferred marker
+    // is no longer emitted.
+    expect(section.top_asins).toBeUndefined();
+    expect(section.hero_asins_deferred).toBeUndefined();
   });
 
   it('sku_count is null when the SC source did not run, 0 when it ran empty', () => {
@@ -159,6 +163,59 @@ describe('assembleCatalogSection', () => {
     const section = assembleCatalogSection([], []);
     expect(section.asin_count).toBe(0);
     expect(section.sub_brands).toEqual([]);
+  });
+
+  it('folds hero rows into top_asins per channel, preserving rank order', () => {
+    const heroSc = [
+      { asin: 'B001', title: 'Top SC', ordered_revenue_365d: 254334.1, units_365d: 8891 },
+      { asin: 'B002', title: 'Second SC', ordered_revenue_365d: 106929.2, units_365d: 1810 },
+    ];
+    const heroVc = [
+      { asin: 'B003', title: 'Top VC', ordered_revenue_365d: 20164.96, units_365d: 1358 },
+    ];
+    const section = assembleCatalogSection([], [], heroSc, heroVc);
+    expect(section.top_asins?.sc?.map((h) => h.asin)).toEqual(['B001', 'B002']);
+    expect(section.top_asins?.sc?.[0]).toEqual({
+      asin: 'B001',
+      title: 'Top SC',
+      ordered_revenue_365d: 254334.1,
+      units_365d: 8891,
+    });
+    expect(section.top_asins?.vc?.map((h) => h.asin)).toEqual(['B003']);
+  });
+
+  it('omits a hero channel that did not run; drops rows with no asin', () => {
+    const section = assembleCatalogSection(
+      [],
+      [],
+      [
+        { asin: 'B001', title: 'ok', ordered_revenue_365d: 10, units_365d: 1 },
+        { asin: '', title: 'no asin', ordered_revenue_365d: 5, units_365d: 1 },
+      ],
+      null,
+    );
+    expect(section.top_asins?.sc?.map((h) => h.asin)).toEqual(['B001']);
+    expect(section.top_asins?.vc).toBeUndefined();
+  });
+});
+
+describe('assembleRecentActivity', () => {
+  it('derives ACoS from the rolled-up spend + ad sales', () => {
+    const ra = assembleRecentActivity(
+      { spend_30d: 30184.12, ad_sales_30d: 145539.37, ad_orders_30d: 6112 },
+      NOW,
+    );
+    expect(ra.spend_30d).toBe(30184.12);
+    expect(ra.ad_sales_30d).toBe(145539.37);
+    expect(ra.acos_30d).toBe(20.74); // 30184.12 / 145539.37 * 100, 2dp
+    expect(ra.as_of).toBe(NOW.toISOString());
+  });
+
+  it('nulls ACoS when ad sales are zero or the row is empty', () => {
+    expect(assembleRecentActivity({ spend_30d: 100, ad_sales_30d: 0 }, NOW).acos_30d).toBeNull();
+    const empty = assembleRecentActivity(undefined, NOW);
+    expect(empty.spend_30d).toBeNull();
+    expect(empty.acos_30d).toBeNull();
   });
 });
 

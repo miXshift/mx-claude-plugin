@@ -494,3 +494,32 @@ queries:
     notes: |
       First-slice brain source. Scoped by the brand's seller ids (request
       sellerIds). Returns one row per seller id.
+
+  - id: BRAIN-HERO-SC
+    dispatch: named
+    purpose: SC hero-ASIN pull (top-20 by trailing-365d ordered revenue from business_reports_dpst_sku) for key-brand background discovery. Aggregated client-side into catalog.top_asins.sc.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by the brand's SC seller ids (request sellerIds). Born
+      dispatch:named (no public .sql ancestor).
+
+  - id: BRAIN-HERO-VC
+    dispatch: named
+    purpose: VC hero-ASIN pull (top-20 by trailing-365d ordered revenue from vendor_sales_manufacturing_asin) for key-brand background discovery. Aggregated client-side into catalog.top_asins.vc.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by the brand's VC seller ids (request sellerIds). Separate
+      from SC: a hybrid 1P+3P brand ranks the same ASINs differently per
+      channel.
+
+  - id: BRAIN-RECENT-ACTIVITY
+    dispatch: named
+    purpose: Recent-activity baseline (trailing-30d ad spend + ad sales from campaignmetric, rolled up across all the brand's sellers) for key-brand background discovery. Cached into recent_activity so DHC no longer re-pulls.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by all of the brand's seller ids (request sellerIds). Brand
+      roll-up, NOT DHC-01-on-primary (that returned nulls for VC-primary
+      brands whose ad activity sits on another seat).
