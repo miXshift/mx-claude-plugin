@@ -67968,18 +67968,20 @@ async function runNamedQuery(id, options = {}) {
           payload: {
             auth_path: "datahub",
             named_query: true,
-            server_duration_ms: serverDuration
+            server_duration_ms: serverDuration,
+            revision: json2.revision
           }
         },
         options.dataDirOverride
       );
-      return { ok: true, rows, rowCount, durationMs: serverDuration };
+      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json2.revision };
     }
     const failure = {
       ok: false,
       kind: json2.kind ?? "unknown",
       table_name: json2.table_name,
       raw_code: json2.raw_code,
+      missing_params: json2.missing_params,
       message: json2.message ?? `Named query ${id} failed`,
       friendly: json2.friendly ?? json2.message ?? `Named query ${id} failed`,
       durationMs
@@ -68200,8 +68202,9 @@ async function runNamed(id, opts) {
     rowCount: result.rowCount,
     durationMs: result.durationMs,
     usedDispatch: "named",
-    displaySql: `-- named query ${id} (SQL executes server-side)`,
-    boundParams: { id, seller_ids: sellerIds, params: restParams }
+    displaySql: `-- named query ${id}@${result.revision ?? "?"} (SQL executes server-side)`,
+    boundParams: { id, seller_ids: sellerIds, params: restParams },
+    revision: result.revision
   };
 }
 async function runSproc(id, entry, opts) {
@@ -75746,6 +75749,8 @@ async function writePrefetchArtifacts(input) {
         id: q.id,
         params: q.params,
         display_sql: q.display_sql,
+        ...q.purpose ? { purpose: q.purpose } : {},
+        ...q.revision ? { revision: q.revision } : {},
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows
@@ -75808,8 +75813,10 @@ function renderQuerySection(q) {
   const lines = [];
   lines.push(`## ${q.id}`);
   lines.push("");
+  if (q.purpose) lines.push(`- **Purpose**: ${q.purpose}`);
   lines.push(`- **Rows**: ${q.rows.length}`);
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
+  if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }
@@ -75912,11 +75919,20 @@ async function runPrefetch(opts) {
           durationMs: r.output.duration_ms
         });
       } else if ("ok" in r && !r.ok && "queryResult" in r) {
-        perQueryResults.push({
-          id: r.id,
-          status: "failed",
-          error: r.queryResult.friendly
-        });
+        if (r.queryResult.kind === "missing_params") {
+          perQueryResults.push({
+            id: r.id,
+            status: "deferred",
+            missing_params: r.queryResult.missing_params,
+            error: r.queryResult.friendly
+          });
+        } else {
+          perQueryResults.push({
+            id: r.id,
+            status: "failed",
+            error: r.queryResult.friendly
+          });
+        }
       } else if ("error" in r) {
         if ("missing_params" in r && r.missing_params) {
           perQueryResults.push({
@@ -75986,6 +76002,12 @@ async function executeOne(id, allParams, dataDirOverride) {
   if (!result.ok) {
     return { id, ok: false, queryResult: result.failure };
   }
+  let purpose;
+  try {
+    purpose = (await getQueryEntry(id)).purpose;
+  } catch {
+    purpose = void 0;
+  }
   return {
     id,
     ok: true,
@@ -75994,7 +76016,9 @@ async function executeOne(id, allParams, dataDirOverride) {
       rows: result.rows,
       duration_ms: result.durationMs,
       params: result.boundParams,
-      display_sql: result.displaySql
+      display_sql: result.displaySql,
+      purpose,
+      revision: result.revision
     }
   };
 }
