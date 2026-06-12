@@ -28798,6 +28798,12 @@ function contextPath(brandSlug, dataDirOverride) {
 function narrativePath(brandSlug, dataDirOverride) {
   return join4(brandDir(brandSlug, dataDirOverride), "narrative.md");
 }
+function brainPath(brandSlug, dataDirOverride) {
+  return join4(brandDir(brandSlug, dataDirOverride), "brand-brain.yaml");
+}
+function brainStatusPath(brandSlug, dataDirOverride) {
+  return join4(brandDir(brandSlug, dataDirOverride), ".brain-status.json");
+}
 function brandConfigPath(brandSlug, dataDirOverride) {
   return join4(brandDir(brandSlug, dataDirOverride), "config.yaml");
 }
@@ -49522,7 +49528,7 @@ var require_umd = __commonJS({
         LongPrototype.toInt = function toInt() {
           return this.unsigned ? this.low >>> 0 : this.low;
         };
-        LongPrototype.toNumber = function toNumber2() {
+        LongPrototype.toNumber = function toNumber3() {
           if (this.unsigned)
             return (this.high >>> 0) * TWO_PWR_32_DBL + (this.low >>> 0);
           return this.high * TWO_PWR_32_DBL + (this.low >>> 0);
@@ -63786,6 +63792,7 @@ function normalizeAccountType(raw) {
   const s = raw.trim().toLowerCase();
   if (s === "seller" || s === "sellercentral" || s === "sc") return "SC";
   if (s === "vendor" || s === "vendorcentral" || s === "vc") return "VC";
+  if (s === "agency" || s === "dsp") return "DSP";
   return "unknown";
 }
 function isAdsActive(raw) {
@@ -64298,15 +64305,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir17, readFile as readFile22 } from "node:fs/promises";
-import { join as join16, dirname as dirname21 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir19, readFile as readFile24 } from "node:fs/promises";
+import { join as join16, dirname as dirname23 } from "node:path";
 function flushLogPath(dataDirOverride) {
   return join16(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir17(dirname21(path2), { recursive: true });
+    await mkdir19(dirname23(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -64317,7 +64324,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile22(path2, "utf-8");
+    const raw = await readFile24(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -64962,6 +64969,7 @@ function summarizeAccountTypes(types) {
   const parts = [];
   if (counts["SC"]) parts.push(counts["SC"] === 1 ? "SC" : `SC\xD7${counts["SC"]}`);
   if (counts["VC"]) parts.push(counts["VC"] === 1 ? "VC" : `VC\xD7${counts["VC"]}`);
+  if (counts["DSP"]) parts.push(counts["DSP"] === 1 ? "DSP" : `DSP\xD7${counts["DSP"]}`);
   if (counts["unknown"]) parts.push(`?\xD7${counts["unknown"]}`);
   return parts.join(",") || "?";
 }
@@ -64991,10 +64999,12 @@ async function bootstrapBrand(suggestion, options = {}) {
   const dir = brandDir(suggestion.slug, options.dataDirOverride);
   const ctxPath = contextPath(suggestion.slug, options.dataDirOverride);
   const narrPath = narrativePath(suggestion.slug, options.dataDirOverride);
-  const validAccounts = suggestion.accounts.filter((a) => a.account_type !== "unknown");
+  const validAccounts = suggestion.accounts.filter(
+    (a) => a.account_type === "SC" || a.account_type === "VC"
+  );
   if (validAccounts.length === 0) {
     throw new Error(
-      `Cannot bootstrap "${suggestion.slug}": all ${suggestion.accounts.length} accounts have MerchantType outside SC / VC. Fix the warehouse seller table first, then re-run \`mixshift brand discover\`.`
+      `Cannot bootstrap "${suggestion.slug}": none of the ${suggestion.accounts.length} accounts are SC or VC (DSP-only and unclassified brands aren't cold-startable yet). If the MerchantType looks wrong, fix the warehouse seller table and re-run \`mixshift brand discover\`.`
     );
   }
   if (!options.force) {
@@ -65163,7 +65173,7 @@ var indexAccountSchema = external_exports.object({
   seller_id: external_exports.number().int(),
   seller_name: external_exports.string(),
   merchant_alias: external_exports.string().nullable(),
-  account_type: external_exports.enum(["SC", "VC", "unknown"]),
+  account_type: external_exports.enum(["SC", "VC", "DSP", "unknown"]),
   marketplace: external_exports.string().nullable(),
   region: external_exports.string().nullable(),
   // Raw flags (mirrors source columns)
@@ -65749,6 +65759,13 @@ var EventName = {
   // Brand config editor (mixshift brand config <slug>)
   BrandConfigViewed: "brand_config.viewed",
   BrandConfigEdited: "brand_config.edited",
+  // Brand Brain Tier-2 background discovery (lib/brain/fetch.ts +
+  // `mixshift brand brain fetch`). Privacy: payloads carry slug, row
+  // counts, duration, dispatch path; never seller row contents.
+  BrainFetchStarted: "brain.fetch_started",
+  BrainFetchCompleted: "brain.fetch_completed",
+  BrainFetchFailed: "brain.fetch_failed",
+  BrainFetchSkipped: "brain.fetch_skipped",
   // Skill + query
   SkillInvoked: "skill.invoked",
   SkillCompleted: "skill.completed",
@@ -67463,11 +67480,1484 @@ async function openInBrowser(path2) {
   }
 }
 
-// src/lib/context-editor/flow.ts
+// src/commands/brand-brain.ts
+import { readFile as readFile13 } from "node:fs/promises";
+
+// src/lib/brain/fetch.ts
+import { writeFile as writeFile9, mkdir as mkdir9, rename as rename7 } from "node:fs/promises";
+import { dirname as dirname12 } from "node:path";
+
+// src/lib/data/dispatch.ts
+import { readFile as readFile11, access as access2 } from "node:fs/promises";
+import { join as join8 } from "node:path";
+
+// src/lib/prefetch/sql-library.ts
+init_zod();
+import { readFile as readFile10 } from "node:fs/promises";
 var import_yaml9 = __toESM(require_dist(), 1);
+init_format_error();
+var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
+var queryEntrySchema = external_exports.object({
+  id: external_exports.string().min(1),
+  /** Path to the .sql body, relative to sql-library/. Required for
+   *  dispatch: sql; omitted for dispatch: sproc (body is warehouse-side). */
+  file: external_exports.string().min(1).optional(),
+  purpose: external_exports.string().min(1),
+  consumers: external_exports.array(external_exports.string()).default([]),
+  tier: external_exports.number().int().min(1).max(3).default(1),
+  notes: external_exports.string().optional(),
+  dispatch: dispatchSchema,
+  /** Stored-procedure name (e.g. sp_brain_seller_fetch). Required for
+   *  dispatch: sproc. Optional on dispatch: named entries that began
+   *  life as SPs — it documents provenance and keeps the
+   *  MIXSHIFT_SPROC_SQL_DIR local-dev fallback resolving. */
+  sproc: external_exports.string().regex(/^sp_[a-z0-9_]+$/).optional()
+}).superRefine((entry, ctx) => {
+  if (entry.dispatch === "sql" && !entry.file) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `query ${entry.id}: dispatch "sql" requires a "file"`,
+      path: ["file"]
+    });
+  }
+  if (entry.dispatch === "sproc" && !entry.sproc) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `query ${entry.id}: dispatch "sproc" requires a "sproc" name`,
+      path: ["sproc"]
+    });
+  }
+});
+var catalogSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  last_updated: external_exports.string().optional(),
+  queries: external_exports.array(queryEntrySchema).min(1)
+});
+var catalogCache;
+async function loadCatalog() {
+  if (catalogCache) return catalogCache;
+  const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
+  let raw;
+  try {
+    raw = await readFile10(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError10(err)) {
+      throw new Error(
+        `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
+      );
+    }
+    throw err;
+  }
+  const parsed = (0, import_yaml9.parse)(raw);
+  const result = catalogSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      formatZodError(result.error, `SQL library catalog at ${path2} is invalid`)
+    );
+  }
+  catalogCache = result.data;
+  return result.data;
+}
+async function getQueryEntry(id) {
+  const cat = await loadCatalog();
+  const entry = cat.queries.find((q) => q.id === id);
+  if (!entry) {
+    throw new Error(
+      `SQL library has no entry for "${id}". Known IDs: ${cat.queries.slice(0, 8).map((q) => q.id).join(", ")}... (${cat.queries.length} total)`
+    );
+  }
+  return entry;
+}
+async function readQuerySql(id) {
+  const entry = await getQueryEntry(id);
+  if (!entry.file) {
+    throw new Error(
+      `Query ${id} is dispatch:"${entry.dispatch}" with no .sql file in the public repo (the body lives server-side). Execute it via runDispatched() instead of readQuerySql().`
+    );
+  }
+  const path2 = pluginPath("shared", "sql-library", entry.file);
+  let raw;
+  try {
+    raw = await readFile10(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError10(err)) {
+      throw new Error(
+        `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
+      );
+    }
+    throw err;
+  }
+  const lines = raw.split(/\r?\n/);
+  let headerEnd = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line.startsWith("--") || line.trim() === "") {
+      headerEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  const header = lines.slice(0, headerEnd).join("\n");
+  const sql = lines.slice(headerEnd).join("\n").trim();
+  return { id, sql, header };
+}
+function isFileNotFoundError10(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/prefetch/substitute.ts
+function substituteParams(sql, allParams) {
+  let out = sql;
+  const scalarParams = {};
+  for (const [key, value] of Object.entries(allParams)) {
+    if (Array.isArray(value)) {
+      const csv = formatList(key, value);
+      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`, "g");
+      out = out.replace(re, csv);
+    } else {
+      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`);
+      if (re.test(out)) {
+        scalarParams[key] = value;
+      }
+    }
+  }
+  return { sql: out, params: scalarParams };
+}
+function formatList(paramName, values) {
+  if (values.length === 0) {
+    throw new Error(
+      `Param :${paramName} is an empty list. SQL would emit "IN ()", which MySQL rejects. Caller must populate the list or skip the query.`
+    );
+  }
+  const parts = values.map((v, i) => {
+    if (typeof v === "number") {
+      if (!Number.isFinite(v)) {
+        throw new Error(
+          `Param :${paramName}[${i}] is non-finite (${v}). Refusing to inline into SQL.`
+        );
+      }
+      return String(v);
+    }
+    if (typeof v === "string") {
+      return `'${v.replace(/'/g, "''")}'`;
+    }
+    if (typeof v === "bigint") {
+      return v.toString();
+    }
+    throw new Error(
+      `Param :${paramName}[${i}] has unsupported type ${typeof v} (value: ${JSON.stringify(v)}). Lists must be numeric or string.`
+    );
+  });
+  return parts.join(", ");
+}
+function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function findReferencedParams(sql) {
+  const result = /* @__PURE__ */ new Set();
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'" || ch === '"') {
+      const quote2 = ch;
+      i++;
+      while (i < sql.length && sql[i] !== quote2) {
+        if (sql[i] === "\\" && i + 1 < sql.length) {
+          i += 2;
+          continue;
+        }
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === ":" && sql[i + 1] === ":") {
+      i += 2;
+      continue;
+    }
+    if (ch === ":") {
+      let j = i + 1;
+      while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j] ?? "")) j++;
+      if (j > i + 1) {
+        result.add(sql.slice(i + 1, j));
+        i = j;
+        continue;
+      }
+    }
+    i++;
+  }
+  return [...result];
+}
+
+// src/lib/data/query-runner.ts
+var import_promise2 = __toESM(require_promise(), 1);
+init_credentials();
+init_schema2();
+async function runQuery(sql, params = [], options = {}) {
+  let creds;
+  try {
+    creds = await resolveCreds2(options);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      kind: "unknown",
+      message,
+      friendly: message,
+      durationMs: 0
+    };
+  }
+  if (isDatahubCreds(creds)) {
+    return runDatahubQuery(creds, sql, params, options);
+  }
+  return runMysqlQuery(creds, sql, params, options);
+}
+async function runMysqlQuery(creds, sql, params, options) {
+  const t0 = Date.now();
+  let conn;
+  try {
+    const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
+    conn = await import_promise2.default.createConnection({
+      host: creds.host,
+      port: creds.port,
+      user: creds.user,
+      password: creds.password,
+      database: creds.database,
+      connectTimeout: options.connectTimeoutMs ?? 1e4,
+      namedPlaceholders: useNamed
+    });
+    const timeoutMs = options.queryTimeoutMs ?? 6e4;
+    await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
+    const [rows] = await conn.query(
+      sql,
+      params
+    );
+    const durationMs = Date.now() - t0;
+    void track(
+      {
+        event_name: EventName.QueryExecuted,
+        outcome: "ok",
+        duration_ms: durationMs,
+        row_count: rows.length,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        payload: {
+          auth_path: "mysql",
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+        }
+      },
+      options.dataDirOverride
+    );
+    return {
+      ok: true,
+      rows,
+      rowCount: rows.length,
+      durationMs
+    };
+  } catch (err) {
+    const failure = classify(err);
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: Date.now() - t0,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "mysql",
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
+          table_name: failure.table_name
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } finally {
+    if (conn) {
+      try {
+        await conn.end();
+      } catch {
+      }
+    }
+  }
+}
+async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOverride) {
+  const doFetch = async (bearer) => {
+    try {
+      return await fetch(`${creds.api_base}${path2}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+        // Give the server a small grace window beyond its own timeout so
+        // we don't AbortError before it has a chance to return the
+        // classified timeout envelope.
+        signal: AbortSignal.timeout(timeoutBudgetMs)
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new DatahubNetworkError(message);
+    }
+  };
+  let token = await getValidAccessToken(dataDirOverride);
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    token = await getValidAccessToken(dataDirOverride, true);
+    res = await doFetch(token);
+    if (res.status === 401) {
+      throw new Error(
+        "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
+      );
+    }
+  }
+  return res;
+}
+async function runDatahubQuery(creds, sql, params, options) {
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  try {
+    const res = await datahubAuthedPost(
+      creds,
+      "/api/query",
+      { sql, params, queryTimeoutMs },
+      queryTimeoutMs + 5e3,
+      options.dataDirOverride
+    );
+    const json2 = await res.json();
+    const durationMs = Date.now() - t0;
+    if (json2.ok === true) {
+      const rows = json2.rows ?? [];
+      const rowCount = json2.rowCount ?? rows.length;
+      const serverDuration = json2.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: "ok",
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: options.query_id,
+          query_table: options.query_table,
+          payload: {
+            auth_path: "datahub",
+            server_duration_ms: serverDuration,
+            sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+          }
+        },
+        options.dataDirOverride
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+    const failure = {
+      ok: false,
+      kind: json2.kind ?? "unknown",
+      table_name: json2.table_name,
+      raw_code: json2.raw_code,
+      message: json2.message ?? "Query failed",
+      friendly: json2.friendly ?? json2.message ?? "Query failed",
+      durationMs
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
+          table_name: failure.table_name
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: "host_unreachable",
+        message: err.message,
+        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        durationMs
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = {
+        ok: false,
+        kind: "unknown",
+        message,
+        friendly: message,
+        durationMs
+      };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  }
+}
+async function runNamedQuery(id, options = {}) {
+  let creds;
+  try {
+    creds = await resolveCreds2({
+      creds: options.creds,
+      dataDirOverride: options.dataDirOverride
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, kind: "unknown", message, friendly: message, durationMs: 0 };
+  }
+  if (!isDatahubCreds(creds)) {
+    return {
+      ok: false,
+      kind: "unknown",
+      message: `Named query ${id} requires a token-based session; legacy raw-MySQL credentials cannot run it.`,
+      friendly: "Library queries now run server-side and need the token-based sign-in. Run `mixshift auth login` (or `mixshift auth service-setup` for unattended use).",
+      durationMs: 0
+    };
+  }
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  const sellerIds = options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : void 0;
+  try {
+    const res = await datahubAuthedPost(
+      creds,
+      "/api/named-query",
+      { id, sellerIds, params: options.params, queryTimeoutMs },
+      queryTimeoutMs + 5e3,
+      options.dataDirOverride
+    );
+    const json2 = await res.json();
+    const durationMs = Date.now() - t0;
+    if (json2.ok === true) {
+      const rows = json2.rows ?? [];
+      const rowCount = json2.rowCount ?? rows.length;
+      const serverDuration = json2.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: "ok",
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: id,
+          payload: {
+            auth_path: "datahub",
+            named_query: true,
+            server_duration_ms: serverDuration
+          }
+        },
+        options.dataDirOverride
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+    const failure = {
+      ok: false,
+      kind: json2.kind ?? "unknown",
+      table_name: json2.table_name,
+      raw_code: json2.raw_code,
+      message: json2.message ?? `Named query ${id} failed`,
+      friendly: json2.friendly ?? json2.message ?? `Named query ${id} failed`,
+      durationMs
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          named_query: true,
+          raw_code: failure.raw_code
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: "host_unreachable",
+        message: err.message,
+        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        durationMs
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = { ok: false, kind: "unknown", message, friendly: message, durationMs };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: { auth_path: "datahub", named_query: true }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  }
+}
+var DatahubNetworkError = class extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "DatahubNetworkError";
+  }
+};
+function classify(err) {
+  const e = err;
+  const message = e.sqlMessage ?? e.message ?? String(err);
+  const code = e.code;
+  if (code === "ER_TABLEACCESS_DENIED_ERROR") {
+    const tableName = extractTableFromAccessDenied(message);
+    return {
+      ok: false,
+      kind: "access_denied_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Your MySQL user does not have SELECT permission on \`${tableName}\`. Send a table-access request to MixShift ops to be granted access.` : `Your MySQL user does not have SELECT permission on a table referenced in this query.`
+    };
+  }
+  if (code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_ACCESS_DENIED_ERROR") {
+    return {
+      ok: false,
+      kind: "access_denied_db",
+      raw_code: code,
+      message,
+      friendly: "Your MySQL user is not authorized for this database. Re-run `mixshift auth setup` to fix the credentials, or contact MixShift ops."
+    };
+  }
+  if (code === "ER_NO_SUCH_TABLE") {
+    const tableName = extractTableFromNoSuchTable(message);
+    return {
+      ok: false,
+      kind: "unknown_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Table \`${tableName}\` does not exist in the warehouse. Run \`mixshift data list-tables\` to see what's available.` : `One of the tables in this query does not exist. Run \`mixshift data list-tables\` to see available tables.`
+    };
+  }
+  if (code === "ER_PARSE_ERROR" || code === "ER_BAD_FIELD_ERROR") {
+    return {
+      ok: false,
+      kind: "syntax_error",
+      raw_code: code,
+      message,
+      friendly: `SQL error: ${message}`
+    };
+  }
+  if (code === "ER_QUERY_TIMEOUT" || code === "PROTOCOL_SEQUENCE_TIMEOUT" || /max_execution_time/i.test(message)) {
+    return {
+      ok: false,
+      kind: "timeout",
+      raw_code: code,
+      message,
+      friendly: "Query exceeded the 60s timeout. Try narrowing the date range or filtering by seller_id."
+    };
+  }
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
+    return {
+      ok: false,
+      kind: "host_unreachable",
+      raw_code: code,
+      message,
+      friendly: "Could not reach the warehouse host. Check your network."
+    };
+  }
+  return {
+    ok: false,
+    kind: "unknown",
+    raw_code: code,
+    message,
+    friendly: `Query failed: ${message}`
+  };
+}
+function extractTableFromAccessDenied(message) {
+  const m = /for table '([^']+)'/.exec(message);
+  return m?.[1];
+}
+function extractTableFromNoSuchTable(message) {
+  const m = /Table '([^']+)' doesn't exist/.exec(message);
+  if (!m) return void 0;
+  const full = m[1];
+  return full.includes(".") ? full.split(".").pop() : full;
+}
+async function resolveCreds2(options) {
+  if (options.creds) return options.creds;
+  const { credentials } = await loadCredentials(options.dataDirOverride);
+  if (credentials?.datahub) return credentials.datahub;
+  if (credentials?.service) {
+    return { api_base: credentials.service.api_base, access_token: "service" };
+  }
+  if (credentials?.mysql) return credentials.mysql;
+  throw new Error(
+    "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
+  );
+}
+
+// src/lib/data/dispatch.ts
+var SPROC_SQL_DIR_ENV = "MIXSHIFT_SPROC_SQL_DIR";
+var QUERY_PACK_DIR_ENV = "MIXSHIFT_QUERY_PACK_DIR";
+var MissingParamsError = class extends Error {
+  missing_params;
+  constructor(id, missing) {
+    super(
+      `Query ${id} references missing param(s): ${missing.join(", ")}. Provide them via paramOverrides on a follow-up call, or run the query inline via \`mixshift data query\`. Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ASIN set), or a conditional query (LIB-PT-01 only applies during an active price_test event).`
+    );
+    this.missing_params = missing;
+  }
+};
+async function resolveLocalSprocSql(sprocName, env = process.env) {
+  return readLocalSql(env[SPROC_SQL_DIR_ENV], `${sprocName}.sql`);
+}
+async function resolveLocalNamedSql(catalogId, sprocName, env = process.env) {
+  const fromPack = await readLocalSql(env[QUERY_PACK_DIR_ENV], `${catalogId}.sql`);
+  if (fromPack !== void 0) return fromPack;
+  if (!sprocName) return void 0;
+  return readLocalSql(env[SPROC_SQL_DIR_ENV], `${sprocName}.sql`);
+}
+async function readLocalSql(dir, fileName) {
+  if (!dir) return void 0;
+  const path2 = join8(dir, fileName);
+  try {
+    await access2(path2);
+  } catch {
+    return void 0;
+  }
+  return readFile11(path2, "utf-8");
+}
+function buildCallSql(sprocName) {
+  return `CALL ${sprocName}(?, ?)`;
+}
+async function runDispatched(id, opts = {}) {
+  const entry = await getQueryEntry(id);
+  if (entry.dispatch === "named") {
+    const localSql = await resolveLocalNamedSql(id, entry.sproc);
+    if (localSql !== void 0) {
+      return runSqlText(id, stripSqlHeader(localSql), opts, "named_local_dev");
+    }
+    return runNamed(id, opts);
+  }
+  if (entry.dispatch === "sproc") {
+    const localSql = await resolveLocalSprocSql(entry.sproc);
+    if (localSql !== void 0) {
+      return runSqlText(id, stripSqlHeader(localSql), opts, "sproc_local_dev");
+    }
+    return runSproc(id, entry, opts);
+  }
+  const { sql } = await readQuerySql(id);
+  return runSqlText(id, sql, opts, "sql");
+}
+async function runNamed(id, opts) {
+  const { seller_ids: paramsSellerIds, ...restParams } = opts.params ?? {};
+  const sellerIds = opts.sellerIds ?? (Array.isArray(paramsSellerIds) ? paramsSellerIds : []);
+  const result = await runNamedQuery(id, {
+    sellerIds,
+    params: restParams,
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs
+  });
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch: "named", failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch: "named",
+    displaySql: `-- named query ${id} (SQL executes server-side)`,
+    boundParams: { id, seller_ids: sellerIds, params: restParams }
+  };
+}
+async function runSproc(id, entry, opts) {
+  const { seller_ids: paramsSellerIds, ...restParams } = opts.params ?? {};
+  const sellerIds = opts.sellerIds ?? (Array.isArray(paramsSellerIds) ? paramsSellerIds : []);
+  const sql = buildCallSql(entry.sproc);
+  const bound = [JSON.stringify(restParams), JSON.stringify(sellerIds)];
+  const result = await runQuery(sql, bound, {
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs,
+    query_id: id
+  });
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch: "sproc", failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch: "sproc",
+    displaySql: sql,
+    boundParams: { p_params: restParams, p_seller_ids: sellerIds }
+  };
+}
+async function runSqlText(id, rawSql, opts, usedDispatch) {
+  const allParams = opts.params ?? {};
+  const referenced = findReferencedParams(rawSql);
+  const missing = referenced.filter((p) => !(p in allParams));
+  if (missing.length > 0) {
+    throw new MissingParamsError(id, missing);
+  }
+  const { sql, params } = substituteParams(rawSql, allParams);
+  const result = await runQuery(sql, params, {
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs,
+    query_id: id
+  });
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch, failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch,
+    displaySql: sql,
+    boundParams: params
+  };
+}
+function stripSqlHeader(raw) {
+  const lines = raw.split(/\r?\n/);
+  let headerEnd = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line.startsWith("--") || line.trim() === "") {
+      headerEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  return lines.slice(headerEnd).join("\n").trim();
+}
+
+// src/lib/brain/fetch.ts
 init_resolve();
-import { mkdir as mkdir8, readFile as readFile10, rename as rename6, writeFile as writeFile8, chmod as chmod4 } from "node:fs/promises";
+
+// src/lib/brain/assemble.ts
+import { createHash } from "node:crypto";
+
+// src/lib/brain/schema.ts
+init_zod();
+var brainSourceMetaSchema = external_exports.object({
+  sproc: external_exports.string(),
+  fetched_at: external_exports.iso.datetime(),
+  row_count: external_exports.number().int().min(0),
+  source_hash: external_exports.string()
+});
+var brainSellerSchema = external_exports.object({
+  merchant_alias: external_exports.string().nullable(),
+  /** Warehouse seller.Name (storefront/legal label). */
+  storefront_name: external_exports.string().nullable(),
+  /** seller.ACOSTarget as set in the MixShift platform. The single most
+   *  consumed brain field: DHC, monthly-report, PQS, KBH all want it. */
+  acos_target_pct: external_exports.number().nullable(),
+  monthly_budget: external_exports.number().nullable(),
+  marketplace: external_exports.string().nullable(),
+  merchant_region: external_exports.string().nullable(),
+  agency_name: external_exports.string().nullable(),
+  default_currency_code: external_exports.string().nullable(),
+  i_brand_report_enabled: external_exports.boolean().nullable(),
+  i_running_initial_pull: external_exports.boolean().nullable(),
+  data_freshness: external_exports.object({
+    ads_latest: external_exports.iso.datetime().nullable(),
+    retail_latest: external_exports.iso.datetime().nullable()
+  }),
+  activated: external_exports.object({
+    ads: external_exports.iso.datetime().nullable(),
+    retail: external_exports.iso.datetime().nullable()
+  }),
+  /** Which seller_id the lifted scalar fields came from (the primary
+   *  row: first row with a non-null ACOSTarget, else the first row).
+   *  Multi-marketplace brands have several rows; per-account detail
+   *  stays in the registry (index.yaml), not here. */
+  primary_seller_id: external_exports.number().int().nullable()
+});
+var brainCatalogSchema = external_exports.object({
+  /** Distinct ASINs across SC + VC rows. */
+  asin_count: external_exports.number().int().min(0),
+  /** Distinct SC SKUs (VC has no SKU grain). Null when no SC source ran. */
+  sku_count: external_exports.number().int().min(0).nullable(),
+  sub_brands: external_exports.array(external_exports.string()),
+  item_groups: external_exports.array(external_exports.string()),
+  /** Hero-ASIN ranking needs SP-MIGRATION Phase 2 activity pulls. */
+  hero_asins_deferred: external_exports.literal(true)
+});
+var brainCampaignStructureSchema = external_exports.object({
+  campaign_count: external_exports.number().int().min(0),
+  paused_campaign_count: external_exports.number().int().min(0),
+  distinct_objectives: external_exports.array(external_exports.string()),
+  distinct_item_groups: external_exports.array(external_exports.string()),
+  distinct_brands: external_exports.array(external_exports.string()),
+  /** % of campaigns on smart/default bid optimization. Derivation
+   *  assumption (BidOptimization value semantics) is flagged in the SP
+   *  draft; verify against real warehouse values. */
+  smart_default_adoption_pct: external_exports.number().min(0).max(100).nullable(),
+  /** % of campaigns carrying a BrandEntityId. */
+  brand_entity_id_presence_pct: external_exports.number().min(0).max(100).nullable()
+});
+var brainObservationAggregateSchema = external_exports.object({
+  value: external_exports.unknown(),
+  confidence: external_exports.number().min(0).max(1),
+  observed_by: external_exports.string(),
+  observed_at: external_exports.iso.datetime(),
+  count: external_exports.number().int().min(1)
+});
+var brandBrainSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  brand_slug: external_exports.string().regex(/^[a-z][a-z0-9-]*$/),
+  generated_at: external_exports.iso.datetime(),
+  /** What assembled this document: `plugin@<version>` during P1,
+   *  `brain-service@<version>` after the P2 promotion. */
+  generator: external_exports.string(),
+  sources: external_exports.object({
+    seller: brainSourceMetaSchema.optional(),
+    catalog_sc: brainSourceMetaSchema.optional(),
+    catalog_vc: brainSourceMetaSchema.optional(),
+    campaign: brainSourceMetaSchema.optional()
+  }),
+  seller: brainSellerSchema.optional(),
+  /** Present when at least one catalog source (SC or VC) fetched ok. */
+  catalog: brainCatalogSchema.optional(),
+  /** Present when the campaign source fetched ok. */
+  campaign_structure: brainCampaignStructureSchema.optional(),
+  /** S3 skill observations, keyed by dotted field path
+   *  (e.g. "buy_box_health.chronic_losers"). */
+  observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({})
+});
+var BRAIN_SCHEMA_VERSION = 1;
+
+// src/lib/brain/assemble.ts
+function assembleBrain(input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const seller = assembleSellerSection(input.sellerRows);
+  const meta3 = (src) => ({
+    sproc: src.sproc,
+    fetched_at: now.toISOString(),
+    row_count: src.rows.length,
+    source_hash: hashRows(src.rows)
+  });
+  const sources = {
+    seller: meta3({ rows: input.sellerRows, sproc: input.sellerSproc })
+  };
+  if (input.catalogSc) sources.catalog_sc = meta3(input.catalogSc);
+  if (input.catalogVc) sources.catalog_vc = meta3(input.catalogVc);
+  if (input.campaign) sources.campaign = meta3(input.campaign);
+  const hasCatalog = input.catalogSc || input.catalogVc;
+  return {
+    schema_version: BRAIN_SCHEMA_VERSION,
+    brand_slug: input.brandSlug,
+    generated_at: now.toISOString(),
+    generator: input.generator,
+    sources,
+    seller,
+    ...hasCatalog ? {
+      catalog: assembleCatalogSection(
+        input.catalogSc?.rows ?? null,
+        input.catalogVc?.rows ?? null
+      )
+    } : {},
+    ...input.campaign ? { campaign_structure: assembleCampaignSection(input.campaign.rows) } : {},
+    observations: input.previousObservations ?? {}
+  };
+}
+function assembleSellerSection(rows) {
+  const primary = rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+  return {
+    merchant_alias: toTrimmedString(primary.MerchantAlias),
+    storefront_name: toTrimmedString(primary.Name),
+    acos_target_pct: toNumber2(primary.ACOSTarget),
+    monthly_budget: toNumber2(primary.MonthlyBudget),
+    marketplace: toTrimmedString(primary.MarketPlaceName),
+    merchant_region: toTrimmedString(primary.MerchantRegion),
+    agency_name: toTrimmedString(primary.AgencyName),
+    default_currency_code: toTrimmedString(primary.DefaultCurrencyCode),
+    i_brand_report_enabled: toBool(primary.iBrandReportEnabled),
+    i_running_initial_pull: toBool(primary.iRunningInitialPull),
+    data_freshness: {
+      ads_latest: toIso2(primary.dtLatestRecordDate),
+      retail_latest: toIso2(primary.dtMWSLatestRecordDate)
+    },
+    activated: {
+      ads: toIso2(primary.dtActivatedOn),
+      retail: toIso2(primary.dtMwsActivatedOn)
+    },
+    primary_seller_id: toNumber2(primary.ID)
+  };
+}
+function assembleCatalogSection(scRows, vcRows) {
+  const asins = /* @__PURE__ */ new Set();
+  const subBrands = /* @__PURE__ */ new Set();
+  const itemGroups = /* @__PURE__ */ new Set();
+  const skus = /* @__PURE__ */ new Set();
+  for (const r of scRows ?? []) {
+    addIf(asins, toTrimmedString(r.ASIN ?? r.Asin));
+    addIf(skus, toTrimmedString(r.SKU));
+    addIf(subBrands, toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  for (const r of vcRows ?? []) {
+    addIf(asins, toTrimmedString(r.Asin ?? r.ASIN));
+    addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  return {
+    asin_count: asins.size,
+    sku_count: scRows === null ? null : skus.size,
+    sub_brands: [...subBrands].sort(),
+    item_groups: [...itemGroups].sort(),
+    hero_asins_deferred: true
+  };
+}
+function assembleCampaignSection(rows) {
+  const objectives = /* @__PURE__ */ new Set();
+  const itemGroups = /* @__PURE__ */ new Set();
+  const brands = /* @__PURE__ */ new Set();
+  let paused = 0;
+  let bidSmart = 0;
+  let brandEntity = 0;
+  for (const r of rows) {
+    addIf(objectives, toTrimmedString(r.Objective));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+    addIf(brands, toTrimmedString(r.Brand));
+    if (toTrimmedString(r.State)?.toLowerCase() === "paused") paused++;
+    const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
+    if (bid && SMART_BID_VALUES.has(bid)) bidSmart++;
+    if (toTrimmedString(r.BrandEntityId)) brandEntity++;
+  }
+  return {
+    campaign_count: rows.length,
+    paused_campaign_count: paused,
+    distinct_objectives: [...objectives].sort(),
+    distinct_item_groups: [...itemGroups].sort(),
+    distinct_brands: [...brands].sort(),
+    smart_default_adoption_pct: rows.length > 0 ? Math.round(bidSmart / rows.length * 100) : null,
+    brand_entity_id_presence_pct: rows.length > 0 ? Math.round(brandEntity / rows.length * 100) : null
+  };
+}
+var SMART_BID_VALUES = /* @__PURE__ */ new Set([
+  "smart",
+  "default",
+  "auto",
+  "optimized",
+  "enabled",
+  "true",
+  "1"
+]);
+function addIf(set2, v) {
+  if (v) set2.add(v);
+}
+function hashRows(rows) {
+  const canonical = JSON.stringify(
+    rows.map(
+      (r) => Object.keys(r).sort().map((k) => [k, normalizeForHash(r[k])])
+    )
+  );
+  return createHash("sha256").update(canonical).digest("hex");
+}
+function normalizeForHash(v) {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "bigint") return v.toString();
+  return v ?? null;
+}
+function toTrimmedString(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s.length > 0 ? s : null;
+}
+function toNumber2(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function toBool(v) {
+  if (v === null || v === void 0) return null;
+  if (typeof v === "boolean") return v;
+  const n = toNumber2(v);
+  if (n === null) return null;
+  return n !== 0;
+}
+function toIso2(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// src/lib/brain/read.ts
+var import_yaml10 = __toESM(require_dist(), 1);
+import { readFile as readFile12, writeFile as writeFile8, mkdir as mkdir8, rename as rename6 } from "node:fs/promises";
 import { dirname as dirname11 } from "node:path";
+init_resolve();
+init_format_error();
+async function loadBrain(brandSlug, dataDirOverride) {
+  const path2 = brainPath(brandSlug, dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile12(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError11(err)) {
+      return {
+        ok: false,
+        path: path2,
+        kind: "file_missing",
+        errors: [
+          `No brand-brain.yaml for "${brandSlug}". Run \`mixshift brand brain fetch ${brandSlug}\` to populate it.`
+        ]
+      };
+    }
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml10.parse)(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, path: path2, kind: "malformed_yaml", errors: [message] };
+  }
+  const result = brandBrainSchema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      ok: false,
+      path: path2,
+      kind: "schema_violation",
+      errors: [formatZodError(result.error, `brand-brain.yaml for ${brandSlug}`)]
+    };
+  }
+  return { ok: true, brain: result.data, path: path2 };
+}
+async function saveBrain(brain, dataDirOverride) {
+  const path2 = brainPath(brain.brand_slug, dataDirOverride);
+  await mkdir8(dirname11(path2), { recursive: true });
+  const tmp = `${path2}.tmp`;
+  await writeFile8(tmp, (0, import_yaml10.stringify)(brain), "utf-8");
+  await rename6(tmp, path2);
+  return { path: path2 };
+}
+function isFileNotFoundError11(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/brain/fetch.ts
+var BRAIN_TTL_DAYS = 30;
+var BRAIN_SELLER_QUERY_ID = "BRAIN-SELLER";
+var BRAIN_CATALOG_SC_QUERY_ID = "BRAIN-CATALOG-SC";
+var BRAIN_CATALOG_VC_QUERY_ID = "BRAIN-CATALOG-VC";
+var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
+async function fetchBrandBrain(opts) {
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  const t0 = Date.now();
+  const { slug, dataDirOverride } = opts;
+  const { index } = await readIndex(dataDirOverride);
+  const brand = index.brands.find((b) => b.slug === slug);
+  if (!brand) {
+    return { status: "brand_not_found", slug };
+  }
+  const sellerIds = brand.accounts.map((a) => a.seller_id);
+  if (sellerIds.length === 0) {
+    return { status: "no_accounts", slug };
+  }
+  const existing = await loadBrain(slug, dataDirOverride);
+  const previousObservations = existing.ok ? existing.brain.observations : void 0;
+  if (!opts.refresh && existing.ok) {
+    const fetchedAt = existing.brain.sources.seller?.fetched_at;
+    if (fetchedAt && withinTtl(fetchedAt, now)) {
+      void track(
+        {
+          event_name: EventName.BrainFetchSkipped,
+          payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS }
+        },
+        dataDirOverride
+      );
+      return {
+        status: "skipped_fresh",
+        fetched_at: fetchedAt,
+        ttl_days: BRAIN_TTL_DAYS
+      };
+    }
+  }
+  await writeBrainStatus(
+    { status: "fetching", slug, started_at: now.toISOString() },
+    dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchStarted,
+      payload: {
+        brand: slug,
+        account_count: sellerIds.length,
+        refresh: !!opts.refresh
+      }
+    },
+    dataDirOverride
+  );
+  const scIds = brand.accounts.filter((a) => a.account_type === "SC").map((a) => a.seller_id);
+  const vcIds = brand.accounts.filter((a) => a.account_type === "VC").map((a) => a.seller_id);
+  const runSource = async (queryId, ids) => {
+    try {
+      const result = await runDispatched(queryId, {
+        // seller_ids inside params serves BOTH backends: the sproc path
+        // routes it to the second CALL argument; the local dev fallback
+        // substitutes :seller_ids in the SQL text.
+        params: { seller_ids: ids },
+        dataDirOverride
+      });
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.failure.friendly,
+          kind: result.failure.kind
+        };
+      }
+      return { ok: true, rows: result.rows, usedDispatch: result.usedDispatch };
+    } catch (err) {
+      const message = err instanceof MissingParamsError ? `${err.message} (local dev fallback SQL must reference :seller_ids)` : err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  };
+  const [sellerOut, scOut, vcOut, campaignOut] = await Promise.all([
+    runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
+    scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds) : Promise.resolve(null),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds)
+  ]);
+  if (!sellerOut.ok) {
+    return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
+  }
+  const failedSources = [];
+  if (scOut && !scOut.ok) failedSources.push("catalog_sc");
+  if (vcOut && !vcOut.ok) failedSources.push("catalog_vc");
+  if (campaignOut && !campaignOut.ok) failedSources.push("campaign");
+  const sourceInput = async (queryId, out) => {
+    if (!out || !out.ok) return void 0;
+    const entry = await getQueryEntry(queryId);
+    return { rows: out.rows, sproc: entry.sproc ?? queryId };
+  };
+  const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
+  const brain = assembleBrain({
+    brandSlug: slug,
+    sellerRows: sellerOut.rows,
+    sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+    generator: `plugin@${getPluginVersion()}`,
+    now,
+    previousObservations,
+    catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
+    catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
+    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut)
+  });
+  const { path: path2 } = await saveBrain(brain, dataDirOverride);
+  const summary = {
+    row_count: sellerOut.rows.length,
+    acos_target_pct: brain.seller?.acos_target_pct ?? null,
+    merchant_alias: brain.seller?.merchant_alias ?? null,
+    used_dispatch: sellerOut.usedDispatch,
+    duration_ms: Date.now() - t0,
+    asin_count: brain.catalog?.asin_count ?? null,
+    campaign_count: brain.campaign_structure?.campaign_count ?? null,
+    failed_sources: failedSources
+  };
+  await writeBrainStatus(
+    {
+      status: "complete",
+      slug,
+      started_at: now.toISOString(),
+      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+      summary
+    },
+    dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchCompleted,
+      outcome: "ok",
+      duration_ms: summary.duration_ms,
+      row_count: summary.row_count,
+      payload: {
+        brand: slug,
+        used_dispatch: summary.used_dispatch,
+        has_acos_target: summary.acos_target_pct !== null,
+        asin_count: summary.asin_count,
+        campaign_count: summary.campaign_count,
+        failed_sources: failedSources
+      }
+    },
+    dataDirOverride
+  );
+  return { status: "complete", path: path2, summary };
+}
+async function failFetch(opts, startedAt, error51, kind) {
+  await writeBrainStatus(
+    {
+      status: "failed",
+      slug: opts.slug,
+      started_at: startedAt.toISOString(),
+      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+      error: error51
+    },
+    opts.dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchFailed,
+      outcome: "failed",
+      error_class: kind,
+      payload: { brand: opts.slug, message: error51.slice(0, 500) }
+    },
+    opts.dataDirOverride
+  );
+  return { status: "failed", error: error51, kind };
+}
+async function writeBrainStatus(status, dataDirOverride) {
+  const path2 = brainStatusPath(status.slug, dataDirOverride);
+  await mkdir9(dirname12(path2), { recursive: true });
+  const tmp = `${path2}.tmp`;
+  await writeFile9(tmp, JSON.stringify(status, null, 2), "utf-8");
+  await rename7(tmp, path2);
+}
+function withinTtl(fetchedAtIso, now) {
+  const fetched = new Date(fetchedAtIso).getTime();
+  if (Number.isNaN(fetched)) return false;
+  const ageMs = now.getTime() - fetched;
+  return ageMs >= 0 && ageMs < BRAIN_TTL_DAYS * 24 * 60 * 60 * 1e3;
+}
+
+// src/commands/brand-brain.ts
+init_resolve();
+function registerBrandBrainCommands(brand) {
+  const brain = brand.command("brain").description(
+    "Tier-2 Brand Brain: auto-discovered brand facts (identity, targets, data freshness) that analytical skills consume as pre-fill. Populated automatically in the background when a brand is added to your key list."
+  );
+  brain.command("fetch <slug>").description(
+    `Pull brain sources for one brand. Skips when fresh (<${BRAIN_TTL_DAYS}d) unless --refresh is passed.`
+  ).option("--refresh", "Bypass the freshness gate and re-fetch now.", false).action(async (slug, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await fetchBrandBrain({
+      slug,
+      refresh: !!opts.refresh,
+      dataDirOverride: root.dataDir
+    });
+    renderFetchResult(slug, result, !!root.json);
+    process.exitCode = exitCodeFor(result);
+    return;
+  });
+  brain.command("refresh <slug>").description("Re-fetch brain sources now, ignoring the freshness gate.").action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await fetchBrandBrain({
+      slug,
+      refresh: true,
+      dataDirOverride: root.dataDir
+    });
+    renderFetchResult(slug, result, !!root.json);
+    process.exitCode = exitCodeFor(result);
+    return;
+  });
+  brain.command("status <slug>").description(
+    "Show the background-fetch status file plus the stored brain summary. Machine-friendly with --json (the chat surface polls this)."
+  ).action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const statusFile = await readStatusFile(slug, root.dataDir);
+    const brainResult = await loadBrain(slug, root.dataDir);
+    const payload = {
+      slug,
+      status_file: statusFile,
+      brain: brainResult.ok ? {
+        generated_at: brainResult.brain.generated_at,
+        generator: brainResult.brain.generator,
+        acos_target_pct: brainResult.brain.seller?.acos_target_pct ?? null,
+        merchant_alias: brainResult.brain.seller?.merchant_alias ?? null,
+        seller_fetched_at: brainResult.brain.sources.seller?.fetched_at ?? null,
+        observation_count: Object.keys(brainResult.brain.observations).length
+      } : { missing: true, kind: brainResult.kind }
+    };
+    if (root.json) {
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+      return;
+    }
+    const lines = [`
+Brand brain status for ${slug}:`];
+    if (statusFile) {
+      lines.push(
+        `  last run: ${statusFile.status} (started ${statusFile.started_at}` + (statusFile.finished_at ? `, finished ${statusFile.finished_at}` : "") + ")"
+      );
+      if (statusFile.error) lines.push(`  error: ${statusFile.error}`);
+    } else {
+      lines.push("  no fetch has run yet");
+    }
+    if (brainResult.ok) {
+      lines.push(
+        `  brain: generated ${brainResult.brain.generated_at} by ${brainResult.brain.generator}`,
+        `  acos_target_pct: ${brainResult.brain.seller?.acos_target_pct ?? "(not set in platform)"}`
+      );
+    } else {
+      lines.push(`  brain: not populated (${brainResult.kind})`);
+    }
+    process.stdout.write(lines.join("\n") + "\n");
+    return;
+  });
+}
+async function readStatusFile(slug, dataDirOverride) {
+  try {
+    const raw = await readFile13(brainStatusPath(slug, dataDirOverride), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function renderFetchResult(slug, result, json2) {
+  if (json2) {
+    process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
+    return;
+  }
+  switch (result.status) {
+    case "complete": {
+      const parts = [
+        `${result.summary.row_count} seller row(s)`,
+        `ACoS target ${result.summary.acos_target_pct ?? "not set in platform"}`
+      ];
+      if (result.summary.asin_count !== null) {
+        parts.push(`${result.summary.asin_count} catalog ASIN(s)`);
+      }
+      if (result.summary.campaign_count !== null) {
+        parts.push(`${result.summary.campaign_count} campaign(s)`);
+      }
+      parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
+      process.stdout.write(
+        `
+\u2713 Brand brain populated for ${slug} (${parts.join(", ")}).
+  ${result.path}
+`
+      );
+      if (result.summary.failed_sources.length > 0) {
+        process.stdout.write(
+          `  \u26A0 Source(s) failed and were skipped: ${result.summary.failed_sources.join(", ")}. Retry later with \`mixshift brand brain refresh ${slug}\`.
+`
+        );
+      }
+      break;
+    }
+    case "skipped_fresh":
+      process.stdout.write(
+        `
+\u2022 Brain for ${slug} is fresh (fetched ${result.fetched_at}; TTL ${result.ttl_days}d). Use --refresh to force.
+`
+      );
+      break;
+    case "brand_not_found":
+      process.stderr.write(
+        `
+\u2717 No brand "${slug}" in the registry. Run \`mixshift brand list\` to see slugs, or \`mixshift brand discover\` to refresh the registry.
+`
+      );
+      break;
+    case "no_accounts":
+      process.stderr.write(
+        `
+\u2717 Brand "${slug}" has no seller accounts in the registry; nothing to fetch.
+`
+      );
+      break;
+    case "failed":
+      process.stderr.write(
+        `
+\u2717 Brain fetch failed for ${slug}: ${result.error}
+  Retry with \`mixshift brand brain refresh ${slug}\`.
+`
+      );
+      break;
+  }
+}
+function exitCodeFor(result) {
+  switch (result.status) {
+    case "complete":
+    case "skipped_fresh":
+      return 0;
+    case "brand_not_found":
+    case "no_accounts":
+      return 4;
+    case "failed":
+      return 1;
+  }
+}
+
+// src/lib/brain/spawn.ts
+import { spawn } from "node:child_process";
+var BRAIN_NO_SPAWN_ENV = "MIXSHIFT_BRAIN_NO_SPAWN";
+function buildBrainFetchArgv(cliEntry, slug, dataDirOverride) {
+  const argv = [cliEntry, "brand", "brain", "fetch", slug];
+  if (dataDirOverride) {
+    argv.push("--data-dir", dataDirOverride);
+  }
+  return argv;
+}
+function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
+  if (env[BRAIN_NO_SPAWN_ENV] === "1") {
+    return { spawned: false, reason: `disabled via ${BRAIN_NO_SPAWN_ENV}=1` };
+  }
+  if (env.VITEST) {
+    return { spawned: false, reason: "test environment (VITEST set)" };
+  }
+  const cliEntry = process.argv[1];
+  if (!cliEntry) {
+    return { spawned: false, reason: "CLI entry path unavailable (argv[1] empty)" };
+  }
+  try {
+    const child = spawn(
+      process.execPath,
+      buildBrainFetchArgv(cliEntry, slug, dataDirOverride),
+      { detached: true, stdio: "ignore" }
+    );
+    child.unref();
+    return { spawned: true };
+  } catch (err) {
+    return {
+      spawned: false,
+      reason: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+// src/lib/context-editor/flow.ts
+var import_yaml11 = __toESM(require_dist(), 1);
+init_resolve();
+import { mkdir as mkdir10, readFile as readFile14, rename as rename8, writeFile as writeFile10, chmod as chmod4 } from "node:fs/promises";
+import { dirname as dirname13 } from "node:path";
 
 // src/lib/calibration/manifest-schema.ts
 init_zod();
@@ -67942,9 +69432,9 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
   let rawText;
   try {
-    rawText = await readFile10(path2, "utf-8");
+    rawText = await readFile14(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError10(err)) {
+    if (isFileNotFoundError12(err)) {
       return {
         status: "context_missing",
         updated_context: null,
@@ -67956,7 +69446,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
     }
     throw err;
   }
-  const ctxObj = (0, import_yaml9.parse)(rawText) ?? {};
+  const ctxObj = (0, import_yaml11.parse)(rawText) ?? {};
   let changedCount = 0;
   for (const edit of parsedEdits) {
     const before = getByPath(ctxObj, edit.path);
@@ -68024,8 +69514,8 @@ function deepEqual(a, b) {
 async function tryReadContextObject(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile10(path2, "utf-8");
-    const parsed = (0, import_yaml9.parse)(raw);
+    const raw = await readFile14(path2, "utf-8");
+    const parsed = (0, import_yaml11.parse)(raw);
     if (parsed === null || parsed === void 0) return {};
     if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed;
@@ -68034,17 +69524,17 @@ async function tryReadContextObject(brandSlug, dataDirOverride) {
   }
 }
 async function writeContextFile(path2, obj) {
-  await mkdir8(dirname11(path2), { recursive: true });
-  const yamlText = (0, import_yaml9.stringify)(obj, { indent: 2, lineWidth: 0 });
+  await mkdir10(dirname13(path2), { recursive: true });
+  const yamlText = (0, import_yaml11.stringify)(obj, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile8(tmpPath, yamlText, "utf-8");
+  await writeFile10(tmpPath, yamlText, "utf-8");
   try {
     await chmod4(tmpPath, 384);
   } catch {
   }
-  await rename6(tmpPath, path2);
+  await rename8(tmpPath, path2);
 }
-function isFileNotFoundError10(err) {
+function isFileNotFoundError12(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
 }
 
@@ -68303,21 +69793,21 @@ import { promisify as promisify2 } from "node:util";
 
 // src/lib/render/brand-context-composer.ts
 init_resolve();
-import { mkdir as mkdir9, writeFile as writeFile9 } from "node:fs/promises";
-import { join as join9 } from "node:path";
+import { mkdir as mkdir11, writeFile as writeFile11 } from "node:fs/promises";
+import { join as join10 } from "node:path";
 
 // src/lib/render/brand-context-report.ts
-var import_yaml10 = __toESM(require_dist(), 1);
+var import_yaml12 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile11, readdir as readdir2, stat as stat3 } from "node:fs/promises";
-import { dirname as dirname12, join as join8 } from "node:path";
+import { readFile as readFile15, readdir as readdir2, stat as stat3 } from "node:fs/promises";
+import { dirname as dirname14, join as join9 } from "node:path";
 async function readBrandContextSources(brandSlug, runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const narPath = narrativePath(brandSlug, dataDirOverride);
   const dir = brandDir(brandSlug, dataDirOverride);
-  const briPath = join8(dir, "brand-intelligence.yaml");
-  const corporaPath = join8(dir, "corpora");
-  const enrichmentPath2 = join8(
+  const briPath = join9(dir, "brand-intelligence.yaml");
+  const corporaPath = join9(dir, "corpora");
+  const enrichmentPath2 = join9(
     dir,
     "runs",
     "mx-account-cold-start",
@@ -68524,10 +70014,10 @@ async function loadAuditLabels() {
   const { existsSync: existsSync3 } = await import("node:fs");
   const { fileURLToPath: fileURLToPath6 } = await import("node:url");
   const { parse: parse4 } = await import("node:path");
-  let dir = dirname12(fileURLToPath6(import.meta.url));
+  let dir = dirname14(fileURLToPath6(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
-    const candidate = join8(
+    const candidate = join9(
       dir,
       "shared",
       "clients",
@@ -68535,33 +70025,33 @@ async function loadAuditLabels() {
       "audit-labels.yaml"
     );
     if (existsSync3(candidate)) {
-      const raw = await readFile11(candidate, "utf-8");
-      const parsed = (0, import_yaml10.parse)(raw);
+      const raw = await readFile15(candidate, "utf-8");
+      const parsed = (0, import_yaml12.parse)(raw);
       return parsed.fields ?? [];
     }
     if (dir === root) break;
-    dir = dirname12(dir);
+    dir = dirname14(dir);
   }
   return [];
 }
 async function readYamlIfExists(path2) {
   try {
-    const raw = await readFile11(path2, "utf-8");
-    return (0, import_yaml10.parse)(raw);
+    const raw = await readFile15(path2, "utf-8");
+    return (0, import_yaml12.parse)(raw);
   } catch {
     return null;
   }
 }
 async function readTextIfExists(path2) {
   try {
-    return await readFile11(path2, "utf-8");
+    return await readFile15(path2, "utf-8");
   } catch {
     return null;
   }
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile11(path2, "utf-8");
+    const raw = await readFile15(path2, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -68574,9 +70064,9 @@ async function summarizeCorpora(dirPath) {
     for (const f of entries) {
       if (!f.endsWith(".csv")) continue;
       try {
-        const s = await stat3(join8(dirPath, f));
+        const s = await stat3(join9(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile11(join8(dirPath, f), "utf-8");
+        const raw = await readFile15(join9(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -69077,14 +70567,14 @@ async function composeBrandContextReport(args) {
   const headline = composeHeadlineJson(state);
   const review = composeReviewJson(state);
   const dir = brandDir(args.brandSlug, args.dataDirOverride);
-  await mkdir9(dir, { recursive: true });
-  const htmlPath = join9(dir, "brand-context.html");
-  const headlinePath = join9(dir, "brand-context.headline.json");
-  const reviewPath = join9(dir, "brand-context.review.json");
+  await mkdir11(dir, { recursive: true });
+  const htmlPath = join10(dir, "brand-context.html");
+  const headlinePath = join10(dir, "brand-context.headline.json");
+  const reviewPath = join10(dir, "brand-context.review.json");
   await Promise.all([
-    writeFile9(htmlPath, html, "utf-8"),
-    writeFile9(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
-    writeFile9(reviewPath, JSON.stringify(review, null, 2), "utf-8")
+    writeFile11(htmlPath, html, "utf-8"),
+    writeFile11(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
+    writeFile11(reviewPath, JSON.stringify(review, null, 2), "utf-8")
   ]);
   return {
     html_path: htmlPath,
@@ -69382,25 +70872,25 @@ function emitError3(json2, message) {
 }
 
 // src/commands/brand-enrich.ts
-import { readFile as readFile13 } from "node:fs/promises";
-import { join as join10 } from "node:path";
+import { readFile as readFile17 } from "node:fs/promises";
+import { join as join11 } from "node:path";
 
 // src/lib/enrichment/storage.ts
 init_resolve();
-import { mkdir as mkdir10, readFile as readFile12, rename as rename7, writeFile as writeFile10 } from "node:fs/promises";
-import { dirname as dirname13 } from "node:path";
+import { mkdir as mkdir12, readFile as readFile16, rename as rename9, writeFile as writeFile12 } from "node:fs/promises";
+import { dirname as dirname15 } from "node:path";
 async function writeEnrichmentArtifact(brandSlug, runDate, artifact, dataDirOverride) {
   const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
-  await mkdir10(dirname13(path2), { recursive: true });
+  await mkdir12(dirname15(path2), { recursive: true });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile10(tmpPath, JSON.stringify(artifact, null, 2), "utf-8");
-  await rename7(tmpPath, path2);
+  await writeFile12(tmpPath, JSON.stringify(artifact, null, 2), "utf-8");
+  await rename9(tmpPath, path2);
   return { path: path2 };
 }
 async function readEnrichmentArtifact(brandSlug, runDate, dataDirOverride) {
   const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
   try {
-    const raw = await readFile12(path2, "utf-8");
+    const raw = await readFile16(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -69908,7 +71398,7 @@ function round22(n) {
 }
 
 // src/commands/brand-enrich.ts
-var import_yaml11 = __toESM(require_dist(), 1);
+var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
 init_resolve();
 import { readFile as fsReadFile } from "node:fs/promises";
@@ -69924,7 +71414,7 @@ function registerBrandEnrichCommand(brandCmd) {
           return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
         }
         const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const prefetchPath = join10(
+        const prefetchPath = join11(
           brandDir(brand.slug, root.dataDir),
           "runs",
           "mx-account-cold-start",
@@ -69933,7 +71423,7 @@ function registerBrandEnrichCommand(brandCmd) {
         );
         let prefetch = null;
         try {
-          const raw = await readFile13(prefetchPath, "utf-8");
+          const raw = await readFile17(prefetchPath, "utf-8");
           prefetch = JSON.parse(raw);
         } catch {
           return emitError4(
@@ -70040,7 +71530,7 @@ function registerBrandEnrichCommand(brandCmd) {
 async function tryReadContextForTypos(brandSlug, dataDir) {
   try {
     const raw = await fsReadFile(contextPath(brandSlug, dataDir), "utf-8");
-    const parsed = (0, import_yaml11.parse)(raw);
+    const parsed = (0, import_yaml13.parse)(raw);
     if (parsed === null || typeof parsed !== "object") return null;
     return parsed;
   } catch {
@@ -70087,10 +71577,10 @@ function emitError4(json2, message) {
 }
 
 // src/lib/enrichment/delta-merge.ts
-var import_yaml12 = __toESM(require_dist(), 1);
+var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile14, writeFile as writeFile11, rename as rename8, mkdir as mkdir11, chmod as chmod5 } from "node:fs/promises";
-import { dirname as dirname14 } from "node:path";
+import { readFile as readFile18, writeFile as writeFile13, rename as rename10, mkdir as mkdir13, chmod as chmod5 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
 async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const enrichment = await readEnrichmentArtifact(brandSlug, runDate, dataDirOverride);
@@ -70112,9 +71602,9 @@ async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
   }
   let ctxText;
   try {
-    ctxText = await readFile14(ctxPath, "utf-8");
+    ctxText = await readFile18(ctxPath, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError11(err)) {
+    if (isFileNotFoundError13(err)) {
       return {
         status: "context_missing",
         context_path: ctxPath,
@@ -70124,7 +71614,7 @@ async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
     }
     throw err;
   }
-  const doc = (0, import_yaml12.parseDocument)(ctxText, { keepSourceTokens: true });
+  const doc = (0, import_yaml14.parseDocument)(ctxText, { keepSourceTokens: true });
   const fieldsUpdated = patchSettlementCurve(doc, enrichment);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   doc.set("last_updated", today);
@@ -70167,16 +71657,16 @@ function patchSettlementCurve(doc, enrichment) {
   return updated;
 }
 async function writeYamlAtomic(path2, text) {
-  await mkdir11(dirname14(path2), { recursive: true });
+  await mkdir13(dirname16(path2), { recursive: true });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile11(tmpPath, text, "utf-8");
+  await writeFile13(tmpPath, text, "utf-8");
   try {
     await chmod5(tmpPath, 384);
   } catch {
   }
-  await rename8(tmpPath, path2);
+  await rename10(tmpPath, path2);
 }
-function isFileNotFoundError11(err) {
+function isFileNotFoundError13(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
 }
 
@@ -70677,6 +72167,7 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
     return;
   });
   registerBrandViewCommand(brand);
+  registerBrandBrainCommands(brand);
   registerBrandConfigCommand(brand);
   registerBrandRenderContextCommand(brand);
   registerBrandEnrichCommand(brand);
@@ -70693,6 +72184,10 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
       const r = await addKeyBrand(input, root.dataDir);
       results.push({ ...r, input });
     }
+    const brainSpawns = results.filter((r) => r.status === "added").map((r) => ({
+      slug: r.brand.slug,
+      ...spawnBrainFetchDetached(r.brand.slug, root.dataDir)
+    }));
     if (root.json) {
       process.stdout.write(
         JSON.stringify(
@@ -70709,7 +72204,8 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
               })),
               normalized_input: r.normalized_input
             })),
-            key_brands: results[results.length - 1]?.key_brands ?? []
+            key_brands: results[results.length - 1]?.key_brands ?? [],
+            brain_fetch: brainSpawns
           },
           null,
           2
@@ -70744,8 +72240,24 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
     }
     const finalList = results[results.length - 1]?.key_brands ?? [];
     lines.push(`
-  Key brands (${finalList.length}): ${finalList.join(", ") || "(none)"}
-`);
+  Key brands (${finalList.length}): ${finalList.join(", ") || "(none)"}`);
+    const spawnedSlugs = brainSpawns.filter((s) => s.spawned).map((s) => s.slug);
+    const unspawned = brainSpawns.filter((s) => !s.spawned);
+    if (spawnedSlugs.length > 0) {
+      lines.push(
+        `
+  \u2699 Brain pre-fill running in the background for: ${spawnedSlugs.join(", ")}`,
+        `    Check progress: mixshift brand brain status <slug>`
+      );
+    }
+    for (const s of unspawned) {
+      lines.push(
+        `
+  \u26A0 Brain pre-fill not started for ${s.slug} (${s.reason}).`,
+        `    Run manually: mixshift brand brain fetch ${s.slug}`
+      );
+    }
+    lines.push("");
     process.stderr.write(lines.join("\n"));
     process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
     return;
@@ -70884,8 +72396,8 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml13 = __toESM(require_dist(), 1);
-import { readFile as readFile15 } from "node:fs/promises";
+var import_yaml15 = __toESM(require_dist(), 1);
+import { readFile as readFile19 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -72463,11 +73975,11 @@ init_credentials();
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // src/lib/auth/test-connection.ts
-var import_promise2 = __toESM(require_promise(), 1);
+var import_promise3 = __toESM(require_promise(), 1);
 async function testConnection(creds, timeoutMs = 1e4) {
   let conn;
   try {
-    conn = await import_promise2.default.createConnection({
+    conn = await import_promise3.default.createConnection({
       host: creds.host,
       port: creds.port,
       user: creds.user,
@@ -72478,7 +73990,7 @@ async function testConnection(creds, timeoutMs = 1e4) {
     await conn.query("SELECT 1");
     return { ok: true };
   } catch (err) {
-    return classify(err);
+    return classify2(err);
   } finally {
     if (conn) {
       try {
@@ -72488,7 +74000,7 @@ async function testConnection(creds, timeoutMs = 1e4) {
     }
   }
 }
-function classify(err) {
+function classify2(err) {
   const e = err;
   const message = e.message ?? String(err);
   const code = e.code;
@@ -72631,9 +74143,9 @@ init_schema2();
 // src/lib/auth/login-flow.ts
 init_credentials();
 import { createServer } from "node:http";
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash as createHash2 } from "node:crypto";
 import { hostname as hostname3 } from "node:os";
-import { spawn } from "node:child_process";
+import { spawn as spawn2 } from "node:child_process";
 
 // src/lib/auth/client-id.ts
 var CLIENT_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
@@ -72808,7 +74320,7 @@ async function deviceInitFetch(apiBase, deviceLabel, personLabel, clientId) {
 }
 var defaultOpenBrowser = async (url2) => {
   const cmd = process.platform === "win32" ? `start "" "${url2}"` : process.platform === "darwin" ? `open "${url2}"` : `xdg-open "${url2}"`;
-  const child = spawn(cmd, {
+  const child = spawn2(cmd, {
     detached: true,
     stdio: "ignore",
     shell: true
@@ -72953,7 +74465,7 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
 function generatePkce() {
   const verifier = base64url3(randomBytes(64));
   const challenge = base64url3(
-    createHash("sha256").update(verifier).digest()
+    createHash2("sha256").update(verifier).digest()
   );
   const state = base64url3(randomBytes(32));
   return { verifier, challenge, state };
@@ -73475,7 +74987,7 @@ Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
           root.dataDir
         );
       }
-      process.exitCode = exitCodeFor(result);
+      process.exitCode = exitCodeFor2(result);
       return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -73640,7 +75152,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile15(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile19(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -73792,7 +75304,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile15(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile19(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -73812,10 +75324,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile15(path2, "utf-8");
+  const raw = await readFile19(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml13.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml15.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -73959,7 +75471,7 @@ function renderResult(result, json2) {
       return;
   }
 }
-function exitCodeFor(result) {
+function exitCodeFor2(result) {
   switch (result.status) {
     case "ok":
       return 0;
@@ -74008,8 +75520,8 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml14 = __toESM(require_dist(), 1);
-import { readFile as readFile16 } from "node:fs/promises";
+var import_yaml16 = __toESM(require_dist(), 1);
+import { readFile as readFile20 } from "node:fs/promises";
 init_format_error();
 var allowedToolEnum = external_exports.enum([
   "db_read",
@@ -74080,16 +75592,16 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile16(path2, "utf-8");
+    raw = await readFile20(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError12(err)) {
+    if (isFileNotFoundError14(err)) {
       throw new Error(
         `Skill manifest not found at ${path2}. Known skill IDs are subdirectories under skills/. Check the skill name and try again.`
       );
     }
     throw err;
   }
-  const parsed = (0, import_yaml14.parse)(raw);
+  const parsed = (0, import_yaml16.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -74113,7 +75625,7 @@ function resolveBatchPlan(manifest) {
     { round: 1, parallel: [...manifest.sql_ids], notes: "Default single-round plan" }
   ];
 }
-function isFileNotFoundError12(err) {
+function isFileNotFoundError14(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -74213,648 +75725,14 @@ function readNumberFromUnknownObject(obj, key, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-// src/lib/data/dispatch.ts
-import { readFile as readFile18, access as access2 } from "node:fs/promises";
-import { join as join11 } from "node:path";
-
-// src/lib/prefetch/sql-library.ts
-init_zod();
-import { readFile as readFile17 } from "node:fs/promises";
-var import_yaml15 = __toESM(require_dist(), 1);
-init_format_error();
-var dispatchSchema = external_exports.enum(["sql", "sproc"]).default("sql");
-var queryEntrySchema = external_exports.object({
-  id: external_exports.string().min(1),
-  /** Path to the .sql body, relative to sql-library/. Required for
-   *  dispatch: sql; omitted for dispatch: sproc (body is warehouse-side). */
-  file: external_exports.string().min(1).optional(),
-  purpose: external_exports.string().min(1),
-  consumers: external_exports.array(external_exports.string()).default([]),
-  tier: external_exports.number().int().min(1).max(3).default(1),
-  notes: external_exports.string().optional(),
-  dispatch: dispatchSchema,
-  /** Stored-procedure name (e.g. sp_brain_seller_fetch). Required for
-   *  dispatch: sproc. */
-  sproc: external_exports.string().regex(/^sp_[a-z0-9_]+$/).optional()
-}).superRefine((entry, ctx) => {
-  if (entry.dispatch === "sql" && !entry.file) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: `query ${entry.id}: dispatch "sql" requires a "file"`,
-      path: ["file"]
-    });
-  }
-  if (entry.dispatch === "sproc" && !entry.sproc) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: `query ${entry.id}: dispatch "sproc" requires a "sproc" name`,
-      path: ["sproc"]
-    });
-  }
-});
-var catalogSchema = external_exports.object({
-  schema_version: external_exports.literal(1),
-  last_updated: external_exports.string().optional(),
-  queries: external_exports.array(queryEntrySchema).min(1)
-});
-var catalogCache;
-async function loadCatalog() {
-  if (catalogCache) return catalogCache;
-  const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
-  let raw;
-  try {
-    raw = await readFile17(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError13(err)) {
-      throw new Error(
-        `SQL library catalog not found at ${path2}. Plugin may be misinstalled \u2014 re-install via /plugin marketplace.`
-      );
-    }
-    throw err;
-  }
-  const parsed = (0, import_yaml15.parse)(raw);
-  const result = catalogSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      formatZodError(result.error, `SQL library catalog at ${path2} is invalid`)
-    );
-  }
-  catalogCache = result.data;
-  return result.data;
-}
-async function getQueryEntry(id) {
-  const cat = await loadCatalog();
-  const entry = cat.queries.find((q) => q.id === id);
-  if (!entry) {
-    throw new Error(
-      `SQL library has no entry for "${id}". Known IDs: ${cat.queries.slice(0, 8).map((q) => q.id).join(", ")}... (${cat.queries.length} total)`
-    );
-  }
-  return entry;
-}
-async function readQuerySql(id) {
-  const entry = await getQueryEntry(id);
-  if (!entry.file) {
-    throw new Error(
-      `Query ${id} is dispatch:"${entry.dispatch}" with no .sql file in the public repo (body lives warehouse-side as ${entry.sproc ?? "a stored procedure"}). Execute it via runDispatched() instead of readQuerySql().`
-    );
-  }
-  const path2 = pluginPath("shared", "sql-library", entry.file);
-  let raw;
-  try {
-    raw = await readFile17(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError13(err)) {
-      throw new Error(
-        `SQL library catalog references ${entry.file} (for query ${id}), but the file is not at ${path2}. Plugin may be incomplete.`
-      );
-    }
-    throw err;
-  }
-  const lines = raw.split(/\r?\n/);
-  let headerEnd = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (line.startsWith("--") || line.trim() === "") {
-      headerEnd = i + 1;
-    } else {
-      break;
-    }
-  }
-  const header = lines.slice(0, headerEnd).join("\n");
-  const sql = lines.slice(headerEnd).join("\n").trim();
-  return { id, sql, header };
-}
-function isFileNotFoundError13(err) {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
-}
-
-// src/lib/prefetch/substitute.ts
-function substituteParams(sql, allParams) {
-  let out = sql;
-  const scalarParams = {};
-  for (const [key, value] of Object.entries(allParams)) {
-    if (Array.isArray(value)) {
-      const csv = formatList(key, value);
-      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`, "g");
-      out = out.replace(re, csv);
-    } else {
-      const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`);
-      if (re.test(out)) {
-        scalarParams[key] = value;
-      }
-    }
-  }
-  return { sql: out, params: scalarParams };
-}
-function formatList(paramName, values) {
-  if (values.length === 0) {
-    throw new Error(
-      `Param :${paramName} is an empty list. SQL would emit "IN ()", which MySQL rejects. Caller must populate the list or skip the query.`
-    );
-  }
-  const parts = values.map((v, i) => {
-    if (typeof v === "number") {
-      if (!Number.isFinite(v)) {
-        throw new Error(
-          `Param :${paramName}[${i}] is non-finite (${v}). Refusing to inline into SQL.`
-        );
-      }
-      return String(v);
-    }
-    if (typeof v === "string") {
-      return `'${v.replace(/'/g, "''")}'`;
-    }
-    if (typeof v === "bigint") {
-      return v.toString();
-    }
-    throw new Error(
-      `Param :${paramName}[${i}] has unsupported type ${typeof v} (value: ${JSON.stringify(v)}). Lists must be numeric or string.`
-    );
-  });
-  return parts.join(", ");
-}
-function escapeRegex2(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function findReferencedParams(sql) {
-  const result = /* @__PURE__ */ new Set();
-  let i = 0;
-  while (i < sql.length) {
-    const ch = sql[i];
-    if (ch === "'" || ch === '"') {
-      const quote2 = ch;
-      i++;
-      while (i < sql.length && sql[i] !== quote2) {
-        if (sql[i] === "\\" && i + 1 < sql.length) {
-          i += 2;
-          continue;
-        }
-        i++;
-      }
-      i++;
-      continue;
-    }
-    if (ch === "-" && sql[i + 1] === "-") {
-      while (i < sql.length && sql[i] !== "\n") i++;
-      continue;
-    }
-    if (ch === ":" && sql[i + 1] === ":") {
-      i += 2;
-      continue;
-    }
-    if (ch === ":") {
-      let j = i + 1;
-      while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j] ?? "")) j++;
-      if (j > i + 1) {
-        result.add(sql.slice(i + 1, j));
-        i = j;
-        continue;
-      }
-    }
-    i++;
-  }
-  return [...result];
-}
-
-// src/lib/data/query-runner.ts
-var import_promise3 = __toESM(require_promise(), 1);
-init_credentials();
-init_schema2();
-async function runQuery(sql, params = [], options = {}) {
-  let creds;
-  try {
-    creds = await resolveCreds2(options);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      kind: "unknown",
-      message,
-      friendly: message,
-      durationMs: 0
-    };
-  }
-  if (isDatahubCreds(creds)) {
-    return runDatahubQuery(creds, sql, params, options);
-  }
-  return runMysqlQuery(creds, sql, params, options);
-}
-async function runMysqlQuery(creds, sql, params, options) {
-  const t0 = Date.now();
-  let conn;
-  try {
-    const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
-    conn = await import_promise3.default.createConnection({
-      host: creds.host,
-      port: creds.port,
-      user: creds.user,
-      password: creds.password,
-      database: creds.database,
-      connectTimeout: options.connectTimeoutMs ?? 1e4,
-      namedPlaceholders: useNamed
-    });
-    const timeoutMs = options.queryTimeoutMs ?? 6e4;
-    await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
-    const [rows] = await conn.query(
-      sql,
-      params
-    );
-    const durationMs = Date.now() - t0;
-    void track(
-      {
-        event_name: EventName.QueryExecuted,
-        outcome: "ok",
-        duration_ms: durationMs,
-        row_count: rows.length,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        payload: {
-          auth_path: "mysql",
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-        }
-      },
-      options.dataDirOverride
-    );
-    return {
-      ok: true,
-      rows,
-      rowCount: rows.length,
-      durationMs
-    };
-  } catch (err) {
-    const failure = classify2(err);
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: Date.now() - t0,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "mysql",
-          raw_code: failure.raw_code,
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
-          table_name: failure.table_name
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  } finally {
-    if (conn) {
-      try {
-        await conn.end();
-      } catch {
-      }
-    }
-  }
-}
-async function runDatahubQuery(creds, sql, params, options) {
-  const t0 = Date.now();
-  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
-  const doFetch = async (bearer) => {
-    try {
-      const res = await fetch(`${creds.api_base}/api/query`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ sql, params, queryTimeoutMs }),
-        // Give the server a small grace window beyond its own timeout so
-        // we don't AbortError before it has a chance to return the
-        // classified timeout envelope.
-        signal: AbortSignal.timeout(queryTimeoutMs + 5e3)
-      });
-      return { res };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { res: null, readErr: message };
-    }
-  };
-  try {
-    let token = await getValidAccessToken(options.dataDirOverride);
-    let result = await doFetch(token);
-    if (result?.readErr) {
-      throw new DatahubNetworkError(result.readErr);
-    }
-    if (!result) throw new Error("datahub fetch produced no result");
-    let res = result.res;
-    if (res.status === 401) {
-      token = await getValidAccessToken(options.dataDirOverride, true);
-      result = await doFetch(token);
-      if (result?.readErr) {
-        throw new DatahubNetworkError(result.readErr);
-      }
-      if (!result) throw new Error("datahub fetch produced no result on retry");
-      res = result.res;
-      if (res.status === 401) {
-        throw new Error(
-          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
-        );
-      }
-    }
-    const json2 = await res.json();
-    const durationMs = Date.now() - t0;
-    if (json2.ok === true) {
-      const rows = json2.rows ?? [];
-      const rowCount = json2.rowCount ?? rows.length;
-      const serverDuration = json2.durationMs ?? durationMs;
-      void track(
-        {
-          event_name: EventName.QueryExecuted,
-          outcome: "ok",
-          duration_ms: durationMs,
-          row_count: rowCount,
-          query_id: options.query_id,
-          query_table: options.query_table,
-          payload: {
-            auth_path: "datahub",
-            server_duration_ms: serverDuration,
-            sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-          }
-        },
-        options.dataDirOverride
-      );
-      return { ok: true, rows, rowCount, durationMs: serverDuration };
-    }
-    const failure = {
-      ok: false,
-      kind: json2.kind ?? "unknown",
-      table_name: json2.table_name,
-      raw_code: json2.raw_code,
-      message: json2.message ?? "Query failed",
-      friendly: json2.friendly ?? json2.message ?? "Query failed",
-      durationMs
-    };
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "datahub",
-          raw_code: failure.raw_code,
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
-          table_name: failure.table_name
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  } catch (err) {
-    const durationMs = Date.now() - t0;
-    let failure;
-    if (err instanceof DatahubNetworkError) {
-      failure = {
-        ok: false,
-        kind: "host_unreachable",
-        message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
-        durationMs
-      };
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      failure = {
-        ok: false,
-        kind: "unknown",
-        message,
-        friendly: message,
-        durationMs
-      };
-    }
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "datahub",
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  }
-}
-var DatahubNetworkError = class extends Error {
-  constructor(msg) {
-    super(msg);
-    this.name = "DatahubNetworkError";
-  }
-};
-function classify2(err) {
-  const e = err;
-  const message = e.sqlMessage ?? e.message ?? String(err);
-  const code = e.code;
-  if (code === "ER_TABLEACCESS_DENIED_ERROR") {
-    const tableName = extractTableFromAccessDenied(message);
-    return {
-      ok: false,
-      kind: "access_denied_table",
-      table_name: tableName,
-      raw_code: code,
-      message,
-      friendly: tableName ? `Your MySQL user does not have SELECT permission on \`${tableName}\`. Send a table-access request to MixShift ops to be granted access.` : `Your MySQL user does not have SELECT permission on a table referenced in this query.`
-    };
-  }
-  if (code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_ACCESS_DENIED_ERROR") {
-    return {
-      ok: false,
-      kind: "access_denied_db",
-      raw_code: code,
-      message,
-      friendly: "Your MySQL user is not authorized for this database. Re-run `mixshift auth setup` to fix the credentials, or contact MixShift ops."
-    };
-  }
-  if (code === "ER_NO_SUCH_TABLE") {
-    const tableName = extractTableFromNoSuchTable(message);
-    return {
-      ok: false,
-      kind: "unknown_table",
-      table_name: tableName,
-      raw_code: code,
-      message,
-      friendly: tableName ? `Table \`${tableName}\` does not exist in the warehouse. Run \`mixshift data list-tables\` to see what's available.` : `One of the tables in this query does not exist. Run \`mixshift data list-tables\` to see available tables.`
-    };
-  }
-  if (code === "ER_PARSE_ERROR" || code === "ER_BAD_FIELD_ERROR") {
-    return {
-      ok: false,
-      kind: "syntax_error",
-      raw_code: code,
-      message,
-      friendly: `SQL error: ${message}`
-    };
-  }
-  if (code === "ER_QUERY_TIMEOUT" || code === "PROTOCOL_SEQUENCE_TIMEOUT" || /max_execution_time/i.test(message)) {
-    return {
-      ok: false,
-      kind: "timeout",
-      raw_code: code,
-      message,
-      friendly: "Query exceeded the 60s timeout. Try narrowing the date range or filtering by seller_id."
-    };
-  }
-  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
-    return {
-      ok: false,
-      kind: "host_unreachable",
-      raw_code: code,
-      message,
-      friendly: "Could not reach the warehouse host. Check your network."
-    };
-  }
-  return {
-    ok: false,
-    kind: "unknown",
-    raw_code: code,
-    message,
-    friendly: `Query failed: ${message}`
-  };
-}
-function extractTableFromAccessDenied(message) {
-  const m = /for table '([^']+)'/.exec(message);
-  return m?.[1];
-}
-function extractTableFromNoSuchTable(message) {
-  const m = /Table '([^']+)' doesn't exist/.exec(message);
-  if (!m) return void 0;
-  const full = m[1];
-  return full.includes(".") ? full.split(".").pop() : full;
-}
-async function resolveCreds2(options) {
-  if (options.creds) return options.creds;
-  const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (credentials?.datahub) return credentials.datahub;
-  if (credentials?.service) {
-    return { api_base: credentials.service.api_base, access_token: "service" };
-  }
-  if (credentials?.mysql) return credentials.mysql;
-  throw new Error(
-    "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
-  );
-}
-
-// src/lib/data/dispatch.ts
-var SPROC_SQL_DIR_ENV = "MIXSHIFT_SPROC_SQL_DIR";
-var MissingParamsError = class extends Error {
-  missing_params;
-  constructor(id, missing) {
-    super(
-      `Query ${id} references missing param(s): ${missing.join(", ")}. Provide them via paramOverrides on a follow-up call, or run the query inline via \`mixshift data query\`. Common cases: cross-query dependency (e.g. ANEG-04 needs ANEG-02's ASIN set), or a conditional query (LIB-PT-01 only applies during an active price_test event).`
-    );
-    this.missing_params = missing;
-  }
-};
-async function resolveLocalSprocSql(sprocName, env = process.env) {
-  const dir = env[SPROC_SQL_DIR_ENV];
-  if (!dir) return void 0;
-  const path2 = join11(dir, `${sprocName}.sql`);
-  try {
-    await access2(path2);
-  } catch {
-    return void 0;
-  }
-  return readFile18(path2, "utf-8");
-}
-function buildCallSql(sprocName) {
-  return `CALL ${sprocName}(?, ?)`;
-}
-async function runDispatched(id, opts = {}) {
-  const entry = await getQueryEntry(id);
-  if (entry.dispatch === "sproc") {
-    const localSql = await resolveLocalSprocSql(entry.sproc);
-    if (localSql !== void 0) {
-      return runSqlText(id, stripSqlHeader(localSql), opts, "sproc_local_dev");
-    }
-    return runSproc(id, entry, opts);
-  }
-  const { sql } = await readQuerySql(id);
-  return runSqlText(id, sql, opts, "sql");
-}
-async function runSproc(id, entry, opts) {
-  const { seller_ids: paramsSellerIds, ...restParams } = opts.params ?? {};
-  const sellerIds = opts.sellerIds ?? (Array.isArray(paramsSellerIds) ? paramsSellerIds : []);
-  const sql = buildCallSql(entry.sproc);
-  const bound = [JSON.stringify(restParams), JSON.stringify(sellerIds)];
-  const result = await runQuery(sql, bound, {
-    dataDirOverride: opts.dataDirOverride,
-    queryTimeoutMs: opts.queryTimeoutMs,
-    query_id: id
-  });
-  if (!result.ok) {
-    return { ok: false, id, usedDispatch: "sproc", failure: result };
-  }
-  return {
-    ok: true,
-    id,
-    rows: result.rows,
-    rowCount: result.rowCount,
-    durationMs: result.durationMs,
-    usedDispatch: "sproc",
-    displaySql: sql,
-    boundParams: { p_params: restParams, p_seller_ids: sellerIds }
-  };
-}
-async function runSqlText(id, rawSql, opts, usedDispatch) {
-  const allParams = opts.params ?? {};
-  const referenced = findReferencedParams(rawSql);
-  const missing = referenced.filter((p) => !(p in allParams));
-  if (missing.length > 0) {
-    throw new MissingParamsError(id, missing);
-  }
-  const { sql, params } = substituteParams(rawSql, allParams);
-  const result = await runQuery(sql, params, {
-    dataDirOverride: opts.dataDirOverride,
-    queryTimeoutMs: opts.queryTimeoutMs,
-    query_id: id
-  });
-  if (!result.ok) {
-    return { ok: false, id, usedDispatch, failure: result };
-  }
-  return {
-    ok: true,
-    id,
-    rows: result.rows,
-    rowCount: result.rowCount,
-    durationMs: result.durationMs,
-    usedDispatch,
-    displaySql: sql,
-    boundParams: params
-  };
-}
-function stripSqlHeader(raw) {
-  const lines = raw.split(/\r?\n/);
-  let headerEnd = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (line.startsWith("--") || line.trim() === "") {
-      headerEnd = i + 1;
-    } else {
-      break;
-    }
-  }
-  return lines.slice(headerEnd).join("\n").trim();
-}
-
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir12, writeFile as writeFile12, rename as rename9 } from "node:fs/promises";
-import { dirname as dirname15, join as join12 } from "node:path";
+import { mkdir as mkdir14, writeFile as writeFile14, rename as rename11 } from "node:fs/promises";
+import { dirname as dirname17, join as join12 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir12(runDir, { recursive: true });
+  await mkdir14(runDir, { recursive: true });
   const dataJsonPath = join12(runDir, "data.json");
   const dataMdPath = join12(runDir, "data.md");
   const jsonBody = JSON.stringify(
@@ -74977,10 +75855,10 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir12(dirname15(path2), { recursive: true });
+  await mkdir14(dirname17(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile12(tmpPath, content, { encoding: "utf-8" });
-  await rename9(tmpPath, path2);
+  await writeFile14(tmpPath, content, { encoding: "utf-8" });
+  await rename11(tmpPath, path2);
 }
 
 // src/lib/prefetch/runner.ts
@@ -75142,7 +76020,7 @@ function registerPrefetchCommand(program3) {
         paramOverrides
       });
       renderResult2(result, !!root.json);
-      process.exitCode = exitCodeFor2(result);
+      process.exitCode = exitCodeFor3(result);
       return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -75221,7 +76099,7 @@ function renderResult2(result, json2) {
   }
   process.stdout.write("\n");
 }
-function exitCodeFor2(result) {
+function exitCodeFor3(result) {
   return result.partial_failure ? 2 : 0;
 }
 
@@ -75244,13 +76122,13 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile19 } from "node:fs/promises";
+import { readFile as readFile21 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir13, writeFile as writeFile13, rename as rename10 } from "node:fs/promises";
-import { join as join13, dirname as dirname16 } from "node:path";
-import { createHash as createHash2, randomBytes as randomBytes2 } from "node:crypto";
+import { mkdir as mkdir15, writeFile as writeFile15, rename as rename12 } from "node:fs/promises";
+import { join as join13, dirname as dirname18 } from "node:path";
+import { createHash as createHash3, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
 init_zod();
@@ -75359,7 +76237,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir13(dirname16(path2), { recursive: true });
+  await mkdir15(dirname18(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -75413,12 +76291,12 @@ function hashParams(params) {
       return acc;
     }, {})
   );
-  return createHash2("sha1").update(canonical).digest("hex");
+  return createHash3("sha1").update(canonical).digest("hex");
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile13(tmpPath, content, { encoding: "utf-8" });
-  await rename10(tmpPath, path2);
+  await writeFile15(tmpPath, content, { encoding: "utf-8" });
+  await rename12(tmpPath, path2);
 }
 
 // src/commands/sidecar.ts
@@ -75437,7 +76315,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile19(opts.inputFile, "utf-8");
+      const raw = await readFile21(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -75511,22 +76389,22 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile20 } from "node:fs/promises";
-import { dirname as dirname17, join as join14 } from "node:path";
+var import_yaml17 = __toESM(require_dist(), 1);
+import { readFile as readFile22 } from "node:fs/promises";
+import { dirname as dirname19, join as join14 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile20(path2, "utf-8");
-      const parsed = (0, import_yaml16.parse)(raw);
+      const raw = await readFile22(path2, "utf-8");
+      const parsed = (0, import_yaml17.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
       );
     } catch (err) {
-      if (isFileNotFoundError14(err)) continue;
+      if (isFileNotFoundError15(err)) continue;
       throw err;
     }
   }
@@ -75548,18 +76426,18 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname17(fileURLToPath4(import.meta.url));
+  const here = dirname19(fileURLToPath4(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
     candidates.push(join14(dir, "shared", "data-tables.yaml"));
-    const parent = dirname17(dir);
+    const parent = dirname19(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError14(err) {
+function isFileNotFoundError15(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -75598,8 +76476,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir14 } from "node:fs/promises";
-import { dirname as dirname18 } from "node:path";
+import { mkdir as mkdir16 } from "node:fs/promises";
+import { dirname as dirname20 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -75706,7 +76584,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir14(dirname18(opts.outPath), { recursive: true });
+  await mkdir16(dirname20(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -75747,9 +76625,9 @@ function synthFailure(opts, message) {
 
 // src/commands/data.ts
 init_resolve();
-import { writeFile as writeFile14 } from "node:fs/promises";
-import { mkdir as mkdir15 } from "node:fs/promises";
-import { dirname as dirname19 } from "node:path";
+import { writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir17 } from "node:fs/promises";
+import { dirname as dirname21 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
@@ -75928,8 +76806,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir15(dirname19(opts.out), { recursive: true });
-          await writeFile14(opts.out, csv, "utf-8");
+          await mkdir17(dirname21(opts.out), { recursive: true });
+          await writeFile16(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -76143,8 +77021,8 @@ init_load();
 init_credentials();
 
 // src/lib/version-check.ts
-import { readFile as readFile21, writeFile as writeFile15, mkdir as mkdir16 } from "node:fs/promises";
-import { dirname as dirname20 } from "node:path";
+import { readFile as readFile23, writeFile as writeFile17, mkdir as mkdir18 } from "node:fs/promises";
+import { dirname as dirname22 } from "node:path";
 import { join as join15 } from "node:path";
 init_resolve();
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
@@ -76159,7 +77037,7 @@ async function checkForUpdate(opts = {}) {
   const cachePath = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile21(cachePath, "utf-8");
+    const raw = await readFile23(cachePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -76180,8 +77058,8 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir16(dirname20(cachePath), { recursive: true });
-        await writeFile15(
+        await mkdir18(dirname22(cachePath), { recursive: true });
+        await writeFile17(
           cachePath,
           JSON.stringify(
             {
@@ -76332,10 +77210,16 @@ function registerWelcomeCommand(program3) {
           const keyEntries = keys.map((k) => k.registry_entry).filter((e) => e !== null);
           const firstKey = keyEntries[0] ?? null;
           const firstUncold = keyEntries.find((e) => !e.cold_started) ?? null;
+          let brainPopulated = 0;
+          for (const k of keys) {
+            const brain = await loadBrain(k.slug, root.dataDir);
+            if (brain.ok && brain.brain.sources.seller) brainPopulated++;
+          }
           brandCounts = {
             ...base,
             key: keys.length,
             key_cold_started: keyEntries.filter((e) => e.cold_started).length,
+            key_brain_populated: brainPopulated,
             first_key_display_name: firstKey?.display_name ?? null,
             first_key_uncold_display_name: firstUncold?.display_name ?? null
           };
@@ -76478,6 +77362,19 @@ function renderWelcomeChat(args) {
         `You have access to **${brandCounts.active} active brand(s)**${dormantSuffix}.${keyClause}`
       );
       lines.push("");
+      if (brandCounts.key > 0) {
+        const pending = brandCounts.key - brandCounts.key_brain_populated;
+        if (pending > 0) {
+          lines.push(
+            `Brand brains populated for **${brandCounts.key_brain_populated} of ${brandCounts.key}** key brand(s). ${pending} pending: run \`mixshift brand brain fetch <slug>\` to fill them in (normally automatic when you key a brand).`
+          );
+        } else {
+          lines.push(
+            `Brand brains populated for **all ${brandCounts.key}** key brand(s).`
+          );
+        }
+        lines.push("");
+      }
     }
     if (state === "A") {
       if (brandCounts && brandCounts.active > 3) {
@@ -76884,8 +77781,8 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 }
 
 // src/lib/calibration/confirm-flow.ts
-var import_yaml17 = __toESM(require_dist(), 1);
-import { readFile as readFile23 } from "node:fs/promises";
+var import_yaml18 = __toESM(require_dist(), 1);
+import { readFile as readFile25 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -77050,8 +77947,8 @@ function getByPath2(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile23(path2, "utf-8");
-    return (0, import_yaml17.parse)(raw);
+    const raw = await readFile25(path2, "utf-8");
+    return (0, import_yaml18.parse)(raw);
   } catch {
     return null;
   }
@@ -77156,8 +78053,8 @@ function indexConfirmationEntries(payload) {
 
 // src/commands/skill.ts
 init_resolve();
-import { mkdir as mkdir18, readFile as readFile24, writeFile as writeFile16 } from "node:fs/promises";
-import { dirname as dirname22 } from "node:path";
+import { mkdir as mkdir20, readFile as readFile26, writeFile as writeFile18 } from "node:fs/promises";
+import { dirname as dirname24 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -77501,7 +78398,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname22(path2);
+  const runDir = dirname24(path2);
   const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -77548,8 +78445,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir18(dirname22(path2), { recursive: true });
-  await writeFile16(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir20(dirname24(path2), { recursive: true });
+  await writeFile18(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -77578,7 +78475,7 @@ ${candidates}`
 }
 async function readJsonIfExists2(path2) {
   try {
-    const raw = await readFile24(path2, "utf-8");
+    const raw = await readFile26(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -77629,8 +78526,8 @@ import { resolve as resolvePath2 } from "node:path";
 // src/lib/amazon/reports.ts
 init_credentials();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname23 } from "node:path";
+import { mkdir as mkdir21 } from "node:fs/promises";
+import { dirname as dirname25 } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -77781,7 +78678,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
   if (!res.body) {
     return hostUnreachable("the report download returned an empty response body");
   }
-  await mkdir19(dirname23(outPath), { recursive: true });
+  await mkdir21(dirname25(outPath), { recursive: true });
   const out = createWriteStream2(outPath);
   const source = Readable.fromWeb(
     res.body
@@ -78139,20 +79036,20 @@ function safeJsonPreview(json2) {
 }
 
 // src/lib/reports/catalog.ts
-var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile25 } from "node:fs/promises";
-import { dirname as dirname24, join as join17 } from "node:path";
+var import_yaml19 = __toESM(require_dist(), 1);
+import { readFile as readFile27 } from "node:fs/promises";
+import { dirname as dirname26, join as join17 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile25(path2, "utf-8");
-      const parsed = (0, import_yaml18.parse)(raw);
+      const raw = await readFile27(path2, "utf-8");
+      const parsed = (0, import_yaml19.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
     } catch (err) {
-      if (isFileNotFoundError15(err)) continue;
+      if (isFileNotFoundError16(err)) continue;
       throw err;
     }
   }
@@ -78192,18 +79089,18 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname24(fileURLToPath5(import.meta.url));
+  const here = dirname26(fileURLToPath5(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
     candidates.push(join17(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname24(dir);
+    const parent = dirname26(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return candidates;
 }
-function isFileNotFoundError15(err) {
+function isFileNotFoundError16(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
@@ -78211,7 +79108,7 @@ function isFileNotFoundError15(err) {
 init_resolve();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile27 } from "node:fs/promises";
+import { readFile as readFile29 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -78301,12 +79198,12 @@ async function getPricingRunResult(runId, opts = {}) {
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir20, readFile as readFile26, rename as rename11, writeFile as writeFile17 } from "node:fs/promises";
-import { dirname as dirname25 } from "node:path";
+import { mkdir as mkdir22, readFile as readFile28, rename as rename13, writeFile as writeFile19 } from "node:fs/promises";
+import { dirname as dirname27 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile26(path2, "utf8");
+    const raw = await readFile28(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -78317,10 +79214,10 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir20(dirname25(path2), { recursive: true });
+  await mkdir22(dirname27(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile17(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename11(tmp, path2);
+  await writeFile19(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename13(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -78711,7 +79608,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile27(file2, "utf8");
+    const text = await readFile29(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -78780,7 +79677,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile28 } from "node:fs/promises";
+import { readFile as readFile30 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -78894,7 +79791,7 @@ function registerCall(amazon) {
         return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile28(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile30(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -79634,7 +80531,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile29 } from "node:fs/promises";
+import { readFile as readFile31 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -79798,7 +80695,7 @@ function registerCall2(ads) {
         return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile29(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile31(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
