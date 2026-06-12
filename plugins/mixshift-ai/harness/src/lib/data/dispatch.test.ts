@@ -314,13 +314,16 @@ describe('resolveLocalNamedSql', () => {
   });
 });
 
-describe('runDispatched sql backend (DHC-01, real catalog + real .sql file)', () => {
+// DHC-02 stands in as the representative still-`dispatch: sql` query
+// (same scalar params as DHC-01). DHC-01 itself moved to dispatch: named
+// when the foundation queries flipped to the server-side pack.
+describe('runDispatched sql backend (DHC-02, real catalog + real .sql file)', () => {
   it('reads the library body, substitutes, and runs with query_id tagging', async () => {
     runQueryMock.mockResolvedValueOnce(okResult([{ spend: 10 }]));
 
-    // DHC-01's real body references :yesterday, :month_start, :seller_id
+    // DHC-02's real body references :yesterday, :month_start, :seller_id
     // (scalar params; mysql2 named-placeholder mode binds them).
-    const result = await runDispatched('DHC-01', {
+    const result = await runDispatched('DHC-02', {
       params: {
         yesterday: '2026-06-08',
         month_start: '2026-06-01',
@@ -334,12 +337,12 @@ describe('runDispatched sql backend (DHC-01, real catalog + real .sql file)', ()
       expect(result.boundParams).toHaveProperty('yesterday', '2026-06-08');
     }
     const [, , opts] = runQueryMock.mock.calls[0]!;
-    expect((opts as { query_id?: string }).query_id).toBe('DHC-01');
+    expect((opts as { query_id?: string }).query_id).toBe('DHC-02');
   });
 
   it('throws MissingParamsError when referenced params are absent', async () => {
     await expect(
-      runDispatched('DHC-01', { params: {} }),
+      runDispatched('DHC-02', { params: {} }),
     ).rejects.toThrow(MissingParamsError);
     expect(runQueryMock).not.toHaveBeenCalled();
   });

@@ -5,6 +5,7 @@ last_updated: 2026-04-26
 queries:
   - id: DHC-01
     file: DHC-01.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Account-level spend/sales/orders across T-1/T-7/T-30/MTD/TACOS windows in one query.
     consumers: [mx-daily-health-check]
     tier: 1
@@ -71,6 +72,7 @@ queries:
 
   - id: DHC-12
     file: DHC-12.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Inventory follow-up — at-risk ASINs by days of supply / alert / sellable qty.
     consumers: [mx-daily-health-check]
     tier: 1
@@ -248,6 +250,7 @@ queries:
 
   - id: CS-28
     file: CS-28.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for cold-start v2.3 enrichment.
     consumers: [mx-account-cold-start]
     tier: 1
@@ -259,6 +262,7 @@ queries:
 
   - id: CS-29
     file: CS-29.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Inventory-health historical snapshots for stockout-window detection (trailing 365d, FBA-only).
     consumers: [mx-account-cold-start]
     tier: 1
