@@ -167,10 +167,11 @@ describe('assembleCatalogSection', () => {
 
   it('folds hero rows into top_asins per channel, preserving rank order', () => {
     const heroSc = [
-      { asin: 'B001', title: 'Top SC', ordered_revenue_365d: 254334.1, units_365d: 8891 },
-      { asin: 'B002', title: 'Second SC', ordered_revenue_365d: 106929.2, units_365d: 1810 },
+      { asin: 'B001', title: 'Top SC', ordered_revenue_365d: 254334.1, units_365d: 8891, sellable_qty: '2370', days_of_supply: 73 },
+      { asin: 'B002', title: 'Second SC', ordered_revenue_365d: 106929.2, units_365d: 1810, sellable_qty: '170', days_of_supply: 47 },
     ];
     const heroVc = [
+      // VC hero rows carry no stock columns -> sellable_qty/days_of_supply null.
       { asin: 'B003', title: 'Top VC', ordered_revenue_365d: 20164.96, units_365d: 1358 },
     ];
     const section = assembleCatalogSection([], [], heroSc, heroVc);
@@ -180,7 +181,10 @@ describe('assembleCatalogSection', () => {
       title: 'Top SC',
       ordered_revenue_365d: 254334.1,
       units_365d: 8891,
+      sellable_qty: 2370, // varchar Available coerced to int
+      days_of_supply: 73,
     });
+    expect(section.top_asins?.vc?.[0]?.sellable_qty).toBeNull();
     expect(section.top_asins?.vc?.map((h) => h.asin)).toEqual(['B003']);
   });
 

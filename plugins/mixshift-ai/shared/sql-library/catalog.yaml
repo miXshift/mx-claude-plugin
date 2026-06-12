@@ -497,7 +497,7 @@ queries:
 
   - id: BRAIN-HERO-SC
     dispatch: named
-    purpose: SC hero-ASIN pull (top-20 by trailing-365d ordered revenue from business_reports_dpst_sku) for key-brand background discovery. Aggregated client-side into catalog.top_asins.sc.
+    purpose: SC hero-ASIN pull (top-20 by trailing-365d ordered revenue from business_reports_dpst_sku, with current sellable qty + days-of-supply from the latest mws_inventory_health snapshot) for key-brand background discovery. Aggregated client-side into catalog.top_asins.sc.
     consumers: [brand-brain-fetch]
     tier: 1
     notes: |

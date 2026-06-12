@@ -104,6 +104,13 @@ export const brainHeroAsinSchema = z.object({
   title: z.string().nullable(),
   ordered_revenue_365d: z.number(),
   units_365d: z.number().int().nullable(),
+  /** Current sellable units from the latest mws_inventory_health snapshot
+   *  (SC only; the live `Available` field, not the deprecated
+   *  SellableQuantity). Null when no inventory row joins. */
+  sellable_qty: z.number().int().nullable(),
+  /** Days of supply on that snapshot (tightest populated). Null when
+   *  absent. */
+  days_of_supply: z.number().int().nullable(),
 });
 
 export type BrainHeroAsin = z.infer<typeof brainHeroAsinSchema>;

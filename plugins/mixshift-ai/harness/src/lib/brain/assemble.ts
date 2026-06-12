@@ -224,6 +224,9 @@ function toHeroAsin(r: RawCatalogRow): BrainHeroAsin | null {
     title: toTrimmedString(r.title ?? r.Title ?? r.ItemName),
     ordered_revenue_365d: toNumber(r.ordered_revenue_365d) ?? 0,
     units_365d: toIntOrNull(r.units_365d),
+    // SC-only stock (VC hero rows omit these → null).
+    sellable_qty: toIntOrNull(r.sellable_qty),
+    days_of_supply: toIntOrNull(r.days_of_supply),
   };
 }
 
