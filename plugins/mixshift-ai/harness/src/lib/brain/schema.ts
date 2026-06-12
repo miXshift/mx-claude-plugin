@@ -104,9 +104,11 @@ export const brainHeroAsinSchema = z.object({
   title: z.string().nullable(),
   ordered_revenue_365d: z.number(),
   units_365d: z.number().int().nullable(),
-  /** Current sellable units from the latest mws_inventory_health snapshot
-   *  (SC only; the live `Available` field, not the deprecated
-   *  SellableQuantity). Null when no inventory row joins. */
+  /** Current FBA sellable units from the latest mws_inventory_health
+   *  snapshot (SC only; the live `Available` field, not the deprecated
+   *  SellableQuantity). FBA on-hand ONLY by decision (2026-06-12) —
+   *  merchant-fulfilled stock (mws_items.ItemQuantityAvailable) is omitted
+   *  in v1. Null when no inventory row joins. */
   sellable_qty: z.number().int().nullable(),
   /** Days of supply on that snapshot (tightest populated). Null when
    *  absent. */
