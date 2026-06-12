@@ -17,17 +17,24 @@
  *
  *   dispatch: sql    → read `.sql` body from shared/sql-library, apply
  *                      :name substitution, POST through /api/query.
+ *   dispatch: named  → POST {id, sellerIds, params} to /api/named-query.
+ *                      The SQL body lives server-side in mx-legacy-auth's
+ *                      private query pack, keyed by this catalog id; the
+ *                      server validates scope + params and binds them.
+ *                      This is the standard backend for library queries
+ *                      (SP-MIGRATION.md, 2026-06-12 revision).
  *   dispatch: sproc  → build `CALL sp_<name>(?, ?)` with two positional
  *                      JSON args (params blob + seller-id scope) and POST
- *                      through the SAME /api/query. MySQL EXECUTE grants
- *                      are the allowlist; the SP body validates its own
- *                      params (SIGNAL SQLSTATE '45000' on bad input).
+ *                      through the SAME /api/query. Superseded by `named`
+ *                      (no catalog entry uses it after the brain cutover);
+ *                      kept for transition use.
  *
- * Dev fallback (sproc entries only): when MIXSHIFT_SPROC_SQL_DIR is set
- * and `<dir>/<sproc_name>.sql` exists, the SQL text is read from that
- * LOCAL, git-ignored directory and routed as plain SQL with :name
- * substitution. This unblocks plugin development before the
- * warehouse-side SPs are deployed. The mechanism is public-safe; the
+ * Dev fallback (named + sproc entries): when MIXSHIFT_QUERY_PACK_DIR is
+ * set and `<dir>/<catalog_id>.sql` exists (or, back-compat, when
+ * MIXSHIFT_SPROC_SQL_DIR holds `<sproc_name>.sql`), the SQL text is read
+ * from that LOCAL, git-ignored directory and routed as plain SQL with
+ * :name substitution. This lets a new pack entry be developed and tested
+ * before it deploys to the service. The mechanism is public-safe; the
  * SQL text itself never enters this repo.
  */
 
@@ -35,12 +42,18 @@ import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getQueryEntry, readQuerySql, type QueryEntry } from '../prefetch/sql-library.js';
 import { substituteParams, findReferencedParams } from '../prefetch/substitute.js';
-import { runQuery, type DataQueryFailure } from './query-runner.js';
+import { runQuery, runNamedQuery, type DataQueryFailure } from './query-runner.js';
 
 export const SPROC_SQL_DIR_ENV = 'MIXSHIFT_SPROC_SQL_DIR';
+export const QUERY_PACK_DIR_ENV = 'MIXSHIFT_QUERY_PACK_DIR';
 
 /** Which execution path actually ran (telemetry + artifact labeling). */
-export type UsedDispatch = 'sql' | 'sproc' | 'sproc_local_dev';
+export type UsedDispatch =
+  | 'sql'
+  | 'named'
+  | 'named_local_dev'
+  | 'sproc'
+  | 'sproc_local_dev';
 
 export interface DispatchOptions {
   /**
@@ -114,9 +127,34 @@ export async function resolveLocalSprocSql(
   sprocName: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | undefined> {
-  const dir = env[SPROC_SQL_DIR_ENV];
+  return readLocalSql(env[SPROC_SQL_DIR_ENV], `${sprocName}.sql`);
+}
+
+/**
+ * Local dev fallback for `dispatch: named` entries. Resolution order:
+ * `<MIXSHIFT_QUERY_PACK_DIR>/<catalog_id>.sql` first (the pack-era
+ * convention: files named by catalog id, mirroring the server-side
+ * querypack entries), then `<MIXSHIFT_SPROC_SQL_DIR>/<sproc>.sql` when
+ * the entry still carries its SP-era name (back-compat with dev dirs
+ * created during the stored-procedure pilot).
+ */
+export async function resolveLocalNamedSql(
+  catalogId: string,
+  sprocName: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+  const fromPack = await readLocalSql(env[QUERY_PACK_DIR_ENV], `${catalogId}.sql`);
+  if (fromPack !== undefined) return fromPack;
+  if (!sprocName) return undefined;
+  return readLocalSql(env[SPROC_SQL_DIR_ENV], `${sprocName}.sql`);
+}
+
+async function readLocalSql(
+  dir: string | undefined,
+  fileName: string,
+): Promise<string | undefined> {
   if (!dir) return undefined;
-  const path = join(dir, `${sprocName}.sql`);
+  const path = join(dir, fileName);
   try {
     await access(path);
   } catch {
@@ -145,6 +183,14 @@ export async function runDispatched<Row = Record<string, unknown>>(
 ): Promise<DispatchResult<Row>> {
   const entry = await getQueryEntry(id);
 
+  if (entry.dispatch === 'named') {
+    const localSql = await resolveLocalNamedSql(id, entry.sproc);
+    if (localSql !== undefined) {
+      return runSqlText<Row>(id, stripSqlHeader(localSql), opts, 'named_local_dev');
+    }
+    return runNamed<Row>(id, opts);
+  }
+
   if (entry.dispatch === 'sproc') {
     const localSql = await resolveLocalSprocSql(entry.sproc!);
     if (localSql !== undefined) {
@@ -161,6 +207,39 @@ export async function runDispatched<Row = Record<string, unknown>>(
 // ---------------------------------------------------------------------------
 // Backends
 // ---------------------------------------------------------------------------
+
+async function runNamed<Row>(
+  id: string,
+  opts: DispatchOptions,
+): Promise<DispatchResult<Row>> {
+  // Same split as the sproc backend: seller_ids inside params routes to
+  // the request's top-level seller scope, so callers pass one params map
+  // regardless of backend.
+  const { seller_ids: paramsSellerIds, ...restParams } = opts.params ?? {};
+  const sellerIds =
+    opts.sellerIds ?? (Array.isArray(paramsSellerIds) ? paramsSellerIds : []);
+
+  const result = await runNamedQuery<Row>(id, {
+    sellerIds,
+    params: restParams,
+    dataDirOverride: opts.dataDirOverride,
+    queryTimeoutMs: opts.queryTimeoutMs,
+  });
+
+  if (!result.ok) {
+    return { ok: false, id, usedDispatch: 'named', failure: result };
+  }
+  return {
+    ok: true,
+    id,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    durationMs: result.durationMs,
+    usedDispatch: 'named',
+    displaySql: `-- named query ${id} (SQL executes server-side)`,
+    boundParams: { id, seller_ids: sellerIds, params: restParams },
+  };
+}
 
 async function runSproc<Row>(
   id: string,

@@ -18,16 +18,20 @@ import { formatZodError } from '../profile/format-error.js';
  *
  *   - sql:   read the `.sql` file from this repo and send the text
  *            through `/api/query` (the original path).
- *   - sproc: the query body lives warehouse-side as a stored procedure
- *            (private `mx-warehouse-sprocs` repo). The harness sends
- *            `CALL <sproc>(?, ?)` through the same `/api/query`; no SQL
- *            text ships in this public repo. See internal/SP-MIGRATION.md.
+ *   - named: the query body lives server-side in the private
+ *            mx-legacy-auth query pack, keyed by this catalog id. The
+ *            harness POSTs {id, sellerIds, params} to `/api/named-query`;
+ *            no SQL text ships in this public repo. The standard backend
+ *            for library queries (SP-MIGRATION.md, 2026-06-12 revision).
+ *   - sproc: the query body lives warehouse-side as a stored procedure.
+ *            The harness sends `CALL <sproc>(?, ?)` through `/api/query`.
+ *            Superseded by `named`; kept for transition use.
  *
  * The enum is deliberately open-ended: the MixShift 2.0 backend lands as
  * a new member (e.g. `mx2`) + a new branch in lib/data/dispatch.ts, and
  * migrating a query is a one-line catalog flip; skills don't change.
  */
-const dispatchSchema = z.enum(['sql', 'sproc']).default('sql');
+const dispatchSchema = z.enum(['sql', 'named', 'sproc']).default('sql');
 
 const queryEntrySchema = z
   .object({
@@ -41,7 +45,9 @@ const queryEntrySchema = z
     notes: z.string().optional(),
     dispatch: dispatchSchema,
     /** Stored-procedure name (e.g. sp_brain_seller_fetch). Required for
-     *  dispatch: sproc. */
+     *  dispatch: sproc. Optional on dispatch: named entries that began
+     *  life as SPs — it documents provenance and keeps the
+     *  MIXSHIFT_SPROC_SQL_DIR local-dev fallback resolving. */
     sproc: z.string().regex(/^sp_[a-z0-9_]+$/).optional(),
   })
   .superRefine((entry, ctx) => {
@@ -134,12 +140,13 @@ export async function readQuerySql(
 ): Promise<{ id: string; sql: string; header: string }> {
   const entry = await getQueryEntry(id);
   if (!entry.file) {
-    // dispatch: sproc entries carry no SQL body in this repo. Callers
-    // should route through lib/data/dispatch.ts (runDispatched), which
-    // builds the CALL statement or resolves the local dev fallback.
+    // dispatch: named/sproc entries carry no SQL body in this repo.
+    // Callers should route through lib/data/dispatch.ts (runDispatched),
+    // which sends the server-side request or resolves the local dev
+    // fallback.
     throw new Error(
       `Query ${id} is dispatch:"${entry.dispatch}" with no .sql file in the ` +
-        `public repo (body lives warehouse-side as ${entry.sproc ?? 'a stored procedure'}). ` +
+        `public repo (the body lives server-side). ` +
         `Execute it via runDispatched() instead of readQuerySql().`,
     );
   }

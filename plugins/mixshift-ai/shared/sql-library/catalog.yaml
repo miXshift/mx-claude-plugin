@@ -445,32 +445,34 @@ queries:
       account-level CI thresholds.
 
   # --- Brand-brain pulls (background discovery pipeline) ----------------
-  # dispatch: sproc entries carry no .sql file in this repo. The query
-  # body lives warehouse-side as a stored procedure (private
-  # mx-warehouse-sprocs repo); the harness invokes it by name through the
-  # standard query endpoint. See internal/SP-MIGRATION.md +
+  # dispatch: named entries carry no .sql file in this repo. The query
+  # body lives server-side in the private mx-legacy-auth query pack and
+  # executes via POST /api/named-query, keyed by this catalog id. The
+  # retained sproc: name documents the superseded stored-procedure pilot
+  # and keeps the MIXSHIFT_SPROC_SQL_DIR local-dev fallback resolving.
+  # See internal/SP-MIGRATION.md (2026-06-12 revision) +
   # internal/BACKGROUND-DISCOVERY.md.
 
   - id: BRAIN-CATALOG-SC
-    dispatch: sproc
+    dispatch: named
     sproc: sp_brain_catalog_fetch_sc
     purpose: SC catalog shape pull (in-catalog items with brand/group/label taxonomy) for key-brand background discovery. Aggregated client-side; the brain stores distincts and counts only.
     consumers: [brand-brain-fetch]
     tier: 1
     notes: |
-      Scoped by the brand's SC seller ids (second CALL argument).
+      Scoped by the brand's SC seller ids (request sellerIds).
 
   - id: BRAIN-CATALOG-VC
-    dispatch: sproc
+    dispatch: named
     sproc: sp_brain_catalog_fetch_vc
     purpose: VC catalog shape pull (vendor items with custom-brand/group/label taxonomy) for key-brand background discovery. Aggregated client-side.
     consumers: [brand-brain-fetch]
     tier: 1
     notes: |
-      Scoped by the brand's VC seller ids (second CALL argument).
+      Scoped by the brand's VC seller ids (request sellerIds).
 
   - id: BRAIN-CAMPAIGN
-    dispatch: sproc
+    dispatch: named
     sproc: sp_brain_campaign_fetch
     purpose: Campaign-structure pull (enabled and paused campaigns with objective/group/brand taxonomy and structure flags) for key-brand background discovery. Aggregated client-side.
     consumers: [brand-brain-fetch]
@@ -480,11 +482,11 @@ queries:
       carry campaign rows).
 
   - id: BRAIN-SELLER
-    dispatch: sproc
+    dispatch: named
     sproc: sp_brain_seller_fetch
     purpose: Seller-level brand-brain pull (identity, targets, budget, marketplace metadata, data freshness) for key-brand background discovery.
     consumers: [brand-brain-fetch]
     tier: 1
     notes: |
-      First-slice brain source. Scoped by the brand's seller ids (second
-      CALL argument). Returns one row per seller id.
+      First-slice brain source. Scoped by the brand's seller ids (request
+      sellerIds). Returns one row per seller id.

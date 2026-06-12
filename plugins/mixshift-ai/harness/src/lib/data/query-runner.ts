@@ -31,6 +31,11 @@ export type DataQueryFailureKind =
   | 'syntax_error'
   | 'timeout'
   | 'host_unreachable'
+  // Named-query surface (POST /api/named-query) only: the pack has no
+  // entry for the requested id (plugin release ahead of service deploy) /
+  // the request failed the entry's seller-scope or param spec.
+  | 'unknown_query'
+  | 'bad_params'
   | 'unknown';
 
 export interface DataQuerySuccess<Row> {
@@ -207,6 +212,59 @@ interface DatahubQueryWire {
   friendly?: string;
 }
 
+/**
+ * POST a JSON body to a datahub endpoint with the stored bearer token,
+ * force-refreshing and retrying exactly once on a mid-session 401.
+ * Throws DatahubNetworkError on network / DNS / TLS failure (callers map
+ * it to `host_unreachable`) and a plain Error when the session cannot be
+ * refreshed. Shared by the raw-SQL gateway (/api/query) and the named
+ * query pack (/api/named-query).
+ */
+async function datahubAuthedPost(
+  creds: DatahubCreds,
+  path: string,
+  body: Record<string, unknown>,
+  timeoutBudgetMs: number,
+  dataDirOverride?: string,
+): Promise<Response> {
+  const doFetch = async (bearer: string): Promise<Response> => {
+    try {
+      return await fetch(`${creds.api_base}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        // Give the server a small grace window beyond its own timeout so
+        // we don't AbortError before it has a chance to return the
+        // classified timeout envelope.
+        signal: AbortSignal.timeout(timeoutBudgetMs),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new DatahubNetworkError(message);
+    }
+  };
+
+  let token = await getValidAccessToken(dataDirOverride);
+  let res = await doFetch(token);
+
+  // Mid-session 401: token looked fresh client-side but the server
+  // rejected it. Force-refresh and retry exactly once.
+  if (res.status === 401) {
+    token = await getValidAccessToken(dataDirOverride, true);
+    res = await doFetch(token);
+    if (res.status === 401) {
+      throw new Error(
+        'Your MixShift session expired and could not be refreshed. ' +
+          'Run `mixshift auth login` to re-authenticate.',
+      );
+    }
+  }
+  return res;
+}
+
 async function runDatahubQuery<Row>(
   creds: DatahubCreds,
   sql: string,
@@ -216,60 +274,14 @@ async function runDatahubQuery<Row>(
   const t0 = Date.now();
   const queryTimeoutMs = options.queryTimeoutMs ?? 60_000;
 
-  const doFetch = async (
-    bearer: string,
-  ): Promise<{ res: Response; readErr?: string } | null> => {
-    try {
-      const res = await fetch(`${creds.api_base}/api/query`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ sql, params, queryTimeoutMs }),
-        // Give the server a small grace window beyond its own timeout so
-        // we don't AbortError before it has a chance to return the
-        // classified timeout envelope.
-        signal: AbortSignal.timeout(queryTimeoutMs + 5_000),
-      });
-      return { res };
-    } catch (err) {
-      // Network / DNS / TLS failures surface here. Map them to the
-      // existing `host_unreachable` kind so consumers don't have to
-      // know about the datahub branch.
-      const message = err instanceof Error ? err.message : String(err);
-      return { res: null as unknown as Response, readErr: message };
-    }
-  };
-
   try {
-    let token = await getValidAccessToken(options.dataDirOverride);
-    let result = await doFetch(token);
-
-    if (result?.readErr) {
-      throw new DatahubNetworkError(result.readErr);
-    }
-    if (!result) throw new Error('datahub fetch produced no result');
-
-    let res = result.res;
-
-    // Mid-session 401: token looked fresh client-side but the server
-    // rejected it. Force-refresh and retry exactly once.
-    if (res.status === 401) {
-      token = await getValidAccessToken(options.dataDirOverride, true);
-      result = await doFetch(token);
-      if (result?.readErr) {
-        throw new DatahubNetworkError(result.readErr);
-      }
-      if (!result) throw new Error('datahub fetch produced no result on retry');
-      res = result.res;
-      if (res.status === 401) {
-        throw new Error(
-          'Your MixShift session expired and could not be refreshed. ' +
-            'Run `mixshift auth login` to re-authenticate.',
-        );
-      }
-    }
+    const res = await datahubAuthedPost(
+      creds,
+      '/api/query',
+      { sql, params, queryTimeoutMs },
+      queryTimeoutMs + 5_000,
+      options.dataDirOverride,
+    );
 
     // Server returns the same envelope shape as DataQueryResult — just
     // pass through. Type assertion is safe because the schema is
@@ -366,6 +378,159 @@ async function runDatahubQuery<Row>(
           sql_normalized:
             sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
         },
+      },
+      options.dataDirOverride,
+    );
+    return failure;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Named query pack (token-based only; POST /api/named-query)
+// ---------------------------------------------------------------------------
+
+export interface NamedQueryOptions {
+  /** Seller scope, bound server-side as the entry's IN-list. Omitted when
+   *  empty so unscoped entries (e.g. PING) send a minimal body. */
+  sellerIds?: Array<number | string>;
+  /** Entry-specific named params, validated server-side against the pack
+   *  entry's strict schema. */
+  params?: Record<string, unknown>;
+  queryTimeoutMs?: number;
+  dataDirOverride?: string;
+  /** Tests inject creds; production resolves from disk. */
+  creds?: MysqlCreds | DatahubCreds;
+}
+
+interface NamedQueryWire extends DatahubQueryWire {
+  id?: string;
+}
+
+/**
+ * Execute a library query by pack id through POST /api/named-query. The
+ * SQL text lives server-side in mx-legacy-auth's query pack; the harness
+ * only ever sends the id plus bind values. Same envelope contract as
+ * /api/query, plus the named-only failure kinds `unknown_query` and
+ * `bad_params`.
+ *
+ * Token-based sessions only: with legacy raw-MySQL credentials there is
+ * no SQL text client-side to run, so this fails with a sign-in pointer
+ * instead of attempting a direct connection.
+ */
+export async function runNamedQuery<Row = Record<string, unknown>>(
+  id: string,
+  options: NamedQueryOptions = {},
+): Promise<DataQueryResult<Row>> {
+  let creds: MysqlCreds | DatahubCreds;
+  try {
+    creds = await resolveCreds({
+      creds: options.creds,
+      dataDirOverride: options.dataDirOverride,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, kind: 'unknown', message, friendly: message, durationMs: 0 };
+  }
+  if (!isDatahubCreds(creds)) {
+    return {
+      ok: false,
+      kind: 'unknown',
+      message: `Named query ${id} requires a token-based session; legacy raw-MySQL credentials cannot run it.`,
+      friendly:
+        'Library queries now run server-side and need the token-based sign-in. ' +
+        'Run `mixshift auth login` (or `mixshift auth service-setup` for unattended use).',
+      durationMs: 0,
+    };
+  }
+
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 60_000;
+  const sellerIds =
+    options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : undefined;
+
+  try {
+    const res = await datahubAuthedPost(
+      creds,
+      '/api/named-query',
+      { id, sellerIds, params: options.params, queryTimeoutMs },
+      queryTimeoutMs + 5_000,
+      options.dataDirOverride,
+    );
+    const json = (await res.json()) as NamedQueryWire;
+    const durationMs = Date.now() - t0;
+
+    if (json.ok === true) {
+      const rows = (json.rows ?? []) as Row[];
+      const rowCount = json.rowCount ?? rows.length;
+      const serverDuration = json.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: 'ok',
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: id,
+          payload: {
+            auth_path: 'datahub',
+            named_query: true,
+            server_duration_ms: serverDuration,
+          },
+        },
+        options.dataDirOverride,
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+
+    const failure: DataQueryFailure = {
+      ok: false,
+      kind: (json.kind ?? 'unknown') as DataQueryFailureKind,
+      table_name: json.table_name,
+      raw_code: json.raw_code,
+      message: json.message ?? `Named query ${id} failed`,
+      friendly: json.friendly ?? json.message ?? `Named query ${id} failed`,
+      durationMs,
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: 'failed',
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: {
+          auth_path: 'datahub',
+          named_query: true,
+          raw_code: failure.raw_code,
+        },
+      },
+      options.dataDirOverride,
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure: DataQueryFailure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: 'host_unreachable',
+        message: err.message,
+        friendly:
+          'The MixShift auth service is unreachable. Check your network ' +
+          'or try again in a minute.',
+        durationMs,
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = { ok: false, kind: 'unknown', message, friendly: message, durationMs };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: 'failed',
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: { auth_path: 'datahub', named_query: true },
       },
       options.dataDirOverride,
     );
