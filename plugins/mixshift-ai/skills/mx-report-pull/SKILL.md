@@ -13,7 +13,7 @@ description: >
   summary). Read-only, routes through the bundled harness CLI. Does NOT require
   brand cold-start, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.4.1"
+  version: "0.4.3"
   author: "MixShift"
 trigger_phrases:
   - pull a report
@@ -202,11 +202,15 @@ The base columns are: `amazonSellerId`, `legacySellerId`, `name`, `type`
 - **`legacySellerId` is always present** and is the exact per-marketplace
   warehouse record id. It is the deterministic disambiguator: prefer it over
   `amazonSellerId` + `--marketplace` whenever you have it (which is always).
-- **The list is already pre-filtered to SP-API-active merchants.** Every row
-  you see can be pulled, so there is no separate "active" column to check.
-  `authorized` is now meaningful: `authorized: no` means the merchant's Amazon
-  access grant has lapsed and the pull may fail with `reauth_required`. Treat
-  it as the warn-before-you-pull signal.
+- **The list shows EVERY marketplace row of an authorized seller**, not just
+  the cron-activated ones, because SP-API tokens are region-scoped. There is a
+  `cronActive` field: it marks the rows MixShift has activated for its own
+  scheduled pulls. It is a display/filter signal only, NOT an auth gate: a row
+  with `cronActive: false` is still pullable on demand here. Filter on it
+  client-side only if you specifically want the cron-activated subset.
+- **`authorized` is the reauth signal**: `authorized: no` means the merchant's
+  Amazon access grant has lapsed and the pull may fail with `reauth_required`.
+  Treat it as the warn-before-you-pull signal.
 
 ### One seller-id can span several marketplaces
 

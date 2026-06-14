@@ -313,12 +313,27 @@ negatives, use the audited Ads write surface instead of manual entry:
    Campaign level: `sp.create_campaign_negative_keywords`. Use the Amazon
    campaign/ad-group ids from the pulled rows; resolve missing ids via
    `mixshift ads call sp.list_campaigns` / `sp.list_ad_groups`.
-2. Dry-run it (the default; nothing reaches Amazon):
+2. Live conflict check (do this before the dry run). Read the negatives that
+   already exist in the live account and drop any change-set term that is
+   already negated at the same location and match type, so the dry run only
+   carries genuinely new negatives:
+   - Ad-group negatives: `mixshift ads call sp.list_negative_keywords --legacy-seller-id <id> --body-file camp-filter.json --json`
+   - Campaign negatives: `mixshift ads call sp.list_campaign_negative_keywords --legacy-seller-id <id> --body-file camp-filter.json --json`
+   where `camp-filter.json` is `{ "campaignIdFilter": { "include": ["...", "..."] } }`
+   for the campaigns in your set. A term is a duplicate when the same
+   keyword text, match type, and location (campaign for campaign-level,
+   campaign plus ad group for ad-group level) already carry an enabled
+   negative. Report the skipped-as-already-negated count alongside the preview
+   so the user sees what was filtered out. If the list calls fail
+   (`ads_not_configured`, `throttled`, or any error), note that the live
+   conflict check was skipped and proceed; the create call is idempotent-safe
+   to preview either way.
+3. Dry-run it (the default; nothing reaches Amazon):
    `mixshift ads call sp.create_negative_keywords --legacy-seller-id <id> --body-file negatives.json --json`
-3. Show the user the preview and ask for explicit confirmation of this exact
+4. Show the user the preview and ask for explicit confirmation of this exact
    set. Phrase negatives have blast radius: NEGATIVE_PHRASE entries deserve a
    second look in the preview before anyone confirms.
-4. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms, re-run the SAME command with `--commit`.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

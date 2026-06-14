@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-asin-target-negation
 display_name: ASIN Target Negation Review
-version: "1.7.0"
+version: "1.8.0"
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Suppresses ASINs already under manual targeting,
