@@ -115,18 +115,21 @@ queries:
 
   - id: CS-06
     file: CS-06.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: SC SP attribution-window comparison (1d vs 7d) for prior full month.
     consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-07
     file: CS-07.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: VC SP attribution-window comparison (1d vs 14d) for prior full month.
     consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-08
     file: CS-08.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily 1d-vs-7d SP ACOS calibration distribution over T-104..T-7.
     consumers: [mx-account-cold-start]
     tier: 1
@@ -163,6 +166,7 @@ queries:
 
   - id: CS-14
     file: CS-14.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Brand vs NonBrand spend split (trailing 6 months) via CampaignName tags.
     consumers: [mx-account-cold-start]
     tier: 1
@@ -186,12 +190,14 @@ queries:
 
   - id: CS-17
     file: CS-17.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Same-SKU vs Other-SKU cross-sell ratio per CampaignType (recent full month).
     consumers: [mx-account-cold-start]
     tier: 1
 
   - id: CS-18
     file: CS-18.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: SC ads-share / ACOS / TACOS stability check by month over T-14 months.
     consumers: [mx-account-cold-start]
     tier: 1
@@ -281,6 +287,7 @@ queries:
 
   - id: CS-30
     file: CS-30.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily account-level ad metrics (spend, sales, ACOS, clicks, orders, CVR, CTR) over trailing 365 days.
     consumers: [mx-account-cold-start]
     tier: 1
@@ -291,6 +298,7 @@ queries:
 
   - id: CS-31
     file: CS-31.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Account-level converting search-term corpus (trailing 90d) for brand-name typo detection.
     consumers: [mx-account-cold-start]
     tier: 1
