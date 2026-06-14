@@ -340,14 +340,15 @@ node -e "const z=require('zlib'),fs=require('fs');https=require('https');https.g
 Tell the user the export is generating, poll once, and wait for their next turn
 or a short beat rather than blocking. The `exportId` stays valid across turns.
 
-**Known gotcha (verified live 2026-06-12):** `exports.get` can return a 500
-whose message lists the available `application/vnd.<kind>export.v1+json` content
-types. When that happens, re-run the poll with `--content-type` set to the type
-matching the export you created: `vnd.campaignsexport.v1+json` for
-`exports.campaigns`, `vnd.adgroupsexport.v1+json` for `exports.ad_groups`,
-`vnd.targetsexport.v1+json` for `exports.targets`, and `vnd.adsexport.v1+json`
-for `exports.ads`. The COMPLETED payload and its presigned url come back
-normally once the matching type is sent.
+**Content type:** the service derives the correct per-kind vnd type for
+`exports.get` from the export itself, so a plain poll returns the COMPLETED
+payload and presigned url with no extra flags. If Amazon ever rejects the
+derived type (a 500 listing the available `application/vnd.<kind>export.v1+json`
+types), `--content-type` is the manual override: match it to the export you
+created (`vnd.campaignsexport.v1+json` for `exports.campaigns`,
+`vnd.adgroupsexport.v1+json` for `exports.ad_groups`,
+`vnd.targetsexport.v1+json` for `exports.targets`, `vnd.adsexport.v1+json` for
+`exports.ads`).
 
 ### Intraday budget usage
 
