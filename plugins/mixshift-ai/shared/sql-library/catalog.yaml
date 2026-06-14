@@ -173,10 +173,10 @@ queries:
     consumers: [mx-account-cold-start]
     tier: 1
     notes: |
-      mws_inventory_history confirmed as empty-column stub in tables.yaml (verified
-      2026-04-27). Drift gate skips this table. Query uses ASIN, Quantity, DateTime,
-      SellerID -- run scripts/dump-schema.py and refresh tables.yaml to enable
-      column-level drift enforcement.
+      mws_inventory_history carries real daily snapshots back 14+ months
+      (FulfillableQuantity verified live 2026-06-14; the earlier "empty-column
+      stub" note was wrong). FBA-only via FulfillmentChannel <> 'DEFAULT'
+      (the DEFAULT bucket is MFN; 'AFN' is dead and matches nothing).
 
   - id: CS-17
     file: CS-17.sql
