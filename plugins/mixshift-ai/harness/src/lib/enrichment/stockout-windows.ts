@@ -2,11 +2,11 @@
  * Stockout window detector — Phase 1.5 analysis #2.
  *
  * Ported from Todd's `enrich-context.py::detect_stockout_windows`. Reads
- * CS-29 (mws_inventory_health historical snapshots, FBA-only, pre-filtered
- * to "in-trouble" rows) and CS-30 (daily account-level ad metrics), and
- * groups consecutive in-trouble days per ASIN into contiguous windows of
- * ≥ `min_days` days. Each window scores impacted ad-sales by summing the
- * daily ad_sales from CS-30 across the window's date range.
+ * CS-29 (mws_inventory_history FBA out-of-stock ASIN-days, pre-filtered) and
+ * CS-30 (daily account-level ad metrics), and groups consecutive in-trouble
+ * days per ASIN into contiguous windows of ≥ `min_days` days. Each window
+ * scores impacted ad-sales by summing the daily ad_sales from CS-30 across
+ * the window's date range.
  *
  * **Key signal sources:**
  *   - sellable_zero       — SellableQuantity = 0 on that snapshot day
@@ -14,8 +14,12 @@
  *   - days_of_supply_low  — DaysOfSupply < 14 (and SellableQuantity > 0)
  *   - multi               — more than one signal fired across the window
  *
+ * As of 2026-06-14 CS-29 sources mws_inventory_history, which exposes only
+ * fulfillable quantity (no DaysOfSupply/Alert), so in practice only
+ * `sellable_zero` fires; the other branches remain for any richer source.
+ *
  * **Limitation:** ASIN-suppression-for-profitability events (Amazon de-ranks
- * an ASIN despite inventory) are NOT detectable from `mws_inventory_health`
+ * an ASIN despite inventory) are NOT detectable from inventory snapshots
  * — those still require AM input as `structural_events[]` per the cold-start
  * SKILL.md.
  */
