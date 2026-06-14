@@ -263,14 +263,15 @@ queries:
   - id: CS-29
     file: CS-29.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
-    purpose: Inventory-health historical snapshots for stockout-window detection (trailing 365d, FBA-only).
+    purpose: Historical FBA stockout windows (out-of-stock ASIN-days, trailing 365d) from mws_inventory_history.
     consumers: [mx-account-cold-start]
     tier: 1
     notes: |
-      Pre-filtered to "in trouble" rows so the enrichment step only has to group
-      consecutive dates per ASIN to form contiguous OOS windows. Pattern mirrors
-      DHC-12 (live stockout follow-up) with an added historical date range.
-      VC limitation: FBA-only; MFN inventory not tracked.
+      One row per FBA-OOS ASIN-day (total FulfillableQuantity = 0) so the
+      enrichment step groups consecutive dates per ASIN into contiguous OOS
+      windows. Re-pointed 2026-06-14 from mws_inventory_health (current-state,
+      no usable history) to mws_inventory_history (real 14mo+ daily history +
+      live FulfillableQuantity). FBA-only via FulfillmentChannel <> 'DEFAULT'.
 
   - id: CS-30
     file: CS-30.sql
