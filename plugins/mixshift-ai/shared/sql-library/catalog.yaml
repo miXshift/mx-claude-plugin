@@ -24,36 +24,42 @@ queries:
 
   - id: DHC-04
     file: DHC-04.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: CI thresholds and pre-computed pacing/MTD per metric (anomaly_detection_settings).
     consumers: [mx-daily-health-check, mx-runaway-spend-check]
     tier: 1
 
   - id: DHC-05
     file: DHC-05.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: T-30 daily actuals + means for CI percentile computation (anomaly_detection_MV).
     consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-06
     file: DHC-06.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Per-CampaignType T-1/T-7/T-30 metrics from campaignmetric.
     consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-07
     file: DHC-07.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Per-Objective T-1/T-7/T-30 metrics (campaignmetric JOIN campaign).
     consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-08
     file: DHC-08.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Per-ItemGroup T-1/T-7/T-30 metrics (campaignmetric JOIN campaign).
     consumers: [mx-daily-health-check]
     tier: 1
 
   - id: DHC-09
     file: DHC-09.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Per-Brand T-1/T-7/T-30 metrics (campaignmetric JOIN campaign), conditional.
     consumers: [mx-daily-health-check]
     tier: 1
@@ -439,6 +445,7 @@ queries:
 
   - id: RSC-01
     file: RSC-01.sql
+    dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Acute keyword runaway detection -- T-1 keyword performance with T-30 baseline in one query.
     consumers: [mx-runaway-spend-check]
     tier: 1
