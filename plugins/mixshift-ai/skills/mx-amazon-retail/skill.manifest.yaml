@@ -1,0 +1,123 @@
+schema_version: 1
+skill_id: mx-amazon-retail
+display_name: Amazon Retail Lookups (live SP-API)
+version: "0.1.0"
+description: >
+  Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
+  you are authorized for. The retail-operations analogue of mx-report-pull:
+  single fast request/response operations that answer point-in-time questions
+  about catalog, inventory, orders, finances, listings, and fulfillment,
+  rather than generating a report document. The headline use is the
+  title/brand/sales-rank source for ASINs missing from the warehouse's
+  mws_items (catalog.search_items). Covers Catalog Items, Product Fees, FBA
+  Inventory, Sales metrics, Sellers, Finances, Orders, Product Pricing offer
+  depth, Listings Items, Data Kiosk (GraphQL), and Vendor Orders (1P).
+  Read-only, routes through the bundled harness CLI. Does NOT require brand
+  cold-start, only that the user has signed in (`mixshift auth login`).
+
+# Tier 1 = informational, read-only against Amazon and the service.
+# Modeled as per_account because every call targets a specific merchant
+# (amazonSellerId / legacySellerId), though no brand context is consumed.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+# bash harness invocations are implicit; file_read/file_write cover writing
+# operation payloads and Data Kiosk JSONL to disk and reading them back.
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # saves operation payloads / Data Kiosk JSONL to disk
+review_required: never
+sql_ids: []   # no library SQL; warehouse-first coverage checks route through mx-data-explore
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift amazon merchants
+  - mixshift amazon operations
+  - mixshift amazon operations --family <name>
+  - mixshift amazon call <operation>
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: operation-result
+    type: json_artifact   # operation payloads / Data Kiosk JSONL written to disk; closest schema type
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - look up an asin
+  - catalog lookup
+  - get the title for these asins
+  - title for an asin
+  - brand and sales rank for an asin
+  - asins missing from the warehouse
+  - live fba inventory
+  - how much stock do we have right now
+  - estimate amazon fees
+  - referral and fba fee estimate
+  - order metrics
+  - sales metrics for a window
+  - search orders
+  - look up an order
+  - live listing state
+  - listing issues
+  - is this listing buyable
+  - which marketplaces does this seller cover
+  - financial transactions
+  - settlement groups
+  - data kiosk query
+  - sales and traffic by graphql
+  - seller economics
+  - vendor purchase orders
+  - call an sp-api operation
+  - what sp-api operations can I call
+notes: >
+  Live SP-API call surface: 24 cataloged read operations across 12 families,
+  reached via `mixshift amazon operations` (discovery) and
+  `mixshift amazon call <operation>` (execute). Each call is a single fast
+  request/response (no start/poll/get split), so chat hosts need no special
+  casing -- except Data Kiosk, whose create -> get_query (poll) -> get_document
+  lifecycle is async and MUST be polled across separate turns (no sleep-loops
+  in one Bash call; the queryId stays valid across turns).
+
+  Read-only: this catalog holds NO write operations. There is no --commit flag
+  on this surface and nothing to commit. A write request belongs elsewhere.
+
+  Headline use: catalog.search_items is the title/brand/sales-rank source for
+  ASINs missing from the warehouse's mws_items (which only holds listed SKUs).
+
+  Read the per-operation `notes` from `amazon operations` before calling: they
+  carry required params, caps (identifiers max 20; fees/pricing bodies max 20),
+  and casing gotchas. Several v0 operations take PascalCase query params
+  (finances.list_financial_event_groups, pricing.get_competitive_pricing, the
+  Orders v0 pair) and the Fees body is PascalCase; the CLI does not normalize
+  casing. Pacing is server-side: fees ~2.4s, pricing offer batches ~12s.
+
+  Merchant identity: the selector is the amazonSellerId from
+  `mixshift amazon merchants`, never the numeric warehouse SellerID. The list
+  now shows EVERY marketplace row of an authorized seller; `cronActive` (the
+  `cron` column) is a display/filter signal for scheduled-pull activation ONLY,
+  NOT an auth signal -- a row with cron:no is still callable. `authorized: no`
+  is the reauth warning. Prefer `--legacy-seller-id` (always present,
+  deterministic) or pass `--seller-id` together with `--marketplace`.
+
+  Failures are typed: branch on `failure_kind` (not_authenticated,
+  session_expired, restricted_report, reauth_required, spapi_not_configured,
+  merchant_not_found, throttled, report_fatal, host_unreachable, unknown),
+  never on HTTP status. Orders default to non-PII (the app holds no PII/RDT
+  role; a PII element 403s as restricted_report). Vendor Orders are 1P-only;
+  3P sellers 4xx (surfaces as report_fatal).
+
+  Data Kiosk documents and report documents behave the same: get_document
+  returns a short-lived presigned documentUrl fetched WITHOUT an Authorization
+  header (S3 rejects Bearer tokens), expiring in minutes; content is JSONL. A
+  DONE query with no dataDocumentId is an empty result, not an error.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - SP-API enabled for the tenant; calls fail with spapi_not_configured
+      otherwise (user contacts MixShift ops).
+
+  Warehouse-first courtesy: when a request plausibly overlaps warehouse data,
+  check coverage via mx-data-explore and offer the user the choice before
+  calling live. It is a courtesy, not a gate -- never refuse a requested call.
+  The headline catalog lookup usually has no warehouse answer and skips it.
