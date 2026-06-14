@@ -1,0 +1,108 @@
+schema_version: 1
+skill_id: mx-amazon-amc
+display_name: Amazon Marketing Cloud Ad-hoc Analytics
+version: "0.1.0"
+description: >
+  Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
+  demand, straight from Amazon through MixShift's service. Drives the full AMC
+  loop: discover the AMC instances an advertising login can reach, inspect the
+  data sources, author dialect-correct AMC SQL, submit a workflow execution,
+  poll it to completion across turns, and fetch the CSV results. Read-only:
+  running a query mutates nothing advertiser-facing and needs no write scope.
+  Routes through the bundled harness CLI. Does NOT require brand cold-start,
+  only that the user has signed in (`mixshift auth login`).
+
+# Tier 1 = informational, read-only against Amazon and the service. Submitting
+# and running an AMC workflow returns aggregated clean-room results and mutates
+# nothing advertiser-facing, so no write scope and no --commit. Modeled as
+# per_account because every call targets a specific merchant
+# (legacySellerId / amazonSellerId), though no brand context is consumed.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # saves AMC result CSVs to ~/.mixshift/reports/
+review_required: never
+sql_ids: []   # AMC SQL is authored ad-hoc per request; no library SQL
+
+# Harness commands the skill calls (AMC is the AMC family inside `ads call`;
+# there is no dedicated `amc` subcommand).
+harness_commands:
+  - mixshift ads profiles
+  - mixshift ads operations --family AMC
+  - mixshift ads call amc.list_accounts
+  - mixshift ads call amc.list_instances --path entityId= --path marketplaceId=
+  - mixshift ads call accounts.query_advertiser_accounts
+  - mixshift ads call amc.list_data_sources --path instanceId= --path entityId=
+  - mixshift ads call amc.create_workflow_execution --path instanceId= --path entityId= --body-file <file>
+  - mixshift ads call amc.get_workflow_execution --path workflowExecutionId=
+  - mixshift ads call amc.get_download_urls --path workflowExecutionId=
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: amc-result
+    type: json_artifact   # AMC returns CSV download urls; fetched to disk. Closest schema type.
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - run an amc query
+  - amazon marketing cloud query
+  - amc analytics
+  - amc workflow
+  - amc clean room
+  - query amazon marketing cloud
+  - list my amc instances
+  - what amc instances do I have
+  - amc data sources
+  - submit an amc workflow
+  - amc sql
+notes: >
+  Auth model: AMC rides the Amazon Ads API, whose tokens are PER ADVERTISING
+  LOGIN (not per seller). The service reads the tenant's stored advertising
+  refresh token and mints access tokens in memory; the plugin never holds Ads
+  secrets. Merchant selection mirrors the other Ads surfaces: prefer
+  `--legacy-seller-id` (deterministic, same ids as `amazon merchants`), or pass
+  `--seller-id` together with `--marketplace`. Ambiguity returns
+  merchant_not_found (exit 7) with candidates.
+
+  AMC header model: AMC calls are NOT profile-scoped. The entity id (an
+  advertiser id) rides as `--path entityId=...` and is sent as a header; the
+  marketplace id defaults to the resolved seller row's marketplace but is
+  overridable with `--path marketplaceId=...` when the AMC account's
+  marketplace differs from the seller row's. instanceId and
+  workflowExecutionId fill templated paths. The caller always passes these as
+  `--path k=v`; the service decides header vs path placement per operation.
+
+  Discovery chain (in order): amc.list_accounts (no params, no entity header)
+  gives entity ids + marketplaces; amc.list_instances per
+  (entityId, marketplaceId) pair gives instanceIds and MUST be probed
+  SEQUENTIALLY (parallel probing trips 429s; 401/403/404 means no access for
+  that pair and is normal); accounts.query_advertiser_accounts is the fallback
+  for self-service Sponsored Ads entityIds (different client-id header; query
+  global AND non-global; empty pages with a valid nextToken are normal, keep
+  iterating); amc.list_data_sources lists the tables for schema discovery.
+
+  AMC SQL dialect (FAILED executions are usually dialect violations): declare
+  every CUSTOM_PARAMETER in workflow.inputParameters (array params need
+  elementDataType + elementNullable); NTILE is unsupported (manual quartiles
+  via ROW_NUMBER + CEIL); COUNT(*) OVER () is rejected (use COUNT(col) OVER ());
+  no computed expressions inside COLLECT (pre-compute in a CTE, then COLLECT the
+  column).
+
+  Lifecycle: amc.create_workflow_execution (body: workflow.sqlQuery + optional
+  inputParameters; timeWindowType EXPLICIT | MOST_RECENT_DAY | MOST_RECENT_WEEK;
+  timeWindowStart/End/TimeZone; parameterValues) returns a workflowExecutionId.
+  Poll amc.get_workflow_execution ACROSS TURNS (PENDING, RUNNING, SUCCEEDED,
+  FAILED; no sleep-loops in one Bash call). On SUCCEEDED, amc.get_download_urls
+  returns presigned CSV urls that EXPIRE IN MINUTES: fetch them immediately and
+  WITHOUT auth headers, before summarizing anything; re-call for a fresh set if
+  they lapse.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - Amazon Ads enabled for the tenant; calls fail with ads_not_configured
+      otherwise (user contacts MixShift ops).
+
+  AMC result CSVs land at
+  ~/.mixshift/reports/<merchant>/<date>-amc-<workflow>.csv.
