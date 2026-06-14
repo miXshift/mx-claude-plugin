@@ -1,0 +1,121 @@
+schema_version: 1
+skill_id: mx-amazon-ads
+display_name: Amazon Ads (live account state + audited writes)
+version: "0.1.0"
+description: >
+  Read and write the live Amazon Ads API for any advertiser the signed-in
+  MixShift tenant is connected to, through the bundled harness CLI. The Ads
+  analogue of mx-data-explore and mx-report-pull: a catalog-driven workhorse
+  for the current state of an ad account (campaign, ad group, keyword,
+  target, and product-ad lists with live bids and states; intraday budget
+  usage; live bid, keyword, and budget recommendations; full account
+  exports; advanced v3 reporting) and for audited changes to it (pause and
+  enable, budget edits, campaign/keyword/target/negative creation, negative
+  deletes, across Sponsored Products, Brands, and Display). Writes preview
+  by default and never reach Amazon without the user confirming the exact
+  change set.
+
+# Risk tier 3 + recommendation_only + review_required: always mirror the PPC
+# write skills' posture (mx-keyword-bid-health). This is the general Ads
+# write surface, so it carries the same write posture even though it consumes
+# no brand context and runs no library SQL. Modeled per_account because every
+# call targets one (advertiser, marketplace) profile (legacySellerId).
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+# bash harness invocations are implicit. No db_read/prefetch/renderer: this
+# skill reads/writes the Ads API and saves exports/reports to disk only.
+allowed_tools: [file_read, file_write]
+side_effect_policy: recommendation_only   # writes are user-confirmed, dry-run by default; mirrors the PPC apply skills
+review_required: always                    # writes require explicit user confirmation of the exact change set
+sql_ids: []   # no library SQL; warehouse history routes through mx-data-explore
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift ads profiles
+  - mixshift ads operations [--family <name>]
+  - mixshift ads call <operation> [selectors] [--query k=v] [--path k=v] [--body-file <f> | --body <json>] [--content-type <vnd>] [--commit]
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: ads-export-or-report
+    type: json_artifact   # account exports / v3 reports fetched from presigned urls to disk; closest schema type
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: pro
+trigger_phrases:
+  - live campaign state
+  - current bids
+  - current campaign state
+  - budget usage
+  - intraday budget
+  - export my campaigns
+  - export my ad account
+  - pause campaign
+  - enable campaign
+  - set campaign budget
+  - change campaign budget
+  - create a campaign
+  - create an ad group
+  - delete negative keywords
+  - undo a negation
+  - list my keywords from amazon
+  - live keyword recommendations
+notes: >
+  Different Amazon API from SP-API (mx-report-pull / mx-amazon-retail): the
+  Ads API, with per-advertising-login auth and profile-scoped calls. Auth is
+  the same Bearer token as the warehouse (~/.mixshift/auth/credentials); the
+  service holds the Ads credentials server-side. Discovery-first: run
+  `mixshift ads operations` and read the per-operation notes for body vs
+  query conventions, vnd media types, and caps before calling.
+
+  Profile selection mirrors mx-report-pull's merchant selection: one call
+  targets one (advertiser, marketplace) profile. Prefer
+  --legacy-seller-id (same ids as `mixshift amazon merchants`), or
+  --profile-id, or --seller-id plus --marketplace; never a bare --seller-id.
+  An ambiguous selector returns merchant_not_found with a candidates list.
+
+  Reads: POST .../list family takes an optional filter body (omit for the
+  first page); SD lists and sb.list_keywords are GET with --query params.
+  Exports beat paginated lists for a full-account snapshot (~5x lighter
+  throttle): create -> poll exports.get --path exportId= -> fetch the
+  COMPLETED url WITHOUT auth headers -> gunzip JSON. sp.budget_usage gives
+  intraday budget consumption (max 100 campaignIds). Live recommendations:
+  sp.bid_recommendations (one ad group per call, max 100 expressions),
+  sp.budget_recommendations / sp.keyword_recommendations (max 100). Advanced
+  v3 reporting: create_report -> poll get_report -> COMPLETED url (presigned
+  ~1h, GZIP_JSON); 31-day window, 95-day lookback; HTTP 425 = identical
+  request in flight, poll instead of re-creating.
+
+  Writes (the apply contract, mirrored from the PPC apply sections): write
+  ops carry write: true. dry-run is the DEFAULT and nothing reaches Amazon;
+  the service returns dry_run:true, items_count, before_state, preview,
+  audit_id. Show the user the preview AND before_state, get explicit
+  confirmation of the exact change set, only then re-run the same command
+  with --commit. Commits return Amazon's multi-status response (partial
+  failure is normal: summarize success AND error counts) plus audit_id.
+  200-item cap per call (split larger sets). insufficient_scope (exit 11) =
+  credential cannot write; hand the user the change list. SP writes are
+  proven (updates, creation incl. negatives, deletes via id-filter bodies
+  where the pre-delete snapshot is the recreate-from source). SB/SD writes
+  carry wire-shape confidence caveats (raw-array bodies + lowercase enums;
+  SB v4 creates especially): the first real SB/SD apply must dry-run, then
+  commit ONE item with Sam watching.
+
+  Cross-references and scope: bid/negation VERDICT workflows belong to
+  mx-keyword-bid-health, mx-search-term-negation, mx-asin-target-negation;
+  this skill is the general surface (states, budgets, creation, deletes,
+  ad-hoc fixes, live lookups). AMC -> mx-amazon-amc. DSP is EXPERIMENTAL
+  (expect 403 without DSP entitlement; do not create DSP reports). Marketing
+  Stream is service-managed (never create/modify subscriptions).
+
+  Failures are typed: branch on failure_kind (not_authenticated,
+  ads_not_configured=6, merchant_not_found=7, throttled=8,
+  insufficient_scope=11, reauth_required=5, ...), never on HTTP status.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - Amazon Ads API enabled for the tenant; calls fail with
+      ads_not_configured otherwise (user contacts MixShift ops).
+    - Writes need the ads:write scope; signed-in user sessions hold it
+      implicitly, machine credentials must be issued with it.
