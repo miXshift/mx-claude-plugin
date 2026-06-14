@@ -1,6 +1,6 @@
 ---
 name: mx-asin-target-negation
-version: 1.5.0
+version: 1.8.0
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Pulls ASIN-triggered rows for a configurable
@@ -26,6 +26,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.8.0
+    change: "Added a live conflict check to the Applying ASIN negations flow: before the dry run, read existing negative targets via sp.list_negative_targets and sp.list_campaign_negative_targets (campaignIdFilter bodies), match the ASIN inside each clause's expression array per location, drop duplicates, and report the skipped count with the preview. Frontmatter version realigned with the manifest (prior 1.5.0 was stale against manifest 1.7.0)."
   - version: 1.5.0
     change: "CRITICAL data fix: Phase 3 lifetime join now queries BOTH keywordtargetingmetric AND targetexpressionsmetric and UNIONs before aggregating. Manual asinSameAs/asinCategorySameAs CONQ/PROF targets only record performance in targetexpressionsmetric. Reference case: $9.78/0 orders in keywordtargetingmetric vs $21.73/2 orders in targetexpressionsmetric."
   - version: 1.4.0
@@ -435,12 +437,27 @@ apply the clean-negate bucket, use the audited Ads write surface:
    `sp.create_campaign_negative_targets`. Use the Amazon ids from the pulled
    rows; resolve missing ids via `mixshift ads call sp.list_campaigns` /
    `sp.list_ad_groups`.
-2. Dry-run it (the default; nothing reaches Amazon):
+2. Live conflict check (do this before the dry run). Read the negative targets
+   that already exist in the live account and drop any approved ASIN that is
+   already negated at the same location, so the dry run only carries genuinely
+   new negative targets:
+   - Ad-group negative targets: `mixshift ads call sp.list_negative_targets --legacy-seller-id <id> --body-file camp-filter.json --json`
+   - Campaign negative targets: `mixshift ads call sp.list_campaign_negative_targets --legacy-seller-id <id> --body-file camp-filter.json --json`
+   where `camp-filter.json` is `{ "campaignIdFilter": { "include": ["...", "..."] } }`
+   for the campaigns in your set. The ASIN lives inside each clause's
+   `expression` array as `{ "type": "ASIN_SAME_AS", "value": "B0..." }`: match
+   on that value per location (campaign for campaign-level, campaign plus ad
+   group for ad-group level) and treat an existing enabled clause for the same
+   ASIN at the same location as a duplicate. Report the skipped-as-already-
+   negated count alongside the preview. If the list calls fail
+   (`ads_not_configured`, `throttled`, or any error), note that the live
+   conflict check was skipped and proceed.
+3. Dry-run it (the default; nothing reaches Amazon):
    `mixshift ads call sp.create_negative_targets --legacy-seller-id <id> --body-file negations.json --json`
-3. Show the user the preview and ask for explicit confirmation of this exact
+4. Show the user the preview and ask for explicit confirmation of this exact
    set. Only the clean-negate bucket is eligible; review/watch ASINs never go
    in a change set without their own explicit user decision.
-4. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms, re-run the SAME command with `--commit`.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

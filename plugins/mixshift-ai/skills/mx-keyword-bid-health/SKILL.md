@@ -6,7 +6,7 @@ description: >
   keyword-level bid optimization review. Surfaces high-ACOS bid reduction
   candidates and scale opportunities with proven conversion volume.
 metadata:
-  version: "0.3.0"
+  version: "0.5.0"
   author: "MixShift"
 trigger_phrases:
   - run keyword bid review
@@ -293,6 +293,35 @@ mixshift sidecar write --input-file /tmp/kbh-sidecar-input.json
 4. Table 3: Dormant Keywords (top 20)
 5. Summary metrics + verdict
 6. Bottom Line with structural-event and WoW drift context
+
+## Live bid refresh (optional, requires Ads API access)
+
+The bids and Amazon guidance in the KBH data pull are warehouse values and can
+lag the live account. Before you finalize verdicts or build a change set, you
+can optionally refresh both from the Ads API. This is a read step; nothing is
+mutated. If the user has not asked for live data and the warehouse pull is
+recent, the standard flow is fine.
+
+1. Refresh CURRENT bids. Call `sp.list_keywords` with a filter body of the
+   keyword ids you are reviewing:
+   `mixshift ads call sp.list_keywords --legacy-seller-id <id> --body-file kw-filter.json --json`
+   where `kw-filter.json` is `{ "keywordIdFilter": { "include": ["...", "..."] } }`.
+   Use the live `bid` as the before-bid. Never apply a change against a stale
+   warehouse before-bid: if the live bid differs from the KBH `current_bid`,
+   flag that row and recompute its recommended bid off the live value.
+2. Refresh SUGGESTED ranges. Call `sp.bid_recommendations` once per
+   (campaignId, adGroupId) pair, one ad group per call: group the flagged rows
+   by ad group first. Body:
+   `{ "campaignId": "...", "adGroupId": "...", "recommendationType": "BIDS_FOR_EXISTING_AD_GROUP", "targetingExpressions": [ { "type": "KEYWORD_EXACT_MATCH", "value": "..." } ] }`
+   with at most 100 expressions per call. These live ranges are fresher than
+   the warehouse SuggestedBid and should replace it where present.
+3. Failures degrade gracefully. On `ads_not_configured`, `throttled`, or any
+   other error, skip the refresh for that batch, note that live values were
+   unavailable, and fall back to the warehouse bids and guidance. A failed
+   refresh never blocks the review.
+
+For the general Ads API surface (exports, other recommendations, live state),
+see mx-amazon-ads.
 
 ## Applying bid changes (optional, requires explicit user confirmation)
 

@@ -7,7 +7,7 @@ description: >
   spiked materially or where high-spend keywords generated zero conversions against
   their historical performance.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   author: "MixShift"
 trigger_phrases:
   - run runaway spend check
@@ -135,6 +135,34 @@ Flag if: conversions_t30 >= 1
      AND conversions_t1  = 0
      AND spend_t1 > (spend_t30_daily_avg × 1.5)
 ```
+
+### Step 4b — Intraday budget usage check (optional, live)
+
+Run this only when the user is asking about TODAY (intraday) or wants to know
+whether a T-1 flag is still burning right now. The warehouse data this skill
+reads is T-1, so for same-day pacing you can pull live budget consumption from
+the Ads API. Skip it for a routine T-1 retrospective.
+
+1. Resolve the account's legacy seller id (the per-marketplace record id,
+   same ids as `mixshift amazon merchants`). This is the `--legacy-seller-id`
+   the call needs.
+2. Collect the Amazon `campaignId` values for the campaigns behind the flagged
+   keywords. Write them to a JSON body file, max 100 ids per call:
+   `{ "campaignIds": ["...", "..."] }`. Split into multiple files if more than
+   100 campaigns are flagged.
+3. Call the budget-usage surface (a read; nothing is mutated):
+   `mixshift ads call sp.budget_usage --legacy-seller-id <id> --body-file ids.json --json`
+4. Read `budgetUsagePercent` and `usageUpdatedTimestamp` per campaign. A
+   campaign already at or above 80 percent before midday (local account time)
+   strengthens a RED verdict: the budget is on track to exhaust early and the
+   spike is live, not a settled T-1 artifact. Note the percent and the
+   timestamp next to the affected rows.
+
+If the call returns `ads_not_configured`, `throttled`, or any other failure,
+skip the step, note that live budget usage was unavailable, and proceed on the
+T-1 warehouse signal alone. This check never blocks or gates the daily run. For
+the general Ads API surface (other live reads, recommendations), see
+mx-amazon-ads.
 
 ### Step 5 — Apply Structural Events
 

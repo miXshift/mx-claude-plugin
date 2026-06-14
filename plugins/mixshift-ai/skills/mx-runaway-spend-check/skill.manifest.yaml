@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-runaway-spend-check
 display_name: Runaway Spend Check
-version: "0.2.0"
+version: "0.3.0"
 description: >
   Daily keyword-level acute runaway spend detection. Flags keywords where T-1 spend
   spiked materially versus the T-30 baseline, or where high-spend keywords generated

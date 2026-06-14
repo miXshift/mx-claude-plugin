@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-search-term-negation
 display_name: Search Term Negation Analysis
-version: "1.3.0"
+version: "1.4.0"
 description: >
   Universal workflow for Amazon PPC search term irrelevance analysis and negative keyword
   strategy. Conducts systematic review of search term performance to identify irrelevant
