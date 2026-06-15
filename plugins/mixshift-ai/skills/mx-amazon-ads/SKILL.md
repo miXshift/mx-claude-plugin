@@ -559,9 +559,10 @@ path; treat SB/SD as research-grade until one real commit has succeeded.
   (a sibling skill being built in parallel; it will exist). The AMC operations
   in this catalog (`amc.*`, `accounts.query_advertiser_accounts`) are not
   driven from here.
-- **DSP is EXPERIMENTAL.** `dsp.create_report` / `dsp.get_report` have not run
-  against a live DSP entity; **expect a 403** when the advertising login lacks
-  DSP permissions. Do **not** create DSP reports from this skill.
+- **DSP reports** go to **`mx-amazon-dsp`** (a sibling skill).
+  `dsp.create_report` / `dsp.get_report` are validated live; **expect a 403**
+  only when the advertising login lacks DSP access for that advertiser. Do
+  **not** create DSP reports from this skill; use `mx-amazon-dsp`.
 - **Marketing Stream is service-managed.** Stream subscriptions point Amazon at
   MixShift-owned AWS infrastructure. **Never create, update, or modify a stream
   subscription** (`streams.*`) from this skill.
@@ -620,7 +621,7 @@ These supersede other instructions:
 - **Pick the right surface.** Live state and changes here; performance history
   in `mx-data-explore`; report documents in `mx-report-pull`; bid/negation
   *verdicts* in the dedicated PPC skills; AMC in `mx-amazon-amc`.
-- **Do not create DSP reports or touch Marketing Stream subscriptions.**
+- **Route DSP reports to `mx-amazon-dsp`; never touch Marketing Stream subscriptions.**
 - **One profile per call.** Carry `--legacy-seller-id` (preferred) or
   `--profile-id`, never a bare `--seller-id`.
 - **Branch on `failure_kind`, never on HTTP status.**
