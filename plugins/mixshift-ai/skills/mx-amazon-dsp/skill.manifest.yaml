@@ -1,0 +1,98 @@
+schema_version: 1
+skill_id: mx-amazon-dsp
+display_name: Amazon DSP Report Pull
+version: "0.1.0"
+description: >
+  Pull Amazon DSP (Demand-Side Platform) reports for a merchant, on demand,
+  straight from Amazon through MixShift's service. Drives the full DSP report
+  loop: discover the DSP advertiser id an advertising login can reach, build a
+  report request (type + dimensions + metrics), submit it, poll to completion
+  across turns, and fetch the JSON result. Read-only: generating a report
+  mutates nothing advertiser-facing and needs no write scope. Routes through
+  the bundled harness CLI. Does NOT require brand cold-start, only that the
+  user has signed in (`mixshift auth login`).
+
+# Tier 1 = informational, read-only against Amazon and the service. Requesting
+# a DSP report returns aggregated performance data and mutates nothing
+# advertiser-facing, so no write scope and no --commit. Modeled as per_account
+# because every call targets a specific merchant login
+# (legacySellerId / amazonSellerId), though no brand context is consumed.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # saves DSP report JSON to ~/.mixshift/reports/
+review_required: never
+sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
+
+# Harness commands the skill calls (DSP is the DSP family inside `ads call`;
+# there is no dedicated `dsp` subcommand).
+harness_commands:
+  - mixshift ads profiles
+  - mixshift ads operations --family DSP
+  - mixshift ads call accounts.query_advertiser_accounts
+  - mixshift ads call dsp.create_report --path accountId= --body-file <file>
+  - mixshift ads call dsp.get_report --path accountId= --path reportId=
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: dsp-report
+    type: json_artifact   # DSP returns a presigned url; the report is fetched to disk as JSON.
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - pull a dsp report
+  - amazon dsp report
+  - dsp campaign report
+  - dsp reporting
+  - dsp performance
+  - get dsp data
+  - dsp audience report
+  - dsp inventory report
+  - run a dsp report
+  - dsp advertiser report
+notes: >
+  Auth model: DSP rides the Amazon Ads API, whose tokens are PER ADVERTISING
+  LOGIN (not per seller). The service reads the tenant's stored advertising
+  refresh token and mints access tokens in memory; the plugin never holds Ads
+  secrets. Merchant selection mirrors the other Ads surfaces: prefer
+  `--legacy-seller-id` (deterministic, same ids as `amazon merchants`), or pass
+  `--seller-id` together with `--marketplace`. Ambiguity returns
+  merchant_not_found (exit 7) with candidates.
+
+  Two distinct ids: `--legacy-seller-id` selects which advertising LOGIN's token
+  the service uses; `--path accountId=<dspAdvertiserId>` is the DSP advertiser
+  being reported on. The dspAdvertiserId is discovered from
+  accounts.query_advertiser_accounts alternateIds[].dspAdvertiserId (carries a
+  region; the login must reach that region). It is NOT the profileId or
+  legacySellerId.
+
+  DSP reporting is its own endpoint (/accounts/{accountId}/dsp/reports) with a
+  type / dimensions / metrics body, distinct from Sponsored Ads v3 reporting
+  (configuration / reportTypeId / columns) and the unified /adsApi/v1 reporting.
+  Validated live 2026-06-14 (service: vnd type on Accept, body application/json).
+
+  Report shape: body { startDate, endDate, type, dimensions, metrics }. Types:
+  CAMPAIGN (dimensions ORDER/LINE_ITEM/CREATIVE, the validated known-good
+  shape), INVENTORY, AUDIENCE, PRODUCT, GEOGRAPHY, TECHNOLOGY, REACH. Each type
+  has its own valid dimensions + a large (hundreds) metric vocabulary; pick a
+  small intentional metric set and confirm non-CAMPAIGN combinations against
+  Amazon's reference. A FAILURE status is usually an invalid dimension/metric
+  for the type or a date range outside retention.
+
+  Lifecycle: dsp.create_report returns a reportId (status IN_PROGRESS). Poll
+  dsp.get_report ACROSS TURNS (IN_PROGRESS -> SUCCESS | FAILURE; no sleep-loops
+  in one Bash call). On SUCCESS the payload carries a presigned `location` url:
+  fetch it WITHOUT auth headers (it expires in ~1 hour; re-poll for a fresh one
+  if it lapses). The downloaded report is JSON.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - Amazon Ads enabled for the tenant; calls fail with ads_not_configured
+      otherwise (user contacts MixShift ops).
+    - The advertising login must hold DSP access for the advertiser; a 403 on
+      create/get usually means a missing seat or a region mismatch.
+
+  DSP report files land at
+  ~/.mixshift/reports/<merchant>/<date>-dsp-<type>.json.
