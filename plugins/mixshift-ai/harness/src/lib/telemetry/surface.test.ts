@@ -1,0 +1,79 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { detectSurface } from './surface.js';
+
+// Env keys + argv[1] that detection reads. Cleared before each test so every
+// case starts from a known baseline regardless of the real runner environment.
+const SIGNAL_KEYS = [
+  'MIXSHIFT_SURFACE',
+  'CLAUDECODE',
+  'CLAUDE_CODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_VERSION',
+  'COWORK',
+  'COWORK_VERSION',
+  'COWORK_PLUGIN_HOST',
+  'CLAUDE_PLUGIN_ROOT',
+];
+
+describe('detectSurface', () => {
+  const savedEnv = { ...process.env };
+  const savedArgv1 = process.argv[1];
+
+  beforeEach(() => {
+    for (const k of SIGNAL_KEYS) delete process.env[k];
+    // Neutral argv[1] so the real vitest runner path can't leak a marker.
+    process.argv[1] = '/tmp/test-runner.js';
+  });
+
+  afterEach(() => {
+    process.env = { ...savedEnv };
+    process.argv[1] = savedArgv1;
+  });
+
+  it('honors the MIXSHIFT_SURFACE override above everything', () => {
+    process.env.MIXSHIFT_SURFACE = 'cowork';
+    process.env.CLAUDECODE = '1';
+    expect(detectSurface()).toBe('cowork');
+  });
+
+  it('honors the --surface flag', () => {
+    expect(detectSurface('claude_desktop')).toBe('claude_desktop');
+  });
+
+  it('falls back to cli with no signals', () => {
+    expect(detectSurface()).toBe('cli');
+  });
+
+  it('detects Claude Code from CLAUDECODE=1 (plugin root under ~/.claude/plugins)', () => {
+    process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_PLUGIN_ROOT =
+      '/home/u/.claude/plugins/marketplaces/mixshift/plugins/mixshift-ai';
+    expect(detectSurface()).toBe('claude_code');
+  });
+
+  // The 2026-06-16 fix: Cowork embeds the CC engine, so CLAUDECODE=1 is set in
+  // Cowork too. Detection must still resolve `cowork` via the payload-path
+  // marker, and must run before the Claude Code detector.
+  it('detects Cowork by payload-path marker even when CLAUDECODE=1', () => {
+    process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_PLUGIN_ROOT =
+      'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/abc/def/rpm/plugin_x/.claude-plugin';
+    expect(detectSurface()).toBe('cowork');
+  });
+
+  it('detects Cowork from the payload marker on argv[1]', () => {
+    process.argv[1] =
+      'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/s/p/rpm/plugin_x/harness/dist/cli.js';
+    expect(detectSurface()).toBe('cowork');
+  });
+
+  it('detects Cowork from an explicit COWORK env var', () => {
+    process.env.COWORK = '1';
+    expect(detectSurface()).toBe('cowork');
+  });
+
+  it('marks plugin_host_unknown when a plugin root is set with no other signal', () => {
+    process.env.CLAUDE_PLUGIN_ROOT = '/some/unknown/host/plugin';
+    expect(detectSurface()).toBe('plugin_host_unknown');
+  });
+});
