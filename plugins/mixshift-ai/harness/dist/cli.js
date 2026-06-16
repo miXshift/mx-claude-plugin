@@ -21835,8 +21835,8 @@ var require_anchors = __commonJS({
     function anchorIsValid(anchor) {
       if (/[\x00-\x19\s,[\]{}]/.test(anchor)) {
         const sa = JSON.stringify(anchor);
-        const msg = `Anchor must not contain whitespace or control characters: ${sa}`;
-        throw new Error(msg);
+        const msg2 = `Anchor must not contain whitespace or control characters: ${sa}`;
+        throw new Error(msg2);
       }
       return true;
     }
@@ -22072,8 +22072,8 @@ var require_Alias = __commonJS({
         const { anchors: anchors2, doc, maxAliasCount } = ctx;
         const source = this.resolve(doc, ctx);
         if (!source) {
-          const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
-          throw new ReferenceError(msg);
+          const msg2 = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
+          throw new ReferenceError(msg2);
         }
         let data = anchors2.get(source);
         if (!data) {
@@ -22081,16 +22081,16 @@ var require_Alias = __commonJS({
           data = anchors2.get(source);
         }
         if (data?.res === void 0) {
-          const msg = "This should not happen: Alias anchor was not resolved?";
-          throw new ReferenceError(msg);
+          const msg2 = "This should not happen: Alias anchor was not resolved?";
+          throw new ReferenceError(msg2);
         }
         if (maxAliasCount >= 0) {
           data.count += 1;
           if (data.aliasCount === 0)
             data.aliasCount = getAliasCount(doc, source, anchors2);
           if (data.count * data.aliasCount > maxAliasCount) {
-            const msg = "Excessive alias count indicates a resource exhaustion attack";
-            throw new ReferenceError(msg);
+            const msg2 = "Excessive alias count indicates a resource exhaustion attack";
+            throw new ReferenceError(msg2);
           }
         }
         return data.res;
@@ -22100,8 +22100,8 @@ var require_Alias = __commonJS({
         if (ctx) {
           anchors.anchorIsValid(this.source);
           if (ctx.options.verifyAliasOrder && !ctx.anchors.has(this.source)) {
-            const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
-            throw new Error(msg);
+            const msg2 = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
+            throw new Error(msg2);
           }
           if (ctx.implicitKey)
             return `${src} `;
@@ -22957,8 +22957,8 @@ var require_stringifyPair = __commonJS({
           throw new Error("With simple keys, key nodes cannot have comments");
         }
         if (identity.isCollection(key) || !identity.isNode(key) && typeof key === "object") {
-          const msg = "With simple keys, collection cannot be used as a key value";
-          throw new Error(msg);
+          const msg2 = "With simple keys, collection cannot be used as a key value";
+          throw new Error(msg2);
         }
       }
       let explicitKey = !simpleKeys && (!key || keyComment && value == null && !ctx.inFlow || identity.isCollection(key) || (identity.isScalar(key) ? key.type === Scalar.Scalar.BLOCK_FOLDED || key.type === Scalar.Scalar.BLOCK_LITERAL : typeof key === "object"));
@@ -25357,8 +25357,8 @@ var require_util_flow_indent_check = __commonJS({
       if (fc?.type === "flow-collection") {
         const end = fc.end[0];
         if (end.indent === indent && (end.source === "]" || end.source === "}") && utilContainsNewline.containsNewline(fc)) {
-          const msg = "Flow end indicator should be more indented than parent";
-          onError(end, "BAD_INDENT", msg, true);
+          const msg2 = "Flow end indicator should be more indented than parent";
+          onError(end, "BAD_INDENT", msg2, true);
         }
       }
     }
@@ -25755,8 +25755,8 @@ var require_resolve_flow_collection = __commonJS({
         cePos = ce.offset + ce.source.length;
       else {
         const name = fcName[0].toUpperCase() + fcName.substring(1);
-        const msg = atRoot ? `${name} must end with a ${expectedEnd}` : `${name} in block collection must be sufficiently indented and end with a ${expectedEnd}`;
-        onError(offset, atRoot ? "MISSING_CHAR" : "BAD_INDENT", msg);
+        const msg2 = atRoot ? `${name} must end with a ${expectedEnd}` : `${name} in block collection must be sufficiently indented and end with a ${expectedEnd}`;
+        onError(offset, atRoot ? "MISSING_CHAR" : "BAD_INDENT", msg2);
         if (ce && ce.source.length !== 1)
           ee.unshift(ce);
       }
@@ -25802,7 +25802,7 @@ var require_compose_collection = __commonJS({
     }
     function composeCollection(CN, ctx, token, props, onError) {
       const tagToken = props.tag;
-      const tagName = !tagToken ? null : ctx.directives.tagName(tagToken.source, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg));
+      const tagName = !tagToken ? null : ctx.directives.tagName(tagToken.source, (msg2) => onError(tagToken, "TAG_RESOLVE_FAILED", msg2));
       if (token.type === "block-seq") {
         const { anchor, newlineAfterProp: nl } = props;
         const lastProp = anchor && tagToken ? anchor.offset > tagToken.offset ? anchor : tagToken : anchor ?? tagToken;
@@ -25831,7 +25831,7 @@ var require_compose_collection = __commonJS({
         }
       }
       const coll = resolveCollection(CN, ctx, token, onError, tagName, tag);
-      const res = tag.resolve?.(coll, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg), ctx.options) ?? coll;
+      const res = tag.resolve?.(coll, (msg2) => onError(tagToken, "TAG_RESOLVE_FAILED", msg2), ctx.options) ?? coll;
       const node = identity.isNode(res) ? res : new Scalar.Scalar(res);
       node.range = coll.range;
       node.tag = tagName;
@@ -26036,7 +26036,7 @@ var require_resolve_flow_scalar = __commonJS({
       const { offset, type, source, end } = scalar;
       let _type;
       let value;
-      const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
+      const _onError = (rel, code, msg2) => onError(offset + rel, code, msg2);
       switch (type) {
         case "scalar":
           _type = Scalar.Scalar.PLAIN;
@@ -26256,7 +26256,7 @@ var require_compose_scalar = __commonJS({
     var resolveFlowScalar = require_resolve_flow_scalar();
     function composeScalar(ctx, token, tagToken, onError) {
       const { value, type, comment, range } = token.type === "block-scalar" ? resolveBlockScalar.resolveBlockScalar(ctx, token, onError) : resolveFlowScalar.resolveFlowScalar(token, ctx.options.strict, onError);
-      const tagName = tagToken ? ctx.directives.tagName(tagToken.source, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg)) : null;
+      const tagName = tagToken ? ctx.directives.tagName(tagToken.source, (msg2) => onError(tagToken, "TAG_RESOLVE_FAILED", msg2)) : null;
       let tag;
       if (ctx.options.stringKeys && ctx.atKey) {
         tag = ctx.schema[identity.SCALAR];
@@ -26268,11 +26268,11 @@ var require_compose_scalar = __commonJS({
         tag = ctx.schema[identity.SCALAR];
       let scalar;
       try {
-        const res = tag.resolve(value, (msg) => onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg), ctx.options);
+        const res = tag.resolve(value, (msg2) => onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg2), ctx.options);
         scalar = identity.isScalar(res) ? res : new Scalar.Scalar(res);
       } catch (error51) {
-        const msg = error51 instanceof Error ? error51.message : String(error51);
-        onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
+        const msg2 = error51 instanceof Error ? error51.message : String(error51);
+        onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg2);
         scalar = new Scalar.Scalar(value);
       }
       scalar.range = range;
@@ -26317,8 +26317,8 @@ var require_compose_scalar = __commonJS({
         if (tag.tag !== compat.tag) {
           const ts = directives.tagString(tag.tag);
           const cs = directives.tagString(compat.tag);
-          const msg = `Value may be parsed as either ${ts} or ${cs}`;
-          onError(token, "TAG_RESOLVE_FAILED", msg, true);
+          const msg2 = `Value may be parsed as either ${ts} or ${cs}`;
+          onError(token, "TAG_RESOLVE_FAILED", msg2, true);
         }
       }
       return tag;
@@ -26409,8 +26409,8 @@ var require_compose_node = __commonJS({
       if (anchor && node.anchor === "")
         onError(anchor, "BAD_ALIAS", "Anchor cannot be an empty string");
       if (atKey && ctx.options.stringKeys && (!identity.isScalar(node) || typeof node.value !== "string" || node.tag && node.tag !== "tag:yaml.org,2002:str")) {
-        const msg = "With stringKeys, all keys must be strings";
-        onError(tag ?? token, "NON_STRING_KEY", msg);
+        const msg2 = "With stringKeys, all keys must be strings";
+        onError(tag ?? token, "NON_STRING_KEY", msg2);
       }
       if (spaceBefore)
         node.spaceBefore = true;
@@ -26659,8 +26659,8 @@ ${cb}` : comment;
             this.prelude.push(token.source);
             break;
           case "error": {
-            const msg = token.source ? `${token.message}: ${JSON.stringify(token.source)}` : token.message;
-            const error51 = new errors.YAMLParseError(getErrorPos(token), "UNEXPECTED_TOKEN", msg);
+            const msg2 = token.source ? `${token.message}: ${JSON.stringify(token.source)}` : token.message;
+            const error51 = new errors.YAMLParseError(getErrorPos(token), "UNEXPECTED_TOKEN", msg2);
             if (this.atDirectives || !this.doc)
               this.errors.push(error51);
             else
@@ -26669,8 +26669,8 @@ ${cb}` : comment;
           }
           case "doc-end": {
             if (!this.doc) {
-              const msg = "Unexpected doc-end without preceding document";
-              this.errors.push(new errors.YAMLParseError(getErrorPos(token), "UNEXPECTED_TOKEN", msg));
+              const msg2 = "Unexpected doc-end without preceding document";
+              this.errors.push(new errors.YAMLParseError(getErrorPos(token), "UNEXPECTED_TOKEN", msg2));
               break;
             }
             this.doc.directives.docEnd = true;
@@ -55267,14 +55267,14 @@ var require_auth_41 = __commonJS({
   "node_modules/mysql2/lib/auth_41.js"(exports) {
     "use strict";
     var crypto = __require("crypto");
-    function sha1(msg, msg1, msg2) {
+    function sha1(msg2, msg1, msg22) {
       const hash2 = crypto.createHash("sha1");
-      hash2.update(msg);
+      hash2.update(msg2);
       if (msg1) {
         hash2.update(msg1);
       }
-      if (msg2) {
-        hash2.update(msg2);
+      if (msg22) {
+        hash2.update(msg22);
       }
       return hash2.digest();
     }
@@ -57214,9 +57214,9 @@ var require_caching_sha2_password = __commonJS({
     var STATE_TOKEN_SENT = 1;
     var STATE_WAIT_SERVER_KEY = 2;
     var STATE_FINAL = -1;
-    function sha256(msg) {
+    function sha256(msg2) {
       const hash2 = crypto.createHash("sha256");
-      hash2.update(msg);
+      hash2.update(msg2);
       return hash2.digest();
     }
     function calculateToken(password, scramble) {
@@ -58351,10 +58351,10 @@ var require_helpers = __commonJS({
         return text;
       };
     }
-    function printDebugWithCode(msg, code) {
+    function printDebugWithCode(msg2, code) {
       console.log(`
 
-${msg}:
+${msg2}:
 `);
       console.log(`${highlightFn(code)}
 `);
@@ -65829,6 +65829,7 @@ init_load();
 init_credentials();
 
 // src/lib/telemetry/surface.ts
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 var ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
 function detectSurface(flagValue) {
   const envOverride = process.env[ENV_VAR_OVERRIDE];
@@ -65844,6 +65845,26 @@ function detectSurface(flagValue) {
   }
   return "cli";
 }
+var COWORK_PATH_MARKER = "local-agent-mode-sessions";
+function detectCowork() {
+  if (process.env.COWORK === "1") return "cowork";
+  if (process.env.COWORK_VERSION) return "cowork";
+  if (process.env.COWORK_PLUGIN_HOST) return "cowork";
+  if (runtimePaths().some((p) => p.toLowerCase().includes(COWORK_PATH_MARKER))) {
+    return "cowork";
+  }
+  return null;
+}
+function runtimePaths() {
+  const paths = [];
+  if (process.env.CLAUDE_PLUGIN_ROOT) paths.push(process.env.CLAUDE_PLUGIN_ROOT);
+  if (process.argv[1]) paths.push(process.argv[1]);
+  try {
+    paths.push(fileURLToPath3(import.meta.url));
+  } catch {
+  }
+  return paths;
+}
 function detectClaudeCode() {
   if (process.env.CLAUDECODE === "1" || process.env.CLAUDE_CODE === "1") {
     return "claude_code";
@@ -65853,19 +65874,14 @@ function detectClaudeCode() {
   }
   return null;
 }
-function detectCowork() {
-  if (process.env.COWORK === "1") return "cowork";
-  if (process.env.COWORK_VERSION) return "cowork";
-  if (process.env.COWORK_PLUGIN_HOST) return "cowork";
-  return null;
-}
 function detectPluginHostUnknown() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin_host_unknown";
   return null;
 }
 var detectors = [
-  detectClaudeCode,
   detectCowork,
+  // MUST be first — Cowork also sets CLAUDECODE (embeds CC engine).
+  detectClaudeCode,
   detectPluginHostUnknown
 ];
 var KNOWN_SURFACES = /* @__PURE__ */ new Set([
@@ -66200,12 +66216,12 @@ init_resolve();
 import { readFile as readFile9 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
 import { dirname as dirname9, join as join7, parse as parse3 } from "node:path";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
 function designSystemDir() {
   if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
     return process.env.MIXSHIFT_DESIGN_SYSTEM_DIR;
   }
-  let dir = dirname9(fileURLToPath3(import.meta.url));
+  let dir = dirname9(fileURLToPath4(import.meta.url));
   const root = parse3(dir).root;
   for (let i = 0; i < 8; i++) {
     const candidate = join7(dir, "assets", "design-system");
@@ -68032,8 +68048,8 @@ async function runNamedQuery(id, options = {}) {
   }
 }
 var DatahubNetworkError = class extends Error {
-  constructor(msg) {
-    super(msg);
+  constructor(msg2) {
+    super(msg2);
     this.name = "DatahubNetworkError";
   }
 };
@@ -70119,9 +70135,9 @@ function computeVerdict(args) {
 }
 async function loadAuditLabels() {
   const { existsSync: existsSync3 } = await import("node:fs");
-  const { fileURLToPath: fileURLToPath6 } = await import("node:url");
+  const { fileURLToPath: fileURLToPath7 } = await import("node:url");
   const { parse: parse4 } = await import("node:path");
-  let dir = dirname14(fileURLToPath6(import.meta.url));
+  let dir = dirname14(fileURLToPath7(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
     const candidate = join9(
@@ -74477,10 +74493,10 @@ async function runAuthLogin(opts) {
       if (resolved.noFallback || !isPkceBrowserOpenError(err)) {
         throw err;
       }
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg2 = err instanceof Error ? err.message : String(err);
       process.stderr.write(
         `
-Browser didn't respond (${msg}). Switching to device-code flow. Open the URL below on any machine to complete login.
+Browser didn't respond (${msg2}). Switching to device-code flow. Open the URL below on any machine to complete login.
 
 `
       );
@@ -74536,8 +74552,8 @@ async function runPkceLogin(opts) {
     try {
       await opts.openBrowser(loginUrl);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new PkceBrowserOpenError(`Failed to open browser: ${msg}`);
+      const msg2 = err instanceof Error ? err.message : String(err);
+      throw new PkceBrowserOpenError(`Failed to open browser: ${msg2}`);
     }
     process.stdout.write(
       `
@@ -74853,8 +74869,8 @@ function isLikelyEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 var PkceBrowserOpenError = class extends Error {
-  constructor(msg) {
-    super(msg);
+  constructor(msg2) {
+    super(msg2);
     this.name = "PkceBrowserOpenError";
   }
 };
@@ -76520,7 +76536,7 @@ import { resolve as resolvePath } from "node:path";
 var import_yaml17 = __toESM(require_dist(), 1);
 import { readFile as readFile22 } from "node:fs/promises";
 import { dirname as dirname19, join as join14 } from "node:path";
-import { fileURLToPath as fileURLToPath4 } from "node:url";
+import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
@@ -76554,7 +76570,7 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname19(fileURLToPath4(import.meta.url));
+  const here = dirname19(fileURLToPath5(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
@@ -79167,7 +79183,7 @@ function safeJsonPreview(json2) {
 var import_yaml19 = __toESM(require_dist(), 1);
 import { readFile as readFile27 } from "node:fs/promises";
 import { dirname as dirname26, join as join17 } from "node:path";
-import { fileURLToPath as fileURLToPath5 } from "node:url";
+import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
@@ -79217,7 +79233,7 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname26(fileURLToPath5(import.meta.url));
+  const here = dirname26(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
@@ -80396,12 +80412,12 @@ function registerReportRun(report) {
           },
           root.dataDir
         );
-        const msg = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${finalPoll.status}). The run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${runId}\`.`;
+        const msg2 = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${finalPoll.status}). The run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${runId}\`.`;
         if (root.json) {
-          writeJson3({ status: "error", failure_kind: "timeout", run_id: runId, report_status: finalPoll.status, message: msg });
+          writeJson3({ status: "error", failure_kind: "timeout", run_id: runId, report_status: finalPoll.status, message: msg2 });
         } else {
           process.stderr.write(`
-\u2717 ${msg}
+\u2717 ${msg2}
 `);
         }
         process.exitCode = EXIT_NOT_READY;
@@ -80422,12 +80438,12 @@ function registerReportRun(report) {
           },
           root.dataDir
         );
-        const msg = `The report reported ready but its document was not available yet (status: ${meta3.status ?? "unknown"}). The run handle is still valid; fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
+        const msg2 = `The report reported ready but its document was not available yet (status: ${meta3.status ?? "unknown"}). The run handle is still valid; fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
         if (root.json) {
-          writeJson3({ status: "ok", ready: false, run_id: runId, report_status: meta3.status, message: msg });
+          writeJson3({ status: "ok", ready: false, run_id: runId, report_status: meta3.status, message: msg2 });
         } else {
           process.stderr.write(`
-\u2022 ${msg}
+\u2022 ${msg2}
 `);
         }
         process.exitCode = EXIT_NOT_READY;
@@ -81109,17 +81125,91 @@ function buildRemediation(host, proxy) {
 }
 
 // src/commands/doctor.ts
+init_credentials();
+init_consent();
+
+// src/lib/data/named-pack-check.ts
+var DEFAULT_TIMEOUT_MS2 = 1e4;
+async function checkNamedPackCompat(opts) {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
+  let namedIds;
+  try {
+    const catalog = await loadCatalog();
+    namedIds = catalog.queries.filter((q) => q.dispatch === "named").map((q) => q.id).sort();
+  } catch (err) {
+    return unchecked(`could not load the SQL catalog: ${msg(err)}`);
+  }
+  if (namedIds.length === 0) {
+    return unchecked("no dispatch:named queries in this build", 0);
+  }
+  let manifest;
+  try {
+    const res = await doFetch(`${opts.apiBase}/api/named-query/ids`, {
+      headers: { Authorization: `Bearer ${opts.accessToken}` },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) {
+      return unchecked(
+        `GET /api/named-query/ids returned HTTP ${res.status}`,
+        namedIds.length
+      );
+    }
+    manifest = await res.json();
+  } catch (err) {
+    return unchecked(
+      `could not reach ${opts.apiBase}/api/named-query/ids: ${msg(err)}`,
+      namedIds.length
+    );
+  }
+  const deployed = new Set(manifest.ids ?? []);
+  const revisions = manifest.revisions ?? {};
+  const missing = namedIds.filter((id) => !deployed.has(id));
+  return {
+    checked: true,
+    ok: missing.length === 0,
+    missing,
+    total: namedIds.length,
+    revisions
+  };
+}
+function unchecked(reason, total = 0) {
+  return { checked: false, ok: true, missing: [], total, revisions: {}, reason };
+}
+function msg(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// src/commands/doctor.ts
 function registerDoctorCommand(program3) {
   program3.command("doctor").description(
-    'Network preflight. Detects a sandbox egress proxy, probes the MixShift service /health endpoint through it, and prints the exact allowlist remediation when the host is blocked (the common Cowork / Claude Code "fetch failed" cause).'
+    "One-shot environment diagnostic: runtime version (+ staleness), channel, auth state, query-pack compatibility, telemetry, and the network preflight (egress proxy + /health + allowlist remediation). Run this first when anything seems wrong. --network-only keeps the original preflight-only scope."
   ).option(
     "--api-base <url>",
     "Service URL to probe. Defaults to your saved credentials, then https://mcp.mixshift.io."
-  ).option("--timeout-ms <ms>", "Health-check timeout in milliseconds.", "10000").action(async (opts, cmd) => {
+  ).option("--timeout-ms <ms>", "Per-request timeout in milliseconds.", "10000").option(
+    "--network-only",
+    "Only run the network preflight (original behavior).",
+    false
+  ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const parsed = Number.parseInt(opts.timeoutMs ?? "10000", 10);
     const timeoutMs = Number.isFinite(parsed) && parsed >= 1e3 ? parsed : 1e4;
-    const report = await runNetworkDoctor({
+    if (opts.networkOnly) {
+      const report2 = await runNetworkDoctor({
+        apiBase: opts.apiBase,
+        dataDirOverride: root.dataDir,
+        timeoutMs
+      });
+      if (root.json) {
+        process.stdout.write(JSON.stringify(report2, null, 2) + "\n");
+      } else {
+        process.stdout.write(renderNetwork(report2));
+      }
+      process.exitCode = report2.ok ? 0 : 1;
+      return;
+    }
+    const report = await assembleFullReport({
       apiBase: opts.apiBase,
       dataDirOverride: root.dataDir,
       timeoutMs
@@ -81127,59 +81217,250 @@ function registerDoctorCommand(program3) {
     if (root.json) {
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
     } else {
-      process.stdout.write(renderReport(report));
+      process.stdout.write(renderFull(report));
     }
     process.exitCode = report.ok ? 0 : 1;
   });
 }
-function renderReport(r) {
-  const out = [];
-  out.push("mixshift doctor: network preflight");
-  out.push("");
-  out.push("Egress proxy:");
-  if (r.proxy.honored) {
-    out.push(`  https_proxy: ${r.proxy.https_proxy ?? "(unset)"}`);
-    out.push(`  http_proxy:  ${r.proxy.http_proxy ?? "(unset)"}`);
-    if (r.proxy.all_proxy) {
-      out.push(
-        `  all_proxy:   ${r.proxy.all_proxy} (SOCKS; not used, undici routes via the HTTP proxy)`
-      );
+async function assembleFullReport(opts) {
+  const version2 = getPluginVersion();
+  const channel = detectSurface();
+  let update = null;
+  try {
+    update = await checkForUpdate({ dataDirOverride: opts.dataDirOverride });
+  } catch {
+    update = null;
+  }
+  const auth = await summarizeAuth(opts.dataDirOverride);
+  const network = await runNetworkDoctor({
+    apiBase: opts.apiBase,
+    dataDirOverride: opts.dataDirOverride,
+    timeoutMs: opts.timeoutMs
+  });
+  let namedPack = {
+    checked: false,
+    ok: true,
+    missing: [],
+    total: 0,
+    revisions: {},
+    reason: auth.signedIn ? "service not reachable" : "not signed in (run `mixshift auth login`)"
+  };
+  if (auth.signedIn && network.health.reachable) {
+    try {
+      const token = await getValidAccessToken(opts.dataDirOverride);
+      namedPack = await checkNamedPackCompat({
+        apiBase: network.api_base,
+        accessToken: token,
+        timeoutMs: opts.timeoutMs
+      });
+    } catch (err) {
+      namedPack = {
+        checked: false,
+        ok: true,
+        missing: [],
+        total: 0,
+        revisions: {},
+        reason: err instanceof Error ? err.message : String(err)
+      };
     }
-    out.push("  status: detected. Global fetch is routed through it.");
+  }
+  const ts = await getTelemetryStatus(opts.dataDirOverride);
+  const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
+  const ok = network.ok && namedPack.ok;
+  return {
+    build: {
+      version: version2,
+      latest: update?.latest ?? null,
+      stale: update?.isStale ?? false,
+      releaseUrl: update?.releaseUrl ?? null,
+      checkedRemote: update?.fetched ?? false
+    },
+    channel,
+    auth,
+    telemetry: {
+      enabled: ts.enabled,
+      reason: ts.reason,
+      optedOut: ts.opted_out,
+      envOverride: ts.env_override,
+      configured: ts.configured,
+      queuedBytes
+    },
+    namedPack,
+    network,
+    update,
+    ok
+  };
+}
+async function summarizeAuth(dataDirOverride) {
+  let credentials = null;
+  try {
+    credentials = (await loadCredentials(dataDirOverride)).credentials;
+  } catch {
+    return { signedIn: false, kind: "none" };
+  }
+  if (!credentials) return { signedIn: false, kind: "none" };
+  if (credentials.datahub) {
+    const d = credentials.datahub;
+    return {
+      signedIn: true,
+      kind: "interactive",
+      email: d.email,
+      personLabel: d.person_label,
+      apiBase: d.api_base,
+      accessExpiresAt: d.expires_at,
+      accessExpired: Date.parse(d.expires_at) <= Date.now(),
+      refreshExpiresAt: d.refresh_expires_at
+    };
+  }
+  if (credentials.service) {
+    return {
+      signedIn: true,
+      kind: "service",
+      apiBase: credentials.service.api_base,
+      clientId: credentials.service.client_id,
+      label: credentials.service.label
+    };
+  }
+  if (credentials.mysql) {
+    return {
+      signedIn: true,
+      kind: "legacy_mysql",
+      database: credentials.mysql.database
+    };
+  }
+  return { signedIn: false, kind: "none" };
+}
+function renderFull(r) {
+  const out = [];
+  out.push("mixshift doctor");
+  out.push("");
+  out.push("Build:");
+  out.push(
+    `  version: ${r.build.version}  (the TRUE running build \u2014 trust this over the host's plugin label)`
+  );
+  if (r.build.latest === null) {
+    out.push("  latest:  (could not check \u2014 offline or version check unavailable)");
+  } else if (r.build.stale) {
+    out.push(`  latest:  ${r.build.latest}  \u2014 UPDATE AVAILABLE (see below)`);
   } else {
+    out.push(`  latest:  ${r.build.latest}  \u2014 up to date`);
+  }
+  out.push("");
+  out.push(`Channel: ${r.channel}`);
+  if (r.channel === "plugin_host_unknown") {
     out.push(
-      "  none detected. Direct connections (normal terminal / unrestricted environment)."
+      "  (couldn't identify the host; telemetry tags this as plugin_host_unknown)"
     );
   }
   out.push("");
-  out.push(`Service: ${r.api_base}`);
+  out.push("Auth:");
+  if (!r.auth.signedIn) {
+    out.push("  not signed in. Run `mixshift auth login`.");
+  } else if (r.auth.kind === "interactive") {
+    out.push(
+      `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? "?"}`
+    );
+    if (r.auth.email && r.auth.email !== r.auth.personLabel) {
+      out.push(`    tenant login: ${r.auth.email}`);
+    }
+    out.push(`    service: ${r.auth.apiBase ?? "?"}`);
+    if (r.auth.accessExpired) {
+      out.push(
+        "    access token: EXPIRED (auto-refreshes on next call; if that fails, run `mixshift auth login`)"
+      );
+    } else if (r.auth.accessExpiresAt) {
+      out.push(`    access token valid until ${r.auth.accessExpiresAt}`);
+    }
+  } else if (r.auth.kind === "service") {
+    out.push(
+      `  signed in (service credential) ${r.auth.label ?? r.auth.clientId ?? ""}`.trimEnd()
+    );
+    out.push(`    service: ${r.auth.apiBase ?? "?"}`);
+  } else if (r.auth.kind === "legacy_mysql") {
+    out.push("  signed in (legacy raw-MySQL credential)");
+  }
+  out.push("");
+  out.push("Query pack (service compatibility):");
+  if (r.namedPack.checked) {
+    if (r.namedPack.ok) {
+      out.push(
+        `  OK \u2014 all ${r.namedPack.total} named queries resolve against the deployed pack.`
+      );
+    } else {
+      out.push(
+        `  MISMATCH \u2014 ${r.namedPack.missing.length}/${r.namedPack.total} named queries are NOT deployed: ${r.namedPack.missing.join(", ")}.`
+      );
+      out.push(
+        "    This build is ahead of the service (or the service is mid-deploy);"
+      );
+      out.push("    affected skills will hit `unknown_query` until it catches up.");
+    }
+  } else {
+    out.push(`  not checked (${r.namedPack.reason ?? "unavailable"}).`);
+  }
+  out.push("");
+  out.push("Telemetry:");
+  out.push(`  ${r.telemetry.enabled ? "on" : "off"} (${r.telemetry.reason})`);
+  if (r.telemetry.queuedBytes > 0) {
+    out.push(
+      `    ${r.telemetry.queuedBytes} bytes queued; flushes on the next command.`
+    );
+  }
+  out.push("");
+  out.push(renderNetwork(r.network));
+  if (r.update && r.update.isStale) {
+    out.push(renderUpdateBanner(r.update, "terminal"));
+  }
+  return out.join("\n").replace(/\n+$/, "\n");
+}
+function renderNetwork(r) {
+  const out = [];
+  out.push("Network:");
+  out.push("");
+  out.push("  Egress proxy:");
+  if (r.proxy.honored) {
+    out.push(`    https_proxy: ${r.proxy.https_proxy ?? "(unset)"}`);
+    out.push(`    http_proxy:  ${r.proxy.http_proxy ?? "(unset)"}`);
+    if (r.proxy.all_proxy) {
+      out.push(
+        `    all_proxy:   ${r.proxy.all_proxy} (SOCKS; not used, undici routes via the HTTP proxy)`
+      );
+    }
+    out.push("    status: detected. Global fetch is routed through it.");
+  } else {
+    out.push(
+      "    none detected. Direct connections (normal terminal / unrestricted environment)."
+    );
+  }
+  out.push("");
+  out.push(`  Service: ${r.api_base}`);
   if (r.health.reachable) {
     out.push(
-      `  reachable (HTTP ${r.health.status}, ${r.health.duration_ms}ms). You are good to go.`
+      `    reachable (HTTP ${r.health.status}, ${r.health.duration_ms}ms). You are good to go.`
     );
   } else {
-    out.push(`  NOT reachable (${r.health.duration_ms}ms).`);
-    if (r.health.error) out.push(`  ${r.health.error}`);
+    out.push(`    NOT reachable (${r.health.duration_ms}ms).`);
+    if (r.health.error) out.push(`    ${r.health.error}`);
   }
   out.push("");
   if (!r.ok && r.remediation) {
-    out.push("How to fix:");
-    for (const line of r.remediation.split("\n")) out.push(`  ${line}`);
+    out.push("  How to fix:");
+    for (const line of r.remediation.split("\n")) out.push(`    ${line}`);
     out.push("");
-    out.push("Required domains:");
+    out.push("  Required domains:");
     for (const e of r.allowlist.required) {
-      out.push(`  ${e.domain}`);
-      out.push(`    ${e.why}`);
+      out.push(`    ${e.domain}`);
+      out.push(`      ${e.why}`);
     }
     out.push("");
-    out.push("Optional (safe to omit):");
+    out.push("  Optional (safe to omit):");
     for (const e of r.allowlist.optional) {
-      out.push(`  ${e.domain}`);
-      out.push(`    ${e.why}`);
+      out.push(`    ${e.domain}`);
+      out.push(`      ${e.why}`);
     }
     out.push("");
   }
-  return out.join("\n") + "\n";
+  return out.join("\n");
 }
 
 // src/cli.ts
