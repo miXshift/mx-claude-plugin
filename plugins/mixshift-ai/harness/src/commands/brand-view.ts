@@ -155,7 +155,7 @@ export async function renderBrandView(
   }
 
   // From here on, ALWAYS use the canonical slug from the registry row —
-  // args.slug may be a fuzzy input ("AOP", "Skratch Labs").
+  // args.slug may be a fuzzy input ("AOP", "Summit Labs").
   const canonicalSlug = row.slug;
 
   // 2. Cold-start context (validated).

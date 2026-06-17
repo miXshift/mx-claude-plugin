@@ -23,7 +23,7 @@ const PROFILE = {
   profileId: '2835259260187719',
   legacySellerId: 623,
   amazonSellerId: 'A3QZKJBUHVI46V',
-  name: 'Home IQ USA',
+  name: 'Hearth IQ USA',
   merchantType: 'Seller',
   merchantRegion: 'America',
   marketplaceId: 'ATVPDKIKX0DER',

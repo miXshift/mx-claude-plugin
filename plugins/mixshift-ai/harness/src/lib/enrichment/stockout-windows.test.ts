@@ -118,7 +118,7 @@ describe('detectStockoutWindows — signal sources', () => {
   });
 
   it('does NOT count days_of_supply_low when SellableQuantity is 0', () => {
-    // Per Todd's rule: dos_low only fires when sellable > 0 (zero-sellable
+    // Per the upstream's rule: dos_low only fires when sellable > 0 (zero-sellable
     // is already caught by sellable_zero).
     const cs29: CS29Row[] = [
       { ASIN: 'B07X', snapshot_date: '2026-05-01', SellableQuantity: 0, DaysOfSupply: 10 },

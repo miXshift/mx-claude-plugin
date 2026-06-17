@@ -1,7 +1,7 @@
 /**
  * Brand-name typo clusterer — Phase 1.5 analysis #3.
  *
- * Ported from Todd's `enrich-context.py::detect_brand_term_typos` (v2.3.1+).
+ * Ported from the upstream's `enrich-context.py::detect_brand_term_typos` (v2.3.1+).
  * Reads CS-31 (trailing-90-day converting search-term corpus) and the
  * brand's `brand_terms` + `negation.competitor_brands`, then finds search
  * terms that LOOK like brand traffic but aren't already in
@@ -10,17 +10,17 @@
  * **Two detection paths:**
  *
  *   Path A — `token_membership`: multi-token search term contains a known
- *     single-word brand variant as a token. E.g. "water bottle polar"
- *     contains "polar" which is in polar_bottle.variants. Trusts the AM's
+ *     single-word brand variant as a token. E.g. "water bottle glacier"
+ *     contains "glacier" which is in glacier_bottle.variants. Trusts the AM's
  *     curated single-word variants list as ground truth for branded intent.
  *     `distance: 0`, `match_type: "token_membership"`.
  *
  *   Path B — `levenshtein`: search term is within a length-aware edit
- *     distance of a canonical brand term. E.g. "hydropack" is dist-2 from
- *     "hydrapak". `distance: 1 | 2`, `match_type: "levenshtein"`.
+ *     distance of a canonical brand term. E.g. "ridgepock" is dist-2 from
+ *     "ridgepak". `distance: 1 | 2`, `match_type: "levenshtein"`.
  *
  * Both paths filter out competitor-brand collisions. Path B additionally
- * filters plural-only matches ("polar bottles" vs "polar bottle").
+ * filters plural-only matches ("glacier bottles" vs "glacier bottle").
  *
  * **Output:** clusters keyed by `(canonical_match, root_token)` so the AM
  * gets one decision per cluster instead of N flat rows. Cluster members
@@ -47,7 +47,7 @@ export interface CS31Row {
 
 /**
  * Per-sub-brand brand_terms block from context.yaml:
- *   { hydrapak: { canonical: ["hydrapak"], variants: ["hyrdapak", "hydra-pak"] } }
+ *   { ridgepak: { canonical: ["ridgepak"], variants: ["rdigepak", "ridge-pak"] } }
  */
 export type BrandTermsBlock = Record<
   string,
@@ -247,7 +247,7 @@ export function detectBrandTermTypos(
 
 /**
  * Iterative Levenshtein distance — O(len(a) × len(b)), no allocations
- * beyond two row buffers. Zero-dep, mirrors Todd's Python implementation.
+ * beyond two row buffers. Zero-dep, mirrors the upstream's Python implementation.
  */
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
@@ -307,7 +307,7 @@ export function isPluralOnly(term: string, canonical: string): boolean {
  * Detect that `term` is searching for a competitor brand, not a typo of our
  * brand. Three checks (any one is sufficient):
  *   1. Token-level — any token equals, starts with, or Levenshtein <= max_dist of a competitor
- *   2. Whole-term — the full term is within max_dist of a competitor (catches "hydra peak" → "hydrapeak")
+ *   2. Whole-term — the full term is within max_dist of a competitor (catches "ridge peak" → "ridgepeak")
  *   3. Adjacent-pair concat — any two consecutive tokens joined match a competitor
  *
  * Returns the matched competitor brand name, or null.
@@ -355,7 +355,7 @@ export function competitorCollision(
 /**
  * Return the token in `term` closest to `canonical` (by Levenshtein). The
  * cluster key — terms sharing the same root token get grouped. Punctuation
- * stripped first so '"hydrapak' and 'hydrapak/' yield the same root.
+ * stripped first so '"ridgepak' and 'ridgepak/' yield the same root.
  */
 export function rootToken(term: string, canonical: string): string {
   const t = term.toLowerCase().trim();

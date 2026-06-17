@@ -1,7 +1,7 @@
 /**
  * Fuzzy brand-name resolver.
  *
- * Users say "Skratch", "Hydro Cell", "AOP", "Home IQ" — display names,
+ * Users say "Summit", "Ridgeline Cell", "AOP", "Hearth IQ" — display names,
  * acronyms, prefixes, partial matches. The resolver maps those to a
  * canonical slug from the brand registry (`~/.mixshift/clients/index.yaml`)
  * so commands like `mixshift brand key add` can accept human-friendly
@@ -46,8 +46,8 @@ function normalizeForMatch(s: string): string {
 
 /**
  * Build the acronym for a display name: first character of each word
- * (after normalization), uppercased. "American Outdoor Products" → "AOP".
- * "Home IQ USA" → "HIU". "HydraPak, LLC" → "HL" (after corporate-suffix
+ * (after normalization), uppercased. "Aspen Outdoor Provisions" → "AOP".
+ * "Hearth IQ USA" → "HIU". "Ridgepak, LLC" → "HL" (after corporate-suffix
  * stripping at the slug layer; we do a softer strip here so users can
  * still acronym-match brand variants). Returns an empty string if no
  * alphabetic content survives.
@@ -73,7 +73,7 @@ export function resolveBrandName(
 
   // 1. Slug-shape input → exact slug match. Only checked when the input
   //    LOOKS like a slug (kebab-case, lowercase) — avoids false slug-hits
-  //    from a display name like "skratch labs" (which doesn't match
+  //    from a display name like "summit labs" (which doesn't match
   //    SLUG_REGEX anyway).
   if (SLUG_REGEX.test(raw)) {
     const slugMatch = index.brands.find((b) => b.slug === raw);
@@ -81,8 +81,8 @@ export function resolveBrandName(
   }
 
   // 2a. Literal case-insensitive equality (no punctuation stripping).
-  //     Wins over the normalized check below — so "Polar Bottle" matches
-  //     "Polar Bottle" exactly even though "Polar Bottle®" would also
+  //     Wins over the normalized check below — so "Glacier Bottle" matches
+  //     "Glacier Bottle" exactly even though "Glacier Bottle®" would also
   //     match if we stripped the ®. Punctuation IS signal for exact
   //     matches; we only collapse it when nothing literal hits.
   const lowerInput = raw.toLowerCase().trim();
@@ -135,7 +135,7 @@ export function resolveBrandName(
   }
 
   // Prefix + substring matches are too noisy for very short inputs
-  //   "ca" matches "Ameri-CA-n Outdoor Products" + "Hydrapak - CA" + etc.
+  //   "ca" matches "Ridgepak - CA" and other " - CA" marketplace variants.
   // Require ≥3 characters for these fuzzy paths. The acronym path above
   // (which requires exact match against the full acronym, not a prefix)
   // already covers most short-input cases like "AOP".
@@ -143,8 +143,8 @@ export function resolveBrandName(
     return { status: 'none', normalized_input: raw };
   }
 
-  // 4. Prefix match on the normalized display name. "Skratch" matches
-  //    "Skratch Labs" via prefix; "Home IQ" matches "Home IQ USA".
+  // 4. Prefix match on the normalized display name. "Summit" matches
+  //    "Summit Labs" via prefix; "Hearth IQ" matches "Hearth IQ USA".
   const prefixCandidates = index.brands.filter((b) =>
     normalizeForMatch(b.display_name).startsWith(normalized),
   );
@@ -159,8 +159,8 @@ export function resolveBrandName(
     };
   }
 
-  // 5. Substring match on display name. Last-resort — "polar" might match
-  //    Polar Bottle, Polar Bottle® (legacy variant), etc. Returns ambiguous
+  // 5. Substring match on display name. Last-resort — "glacier" might match
+  //    Glacier Bottle, Glacier Bottle® (legacy variant), etc. Returns ambiguous
   //    if many; callers should consider this signal weak.
   const substringCandidates = index.brands.filter((b) =>
     normalizeForMatch(b.display_name).includes(normalized),

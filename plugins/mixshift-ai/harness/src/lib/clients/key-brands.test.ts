@@ -62,36 +62,36 @@ async function seedIndex(brands: BrandSuggestion[]): Promise<void> {
 
 describe('addKeyBrand', () => {
   it('resolves a display name and adds the slug', async () => {
-    await seedIndex([brand({ slug: 'skratch-labs', display_name: 'Skratch Labs' })]);
-    const result = await addKeyBrand('Skratch Labs', testDir);
+    await seedIndex([brand({ slug: 'summit-labs', display_name: 'Summit Labs' })]);
+    const result = await addKeyBrand('Summit Labs', testDir);
     expect(result.status).toBe('added');
-    expect(result.brand?.slug).toBe('skratch-labs');
-    expect(result.key_brands).toEqual(['skratch-labs']);
+    expect(result.brand?.slug).toBe('summit-labs');
+    expect(result.key_brands).toEqual(['summit-labs']);
   });
 
   it('resolves an acronym and adds the slug', async () => {
     await seedIndex([
-      brand({ slug: 'american-outdoor-products', display_name: 'American Outdoor Products' }),
+      brand({ slug: 'aspen-outdoor-provisions', display_name: 'Aspen Outdoor Provisions' }),
     ]);
     const result = await addKeyBrand('AOP', testDir);
     expect(result.status).toBe('added');
-    expect(result.brand?.slug).toBe('american-outdoor-products');
+    expect(result.brand?.slug).toBe('aspen-outdoor-provisions');
   });
 
   it('reports already_key when the slug is already in the list', async () => {
-    await seedIndex([brand({ slug: 'skratch-labs', display_name: 'Skratch Labs' })]);
-    await addKeyBrand('skratch-labs', testDir);
-    const result = await addKeyBrand('Skratch Labs', testDir);
+    await seedIndex([brand({ slug: 'summit-labs', display_name: 'Summit Labs' })]);
+    await addKeyBrand('summit-labs', testDir);
+    const result = await addKeyBrand('Summit Labs', testDir);
     expect(result.status).toBe('already_key');
-    expect(result.key_brands).toEqual(['skratch-labs']);
+    expect(result.key_brands).toEqual(['summit-labs']);
   });
 
   it('returns ambiguous candidates without modifying the list', async () => {
     await seedIndex([
-      brand({ slug: 'hydrapak', display_name: 'Hydrapak' }),
-      brand({ slug: 'hydrapak-ca', display_name: 'Hydrapak - CA' }),
+      brand({ slug: 'ridgepak', display_name: 'Ridgepak' }),
+      brand({ slug: 'ridgepak-ca', display_name: 'Ridgepak - CA' }),
     ]);
-    const result = await addKeyBrand('Hydra', testDir);
+    const result = await addKeyBrand('Ridgep', testDir);
     expect(result.status).toBe('ambiguous');
     expect(result.candidates?.length).toBeGreaterThan(1);
     expect(result.key_brands).toEqual([]);
@@ -117,9 +117,9 @@ describe('addKeyBrand', () => {
 
 describe('removeKeyBrand', () => {
   it('removes by display-name input', async () => {
-    await seedIndex([brand({ slug: 'skratch-labs', display_name: 'Skratch Labs' })]);
-    await addKeyBrand('Skratch Labs', testDir);
-    const result = await removeKeyBrand('Skratch Labs', testDir);
+    await seedIndex([brand({ slug: 'summit-labs', display_name: 'Summit Labs' })]);
+    await addKeyBrand('Summit Labs', testDir);
+    const result = await removeKeyBrand('Summit Labs', testDir);
     expect(result.status).toBe('removed');
     expect(result.key_brands).toEqual([]);
   });

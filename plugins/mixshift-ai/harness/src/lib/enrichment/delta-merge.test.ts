@@ -9,17 +9,17 @@ import type { EnrichmentArtifact } from './types.js';
 let testDir: string;
 let brandDir: string;
 
-const baseContextYaml = `# Skratch Labs brand context
+const baseContextYaml = `# Summit Labs brand context
 # Hand-curated by the AM — DO NOT machine-edit non-enrichment fields.
 
 schema_version: 1
-brand_slug: skratch
-brand_name: Skratch Labs
+brand_slug: summit
+brand_name: Summit Labs
 last_updated: 2026-05-01
 
 accounts:
   - seller_id: 12345
-    seller_name: Skratch Labs LLC
+    seller_name: Summit Labs LLC
     account_type: SC
     status: active
     role: primary
@@ -42,7 +42,7 @@ negation:
     - flask
     - bottle
   competitor_brands:
-    - hydrapeak
+    - ridgepeak
 
 capture_rate_calibration:
   enabled: false
@@ -51,7 +51,7 @@ capture_rate_calibration:
 
 const sampleEnrichment: EnrichmentArtifact = {
   schema_version: 1,
-  brand_slug: 'skratch',
+  brand_slug: 'summit',
   run_date: '2026-05-21',
   generated_at: '2026-05-21T08:00:00Z',
   account_count: 1,
@@ -108,7 +108,7 @@ beforeEach(async () => {
     tmpdir(),
     `mxtest-delta-merge-${process.pid}-${Date.now()}-${Math.random()}`,
   );
-  brandDir = join(testDir, 'clients', 'skratch');
+  brandDir = join(testDir, 'clients', 'summit');
   await mkdir(brandDir, { recursive: true });
 });
 
@@ -119,7 +119,7 @@ afterEach(async () => {
 describe('mergeEnrichmentIntoContext — no enrichment', () => {
   it('returns no_enrichment when artifact missing', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
-    const result = await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    const result = await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     expect(result.status).toBe('no_enrichment');
     expect(result.fields_updated).toEqual([]);
   });
@@ -129,16 +129,16 @@ describe('mergeEnrichmentIntoContext — no settlement curve', () => {
   it('returns no_curve when enrichment has null settlement curve', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const noCurveArtifact = { ...sampleEnrichment, daily_settlement_curve: null };
-    await writeEnrichmentArtifact('skratch', '2026-05-21', noCurveArtifact, testDir);
-    const result = await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await writeEnrichmentArtifact('summit', '2026-05-21', noCurveArtifact, testDir);
+    const result = await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     expect(result.status).toBe('no_curve');
   });
 });
 
 describe('mergeEnrichmentIntoContext — no context', () => {
   it('returns context_missing when context.yaml absent', async () => {
-    await writeEnrichmentArtifact('skratch', '2026-05-21', sampleEnrichment, testDir);
-    const result = await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await writeEnrichmentArtifact('summit', '2026-05-21', sampleEnrichment, testDir);
+    const result = await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     expect(result.status).toBe('context_missing');
   });
 });
@@ -146,11 +146,11 @@ describe('mergeEnrichmentIntoContext — no context', () => {
 describe('mergeEnrichmentIntoContext — happy path', () => {
   beforeEach(async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
-    await writeEnrichmentArtifact('skratch', '2026-05-21', sampleEnrichment, testDir);
+    await writeEnrichmentArtifact('summit', '2026-05-21', sampleEnrichment, testDir);
   });
 
   it('returns ok status with updated fields list', async () => {
-    const result = await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    const result = await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     expect(result.status).toBe('ok');
     expect(result.fields_updated).toContain('capture_rate_calibration.daily_settlement_curve');
     expect(result.fields_updated).toContain('capture_rate_calibration.stability_score');
@@ -159,7 +159,7 @@ describe('mergeEnrichmentIntoContext — happy path', () => {
   });
 
   it('patches daily_settlement_curve into capture_rate_calibration', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     expect(raw).toContain('daily_settlement_curve:');
     expect(raw).toContain('by_campaign_type:');
@@ -168,14 +168,14 @@ describe('mergeEnrichmentIntoContext — happy path', () => {
   });
 
   it('sets stability_score and last_calibrated', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     expect(raw).toContain('stability_score: medium');
     expect(raw).toContain('last_calibrated: 2026-05-21');
   });
 
   it('bumps last_updated to today', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     const today = new Date().toISOString().slice(0, 10);
     expect(raw).toContain(`last_updated: ${today}`);
@@ -183,17 +183,17 @@ describe('mergeEnrichmentIntoContext — happy path', () => {
   });
 
   it('PRESERVES AM-curated fields (negation, accounts, etc.)', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     // Negation block intact
     expect(raw).toContain('protected_terms:');
     expect(raw).toContain('- flask');
     expect(raw).toContain('- bottle');
     expect(raw).toContain('competitor_brands:');
-    expect(raw).toContain('- hydrapeak');
+    expect(raw).toContain('- ridgepeak');
     // Accounts intact
     expect(raw).toContain('seller_id: 12345');
-    expect(raw).toContain('Skratch Labs LLC');
+    expect(raw).toContain('Summit Labs LLC');
     // Management intact
     expect(raw).toContain('primary_metric: ACOS');
     expect(raw).toContain('acos_target_pct: 0.28');
@@ -202,7 +202,7 @@ describe('mergeEnrichmentIntoContext — happy path', () => {
   it('flips capture_rate_calibration.enabled from false → true via missing → set', async () => {
     // Initial context has enabled: false, our merge logic only sets when
     // undefined/null. So we should NOT change it here.
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     // Original enabled: false preserved
     expect(raw).toMatch(/enabled:\s*false/);
@@ -215,26 +215,26 @@ describe('mergeEnrichmentIntoContext — happy path', () => {
       `capture_rate_calibration:\n  capture_rate_pct: null\n`,
     );
     await writeFile(join(brandDir, 'context.yaml'), ctxNoEnabled, 'utf-8');
-    const result = await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    const result = await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     expect(result.fields_updated).toContain('capture_rate_calibration.enabled');
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     expect(raw).toMatch(/enabled:\s*true/);
   });
 
   it('is idempotent — second merge produces no field changes except last_updated', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const after1 = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     // Wait a tick so timing of last_updated doesn't differ
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const after2 = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     // Both should be identical (today's date is the same)
     expect(after2).toBe(after1);
   });
 
   it('PRESERVES comments in context.yaml', async () => {
-    await mergeEnrichmentIntoContext('skratch', '2026-05-21', testDir);
+    await mergeEnrichmentIntoContext('summit', '2026-05-21', testDir);
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
-    expect(raw).toContain('# Skratch Labs brand context');
+    expect(raw).toContain('# Summit Labs brand context');
     expect(raw).toContain('# AM-curated: do NOT touch');
   });
 });

@@ -6,7 +6,7 @@
  * map, computes the verdict + audit coverage + open-gap buckets + skill
  * readiness, and produces three artifacts:
  *
- *   - brand-context.html        — 19-section page (Todd's template + new
+ *   - brand-context.html        — 19-section page (the upstream's template + new
  *                                 design-system primitives)
  *   - brand-context.headline.json — ~500-token model summary
  *   - brand-context.review.json — compact review map: buckets, runtime
@@ -14,7 +14,7 @@
  *
  * Plus the sidecar (lib/sidecar/write.ts) for the run record.
  *
- * Phase B scope: replicates Todd's v2.5.1 brand-context-template.html
+ * Phase B scope: replicates the upstream's v2.5.1 brand-context-template.html
  * structure using our design-system primitives. Section bodies that depend
  * on Phase C work (enrichment, detected_anomalies, reporting-style) render
  * graceful empty states so the surface works end-to-end today and gets

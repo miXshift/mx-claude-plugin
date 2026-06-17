@@ -13,33 +13,33 @@ import {
 
 describe('levenshtein', () => {
   it('returns 0 for equal strings', () => {
-    expect(levenshtein('hydrapak', 'hydrapak')).toBe(0);
+    expect(levenshtein('ridgepak', 'ridgepak')).toBe(0);
   });
   it('returns length when one string is empty', () => {
     expect(levenshtein('', 'abc')).toBe(3);
     expect(levenshtein('abc', '')).toBe(3);
   });
   it('handles single-char substitutions', () => {
-    expect(levenshtein('hyrdapak', 'hydrapak')).toBe(2); // hyrdapak → hydrapak: 2 transpositions = 2 subs
+    expect(levenshtein('rdigepak', 'ridgepak')).toBe(2); // rdigepak → ridgepak: 2 transpositions = 2 subs
   });
   it('handles insertions', () => {
-    expect(levenshtein('hydrapak', 'hydrapack')).toBe(1);
+    expect(levenshtein('ridgepak', 'ridgepack')).toBe(1);
   });
   it('handles deletions', () => {
-    expect(levenshtein('hydrapaks', 'hydrapak')).toBe(1);
+    expect(levenshtein('ridgepaks', 'ridgepak')).toBe(1);
   });
 });
 
 describe('stripPunct', () => {
   it('strips leading punctuation', () => {
-    expect(stripPunct('"hydrapak')).toBe('hydrapak');
+    expect(stripPunct('"ridgepak')).toBe('ridgepak');
   });
   it('strips trailing punctuation', () => {
-    expect(stripPunct('hydrapak/')).toBe('hydrapak');
-    expect(stripPunct('hydrapak.')).toBe('hydrapak');
+    expect(stripPunct('ridgepak/')).toBe('ridgepak');
+    expect(stripPunct('ridgepak.')).toBe('ridgepak');
   });
   it('preserves internal hyphens', () => {
-    expect(stripPunct('hydra-pak')).toBe('hydra-pak');
+    expect(stripPunct('ridge-pak')).toBe('ridge-pak');
   });
   it('preserves internal digits', () => {
     expect(stripPunct('aop-2024')).toBe('aop-2024');
@@ -52,91 +52,91 @@ describe('maxDistFor', () => {
     expect(maxDistFor('hp')).toBe(0);
   });
   it('returns 1 for 4-5 char canonicals', () => {
-    expect(maxDistFor('popl')).toBe(1);
-    expect(maxDistFor('skratch'.slice(0, 5))).toBe(1);
+    expect(maxDistFor('voro')).toBe(1);
+    expect(maxDistFor('summit'.slice(0, 5))).toBe(1);
   });
   it('returns the configured ceiling for ≥6 char canonicals', () => {
-    expect(maxDistFor('hydrapak')).toBe(2);
-    expect(maxDistFor('hydrapak', 3)).toBe(3);
+    expect(maxDistFor('ridgepak')).toBe(2);
+    expect(maxDistFor('ridgepak', 3)).toBe(3);
   });
 });
 
 describe('isPluralOnly', () => {
-  it('returns true for "polar bottles" vs "polar bottle"', () => {
-    expect(isPluralOnly('polar bottles', 'polar bottle')).toBe(true);
+  it('returns true for "glacier bottles" vs "glacier bottle"', () => {
+    expect(isPluralOnly('glacier bottles', 'glacier bottle')).toBe(true);
   });
   it('returns true for "boxes" vs "box"', () => {
     expect(isPluralOnly('boxes', 'box')).toBe(true);
   });
   it('returns false for unrelated terms', () => {
-    expect(isPluralOnly('hydropack', 'hydrapak')).toBe(false);
+    expect(isPluralOnly('ridgepock', 'ridgepak')).toBe(false);
   });
 });
 
 describe('competitorCollision', () => {
-  const competitors = ['hydrapeak', 'hydramax'];
+  const competitors = ['ridgepeak', 'ridgemax'];
   it('detects whole-term Levenshtein match', () => {
-    expect(competitorCollision('hydrapeak water', competitors)).toBe('hydrapeak');
+    expect(competitorCollision('ridgepeak water', competitors)).toBe('ridgepeak');
   });
   it('detects exact token match', () => {
-    expect(competitorCollision('water hydrapeak bottle', competitors)).toBe('hydrapeak');
+    expect(competitorCollision('water ridgepeak bottle', competitors)).toBe('ridgepeak');
   });
   it('detects prefix-match token', () => {
-    expect(competitorCollision('hydrapeaker', competitors)).toBe('hydrapeak');
+    expect(competitorCollision('ridgepeaker', competitors)).toBe('ridgepeak');
   });
   it('detects space-deletion variant', () => {
-    // "hydra peak" → joined "hydrapeak" — adjacent-pair concat
-    expect(competitorCollision('hydra peak water', competitors)).toBe('hydrapeak');
+    // "ridge peak" → joined "ridgepeak" — adjacent-pair concat
+    expect(competitorCollision('ridge peak water', competitors)).toBe('ridgepeak');
   });
   it('returns null for term not close to any competitor', () => {
-    // Note: "hydrapak" IS Levenshtein-1 from "hydrapeak" (insert 'e'), so we
+    // Note: "ridgepak" IS Levenshtein-1 from "ridgepeak" (insert 'e'), so we
     // can't use it here as a "non-matching" example. Use something genuinely
     // unrelated to either competitor.
     expect(competitorCollision('blue water flask', competitors)).toBeNull();
   });
   it('returns null when competitor list is empty', () => {
-    expect(competitorCollision('hydrapeak', [])).toBeNull();
+    expect(competitorCollision('ridgepeak', [])).toBeNull();
   });
 });
 
 describe('rootToken', () => {
   it('picks the closest single token from a multi-token term', () => {
-    expect(rootToken('hydropack water bottle', 'hydrapak')).toBe('hydropack');
+    expect(rootToken('ridgepock water bottle', 'ridgepak')).toBe('ridgepock');
   });
   it('strips punctuation before matching', () => {
-    expect(rootToken('"hydrapak"', 'hydrapak')).toBe('hydrapak');
+    expect(rootToken('"ridgepak"', 'ridgepak')).toBe('ridgepak');
   });
 });
 
 describe('detectBrandTermTypos — empty input', () => {
   it('returns empty array when CS-31 is empty', () => {
-    expect(detectBrandTermTypos([], { hp: { canonical: ['hydrapak'] } })).toEqual([]);
+    expect(detectBrandTermTypos([], { hp: { canonical: ['ridgepak'] } })).toEqual([]);
   });
   it('returns empty array when brand_terms is null', () => {
-    expect(detectBrandTermTypos([{ SearchTerm: 'hydropack' }], null)).toEqual([]);
+    expect(detectBrandTermTypos([{ SearchTerm: 'ridgepock' }], null)).toEqual([]);
   });
   it('returns empty array when brand_terms has no canonicals', () => {
-    expect(detectBrandTermTypos([{ SearchTerm: 'hydropack' }], {})).toEqual([]);
+    expect(detectBrandTermTypos([{ SearchTerm: 'ridgepock' }], {})).toEqual([]);
   });
 });
 
 describe('detectBrandTermTypos — Path A (token_membership)', () => {
   const brandTerms: BrandTermsBlock = {
-    polar_bottle: {
-      canonical: ['polar bottle'],
-      variants: ['polar'],
+    glacier_bottle: {
+      canonical: ['glacier bottle'],
+      variants: ['glacier'],
     },
   };
 
   it('catches multi-token term containing a known single-word variant', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'water bottle polar', orders: 10, sales: 100, spend: 20, clicks: 50 },
+      { SearchTerm: 'water bottle glacier', orders: 10, sales: 100, spend: 20, clicks: 50 },
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters).toHaveLength(1);
     expect(clusters[0]).toMatchObject({
-      canonical_match: 'polar bottle',
-      root_token: 'polar',
+      canonical_match: 'glacier bottle',
+      root_token: 'glacier',
       match_type: 'token_membership',
       distance: 0,
       variant_count: 1,
@@ -146,37 +146,37 @@ describe('detectBrandTermTypos — Path A (token_membership)', () => {
 
   it('does NOT match single-token terms (they would be in known set)', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'polar', orders: 10, sales: 100, spend: 20 },
+      { SearchTerm: 'glacier', orders: 10, sales: 100, spend: 20 },
     ];
-    // 'polar' is in known set (it's a variant), so it's already filtered
+    // 'glacier' is in known set (it's a variant), so it's already filtered
     expect(detectBrandTermTypos(rows, brandTerms)).toEqual([]);
   });
 
   it('competitor filter overrides membership match', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'polar takeya bottle', orders: 10, sales: 100, spend: 20 },
+      { SearchTerm: 'glacier flaskco bottle', orders: 10, sales: 100, spend: 20 },
     ];
-    const clusters = detectBrandTermTypos(rows, brandTerms, { competitor_brands: ['takeya'] });
+    const clusters = detectBrandTermTypos(rows, brandTerms, { competitor_brands: ['flaskco'] });
     expect(clusters).toEqual([]);
   });
 });
 
 describe('detectBrandTermTypos — Path B (Levenshtein)', () => {
   const brandTerms: BrandTermsBlock = {
-    hydrapak: {
-      canonical: ['hydrapak'],
+    ridgepak: {
+      canonical: ['ridgepak'],
       variants: [],
     },
   };
 
   it('catches close typos within length-aware budget', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydropack', orders: 5, sales: 50, spend: 10 },
+      { SearchTerm: 'ridgepock', orders: 5, sales: 50, spend: 10 },
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters).toHaveLength(1);
     expect(clusters[0]).toMatchObject({
-      canonical_match: 'hydrapak',
+      canonical_match: 'ridgepak',
       match_type: 'levenshtein',
       total_orders: 5,
     });
@@ -194,34 +194,34 @@ describe('detectBrandTermTypos — Path B (Levenshtein)', () => {
 
   it('rejects plural-only matches', () => {
     const brandTerms: BrandTermsBlock = {
-      polar_bottle: { canonical: ['polar bottle'], variants: [] },
+      glacier_bottle: { canonical: ['glacier bottle'], variants: [] },
     };
     const rows: CS31Row[] = [
-      { SearchTerm: 'polar bottles', orders: 5, sales: 50 },
+      { SearchTerm: 'glacier bottles', orders: 5, sales: 50 },
     ];
     expect(detectBrandTermTypos(rows, brandTerms)).toEqual([]);
   });
 
   it('rejects competitor-brand collisions', () => {
     const brandTerms: BrandTermsBlock = {
-      hydrapak: { canonical: ['hydrapak'], variants: [] },
+      ridgepak: { canonical: ['ridgepak'], variants: [] },
     };
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydrapeak', orders: 5 },
+      { SearchTerm: 'ridgepeak', orders: 5 },
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms, {
-      competitor_brands: ['hydrapeak'],
+      competitor_brands: ['ridgepeak'],
     });
     expect(clusters).toEqual([]);
   });
 
   it('skips already-known terms (exact canonical or variant)', () => {
     const brandTerms: BrandTermsBlock = {
-      hydrapak: { canonical: ['hydrapak'], variants: ['hyrdapak'] },
+      ridgepak: { canonical: ['ridgepak'], variants: ['rdigepak'] },
     };
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydrapak' }, // canonical — known
-      { SearchTerm: 'hyrdapak' }, // existing variant — known
+      { SearchTerm: 'ridgepak' }, // canonical — known
+      { SearchTerm: 'rdigepak' }, // existing variant — known
     ];
     expect(detectBrandTermTypos(rows, brandTerms)).toEqual([]);
   });
@@ -229,14 +229,14 @@ describe('detectBrandTermTypos — Path B (Levenshtein)', () => {
 
 describe('detectBrandTermTypos — clustering', () => {
   const brandTerms: BrandTermsBlock = {
-    hydrapak: { canonical: ['hydrapak'], variants: [] },
+    ridgepak: { canonical: ['ridgepak'], variants: [] },
   };
 
   it('groups variants sharing canonical + root_token', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydropack', orders: 5, sales: 50 },
-      { SearchTerm: 'hydropack bottle', orders: 3, sales: 30 },
-      { SearchTerm: 'hydropack water', orders: 2, sales: 20 },
+      { SearchTerm: 'ridgepock', orders: 5, sales: 50 },
+      { SearchTerm: 'ridgepock bottle', orders: 3, sales: 30 },
+      { SearchTerm: 'ridgepock water', orders: 2, sales: 20 },
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters).toHaveLength(1);
@@ -247,12 +247,12 @@ describe('detectBrandTermTypos — clustering', () => {
 
   it('sorts clusters by total_orders desc', () => {
     const brandTerms: BrandTermsBlock = {
-      hydrapak: { canonical: ['hydrapak'], variants: [] },
-      polar_bottle: { canonical: ['polar bottle'], variants: ['polar'] },
+      ridgepak: { canonical: ['ridgepak'], variants: [] },
+      glacier_bottle: { canonical: ['glacier bottle'], variants: ['glacier'] },
     };
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydropack', orders: 5, sales: 50 }, // 5 orders
-      { SearchTerm: 'polar water bottle', orders: 20, sales: 200 }, // 20 orders
+      { SearchTerm: 'ridgepock', orders: 5, sales: 50 }, // 5 orders
+      { SearchTerm: 'glacier water bottle', orders: 20, sales: 200 }, // 20 orders
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters).toHaveLength(2);
@@ -263,7 +263,7 @@ describe('detectBrandTermTypos — clustering', () => {
   it('top_variants is capped at 5 per cluster, all_variants holds full list', () => {
     const rows: CS31Row[] = [];
     for (let i = 0; i < 8; i++) {
-      rows.push({ SearchTerm: `hydropack v${i}`, orders: 10 - i, sales: (10 - i) * 10 });
+      rows.push({ SearchTerm: `ridgepock v${i}`, orders: 10 - i, sales: (10 - i) * 10 });
     }
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters).toHaveLength(1);
@@ -274,7 +274,7 @@ describe('detectBrandTermTypos — clustering', () => {
 
 describe('detectBrandTermTypos — input tolerance', () => {
   const brandTerms: BrandTermsBlock = {
-    hydrapak: { canonical: ['hydrapak'], variants: [] },
+    ridgepak: { canonical: ['ridgepak'], variants: [] },
   };
 
   it('drops rows without SearchTerm', () => {
@@ -284,7 +284,7 @@ describe('detectBrandTermTypos — input tolerance', () => {
 
   it('handles string-encoded numeric metrics', () => {
     const rows: CS31Row[] = [
-      { SearchTerm: 'hydropack', orders: '5', sales: '50.00', spend: '10' },
+      { SearchTerm: 'ridgepock', orders: '5', sales: '50.00', spend: '10' },
     ];
     const clusters = detectBrandTermTypos(rows, brandTerms);
     expect(clusters[0]!.total_orders).toBe(5);

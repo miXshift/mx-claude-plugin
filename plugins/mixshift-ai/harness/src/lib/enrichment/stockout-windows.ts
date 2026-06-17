@@ -1,7 +1,7 @@
 /**
  * Stockout window detector — Phase 1.5 analysis #2.
  *
- * Ported from Todd's `enrich-context.py::detect_stockout_windows`. Reads
+ * Ported from the upstream's `enrich-context.py::detect_stockout_windows`. Reads
  * CS-29 (mws_inventory_history FBA out-of-stock ASIN-days, pre-filtered) and
  * CS-30 (daily account-level ad metrics), and groups consecutive in-trouble
  * days per ASIN into contiguous windows of ≥ `min_days` days. Each window

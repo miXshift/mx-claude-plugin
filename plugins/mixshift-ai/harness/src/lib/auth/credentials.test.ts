@@ -407,7 +407,7 @@ function validDatahubFixture(): DatahubCreds {
     refresh_expires_at: '2026-06-26T15:23:13.000Z',
     user_id: '3',
     email: 'amazon+clients@dashapplications.com',
-    person_label: 'sam.hager@mixshift.io',
+    person_label: 'someone@example.com',
     device_label: 'laptop-sam',
     client_id: 'mx-claude-plugin',
   };

@@ -85,10 +85,10 @@ Amazon's SP-API, pulled through MixShift's service," not a guess.
 
 Trigger when the user wants to **pull a report from Amazon**, for example:
 
-- "Pull the Sales and Traffic report for Hydrapak last month"
+- "Pull the Sales and Traffic report for Ridgepak last month"
 - "Get me the Brand Analytics search terms report for last week"
 - "I need the all-orders report for a specific date range"
-- "Fetch FBA inventory for Skratch"
+- "Fetch FBA inventory for Summit"
 - "What Amazon reports can I pull?"
 - "Get data Amazon has that isn't in the warehouse yet"
 - "Pull the vendor sales report and save it so I can build on it"
@@ -527,8 +527,8 @@ You:  Run `mixshift amazon describe-report GET_SALES_AND_TRAFFIC_REPORT`.
 
 ### Pattern 2 - Straightforward pull (chat, poll-across-calls)
 ```
-User: "Pull last month's Sales and Traffic for Hydrapak, daily grain"
-You:  1. Resolve the merchant: `amazon merchants --json`, match "Hydrapak"
+User: "Pull last month's Sales and Traffic for Ridgepak, daily grain"
+You:  1. Resolve the merchant: `amazon merchants --json`, match "Ridgepak"
          by name, take its amazonSellerId.
       2. Check the window rule via describe-report if unsure. Sales and
          Traffic REQUIRES a window.
@@ -831,7 +831,7 @@ These supersede other instructions:
 Lead with a one-line result, then the path or a brief sample:
 
 ```
-✓ Pulled GET_SALES_AND_TRAFFIC_REPORT for Hydrapak (2026-05-01 to 2026-05-31).
+✓ Pulled GET_SALES_AND_TRAFFIC_REPORT for Ridgepak (2026-05-01 to 2026-05-31).
   → Saved 48.2 KB to ~/.mixshift/reports/A2EUQ.../2026-06-03-GET_SALES_AND_TRAFFIC_REPORT.json
   → Format: JSON (salesAndTrafficByDate[] + salesAndTrafficByAsin[])
 
@@ -842,7 +842,7 @@ another window?
 While a report is still generating:
 
 ```
-• Started GET_SALES_AND_TRAFFIC_REPORT for Hydrapak (run_id 3f2c...).
+• Started GET_SALES_AND_TRAFFIC_REPORT for Ridgepak (run_id 3f2c...).
   Amazon is generating it (status: IN_PROGRESS). I'll check again in a moment;
   this can take a few minutes for large windows.
 ```

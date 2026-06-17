@@ -12,8 +12,8 @@ let brandDir: string;
 
 const baseContextYaml = `
 schema_version: 1
-brand_slug: skratch
-brand_name: Skratch Labs
+brand_slug: summit
+brand_name: Summit Labs
 last_updated: 2026-05-01
 accounts:
   - seller_id: 123
@@ -38,7 +38,7 @@ beforeEach(async () => {
     tmpdir(),
     `mxtest-brandcfg-${process.pid}-${Date.now()}-${Math.random()}`,
   );
-  brandDir = join(testDir, 'clients', 'skratch');
+  brandDir = join(testDir, 'clients', 'summit');
   await mkdir(brandDir, { recursive: true });
 });
 
@@ -49,8 +49,8 @@ afterEach(async () => {
 describe('prepareBrandConfigEdit', () => {
   it('flags context_missing when no context.yaml exists', async () => {
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     expect(payload.context_missing).toBe(true);
@@ -60,8 +60,8 @@ describe('prepareBrandConfigEdit', () => {
   it('reads stored values from context.yaml', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     expect(payload.context_missing).toBe(false);
@@ -75,8 +75,8 @@ describe('prepareBrandConfigEdit', () => {
   it('marks unset optional fields as missing', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const tacos = payload.fields.find((f) => f.field.id === 'tacos_target_pct')!;
@@ -90,8 +90,8 @@ describe('prepareBrandConfigEdit', () => {
     const yaml = baseContextYaml.replace('attribution_window_days: 7\n', '');
     await writeFile(join(brandDir, 'context.yaml'), yaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const attr = payload.fields.find(
@@ -106,8 +106,8 @@ describe('applyBrandConfigEdit — confirm action', () => {
   it('returns ok without writing on confirm-as-is', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(
@@ -124,8 +124,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('writes edits to context.yaml at the dotted paths', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(
@@ -149,8 +149,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('preserves untouched fields (accounts, sources)', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     await applyBrandConfigEdit(
@@ -166,8 +166,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('bumps last_updated when a write happens', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     await applyBrandConfigEdit(
@@ -183,8 +183,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('does NOT bump last_updated when no value actually changed', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     // "Edit" to the same value — should no-op
@@ -202,8 +202,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('returns validation_failed without writing on bad input', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(
@@ -225,8 +225,8 @@ describe('applyBrandConfigEdit — edit action', () => {
   it('rejects edits to unknown brand-config fields', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(
@@ -245,8 +245,8 @@ describe('applyBrandConfigEdit — cancel + context_missing', () => {
   it('returns cancelled without touching the file', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(
@@ -260,8 +260,8 @@ describe('applyBrandConfigEdit — cancel + context_missing', () => {
 
   it('returns context_missing when context.yaml does not exist', async () => {
     const payload = await prepareBrandConfigEdit({
-      brandSlug: 'skratch',
-      brandName: 'Skratch Labs',
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
     const result = await applyBrandConfigEdit(

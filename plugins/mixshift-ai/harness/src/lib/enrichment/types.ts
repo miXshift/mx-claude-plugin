@@ -14,7 +14,7 @@
  * `context.yaml::detected_anomalies` as a pending list — additive merge
  * (never wipe entries the AM hasn't yet confirmed or dismissed).
  *
- * Shapes mirror Todd's `enrich-context.py` output. Stable across Phase C
+ * Shapes mirror the upstream's `enrich-context.py` output. Stable across Phase C
  * sub-phases (C.2/C.3/C.4 each fill in one of the three blocks).
  */
 

@@ -22,8 +22,8 @@ const NOW = new Date('2026-06-10T12:00:00.000Z');
 
 const sellerRow = {
   ID: 574,
-  MerchantAlias: "Backpacker's Pantry",
-  Name: 'American Outdoor Products',
+  MerchantAlias: "Forager's Pantry",
+  Name: 'Aspen Outdoor Provisions',
   ACOSTarget: 25,
   MarketPlaceName: 'Amazon.com',
 };
@@ -31,14 +31,14 @@ const sellerRow = {
 const scCatalogRow = {
   ASIN: 'B00AAA111',
   SKU: 'BP-CHEW-01',
-  Brand: "Backpacker's Pantry",
+  Brand: "Forager's Pantry",
   ItemGroup: 'Energy Chews',
 };
 
 const campaignRow = {
   Objective: 'defend',
   ItemGroup: 'Energy Chews',
-  Brand: "Backpacker's Pantry",
+  Brand: "Forager's Pantry",
   State: 'enabled',
   BidOptimization: 'smart',
   BrandEntityId: 'ENTITY123',
@@ -87,7 +87,7 @@ async function writeIndexFixture(
     { seller_id: 574, account_type: 'SC' },
     { seller_id: 575, account_type: 'SC' },
   ],
-  slug = 'backpackers-pantry',
+  slug = 'foragers-pantry',
 ) {
   const index = {
     schema_version: 1,
@@ -95,7 +95,7 @@ async function writeIndexFixture(
     brands: [
       {
         slug,
-        display_name: "Backpacker's Pantry",
+        display_name: "Forager's Pantry",
         ads_active: true,
         retail_active: true,
         is_dormant: false,
@@ -103,8 +103,8 @@ async function writeIndexFixture(
         cold_started_at: null,
         accounts: accounts.map((a) => ({
           seller_id: a.seller_id,
-          seller_name: 'American Outdoor Products',
-          merchant_alias: "Backpacker's Pantry",
+          seller_name: 'Aspen Outdoor Provisions',
+          merchant_alias: "Forager's Pantry",
           account_type: a.account_type,
           marketplace: 'US',
           region: 'NA',
@@ -153,7 +153,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -179,12 +179,12 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       expect(callFor('BRAIN-CATALOG-SC')!.params).toEqual({ seller_ids: [574, 575] });
       expect(callFor('BRAIN-CAMPAIGN')!.params).toEqual({ seller_ids: [574, 575] });
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       expect(brain.ok).toBe(true);
       if (brain.ok) {
         expect(brain.brain.catalog).toMatchObject({
           asin_count: 1,
-          sub_brands: ["Backpacker's Pantry"],
+          sub_brands: ["Forager's Pantry"],
           item_groups: ['Energy Chews'],
         });
         expect(brain.brain.campaign_structure).toMatchObject({
@@ -200,7 +200,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
 
       const status = JSON.parse(
         await readFile(
-          join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
+          join(dir, 'clients', 'foragers-pantry', '.brain-status.json'),
           'utf-8',
         ),
       );
@@ -226,7 +226,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -241,12 +241,12 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
         seller_ids: [574, 580, 590],
       });
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       if (brain.ok) {
         // SC Brand + VC CustomBrand merge into sub_brands
         expect(brain.brain.catalog?.sub_brands).toEqual([
           'Astronaut Foods',
-          "Backpacker's Pantry",
+          "Forager's Pantry",
         ]);
         expect(brain.brain.catalog?.asin_count).toBe(2);
       } else {
@@ -264,7 +264,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -274,7 +274,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       expect(ids).not.toContain('BRAIN-CATALOG-VC');
       expect(ids).toContain('BRAIN-CAMPAIGN');
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       if (brain.ok) {
         expect(brain.brain.catalog).toBeUndefined();
         expect(brain.brain.campaign_structure?.campaign_count).toBe(1);
@@ -292,7 +292,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -303,7 +303,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
         expect(result.summary.campaign_count).toBeNull();
       }
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       if (brain.ok) {
         expect(brain.brain.campaign_structure).toBeUndefined();
         expect(brain.brain.sources.campaign).toBeUndefined();
@@ -322,7 +322,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -330,14 +330,14 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
 
       const status = JSON.parse(
         await readFile(
-          join(dir, 'clients', 'backpackers-pantry', '.brain-status.json'),
+          join(dir, 'clients', 'foragers-pantry', '.brain-status.json'),
           'utf-8',
         ),
       );
       expect(status.status).toBe('failed');
       expect(status.error).toContain('sp_brain_seller_fetch');
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       expect(brain.ok).toBe(false);
     });
   });
@@ -359,7 +359,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
     await withTempDir(async (dir) => {
       await writeIndexFixture(dir);
       const seeded = assembleBrain({
-        brandSlug: 'backpackers-pantry',
+        brandSlug: 'foragers-pantry',
         sellerRows: [sellerRow],
         sellerSproc: 'sp_brain_seller_fetch',
         generator: 'plugin@test',
@@ -368,7 +368,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       await saveBrain(seeded, dir);
 
       const skipped = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -382,7 +382,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
         'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
       });
       const forced = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         refresh: true,
         dataDirOverride: dir,
         now: NOW,
@@ -395,7 +395,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
     await withTempDir(async (dir) => {
       await writeIndexFixture(dir);
       const old = assembleBrain({
-        brandSlug: 'backpackers-pantry',
+        brandSlug: 'foragers-pantry',
         sellerRows: [sellerRow],
         sellerSproc: 'sp_brain_seller_fetch',
         generator: 'plugin@test',
@@ -405,7 +405,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
 
       const result = await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         dataDirOverride: dir,
         now: NOW,
       });
@@ -418,7 +418,7 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       await writeIndexFixture(dir);
       const seeded = applyObservations(
         assembleBrain({
-          brandSlug: 'backpackers-pantry',
+          brandSlug: 'foragers-pantry',
           sellerRows: [sellerRow],
           sellerSproc: 'sp_brain_seller_fetch',
           generator: 'plugin@test',
@@ -438,13 +438,13 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
       routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
 
       await fetchBrandBrain({
-        slug: 'backpackers-pantry',
+        slug: 'foragers-pantry',
         refresh: true,
         dataDirOverride: dir,
         now: NOW,
       });
 
-      const brain = await loadBrain('backpackers-pantry', dir);
+      const brain = await loadBrain('foragers-pantry', dir);
       if (brain.ok) {
         expect(
           brain.brain.observations['buy_box_health.chronic_losers'],

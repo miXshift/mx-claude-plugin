@@ -53,7 +53,7 @@ let brandDir: string;
 
 beforeEach(async () => {
   testDir = join(tmpdir(), `mxtest-brandconfig-${process.pid}-${Date.now()}-${Math.random()}`);
-  brandDir = join(testDir, 'clients', 'skratch');
+  brandDir = join(testDir, 'clients', 'summit');
   await mkdir(brandDir, { recursive: true });
 });
 
@@ -63,21 +63,21 @@ afterEach(async () => {
 
 describe('readBrandConfig', () => {
   it('returns empty config when file missing', async () => {
-    const r = await readBrandConfig('skratch', testDir);
+    const r = await readBrandConfig('summit', testDir);
     expect(r.source).toBe('empty');
     expect(r.config).toEqual({});
   });
 
   it('returns empty config when file is empty', async () => {
     await writeFile(join(brandDir, 'config.yaml'), '', 'utf-8');
-    const r = await readBrandConfig('skratch', testDir);
+    const r = await readBrandConfig('summit', testDir);
     expect(r.source).toBe('file');
     expect(r.config).toEqual({});
   });
 
   it('throws helpful error on malformed YAML', async () => {
     await writeFile(join(brandDir, 'config.yaml'), 'not: valid: yaml: [unclosed', 'utf-8');
-    await expect(readBrandConfig('skratch', testDir)).rejects.toThrow(/malformed YAML/);
+    await expect(readBrandConfig('summit', testDir)).rejects.toThrow(/malformed YAML/);
   });
 
   it('preserves user-added passthrough fields', async () => {
@@ -89,7 +89,7 @@ mx-daily-health-check:
   another: { nested: true }
 `;
     await writeFile(join(brandDir, 'config.yaml'), yaml, 'utf-8');
-    const r = await readBrandConfig('skratch', testDir);
+    const r = await readBrandConfig('summit', testDir);
     expect(r.config['mx-daily-health-check']).toMatchObject({
       objective: 'growth',
       dampening: 0.6,
@@ -147,12 +147,12 @@ describe('buildSkillConfigView', () => {
 describe('saveSkillConfig + resetSkillConfig', () => {
   it('writes a new skill block', async () => {
     await saveSkillConfig(
-      'skratch',
+      'summit',
       'mx-daily-health-check',
       { objective: 'growth', dampening: 0.6 },
       testDir,
     );
-    const { config } = await readBrandConfig('skratch', testDir);
+    const { config } = await readBrandConfig('summit', testDir);
     expect(config['mx-daily-health-check']).toEqual({
       objective: 'growth',
       dampening: 0.6,
@@ -160,9 +160,9 @@ describe('saveSkillConfig + resetSkillConfig', () => {
   });
 
   it('round-trips other skill blocks', async () => {
-    await saveSkillConfig('skratch', 'skill-a', { a: 1 }, testDir);
-    await saveSkillConfig('skratch', 'skill-b', { b: 2 }, testDir);
-    const { config } = await readBrandConfig('skratch', testDir);
+    await saveSkillConfig('summit', 'skill-a', { a: 1 }, testDir);
+    await saveSkillConfig('summit', 'skill-b', { b: 2 }, testDir);
+    const { config } = await readBrandConfig('summit', testDir);
     expect(config).toEqual({
       'skill-a': { a: 1 },
       'skill-b': { b: 2 },
@@ -171,29 +171,29 @@ describe('saveSkillConfig + resetSkillConfig', () => {
 
   it('replaces (not merges) when re-saving a skill block', async () => {
     await saveSkillConfig(
-      'skratch',
+      'summit',
       'dhc',
       { objective: 'growth', dampening: 0.6 },
       testDir,
     );
-    await saveSkillConfig('skratch', 'dhc', { objective: 'profit' }, testDir);
-    const { config } = await readBrandConfig('skratch', testDir);
+    await saveSkillConfig('summit', 'dhc', { objective: 'profit' }, testDir);
+    const { config } = await readBrandConfig('summit', testDir);
     expect(config['dhc']).toEqual({ objective: 'profit' });
   });
 
   it('preserves extras via composeSkillBlock', async () => {
     await saveSkillConfig(
-      'skratch',
+      'summit',
       'dhc',
       { objective: 'growth', custom: 'preserved' },
       testDir,
     );
-    const { config: before } = await readBrandConfig('skratch', testDir);
+    const { config: before } = await readBrandConfig('summit', testDir);
     const view = buildSkillConfigView(before['dhc'], sampleManifest);
     // Compose new manifest values with preserved extras
     const composed = composeSkillBlock({ objective: 'profit', dampening: 0.5 }, view.extras);
-    await saveSkillConfig('skratch', 'dhc', composed, testDir);
-    const { config: after } = await readBrandConfig('skratch', testDir);
+    await saveSkillConfig('summit', 'dhc', composed, testDir);
+    const { config: after } = await readBrandConfig('summit', testDir);
     expect(after['dhc']).toEqual({
       objective: 'profit',
       dampening: 0.5,
@@ -202,23 +202,23 @@ describe('saveSkillConfig + resetSkillConfig', () => {
   });
 
   it('reset removes the skill block but leaves others alone', async () => {
-    await saveSkillConfig('skratch', 'skill-a', { a: 1 }, testDir);
-    await saveSkillConfig('skratch', 'skill-b', { b: 2 }, testDir);
-    const result = await resetSkillConfig('skratch', 'skill-a', testDir);
+    await saveSkillConfig('summit', 'skill-a', { a: 1 }, testDir);
+    await saveSkillConfig('summit', 'skill-b', { b: 2 }, testDir);
+    const result = await resetSkillConfig('summit', 'skill-a', testDir);
     expect(result.existed).toBe(true);
-    const { config } = await readBrandConfig('skratch', testDir);
+    const { config } = await readBrandConfig('summit', testDir);
     expect(config).toEqual({ 'skill-b': { b: 2 } });
   });
 
   it('reset is idempotent (no-op when block absent)', async () => {
-    const result = await resetSkillConfig('skratch', 'nope', testDir);
+    const result = await resetSkillConfig('summit', 'nope', testDir);
     expect(result.existed).toBe(false);
   });
 
   it('deletes file when last skill block is reset', async () => {
-    await saveSkillConfig('skratch', 'only-skill', { x: 1 }, testDir);
-    await resetSkillConfig('skratch', 'only-skill', testDir);
-    const r = await readBrandConfig('skratch', testDir);
+    await saveSkillConfig('summit', 'only-skill', { x: 1 }, testDir);
+    await resetSkillConfig('summit', 'only-skill', testDir);
+    const r = await readBrandConfig('summit', testDir);
     expect(r.source).toBe('empty');
   });
 });
