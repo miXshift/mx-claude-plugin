@@ -13,8 +13,8 @@
  * Schema reference: shared/tables.yaml :: seller
  */
 
-import { query } from '../sql/connection.js';
-import type { MysqlCreds } from '../auth/schema.js';
+import { runQuery } from '../data/query-runner.js';
+import type { MysqlCreds, DatahubCreds } from '../auth/schema.js';
 
 export interface SellerRow {
   seller_id: number;
@@ -91,7 +91,7 @@ const DISCOVERY_SQL = `
 `;
 
 export interface DiscoverOptions {
-  creds?: MysqlCreds;
+  creds?: MysqlCreds | DatahubCreds;
   dataDirOverride?: string;
   /** Include rows the user can read but where ads + retail access are both lost. Default false. */
   includeInactive?: boolean;
@@ -106,10 +106,19 @@ export interface DiscoverOptions {
 export async function discoverSellers(
   options: DiscoverOptions = {},
 ): Promise<SellerRow[]> {
-  const result = await query<RawSellerRow>(DISCOVERY_SQL, [], {
+  // Route through runQuery (token-aware): it resolves datahub > service >
+  // mysql, so brand discovery works on a token (device-code) session, not only
+  // on a legacy raw-MySQL setup. sql/connection.ts's query() accepts mysql
+  // creds only, so brand list/discover threw "No MySQL credentials configured"
+  // on a token session even though `data query` worked there.
+  const result = await runQuery<RawSellerRow>(DISCOVERY_SQL, [], {
     creds: options.creds,
     dataDirOverride: options.dataDirOverride,
+    query_table: 'seller',
   });
+  if (!result.ok) {
+    throw new Error(result.friendly || result.message);
+  }
 
   const rows = result.rows.map(normalizeRow);
   if (options.includeInactive) return rows;

@@ -43,6 +43,50 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/lib/prefetch/plugin-root.ts
+import { existsSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+function resolvePluginRoot() {
+  if (cached) return cached;
+  const envOverride = process.env.MIXSHIFT_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+  if (envOverride && isPluginRoot(envOverride)) {
+    cached = envOverride;
+    return envOverride;
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    if (isPluginRoot(dir)) {
+      cached = dir;
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not locate the mixshift-ai plugin root (looked for shared/sql-library/catalog.yaml). Walked up from ${here}. If you're running tests, set MIXSHIFT_PLUGIN_ROOT.`
+  );
+}
+function isPluginRoot(dir) {
+  try {
+    const marker = join(dir, "shared", "sql-library", "catalog.yaml");
+    return existsSync(marker) && statSync(marker).isFile();
+  } catch {
+    return false;
+  }
+}
+function pluginPath(...segments) {
+  return join(resolvePluginRoot(), ...segments);
+}
+var cached;
+var init_plugin_root = __esm({
+  "src/lib/prefetch/plugin-root.ts"() {
+    "use strict";
+  }
+});
+
 // node_modules/undici/lib/core/symbols.js
 var require_symbols = __commonJS({
   "node_modules/undici/lib/core/symbols.js"(exports, module) {
@@ -1453,7 +1497,7 @@ var require_request = __commonJS({
         method,
         body,
         headers,
-        query: query2,
+        query,
         idempotent,
         blocking,
         upgrade,
@@ -1534,7 +1578,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query2 ? buildURL(path2, query2) : path2;
+        this.path = query ? buildURL(path2, query) : path2;
         this.origin = origin;
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
         this.blocking = blocking == null ? false : blocking;
@@ -10344,13 +10388,13 @@ var require_mock_utils = __commonJS({
       }
     }
     function buildKey(opts) {
-      const { path: path2, method, body, headers, query: query2 } = opts;
+      const { path: path2, method, body, headers, query } = opts;
       return {
         path: path2,
         method,
         body,
         headers,
-        query: query2
+        query
       };
     }
     function generateKeyValues(data) {
@@ -21437,6 +21481,32 @@ var require_commander = __commonJS({
     exports.CommanderError = CommanderError2;
     exports.InvalidArgumentError = InvalidArgumentError2;
     exports.InvalidOptionArgumentError = InvalidArgumentError2;
+  }
+});
+
+// src/lib/plugin-version.ts
+import { readFileSync } from "node:fs";
+import { join as join3 } from "node:path";
+function getPluginVersion() {
+  if (cached2) return cached2;
+  try {
+    const path2 = join3(resolvePluginRoot(), ".claude-plugin", "plugin.json");
+    const raw = readFileSync(path2, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.version === "string" && parsed.version) {
+      cached2 = parsed.version;
+      return cached2;
+    }
+  } catch {
+  }
+  cached2 = "0.0.0-unknown";
+  return cached2;
+}
+var cached2;
+var init_plugin_version = __esm({
+  "src/lib/plugin-version.ts"() {
+    "use strict";
+    init_plugin_root();
   }
 });
 
@@ -57906,8 +57976,8 @@ var require_server_handshake = __commonJS({
         }
         return _ServerHandshake.prototype.dispatchCommands;
       }
-      _isStatement(query2, name) {
-        const firstWord = query2.split(" ")[0].toUpperCase();
+      _isStatement(query, name) {
+        const firstWord = query.split(" ")[0].toUpperCase();
         return firstWord === name;
       }
       dispatchCommands(packet, connection) {
@@ -57917,8 +57987,8 @@ var require_server_handshake = __commonJS({
         switch (commandCode) {
           case CommandCode.STMT_PREPARE:
             if (connection.listeners("stmt_prepare").length) {
-              const query2 = packet.readString(void 0, encoding);
-              connection.emit("stmt_prepare", query2);
+              const query = packet.readString(void 0, encoding);
+              connection.emit("stmt_prepare", query);
             } else {
               connection.writeError({
                 code: Errors.HA_ERR_INTERNAL_ERROR,
@@ -57960,12 +58030,12 @@ var require_server_handshake = __commonJS({
             break;
           case CommandCode.QUERY:
             if (connection.listeners("query").length) {
-              const query2 = packet.readString(void 0, encoding);
-              if (this._isStatement(query2, "PREPARE") || this._isStatement(query2, "SET")) {
-                connection.emit("stmt_prepare", query2);
-              } else if (this._isStatement(query2, "EXECUTE")) {
-                connection.emit("stmt_execute", null, null, null, null, query2);
-              } else connection.emit("query", query2);
+              const query = packet.readString(void 0, encoding);
+              if (this._isStatement(query, "PREPARE") || this._isStatement(query, "SET")) {
+                connection.emit("stmt_prepare", query);
+              } else if (this._isStatement(query, "EXECUTE")) {
+                connection.emit("stmt_execute", null, null, null, null, query);
+              } else connection.emit("query", query);
             } else {
               connection.writeError({
                 code: Errors.HA_ERR_INTERNAL_ERROR,
@@ -59688,8 +59758,8 @@ var require_prepare = __commonJS({
     var CloseStatement = require_close_statement2();
     var Execute = require_execute2();
     var PreparedStatementInfo = class {
-      constructor(query2, id, columns, parameters, connection) {
-        this.query = query2;
+      constructor(query, id, columns, parameters, connection) {
+        this.query = query;
         this.id = id;
         this.columns = columns;
         this.parameters = parameters;
@@ -60824,8 +60894,8 @@ var require_named_placeholders = __commonJS({
     var DQUOTE = 34;
     var SQUOTE = 39;
     var BSLASH = 92;
-    function parse4(query2) {
-      let ppos = RE_PARAM.exec(query2);
+    function parse4(query) {
+      let ppos = RE_PARAM.exec(query);
       let curpos = 0;
       let start = 0;
       let end;
@@ -60840,7 +60910,7 @@ var require_named_placeholders = __commonJS({
       if (ppos) {
         do {
           for (i = curpos, end = ppos.index; i < end; ++i) {
-            const chr = query2.charCodeAt(i);
+            const chr = query.charCodeAt(i);
             if (chr === BSLASH) escape = !escape;
             else {
               if (escape) {
@@ -60848,7 +60918,7 @@ var require_named_placeholders = __commonJS({
                 continue;
               }
               if (inQuote && chr === qchr) {
-                if (query2.charCodeAt(i + 1) === qchr) {
+                if (query.charCodeAt(i + 1) === qchr) {
                   ++i;
                   continue;
                 }
@@ -60860,21 +60930,21 @@ var require_named_placeholders = __commonJS({
             }
           }
           if (!inQuote) {
-            parts.push(query2.substring(start, end));
+            parts.push(query.substring(start, end));
             tokens.push(ppos[0].length === 1 ? qcnt++ : ppos[1]);
             start = end + ppos[0].length;
             lastTokenEndPos = start;
           }
           curpos = end + ppos[0].length;
-        } while (ppos = RE_PARAM.exec(query2));
+        } while (ppos = RE_PARAM.exec(query));
         if (tokens.length) {
-          if (curpos < query2.length) {
-            parts.push(query2.substring(lastTokenEndPos));
+          if (curpos < query.length) {
+            parts.push(query.substring(lastTokenEndPos));
           }
           return [parts, tokens];
         }
       }
-      return [query2];
+      return [query];
     }
     function createCompiler(config2) {
       if (!config2) config2 = {};
@@ -60934,14 +61004,14 @@ var require_named_placeholders = __commonJS({
         }
         return [unnamed, tree[1]];
       }
-      function compile(query2, paramsObj) {
+      function compile(query, paramsObj) {
         let tree;
-        if (cache && (tree = cache.get(query2))) {
+        if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join20(parse4(query2));
+        tree = join20(parse4(query));
         if (cache) {
-          cache.set(query2, tree);
+          cache.set(query, tree);
         }
         return toArrayParams(tree, paramsObj);
       }
@@ -62053,7 +62123,7 @@ var require_connection3 = __commonJS({
       release() {
         this.connection.release();
       }
-      query(query2, params) {
+      query(query, params) {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.query);
         if (typeof params === "function") {
@@ -62064,13 +62134,13 @@ var require_connection3 = __commonJS({
         return new this.Promise((resolve3, reject) => {
           const done = makeDoneCb(resolve3, reject, stackHolder);
           if (params !== void 0) {
-            c.query(query2, params, done);
+            c.query(query, params, done);
           } else {
-            c.query(query2, done);
+            c.query(query, done);
           }
         });
       }
-      execute(query2, params) {
+      execute(query, params) {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.execute);
         if (typeof params === "function") {
@@ -62081,9 +62151,9 @@ var require_connection3 = __commonJS({
         return new this.Promise((resolve3, reject) => {
           const done = makeDoneCb(resolve3, reject, stackHolder);
           if (params !== void 0) {
-            c.execute(query2, params, done);
+            c.execute(query, params, done);
           } else {
-            c.execute(query2, done);
+            c.execute(query, done);
           }
         });
       }
@@ -62864,18 +62934,18 @@ var require_pool_cluster = __commonJS({
        * @returns query
        */
       query(sql, values, cb) {
-        const query2 = Connection.createQuery(sql, values, cb, {});
+        const query = Connection.createQuery(sql, values, cb, {});
         this.getConnection((err, conn) => {
           if (err) {
-            if (typeof query2.onResult === "function") {
-              query2.onResult(err);
+            if (typeof query.onResult === "function") {
+              query.onResult(err);
             } else {
-              query2.emit("error", err);
+              query.emit("error", err);
             }
             return;
           }
           try {
-            conn.query(query2).once("end", () => {
+            conn.query(query).once("end", () => {
               conn.release();
             });
           } catch (e) {
@@ -62883,7 +62953,7 @@ var require_pool_cluster = __commonJS({
             throw e;
           }
         });
-        return query2;
+        return query;
       }
       /**
        * pool cluster execute
@@ -63709,47 +63779,1147 @@ var init_credentials = __esm({
   }
 });
 
-// src/lib/sql/connection.ts
-async function query(sql, params = [], options = {}) {
-  const creds = await resolveCreds(options);
-  const conn = await import_promise.default.createConnection({
-    host: creds.host,
-    port: creds.port,
-    user: creds.user,
-    password: creds.password,
-    database: creds.database,
-    connectTimeout: options.connectTimeoutMs ?? 1e4
-  });
-  try {
-    const [rows, fields] = await conn.query(sql, params);
-    return {
-      rows,
-      fields: (fields ?? []).map((f) => ({ name: f.name, type: f.type })),
-      rowCount: rows.length
-    };
-  } finally {
+// src/lib/defaults/schema.ts
+var mysqlDefaults, credentialRetrieval, defaultsSchema;
+var init_schema3 = __esm({
+  "src/lib/defaults/schema.ts"() {
+    "use strict";
+    init_zod();
+    mysqlDefaults = external_exports.object({
+      host: external_exports.string().default("db.mydashapplications.studio"),
+      port: external_exports.number().int().min(1).max(65535).default(3306),
+      database: external_exports.string().default("dashamazon")
+    });
+    credentialRetrieval = external_exports.object({
+      url_default: external_exports.string().default("https://www.mydashapplications.com/database-admin"),
+      url_tenant_pattern: external_exports.string().default("https://<your-company>.mydashapplications.com/database-admin"),
+      notes: external_exports.string().default("")
+    });
+    defaultsSchema = external_exports.object({
+      schema_version: external_exports.literal(1),
+      auth: external_exports.object({
+        // Note: there was an `auth.discord_webhook` field here (with a
+        // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
+        // removed when Discord routing moved server-side — telemetry
+        // events fan out to Discord via a Supabase database trigger +
+        // Edge Function. See internal/SUPABASE-SETUP.md §10.
+        public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
+        mysql: mysqlDefaults.default({
+          host: "db.mydashapplications.studio",
+          port: 3306,
+          database: "dashamazon"
+        }),
+        credential_retrieval: credentialRetrieval.default({
+          url_default: "https://www.mydashapplications.com/database-admin",
+          url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
+          notes: ""
+        })
+      }).default({
+        public_ip_lookup_url: "https://api.ipify.org?format=json",
+        mysql: {
+          host: "db.mydashapplications.studio",
+          port: 3306,
+          database: "dashamazon"
+        },
+        credential_retrieval: {
+          url_default: "https://www.mydashapplications.com/database-admin",
+          url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
+          notes: ""
+        }
+      }),
+      telemetry: external_exports.object({
+        // Supabase REST endpoint for the events table. Empty = "configured off"
+        // (events buffered locally, never flushed). See internal/SUPABASE-SETUP.md.
+        endpoint: external_exports.string().default(""),
+        // Supabase anon key. Empty = "configured off" same as endpoint.
+        apikey: external_exports.string().default(""),
+        batch_size: external_exports.number().int().positive().default(50),
+        flush_interval_ms: external_exports.number().int().positive().default(6e4)
+      }).default({
+        endpoint: "",
+        apikey: "",
+        batch_size: 50,
+        flush_interval_ms: 6e4
+      })
+    });
+  }
+});
+
+// src/lib/defaults/load.ts
+import { readFile as readFile5 } from "node:fs/promises";
+import { dirname as dirname4, join as join6 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+async function loadPluginDefaults(overridePath) {
+  const candidates = overridePath ? [overridePath] : candidatePaths2();
+  for (const path2 of candidates) {
     try {
-      await conn.end();
+      const raw = await readFile5(path2, "utf-8");
+      const parsed = (0, import_yaml5.parse)(raw);
+      const result = defaultsSchema.safeParse(parsed);
+      if (!result.success) {
+        throw new Error(
+          formatZodError(result.error, `Plugin defaults at ${path2} are invalid`)
+        );
+      }
+      return applyEnvOverrides(result.data);
+    } catch (err) {
+      if (isFileNotFoundError5(err)) continue;
+      throw err;
+    }
+  }
+  return applyEnvOverrides(defaultsSchema.parse({ schema_version: 1 }));
+}
+function applyEnvOverrides(defaults) {
+  const env = process.env;
+  if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
+    defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
+  }
+  if (env.MIXSHIFT_TELEMETRY_APIKEY) {
+    defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
+  }
+  return defaults;
+}
+function candidatePaths2() {
+  const here = dirname4(fileURLToPath2(import.meta.url));
+  const candidates = [];
+  let dir = here;
+  for (let i = 0; i < 6; i++) {
+    candidates.push(join6(dir, ".mixshift-defaults.yaml"));
+    const parent = dirname4(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return candidates;
+}
+function isFileNotFoundError5(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+var import_yaml5;
+var init_load2 = __esm({
+  "src/lib/defaults/load.ts"() {
+    "use strict";
+    import_yaml5 = __toESM(require_dist(), 1);
+    init_schema3();
+    init_format_error();
+  }
+});
+
+// src/lib/telemetry/consent.ts
+var consent_exports = {};
+__export(consent_exports, {
+  getTelemetryStatus: () => getTelemetryStatus,
+  hasAcknowledgedConsent: () => hasAcknowledgedConsent,
+  isTelemetryEnabled: () => isTelemetryEnabled,
+  markConsentAcknowledged: () => markConsentAcknowledged,
+  setOptedOut: () => setOptedOut
+});
+async function isTelemetryEnabled(dataDirOverride) {
+  const envVal = process.env.MIXSHIFT_TELEMETRY;
+  if (envVal !== void 0) {
+    const v = envVal.toLowerCase().trim();
+    if (v === "0" || v === "false" || v === "off" || v === "no" || v === "disabled") {
+      return false;
+    }
+  }
+  const { profile } = await loadProfile(dataDirOverride);
+  if (profile.telemetry?.opted_out) {
+    return false;
+  }
+  const defaults = await loadPluginDefaults();
+  if (!defaults.telemetry.endpoint || !defaults.telemetry.apikey) {
+    return false;
+  }
+  return true;
+}
+async function hasAcknowledgedConsent(dataDirOverride) {
+  const { profile } = await loadProfile(dataDirOverride);
+  return !!profile.telemetry?.acknowledged_at;
+}
+async function markConsentAcknowledged(dataDirOverride) {
+  const { profile, source } = await loadProfile(dataDirOverride);
+  if (profile.telemetry?.acknowledged_at) return;
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.telemetry = {
+    ...next.telemetry ?? { opted_out: false },
+    acknowledged_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await saveProfile(next, dataDirOverride);
+}
+async function setOptedOut(optedOut, dataDirOverride) {
+  const { profile, source } = await loadProfile(dataDirOverride);
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.telemetry = {
+    ...next.telemetry ?? { opted_out: false },
+    opted_out: optedOut
+  };
+  await saveProfile(next, dataDirOverride);
+}
+async function getTelemetryStatus(dataDirOverride) {
+  const envVal = process.env.MIXSHIFT_TELEMETRY?.toLowerCase().trim();
+  const envOverride = envVal === "0" || envVal === "false" || envVal === "off" || envVal === "no" || envVal === "disabled";
+  const { profile } = await loadProfile(dataDirOverride);
+  const defaults = await loadPluginDefaults();
+  const configured = !!defaults.telemetry.endpoint && !!defaults.telemetry.apikey;
+  const optedOut = !!profile.telemetry?.opted_out;
+  let enabled = true;
+  let reason = "enabled";
+  if (envOverride) {
+    enabled = false;
+    reason = "disabled via MIXSHIFT_TELEMETRY env var";
+  } else if (optedOut) {
+    enabled = false;
+    reason = "disabled via `mixshift telemetry opt-out`";
+  } else if (!configured) {
+    enabled = false;
+    reason = "telemetry endpoint not configured in plugin defaults";
+  }
+  return {
+    enabled,
+    reason,
+    install_id: profile.telemetry?.install_id,
+    acknowledged_at: profile.telemetry?.acknowledged_at,
+    opted_out: optedOut,
+    env_override: envOverride,
+    configured
+  };
+}
+var init_consent = __esm({
+  "src/lib/telemetry/consent.ts"() {
+    "use strict";
+    init_load();
+    init_save();
+    init_schema();
+    init_load2();
+  }
+});
+
+// src/lib/telemetry/identity.ts
+import { randomUUID } from "node:crypto";
+async function getOrCreateInstallId(dataDirOverride) {
+  const { profile, source } = await loadProfile(dataDirOverride);
+  if (profile.telemetry?.install_id) {
+    return { installId: profile.telemetry.install_id, wasJustCreated: false };
+  }
+  const newId = randomUUID();
+  const next = source === "file" ? { ...profile } : defaultProfile();
+  next.telemetry = {
+    ...next.telemetry ?? { opted_out: false },
+    install_id: newId
+  };
+  await saveProfile(next, dataDirOverride);
+  return { installId: newId, wasJustCreated: true };
+}
+async function readInstallId(dataDirOverride) {
+  const { profile } = await loadProfile(dataDirOverride);
+  return profile.telemetry?.install_id;
+}
+var init_identity = __esm({
+  "src/lib/telemetry/identity.ts"() {
+    "use strict";
+    init_load();
+    init_save();
+    init_schema();
+  }
+});
+
+// src/lib/telemetry/queue.ts
+import { appendFile, readFile as readFile6, writeFile as writeFile3, mkdir as mkdir3, stat } from "node:fs/promises";
+import { dirname as dirname5 } from "node:path";
+async function enqueueEvent(record2, dataDirOverride) {
+  const path2 = telemetryQueuePath(dataDirOverride);
+  const line = JSON.stringify(record2) + "\n";
+  try {
+    await appendFile(path2, line, { encoding: "utf-8" });
+  } catch (err) {
+    if (isFileNotFoundError6(err)) {
+      await mkdir3(dirname5(path2), { recursive: true });
+      await appendFile(path2, line, { encoding: "utf-8" });
+    } else {
+    }
+  }
+}
+async function readQueue(dataDirOverride) {
+  const path2 = telemetryQueuePath(dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile6(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError6(err)) return [];
+    return [];
+  }
+  if (!raw.trim()) return [];
+  const events = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line);
+      events.push(ev);
     } catch {
     }
   }
+  return events;
+}
+async function clearQueue(dataDirOverride) {
+  const path2 = telemetryQueuePath(dataDirOverride);
+  try {
+    await writeFile3(path2, "", { encoding: "utf-8" });
+  } catch {
+  }
+}
+async function queueSizeBytes(dataDirOverride) {
+  try {
+    const s = await stat(telemetryQueuePath(dataDirOverride));
+    return s.size;
+  } catch {
+    return 0;
+  }
+}
+function isFileNotFoundError6(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+var init_queue = __esm({
+  "src/lib/telemetry/queue.ts"() {
+    "use strict";
+    init_resolve();
+  }
+});
+
+// src/lib/telemetry/client.ts
+async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const defaults = await loadPluginDefaults();
+  const { endpoint, apikey, batch_size } = defaults.telemetry;
+  if (!endpoint || !apikey) {
+    return { status: "no_endpoint", events_sent: 0 };
+  }
+  const events = await readQueue(dataDirOverride);
+  if (events.length === 0) {
+    return { status: "no_events", events_sent: 0 };
+  }
+  let sentCount = 0;
+  for (let i = 0; i < events.length; i += batch_size) {
+    const batch = events.slice(i, i + batch_size);
+    try {
+      await postBatch(endpoint, apikey, batch, timeoutMs);
+      sentCount += batch.length;
+    } catch (err) {
+      return {
+        status: "failed",
+        events_sent: sentCount,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+  await clearQueue(dataDirOverride);
+  return { status: "sent", events_sent: sentCount };
+}
+async function postBatch(endpoint, apikey, batch, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const normalized = batch.map(normalizeRecord);
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey,
+        Authorization: `Bearer ${apikey}`,
+        Prefer: "return=minimal, missing=default"
+      },
+      body: JSON.stringify(normalized),
+      signal: controller.signal
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "<unreadable>");
+      throw new Error(
+        `Supabase responded ${resp.status} ${resp.statusText}: ${body.slice(0, 200)}`
+      );
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function normalizeRecord(rec) {
+  return {
+    event_name: rec.event_name,
+    install_id: rec.install_id,
+    email: rec.email ?? null,
+    plugin_version: rec.plugin_version,
+    install_path: rec.install_path,
+    // Surface added in 0.5.1 — older queue.jsonl entries that pre-date the
+    // field land here with `surface: undefined` and get coerced to null.
+    // Once the queue drains, every new event carries the surface.
+    surface: rec.surface ?? null,
+    os: rec.os,
+    node_version: rec.node_version,
+    ts: rec.ts,
+    payload: rec.payload ?? {},
+    skill_id: rec.skill_id ?? null,
+    duration_ms: rec.duration_ms ?? null,
+    outcome: rec.outcome ?? null,
+    query_id: rec.query_id ?? null,
+    query_table: rec.query_table ?? null,
+    row_count: rec.row_count ?? null,
+    error_class: rec.error_class ?? null,
+    trigger_phrase: rec.trigger_phrase ?? null
+  };
+}
+var DEFAULT_TIMEOUT_MS;
+var init_client = __esm({
+  "src/lib/telemetry/client.ts"() {
+    "use strict";
+    init_load2();
+    init_queue();
+    DEFAULT_TIMEOUT_MS = 5e3;
+  }
+});
+
+// src/lib/telemetry/events.ts
+var EventName;
+var init_events = __esm({
+  "src/lib/telemetry/events.ts"() {
+    "use strict";
+    EventName = {
+      // Lifecycle
+      PluginInstalled: "plugin.installed",
+      PluginUpdated: "plugin.updated",
+      PluginCrashed: "plugin.crashed",
+      CliCommandRun: "cli.command_run",
+      // Onboarding
+      WelcomeViewed: "welcome.viewed",
+      ConsentAcknowledged: "consent.acknowledged",
+      AuthStarted: "auth.started",
+      AuthCompleted: "auth.completed",
+      AuthFailed: "auth.failed",
+      AuthConnectionTested: "auth.connection_tested",
+      /** Token-based login (PKCE or device-code) against mx-legacy-auth. */
+      AuthLoginCompleted: "auth.login_completed",
+      /** /auth/refresh returned a non-success status (401 = replay revocation,
+       *  others = transient / unexpected). Emitted from getValidAccessToken. */
+      AuthRefreshFailed: "auth.refresh_failed",
+      UserIdentified: "user.identified",
+      IpWhitelistRequested: "ip_whitelist.requested",
+      // Brand context
+      BrandDiscovered: "brand.discovered",
+      BrandAdded: "brand.added",
+      // Brand config editor (mixshift brand config <slug>)
+      BrandConfigViewed: "brand_config.viewed",
+      BrandConfigEdited: "brand_config.edited",
+      // Brand Brain Tier-2 background discovery (lib/brain/fetch.ts +
+      // `mixshift brand brain fetch`). Privacy: payloads carry slug, row
+      // counts, duration, dispatch path; never seller row contents.
+      BrainFetchStarted: "brain.fetch_started",
+      BrainFetchCompleted: "brain.fetch_completed",
+      BrainFetchFailed: "brain.fetch_failed",
+      BrainFetchSkipped: "brain.fetch_skipped",
+      // Skill + query
+      SkillInvoked: "skill.invoked",
+      SkillCompleted: "skill.completed",
+      SkillTriggerPhraseMatched: "skill.trigger_phrase_matched",
+      QueryExecuted: "query.executed",
+      QueryFailed: "query.failed",
+      PrefetchStarted: "skill.prefetch_started",
+      PrefetchCompleted: "skill.prefetch_completed",
+      SidecarWritten: "skill.sidecar_written",
+      // OCL (Objective Level Configuration) — confirm-on-run flow
+      SkillCalibrationConfirmed: "skill.calibration_confirmed",
+      SkillCalibrationEdited: "skill.calibration_edited",
+      SkillCalibrationReset: "skill.calibration_reset",
+      // Apply gate (dry-run today; flips to real writes when MCP/API lands)
+      SkillApplyAttempted: "skill.apply_attempted",
+      SkillApplied: "skill.applied",
+      // Feedback
+      FeedbackSubmitted: "feedback.submitted",
+      FeedbackDetectedImplicit: "feedback.detected_implicit",
+      TableAccessRequested: "table_access.requested",
+      // Help hub (`mixshift guide` + mx-help skill). No payload privacy concerns —
+      // help.viewed carries only format + auth-ready + an uncatalogued-skill count.
+      HelpViewed: "help.viewed",
+      // User-contributed skills (`mixshift share-skill` + mx-share-skill skill).
+      // Privacy: skill.shared carries only the contributor-authored artifact's
+      // METADATA (name, description, file count, byte size, sha). The full skill
+      // bytes go to the dedicated skill_submissions table, never this event (which
+      // fans out to Discord, where embed fields cap at 1024 chars).
+      SkillShared: "skill.shared",
+      // Amazon SP-API on-demand reports (lib/amazon/reports.ts + `mixshift amazon`).
+      // Privacy: these capture report_type + duration + outcome only — NEVER the
+      // document bytes (which can contain order/customer rows) and never the
+      // amazonSellerId in a way that leaks customer identity beyond what auth.*
+      // already links.
+      AmazonMerchantsListed: "amazon.merchants_listed",
+      ReportStarted: "report.started",
+      ReportPolled: "report.polled",
+      ReportRetrieved: "report.retrieved",
+      ReportFailed: "report.failed",
+      // Service-credential setup (`mixshift auth service-setup`). Fired after
+      // the service block is persisted so a fresh data dir's synthetic
+      // plugin.installed event attributes to the svc: label instead of landing
+      // as an anonymous install. payload: {label, verified, via}.
+      AuthServiceSetupCompleted: "auth.service_setup_completed",
+      // Amazon SP-API Pricing batch endpoints (lib/amazon/pricing.ts +
+      // `mixshift amazon pricing`). Privacy: capture operation + item counts +
+      // duration + outcome — never the responses payload (which carries seller
+      // pricing data).
+      AmazonPricingStarted: "amazon.pricing.started",
+      AmazonPricingPolled: "amazon.pricing.polled",
+      AmazonPricingRetrieved: "amazon.pricing.retrieved",
+      AmazonPricingFailed: "amazon.pricing.failed",
+      // Generic SP-API call surface (lib/amazon/spapi-call.ts + `mixshift amazon
+      // operations|call`). Privacy: capture operation id + duration + outcome
+      // only — never the payload (it carries seller-level business data).
+      AmazonSpApiOperationsListed: "amazon.spapi.operations_listed",
+      AmazonSpApiCalled: "amazon.spapi.called",
+      // Amazon Ads API call surface (lib/amazon/ads-call.ts + `mixshift ads`).
+      // Same privacy rule: operation id + duration + outcome only — never the
+      // payload (campaign/keyword/bid data is seller-level business data).
+      AdsProfilesListed: "ads.profiles_listed",
+      AdsOperationsListed: "ads.operations_listed",
+      AdsCalled: "ads.called",
+      // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
+      WarmStartServed: "warm_start.served"
+    };
+  }
+});
+
+// src/lib/telemetry/surface.ts
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+function detectSurface(flagValue) {
+  const envOverride = process.env[ENV_VAR_OVERRIDE];
+  if (envOverride && isKnownSurface(envOverride)) {
+    return envOverride;
+  }
+  if (flagValue && isKnownSurface(flagValue)) {
+    return flagValue;
+  }
+  for (const detector of detectors) {
+    const result = detector();
+    if (result !== null) return result;
+  }
+  return "cli";
+}
+function detectCowork() {
+  if (process.env.COWORK === "1") return "cowork";
+  if (process.env.COWORK_VERSION) return "cowork";
+  if (process.env.COWORK_PLUGIN_HOST) return "cowork";
+  if (runtimePaths().some((p) => p.toLowerCase().includes(COWORK_PATH_MARKER))) {
+    return "cowork";
+  }
+  return null;
+}
+function runtimePaths() {
+  const paths = [];
+  if (process.env.CLAUDE_PLUGIN_ROOT) paths.push(process.env.CLAUDE_PLUGIN_ROOT);
+  if (process.argv[1]) paths.push(process.argv[1]);
+  try {
+    paths.push(fileURLToPath3(import.meta.url));
+  } catch {
+  }
+  return paths;
+}
+function detectClaudeCode() {
+  if (process.env.CLAUDECODE === "1" || process.env.CLAUDE_CODE === "1") {
+    return "claude_code";
+  }
+  if (process.env.CLAUDE_CODE_ENTRYPOINT || process.env.CLAUDE_CODE_VERSION) {
+    return "claude_code";
+  }
+  return null;
+}
+function detectPluginHostUnknown() {
+  if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin_host_unknown";
+  return null;
+}
+function isKnownSurface(s) {
+  return KNOWN_SURFACES.has(s);
+}
+var ENV_VAR_OVERRIDE, COWORK_PATH_MARKER, detectors, KNOWN_SURFACES;
+var init_surface = __esm({
+  "src/lib/telemetry/surface.ts"() {
+    "use strict";
+    ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
+    COWORK_PATH_MARKER = "local-agent-mode-sessions";
+    detectors = [
+      detectCowork,
+      // MUST be first — Cowork also sets CLAUDECODE (embeds CC engine).
+      detectClaudeCode,
+      detectPluginHostUnknown
+    ];
+    KNOWN_SURFACES = /* @__PURE__ */ new Set([
+      "cowork",
+      "claude_code",
+      "plugin_host_unknown",
+      "cli",
+      "chatgpt",
+      "claude_desktop",
+      "other"
+    ]);
+  }
+});
+
+// src/lib/telemetry/index.ts
+import { platform, release } from "node:os";
+async function track(input, dataDirOverride) {
+  try {
+    const enabled = await isTelemetryEnabled(dataDirOverride);
+    if (!enabled) return;
+    const { installId, wasJustCreated } = await getOrCreateInstallId(dataDirOverride);
+    const { profile } = await loadProfile(dataDirOverride);
+    const pluginVersion = getPluginVersion();
+    const installPath = detectInstallPath();
+    const surface = detectSurface(readSurfaceFlag());
+    const os = detectOs();
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const userEmail = profile.user?.email;
+    const attribution = await readAttributionBestEffort(dataDirOverride);
+    const datahubPersonLabel = attribution.personLabel;
+    const automationPayload = attribution.automation ? { automation: true } : {};
+    if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
+      const synthetic = {
+        event_name: EventName.PluginInstalled,
+        install_id: installId,
+        email: userEmail,
+        person_label: datahubPersonLabel,
+        plugin_version: pluginVersion,
+        install_path: installPath,
+        surface,
+        os,
+        node_version: process.version,
+        ts: nowIso,
+        // Marker so analytics can distinguish "synthetic on first-track"
+        // from a hypothetical future direct track(PluginInstalled) call.
+        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload }
+      };
+      await enqueueEvent(synthetic, dataDirOverride);
+    }
+    const record2 = {
+      event_name: input.event_name,
+      install_id: installId,
+      email: input.email ?? userEmail,
+      person_label: input.person_label ?? datahubPersonLabel,
+      plugin_version: pluginVersion,
+      install_path: installPath,
+      surface,
+      os,
+      node_version: process.version,
+      ts: nowIso,
+      payload: { ...input.payload ?? {}, ...automationPayload },
+      skill_id: input.skill_id,
+      duration_ms: input.duration_ms,
+      outcome: input.outcome,
+      query_id: input.query_id,
+      query_table: input.query_table,
+      row_count: input.row_count,
+      error_class: input.error_class,
+      trigger_phrase: input.trigger_phrase
+    };
+    await enqueueEvent(record2, dataDirOverride);
+  } catch {
+  }
+}
+async function maybeFlush(dataDirOverride) {
+  try {
+    const enabled = await isTelemetryEnabled(dataDirOverride);
+    if (!enabled) return { status: "no_endpoint", events_sent: 0 };
+    return await flushQueue(dataDirOverride);
+  } catch (err) {
+    return {
+      status: "failed",
+      events_sent: 0,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+function detectInstallPath() {
+  if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin-host";
+  return "cli";
+}
+function detectOs() {
+  return `${platform()}-${release()}`;
+}
+function readSurfaceFlag() {
+  const idx = process.argv.indexOf("--surface");
+  if (idx >= 0 && idx + 1 < process.argv.length) {
+    return process.argv[idx + 1];
+  }
+  const eq = process.argv.find((a) => a.startsWith("--surface="));
+  if (eq) return eq.slice("--surface=".length);
+  return void 0;
+}
+async function readAttributionBestEffort(dataDirOverride) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const human = credentials?.datahub?.person_label;
+    const service = credentials?.service;
+    return {
+      personLabel: human ?? service?.label ?? service?.client_id,
+      automation: Boolean(service) && !human
+    };
+  } catch {
+    return { personLabel: void 0, automation: false };
+  }
+}
+var init_telemetry = __esm({
+  "src/lib/telemetry/index.ts"() {
+    "use strict";
+    init_consent();
+    init_identity();
+    init_queue();
+    init_client();
+    init_events();
+    init_load();
+    init_credentials();
+    init_plugin_version();
+    init_surface();
+    init_consent();
+    init_identity();
+    init_events();
+  }
+});
+
+// src/lib/data/query-runner.ts
+async function runQuery(sql, params = [], options = {}) {
+  let creds;
+  try {
+    creds = await resolveCreds(options);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      kind: "unknown",
+      message,
+      friendly: message,
+      durationMs: 0
+    };
+  }
+  if (isDatahubCreds(creds)) {
+    return runDatahubQuery(creds, sql, params, options);
+  }
+  return runMysqlQuery(creds, sql, params, options);
+}
+async function runMysqlQuery(creds, sql, params, options) {
+  const t0 = Date.now();
+  let conn;
+  try {
+    const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
+    conn = await import_promise.default.createConnection({
+      host: creds.host,
+      port: creds.port,
+      user: creds.user,
+      password: creds.password,
+      database: creds.database,
+      connectTimeout: options.connectTimeoutMs ?? 1e4,
+      namedPlaceholders: useNamed,
+      // BIGINT columns exceed JS safe-integer range; return them as strings so
+      // ids (DSP advertiserId, orderId, ...) are never silently rounded.
+      supportBigNumbers: true,
+      bigNumberStrings: true
+    });
+    const timeoutMs = options.queryTimeoutMs ?? 6e4;
+    await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
+    const [rows] = await conn.query(
+      sql,
+      params
+    );
+    const durationMs = Date.now() - t0;
+    void track(
+      {
+        event_name: EventName.QueryExecuted,
+        outcome: "ok",
+        duration_ms: durationMs,
+        row_count: rows.length,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        payload: {
+          auth_path: "mysql",
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+        }
+      },
+      options.dataDirOverride
+    );
+    return {
+      ok: true,
+      rows,
+      rowCount: rows.length,
+      durationMs
+    };
+  } catch (err) {
+    const failure = classify(err);
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: Date.now() - t0,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "mysql",
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
+          table_name: failure.table_name
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } finally {
+    if (conn) {
+      try {
+        await conn.end();
+      } catch {
+      }
+    }
+  }
+}
+async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOverride) {
+  const doFetch = async (bearer) => {
+    try {
+      return await fetch(`${creds.api_base}${path2}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+        // Give the server a small grace window beyond its own timeout so
+        // we don't AbortError before it has a chance to return the
+        // classified timeout envelope.
+        signal: AbortSignal.timeout(timeoutBudgetMs)
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new DatahubNetworkError(message);
+    }
+  };
+  let token = await getValidAccessToken(dataDirOverride);
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    token = await getValidAccessToken(dataDirOverride, true);
+    res = await doFetch(token);
+    if (res.status === 401) {
+      throw new Error(
+        "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
+      );
+    }
+  }
+  return res;
+}
+async function runDatahubQuery(creds, sql, params, options) {
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  try {
+    const res = await datahubAuthedPost(
+      creds,
+      "/api/query",
+      { sql, params, queryTimeoutMs },
+      queryTimeoutMs + 5e3,
+      options.dataDirOverride
+    );
+    const json2 = await res.json();
+    const durationMs = Date.now() - t0;
+    if (json2.ok === true) {
+      const rows = json2.rows ?? [];
+      const rowCount = json2.rowCount ?? rows.length;
+      const serverDuration = json2.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: "ok",
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: options.query_id,
+          query_table: options.query_table,
+          payload: {
+            auth_path: "datahub",
+            server_duration_ms: serverDuration,
+            sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+          }
+        },
+        options.dataDirOverride
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration };
+    }
+    const failure = {
+      ok: false,
+      kind: json2.kind ?? "unknown",
+      table_name: json2.table_name,
+      raw_code: json2.raw_code,
+      message: json2.message ?? "Query failed",
+      friendly: json2.friendly ?? json2.message ?? "Query failed",
+      durationMs
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          raw_code: failure.raw_code,
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
+          table_name: failure.table_name
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: "host_unreachable",
+        message: err.message,
+        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        durationMs
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = {
+        ok: false,
+        kind: "unknown",
+        message,
+        friendly: message,
+        durationMs
+      };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: options.query_id,
+        query_table: options.query_table,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  }
+}
+async function runNamedQuery(id, options = {}) {
+  let creds;
+  try {
+    creds = await resolveCreds({
+      creds: options.creds,
+      dataDirOverride: options.dataDirOverride
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, kind: "unknown", message, friendly: message, durationMs: 0 };
+  }
+  if (!isDatahubCreds(creds)) {
+    return {
+      ok: false,
+      kind: "unknown",
+      message: `Named query ${id} requires a token-based session; legacy raw-MySQL credentials cannot run it.`,
+      friendly: "Library queries now run server-side and need the token-based sign-in. Run `mixshift auth login` (or `mixshift auth service-setup` for unattended use).",
+      durationMs: 0
+    };
+  }
+  const t0 = Date.now();
+  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  const sellerIds = options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : void 0;
+  try {
+    const res = await datahubAuthedPost(
+      creds,
+      "/api/named-query",
+      { id, sellerIds, params: options.params, queryTimeoutMs },
+      queryTimeoutMs + 5e3,
+      options.dataDirOverride
+    );
+    const json2 = await res.json();
+    const durationMs = Date.now() - t0;
+    if (json2.ok === true) {
+      const rows = json2.rows ?? [];
+      const rowCount = json2.rowCount ?? rows.length;
+      const serverDuration = json2.durationMs ?? durationMs;
+      void track(
+        {
+          event_name: EventName.QueryExecuted,
+          outcome: "ok",
+          duration_ms: durationMs,
+          row_count: rowCount,
+          query_id: id,
+          payload: {
+            auth_path: "datahub",
+            named_query: true,
+            server_duration_ms: serverDuration,
+            revision: json2.revision
+          }
+        },
+        options.dataDirOverride
+      );
+      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json2.revision };
+    }
+    const failure = {
+      ok: false,
+      kind: json2.kind ?? "unknown",
+      table_name: json2.table_name,
+      raw_code: json2.raw_code,
+      missing_params: json2.missing_params,
+      message: json2.message ?? `Named query ${id} failed`,
+      friendly: json2.friendly ?? json2.message ?? `Named query ${id} failed`,
+      durationMs
+    };
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: {
+          auth_path: "datahub",
+          named_query: true,
+          raw_code: failure.raw_code
+        }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    let failure;
+    if (err instanceof DatahubNetworkError) {
+      failure = {
+        ok: false,
+        kind: "host_unreachable",
+        message: err.message,
+        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        durationMs
+      };
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      failure = { ok: false, kind: "unknown", message, friendly: message, durationMs };
+    }
+    void track(
+      {
+        event_name: EventName.QueryFailed,
+        outcome: "failed",
+        duration_ms: durationMs,
+        query_id: id,
+        error_class: failure.kind,
+        payload: { auth_path: "datahub", named_query: true }
+      },
+      options.dataDirOverride
+    );
+    return failure;
+  }
+}
+function classify(err) {
+  const e = err;
+  const message = e.sqlMessage ?? e.message ?? String(err);
+  const code = e.code;
+  if (code === "ER_TABLEACCESS_DENIED_ERROR") {
+    const tableName = extractTableFromAccessDenied(message);
+    return {
+      ok: false,
+      kind: "access_denied_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Your MySQL user does not have SELECT permission on \`${tableName}\`. Send a table-access request to MixShift ops to be granted access.` : `Your MySQL user does not have SELECT permission on a table referenced in this query.`
+    };
+  }
+  if (code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_ACCESS_DENIED_ERROR") {
+    return {
+      ok: false,
+      kind: "access_denied_db",
+      raw_code: code,
+      message,
+      friendly: "Your MySQL user is not authorized for this database. Re-run `mixshift auth setup` to fix the credentials, or contact MixShift ops."
+    };
+  }
+  if (code === "ER_NO_SUCH_TABLE") {
+    const tableName = extractTableFromNoSuchTable(message);
+    return {
+      ok: false,
+      kind: "unknown_table",
+      table_name: tableName,
+      raw_code: code,
+      message,
+      friendly: tableName ? `Table \`${tableName}\` does not exist in the warehouse. Run \`mixshift data list-tables\` to see what's available.` : `One of the tables in this query does not exist. Run \`mixshift data list-tables\` to see available tables.`
+    };
+  }
+  if (code === "ER_PARSE_ERROR" || code === "ER_BAD_FIELD_ERROR") {
+    return {
+      ok: false,
+      kind: "syntax_error",
+      raw_code: code,
+      message,
+      friendly: `SQL error: ${message}`
+    };
+  }
+  if (code === "ER_QUERY_TIMEOUT" || code === "PROTOCOL_SEQUENCE_TIMEOUT" || /max_execution_time/i.test(message)) {
+    return {
+      ok: false,
+      kind: "timeout",
+      raw_code: code,
+      message,
+      friendly: "Query exceeded the 60s timeout. Try narrowing the date range or filtering by seller_id."
+    };
+  }
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
+    return {
+      ok: false,
+      kind: "host_unreachable",
+      raw_code: code,
+      message,
+      friendly: "Could not reach the warehouse host. Check your network."
+    };
+  }
+  return {
+    ok: false,
+    kind: "unknown",
+    raw_code: code,
+    message,
+    friendly: `Query failed: ${message}`
+  };
+}
+function extractTableFromAccessDenied(message) {
+  const m = /for table '([^']+)'/.exec(message);
+  return m?.[1];
+}
+function extractTableFromNoSuchTable(message) {
+  const m = /Table '([^']+)' doesn't exist/.exec(message);
+  if (!m) return void 0;
+  const full = m[1];
+  return full.includes(".") ? full.split(".").pop() : full;
 }
 async function resolveCreds(options) {
   if (options.creds) return options.creds;
   const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (!credentials || !credentials.mysql) {
-    throw new Error(
-      "No MySQL credentials configured. Run `mixshift auth setup` first."
-    );
+  if (credentials?.datahub) return credentials.datahub;
+  if (credentials?.service) {
+    return { api_base: credentials.service.api_base, access_token: "service" };
   }
-  return credentials.mysql;
+  if (credentials?.mysql) return credentials.mysql;
+  throw new Error(
+    "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
+  );
 }
-var import_promise;
-var init_connection = __esm({
-  "src/lib/sql/connection.ts"() {
+var import_promise, DatahubNetworkError;
+var init_query_runner = __esm({
+  "src/lib/data/query-runner.ts"() {
     "use strict";
     import_promise = __toESM(require_promise(), 1);
     init_credentials();
+    init_schema2();
+    init_telemetry();
+    DatahubNetworkError = class extends Error {
+      constructor(msg2) {
+        super(msg2);
+        this.name = "DatahubNetworkError";
+      }
+    };
   }
 });
 
@@ -63760,10 +64930,14 @@ __export(seller_query_exports, {
   discoverSellers: () => discoverSellers
 });
 async function discoverSellers(options = {}) {
-  const result = await query(DISCOVERY_SQL, [], {
+  const result = await runQuery(DISCOVERY_SQL, [], {
     creds: options.creds,
-    dataDirOverride: options.dataDirOverride
+    dataDirOverride: options.dataDirOverride,
+    query_table: "seller"
   });
+  if (!result.ok) {
+    throw new Error(result.friendly || result.message);
+  }
   const rows = result.rows.map(normalizeRow);
   if (options.includeInactive) return rows;
   return rows.filter((r) => r.ads_active || r.retail_active);
@@ -63816,7 +64990,7 @@ var DISCOVERY_SQL, _internal;
 var init_seller_query = __esm({
   "src/lib/discovery/seller-query.ts"() {
     "use strict";
-    init_connection();
+    init_query_runner();
     DISCOVERY_SQL = `
   SELECT
     ID                          AS seller_id,
@@ -63916,220 +65090,6 @@ function ensureUniqueSlug(base, taken) {
 var init_brand_grouping = __esm({
   "src/lib/discovery/brand-grouping.ts"() {
     "use strict";
-  }
-});
-
-// src/lib/defaults/schema.ts
-var mysqlDefaults, credentialRetrieval, defaultsSchema;
-var init_schema3 = __esm({
-  "src/lib/defaults/schema.ts"() {
-    "use strict";
-    init_zod();
-    mysqlDefaults = external_exports.object({
-      host: external_exports.string().default("db.mydashapplications.studio"),
-      port: external_exports.number().int().min(1).max(65535).default(3306),
-      database: external_exports.string().default("dashamazon")
-    });
-    credentialRetrieval = external_exports.object({
-      url_default: external_exports.string().default("https://www.mydashapplications.com/database-admin"),
-      url_tenant_pattern: external_exports.string().default("https://<your-company>.mydashapplications.com/database-admin"),
-      notes: external_exports.string().default("")
-    });
-    defaultsSchema = external_exports.object({
-      schema_version: external_exports.literal(1),
-      auth: external_exports.object({
-        // Note: there was an `auth.discord_webhook` field here (with a
-        // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
-        // removed when Discord routing moved server-side — telemetry
-        // events fan out to Discord via a Supabase database trigger +
-        // Edge Function. See internal/SUPABASE-SETUP.md §10.
-        public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
-        mysql: mysqlDefaults.default({
-          host: "db.mydashapplications.studio",
-          port: 3306,
-          database: "dashamazon"
-        }),
-        credential_retrieval: credentialRetrieval.default({
-          url_default: "https://www.mydashapplications.com/database-admin",
-          url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
-          notes: ""
-        })
-      }).default({
-        public_ip_lookup_url: "https://api.ipify.org?format=json",
-        mysql: {
-          host: "db.mydashapplications.studio",
-          port: 3306,
-          database: "dashamazon"
-        },
-        credential_retrieval: {
-          url_default: "https://www.mydashapplications.com/database-admin",
-          url_tenant_pattern: "https://<your-company>.mydashapplications.com/database-admin",
-          notes: ""
-        }
-      }),
-      telemetry: external_exports.object({
-        // Supabase REST endpoint for the events table. Empty = "configured off"
-        // (events buffered locally, never flushed). See internal/SUPABASE-SETUP.md.
-        endpoint: external_exports.string().default(""),
-        // Supabase anon key. Empty = "configured off" same as endpoint.
-        apikey: external_exports.string().default(""),
-        batch_size: external_exports.number().int().positive().default(50),
-        flush_interval_ms: external_exports.number().int().positive().default(6e4)
-      }).default({
-        endpoint: "",
-        apikey: "",
-        batch_size: 50,
-        flush_interval_ms: 6e4
-      })
-    });
-  }
-});
-
-// src/lib/defaults/load.ts
-import { readFile as readFile6 } from "node:fs/promises";
-import { dirname as dirname6, join as join6 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-async function loadPluginDefaults(overridePath) {
-  const candidates = overridePath ? [overridePath] : candidatePaths2();
-  for (const path2 of candidates) {
-    try {
-      const raw = await readFile6(path2, "utf-8");
-      const parsed = (0, import_yaml7.parse)(raw);
-      const result = defaultsSchema.safeParse(parsed);
-      if (!result.success) {
-        throw new Error(
-          formatZodError(result.error, `Plugin defaults at ${path2} are invalid`)
-        );
-      }
-      return applyEnvOverrides(result.data);
-    } catch (err) {
-      if (isFileNotFoundError7(err)) continue;
-      throw err;
-    }
-  }
-  return applyEnvOverrides(defaultsSchema.parse({ schema_version: 1 }));
-}
-function applyEnvOverrides(defaults) {
-  const env = process.env;
-  if (env.MIXSHIFT_TELEMETRY_ENDPOINT) {
-    defaults.telemetry.endpoint = env.MIXSHIFT_TELEMETRY_ENDPOINT;
-  }
-  if (env.MIXSHIFT_TELEMETRY_APIKEY) {
-    defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
-  }
-  return defaults;
-}
-function candidatePaths2() {
-  const here = dirname6(fileURLToPath2(import.meta.url));
-  const candidates = [];
-  let dir = here;
-  for (let i = 0; i < 6; i++) {
-    candidates.push(join6(dir, ".mixshift-defaults.yaml"));
-    const parent = dirname6(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return candidates;
-}
-function isFileNotFoundError7(err) {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
-}
-var import_yaml7;
-var init_load2 = __esm({
-  "src/lib/defaults/load.ts"() {
-    "use strict";
-    import_yaml7 = __toESM(require_dist(), 1);
-    init_schema3();
-    init_format_error();
-  }
-});
-
-// src/lib/telemetry/consent.ts
-var consent_exports = {};
-__export(consent_exports, {
-  getTelemetryStatus: () => getTelemetryStatus,
-  hasAcknowledgedConsent: () => hasAcknowledgedConsent,
-  isTelemetryEnabled: () => isTelemetryEnabled,
-  markConsentAcknowledged: () => markConsentAcknowledged,
-  setOptedOut: () => setOptedOut
-});
-async function isTelemetryEnabled(dataDirOverride) {
-  const envVal = process.env.MIXSHIFT_TELEMETRY;
-  if (envVal !== void 0) {
-    const v = envVal.toLowerCase().trim();
-    if (v === "0" || v === "false" || v === "off" || v === "no" || v === "disabled") {
-      return false;
-    }
-  }
-  const { profile } = await loadProfile(dataDirOverride);
-  if (profile.telemetry?.opted_out) {
-    return false;
-  }
-  const defaults = await loadPluginDefaults();
-  if (!defaults.telemetry.endpoint || !defaults.telemetry.apikey) {
-    return false;
-  }
-  return true;
-}
-async function hasAcknowledgedConsent(dataDirOverride) {
-  const { profile } = await loadProfile(dataDirOverride);
-  return !!profile.telemetry?.acknowledged_at;
-}
-async function markConsentAcknowledged(dataDirOverride) {
-  const { profile, source } = await loadProfile(dataDirOverride);
-  if (profile.telemetry?.acknowledged_at) return;
-  const next = source === "file" ? { ...profile } : defaultProfile();
-  next.telemetry = {
-    ...next.telemetry ?? { opted_out: false },
-    acknowledged_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  await saveProfile(next, dataDirOverride);
-}
-async function setOptedOut(optedOut, dataDirOverride) {
-  const { profile, source } = await loadProfile(dataDirOverride);
-  const next = source === "file" ? { ...profile } : defaultProfile();
-  next.telemetry = {
-    ...next.telemetry ?? { opted_out: false },
-    opted_out: optedOut
-  };
-  await saveProfile(next, dataDirOverride);
-}
-async function getTelemetryStatus(dataDirOverride) {
-  const envVal = process.env.MIXSHIFT_TELEMETRY?.toLowerCase().trim();
-  const envOverride = envVal === "0" || envVal === "false" || envVal === "off" || envVal === "no" || envVal === "disabled";
-  const { profile } = await loadProfile(dataDirOverride);
-  const defaults = await loadPluginDefaults();
-  const configured = !!defaults.telemetry.endpoint && !!defaults.telemetry.apikey;
-  const optedOut = !!profile.telemetry?.opted_out;
-  let enabled = true;
-  let reason = "enabled";
-  if (envOverride) {
-    enabled = false;
-    reason = "disabled via MIXSHIFT_TELEMETRY env var";
-  } else if (optedOut) {
-    enabled = false;
-    reason = "disabled via `mixshift telemetry opt-out`";
-  } else if (!configured) {
-    enabled = false;
-    reason = "telemetry endpoint not configured in plugin defaults";
-  }
-  return {
-    enabled,
-    reason,
-    install_id: profile.telemetry?.install_id,
-    acknowledged_at: profile.telemetry?.acknowledged_at,
-    opted_out: optedOut,
-    env_override: envOverride,
-    configured
-  };
-}
-var init_consent = __esm({
-  "src/lib/telemetry/consent.ts"() {
-    "use strict";
-    init_load();
-    init_save();
-    init_schema();
-    init_load2();
   }
 });
 
@@ -64341,50 +65301,10 @@ var init_flush_log = __esm({
 });
 
 // src/lib/env/load-dotenv.ts
+init_plugin_root();
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as join2 } from "node:path";
-
-// src/lib/prefetch/plugin-root.ts
-import { existsSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-var cached;
-function resolvePluginRoot() {
-  if (cached) return cached;
-  const envOverride = process.env.MIXSHIFT_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
-  if (envOverride && isPluginRoot(envOverride)) {
-    cached = envOverride;
-    return envOverride;
-  }
-  const here = dirname(fileURLToPath(import.meta.url));
-  let dir = here;
-  for (let i = 0; i < 8; i++) {
-    if (isPluginRoot(dir)) {
-      cached = dir;
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `Could not locate the mixshift-ai plugin root (looked for shared/sql-library/catalog.yaml). Walked up from ${here}. If you're running tests, set MIXSHIFT_PLUGIN_ROOT.`
-  );
-}
-function isPluginRoot(dir) {
-  try {
-    const marker = join(dir, "shared", "sql-library", "catalog.yaml");
-    return existsSync(marker) && statSync(marker).isFile();
-  } catch {
-    return false;
-  }
-}
-function pluginPath(...segments) {
-  return join(resolvePluginRoot(), ...segments);
-}
-
-// src/lib/env/load-dotenv.ts
 var cachedResult;
 async function loadDotenvIfPresent() {
   if (cachedResult) return cachedResult;
@@ -64486,25 +65406,8 @@ var {
   Help
 } = import_index.default;
 
-// src/lib/plugin-version.ts
-import { readFileSync } from "node:fs";
-import { join as join3 } from "node:path";
-var cached2;
-function getPluginVersion() {
-  if (cached2) return cached2;
-  try {
-    const path2 = join3(resolvePluginRoot(), ".claude-plugin", "plugin.json");
-    const raw = readFileSync(path2, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.version === "string" && parsed.version) {
-      cached2 = parsed.version;
-      return cached2;
-    }
-  } catch {
-  }
-  cached2 = "0.0.0-unknown";
-  return cached2;
-}
+// src/cli.ts
+init_plugin_version();
 
 // src/commands/profile.ts
 var import_yaml3 = __toESM(require_dist(), 1);
@@ -64990,9 +65893,9 @@ function countBy(arr) {
 }
 
 // src/lib/clients/bootstrap.ts
-var import_yaml5 = __toESM(require_dist(), 1);
-import { mkdir as mkdir3, rename as rename3, writeFile as writeFile3, access } from "node:fs/promises";
-import { dirname as dirname4 } from "node:path";
+var import_yaml6 = __toESM(require_dist(), 1);
+import { mkdir as mkdir4, rename as rename3, writeFile as writeFile4, access } from "node:fs/promises";
+import { dirname as dirname6 } from "node:path";
 init_format_error();
 init_resolve();
 async function bootstrapBrand(suggestion, options = {}) {
@@ -65015,7 +65918,7 @@ async function bootstrapBrand(suggestion, options = {}) {
 Either pick a different slug, delete the existing directory, or pass --force to overwrite.`
       );
     } catch (err) {
-      if (!isFileNotFoundError5(err)) throw err;
+      if (!isFileNotFoundError7(err)) throw err;
     }
   }
   const context = buildContext(suggestion, validAccounts, options.asOfDate);
@@ -65026,9 +65929,9 @@ Either pick a different slug, delete the existing directory, or pass --force to 
 ` + formatZodError(parsed.error)
     );
   }
-  await mkdir3(dir, { recursive: true });
-  await mkdir3(`${dir}/corpora`, { recursive: true });
-  const yaml = (0, import_yaml5.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
+  await mkdir4(dir, { recursive: true });
+  await mkdir4(`${dir}/corpora`, { recursive: true });
+  const yaml = (0, import_yaml6.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
   await writeAtomic(ctxPath, yaml);
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
@@ -65148,24 +66051,24 @@ Generated by \`mixshift brand add ${suggestion.slug}\`.
 `;
 }
 async function writeAtomic(path2, content) {
-  await mkdir3(dirname4(path2), { recursive: true });
+  await mkdir4(dirname6(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile3(tmpPath, content, { encoding: "utf-8" });
+  await writeFile4(tmpPath, content, { encoding: "utf-8" });
   await rename3(tmpPath, path2);
 }
 function todayISO() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
-function isFileNotFoundError5(err) {
+function isFileNotFoundError7(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
 // src/lib/clients/index.ts
-var import_yaml6 = __toESM(require_dist(), 1);
+var import_yaml7 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir4, readFile as readFile5, rename as rename4, writeFile as writeFile4, chmod as chmod2 } from "node:fs/promises";
-import { dirname as dirname5 } from "node:path";
+import { mkdir as mkdir5, readFile as readFile7, rename as rename4, writeFile as writeFile5, chmod as chmod2 } from "node:fs/promises";
+import { dirname as dirname7 } from "node:path";
 
 // src/lib/clients/index-schema.ts
 init_zod();
@@ -65221,16 +66124,16 @@ async function readIndex(dataDirOverride) {
   const path2 = indexPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile5(path2, "utf-8");
+    raw = await readFile7(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError6(err)) {
+    if (isFileNotFoundError8(err)) {
       return { index: emptyIndex(), source: "empty", path: path2 };
     }
     throw err;
   }
   let parsed;
   try {
-    parsed = (0, import_yaml6.parse)(raw);
+    parsed = (0, import_yaml7.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -65250,10 +66153,10 @@ Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
 async function saveIndex(index, dataDirOverride) {
   const validated = clientsIndexSchema.parse(index);
   const path2 = indexPath(dataDirOverride);
-  await mkdir4(dirname5(path2), { recursive: true, mode: 448 });
-  const yaml = (0, import_yaml6.stringify)(validated, { lineWidth: 0 });
+  await mkdir5(dirname7(path2), { recursive: true, mode: 448 });
+  const yaml = (0, import_yaml7.stringify)(validated, { lineWidth: 0 });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile4(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
+  await writeFile5(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
   await chmod2(tmpPath, 384);
   await rename4(tmpPath, path2);
   return { path: path2 };
@@ -65328,7 +66231,7 @@ async function markBrandColdStarted(slug, dataDirOverride) {
   await saveIndex(index, dataDirOverride);
   return { updated: true, path: path2 };
 }
-function isFileNotFoundError6(err) {
+function isFileNotFoundError8(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 async function runDiscoveryAndPersist(args) {
@@ -65565,449 +66468,8 @@ async function clearKeyBrands(dataDirOverride) {
   return { removed_count: existing.length };
 }
 
-// src/lib/telemetry/index.ts
-init_consent();
-import { platform, release } from "node:os";
-
-// src/lib/telemetry/identity.ts
-init_load();
-init_save();
-init_schema();
-import { randomUUID } from "node:crypto";
-async function getOrCreateInstallId(dataDirOverride) {
-  const { profile, source } = await loadProfile(dataDirOverride);
-  if (profile.telemetry?.install_id) {
-    return { installId: profile.telemetry.install_id, wasJustCreated: false };
-  }
-  const newId = randomUUID();
-  const next = source === "file" ? { ...profile } : defaultProfile();
-  next.telemetry = {
-    ...next.telemetry ?? { opted_out: false },
-    install_id: newId
-  };
-  await saveProfile(next, dataDirOverride);
-  return { installId: newId, wasJustCreated: true };
-}
-async function readInstallId(dataDirOverride) {
-  const { profile } = await loadProfile(dataDirOverride);
-  return profile.telemetry?.install_id;
-}
-
-// src/lib/telemetry/queue.ts
-init_resolve();
-import { appendFile, readFile as readFile7, writeFile as writeFile5, mkdir as mkdir5, stat } from "node:fs/promises";
-import { dirname as dirname7 } from "node:path";
-async function enqueueEvent(record2, dataDirOverride) {
-  const path2 = telemetryQueuePath(dataDirOverride);
-  const line = JSON.stringify(record2) + "\n";
-  try {
-    await appendFile(path2, line, { encoding: "utf-8" });
-  } catch (err) {
-    if (isFileNotFoundError8(err)) {
-      await mkdir5(dirname7(path2), { recursive: true });
-      await appendFile(path2, line, { encoding: "utf-8" });
-    } else {
-    }
-  }
-}
-async function readQueue(dataDirOverride) {
-  const path2 = telemetryQueuePath(dataDirOverride);
-  let raw;
-  try {
-    raw = await readFile7(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError8(err)) return [];
-    return [];
-  }
-  if (!raw.trim()) return [];
-  const events = [];
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const ev = JSON.parse(line);
-      events.push(ev);
-    } catch {
-    }
-  }
-  return events;
-}
-async function clearQueue(dataDirOverride) {
-  const path2 = telemetryQueuePath(dataDirOverride);
-  try {
-    await writeFile5(path2, "", { encoding: "utf-8" });
-  } catch {
-  }
-}
-async function queueSizeBytes(dataDirOverride) {
-  try {
-    const s = await stat(telemetryQueuePath(dataDirOverride));
-    return s.size;
-  } catch {
-    return 0;
-  }
-}
-function isFileNotFoundError8(err) {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
-}
-
-// src/lib/telemetry/client.ts
-init_load2();
-var DEFAULT_TIMEOUT_MS = 5e3;
-async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  const defaults = await loadPluginDefaults();
-  const { endpoint, apikey, batch_size } = defaults.telemetry;
-  if (!endpoint || !apikey) {
-    return { status: "no_endpoint", events_sent: 0 };
-  }
-  const events = await readQueue(dataDirOverride);
-  if (events.length === 0) {
-    return { status: "no_events", events_sent: 0 };
-  }
-  let sentCount = 0;
-  for (let i = 0; i < events.length; i += batch_size) {
-    const batch = events.slice(i, i + batch_size);
-    try {
-      await postBatch(endpoint, apikey, batch, timeoutMs);
-      sentCount += batch.length;
-    } catch (err) {
-      return {
-        status: "failed",
-        events_sent: sentCount,
-        error: err instanceof Error ? err.message : String(err)
-      };
-    }
-  }
-  await clearQueue(dataDirOverride);
-  return { status: "sent", events_sent: sentCount };
-}
-async function postBatch(endpoint, apikey, batch, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const normalized = batch.map(normalizeRecord);
-    const resp = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey,
-        Authorization: `Bearer ${apikey}`,
-        Prefer: "return=minimal, missing=default"
-      },
-      body: JSON.stringify(normalized),
-      signal: controller.signal
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "<unreadable>");
-      throw new Error(
-        `Supabase responded ${resp.status} ${resp.statusText}: ${body.slice(0, 200)}`
-      );
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-}
-function normalizeRecord(rec) {
-  return {
-    event_name: rec.event_name,
-    install_id: rec.install_id,
-    email: rec.email ?? null,
-    plugin_version: rec.plugin_version,
-    install_path: rec.install_path,
-    // Surface added in 0.5.1 — older queue.jsonl entries that pre-date the
-    // field land here with `surface: undefined` and get coerced to null.
-    // Once the queue drains, every new event carries the surface.
-    surface: rec.surface ?? null,
-    os: rec.os,
-    node_version: rec.node_version,
-    ts: rec.ts,
-    payload: rec.payload ?? {},
-    skill_id: rec.skill_id ?? null,
-    duration_ms: rec.duration_ms ?? null,
-    outcome: rec.outcome ?? null,
-    query_id: rec.query_id ?? null,
-    query_table: rec.query_table ?? null,
-    row_count: rec.row_count ?? null,
-    error_class: rec.error_class ?? null,
-    trigger_phrase: rec.trigger_phrase ?? null
-  };
-}
-
-// src/lib/telemetry/events.ts
-var EventName = {
-  // Lifecycle
-  PluginInstalled: "plugin.installed",
-  PluginUpdated: "plugin.updated",
-  PluginCrashed: "plugin.crashed",
-  CliCommandRun: "cli.command_run",
-  // Onboarding
-  WelcomeViewed: "welcome.viewed",
-  ConsentAcknowledged: "consent.acknowledged",
-  AuthStarted: "auth.started",
-  AuthCompleted: "auth.completed",
-  AuthFailed: "auth.failed",
-  AuthConnectionTested: "auth.connection_tested",
-  /** Token-based login (PKCE or device-code) against mx-legacy-auth. */
-  AuthLoginCompleted: "auth.login_completed",
-  /** /auth/refresh returned a non-success status (401 = replay revocation,
-   *  others = transient / unexpected). Emitted from getValidAccessToken. */
-  AuthRefreshFailed: "auth.refresh_failed",
-  UserIdentified: "user.identified",
-  IpWhitelistRequested: "ip_whitelist.requested",
-  // Brand context
-  BrandDiscovered: "brand.discovered",
-  BrandAdded: "brand.added",
-  // Brand config editor (mixshift brand config <slug>)
-  BrandConfigViewed: "brand_config.viewed",
-  BrandConfigEdited: "brand_config.edited",
-  // Brand Brain Tier-2 background discovery (lib/brain/fetch.ts +
-  // `mixshift brand brain fetch`). Privacy: payloads carry slug, row
-  // counts, duration, dispatch path; never seller row contents.
-  BrainFetchStarted: "brain.fetch_started",
-  BrainFetchCompleted: "brain.fetch_completed",
-  BrainFetchFailed: "brain.fetch_failed",
-  BrainFetchSkipped: "brain.fetch_skipped",
-  // Skill + query
-  SkillInvoked: "skill.invoked",
-  SkillCompleted: "skill.completed",
-  SkillTriggerPhraseMatched: "skill.trigger_phrase_matched",
-  QueryExecuted: "query.executed",
-  QueryFailed: "query.failed",
-  PrefetchStarted: "skill.prefetch_started",
-  PrefetchCompleted: "skill.prefetch_completed",
-  SidecarWritten: "skill.sidecar_written",
-  // OCL (Objective Level Configuration) — confirm-on-run flow
-  SkillCalibrationConfirmed: "skill.calibration_confirmed",
-  SkillCalibrationEdited: "skill.calibration_edited",
-  SkillCalibrationReset: "skill.calibration_reset",
-  // Apply gate (dry-run today; flips to real writes when MCP/API lands)
-  SkillApplyAttempted: "skill.apply_attempted",
-  SkillApplied: "skill.applied",
-  // Feedback
-  FeedbackSubmitted: "feedback.submitted",
-  FeedbackDetectedImplicit: "feedback.detected_implicit",
-  TableAccessRequested: "table_access.requested",
-  // Help hub (`mixshift guide` + mx-help skill). No payload privacy concerns —
-  // help.viewed carries only format + auth-ready + an uncatalogued-skill count.
-  HelpViewed: "help.viewed",
-  // User-contributed skills (`mixshift share-skill` + mx-share-skill skill).
-  // Privacy: skill.shared carries only the contributor-authored artifact's
-  // METADATA (name, description, file count, byte size, sha). The full skill
-  // bytes go to the dedicated skill_submissions table, never this event (which
-  // fans out to Discord, where embed fields cap at 1024 chars).
-  SkillShared: "skill.shared",
-  // Amazon SP-API on-demand reports (lib/amazon/reports.ts + `mixshift amazon`).
-  // Privacy: these capture report_type + duration + outcome only — NEVER the
-  // document bytes (which can contain order/customer rows) and never the
-  // amazonSellerId in a way that leaks customer identity beyond what auth.*
-  // already links.
-  AmazonMerchantsListed: "amazon.merchants_listed",
-  ReportStarted: "report.started",
-  ReportPolled: "report.polled",
-  ReportRetrieved: "report.retrieved",
-  ReportFailed: "report.failed",
-  // Service-credential setup (`mixshift auth service-setup`). Fired after
-  // the service block is persisted so a fresh data dir's synthetic
-  // plugin.installed event attributes to the svc: label instead of landing
-  // as an anonymous install. payload: {label, verified, via}.
-  AuthServiceSetupCompleted: "auth.service_setup_completed",
-  // Amazon SP-API Pricing batch endpoints (lib/amazon/pricing.ts +
-  // `mixshift amazon pricing`). Privacy: capture operation + item counts +
-  // duration + outcome — never the responses payload (which carries seller
-  // pricing data).
-  AmazonPricingStarted: "amazon.pricing.started",
-  AmazonPricingPolled: "amazon.pricing.polled",
-  AmazonPricingRetrieved: "amazon.pricing.retrieved",
-  AmazonPricingFailed: "amazon.pricing.failed",
-  // Generic SP-API call surface (lib/amazon/spapi-call.ts + `mixshift amazon
-  // operations|call`). Privacy: capture operation id + duration + outcome
-  // only — never the payload (it carries seller-level business data).
-  AmazonSpApiOperationsListed: "amazon.spapi.operations_listed",
-  AmazonSpApiCalled: "amazon.spapi.called",
-  // Amazon Ads API call surface (lib/amazon/ads-call.ts + `mixshift ads`).
-  // Same privacy rule: operation id + duration + outcome only — never the
-  // payload (campaign/keyword/bid data is seller-level business data).
-  AdsProfilesListed: "ads.profiles_listed",
-  AdsOperationsListed: "ads.operations_listed",
-  AdsCalled: "ads.called",
-  // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
-  WarmStartServed: "warm_start.served"
-};
-
-// src/lib/telemetry/index.ts
-init_load();
-init_credentials();
-
-// src/lib/telemetry/surface.ts
-import { fileURLToPath as fileURLToPath3 } from "node:url";
-var ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
-function detectSurface(flagValue) {
-  const envOverride = process.env[ENV_VAR_OVERRIDE];
-  if (envOverride && isKnownSurface(envOverride)) {
-    return envOverride;
-  }
-  if (flagValue && isKnownSurface(flagValue)) {
-    return flagValue;
-  }
-  for (const detector of detectors) {
-    const result = detector();
-    if (result !== null) return result;
-  }
-  return "cli";
-}
-var COWORK_PATH_MARKER = "local-agent-mode-sessions";
-function detectCowork() {
-  if (process.env.COWORK === "1") return "cowork";
-  if (process.env.COWORK_VERSION) return "cowork";
-  if (process.env.COWORK_PLUGIN_HOST) return "cowork";
-  if (runtimePaths().some((p) => p.toLowerCase().includes(COWORK_PATH_MARKER))) {
-    return "cowork";
-  }
-  return null;
-}
-function runtimePaths() {
-  const paths = [];
-  if (process.env.CLAUDE_PLUGIN_ROOT) paths.push(process.env.CLAUDE_PLUGIN_ROOT);
-  if (process.argv[1]) paths.push(process.argv[1]);
-  try {
-    paths.push(fileURLToPath3(import.meta.url));
-  } catch {
-  }
-  return paths;
-}
-function detectClaudeCode() {
-  if (process.env.CLAUDECODE === "1" || process.env.CLAUDE_CODE === "1") {
-    return "claude_code";
-  }
-  if (process.env.CLAUDE_CODE_ENTRYPOINT || process.env.CLAUDE_CODE_VERSION) {
-    return "claude_code";
-  }
-  return null;
-}
-function detectPluginHostUnknown() {
-  if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin_host_unknown";
-  return null;
-}
-var detectors = [
-  detectCowork,
-  // MUST be first — Cowork also sets CLAUDECODE (embeds CC engine).
-  detectClaudeCode,
-  detectPluginHostUnknown
-];
-var KNOWN_SURFACES = /* @__PURE__ */ new Set([
-  "cowork",
-  "claude_code",
-  "plugin_host_unknown",
-  "cli",
-  "chatgpt",
-  "claude_desktop",
-  "other"
-]);
-function isKnownSurface(s) {
-  return KNOWN_SURFACES.has(s);
-}
-
-// src/lib/telemetry/index.ts
-init_consent();
-async function track(input, dataDirOverride) {
-  try {
-    const enabled = await isTelemetryEnabled(dataDirOverride);
-    if (!enabled) return;
-    const { installId, wasJustCreated } = await getOrCreateInstallId(dataDirOverride);
-    const { profile } = await loadProfile(dataDirOverride);
-    const pluginVersion = getPluginVersion();
-    const installPath = detectInstallPath();
-    const surface = detectSurface(readSurfaceFlag());
-    const os = detectOs();
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const userEmail = profile.user?.email;
-    const attribution = await readAttributionBestEffort(dataDirOverride);
-    const datahubPersonLabel = attribution.personLabel;
-    const automationPayload = attribution.automation ? { automation: true } : {};
-    if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
-      const synthetic = {
-        event_name: EventName.PluginInstalled,
-        install_id: installId,
-        email: userEmail,
-        person_label: datahubPersonLabel,
-        plugin_version: pluginVersion,
-        install_path: installPath,
-        surface,
-        os,
-        node_version: process.version,
-        ts: nowIso,
-        // Marker so analytics can distinguish "synthetic on first-track"
-        // from a hypothetical future direct track(PluginInstalled) call.
-        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload }
-      };
-      await enqueueEvent(synthetic, dataDirOverride);
-    }
-    const record2 = {
-      event_name: input.event_name,
-      install_id: installId,
-      email: input.email ?? userEmail,
-      person_label: input.person_label ?? datahubPersonLabel,
-      plugin_version: pluginVersion,
-      install_path: installPath,
-      surface,
-      os,
-      node_version: process.version,
-      ts: nowIso,
-      payload: { ...input.payload ?? {}, ...automationPayload },
-      skill_id: input.skill_id,
-      duration_ms: input.duration_ms,
-      outcome: input.outcome,
-      query_id: input.query_id,
-      query_table: input.query_table,
-      row_count: input.row_count,
-      error_class: input.error_class,
-      trigger_phrase: input.trigger_phrase
-    };
-    await enqueueEvent(record2, dataDirOverride);
-  } catch {
-  }
-}
-async function maybeFlush(dataDirOverride) {
-  try {
-    const enabled = await isTelemetryEnabled(dataDirOverride);
-    if (!enabled) return { status: "no_endpoint", events_sent: 0 };
-    return await flushQueue(dataDirOverride);
-  } catch (err) {
-    return {
-      status: "failed",
-      events_sent: 0,
-      error: err instanceof Error ? err.message : String(err)
-    };
-  }
-}
-function detectInstallPath() {
-  if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin-host";
-  return "cli";
-}
-function detectOs() {
-  return `${platform()}-${release()}`;
-}
-function readSurfaceFlag() {
-  const idx = process.argv.indexOf("--surface");
-  if (idx >= 0 && idx + 1 < process.argv.length) {
-    return process.argv[idx + 1];
-  }
-  const eq = process.argv.find((a) => a.startsWith("--surface="));
-  if (eq) return eq.slice("--surface=".length);
-  return void 0;
-}
-async function readAttributionBestEffort(dataDirOverride) {
-  try {
-    const { credentials } = await loadCredentials(dataDirOverride);
-    const human = credentials?.datahub?.person_label;
-    const service = credentials?.service;
-    return {
-      personLabel: human ?? service?.label ?? service?.client_id,
-      automation: Boolean(service) && !human
-    };
-  } catch {
-    return { personLabel: void 0, automation: false };
-  }
-}
+// src/commands/brand.ts
+init_telemetry();
 
 // src/commands/brand-view.ts
 import { readdir, stat as stat2, writeFile as writeFile7, mkdir as mkdir7 } from "node:fs/promises";
@@ -67097,6 +67559,7 @@ function escapeAttr(s) {
 
 // src/commands/brand-view.ts
 init_load();
+init_telemetry();
 var exec = promisify(execCb);
 function registerBrandViewCommand(brandCmd) {
   brandCmd.command("view <slug>").description(
@@ -67518,9 +67981,10 @@ import { join as join8 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
-import { readFile as readFile10 } from "node:fs/promises";
+init_plugin_root();
 var import_yaml9 = __toESM(require_dist(), 1);
 init_format_error();
+import { readFile as readFile10 } from "node:fs/promises";
 var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -67718,444 +68182,8 @@ function findReferencedParams(sql) {
   return [...result];
 }
 
-// src/lib/data/query-runner.ts
-var import_promise2 = __toESM(require_promise(), 1);
-init_credentials();
-init_schema2();
-async function runQuery(sql, params = [], options = {}) {
-  let creds;
-  try {
-    creds = await resolveCreds2(options);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      kind: "unknown",
-      message,
-      friendly: message,
-      durationMs: 0
-    };
-  }
-  if (isDatahubCreds(creds)) {
-    return runDatahubQuery(creds, sql, params, options);
-  }
-  return runMysqlQuery(creds, sql, params, options);
-}
-async function runMysqlQuery(creds, sql, params, options) {
-  const t0 = Date.now();
-  let conn;
-  try {
-    const useNamed = !Array.isArray(params) && params !== null && typeof params === "object";
-    conn = await import_promise2.default.createConnection({
-      host: creds.host,
-      port: creds.port,
-      user: creds.user,
-      password: creds.password,
-      database: creds.database,
-      connectTimeout: options.connectTimeoutMs ?? 1e4,
-      namedPlaceholders: useNamed
-    });
-    const timeoutMs = options.queryTimeoutMs ?? 6e4;
-    await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);
-    const [rows] = await conn.query(
-      sql,
-      params
-    );
-    const durationMs = Date.now() - t0;
-    void track(
-      {
-        event_name: EventName.QueryExecuted,
-        outcome: "ok",
-        duration_ms: durationMs,
-        row_count: rows.length,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        payload: {
-          auth_path: "mysql",
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-        }
-      },
-      options.dataDirOverride
-    );
-    return {
-      ok: true,
-      rows,
-      rowCount: rows.length,
-      durationMs
-    };
-  } catch (err) {
-    const failure = classify(err);
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: Date.now() - t0,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "mysql",
-          raw_code: failure.raw_code,
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
-          table_name: failure.table_name
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  } finally {
-    if (conn) {
-      try {
-        await conn.end();
-      } catch {
-      }
-    }
-  }
-}
-async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOverride) {
-  const doFetch = async (bearer) => {
-    try {
-      return await fetch(`${creds.api_base}${path2}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body),
-        // Give the server a small grace window beyond its own timeout so
-        // we don't AbortError before it has a chance to return the
-        // classified timeout envelope.
-        signal: AbortSignal.timeout(timeoutBudgetMs)
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new DatahubNetworkError(message);
-    }
-  };
-  let token = await getValidAccessToken(dataDirOverride);
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    token = await getValidAccessToken(dataDirOverride, true);
-    res = await doFetch(token);
-    if (res.status === 401) {
-      throw new Error(
-        "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
-      );
-    }
-  }
-  return res;
-}
-async function runDatahubQuery(creds, sql, params, options) {
-  const t0 = Date.now();
-  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
-  try {
-    const res = await datahubAuthedPost(
-      creds,
-      "/api/query",
-      { sql, params, queryTimeoutMs },
-      queryTimeoutMs + 5e3,
-      options.dataDirOverride
-    );
-    const json2 = await res.json();
-    const durationMs = Date.now() - t0;
-    if (json2.ok === true) {
-      const rows = json2.rows ?? [];
-      const rowCount = json2.rowCount ?? rows.length;
-      const serverDuration = json2.durationMs ?? durationMs;
-      void track(
-        {
-          event_name: EventName.QueryExecuted,
-          outcome: "ok",
-          duration_ms: durationMs,
-          row_count: rowCount,
-          query_id: options.query_id,
-          query_table: options.query_table,
-          payload: {
-            auth_path: "datahub",
-            server_duration_ms: serverDuration,
-            sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-          }
-        },
-        options.dataDirOverride
-      );
-      return { ok: true, rows, rowCount, durationMs: serverDuration };
-    }
-    const failure = {
-      ok: false,
-      kind: json2.kind ?? "unknown",
-      table_name: json2.table_name,
-      raw_code: json2.raw_code,
-      message: json2.message ?? "Query failed",
-      friendly: json2.friendly ?? json2.message ?? "Query failed",
-      durationMs
-    };
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "datahub",
-          raw_code: failure.raw_code,
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql,
-          table_name: failure.table_name
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  } catch (err) {
-    const durationMs = Date.now() - t0;
-    let failure;
-    if (err instanceof DatahubNetworkError) {
-      failure = {
-        ok: false,
-        kind: "host_unreachable",
-        message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
-        durationMs
-      };
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      failure = {
-        ok: false,
-        kind: "unknown",
-        message,
-        friendly: message,
-        durationMs
-      };
-    }
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: options.query_id,
-        query_table: options.query_table,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "datahub",
-          sql_normalized: sql.length > 2e3 ? sql.slice(0, 2e3) + "..." : sql
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  }
-}
-async function runNamedQuery(id, options = {}) {
-  let creds;
-  try {
-    creds = await resolveCreds2({
-      creds: options.creds,
-      dataDirOverride: options.dataDirOverride
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, kind: "unknown", message, friendly: message, durationMs: 0 };
-  }
-  if (!isDatahubCreds(creds)) {
-    return {
-      ok: false,
-      kind: "unknown",
-      message: `Named query ${id} requires a token-based session; legacy raw-MySQL credentials cannot run it.`,
-      friendly: "Library queries now run server-side and need the token-based sign-in. Run `mixshift auth login` (or `mixshift auth service-setup` for unattended use).",
-      durationMs: 0
-    };
-  }
-  const t0 = Date.now();
-  const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
-  const sellerIds = options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : void 0;
-  try {
-    const res = await datahubAuthedPost(
-      creds,
-      "/api/named-query",
-      { id, sellerIds, params: options.params, queryTimeoutMs },
-      queryTimeoutMs + 5e3,
-      options.dataDirOverride
-    );
-    const json2 = await res.json();
-    const durationMs = Date.now() - t0;
-    if (json2.ok === true) {
-      const rows = json2.rows ?? [];
-      const rowCount = json2.rowCount ?? rows.length;
-      const serverDuration = json2.durationMs ?? durationMs;
-      void track(
-        {
-          event_name: EventName.QueryExecuted,
-          outcome: "ok",
-          duration_ms: durationMs,
-          row_count: rowCount,
-          query_id: id,
-          payload: {
-            auth_path: "datahub",
-            named_query: true,
-            server_duration_ms: serverDuration,
-            revision: json2.revision
-          }
-        },
-        options.dataDirOverride
-      );
-      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json2.revision };
-    }
-    const failure = {
-      ok: false,
-      kind: json2.kind ?? "unknown",
-      table_name: json2.table_name,
-      raw_code: json2.raw_code,
-      missing_params: json2.missing_params,
-      message: json2.message ?? `Named query ${id} failed`,
-      friendly: json2.friendly ?? json2.message ?? `Named query ${id} failed`,
-      durationMs
-    };
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: id,
-        error_class: failure.kind,
-        payload: {
-          auth_path: "datahub",
-          named_query: true,
-          raw_code: failure.raw_code
-        }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  } catch (err) {
-    const durationMs = Date.now() - t0;
-    let failure;
-    if (err instanceof DatahubNetworkError) {
-      failure = {
-        ok: false,
-        kind: "host_unreachable",
-        message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
-        durationMs
-      };
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      failure = { ok: false, kind: "unknown", message, friendly: message, durationMs };
-    }
-    void track(
-      {
-        event_name: EventName.QueryFailed,
-        outcome: "failed",
-        duration_ms: durationMs,
-        query_id: id,
-        error_class: failure.kind,
-        payload: { auth_path: "datahub", named_query: true }
-      },
-      options.dataDirOverride
-    );
-    return failure;
-  }
-}
-var DatahubNetworkError = class extends Error {
-  constructor(msg2) {
-    super(msg2);
-    this.name = "DatahubNetworkError";
-  }
-};
-function classify(err) {
-  const e = err;
-  const message = e.sqlMessage ?? e.message ?? String(err);
-  const code = e.code;
-  if (code === "ER_TABLEACCESS_DENIED_ERROR") {
-    const tableName = extractTableFromAccessDenied(message);
-    return {
-      ok: false,
-      kind: "access_denied_table",
-      table_name: tableName,
-      raw_code: code,
-      message,
-      friendly: tableName ? `Your MySQL user does not have SELECT permission on \`${tableName}\`. Send a table-access request to MixShift ops to be granted access.` : `Your MySQL user does not have SELECT permission on a table referenced in this query.`
-    };
-  }
-  if (code === "ER_DBACCESS_DENIED_ERROR" || code === "ER_ACCESS_DENIED_ERROR") {
-    return {
-      ok: false,
-      kind: "access_denied_db",
-      raw_code: code,
-      message,
-      friendly: "Your MySQL user is not authorized for this database. Re-run `mixshift auth setup` to fix the credentials, or contact MixShift ops."
-    };
-  }
-  if (code === "ER_NO_SUCH_TABLE") {
-    const tableName = extractTableFromNoSuchTable(message);
-    return {
-      ok: false,
-      kind: "unknown_table",
-      table_name: tableName,
-      raw_code: code,
-      message,
-      friendly: tableName ? `Table \`${tableName}\` does not exist in the warehouse. Run \`mixshift data list-tables\` to see what's available.` : `One of the tables in this query does not exist. Run \`mixshift data list-tables\` to see available tables.`
-    };
-  }
-  if (code === "ER_PARSE_ERROR" || code === "ER_BAD_FIELD_ERROR") {
-    return {
-      ok: false,
-      kind: "syntax_error",
-      raw_code: code,
-      message,
-      friendly: `SQL error: ${message}`
-    };
-  }
-  if (code === "ER_QUERY_TIMEOUT" || code === "PROTOCOL_SEQUENCE_TIMEOUT" || /max_execution_time/i.test(message)) {
-    return {
-      ok: false,
-      kind: "timeout",
-      raw_code: code,
-      message,
-      friendly: "Query exceeded the 60s timeout. Try narrowing the date range or filtering by seller_id."
-    };
-  }
-  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
-    return {
-      ok: false,
-      kind: "host_unreachable",
-      raw_code: code,
-      message,
-      friendly: "Could not reach the warehouse host. Check your network."
-    };
-  }
-  return {
-    ok: false,
-    kind: "unknown",
-    raw_code: code,
-    message,
-    friendly: `Query failed: ${message}`
-  };
-}
-function extractTableFromAccessDenied(message) {
-  const m = /for table '([^']+)'/.exec(message);
-  return m?.[1];
-}
-function extractTableFromNoSuchTable(message) {
-  const m = /Table '([^']+)' doesn't exist/.exec(message);
-  if (!m) return void 0;
-  const full = m[1];
-  return full.includes(".") ? full.split(".").pop() : full;
-}
-async function resolveCreds2(options) {
-  if (options.creds) return options.creds;
-  const { credentials } = await loadCredentials(options.dataDirOverride);
-  if (credentials?.datahub) return credentials.datahub;
-  if (credentials?.service) {
-    return { api_base: credentials.service.api_base, access_token: "service" };
-  }
-  if (credentials?.mysql) return credentials.mysql;
-  throw new Error(
-    "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
-  );
-}
-
 // src/lib/data/dispatch.ts
+init_query_runner();
 var SPROC_SQL_DIR_ENV = "MIXSHIFT_SPROC_SQL_DIR";
 var QUERY_PACK_DIR_ENV = "MIXSHIFT_QUERY_PACK_DIR";
 var MissingParamsError = class extends Error {
@@ -68299,6 +68327,8 @@ function stripSqlHeader(raw) {
 
 // src/lib/brain/fetch.ts
 init_resolve();
+init_plugin_version();
+init_telemetry();
 
 // src/lib/brain/assemble.ts
 import { createHash } from "node:crypto";
@@ -69671,6 +69701,7 @@ function isFileNotFoundError12(err) {
 }
 
 // src/commands/brand-config.ts
+init_telemetry();
 function registerBrandConfigCommand(brandCmd) {
   brandCmd.command("config <slug>").description(
     "Edit brand-level context fields (ACoS/TACoS targets, attribution window, goals). Shows the confirmation card by default. Pair with --apply <decision-json> to persist edits."
@@ -70861,6 +70892,7 @@ function sentenceCase3(s) {
 }
 
 // src/commands/brand-render-context.ts
+init_telemetry();
 var exec2 = promisify2(execCb2);
 function registerBrandRenderContextCommand(brandCmd) {
   brandCmd.command("render-context <slug>").description(
@@ -71527,6 +71559,7 @@ function round22(n) {
 var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
 init_resolve();
+init_telemetry();
 import { readFile as fsReadFile } from "node:fs/promises";
 function registerBrandEnrichCommand(brandCmd) {
   brandCmd.command("enrich <slug>").description(
@@ -71797,6 +71830,7 @@ function isFileNotFoundError13(err) {
 }
 
 // src/commands/brand-merge-delta.ts
+init_telemetry();
 function registerBrandMergeDeltaCommand(brandCmd) {
   brandCmd.command("merge-delta <slug>").description(
     "Merge the settlement curve from a Phase 1.5 enrichment artifact into the brand's context.yaml. Preserves AM-edited fields (negation, structural_events, brand_terms, posture, etc.) and comments. Idempotent."
@@ -74101,11 +74135,11 @@ init_credentials();
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // src/lib/auth/test-connection.ts
-var import_promise3 = __toESM(require_promise(), 1);
+var import_promise2 = __toESM(require_promise(), 1);
 async function testConnection(creds, timeoutMs = 1e4) {
   let conn;
   try {
-    conn = await import_promise3.default.createConnection({
+    conn = await import_promise2.default.createConnection({
       host: creds.host,
       port: creds.port,
       user: creds.user,
@@ -74293,6 +74327,7 @@ function resolveClientId(cliFlag) {
 // src/lib/auth/login-flow.ts
 init_load();
 init_save();
+init_telemetry();
 
 // src/lib/net/api-base.ts
 var DEFAULT_API_BASE = "https://mcp.mixshift.io";
@@ -74932,6 +74967,10 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
     ...json2.scopes ? { scopes: json2.scopes } : {}
   };
 }
+
+// src/commands/auth.ts
+init_telemetry();
+init_plugin_version();
 
 // src/lib/net/classify.ts
 function describeFetchFailure(err, host) {
@@ -75647,8 +75686,9 @@ function registerValidateCommand(program3) {
 // src/lib/prefetch/manifest.ts
 init_zod();
 var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile20 } from "node:fs/promises";
+init_plugin_root();
 init_format_error();
+import { readFile as readFile20 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -75992,6 +76032,7 @@ async function writeAtomic2(path2, content) {
 }
 
 // src/lib/prefetch/runner.ts
+init_telemetry();
 async function runPrefetch(opts) {
   const t0 = Date.now();
   const manifest = await loadSkillManifest(opts.skill);
@@ -76349,6 +76390,7 @@ var sidecarSchema = external_exports.object({
 
 // src/lib/sidecar/write.ts
 init_format_error();
+init_telemetry();
 async function writeSidecar(input) {
   const runId = input.run_id ?? generateRunId();
   const runAtUtc = input.run_at_utc ?? (/* @__PURE__ */ new Date()).toISOString();
@@ -76589,6 +76631,7 @@ function isFileNotFoundError15(err) {
 }
 
 // src/lib/data/sample.ts
+init_query_runner();
 async function sampleTable(opts) {
   const limit = opts.limit ?? 10;
   const metadata = await describeTable(opts.table);
@@ -76679,6 +76722,7 @@ function formatDate2(d) {
 }
 
 // src/lib/data/export.ts
+init_query_runner();
 async function exportTable(opts) {
   const metadata = await describeTable(opts.table);
   const tableRef = "`" + opts.table.replace(/`/g, "") + "`";
@@ -76771,6 +76815,7 @@ function synthFailure(opts, message) {
 }
 
 // src/commands/data.ts
+init_query_runner();
 init_resolve();
 import { writeFile as writeFile16 } from "node:fs/promises";
 import { mkdir as mkdir17 } from "node:fs/promises";
@@ -77084,6 +77129,7 @@ function todayISO5() {
 
 // src/commands/feedback.ts
 init_load();
+init_telemetry();
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
     "Send feedback to MixShift ops (bug reports, feature requests, comments)."
@@ -77166,12 +77212,14 @@ function registerFeedbackCommand(program3) {
 init_load2();
 init_load();
 init_credentials();
+init_telemetry();
 
 // src/lib/version-check.ts
+init_plugin_version();
+init_resolve();
 import { readFile as readFile23, writeFile as writeFile17, mkdir as mkdir18 } from "node:fs/promises";
 import { dirname as dirname22 } from "node:path";
 import { join as join15 } from "node:path";
-init_resolve();
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
@@ -77637,6 +77685,7 @@ function renderWelcomeChat(args) {
 }
 
 // src/commands/version.ts
+init_plugin_version();
 function registerVersionCommand(program3) {
   program3.command("version").description(
     "Show the installed mixshift-ai plugin version and check for updates against the public marketplace.json. Cache: 24h."
@@ -77695,7 +77744,9 @@ function registerVersionCommand(program3) {
 }
 
 // src/commands/telemetry.ts
+init_telemetry();
 init_resolve();
+init_queue();
 init_flush_log();
 var VALID_OUTCOMES = /* @__PURE__ */ new Set(["ok", "failed", "timeout", "deferred", "skipped"]);
 function registerTelemetryCommands(program3) {
@@ -78203,6 +78254,7 @@ function indexConfirmationEntries(payload) {
 }
 
 // src/commands/skill.ts
+init_telemetry();
 init_resolve();
 import { mkdir as mkdir20, readFile as readFile26, writeFile as writeFile18 } from "node:fs/promises";
 import { dirname as dirname24 } from "node:path";
@@ -79257,6 +79309,7 @@ function isFileNotFoundError16(err) {
 
 // src/commands/amazon.ts
 init_resolve();
+init_telemetry();
 
 // src/commands/amazon-pricing.ts
 import { readFile as readFile29 } from "node:fs/promises";
@@ -79346,6 +79399,9 @@ async function getPricingRunResult(runId, opts = {}) {
   if (!r.ok) return r;
   return r.json;
 }
+
+// src/commands/amazon-pricing.ts
+init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
@@ -79880,6 +79936,7 @@ async function spapiCall(input, opts = {}) {
 }
 
 // src/commands/amazon-spapi.ts
+init_telemetry();
 function registerAmazonSpApiCommands(amazon) {
   registerOperations(amazon);
   registerCall(amazon);
@@ -80752,6 +80809,7 @@ async function adsCall(input, opts = {}) {
 }
 
 // src/commands/ads.ts
+init_telemetry();
 function registerAdsCommands(program3) {
   const ads = program3.command("ads").description(
     "Call the Amazon Ads API: reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations, and audited writes (bids, negatives, campaign creation; dry-run by default, --commit to apply)."
@@ -81132,8 +81190,11 @@ function buildRemediation(host, proxy) {
 }
 
 // src/commands/doctor.ts
+init_plugin_version();
+init_surface();
 init_credentials();
 init_consent();
+init_queue();
 
 // src/lib/data/named-pack-check.ts
 var DEFAULT_TIMEOUT_MS2 = 1e4;
@@ -81472,6 +81533,7 @@ function renderNetwork(r) {
 
 // src/commands/help.ts
 init_credentials();
+init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
 import { dirname as dirname28, join as join18 } from "node:path";
@@ -81720,6 +81782,9 @@ function renderHelpTerminal(args) {
 var import_yaml20 = __toESM(require_dist(), 1);
 init_load();
 init_credentials();
+init_surface();
+init_plugin_version();
+init_telemetry();
 import { promises as fs2 } from "node:fs";
 import { resolve as resolve2, join as join19, relative, basename } from "node:path";
 
@@ -82078,6 +82143,7 @@ function findFrontmatter(files) {
 }
 
 // src/cli.ts
+init_telemetry();
 init_load();
 init_save();
 await loadDotenvIfPresent();

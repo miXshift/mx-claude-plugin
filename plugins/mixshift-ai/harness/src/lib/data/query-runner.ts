@@ -145,6 +145,10 @@ async function runMysqlQuery<Row>(
       database: creds.database,
       connectTimeout: options.connectTimeoutMs ?? 10_000,
       namedPlaceholders: useNamed,
+      // BIGINT columns exceed JS safe-integer range; return them as strings so
+      // ids (DSP advertiserId, orderId, ...) are never silently rounded.
+      supportBigNumbers: true,
+      bigNumberStrings: true,
     });
     const timeoutMs = options.queryTimeoutMs ?? 60_000;
     await conn.query(`SET SESSION MAX_EXECUTION_TIME = ?`, [timeoutMs]);

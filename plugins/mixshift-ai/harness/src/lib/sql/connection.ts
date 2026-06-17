@@ -51,6 +51,11 @@ export async function query<Row = Record<string, unknown>>(
     password: creds.password,
     database: creds.database,
     connectTimeout: options.connectTimeoutMs ?? 10_000,
+    // BIGINT columns (DSP advertiserId, orderId, lineItemId, etc.) exceed JS
+    // safe-integer range; return them as strings so they are never silently
+    // rounded (a 19-digit advertiserId would otherwise lose its last digits).
+    supportBigNumbers: true,
+    bigNumberStrings: true,
   });
 
   try {
