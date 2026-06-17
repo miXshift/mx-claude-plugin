@@ -95,10 +95,13 @@ export interface MerchantView {
    *  UNIQUE per (account, marketplace) even when `amazonSellerId` is shared.
    *  The authoritative disambiguator: carry it through report-start. */
   legacySellerId?: number | string | null;
-  /** True when the SP-API authorization is live. False == Amazon access was
-   *  lost (`iLostAccess`) and the merchant must be re-authorized in the
-   *  MixShift platform before reports can be pulled (otherwise reports fail
-   *  with reauth_required). This is the signal to warn on before a pull. */
+  /** Service-derived flag: true when the SP-API authorization is believed live;
+   *  false is the warn-before-pull signal (a pull may fail with reauth_required).
+   *  Derived server-side (mx-legacy-auth) — NOT from a single `iLostAccess`
+   *  column (the warehouse has none; lost-access is surface-specific:
+   *  isAdLostAccess / isBrandAnalyticsLostAccess / isFinanceLostAccess). The
+   *  derivation can false-negative (false on a fully-active seller), so treat
+   *  false as "warn and verify", not "blocked". */
   authorized: boolean;
   /** True when this row is activated for MixShift's SCHEDULED cron pulls
    *  (legacy IsMwsUser). Display/filter signal only — NOT an auth gate; rows
