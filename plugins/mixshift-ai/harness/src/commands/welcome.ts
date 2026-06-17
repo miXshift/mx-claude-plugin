@@ -441,6 +441,8 @@ function renderWelcomeChat(args: {
       lines.push('');
     }
 
+    lines.push('Not sure where to look? Say **"help"** anytime to see everything this plugin can do in one place.');
+    lines.push('');
     lines.push("Where do you want to start?");
     lines.push('');
     return lines.join('\n');
@@ -504,6 +506,8 @@ function renderWelcomeChat(args: {
     '> Feedback during beta? Describe any friction point (*"it\'d be nice if..."*, *"this is broken"*, *"I wish this could..."*) ' +
       "and I'll offer to file it. Or say *\"send feedback to mixshift: \\<your message\\>\"* directly.",
   );
+  lines.push('');
+  lines.push('Once you are in, say **"help"** anytime to see everything this plugin can do.');
   lines.push('');
 
   return lines.join('\n');
