@@ -1,0 +1,111 @@
+# Northgrove Coffee Roasters — Brand Brain (Tier 2, synthetic fixture).
+# Validates against harness/src/lib/brain/schema.ts (brandBrainSchema).
+# Includes seller.acos_target_pct so the Tier-2 target fallback path is
+# testable (context.yaml Tier 3 still wins on conflict). VC channel: catalog
+# uses the vc hero source and sku_count is null (VC has no SKU grain).
+# NOT a real brand.
+
+schema_version: 1
+brand_slug: goldenbrand-vc-tacos
+generated_at: "2026-06-16T13:42:00.000Z"
+generator: "plugin@0.5.30"
+
+sources:
+  seller:
+    sproc: "sp_brain_seller_fetch"
+    fetched_at: "2026-06-16T13:42:00.000Z"
+    row_count: 1
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000vc01"
+  catalog_vc:
+    sproc: "sp_brain_catalog_fetch_vc"
+    fetched_at: "2026-06-16T13:42:01.000Z"
+    row_count: 6
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000vc02"
+  campaign:
+    sproc: "sp_brain_campaign_fetch"
+    fetched_at: "2026-06-16T13:42:02.000Z"
+    row_count: 14
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000vc03"
+  hero_vc:
+    sproc: "BRAIN-HERO-VC"
+    fetched_at: "2026-06-16T13:42:03.000Z"
+    row_count: 2
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000vc04"
+  recent_activity:
+    sproc: "BRAIN-RECENT-ACTIVITY"
+    fetched_at: "2026-06-16T13:42:04.000Z"
+    row_count: 1
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000vc05"
+
+seller:
+  merchant_alias: "Northgrove Coffee Roasters US (1P)"
+  storefront_name: "Northgrove Coffee Roasters"
+  acos_target_pct: 18.0
+  monthly_budget: 60000
+  marketplace: "US"
+  merchant_region: "NA"
+  agency_name: "MixShift QA (synthetic)"
+  default_currency_code: "USD"
+  i_brand_report_enabled: true
+  i_running_initial_pull: false
+  data_freshness:
+    ads_latest: "2026-06-15T00:00:00.000Z"
+    retail_latest: "2026-06-13T00:00:00.000Z"
+  activated:
+    ads: "2022-09-01T00:00:00.000Z"
+    retail: "2022-09-01T00:00:00.000Z"
+  primary_seller_id: 900202
+
+catalog:
+  asin_count: 6
+  sku_count: null
+  sub_brands:
+    - "Northgrove Single Origin"
+    - "Northgrove Espresso"
+    - "Northgrove Cold Brew"
+  item_groups:
+    - whole-bean
+    - single-origin
+    - espresso-blend
+    - ground-espresso
+    - cold-brew-concentrate
+    - ready-to-drink
+  top_asins:
+    vc:
+      - asin: B0NG0SINGL1
+        title: "Northgrove Single Origin Ethiopia — Whole Bean 12oz"
+        ordered_revenue_365d: 845000
+        units_365d: 52800
+        sellable_qty: null
+        days_of_supply: null
+      - asin: B0NG0ESPR01
+        title: "Northgrove Espresso Blend — Whole Bean 12oz"
+        ordered_revenue_365d: 730500
+        units_365d: 48700
+        sellable_qty: null
+        days_of_supply: null
+
+campaign_structure:
+  campaign_count: 14
+  paused_campaign_count: 1
+  distinct_objectives:
+    - PROSPECT
+    - DEFEND
+    - SCALE
+    - HARVEST
+  distinct_item_groups:
+    - whole-bean
+    - espresso-blend
+    - cold-brew-concentrate
+  distinct_brands:
+    - "Northgrove"
+  smart_default_adoption_pct: 71
+  brand_entity_id_presence_pct: 64
+
+recent_activity:
+  spend_30d: 53400.25
+  ad_sales_30d: 296700.40
+  acos_30d: 18.00
+  as_of: "2026-06-16T13:42:04.000Z"
+
+observations: {}

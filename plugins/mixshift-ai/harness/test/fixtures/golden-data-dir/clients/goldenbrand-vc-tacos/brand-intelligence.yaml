@@ -1,0 +1,94 @@
+# Northgrove Coffee Roasters — Brand Intelligence (synthetic fixture).
+# Research-backing layer read by the Brand Context renderer
+# (lib/render/brand-context-sections.ts::sectionBrandSummary) and by
+# mx-competitive-analysis. NOT a real brand. Shapes match the renderer:
+#   hero_narrative: string
+#   proof_points[]: { title, status, summary, evidence[] }
+#     status ∈ {strong, partial, identified_no_counts, needs_capture}
+
+hero_narrative: |
+  Northgrove Coffee Roasters is a specialty 1P coffee brand — single-origin
+  whole bean, espresso blends, and a cold-brew line — sold through Amazon
+  Vendor Central in the US. It competes on roast freshness and traceable
+  origins at grocery scale, and is managed to a total-sales (TACOS) target
+  because the 1P relationship makes total ordered revenue the meaningful
+  efficiency denominator.
+
+proof_points:
+  - title: "Roast-date freshness is the dominant positive theme"
+    status: strong
+    summary: >
+      "Fresh roast date" is the most repeated positive phrase across the review
+      corpus, ahead of smoothness and crema. It is the core differentiator vs
+      grocery-shelf competitors and anchors prospecting copy.
+    evidence:
+      - "Review corpus, trailing 365d (synthetic)"
+      - label: "Single-origin category reviews"
+        href: "https://example.invalid/northgrove/reviews"
+  - title: "Cold-brew concentrate converts on 'smooth, not bitter'"
+    status: strong
+    summary: >
+      Cold-brew reviews cluster on smoothness; terms pairing "cold brew" with
+      "smooth"/"not bitter" convert above account-average during summer.
+    evidence:
+      - "Search-term report, trailing 90d (synthetic)"
+  - title: "Espresso crema signals premium positioning"
+    status: partial
+    summary: >
+      Reviews mention thick crema from the espresso blend; qualitatively strong
+      but not yet tied to unit-level conversion counts.
+    evidence:
+      - "PDP Q&A sampling (synthetic)"
+  - title: "Grind-coarseness complaints on espresso ground SKU"
+    status: identified_no_counts
+    summary: >
+      The recurring negative theme is grind too coarse for some espresso
+      machines. Flagged for the brand, not yet quantified against returns.
+    evidence:
+      - "Negative-review sampling (synthetic)"
+  - title: "Cold-brew dilution-ratio confusion"
+    status: needs_capture
+    summary: >
+      Several reviews ask about the concentrate-to-water ratio. Worth capturing
+      as a PDP/A+ content opportunity; no performance data yet.
+
+sources:
+  review_corpus:
+    description: "Synthetic trailing-365d review export used to derive themes."
+    pulled_at: "2026-06-14"
+    row_count: 0
+  search_term_report:
+    description: "Synthetic trailing-90d search-term report."
+    pulled_at: "2026-06-14"
+    row_count: 0
+  competitor_scan:
+    description: "Synthetic competitor PDP scan (Ridgeline, Emberhouse, Sumaco)."
+    pulled_at: "2026-06-13"
+    row_count: 0
+
+customer_language_corpus:
+  positive_themes:
+    - "fresh roast date"
+    - "smooth not bitter cold brew"
+    - "thick crema espresso"
+    - "bag reseals well"
+  negative_themes:
+    - "grind too coarse for my machine"
+    - "confused about the cold brew ratio"
+    - "pricier than grocery shelf"
+  category_terms:
+    - "single origin coffee"
+    - "espresso beans"
+    - "cold brew concentrate"
+    - "whole bean coffee"
+
+ppc_implications:
+  - "Lead prospecting copy with roast-date freshness; it is the strongest converting theme."
+  - "Protect 'smooth'/'not bitter' cold-brew terms from negation during summer; they convert above target."
+  - "Negate espresso-machine/maker/cups terms; they collide with the espresso line but never convert."
+  - "During the May espresso price-test window, treat margin-based TACOS for the affected ASIN as unreliable."
+
+open_research_gaps:
+  - "Quantify grind-coarseness complaints against return rate on the ground-espresso SKU."
+  - "Tie espresso-crema language to unit-level conversion."
+  - "Measure whether a cold-brew ratio A+ module reduces dilution-confusion reviews."

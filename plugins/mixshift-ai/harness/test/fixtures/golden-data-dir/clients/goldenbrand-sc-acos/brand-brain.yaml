@@ -1,0 +1,103 @@
+# Tidewell Hydration — Brand Brain (Tier 2, synthetic fixture).
+# Validates against harness/src/lib/brain/schema.ts (brandBrainSchema).
+# Includes seller.acos_target_pct so the Tier-2 ACOS fallback path is
+# testable (context.yaml Tier 3 still wins on conflict). NOT a real brand.
+
+schema_version: 1
+brand_slug: goldenbrand-sc-acos
+generated_at: "2026-06-16T13:40:00.000Z"
+generator: "plugin@0.5.30"
+
+sources:
+  seller:
+    sproc: "sp_brain_seller_fetch"
+    fetched_at: "2026-06-16T13:40:00.000Z"
+    row_count: 1
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000sc01"
+  catalog_sc:
+    sproc: "sp_brain_catalog_fetch_sc"
+    fetched_at: "2026-06-16T13:40:01.000Z"
+    row_count: 6
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000sc02"
+  campaign:
+    sproc: "sp_brain_campaign_fetch"
+    fetched_at: "2026-06-16T13:40:02.000Z"
+    row_count: 18
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000sc03"
+  recent_activity:
+    sproc: "BRAIN-RECENT-ACTIVITY"
+    fetched_at: "2026-06-16T13:40:03.000Z"
+    row_count: 1
+    source_hash: "sha256:000000000000000000000000000000000000000000000000000000000000sc04"
+
+seller:
+  merchant_alias: "Tidewell Hydration US"
+  storefront_name: "Tidewell Hydration"
+  acos_target_pct: 21.0
+  monthly_budget: 45000
+  marketplace: "US"
+  merchant_region: "NA"
+  agency_name: "MixShift QA (synthetic)"
+  default_currency_code: "USD"
+  i_brand_report_enabled: true
+  i_running_initial_pull: false
+  data_freshness:
+    ads_latest: "2026-06-15T00:00:00.000Z"
+    retail_latest: "2026-06-14T00:00:00.000Z"
+  activated:
+    ads: "2023-03-01T00:00:00.000Z"
+    retail: "2023-03-01T00:00:00.000Z"
+  primary_seller_id: 900101
+
+catalog:
+  asin_count: 6
+  sku_count: 9
+  sub_brands:
+    - "Tidewell Flasks"
+    - "Tidewell Bottles"
+    - "Tidewell Tumblers"
+  item_groups:
+    - insulated-flasks
+    - sport-bottles
+    - glass-bottles
+    - tumblers
+  top_asins:
+    sc:
+      - asin: B0TIDEFL001
+        title: "Tidewell 32oz Insulated Flask — Slate"
+        ordered_revenue_365d: 612000
+        units_365d: 17480
+        sellable_qty: 4200
+        days_of_supply: 38
+      - asin: B0TIDEBO002
+        title: "Tidewell 24oz Sport Bottle — Tidewater Blue"
+        ordered_revenue_365d: 388500
+        units_365d: 15540
+        sellable_qty: 5100
+        days_of_supply: 52
+
+campaign_structure:
+  campaign_count: 18
+  paused_campaign_count: 2
+  distinct_objectives:
+    - PROSPECT
+    - DEFEND
+    - SCALE
+    - HARVEST
+  distinct_item_groups:
+    - insulated-flasks
+    - sport-bottles
+    - glass-bottles
+    - tumblers
+  distinct_brands:
+    - "Tidewell"
+  smart_default_adoption_pct: 67
+  brand_entity_id_presence_pct: 50
+
+recent_activity:
+  spend_30d: 41250.50
+  ad_sales_30d: 192300.75
+  acos_30d: 21.45
+  as_of: "2026-06-16T13:40:03.000Z"
+
+observations: {}
