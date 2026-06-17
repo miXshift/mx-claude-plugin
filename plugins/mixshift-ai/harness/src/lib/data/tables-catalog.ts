@@ -15,7 +15,7 @@ import { parse as parseYaml } from 'yaml';
 export interface TableMetadata {
   name: string;
   description: string;
-  category: 'ad_metrics' | 'ops_revenue' | 'dimensional' | 'inventory' | 'other';
+  category: 'ad_metrics' | 'ops_revenue' | 'dimensional' | 'inventory' | 'brand_analytics' | 'other';
   account_types?: ('SC' | 'VC')[];
   time_series: boolean;
   requires_seller_id: boolean;

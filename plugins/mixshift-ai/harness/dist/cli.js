@@ -76822,7 +76822,7 @@ import { mkdir as mkdir17 } from "node:fs/promises";
 import { dirname as dirname21 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
-  data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory").action(async (opts, cmd) => {
+  data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
       const all = await loadTablesCatalog();

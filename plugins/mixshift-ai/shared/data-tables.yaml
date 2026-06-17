@@ -180,6 +180,31 @@ tables:
     date_column: DateTime
 
   # ---------------------------------------------------------------------
+  # Brand Analytics — Search Query Performance (SQP)
+  # ---------------------------------------------------------------------
+
+  sqp_weekly:
+    description: "Brand Analytics Search Query Performance, WEEKLY, per ASIN x search query. Full SQP schema: SearchQuery, SearchQueryVolume, and impression / click / cart-add / purchase counts plus the ASIN's SHARE of each, with median prices and shipping-speed splits. Use for search-term demand, conversion-funnel share, and competitive share-of-voice. StartDate/EndDate bound the week; ReportDate is the report date. Fed by the SQP node service (not the ad crons)."
+    category: brand_analytics
+    time_series: true
+    requires_seller_id: true
+    date_column: ReportDate
+
+  sqp_monthly:
+    description: "Brand Analytics Search Query Performance, MONTHLY rollup. Same schema + grain semantics as sqp_weekly, aggregated to the month."
+    category: brand_analytics
+    time_series: true
+    requires_seller_id: true
+    date_column: ReportDate
+
+  sqp_quarterly:
+    description: "Brand Analytics Search Query Performance, QUARTERLY rollup. Same schema as sqp_weekly, aggregated to the quarter."
+    category: brand_analytics
+    time_series: true
+    requires_seller_id: true
+    date_column: ReportDate
+
+  # ---------------------------------------------------------------------
   # Retail revenue (Seller Central — SP-API / MWS)
   # ---------------------------------------------------------------------
 

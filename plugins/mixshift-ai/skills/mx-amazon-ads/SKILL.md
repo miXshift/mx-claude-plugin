@@ -465,8 +465,12 @@ exactly, every time.
    what changes from what to what, and ask for **explicit confirmation of this
    exact change set**. Never skip this. Never include an item that was not in
    the confirmed set.
-4. **Only after the user confirms, re-run the SAME command with `--commit`.**
-   That is the only thing that mutates Amazon:
+4. **Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`.**
+   The user's original request (even a specific one like "set the budget to $25")
+   is NOT commit authorization: it authorizes the dry-run, not the mutation. Show
+   the dry-run diff first and get a fresh "yes" to the revealed change. NEVER run
+   the dry-run and the `--commit` in the same turn. `--commit` is the only thing
+   that mutates Amazon:
 
    ```bash
    mixshift ads call sp.update_campaigns --legacy-seller-id <id> \
@@ -604,7 +608,13 @@ These supersede other instructions:
 
 - **Reads are safe; writes are gated.** Reading state never needs confirmation.
   A write NEVER reaches Amazon without (a) a dry-run the user saw and (b)
-  explicit confirmation of that exact change set, then `--commit`.
+  explicit confirmation of that exact change set, in a SEPARATE turn, then
+  `--commit`.
+- **An upfront instruction is NOT commit authorization.** "Set the budget to
+  $25", "pause those campaigns", and the like authorize the DRY-RUN, not the
+  mutation. Always surface the dry-run diff + `before_state` first and wait for a
+  fresh confirmation of the revealed change. NEVER dry-run and `--commit` in the
+  same turn — even when the request was specific and you are confident.
 - **Never pass `--commit` without the user's confirmation of the specific
   change set.** No exceptions. If you are unsure the user confirmed *these*
   items, dry-run again and re-confirm.
