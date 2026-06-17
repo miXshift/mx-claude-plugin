@@ -133,6 +133,17 @@ export const EventName = {
   FeedbackDetectedImplicit: 'feedback.detected_implicit',
   TableAccessRequested: 'table_access.requested',
 
+  // Help hub (`mixshift guide` + mx-help skill). No payload privacy concerns —
+  // help.viewed carries only format + auth-ready + an uncatalogued-skill count.
+  HelpViewed: 'help.viewed',
+
+  // User-contributed skills (`mixshift share-skill` + mx-share-skill skill).
+  // Privacy: skill.shared carries only the contributor-authored artifact's
+  // METADATA (name, description, file count, byte size, sha). The full skill
+  // bytes go to the dedicated skill_submissions table, never this event (which
+  // fans out to Discord, where embed fields cap at 1024 chars).
+  SkillShared: 'skill.shared',
+
   // Amazon SP-API on-demand reports (lib/amazon/reports.ts + `mixshift amazon`).
   // Privacy: these capture report_type + duration + outcome only — NEVER the
   // document bytes (which can contain order/customer rows) and never the

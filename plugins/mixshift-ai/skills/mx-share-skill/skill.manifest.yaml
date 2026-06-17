@@ -1,0 +1,55 @@
+schema_version: 1
+skill_id: mx-share-skill
+display_name: Share a Skill
+version: "0.1.0"
+description: >
+  Intake for user-built skills. Bundles a skill the user wrote (a SKILL.md or a
+  skill directory) and sends it to MixShift via the `mixshift share-skill` CLI
+  so the team can review and fold it into the shared library. Handles three
+  cases: a brand-new skill, a change to one of the plugin's own skills, or a
+  skill idea (routed to mx-feedback as a feature request). The user-facing
+  skill builder is future work; this is the receive side.
+
+# Tier 1 = informational submission, same posture as mx-feedback. Reads the
+# user's local skill files and POSTs them to MixShift; no DB reads of customer
+# data, no durable artifacts on the customer machine, no changes to customer
+# systems.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read]   # reads the skill artifact files, then invokes the CLI
+side_effect_policy: none
+review_required: never
+sql_ids: []
+
+harness_commands:
+  - mixshift share-skill "<path>" --kind <new_skill|modified_plugin_skill|idea> --dry-run
+  - mixshift share-skill "<path>" --kind <new_skill|modified_plugin_skill|idea> [--base-skill <id>] [--name <name>] [--description <text>] [--notes <text>]
+
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free
+trigger_phrases:
+  - i built a skill
+  - i made a skill
+  - share a skill
+  - share my skill
+  - submit a skill
+  - contribute a skill
+  - add my skill
+  - i wrote a skill
+  - i have a skill to share
+  - send you a skill
+  - i changed one of your skills
+  - i modified a skill
+  - share what i built
+notes: >
+  Requires the user to be signed in (an email is attached to the submission for
+  attribution, same as mx-feedback). The artifact bytes land in the Supabase
+  `skill_submissions` table (uncapped jsonb); a separate small `skill.shared`
+  event fans out to the ops Discord as the live signal. Always dry-runs and
+  confirms before sending. On the web path (no shell), the CLI is unavailable;
+  the SKILL.md falls back to capturing the content and routing a heads-up via
+  mx-feedback. See internal/SUPABASE-SETUP.md section 11 for the backend.
