@@ -1,8 +1,8 @@
 /**
  * Schema for ~/.mixshift/auth/credentials.json.
  *
- * Stored at file mode 0600. Plaintext on disk — see CONTRIBUTING.md and
- * BRAND-MANAGEMENT.md for the trust-boundary discussion.
+ * Stored at file mode 0600. Plaintext on disk — see CONTRIBUTING.md for the
+ * trust-boundary discussion.
  *
  * Two credential shapes are supported:
  *

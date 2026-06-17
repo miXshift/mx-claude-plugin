@@ -4,8 +4,6 @@
  * Not user-facing. Claude invokes this via the Bash tool during skill
  * execution. End users interact through slash commands and natural language.
  *
- * Architecture: see docs/productization/HARNESS-REWRITE.md
- *
  * ──────────────────────────────────────────────────────────────────────
  * Exit / telemetry-flush contract (read before adding a new command!)
  * ──────────────────────────────────────────────────────────────────────

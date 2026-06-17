@@ -13,7 +13,7 @@ We welcome:
 
 We do not accept (without prior discussion):
 - New skills (the canonical skill set is curated by MixShift)
-- Forks of existing skills (do this in your own user-scoped namespace — see `BRAND-MANAGEMENT.md`)
+- Forks of existing skills (do this in your own user-scoped namespace)
 - Changes to the patent-relevant HCAM bridge methodology references
 - License changes
 

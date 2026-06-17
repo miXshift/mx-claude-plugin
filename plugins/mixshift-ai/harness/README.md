@@ -2,8 +2,6 @@
 
 Internal Node CLI for the mixshift-ai plugin. **Not user-facing** — invoked by Claude via the Bash tool during skill execution.
 
-See [`docs/productization/HARNESS-REWRITE.md`](../../../docs/productization/HARNESS-REWRITE.md) for the architecture sketch and milestone plan.
-
 ## Quick start (development)
 
 ```bash

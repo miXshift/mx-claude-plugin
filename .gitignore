@@ -24,3 +24,10 @@ internal/
 .env.production
 .env.staging
 .env.test
+
+# Internal build/strategy docs — kept local, not for the public repo.
+# (docs/productization/SKILL-AUTHOR-GUIDE.md stays tracked: every SKILL.md and
+# the telemetry gate link it.)
+docs/productization/BRAND-MANAGEMENT.md
+docs/productization/HARNESS-REWRITE.md
+docs/productization/MIGRATION-NOTES.md

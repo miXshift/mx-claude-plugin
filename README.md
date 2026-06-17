@@ -99,12 +99,6 @@ In plain English: MixShift customers and individual users may install, run, modi
 
 This is a hard fork of MixShift's internal agent system, reorganized for distribution to MixShift customers. Fork point and attribution: [`UPSTREAM.md`](./UPSTREAM.md). The patent-pending HCAM bridge math (App. No. 19/070,768) anchors causal attribution claims; deterministic functional relationships only, not probabilistic statistical inference.
 
-Active design notes:
-
-- [`docs/productization/BRAND-MANAGEMENT.md`](./docs/productization/BRAND-MANAGEMENT.md) — filesystem layout, brand onboarding flow, slash commands, telemetry posture, skill-shaping overlay, future execution engines.
-- [`docs/productization/HARNESS-REWRITE.md`](./docs/productization/HARNESS-REWRITE.md) — the Node/TypeScript rewrite of the legacy Python harness.
-- [`docs/productization/MIGRATION-NOTES.md`](./docs/productization/MIGRATION-NOTES.md) — what migrated from the legacy plugin, what didn't, and why.
-
 ## Contributing
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md). Contributions require a contributor license agreement that assigns rights to MixShift, given the patent surface of the underlying domain.

@@ -64627,7 +64627,7 @@ function notYetImplemented(command, args) {
           status: "not_implemented",
           command,
           args,
-          message: `Command "${command}" exists but is not yet implemented. See HARNESS-REWRITE.md milestones.`
+          message: `Command "${command}" exists but is not yet implemented.`
         },
         null,
         2
@@ -64637,7 +64637,7 @@ function notYetImplemented(command, args) {
     process.stderr.write(
       `[stub] ${command} \u2014 not yet implemented
        args: ${JSON.stringify(args, null, 2).replace(/\n/g, "\n              ")}
-       see docs/productization/HARNESS-REWRITE.md
+       (feature not yet built)
 `
     );
   }

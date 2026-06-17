@@ -128,7 +128,7 @@ const captureRateCalibrationSchema = z.object({
   stability_score: z.enum(['high', 'medium', 'low']).optional(),
 });
 
-// Skill overlay map (from BRAND-MANAGEMENT.md v0.3). Permissive: each skill's
+// Skill overlay map (skill-shaping overlay design). Permissive: each skill's
 // configurable_fields define its own validation; here we just accept arbitrary
 // objects keyed by skill_id.
 const skillConfigSchema = z.record(

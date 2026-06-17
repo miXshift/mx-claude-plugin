@@ -1,7 +1,7 @@
 /**
  * MySQL connection helper for the harness.
  *
- * Per HARNESS-REWRITE.md decision #3, runtime skill queries route through
+ * Per the harness design (decision #3), runtime skill queries route through
  * the MCP shim. This module handles the limited set of queries the
  * harness itself runs — auth setup's connection test (already done in
  * lib/auth/test-connection.ts) and brand discovery (this is the first

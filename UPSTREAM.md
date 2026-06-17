@@ -27,9 +27,7 @@ The skill content (prompts, SQL patterns, format conventions, narrative voice) w
 - Per-skill brand-specific reference files
 - Internal MixShift research / strategy notes that ended up in skill `references/` folders
 - Operator-specific identifiers (email addresses, Google Drive folder IDs, internal-system names, person names)
-- The legacy Python harness in `scripts/` — to be rewritten in TypeScript per [`docs/productization/BRAND-MANAGEMENT.md`](./docs/productization/BRAND-MANAGEMENT.md). The original Python implementation remains accessible at the upstream repository for reference.
-
-See [`docs/productization/MIGRATION-NOTES.md`](./docs/productization/MIGRATION-NOTES.md) for the full scrub log and decisions made during the fork.
+- The legacy Python harness in `scripts/` — being rewritten in TypeScript. The original Python implementation remains accessible at the upstream repository for reference.
 
 ## Why we forked instead of branched
 

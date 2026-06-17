@@ -2,8 +2,7 @@
  * Zod schema for ~/.mixshift/profile.yaml.
  *
  * Profile holds user-scoped, one-time-set preferences. Brand contexts
- * are separate (in shared/clients/<brand>/context.yaml). See
- * docs/productization/BRAND-MANAGEMENT.md.
+ * are separate (in shared/clients/<brand>/context.yaml).
  *
  * Schema is intentionally permissive on optional sections so the file
  * can grow without breaking existing installs. Required fields fail
