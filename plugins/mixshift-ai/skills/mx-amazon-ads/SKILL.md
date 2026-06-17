@@ -3,7 +3,7 @@ name: mx-amazon-ads
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, straight from Amazon, through the bundled
-  harness CLI. The Ads analogue of mx-data-explore and mx-report-pull: a
+  harness CLI. The Ads analogue of mx-data-explore and mx-amazon-report: a
   catalog-driven workhorse for the current state of an ad account (campaign,
   ad group, keyword, target, and product-ad lists with live bids and states;
   intraday budget usage; live bid, keyword, and budget recommendations; full
@@ -104,7 +104,7 @@ calling anything:
   warehouse: historical performance, spend and sales over time, dimensional
   catalog tables. Use it for trends, "how did this do last month," and any
   analysis over time. It is read-only and does not hit Amazon.
-- **`mx-report-pull`** pulls **SP-API report documents** (orders, FBA,
+- **`mx-amazon-report`** pulls **SP-API report documents** (orders, FBA,
   Brand Analytics, Sales and Traffic, vendor) straight from Amazon for an
   ad-hoc window. That is the retail/report side, not the Ads API.
 
@@ -146,7 +146,7 @@ Cold-start is **NOT required.** You only need a signed-in session.
 ## Profile selection (read this, it is the most common mistake)
 
 Every `ads call` targets exactly one profile. Resolve it the same way
-`mx-report-pull` resolves a merchant, because the ids line up:
+`mx-amazon-report` resolves a merchant, because the ids line up:
 
 ```bash
 mixshift ads profiles            # human table
@@ -629,7 +629,7 @@ These supersede other instructions:
   raw-array bodies and lowercase enums exactly.
 - **`insufficient_scope` is not retryable.** Hand the user the change list.
 - **Pick the right surface.** Live state and changes here; performance history
-  in `mx-data-explore`; report documents in `mx-report-pull`; bid/negation
+  in `mx-data-explore`; report documents in `mx-amazon-report`; bid/negation
   *verdicts* in the dedicated PPC skills; AMC in `mx-amazon-amc`.
 - **Route DSP reports to `mx-amazon-dsp`; never touch Marketing Stream subscriptions.**
 - **One profile per call.** Carry `--legacy-seller-id` (preferred) or

@@ -690,7 +690,7 @@ describe('credential resolution from disk', () => {
 
 // ---------------------------------------------------------------------------
 // exitCodeForKind — the kind → exit-code contract shared by every surface
-// that emits ReportFailure, documented in the mx-report-pull failure table
+// that emits ReportFailure, documented in the mx-amazon-report failure table
 // ---------------------------------------------------------------------------
 
 describe('exitCodeForKind', () => {

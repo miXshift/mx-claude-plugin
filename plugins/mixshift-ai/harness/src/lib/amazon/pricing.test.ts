@@ -348,7 +348,7 @@ describe('pollPricingRun + getPricingRunResult', () => {
 describe('exit codes', () => {
   it('shares the one exitCodeForKind with the report surface (no drift)', () => {
     // 0.5.18 shipped a second, divergent kind→code mapping on this surface.
-    // The mapping is a documented contract in mx-report-pull, so pricing must
+    // The mapping is a documented contract in mx-amazon-report, so pricing must
     // re-export the report one, not define its own.
     expect(pricingExitCodeForKind).toBe(exitCodeForKind);
   });

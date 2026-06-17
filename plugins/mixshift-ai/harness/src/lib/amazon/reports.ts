@@ -1,7 +1,7 @@
 /**
  * Client for the Amazon SP-API on-demand report surface on mx-legacy-auth
  * (https://mcp.mixshift.io). Same Bearer token as the warehouse query path
- * (see data/query-runner.ts) — this module is the report-pull analogue.
+ * (see data/query-runner.ts) — this module is the amazon-report analogue.
  *
  * What this surface is FOR: pulling reports MixShift doesn't already hold in
  * the warehouse, or pulling a known report for a specific ad-hoc window, so
@@ -301,7 +301,7 @@ export function isReportFailure(
  * Map a failure kind to an exit code so terminal scripts can branch. Chat
  * reads the typed kind from --json instead. The one mapping for every command
  * surface that emits ReportFailure (reports, pricing) — the codes are a
- * documented contract in the mx-report-pull skill, so the surfaces must not
+ * documented contract in the mx-amazon-report skill, so the surfaces must not
  * drift apart. Mirrors data.ts using 4 for the "Amazon won't let us" case
  * (restricted) like access_denied_table=4.
  */
