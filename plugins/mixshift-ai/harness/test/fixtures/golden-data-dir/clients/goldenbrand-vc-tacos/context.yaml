@@ -1,0 +1,202 @@
+# Synthetic golden-brand fixture — Vendor Central, TACOS-primary.
+# Brand: Northgrove Coffee Roasters (invented 1P coffee/grocery brand).
+# Built for the MixShift plugin QA harness. NOT a real brand.
+#
+# Designed to audit GREEN: every required + recommended field present,
+# no open_gaps, fresh last_updated. TACOS-primary, so management defines
+# a TACOS target (satisfies the schema refinement).
+
+schema_version: 1
+brand_slug: goldenbrand-vc-tacos
+brand_name: "Northgrove Coffee Roasters"
+last_updated: 2026-06-16
+
+# accounts[] — single VC seat, US marketplace, primary (1P vendor).
+accounts:
+  - seller_id: 900202
+    seller_name: "Northgrove Coffee Roasters"
+    account_type: VC
+    status: active
+    role: primary
+    amazon_seller_id: "A2NORTHGROVEVC"
+    marketplace: "US"
+    merchant_type: vendor
+    merchant_alias: "Northgrove Coffee Roasters US (1P)"
+    region: "NA"
+    ads_active: true
+    retail_active: true
+
+# sources — VC defaults. ad_metrics stays campaignmetric; ops_revenue swaps
+# to the vendor manufacturing-view table and OrderedRevenue / ShippedUnits.
+sources:
+  ad_metrics: campaignmetric
+  ops_revenue: vendor_sales_manufacturing_asin
+  ops_revenue_field: OrderedRevenue
+  ops_units_field: ShippedUnits
+  ops_date_field: DateTime
+
+# management — TACOS-primary. tacos_target_pct is REQUIRED here per the
+# schema refinement (TACOS-primary accounts must define a TACOS target/goal).
+management:
+  primary_metric: TACOS
+  acos_target_pct: 18.0
+  attribution_window_days: 14
+  tacos_target_pct: 7.5
+  tacos_in_bottom_line: true
+  tacos_reference_line: "trailing-30d total ordered revenue (1P shipped + sourced)"
+
+# capture_rate_calibration — attribution backfill (recommended tier).
+capture_rate_calibration:
+  enabled: true
+  capture_rate_pct: 58.0
+  fresh_day_acos_improvement_pts: 3.8
+  settlement_application_rule: "weight_fresh_days_by_capture_rate"
+  last_calibrated: 2026-06-09
+  stability_score: medium
+
+# sub_brands — distinguishable lines under the roaster.
+sub_brands:
+  - slug: northgrove-single-origin
+    name: "Northgrove Single Origin"
+    item_groups: [whole-bean, single-origin]
+  - slug: northgrove-espresso
+    name: "Northgrove Espresso"
+    item_groups: [espresso-blend, ground-espresso]
+  - slug: northgrove-coldbrew
+    name: "Northgrove Cold Brew"
+    item_groups: [cold-brew-concentrate, ready-to-drink]
+
+# brand_terms — canonical spellings + variants (passthrough field).
+brand_terms:
+  canonical:
+    - northgrove
+    - northgrove coffee
+  variants:
+    - north grove
+    - northgrov
+    - north grove coffee
+    - northgrove roasters
+
+# bid_health — scale / pullback thresholds (recommended).
+bid_health:
+  scale_threshold_pct: 55
+  pullback_threshold_pct: 40
+  re_entry_rule: "re-enable a pulled-back keyword once trailing-14d TACOS contribution returns below the reference line for 5 consecutive days"
+
+# posture — bid-adjustment magnitude (recommended). 1P brand in scale mode.
+posture:
+  stance: scale
+  multiplier: 0.35
+
+# goals — monthly / quarterly sales targets (1P ordered revenue).
+goals:
+  monthly_total_sales_target: 720000
+  quarterly_total_sales_target: 2200000
+  tacos_goal_pct: 7.5
+  monthly_revenue_target: 720000
+  quarterly_revenue_target: 2200000
+  forecast_tracking: true
+  report_quarterly_pacing: true
+
+# campaign_structure — how campaign names encode meaning (recommended).
+campaign_structure:
+  naming_pattern: "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}"
+  account_codes:
+    - NGC
+  objectives:
+    - PROSPECT
+    - DEFEND
+    - SCALE
+    - HARVEST
+  campaign_types_active:
+    - SP
+    - SB
+
+# structural_events — events that explain anomalies (recommended).
+structural_events:
+  - id: 2026-q3-coldbrew-media-burst
+    type: media_spike_recurring
+    affects:
+      - sub_brand: northgrove-coldbrew
+    start: 2026-06-01
+    active_through: 2026-08-31
+    interpretation: |
+      Summer cold-brew media runs in recurring weekly bursts. TACOS climbs
+      during burst weeks as upper-funnel SB spend ramps; treat elevated TACOS
+      in cold-brew item groups as planned, not a runaway.
+  - id: 2026-may-espresso-price-test
+    type: price_test
+    affects:
+      - asin: B0NG0ESPR01
+        pre_price: 21.99
+        test_price: 19.49
+    start: 2026-05-12
+    end: 2026-05-26
+    interpretation: |
+      Price test on the flagship espresso blend distorted efficiency for the
+      affected ASIN. Ad-attributed sales credit is reliable; margin-based
+      TACOS contribution is not, for that window only.
+
+# objective_calibration — per-objective expected ACOS (passthrough field).
+objective_calibration:
+  PROSPECT:
+    expected_acos_pct: 40.0
+  DEFEND:
+    expected_acos_pct: 10.0
+  SCALE:
+    expected_acos_pct: 30.0
+  HARVEST:
+    expected_acos_pct: 16.0
+
+# negation — irrelevance rules for negation skills (recommended: protected_terms).
+negation:
+  protected_terms:
+    - coffee
+    - espresso
+    - cold brew
+    - northgrove
+    - whole bean
+  lane_rules:
+    espresso-blend:
+      relevant_terms:
+        - espresso beans
+        - espresso blend
+        - dark roast espresso
+      mismatch_terms:
+        - espresso machine
+        - espresso cups
+        - espresso maker
+    cold-brew-concentrate:
+      relevant_terms:
+        - cold brew concentrate
+        - cold brew coffee
+        - unsweetened cold brew
+      mismatch_terms:
+        - cold brew maker
+        - cold brew pitcher
+        - cold brew bottle
+  competitor_brands:
+    - ridgeline roasters
+    - emberhouse coffee
+    - sumacotrade
+  asin_negation:
+    pre_check_lifetime_orders_threshold: 40
+    note: "VC catalog moves slower; require more lifetime orders before negating an ASIN target."
+
+# attribution_rule — fresh-day handling guidance (passthrough field).
+attribution_rule:
+  fresh_day_window_days: 3
+  rule: "discount T-1 through T-3 ad-attributed sales by the capture rate before computing MTD TACOS"
+
+# reporting — drives mx-monthly-report (recommended: audience).
+reporting:
+  audience: executive
+  voice_lint:
+    - "—"
+    - "\\bmodestly\\b"
+    - "\\bsynergy\\b"
+
+# delivery — where skill outputs land.
+delivery:
+  reports_local_dir: "~/.mixshift/output/goldenbrand-vc-tacos"
+  archive_dir: "~/.mixshift/clients/goldenbrand-vc-tacos/runs"

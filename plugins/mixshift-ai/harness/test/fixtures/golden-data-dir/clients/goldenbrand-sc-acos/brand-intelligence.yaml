@@ -1,0 +1,94 @@
+# Tidewell Hydration — Brand Intelligence (synthetic fixture).
+# Research-backing layer read by the Brand Context renderer
+# (lib/render/brand-context-sections.ts::sectionBrandSummary) and by
+# mx-competitive-analysis. NOT a real brand. Shapes match the renderer:
+#   hero_narrative: string
+#   proof_points[]: { title, status, summary, evidence[] }
+#     status ∈ {strong, partial, identified_no_counts, needs_capture}
+
+hero_narrative: |
+  Tidewell Hydration is a mid-premium drinkware brand built around all-day
+  temperature retention — insulated flasks that hold a workday or a hike,
+  sport and glass bottles, and desk tumblers. It competes on insulation
+  performance and leak-proof lids rather than price, and sells exclusively
+  through Seller Central in the US marketplace. The flask line is the hero;
+  bottles and tumblers extend the range into office and everyday use.
+
+proof_points:
+  - title: "Temperature retention is the #1 review theme"
+    status: strong
+    summary: >
+      Across the trailing 12 months of reviews, "keeps cold/hot all day" is the
+      single most repeated positive phrase, ahead of durability and leak-proofing.
+      It anchors the brand's prospecting copy.
+    evidence:
+      - "Review corpus, trailing 365d (synthetic)"
+      - label: "Insulated-flask category reviews"
+        href: "https://example.invalid/tidewell/reviews"
+  - title: "Leak-proof lid is a conversion driver"
+    status: strong
+    summary: >
+      Q&A and review language repeatedly cite the lid not leaking in a gym bag.
+      Lid-related search terms convert above account-average ACOS.
+    evidence:
+      - "Search-term report, trailing 90d (synthetic)"
+  - title: "Cup-holder fit drives the mid-size SKU"
+    status: partial
+    summary: >
+      Shoppers mention cup-holder compatibility for the 24oz bottle; signal is
+      strong qualitatively but not yet tied to unit-level conversion counts.
+    evidence:
+      - "PDP Q&A sampling (synthetic)"
+  - title: "Matte-finish paint chipping is the recurring complaint"
+    status: identified_no_counts
+    summary: >
+      The dominant negative theme is paint chipping on the matte finish. Flagged
+      for the brand but not yet quantified against return rates.
+    evidence:
+      - "Negative-review sampling (synthetic)"
+  - title: "Straw-lid-sold-separately friction"
+    status: needs_capture
+    summary: >
+      Several reviews complain the straw lid is a separate purchase. Worth
+      capturing as a potential bundle test; no performance data yet.
+
+sources:
+  review_corpus:
+    description: "Synthetic trailing-365d review export used to derive themes."
+    pulled_at: "2026-06-14"
+    row_count: 0
+  search_term_report:
+    description: "Synthetic trailing-90d search-term report."
+    pulled_at: "2026-06-14"
+    row_count: 0
+  competitor_scan:
+    description: "Synthetic competitor PDP scan (Hydrowave, PeakFlask, SummitSip)."
+    pulled_at: "2026-06-13"
+    row_count: 0
+
+customer_language_corpus:
+  positive_themes:
+    - "keeps water cold all day"
+    - "didn't dent on the trail"
+    - "lid doesn't leak in my bag"
+    - "fits my cup holder"
+  negative_themes:
+    - "paint chipped after a few weeks"
+    - "straw lid sold separately"
+    - "heavier than expected"
+  category_terms:
+    - "insulated water bottle"
+    - "vacuum flask"
+    - "sport water bottle"
+    - "travel tumbler"
+
+ppc_implications:
+  - "Lead prospecting copy with temperature retention; it is the strongest converting theme."
+  - "Protect lid-related and cup-holder terms from negation — they convert above target."
+  - "Negate alcohol/whiskey flask terms; they collide with the insulated-flask line but never convert."
+  - "During the April glass-bottle launch window, expect hot ACOS; do not pull back aggressively."
+
+open_research_gaps:
+  - "Quantify matte-finish paint-chip complaints against return rate."
+  - "Tie cup-holder-fit language to unit-level conversion for the 24oz SKU."
+  - "Validate competitor brand-misspelling collisions against actual search terms."

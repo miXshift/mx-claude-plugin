@@ -1,0 +1,43 @@
+# Synthetic golden-brand registry for the MixShift plugin QA harness.
+# Mirrors ~/.mixshift/clients/index.yaml. NOT real brands.
+# Schema: harness/src/lib/clients/index-schema.ts (clientsIndexSchema).
+
+schema_version: 1
+discovered_at: "2026-06-16T14:00:00.000Z"
+brands:
+  - slug: goldenbrand-sc-acos
+    display_name: "Tidewell Hydration"
+    ads_active: true
+    retail_active: true
+    is_dormant: false
+    cold_started: true
+    cold_started_at: "2026-06-16T13:45:00.000Z"
+    accounts:
+      - seller_id: 900101
+        seller_name: "Tidewell Hydration"
+        merchant_alias: "Tidewell Hydration US"
+        account_type: SC
+        marketplace: "US"
+        region: "NA"
+        is_active: true
+        is_mws_user: true
+        ads_active: true
+        retail_active: true
+  - slug: goldenbrand-vc-tacos
+    display_name: "Northgrove Coffee Roasters"
+    ads_active: true
+    retail_active: true
+    is_dormant: false
+    cold_started: true
+    cold_started_at: "2026-06-16T13:50:00.000Z"
+    accounts:
+      - seller_id: 900202
+        seller_name: "Northgrove Coffee Roasters"
+        merchant_alias: "Northgrove Coffee Roasters US (1P)"
+        account_type: VC
+        marketplace: "US"
+        region: "NA"
+        is_active: true
+        is_mws_user: true
+        ads_active: true
+        retail_active: true

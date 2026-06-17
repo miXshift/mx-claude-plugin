@@ -1,0 +1,74 @@
+name: ci
+
+# Runs the harness quality gates that CONTRIBUTING.md prescribes as the manual
+# pre-flight, so they gate every PR automatically instead of by honor system.
+# Until now the ONLY CI was gitleaks.yml (secrets scanning) — typecheck, tests,
+# manifest validation, the skill telemetry convention, version consistency, and
+# the build were all manual. This wires the deterministic ones in.
+#
+# One job:
+#   gates — typecheck, test (incl. the golden fixture), manifest validation, the
+#   skill telemetry convention, and the build are BLOCKING (green on main today).
+#   check-versions + check-contracts run but are ADVISORY (continue-on-error) for
+#   now: current main still carries the SKILL.md <-> manifest version drift and the
+#   `sidecar compare` contract warnings that the QA fix-sweep owns. Once the sweep
+#   clears them, drop `continue-on-error: true` on those two steps to promote them
+#   to blocking (that was always the intended end state).
+#
+# Intentionally NOT here: `check-named-pack`. It needs a live `mixshift auth
+# login` against mcp.mixshift.io, which CI cannot do. It stays a manual release
+# gate (see CONTRIBUTING.md "Pre-flight build").
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: plugins/mixshift-ai/harness
+
+jobs:
+  gates:
+    name: Harness gates (typecheck, test, manifests, telemetry, build; versions+contracts advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugins/mixshift-ai/harness/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Validate skill manifests
+        run: npm run validate-manifests
+
+      - name: Skill telemetry convention
+        run: npm run check-skills
+
+      - name: Skill version consistency (SKILL.md <-> manifest) [ADVISORY until the sweep clears drift]
+        run: npm run check-versions
+        continue-on-error: true
+
+      - name: Skill contract resolution (sql_ids, context fields, upstream) [ADVISORY — sidecar-compare warnings]
+        run: npm run check-contracts
+        continue-on-error: true
+
+      - name: Build CLI bundle
+        run: npm run build

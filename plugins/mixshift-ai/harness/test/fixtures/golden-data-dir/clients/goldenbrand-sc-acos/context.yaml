@@ -1,0 +1,197 @@
+# Synthetic golden-brand fixture — Seller Central, ACOS-primary.
+# Brand: Tidewell Hydration (invented drinkware/hydration brand).
+# Built for the MixShift plugin QA harness. NOT a real brand.
+#
+# Designed to audit GREEN: every required + recommended field present,
+# no open_gaps, fresh last_updated.
+
+schema_version: 1
+brand_slug: goldenbrand-sc-acos
+brand_name: "Tidewell Hydration"
+last_updated: 2026-06-16
+
+# accounts[] — single SC seat, US marketplace, primary.
+accounts:
+  - seller_id: 900101
+    seller_name: "Tidewell Hydration"
+    account_type: SC
+    status: active
+    role: primary
+    amazon_seller_id: "A1TIDEWELLSC01"
+    marketplace: "US"
+    merchant_type: seller
+    merchant_alias: "Tidewell Hydration US"
+    region: "NA"
+    ads_active: true
+    retail_active: true
+
+# sources — SC defaults.
+sources:
+  ad_metrics: campaignmetric
+  ops_revenue: business_reports_dpst_date
+  ops_revenue_field: SalesAmount
+  ops_units_field: UnitsOrdered
+  ops_date_field: DateTime
+
+# management — ACOS-primary.
+management:
+  primary_metric: ACOS
+  acos_target_pct: 22.0
+  attribution_window_days: 14
+  tacos_in_bottom_line: true
+  implied_tacos_pct: 9.5
+
+# capture_rate_calibration — attribution backfill (recommended tier).
+capture_rate_calibration:
+  enabled: true
+  capture_rate_pct: 62.0
+  fresh_day_acos_improvement_pts: 4.5
+  settlement_application_rule: "weight_fresh_days_by_capture_rate"
+  last_calibrated: 2026-06-10
+  stability_score: high
+
+# sub_brands — distinguishable SKU lines under the parent.
+sub_brands:
+  - slug: tidewell-flasks
+    name: "Tidewell Flasks"
+    item_groups: [insulated-flasks, lids-and-caps]
+  - slug: tidewell-bottles
+    name: "Tidewell Bottles"
+    item_groups: [sport-bottles, glass-bottles]
+  - slug: tidewell-tumblers
+    name: "Tidewell Tumblers"
+    item_groups: [tumblers, accessories]
+
+# brand_terms — canonical spellings + variants (passthrough field).
+brand_terms:
+  canonical:
+    - tidewell
+    - tidewell hydration
+  variants:
+    - tide well
+    - tidwell
+    - tidewel
+    - tidewell co
+
+# bid_health — scale / pullback thresholds (recommended).
+bid_health:
+  scale_threshold_pct: 50
+  pullback_threshold_pct: 45
+  re_entry_rule: "re-enable a pulled-back keyword once trailing-14d ACOS returns below target for 3 consecutive days"
+
+# posture — bid-adjustment magnitude (recommended).
+posture:
+  stance: efficiency
+  multiplier: 0.5
+
+# goals — monthly / quarterly sales targets.
+goals:
+  monthly_total_sales_target: 480000
+  quarterly_total_sales_target: 1450000
+  tacos_goal_pct: 9.0
+  monthly_revenue_target: 480000
+  quarterly_revenue_target: 1450000
+  forecast_tracking: true
+  report_quarterly_pacing: true
+
+# campaign_structure — how campaign names encode meaning (recommended).
+campaign_structure:
+  naming_pattern: "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}"
+  account_codes:
+    - TDW
+  objectives:
+    - PROSPECT
+    - DEFEND
+    - SCALE
+    - HARVEST
+  campaign_types_active:
+    - SP
+    - SB
+    - SD
+
+# structural_events — events that explain anomalies (recommended).
+structural_events:
+  - id: 2026-q2-prime-day-flask-push
+    type: media_spike
+    affects:
+      - sub_brand: tidewell-flasks
+    start: 2026-07-08
+    end: 2026-07-12
+    interpretation: |
+      Prime Day media push concentrated on the insulated-flask line. Expect
+      elevated spend and a temporarily inflated ACOS in the flask item groups
+      during the window; do not treat the spike as a bid-management failure.
+  - id: 2026-spring-bottle-launch
+    type: launch
+    affects:
+      - sub_brand: tidewell-bottles
+    start: 2026-04-01
+    active_through: 2026-06-30
+    interpretation: |
+      New glass-bottle SKUs launched in April. ACOS runs hot during the
+      learning period; protect these campaigns from aggressive pullbacks
+      through end of Q2.
+
+# objective_calibration — per-objective expected ACOS (passthrough field).
+objective_calibration:
+  PROSPECT:
+    expected_acos_pct: 35.0
+  DEFEND:
+    expected_acos_pct: 12.0
+  SCALE:
+    expected_acos_pct: 28.0
+  HARVEST:
+    expected_acos_pct: 18.0
+
+# negation — irrelevance rules for negation skills (recommended: protected_terms).
+negation:
+  protected_terms:
+    - bottle
+    - flask
+    - tumbler
+    - tidewell
+    - hydration
+  lane_rules:
+    insulated-flasks:
+      relevant_terms:
+        - insulated flask
+        - vacuum flask
+        - hip flask stainless
+      mismatch_terms:
+        - whiskey flask
+        - leather flask
+        - alcohol flask
+    sport-bottles:
+      relevant_terms:
+        - sport water bottle
+        - gym bottle
+        - squeeze bottle
+      mismatch_terms:
+        - baby bottle
+        - hot water bottle
+        - wine bottle
+  competitor_brands:
+    - hydrowave
+    - peakflask
+    - summitsip
+  asin_negation:
+    pre_check_lifetime_orders_threshold: 25
+    note: "Do not negate an ASIN target until the location has at least this many lifetime orders."
+
+# attribution_rule — fresh-day handling guidance (passthrough field).
+attribution_rule:
+  fresh_day_window_days: 3
+  rule: "discount T-1 through T-3 ad-attributed sales by the capture rate before computing MTD ACOS"
+
+# reporting — drives mx-monthly-report (recommended: audience).
+reporting:
+  audience: account_manager
+  voice_lint:
+    - "—"
+    - "\\bmodestly\\b"
+    - "\\bsynergy\\b"
+
+# delivery — where skill outputs land.
+delivery:
+  reports_local_dir: "~/.mixshift/output/goldenbrand-sc-acos"
+  archive_dir: "~/.mixshift/clients/goldenbrand-sc-acos/runs"
