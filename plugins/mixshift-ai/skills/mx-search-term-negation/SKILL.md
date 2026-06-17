@@ -248,7 +248,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/stn-sidecar-input.json
 {
   "skill": "mx-search-term-negation",
-  "skill_version": "1.2.0",
+  "skill_version": "1.4.0",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",
@@ -299,7 +299,7 @@ mixshift sidecar write --input-file /tmp/stn-sidecar-input.json
 
 ---
 
-*Skill version: 1.1 — ported from upstream with full domain logic preserved*
+*Skill version: 1.4.0 — ported from upstream with full domain logic preserved*
 
 ## Applying negatives (optional, requires explicit user confirmation)
 

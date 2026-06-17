@@ -380,7 +380,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/aneg-sidecar-input.json
 {
   "skill": "mx-asin-target-negation",
-  "skill_version": "1.5.0",
+  "skill_version": "1.8.0",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",

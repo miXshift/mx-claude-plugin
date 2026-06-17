@@ -221,7 +221,7 @@ Compose the sidecar input JSON (write to a temp file, then call the harness):
 // /tmp/rsc-sidecar-input.json
 {
   "skill": "mx-runaway-spend-check",
-  "skill_version": "0.2.0",
+  "skill_version": "0.3.0",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",     // T-1 date (yesterday)

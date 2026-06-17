@@ -100,7 +100,6 @@ const CATALOG: HubGroup[] = [
     title: 'Reporting & analysis',
     skills: [
       { id: 'mx-monthly-report', say: 'write the monthly report for <brand>', what: 'MoM and YoY performance narrative' },
-      { id: 'mx-competitive-analysis', say: 'run a competitive analysis', what: 'SWOT, feature, and pricing comparison' },
     ],
   },
   {

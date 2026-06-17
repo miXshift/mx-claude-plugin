@@ -275,12 +275,6 @@ function computeSkillReadiness(
       tone: hasManagement && hasCalibration ? 'complete' : 'partial',
       notes: hasCalibration ? 'Capture-rate calibration available.' : 'Calibration not enabled — MoM/YoY uses raw aggregates.',
     },
-    {
-      skill: 'mx-competitive-analysis',
-      status: sources.brand_intelligence ? 'Ready' : 'Ready with caveats',
-      tone: sources.brand_intelligence ? 'complete' : 'partial',
-      notes: sources.brand_intelligence ? 'Brand intelligence populated.' : 'brand-intelligence.yaml missing — analysis runs without research backing.',
-    },
   ];
   return skills;
 }

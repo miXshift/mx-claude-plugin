@@ -1,7 +1,6 @@
 # Northgrove Coffee Roasters — Brand Intelligence (synthetic fixture).
 # Research-backing layer read by the Brand Context renderer
-# (lib/render/brand-context-sections.ts::sectionBrandSummary) and by
-# mx-competitive-analysis. NOT a real brand. Shapes match the renderer:
+# (lib/render/brand-context-sections.ts::sectionBrandSummary). NOT a real brand. Shapes match the renderer:
 #   hero_narrative: string
 #   proof_points[]: { title, status, summary, evidence[] }
 #     status ∈ {strong, partial, identified_no_counts, needs_capture}

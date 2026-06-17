@@ -226,7 +226,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/kbh-sidecar-input.json
 {
   "skill": "mx-keyword-bid-health",
-  "skill_version": "0.3.0",
+  "skill_version": "0.5.0",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",   // T-1 (yesterday) for daily-recency analyses

@@ -365,7 +365,7 @@ mixshift sidecar write --input-file /tmp/pnd-sidecar-input.json
 
 ---
 
-*Skill version: 1.1 — phrase negative discovery with full conflict detection*
+*Skill version: 1.2.0 — phrase negative discovery with full conflict detection*
 *Ported from upstream with full domain logic preserved*
 
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
