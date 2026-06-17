@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report
-version: 1.3.0
+version: 1.4.0
 description: >
   Generates and publishes a monthly Amazon advertising performance report for a brand
   in MixShift's canonical analytical voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis,

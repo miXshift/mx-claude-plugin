@@ -1,6 +1,6 @@
 ---
 name: mx-ppc-relevance-check
-version: 1.0.0
+version: 1.1.0
 description: >
   Semantic relevance classification for search terms and ASIN targets. Operates on
   a provided list of search terms or the Tier B/C set from phase 1 exact-term negation.

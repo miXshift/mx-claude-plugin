@@ -60,7 +60,6 @@ Each `.sql` file MUST:
 | mx-asin-target-negation | ANEG |
 | mx-ppc-relevance-check | PRC |
 | mx-portfolio-quick-scan | PQS |
-| mx-competitive-analysis | COMP |
 | mx-search-term-data-pull | STDP |
 
 Cross-skill / shared queries get the prefix `LIB`.

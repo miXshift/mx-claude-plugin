@@ -177,7 +177,6 @@ Present in the codebase but **not yet enabled for general customer use** during 
 - `mx-data-explore` — ad-hoc query / sample / export
 - `brand discover` + `brand add` — brand onboarding plumbing
 - `feedback` — send feedback / bug reports / feature requests
-- `mx-competitive-analysis` — research-driven SWOT (web-based, no warehouse data required)
 
 The analytical skills will be opened in subsequent releases as each one is validated. Watch the changelog / release notes.
 

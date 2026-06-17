@@ -20,7 +20,7 @@ are not optional for the assigned tier.
 ### Tier 1 — Informational
 - **Definition:** Read-only output. Human-readable insight or research. No durable
   files written. No production-facing recommendations.
-- **Examples:** mx-competitive-analysis, mx-ppc-relevance-check
+- **Examples:** mx-ppc-relevance-check
 - **Controls:**
   - Preflight: none required
   - Output: human-reviewable on request

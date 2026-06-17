@@ -7,7 +7,7 @@ description: >
   types, objectives, and item groups. Uses percentile-based confidence intervals
   to detect spend and ACOS anomalies requiring management attention.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
   ported-from: "upstream/daily-advertising-performance-health-check"
 ---

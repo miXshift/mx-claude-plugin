@@ -1,6 +1,6 @@
 ---
 name: mx-portfolio-quick-scan
-version: 1.0.0
+version: 1.1.0
 description: >
   Multi-account daily triage. Produces one status card per account answering a single question:
   do I need to log into the platform today? GREEN / YELLOW / RED verdict per account based on

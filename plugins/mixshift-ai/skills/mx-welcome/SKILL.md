@@ -5,7 +5,7 @@ description: >
   "welcome", asks "what is this plugin", asks how to get started, or is new
   and needs orientation on credential retrieval + initial setup steps.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - welcome
