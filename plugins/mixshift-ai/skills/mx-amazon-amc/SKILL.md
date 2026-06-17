@@ -168,9 +168,13 @@ reaches it. Walk this chain in order; do not skip ahead.
 mixshift ads call amc.list_accounts --legacy-seller-id <id> --json
 ```
 
-No parameters, no entity header. This is THE starting point. Each row carries
-an `accountId` (use it as the `entityId`) and a `marketplaceId`. An empty
-result is normal for a tenant with no AMC access; say so rather than retrying.
+No parameters, no entity header. Each row carries an `accountId` (use it as the
+`entityId`) and a `marketplaceId`. BUT this returns only the entities the LOGIN
+directly administers — for an agency/manager login that is MixShift's own manager
++ SANDBOX entities, usually NOT the merchant's own advertiser entity. Treat it as
+a STARTING point, never the whole list: you MUST also run step 3 (the merchant's
+own entity, where a managed brand's real production instance lives). An empty
+result here is normal and NOT a stopping point.
 
 ### 2. List instances per (entityId, marketplaceId) pair, SEQUENTIALLY
 
@@ -192,15 +196,27 @@ Rules for this step (all load-bearing):
 - **401 / 403 / 404 while probing is NORMAL.** It means no access for that
   pair, not a failure. Skip that pair and move on; do not surface it as an
   error to the user.
+- **Dedupe by `instanceId`** across all entities — the same instance can surface
+  under more than one entity.
+- **Distinguish `instanceType`.** `STANDARD` is a real production clean room with
+  the merchant's actual data; `SANDBOX` holds Amazon's synthetic test data (fine
+  for validating SQL, NOT for real insights). If only sandboxes turn up under the
+  step-1 manager accounts, that is EXPECTED — the production instance is under the
+  merchant's OWN entity (step 3). NEVER conclude "no production AMC instance"
+  until you have probed the merchant's own entities from step 3.
 
 Each instance carries an `instanceId`, which you need for every execution,
-poll, schema, and download call.
+poll, schema, and download call. If more than one STANDARD instance turns up,
+show the list (instanceName + instanceType + customerCanonicalName) and let the
+user pick.
 
-### 3. Fallback: query advertiser accounts for self-service entityIds
+### 3. ALWAYS resolve the merchant's OWN entityIds via query advertiser accounts
 
-If `amc.list_accounts` returns nothing usable but the tenant runs self-service
-Sponsored Ads, those Sponsored Ads `entityId`s can also surface AMC instances.
-Discover them via:
+Run this on EVERY discovery, not only when step 1 is empty. `amc.list_accounts`
+returns the login's manager/sandbox entities, but a managed brand's real
+(STANDARD) instance lives under the brand's OWN advertiser entity, which only
+appears here. The `alternateId` whose `profileId` matches the login you resolved
+is the merchant's own entity — probe it (step 2) first. Discover via:
 
 ```bash
 # global accounts (default body)
@@ -211,7 +227,7 @@ mixshift ads call accounts.query_advertiser_accounts --legacy-seller-id <id> \
   --body '{"isGlobalAccountFilter":{"include":[false]}}' --json
 ```
 
-Rules for this fallback:
+Rules for this step (query advertiser accounts):
 
 - **This operation uses a different client-id header** than the AMC operations;
   the service sets it. You do nothing special beyond calling it.

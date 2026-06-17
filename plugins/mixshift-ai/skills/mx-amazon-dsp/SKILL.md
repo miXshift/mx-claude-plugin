@@ -98,7 +98,7 @@ and metric vocabulary, separate from Sponsored Ads.
 |---|---|---|
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Direct the user to run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
 | Ads API enabled for the tenant | Inferred from a successful `ads profiles` call | If a call returns `ads_not_configured`, the Amazon Ads credentials are not set on the service for this MixShift account. Tell the user to contact MixShift ops. |
-| An advertising login with DSP access | `accounts.query_advertiser_accounts` returns rows whose `alternateIds` carry a `dspAdvertiserId` | No DSP advertiser ids means this login cannot reach a DSP seat. An empty result is normal for tenants without DSP. |
+| An advertising login with DSP access | `accounts.query_advertiser_accounts` returns rows whose `alternateIds` carry a `dspAdvertiserId` | No DSP ids here does NOT always mean "no DSP" — the active advertiser may sit on a separate DSP seat under a different login (see Discovery). Treat empty as definitive only after checking the warehouse `dsp_campaigns_metric`. |
 
 Cold-start is **NOT required.** You only need a signed-in session.
 
@@ -175,6 +175,30 @@ Rules for discovery:
 
 If the user already knows the DSP advertiser id, you can skip discovery and pass
 it directly.
+
+**If `query_advertiser_accounts` surfaces no DSP advertiser (or only a stale
+one), the active advertiser may be on a SEPARATE DSP SEAT under a different login
+than the brand's seller row.** Managed/agency DSP is commonly run from a shared
+"DSP seat" login, so the seller-row login's query returns nothing or only an old
+advertiser. Resolve the ACTIVE advertiser from the WAREHOUSE (the source of truth
+for who is live):
+
+```bash
+# dsp_campaigns_metric is keyed by SEAT, not the brand's seller row — match on
+# advertiserName (NOT SellerID); read the id as a STRING (an 18-19 digit BIGINT
+# that JS rounds, so always CAST AS CHAR); pick the one with recent spend.
+mixshift data query --sql "SELECT CAST(advertiserId AS CHAR) AS advertiserId, advertiserName, entityId AS seat, MAX(DATE(DateTime)) AS last_day, ROUND(SUM(CASE WHEN DateTime >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN totalCost ELSE 0 END),0) AS spend_30d FROM dsp_campaigns_metric WHERE advertiserName LIKE '%<brand>%' GROUP BY advertiserId, advertiserName, entityId ORDER BY last_day DESC" --json
+```
+
+- **Amazon exposes no `isActive` flag on a DSP advertiser** — a brand can have an
+  active advertiser AND an older/deprecated one on a different seat. Derive
+  "active" from recent `spend_30d` / `last_day`; surface both and say which is
+  current.
+- Use the active row's `advertiserId` (the CAST-AS-CHAR string) as
+  `--path accountId=`. The live `dsp.create_report` routes through the brand's
+  seller-row login and succeeds once that seat is authorized — a
+  `reauth_required` here means the seat must be connected in the MixShift app,
+  not that the advertiser id is wrong.
 
 ## Building a report request
 
@@ -315,9 +339,13 @@ These supersede other instructions:
 
 - **Read-only.** Generating a DSP report mutates nothing advertiser-facing;
   never send an Ads write and never use `--commit`.
-- **Discover the DSP advertiser id first.** The `accountId` path param is the
-  `dspAdvertiserId` from `accounts.query_advertiser_accounts`, NOT the
-  `profileId` or `legacySellerId`. Do not guess it.
+- **Discover the DSP advertiser id first — and beware separate seats.** The
+  `accountId` path param is a `dspAdvertiserId`, NOT the `profileId` or
+  `legacySellerId`. `accounts.query_advertiser_accounts` on the brand's
+  seller-row login may not surface it (the active advertiser is often on a
+  different DSP seat); resolve the ACTIVE one from `dsp_campaigns_metric` by
+  recent spend, reading the id with `CAST(advertiserId AS CHAR)` (the BIGINT
+  rounds as a JS number otherwise). Do not guess it.
 - **Keep the two ids straight.** `--legacy-seller-id` selects the login;
   `--path accountId=` is the DSP advertiser. They are different.
 - **Match dimensions and metrics to the `type`.** Start from the known-good
