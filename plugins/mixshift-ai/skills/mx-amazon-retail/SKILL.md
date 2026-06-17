@@ -3,7 +3,7 @@ name: mx-amazon-retail
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. This is the retail-operations analogue of
-  mx-report-pull: instead of asking Amazon to generate a report document, these
+  mx-amazon-report: instead of asking Amazon to generate a report document, these
   are single fast request/response operations that answer point-in-time
   questions about your catalog, inventory, orders, finances, listings, and
   fulfillment. The headline use is the title/brand/sales-rank source for ASINs
@@ -93,8 +93,8 @@ right one:
 | Surface | Command | Use it for |
 |---|---|---|
 | **Retail operations (this skill)** | `amazon operations` / `amazon call` | A live point-in-time answer from one read operation: titles, stock, metrics, listing state, order search, finances, Data Kiosk. |
-| Report pulls (mx-report-pull) | `amazon report start/poll/get` | A generated flat-file or JSON report document for a window (orders, FBA fees, settlement, Sales and Traffic, Brand Analytics, vendor). |
-| Pricing batches (mx-report-pull) | `amazon pricing ...` | Featured-offer and competitive-summary batch answers keyed by SKU or ASIN, with async run handles. |
+| Report pulls (mx-amazon-report) | `amazon report start/poll/get` | A generated flat-file or JSON report document for a window (orders, FBA fees, settlement, Sales and Traffic, Brand Analytics, vendor). |
+| Pricing batches (mx-amazon-report) | `amazon pricing ...` | Featured-offer and competitive-summary batch answers keyed by SKU or ASIN, with async run handles. |
 
 The retail-operations surface and the warehouse also overlap, so reason about
 which fits before calling (see "When to use this skill").
@@ -148,7 +148,7 @@ routine requests the data may **already be in the warehouse** and a warehouse
 read is faster.
 
 Before calling a live operation that plausibly overlaps the warehouse, work
-through the same courtesy steps mx-report-pull uses:
+through the same courtesy steps mx-amazon-report uses:
 
 1. **Reason about coverage.** Does the warehouse plausibly hold what the user
    wants, at the grain and freshness they need? The warehouse is a transformed
@@ -173,7 +173,7 @@ answer (that is the whole point), so it usually skips this dance entirely.
 
 **Do NOT use this skill** when the user wants an opinionated analysis (daily
 health check, bid recommendations, monthly performance report) or a generated
-report document for a window (that is mx-report-pull). This skill returns raw
+report document for a window (that is mx-amazon-report). This skill returns raw
 live operation results; it does not interpret them for you beyond surfacing
 them cleanly.
 
@@ -364,7 +364,7 @@ Gotchas:
 Gotchas:
 
 - **This is a snapshot of NOW, not history.** For inventory history use the FBA
-  inventory reports via mx-report-pull. Do not use this to reconstruct a past
+  inventory reports via mx-amazon-report. Do not use this to reconstruct a past
   level.
 - Pass `--query details=true` for the full per-SKU breakdown (without it you
   get only the top-line counts).
@@ -468,11 +468,11 @@ Gotchas:
   `/products/pricing/v0/listings/{SKU}/offers` and SKUs must be URL-encoded
   inside the uri string). **Each response item carries its own status code** -
   read per-item statuses, do not assume the whole batch succeeded.
-- **This complements, it does not replace, mx-report-pull's pricing batches.**
+- **This complements, it does not replace, mx-amazon-report's pricing batches.**
   The 2022-05-01 featured-offer and competitive-summary batches in
-  mx-report-pull remain the richer surface for offer-winner analysis; these v0
+  mx-amazon-report remain the richer surface for offer-winner analysis; these v0
   operations are the raw offer-depth view. If the user wants offer-winner
-  answers, route to mx-report-pull's pricing commands instead.
+  answers, route to mx-amazon-report's pricing commands instead.
 
 ### Listings Items (2021-08-01) - live listing state
 
@@ -574,7 +574,7 @@ You:  1. Resolve the merchant row.
            --legacy-seller-id <id> --query details=true --json
       3. Summarize fulfillable / inbound / reserved per SKU from the payload.
          Remind the user this is a live snapshot, not history (for trend, use
-         the FBA inventory reports via mx-report-pull).
+         the FBA inventory reports via mx-amazon-report).
 ```
 
 ### Pattern 3 - Fee estimate (PascalCase JSON-array body)
@@ -767,7 +767,7 @@ mixshift telemetry emit skill.completed --skill mx-amazon-retail --outcome <ok|f
 Outcomes: `ok` (user got the live answer), `failed` (could not satisfy, e.g.
 everything came back `restricted_report` or `spapi_not_configured`), `deferred`
 (a Data Kiosk query is still processing and the user stepped away), `skipped`
-(turned out they wanted a different skill, such as mx-report-pull).
+(turned out they wanted a different skill, such as mx-amazon-report).
 
 You do **not** need to manually emit per-operation events. The harness fires
 `amazon.spapi.operations_listed` on `amazon operations` and `amazon.spapi.called`

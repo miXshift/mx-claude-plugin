@@ -84,7 +84,7 @@ advertisers, on demand, as a file I can analyze or build on."*
 - Sponsored Products / Brands / Display state, lists, or reporting, that is
   `mx-amazon-ads` (live state) or the warehouse via `mx-data-explore`.
 - SP-API report documents (orders, Brand Analytics, Sales and Traffic), that is
-  `mx-report-pull`.
+  `mx-amazon-report`.
 - AMC clean-room SQL analytics, that is `mx-amazon-amc`.
 - Live SP-API retail lookups (catalog, fees, inventory), that is
   `mx-amazon-retail`.

@@ -1,5 +1,5 @@
 ---
-name: mx-report-pull
+name: mx-amazon-report
 description: >
   Pull Amazon SP-API reports on demand, directly from Amazon, for any
   merchant and window you need. This is the report analogue of mx-data-explore:
@@ -752,15 +752,15 @@ MIXSHIFT_DATA_DIR so they persist across sandbox restarts.
 At the START of this skill, run:
 
 ```bash
-mixshift telemetry emit skill.invoked --skill mx-report-pull
+mixshift telemetry emit skill.invoked --skill mx-amazon-report
 # If a natural-language trigger matched (NOT a /slash command), also run:
-mixshift telemetry emit skill.trigger_phrase_matched --skill mx-report-pull --trigger-phrase "<the user's exact phrase>"
+mixshift telemetry emit skill.trigger_phrase_matched --skill mx-amazon-report --trigger-phrase "<the user's exact phrase>"
 ```
 
 At the END (when the report session winds down or the user pivots), run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-report-pull --outcome <ok|failed|deferred|skipped>
+mixshift telemetry emit skill.completed --skill mx-amazon-report --outcome <ok|failed|deferred|skipped>
 ```
 
 Outcomes: `ok` (user got the report), `failed` (could not satisfy, e.g.

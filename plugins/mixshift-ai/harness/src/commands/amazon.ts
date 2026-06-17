@@ -1,5 +1,5 @@
 /**
- * `mixshift amazon ...` — the Amazon SP-API on-demand report-pull surface.
+ * `mixshift amazon ...` — the Amazon SP-API on-demand amazon-report surface.
  *
  * This is the report analogue of `mixshift data ...`: a catalog-driven
  * workhorse for pulling reports MixShift doesn't already hold in the

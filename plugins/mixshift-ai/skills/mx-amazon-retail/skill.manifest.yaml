@@ -4,7 +4,7 @@ display_name: Amazon Retail Lookups (live SP-API)
 version: "0.1.0"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
-  you are authorized for. The retail-operations analogue of mx-report-pull:
+  you are authorized for. The retail-operations analogue of mx-amazon-report:
   single fast request/response operations that answer point-in-time questions
   about catalog, inventory, orders, finances, listings, and fulfillment,
   rather than generating a report document. The headline use is the

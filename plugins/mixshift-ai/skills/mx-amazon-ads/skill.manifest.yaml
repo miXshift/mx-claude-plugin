@@ -5,7 +5,7 @@ version: "0.1.0"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
-  analogue of mx-data-explore and mx-report-pull: a catalog-driven workhorse
+  analogue of mx-data-explore and mx-amazon-report: a catalog-driven workhorse
   for the current state of an ad account (campaign, ad group, keyword,
   target, and product-ad lists with live bids and states; intraday budget
   usage; live bid, keyword, and budget recommendations; full account
@@ -62,14 +62,14 @@ trigger_phrases:
   - list my keywords from amazon
   - live keyword recommendations
 notes: >
-  Different Amazon API from SP-API (mx-report-pull / mx-amazon-retail): the
+  Different Amazon API from SP-API (mx-amazon-report / mx-amazon-retail): the
   Ads API, with per-advertising-login auth and profile-scoped calls. Auth is
   the same Bearer token as the warehouse (~/.mixshift/auth/credentials); the
   service holds the Ads credentials server-side. Discovery-first: run
   `mixshift ads operations` and read the per-operation notes for body vs
   query conventions, vnd media types, and caps before calling.
 
-  Profile selection mirrors mx-report-pull's merchant selection: one call
+  Profile selection mirrors mx-amazon-report's merchant selection: one call
   targets one (advertiser, marketplace) profile. Prefer
   --legacy-seller-id (same ids as `mixshift amazon merchants`), or
   --profile-id, or --seller-id plus --marketplace; never a bare --seller-id.

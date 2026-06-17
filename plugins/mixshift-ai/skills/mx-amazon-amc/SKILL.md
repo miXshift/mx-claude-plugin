@@ -84,7 +84,7 @@ analyze or build on."*
 - Warehouse history or Sponsored Ads metrics MixShift already holds, that is
   `mx-data-explore`.
 - SP-API report documents (orders, Brand Analytics, Sales and Traffic), that is
-  `mx-report-pull`.
+  `mx-amazon-report`.
 - Live Sponsored Ads account state, lists, exports, or writes, that is
   `mx-amazon-ads`.
 - Live SP-API retail lookups (catalog, fees, inventory), that is

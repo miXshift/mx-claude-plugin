@@ -111,7 +111,7 @@ Fix (org admin):
 1. Open **Organization settings** → **Capabilities** → **Code execution**.
 2. Add these domains to the network allowlist:
    - `mcp.mixshift.io` — **required.** Auth, device flow, every warehouse query, report start/poll, and feedback. Nothing works without it.
-   - `*.amazonaws.com` — **required for report pulls.** SP-API report downloads come back as presigned S3 URLs the plugin fetches directly, so S3 egress is needed for the `amazon-report-pull` workflow. (If you don't use report pulls, sign-in and queries work without it, but add it anyway so reports don't fail later.)
+   - `*.amazonaws.com` — **required for report pulls.** SP-API report downloads come back as presigned S3 URLs the plugin fetches directly, so S3 egress is needed for the `amazon-report` workflow. (If you don't use report pulls, sign-in and queries work without it, but add it anyway so reports don't fail later.)
    - Optional, safe to omit: `github.com` + `raw.githubusercontent.com` (plugin version check only), and your telemetry endpoint (best-effort usage events; `MIXSHIFT_TELEMETRY=0` disables it).
 3. **Start a NEW conversation.** Network settings are applied at session creation, so an existing chat will not pick up the change. This trips people up constantly: the allowlist edit is correct, but the open chat is still running under the old policy. A fresh conversation is required.
 

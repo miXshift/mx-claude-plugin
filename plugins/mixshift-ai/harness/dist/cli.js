@@ -81551,7 +81551,7 @@ var CATALOG = [
     title: "Explore data & pull reports",
     skills: [
       { id: "mx-data-explore", say: "explore my data", what: "query, sample, and export the warehouse to CSV" },
-      { id: "mx-report-pull", say: "pull a Brand Analytics report", what: "fetch SP-API reports on demand, any window" },
+      { id: "mx-amazon-report", say: "pull a Brand Analytics report", what: "fetch SP-API reports on demand, any window" },
       { id: "mx-amazon-retail", say: "look up this ASIN", what: "live catalog, inventory, orders, pricing lookups" }
     ]
   },

@@ -1,6 +1,6 @@
 # Amazon SP-API on-demand report catalog.
 #
-# This is a PLUGIN-side CONVENIENCE CACHE of report types the report-pull
+# This is a PLUGIN-side CONVENIENCE CACHE of report types the amazon-report
 # capability can request. It is NOT the source of truth and NOT a gate: the
 # real definition of every report type (schema, reportOptions, window rules)
 # is Amazon's public SP-API documentation, and the service decides at fetch
