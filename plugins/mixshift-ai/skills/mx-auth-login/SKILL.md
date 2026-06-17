@@ -133,7 +133,7 @@ Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the 
 Confirm warehouse access works through the token:
 
 ```bash
-mixshift data run-query "SELECT NOW() AS db_time, USER() AS db_user"
+mixshift data query --sql "SELECT NOW() AS db_time, USER() AS db_user"
 ```
 
 (On claude.ai use the `legacy_query` MCP tool with the same SQL once the connector has the token.)
