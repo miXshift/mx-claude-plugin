@@ -10,7 +10,7 @@ description: >
   Do NOT use for first-run setup or sign-in (that is mx-welcome), or for actually
   sending feedback (that is mx-feedback); this hub points to those.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - help
@@ -90,6 +90,7 @@ paraphrase or condense it, and do NOT paste the bash command above it.
 The map is the menu, not the destination. After rendering:
 
 - **If the user already named what they want** ("how do I export to CSV?", "what does cold start do?"): answer directly. Name the one skill that fits, say in one line what it does, and offer to start it (for example *"That is mx-data-explore. Want me to open it? Just say 'explore my data'."*). Do not make them re-read the whole map.
+- **If the user named a rough want but also signals they are unsure or lost** ("load some data, I don't know where to start"; "I want to check my campaigns but don't know where to begin"): give them the option, do not silently pick one path. Lead with the single best-fit skill and offer to start it, and in the same breath offer the broader map as the alternative. For example: *"Sounds like you want to explore your warehouse data, which is mx-data-explore. I can open it right now, or if you'd rather see everything the plugin can do first I can show you the full map. Which would you prefer?"* Then do what they choose.
 - **If the user is vague** ("help", "what can this do"): show the map, then ask which area they want. When they pick one, drill in: name the 2 to 3 skills in that area and the exact phrase to start each.
 - **Keep it to two steps:** stuck, then area, then the exact thing. Do not bury the answer.
 

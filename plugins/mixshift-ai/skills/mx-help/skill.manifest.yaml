@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-help
 display_name: Help / Navigation Hub
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Navigation and discovery hub for the plugin. Renders an outcome-grouped map
   of every skill via the `mixshift guide` CLI, routes the user to the right
