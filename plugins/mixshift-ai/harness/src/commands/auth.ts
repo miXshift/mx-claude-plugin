@@ -413,7 +413,7 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
       `  - api_base:      ${result.apiBase}\n` +
       `  - client_id:     ${result.clientId}\n` +
       `  - duration:      ${(result.durationMs / 1000).toFixed(1)}s\n` +
-      `\nTry: \`mixshift data run-query "SELECT 1"\` to verify ` +
+      `\nTry: \`mixshift data query --sql "SELECT 1"\` to verify ` +
       `warehouse access.\n`,
   );
 }

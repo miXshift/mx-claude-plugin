@@ -8,9 +8,9 @@ description: >
   SETUP CODE at /admin, the user pastes the code in chat (safe by design:
   single-use, 10-minute TTL), and Claude exchanges it so the credential
   lands directly in this machine's credentials file. Claude also resolves
-  the correct workspace folder, anchors credentials so they survive fresh
-  sandboxes, verifies with a real token mint, and wires the schedule to the
-  right data dir. Invoke whenever a user is building something that must
+  the correct workspace folder, anchors credentials in a persistent folder so
+  scheduled runs can rediscover them, verifies with a real token mint, and
+  wires the schedule to locate the right data dir. Invoke whenever a user is building something that must
   run without a person present; interactive sign-in belongs to
   mx-auth-login instead.
 metadata:
@@ -50,14 +50,11 @@ A user building a scheduled skill usually needs BOTH: their own interactive sign
 This answers "which folder?" so the user never has to guess.
 
 1. Run `pwd` and `echo "$MIXSHIFT_DATA_DIR"` via Bash.
-2. **In Cowork, the sandbox home directory does NOT persist across sessions.** A scheduled task wakes in a fresh sandbox; only the project folder survives. So credentials MUST be anchored in the project folder via `MIXSHIFT_DATA_DIR`. Choose the data dir in this order:
-   - If `MIXSHIFT_DATA_DIR` is already set (the scheduled skill already uses one), use exactly that value.
-   - Otherwise use `<project folder>/.mixshift` (the project folder is your current working directory in Cowork).
-3. Tell the user plainly which folder you chose and why, e.g.:
-
-> *"Your scheduled task will run from this project folder, so I'll anchor MixShift credentials at `<abs path>/.mixshift` — that's the one location that survives fresh sandboxes. The schedule must use the same setting; I'll wire that at the end."*
-
-On a regular machine (CLI / Claude Code outside Cowork), the default `~/.mixshift` is fine and no `MIXSHIFT_DATA_DIR` is needed; skip the anchoring talk.
+2. **In Cowork the sandbox path is NOT stable across runs.** The working directory carries a session/run UUID (e.g. `…/local_<uuid>/outputs/…`) that CHANGES the next time the schedule fires, so a credential addressed by today's absolute path is gone tomorrow — a hardcoded `MIXSHIFT_DATA_DIR` makes a scheduled run abort with "No credentials found." Two rules follow:
+   - **Anchor the credential in a PERSISTENT folder.** If `MIXSHIFT_DATA_DIR` is already set for the task, use exactly that. Otherwise anchor inside the scheduled task's own output/working folder (where the task reads + writes its artifacts — that folder persists across the task's runs): `MIXSHIFT_DATA_DIR=<that folder>/.mixshift`.
+   - **The schedule LOCATES the credential at runtime — it never hardcodes the path** (wired in Step 5). Because the absolute path is not stable, the schedule discovers its credential each run.
+   - Outside Cowork (CLI / Claude Code), the default `~/.mixshift` is already persistent — use it, no `MIXSHIFT_DATA_DIR` needed, and skip the rest of this dance.
+3. Tell the user plainly where you anchored the credential and that the schedule will rediscover it at runtime (not by a stored absolute path).
 
 ## Step 1 — The user gets a SETUP CODE (the one admin step)
 
@@ -101,10 +98,20 @@ MIXSHIFT_DATA_DIR="<data dir from step 0>" mixshift auth service-setup \
 1. Prove the whole chain with a query under the same data dir:
 
 ```bash
-MIXSHIFT_DATA_DIR="<data dir>" mixshift data run-query "SELECT NOW() AS db_time" --json
+MIXSHIFT_DATA_DIR="<data dir>" mixshift data query --sql "SELECT NOW() AS db_time" --json
 ```
 
-2. Make the schedule use the same anchor: the scheduled task's instructions (its prompt or skill) must export the same `MIXSHIFT_DATA_DIR` before calling any `mixshift` command. If you can see the scheduled skill's file in this workspace, offer to add it; otherwise state the exact line to include.
+2. Wire the schedule to DISCOVER the credential at runtime — do NOT hardcode the absolute path (its session UUID changes between runs). The scheduled task's instructions (prompt or skill) should, before any `mixshift` command, locate the credential and export its data dir:
+
+```bash
+# Find the persisted credential in this run's sandbox and point the CLI at it.
+CRED="$(find /sessions -maxdepth 7 -type f -path '*/.mixshift/auth/credentials' 2>/dev/null | head -1)"
+export MIXSHIFT_DATA_DIR="$(dirname "$(dirname "$CRED")")"
+# If CRED is empty, STOP and report the credential is missing (re-run this setup) —
+# never proceed (or report success) as if all is well.
+```
+
+This runtime discovery is the proven pattern for Cowork scheduled tasks. If you can see the scheduled skill's file in this workspace, offer to add that block; otherwise hand the user the exact lines. (Outside Cowork, the default `~/.mixshift` is found automatically — no block needed.)
 
 3. Bottom line:
 
@@ -116,7 +123,7 @@ MIXSHIFT_DATA_DIR="<data dir>" mixshift data run-query "SELECT NOW() AS db_time"
 - **`verified: false` / HTTP 401 `invalid_client` at setup (raw path):** the credential was revoked, or the secret was mistyped/rotated past its overlap. Have the user re-check the /admin tab (the secret is shown only once; if it's gone, rotate to get a fresh one) and re-run from Step 2-alt.
 - **Query fails with an org-admin / "cannot use this gateway" message:** the credential was created under the wrong tenant login (some tenant logins map to blocked super-admin MySQL users). Have the user sign into /admin with the tenant login they normally use with this plugin and create the credential there; revoke the wrong-tenant one.
 - **Query fails `insufficient_scope`:** the credential was scoped down at creation. Raw SQL needs all read scopes; have the admin issue a full-read credential for SQL automations.
-- **Scheduled run later aborts "No credentials found":** the schedule is not exporting the same `MIXSHIFT_DATA_DIR`. Fix the schedule's env, not the credential.
+- **Scheduled run later aborts "No credentials found":** the schedule hardcoded a per-session `MIXSHIFT_DATA_DIR` whose UUID has since changed, or the credential was not anchored in a persistent folder. Fix the schedule to DISCOVER the path at runtime (the Step 5 `find /sessions …` block) and ensure the credential lives in a folder that survives across runs — don't re-create the credential.
 - **User can't find the project folder for the file drop:** fall back to Option B (paste in chat + rotation note). Never have them guess paths; you printed the exact one in Step 2.
 
 ## Hard rules
@@ -125,7 +132,7 @@ MIXSHIFT_DATA_DIR="<data dir>" mixshift data run-query "SELECT NOW() AS db_time"
 - **Never echo the secret back** in any message, log, or confirmation. Refer to the credential by its label or client_id.
 - **On the raw path, delete the secret file only after `verified: true`.**
 - **One credential per automation.** Distinct label per scheduled task keeps /admin attribution and revocation surgical.
-- **Anchor to the project folder in Cowork.** Sandbox home does not persist; a credential saved there silently dies with the session.
+- **Anchor in a persistent folder; the schedule discovers the path at runtime.** The Cowork sandbox path carries a session UUID that changes between runs, so NEVER hardcode an absolute `MIXSHIFT_DATA_DIR` into a schedule. Anchor the credential in the task's persistent output folder and have the schedule locate it each run via `find /sessions … '*/.mixshift/auth/credentials' | head -1` (Step 5). A credential addressed by a stale per-session path silently dies "No credentials found."
 
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 

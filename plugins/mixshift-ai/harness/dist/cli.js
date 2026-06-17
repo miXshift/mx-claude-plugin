@@ -75280,7 +75280,7 @@ function renderLoginResult(result, json2) {
   - client_id:     ${result.clientId}
   - duration:      ${(result.durationMs / 1e3).toFixed(1)}s
 
-Try: \`mixshift data run-query "SELECT 1"\` to verify warehouse access.
+Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 `
   );
 }

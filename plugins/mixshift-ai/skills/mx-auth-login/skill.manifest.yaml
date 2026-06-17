@@ -32,7 +32,7 @@ harness_commands:
   - mixshift auth device-init --person-label <email>
   - mixshift auth device-poll <device_code> --person-label <email>
   - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path>
-  - mixshift data run-query "SELECT 1"   # post-setup verification
+  - mixshift data query --sql "SELECT 1"   # post-setup verification
 
 required_context_fields: []
 optional_context_fields: []

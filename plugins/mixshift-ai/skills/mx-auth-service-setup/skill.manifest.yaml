@@ -27,7 +27,7 @@ sql_ids: []
 harness_commands:
   - mixshift auth service-setup --setup-code <SVC-XXXX-XXXX> --json   # default: one-time code exchange
   - mixshift auth service-setup --client-id <svc_id> --client-secret-file <path> --label <label> --json   # raw fallback (CI)
-  - mixshift data run-query "SELECT NOW() AS db_time" --json   # post-setup verification
+  - mixshift data query --sql "SELECT NOW() AS db_time" --json   # post-setup verification
 
 required_context_fields: []
 optional_context_fields: []
