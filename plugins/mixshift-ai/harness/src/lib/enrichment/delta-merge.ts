@@ -2,7 +2,7 @@
  * Delta-mode merge — patches the settlement curve from the enrichment
  * artifact into context.yaml without touching AM-edited fields.
  *
- * Ported from Todd's `merge-context-delta.py`. Narrow scope on purpose:
+ * Ported from the upstream's `merge-context-delta.py`. Narrow scope on purpose:
  *
  *   PATCHED into context.yaml::capture_rate_calibration:
  *     - daily_settlement_curve   (full block replacement — enrichment-owned)

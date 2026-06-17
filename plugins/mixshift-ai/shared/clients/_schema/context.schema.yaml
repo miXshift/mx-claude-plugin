@@ -111,14 +111,14 @@ shapes:
         variant_count, total_orders, total_sales, total_spend, top_variants[],
         all_variants[]}. Members share the same canonical_match and
         root_token, so the AM gets one decision per cluster (e.g.
-        "hydropack" cluster covers 30 phrase variants — one confirm action
+        "ridgepock" cluster covers 30 phrase variants — one confirm action
         adds them all to brand_terms.variants).
         match_type (v2.3.2+) is one of:
           "levenshtein"       — root_token is within edit distance N of
                                 canonical (distance > 0). Classic typo.
           "token_membership"  — multi-token term contains a known single-word
                                 variant as a token (distance == 0). E.g.
-                                "water bottle polar" hits because "polar"
+                                "water bottle glacier" hits because "glacier"
                                 is in example_brand.variants. Trusts the AM's
                                 single-word variant curation as ground truth
                                 for branded intent.

@@ -70,7 +70,7 @@ Cloud, queried through MixShift's service," not a guess.
 Trigger when the user wants to **run an ad-hoc AMC SQL query**, for example:
 
 - "Run an AMC query for path-to-conversion last month"
-- "What AMC instances do I have for Hydrapak?"
+- "What AMC instances do I have for Ridgepak?"
 - "List the AMC data sources I can query"
 - "Submit this AMC SQL and get me the results"
 - "Build me an AMC new-to-brand overlap query"
@@ -449,7 +449,7 @@ logs the query body, the result bytes, or the amazonSellerId.
 Lead with a one-line result, then the path or a brief sample:
 
 ```
-✓ AMC query SUCCEEDED for Hydrapak (instance amc1a2b3c, MOST_RECENT_WEEK).
+✓ AMC query SUCCEEDED for Ridgepak (instance amc1a2b3c, MOST_RECENT_WEEK).
   → Saved 1,284 rows to ~/.mixshift/reports/<merchant>/2026-06-12-amc-quartiles.csv
   → Columns: quartile, users, impressions
 
@@ -459,7 +459,7 @@ Want me to summarize the quartile spread, or run another window?
 While an execution is still running:
 
 ```
-• Submitted AMC workflow for Hydrapak (execution wfx-9c41...).
+• Submitted AMC workflow for Ridgepak (execution wfx-9c41...).
   Amazon is running it (status: RUNNING). I'll check again in a moment;
   AMC executions can take a few minutes.
 ```

@@ -208,7 +208,7 @@ It reads the prefetch artifact plus the existing `context.yaml` and writes `runs
 
 1. **Daily attribution settlement curve** (from CS-28) — per-campaign-type ACOS at 1d/7d/14d, day-of-week offsets, stability score. Reshaped to `capture_rate_calibration.daily_settlement_curve`. Cells with insufficient data (low-volume campaign types where 1-day or 7-day attribution doesn't accrue) are labeled "insufficient data" rather than `null`.
 2. **Stockout candidates** (from CS-29 + CS-30) — contiguous windows ≥3 days where `SellableQuantity = 0` OR Alert active OR `DaysOfSupply < 14`. Each entry includes impacted ad-sales for the window. VC accounts: FBA-only. **Limitation:** ASIN suppression-for-profitability events (Amazon de-ranks an ASIN despite inventory) are not detectable from `mws_inventory_health` — those still require AM input as `structural_events[]`.
-3. **Brand-name typo clusters** (v2.3.1+, from CS-31 + `brand_terms` + `negation.competitor_brands`) — converting search terms within Levenshtein 1-2 of any canonical brand term, not already in variants. **Clustered** by `(canonical_match, root_token)` so the AM gets one decision per cluster instead of N flat rows. Plural-only matches (e.g. "polar bottles" vs canonical "polar bottle") and competitor-brand collisions (e.g. "hydrapeak" when canonical is "hydrapak") are filtered out before clustering — competitor-brand prefixes are read from the optional `negation.competitor_brands` list in `context.yaml`.
+3. **Brand-name typo clusters** (v2.3.1+, from CS-31 + `brand_terms` + `negation.competitor_brands`) — converting search terms within Levenshtein 1-2 of any canonical brand term, not already in variants. **Clustered** by `(canonical_match, root_token)` so the AM gets one decision per cluster instead of N flat rows. Plural-only matches (e.g. "glacier bottles" vs canonical "glacier bottle") and competitor-brand collisions (e.g. "ridgepeak" when canonical is "ridgepak") are filtered out before clustering — competitor-brand prefixes are read from the optional `negation.competitor_brands` list in `context.yaml`.
 
 **Removed in v2.3.1:** Change-point detection. The retroactive listing produced too much noise — most "unexplained" breaks were Q4 ramps and post-holiday drops the AM didn't remember. Forward-looking change-point capture (writing breaks to `structural_events[]` as they emerge from daily runs) is a candidate for a separate skill.
 
@@ -264,7 +264,7 @@ without learning the schema.
   stockouts, migrations, viral moments — these explain unusual patterns
   in the data so I don't misread them.)*"
 - **Never surface jargon from internal docs.** "Runtime artifacts at
-  report time" is a Todd-era schema term. The AM-facing prompt is: "Do
+  report time" is a legacy schema term. The AM-facing prompt is: "Do
   you currently provide reports (forecast, HCAM, monthly bridges) you'd
   like the monthly report to match? Or should I use a default template?"
 - **Don't ask anything answerable from data.** If CS-19 enumerated the

@@ -60,7 +60,7 @@
 - Performance targets (ACOS target, sub-brand ACOS targets) ✅
 - Sub-brand structure ✅
 - Product portfolio by sub-brand (comprehensive) ✅
-- Structural events (BottleBright 12ct CRAP cycle, Polar legacy wind-down) ✅
+- Structural events (FreshTab 12ct CRAP cycle, Glacier legacy wind-down) ✅
 - Revenue baseline ✅
 - Seasonality — partial ✅
 - ST negation rules — present (from sessions) ✅
@@ -70,10 +70,10 @@
 
 | Section | Gap | Severity | Note |
 |---|---|---|---|
-| Objective Configuration (§4) | Not present | P1 | example brand runs brand defense, awareness (upper funnel), and efficiency campaigns. BottleBright has different ACOS dynamics than example brand Core. Without objective config, the skill applies efficiency logic to awareness/brand-defense campaigns. |
+| Objective Configuration (§4) | Not present | P1 | example brand runs brand defense, awareness (upper funnel), and efficiency campaigns. FreshTab has different ACOS dynamics than example brand Core. Without objective config, the skill applies efficiency logic to awareness/brand-defense campaigns. |
 | Spend posture (§8) | Present but thin | P1 | Posture noted in some session context but not formalized in the file. Needs: current posture, re-entry trigger, house-on-fire threshold. |
 | Account Actions Log (§9) | Incomplete | P1 | Some bid history from sessions exists but has not been consistently committed to the actions log section. Needs a formal log section. |
-| Brand terms (§6) | Not formalized | P1 | Brand variants, example brand sub-brand terms, BottleBright, example brand — not in a formal brand terms section. example brand has complex brand term landscape (parent + sub-brands + legacy Polar). |
+| Brand terms (§6) | Not formalized | P1 | Brand variants, example brand sub-brand terms, FreshTab, example brand — not in a formal brand terms section. example brand has complex brand term landscape (parent + sub-brands + legacy Glacier). |
 | ProfileID | Not in file | P1 | Required for write layer. |
 | Brain Inputs (§15) | Empty | P2 | |
 | Revenue baseline | May need refresh | P2 | Last updated 2026-03-23. Confirm whether Apr data needs to be added. |

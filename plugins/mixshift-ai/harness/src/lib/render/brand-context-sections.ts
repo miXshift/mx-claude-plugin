@@ -2,7 +2,7 @@
  * Brand Context page — 19-section renderers.
  *
  * Each function takes the prepared composer state and returns HTML for one
- * section. Matches Todd's brand-context-template.html layout but uses our
+ * section. Matches the upstream's brand-context-template.html layout but uses our
  * design-system primitives so the output respects light/dark theming and
  * sentence-case voice rules.
  *

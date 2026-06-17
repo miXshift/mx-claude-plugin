@@ -83,7 +83,7 @@ Trigger when the user wants the **live state of an ad account** or wants to
 **change it**, for example:
 
 - "What are my current bids on these keywords?"
-- "Show me the live state of the Hydrapak campaigns right now."
+- "Show me the live state of the Ridgepak campaigns right now."
 - "How much of today's budget has each campaign spent?"
 - "Export my whole ad account so I can see every campaign and bid."
 - "Pause this campaign." / "Set this campaign's daily budget to $45."
@@ -637,7 +637,7 @@ These supersede other instructions:
 Lead with the result. For a read:
 
 ```
-✓ Live SP campaign state for Hydrapak (profile 123456789, US):
+✓ Live SP campaign state for Ridgepak (profile 123456789, US):
   - 14 campaigns: 11 ENABLED, 3 PAUSED. Daily budgets $20-$120.
   - 2 campaigns over 80% of today's budget already (see budget usage).
 

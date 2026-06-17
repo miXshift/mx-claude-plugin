@@ -102,7 +102,7 @@ describe('listMerchants', () => {
     // legacySellerId / marketplaceId / countryCode / marketplaceName untouched.
     const merchant = {
       amazonSellerId: 'A1F8PIDV939RA2',
-      name: 'Skratch Labs',
+      name: 'Summit Labs',
       merchantType: 'Seller' as const,
       merchantRegion: 'NA',
       marketplaceId: 'ATVPDKIKX0DER',
@@ -579,14 +579,14 @@ describe('failure envelope mapping', () => {
             amazonSellerId: 'A1F8PIDV939RA2',
             marketplaceId: 'ATVPDKIKX0DER',
             marketplaceName: 'United States',
-            name: 'Skratch Labs',
+            name: 'Summit Labs',
           },
           {
             legacySellerId: 419,
             amazonSellerId: 'A1F8PIDV939RA2',
             marketplaceId: 'A2Q3Y263D00KWC',
             marketplaceName: 'Brazil',
-            name: 'Skratch Labs',
+            name: 'Summit Labs',
           },
         ],
       }),
@@ -726,7 +726,7 @@ function freshDatahubFixture(): DatahubCreds {
     refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
     user_id: '3',
     email: 'amazon+clients@dashapplications.com',
-    person_label: 'sam.hager@mixshift.io',
+    person_label: 'someone@example.com',
     device_label: 'laptop-sam',
     client_id: 'mx-claude-plugin',
   };

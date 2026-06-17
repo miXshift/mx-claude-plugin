@@ -21,7 +21,7 @@
  * Usage:
  *
  *   const html = renderPage({
- *     title: 'Skratch Labs',
+ *     title: 'Summit Labs',
  *     theme: 'light',
  *     body: [
  *       renderScorecardRow([...]),

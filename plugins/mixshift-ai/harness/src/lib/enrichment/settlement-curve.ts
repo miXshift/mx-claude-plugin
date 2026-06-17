@@ -1,7 +1,7 @@
 /**
  * Settlement curve enricher — Phase 1.5 analysis #1.
  *
- * Ported from Todd's `enrich-context.py::reshape_settlement_curve`. Takes
+ * Ported from the upstream's `enrich-context.py::reshape_settlement_curve`. Takes
  * CS-28 prefetch rows (per-account, per-campaign-type, per-DOW spend +
  * sales at 1-day / 7-day / 14-day attribution windows) and computes:
  *
@@ -19,9 +19,9 @@
  * Numeric convention
  * --------------------------------------------------------------------------
  * Stores ACOS as a PERCENTAGE NUMBER (e.g. 28.5 means 28.5%), not the
- * normalized 0-1 form. This matches Todd's Python output + the shape of
+ * normalized 0-1 form. This matches the upstream's Python output + the shape of
  * downstream consumers. Different from the brand-config OCL which stores
- * 0.28 for 28% — context.yaml's calibration block stays in Todd's
+ * 0.28 for 28% — context.yaml's calibration block stays in the upstream's
  * percentage convention for backward compatibility.
  */
 

@@ -20,13 +20,13 @@ const NOW = new Date('2026-06-10T12:00:00.000Z');
 
 const aopRow = {
   ID: 574,
-  MerchantAlias: "Backpacker's Pantry",
-  Name: 'American Outdoor Products',
+  MerchantAlias: "Forager's Pantry",
+  Name: 'Aspen Outdoor Provisions',
   ACOSTarget: '25.0',
   MonthlyBudget: 18000,
   MarketPlaceName: 'Amazon.com',
   MerchantRegion: 'NA',
-  AgencyName: 'American Outdoor Products',
+  AgencyName: 'Aspen Outdoor Provisions',
   DefaultCurrencyCode: 'USD',
   iBrandReportEnabled: 1,
   iRunningInitialPull: 0,
@@ -38,7 +38,7 @@ const aopRow = {
 
 function assembledAop() {
   return assembleBrain({
-    brandSlug: 'backpackers-pantry',
+    brandSlug: 'foragers-pantry',
     sellerRows: [aopRow],
     sellerSproc: 'sp_brain_seller_fetch',
     generator: 'plugin@0.5.21-test',
@@ -50,7 +50,7 @@ describe('assembleBrain', () => {
   it('produces a schema-valid document with provenance', () => {
     const brain = assembledAop();
     const parsed = brandBrainSchema.parse(brain);
-    expect(parsed.brand_slug).toBe('backpackers-pantry');
+    expect(parsed.brand_slug).toBe('foragers-pantry');
     expect(parsed.generated_at).toBe(NOW.toISOString());
     expect(parsed.generator).toBe('plugin@0.5.21-test');
     expect(parsed.sources.seller).toMatchObject({
@@ -64,8 +64,8 @@ describe('assembleBrain', () => {
   it('lifts seller fields with defensive coercion (strings, tinyints, Dates)', () => {
     const brain = assembledAop();
     expect(brain.seller).toMatchObject({
-      merchant_alias: "Backpacker's Pantry",
-      storefront_name: 'American Outdoor Products',
+      merchant_alias: "Forager's Pantry",
+      storefront_name: 'Aspen Outdoor Provisions',
       acos_target_pct: 25.0,
       monthly_budget: 18000,
       marketplace: 'Amazon.com',
@@ -114,7 +114,7 @@ describe('assembleBrain', () => {
       },
     ]);
     const reassembled = assembleBrain({
-      brandSlug: 'backpackers-pantry',
+      brandSlug: 'foragers-pantry',
       sellerRows: [aopRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@0.5.21-test',
@@ -131,9 +131,9 @@ describe('assembleBrain', () => {
 describe('assembleCatalogSection', () => {
   it('merges SC and VC channels: distinct ASINs, SC Brand + VC CustomBrand fallback', () => {
     const sc = [
-      { ASIN: 'B001', SKU: 'SKU-1', Brand: "Backpacker's Pantry", ItemGroup: 'Chews' },
-      { ASIN: 'B001', SKU: 'SKU-1B', Brand: "Backpacker's Pantry", ItemGroup: 'Chews' },
-      { ASIN: 'B002', SKU: 'SKU-2', Brand: "Backpacker's Pantry", ItemGroup: 'Hydration' },
+      { ASIN: 'B001', SKU: 'SKU-1', Brand: "Forager's Pantry", ItemGroup: 'Chews' },
+      { ASIN: 'B001', SKU: 'SKU-1B', Brand: "Forager's Pantry", ItemGroup: 'Chews' },
+      { ASIN: 'B002', SKU: 'SKU-2', Brand: "Forager's Pantry", ItemGroup: 'Hydration' },
     ];
     const vc = [
       { Asin: 'B003', CustomBrand: 'Astronaut Foods', Brand: 'AmazonDerived', ItemGroup: 'Freeze Dried' },
@@ -145,7 +145,7 @@ describe('assembleCatalogSection', () => {
     expect(section.sub_brands).toEqual([
       'AmazonDerived', // VC fallback when CustomBrand is null
       'Astronaut Foods',
-      "Backpacker's Pantry",
+      "Forager's Pantry",
     ]);
     expect(section.item_groups).toEqual(['Chews', 'Freeze Dried', 'Hydration']);
     // No hero rows passed -> no top_asins, and the legacy deferred marker
@@ -265,7 +265,7 @@ describe('assembleCampaignSection', () => {
 describe('assembleBrain with slice-2 sources', () => {
   it('renders sections + source metas only for provided sources, schema-valid', () => {
     const brain = assembleBrain({
-      brandSlug: 'backpackers-pantry',
+      brandSlug: 'foragers-pantry',
       sellerRows: [aopRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@test',
@@ -307,8 +307,8 @@ describe('saveBrain + loadBrain round-trip', () => {
     try {
       const brain = assembledAop();
       const { path } = await saveBrain(brain, dir);
-      expect(path).toContain(join('clients', 'backpackers-pantry'));
-      const loaded = await loadBrain('backpackers-pantry', dir);
+      expect(path).toContain(join('clients', 'foragers-pantry'));
+      const loaded = await loadBrain('foragers-pantry', dir);
       expect(loaded.ok).toBe(true);
       if (loaded.ok) {
         expect(loaded.brain).toEqual(brain);
@@ -353,17 +353,17 @@ describe('resolveAcosTargetPct precedence', () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
       await saveBrain(assembledAop(), dir); // brain says 25
-      const brandDir = join(dir, 'clients', 'backpackers-pantry');
+      const brandDir = join(dir, 'clients', 'foragers-pantry');
       await mkdir(brandDir, { recursive: true });
       const validContext = {
         schema_version: 1,
-        brand_slug: 'backpackers-pantry',
-        brand_name: "Backpacker's Pantry",
+        brand_slug: 'foragers-pantry',
+        brand_name: "Forager's Pantry",
         last_updated: '2026-06-10',
         accounts: [
           {
             seller_id: 574,
-            seller_name: 'American Outdoor Products',
+            seller_name: 'Aspen Outdoor Provisions',
             account_type: 'SC',
             status: 'active',
             role: 'primary',
@@ -387,7 +387,7 @@ describe('resolveAcosTargetPct precedence', () => {
         stringifyYaml(validContext),
         'utf-8',
       );
-      const resolved = await resolveAcosTargetPct('backpackers-pantry', dir);
+      const resolved = await resolveAcosTargetPct('foragers-pantry', dir);
       expect(resolved).toMatchObject({ value: 22, source: 'context' });
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -398,7 +398,7 @@ describe('resolveAcosTargetPct precedence', () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
       await saveBrain(assembledAop(), dir); // brain says 25
-      const brandDir = join(dir, 'clients', 'backpackers-pantry');
+      const brandDir = join(dir, 'clients', 'foragers-pantry');
       await writeFile(
         join(brandDir, 'context.yaml'),
         // Minimal context that satisfies just the fields we read; the
@@ -407,7 +407,7 @@ describe('resolveAcosTargetPct precedence', () => {
         stringifyYaml({ management: { acos_target_pct: 22 } }),
         'utf-8',
       );
-      const resolved = await resolveAcosTargetPct('backpackers-pantry', dir);
+      const resolved = await resolveAcosTargetPct('foragers-pantry', dir);
       // context.yaml here is schema-incomplete, so validation fails and
       // the brain value is the correct outcome. This asserts the
       // fall-through behavior is graceful.
@@ -423,7 +423,7 @@ describe('resolveAcosTargetPct precedence', () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
       await saveBrain(assembledAop(), dir);
-      const resolved = await resolveAcosTargetPct('backpackers-pantry', dir);
+      const resolved = await resolveAcosTargetPct('foragers-pantry', dir);
       expect(resolved).toMatchObject({
         value: 25,
         source: 'brain',
@@ -477,7 +477,7 @@ describe('observations', () => {
     try {
       await saveBrain(assembledAop(), dir);
       const result = await recordObservations(
-        'backpackers-pantry',
+        'foragers-pantry',
         [
           {
             field: 'buy_box_health.rolling_lost_rev_usd',
@@ -490,7 +490,7 @@ describe('observations', () => {
         dir,
       );
       expect(result.ok).toBe(true);
-      const loaded = await loadBrain('backpackers-pantry', dir);
+      const loaded = await loadBrain('foragers-pantry', dir);
       if (loaded.ok) {
         expect(
           loaded.brain.observations['buy_box_health.rolling_lost_rev_usd'],

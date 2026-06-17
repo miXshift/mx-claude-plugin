@@ -93,14 +93,14 @@ No. Mark the brands you actually focus on as **key brands**. Portfolio-level ski
 
 In chat, the natural pattern is to just describe what you manage:
 
-> *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*
+> *"I manage Summit, Ridgeline Cell, AOP, and Hearth IQ"*
 
-Claude resolves each name against your registry (Skratch → Skratch Labs, AOP → American Outdoor Products, etc.) and adds them all to your key list. Ambiguous names ("Hydro" matches both Hydrapak and Hydro Cell) get a clarifying question.
+Claude resolves each name against your registry (Summit → Summit Labs, AOP → Aspen Outdoor Provisions, etc.) and adds them all to your key list. Ambiguous names ("Ridge" matches both Ridgepak and Ridgeline Cell) get a clarifying question.
 
 Other phrasings that work the same way:
-- *"mark Hydrapak as key"* — single brand
-- *"add Polar Bottle to my key brands"*
-- *"set my key brands to Hydrapak, Skratch Labs, and Polar Bottle"*
+- *"mark Ridgepak as key"* — single brand
+- *"add Glacier Bottle to my key brands"*
+- *"set my key brands to Ridgepak, Summit Labs, and Glacier Bottle"*
 
 To inspect / change later:
 - *"show my key brands"* / `mixshift brand key list`
@@ -185,9 +185,9 @@ The analytical skills will be opened in subsequent releases as each one is valid
 
 **Cold-start teaches the plugin about your brand.** It's a one-time setup (~3–5 minutes per brand) that runs structured queries against your warehouse + walks you through a short intake — your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (mx-daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it.
 
-**Without cold-start**, the analytical skills are locked. You can still use `mx-data-explore` to query and export anything, but skills like *"run daily health check on Hydrapak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
+**Without cold-start**, the analytical skills are locked. You can still use `mx-data-explore` to query and export anything, but skills like *"run daily health check on Ridgepak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
 
-**To run it:** in chat, say *"cold start Hydrapak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/` — preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, cold-start state stays).
+**To run it:** in chat, say *"cold start Ridgepak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/` — preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, cold-start state stays).
 
 **You don't have to cold-start every brand.** Most users start with their top 1–2 brands, see the analytical skill output, then decide whether to cold-start more. The `mixshift brand list` output shows ✓ next to cold-started brands so you can see at a glance what's ready.
 

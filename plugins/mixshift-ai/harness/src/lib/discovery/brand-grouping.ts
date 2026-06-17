@@ -5,8 +5,8 @@
  * `MerchantAlias` column when present, falling back to `Name`
  * (`seller_name`) when the alias is null/empty. Per the BRAND-BRAIN.md
  * spec, `MerchantAlias` is the AM-curated canonical brand display;
- * e.g. alias "Backpacker's Pantry" on seller rows whose storefront
- * `Name` is "American Outdoor Products". When an AM has curated the
+ * e.g. alias "Forager's Pantry" on seller rows whose storefront
+ * `Name` is "Aspen Outdoor Provisions". When an AM has curated the
  * alias, it is the brand identity; `Name` is the storefront/legal
  * label and only used when no alias exists. (Switched from Name-first
  * 2026-06-10, task #62.)
@@ -20,10 +20,10 @@
  *
  * Warehouse labels vary across marketplaces and account types for the
  * same legal brand. Examples observed in `Name`:
- *   - "Hydrapak" (VC US)
- *   - "Hydrapak - CA" (VC Canada — marketplace suffix)
- *   - "Hydrapak - DE Sporting Goods - (Pan-EU)" (VC Germany)
- *   - "HydraPak, LLC" (SC US/CA/MX — corporate suffix)
+ *   - "Ridgepak" (VC US)
+ *   - "Ridgepak - CA" (VC Canada — marketplace suffix)
+ *   - "Ridgepak - DE Sporting Goods - (Pan-EU)" (VC Germany)
+ *   - "Ridgepak, LLC" (SC US/CA/MX — corporate suffix)
  *
  * Exact-name grouping (the original behavior) split these into six
  * separate brand entries. The canonical key strips marketplace +
@@ -66,8 +66,8 @@ export interface BrandSuggestion {
 
 export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
   // Bucket rows by canonical brand key. Different marketplace-suffixed
-  // labels ("Hydrapak", "Hydrapak - CA", "HydraPak, LLC") collapse to
-  // the same key ("hydrapak") and land in one brand entry.
+  // labels ("Ridgepak", "Ridgepak - CA", "Ridgepak, LLC") collapse to
+  // the same key ("ridgepak") and land in one brand entry.
   const byCanonical = new Map<string, SellerRow[]>();
   for (const r of rows) {
     const key = canonicalBrandKey(brandLabel(r));
@@ -83,7 +83,7 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
   const entries = [...byCanonical.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [canonical, accounts] of entries) {
     // Display name = the shortest non-truncated name in the group. This
-    // picks "Hydrapak" over "Hydrapak - DE Sporting Goods - (Pan-EU)" —
+    // picks "Ridgepak" over "Ridgepak - DE Sporting Goods - (Pan-EU)" —
     // the marketplace suffix is captured per-account via account.marketplace
     // so showing it twice in the brand label is noise.
     const display = pickDisplayName(accounts);
@@ -124,10 +124,10 @@ export function canonicalBrandKey(name: string): string {
   // Step 1: take everything up to the first " - ", " — ", or ", " — the
   // remainder is marketplace / sub-account / corporate metadata.
   // Examples:
-  //   "Hydrapak - CA"                            → "Hydrapak"
-  //   "Hydrapak - DE Sporting Goods - (Pan-EU)"  → "Hydrapak"
-  //   "HydraPak, LLC"                            → "HydraPak"
-  //   "American Outdoor Products"                → "American Outdoor Products"
+  //   "Ridgepak - CA"                            → "Ridgepak"
+  //   "Ridgepak - DE Sporting Goods - (Pan-EU)"  → "Ridgepak"
+  //   "Ridgepak, LLC"                            → "Ridgepak"
+  //   "Aspen Outdoor Provisions"                → "Aspen Outdoor Provisions"
   let s = name.split(/\s+[-–—]\s+|,\s+/)[0] ?? name;
 
   // Step 2: lowercase + unicode normalize
@@ -156,9 +156,9 @@ export function canonicalBrandKey(name: string): string {
  * marketplace suffix noise); falls back to the shortest `Name` when no
  * row in the group has an alias.
  *
- *   aliases ["Backpacker's Pantry"] (×4)           → "Backpacker's Pantry"
- *   names ["Hydrapak", "Hydrapak - CA", "HydraPak, LLC"] → "Hydrapak"
- *   ["American Outdoor Products"] (×4)             → "American Outdoor Products"
+ *   aliases ["Forager's Pantry"] (×4)           → "Forager's Pantry"
+ *   names ["Ridgepak", "Ridgepak - CA", "Ridgepak, LLC"] → "Ridgepak"
+ *   ["Aspen Outdoor Provisions"] (×4)             → "Aspen Outdoor Provisions"
  */
 function pickDisplayName(accounts: SellerRow[]): string {
   const aliases = accounts

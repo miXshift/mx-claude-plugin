@@ -23,7 +23,7 @@ describe('testDatahubConnection :: happy path', () => {
         ok: true,
         user_id: '3',
         email: 'amazon+clients@dashapplications.com',
-        actor: 'sam.hager@mixshift.io',
+        actor: 'someone@example.com',
         client_id: 'mx-claude-plugin',
         sid: 'd620ab5c-8de9-4597-a715-9f1104ead870',
         db_reachable: true,
@@ -37,7 +37,7 @@ describe('testDatahubConnection :: happy path', () => {
     if (result.ok) {
       expect(result.db_reachable).toBe(true);
       expect(result.claims.user_id).toBe('3');
-      expect(result.claims.actor).toBe('sam.hager@mixshift.io');
+      expect(result.claims.actor).toBe('someone@example.com');
       expect(result.claims.client_id).toBe('mx-claude-plugin');
     }
 
@@ -141,7 +141,7 @@ function fixture(): DatahubCreds {
     refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
     user_id: '3',
     email: 'amazon+clients@dashapplications.com',
-    person_label: 'sam.hager@mixshift.io',
+    person_label: 'someone@example.com',
     device_label: 'laptop-sam',
     client_id: 'mx-claude-plugin',
   };

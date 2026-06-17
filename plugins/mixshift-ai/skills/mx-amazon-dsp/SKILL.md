@@ -71,7 +71,7 @@ reported through MixShift's service," not a guess.
 
 Trigger when the user wants a **DSP report**, for example:
 
-- "Pull a DSP campaign report for Skratch last week"
+- "Pull a DSP campaign report for Summit last week"
 - "What did our DSP audience segments do this month?"
 - "Get me DSP inventory performance by supply source"
 - "Download a DSP report with impressions, clicks, and spend"
@@ -365,7 +365,7 @@ logs the request body, the report bytes, or the amazonSellerId.
 Lead with a one-line result, then the path or a brief sample:
 
 ```
-✓ DSP CAMPAIGN report SUCCESS for Skratch (2026-06-01 to 2026-06-07).
+✓ DSP CAMPAIGN report SUCCESS for Summit (2026-06-01 to 2026-06-07).
   → Saved 8 rows to ~/.mixshift/reports/<merchant>/2026-06-07-dsp-campaign.json
   → Dimensions: ORDER  |  Metrics: impressions, clickThroughs, totalCost
 
@@ -375,7 +375,7 @@ Want me to break it down by line item, or pull a different metric set?
 While a report is still generating:
 
 ```
-• Submitted DSP CAMPAIGN report for Skratch (reportId 0acf637a...).
+• Submitted DSP CAMPAIGN report for Summit (reportId 0acf637a...).
   Amazon is generating it (status: IN_PROGRESS). I'll check again in a moment;
   DSP reports can take a few minutes.
 ```

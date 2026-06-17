@@ -560,7 +560,7 @@ export function registerBrandCommands(program: Command): void {
 
   // `mixshift brand render-context <slug>` — cold-start Brand Context page.
   // 19-section HTML + headline.json + review.json using design-system primitives.
-  // Replaces Todd's brand-context-template.html / render-brand-context.py.
+  // Replaces the upstream's brand-context-template.html / render-brand-context.py.
   registerBrandRenderContextCommand(brand);
 
   // `mixshift brand enrich <slug>` — Phase 1.5 enrichment runner.
@@ -580,8 +580,8 @@ export function registerBrandCommands(program: Command): void {
     .command('key')
     .description(
       'Manage your "key brands" — the focused subset of brands portfolio ' +
-        'skills default to. Accepts display names ("Skratch Labs"), ' +
-        'acronyms ("AOP"), prefixes ("Home IQ"), or slugs.',
+        'skills default to. Accepts display names ("Summit Labs"), ' +
+        'acronyms ("AOP"), prefixes ("Hearth IQ"), or slugs.',
     );
 
   key

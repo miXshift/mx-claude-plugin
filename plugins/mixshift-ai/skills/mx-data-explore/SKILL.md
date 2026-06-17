@@ -179,16 +179,16 @@ You:  Run `mixshift brand list` (default: active only, with a footer
 **Hard rules for brand questions (these supersede default helpfulness instincts):**
 
 - **MUST use `mixshift brand list`.** Do NOT read `~/.mixshift/clients/index.yaml` directly with `cat` / `head` / `ls`. Do NOT run inline `python3 -c "import yaml…"` scripts against the registry. Do NOT re-query the warehouse with `mixshift brand discover` for this question — the registry is the source of truth and `brand list` is the only sanctioned access path. (The harness owns refresh behavior, error rendering, dormant filtering, footer counts — bypassing it loses all of that.)
-- **MUST NOT say "slug" or "canonical slug" in user-facing text.** Slugs are internal command-invocation identifiers (used when YOU call `mixshift brand add <slug>` or `mixshift data query --seller-id <N>`). Users think in display names ("Hydrapak", "Skratch Labs"). When you reference a brand in chat, use the display name. If you need to call a follow-up command, resolve the slug silently from the registry and pass it to the harness — don't expose it.
-- **MUST NOT label brands as "duplicates" or "legacy migrations" without evidence.** A brand showing up under multiple display names across marketplaces (Hydrapak / Hydrapak - CA / Hydrapak - DE Sporting Goods - (Pan-EU) / etc.) is the warehouse's intentional separation by marketplace and account type, not a data hygiene issue. The right framing is "multi-marketplace variants of one parent brand", not "duplicates" or "you need to figure out which is canonical."
+- **MUST NOT say "slug" or "canonical slug" in user-facing text.** Slugs are internal command-invocation identifiers (used when YOU call `mixshift brand add <slug>` or `mixshift data query --seller-id <N>`). Users think in display names ("Ridgepak", "Summit Labs"). When you reference a brand in chat, use the display name. If you need to call a follow-up command, resolve the slug silently from the registry and pass it to the harness — don't expose it.
+- **MUST NOT label brands as "duplicates" or "legacy migrations" without evidence.** A brand showing up under multiple display names across marketplaces (Ridgepak / Ridgepak - CA / Ridgepak - DE Sporting Goods - (Pan-EU) / etc.) is the warehouse's intentional separation by marketplace and account type, not a data hygiene issue. The right framing is "multi-marketplace variants of one parent brand", not "duplicates" or "you need to figure out which is canonical."
 
 ### Pattern 1b extension — adding observation paragraphs
 
 After surfacing the `mixshift brand list` output, you MAY add a brief observation paragraph if it adds genuine signal. Guidelines:
 
 - Use display names, never slugs.
-- Group multi-marketplace variants visually: *"Hydrapak shows up across 6 marketplace entries (US, CA, DE, FR, IT, plus the LLC parent) — same parent brand, separate ad accounts per marketplace."*
-- Surface zero-activity edge cases: *"Polar Bottle and Polar Bottle® look like a legacy SC/VC split — the SC variant shows no ad spend last 30d, the VC variant carries the activity."*
+- Group multi-marketplace variants visually: *"Ridgepak shows up across 6 marketplace entries (US, CA, DE, FR, IT, plus the LLC parent) — same parent brand, separate ad accounts per marketplace."*
+- Surface zero-activity edge cases: *"Glacier Bottle and Glacier Bottle® look like a legacy SC/VC split — the SC variant shows no ad spend last 30d, the VC variant carries the activity."*
 - Don't editorialize about "data hygiene" or "canonical entries" — the warehouse is what it is.
 - Keep it to 2-4 sentences. The list itself is the substance.
 
@@ -206,27 +206,27 @@ mixshift brand key clear                   empty the list
 mixshift brand list --key                  same as `key list`
 ```
 
-The harness accepts fuzzy input — display names, acronyms, prefixes, case-insensitive. "Skratch" → `skratch-labs`, "AOP" → `american-outdoor-products`, "Home IQ" → `home-iq-usa`. Ambiguous inputs return a non-zero exit code with candidate slugs in the output; pass that back to the user for disambiguation.
+The harness accepts fuzzy input — display names, acronyms, prefixes, case-insensitive. "Summit" → `summit-labs`, "AOP" → `aspen-outdoor-provisions`, "Hearth IQ" → `hearth-iq-usa`. Ambiguous inputs return a non-zero exit code with candidate slugs in the output; pass that back to the user for disambiguation.
 
 **Chat triggers and routings:**
 
 | User phrase | Route to |
 |---|---|
-| "mark hydrapak as key" / "add hydrapak to my key brands" / "pin hydrapak" | `mixshift brand key add hydrapak` |
-| "I manage Skratch, Hydro Cell, AOP, and Home IQ" / "set my key brands to X, Y, Z" | Parse the comma/and-separated list, then loop: one `mixshift brand key add "<each>"` per item. Use the user's exact phrasing — don't normalize before sending; let the harness resolver handle it. |
+| "mark ridgepak as key" / "add ridgepak to my key brands" / "pin ridgepak" | `mixshift brand key add ridgepak` |
+| "I manage Summit, Ridgeline Cell, AOP, and Hearth IQ" / "set my key brands to X, Y, Z" | Parse the comma/and-separated list, then loop: one `mixshift brand key add "<each>"` per item. Use the user's exact phrasing — don't normalize before sending; let the harness resolver handle it. |
 | "remove kiwa from key brands" / "unpin kiwa" / "drop kiwa from focus" | `mixshift brand key remove kiwa` |
 | "show my key brands" / "what are my key brands" / "which brands am I focused on" / "list my key brands" | `mixshift brand key list` |
 | "clear my key brands" / "reset my focus list" / "start over on key brands" | `mixshift brand key clear` (confirm before running if list has 3+ entries — irreversible, easy mistake to make) |
 
-**Multi-brand parse pattern** (the natural "I manage Skratch, Hydro Cell, AOP, and Home IQ" flow):
+**Multi-brand parse pattern** (the natural "I manage Summit, Ridgeline Cell, AOP, and Hearth IQ" flow):
 
 1. Parse the list from the user's phrase. Common separators: comma, "and", "&", line breaks, "+". Strip filler words ("brands", "accounts").
 2. For each item, call `mixshift brand key add "<item>"` in sequence. Don't pre-resolve client-side — pass the literal user phrasing to the harness so the resolver gets a chance.
 3. Collect the results. Three possible per-item outcomes: added (✓), already_key (no-op, fine), ambiguous (need disambiguation), not_found (registry doesn't have it).
 4. Render a summary:
-   > *"Got it — your key brands are now Skratch Labs, Hydro Cell, American Outdoor Products, and Home IQ USA. Portfolio skills will default to these."*
+   > *"Got it — your key brands are now Summit Labs, Ridgeline Cell, Aspen Outdoor Provisions, and Hearth IQ USA. Portfolio skills will default to these."*
 5. For ambiguous or not_found items, ask a clarifying question in the SAME response — don't make the user wait a turn. Example:
-   > *"Got 3 of 4. 'Hydro' matched both Hydrapak and Hydro Cell — which did you mean?"*
+   > *"Got 3 of 4. 'Ridge' matched both Ridgepak and Ridgeline Cell — which did you mean?"*
 
 **After a successful key add: brain pre-fill runs in the background.**
 
@@ -234,7 +234,7 @@ The `key add` output includes a line like "Brain pre-fill running in the backgro
 
 1. Run `mixshift brand brain status <slug> --json`.
 2. If `status_file.status` is `complete`, add one line to your summary, for example:
-   > *"Brain pre-fill finished for Backpacker's Pantry: pulled your ACoS target (25%) from MixShift. Analytical skills can use it right away; cold-start still unlocks the full set."*
+   > *"Brain pre-fill finished for Forager's Pantry: pulled your ACoS target (25%) from MixShift. Analytical skills can use it right away; cold-start still unlocks the full set."*
    If `brain.acos_target_pct` is null, say the target is not set in the MixShift platform and they can add one later via `mixshift brand config <slug>`.
 3. If still `fetching`, wait about 5 seconds and poll again, up to roughly 90 seconds total. If it has not finished by then, say it is still running in the background and they can check anytime with `mixshift brand brain status <slug>`.
 4. If `failed`, surface the error plus the retry command `mixshift brand brain refresh <slug>`. Keying succeeded regardless; never treat a brain failure as a key-add failure.
@@ -242,15 +242,15 @@ The `key add` output includes a line like "Brain pre-fill running in the backgro
 
 **Behavior when user has many active brands and no key set:**
 
-If the user runs `mixshift brand list` and the footer says "No key brands set" with active count >5, proactively offer: *"You've got 23 active brands. Day-to-day, do you focus on a smaller set? Tell me which ones (e.g. 'I manage Skratch, Hydro Cell, AOP, and Home IQ') and I'll mark them as key — portfolio skills will then default to those."*
+If the user runs `mixshift brand list` and the footer says "No key brands set" with active count >5, proactively offer: *"You've got 23 active brands. Day-to-day, do you focus on a smaller set? Tell me which ones (e.g. 'I manage Summit, Ridgeline Cell, AOP, and Hearth IQ') and I'll mark them as key — portfolio skills will then default to those."*
 
 Don't pester. Single offer per session. If the user declines or doesn't reply, move on.
 
 ### Pattern 2 — User wants a quick preview
 ```
-User: "Show me a sample of campaignmetric for Hydrapak"
-You:  1. Find Hydrapak's SellerID — either from
-        ~/.mixshift/clients/hydrapak/context.yaml (if onboarded) or
+User: "Show me a sample of campaignmetric for Ridgepak"
+You:  1. Find Ridgepak's SellerID — either from
+        ~/.mixshift/clients/ridgepak/context.yaml (if onboarded) or
         from `mixshift brand discover` (if not).
       2. Run `mixshift data sample --table campaignmetric --seller-id <N> --limit 10`.
       3. Show the result. campaignmetric has 100+ columns; suggest
@@ -260,7 +260,7 @@ You:  1. Find Hydrapak's SellerID — either from
 
 ### Pattern 3 — Export to CSV
 ```
-User: "Export Hydrapak's keyword performance for last week to CSV"
+User: "Export Ridgepak's keyword performance for last week to CSV"
 You:  1. Find SellerID (as above).
       2. Pick the right table:
          - keywordmetric (SP + SB keywords only)
@@ -278,7 +278,7 @@ You:  1. Find SellerID (as above).
 
 ### Pattern 3b — ASIN-level ad performance
 ```
-User: "What's spending on Hydrapak's ASINs last 30 days?"
+User: "What's spending on Ridgepak's ASINs last 30 days?"
 You:  Use `productadmetric` (Amazon's "Advertised Product" report) or
       `asinmetric` (Amazon's "Purchased Product" report). The former is
       more common for "what we spent on these ASINs"; the latter for
@@ -287,7 +287,7 @@ You:  Use `productadmetric` (Amazon's "Advertised Product" report) or
 
 ### Pattern 3c — Branded sales reporting
 ```
-User: "Show me sales by Brand for Hydrapak last month"
+User: "Show me sales by Brand for Ridgepak last month"
 You:  business_reports_dpst_sku + mws_items join (SC) or
       vendor_sales_manufacturing_asin + vendor_items join (VC).
       mws_items.Brand is the canonical brand label. Pattern matches
@@ -296,7 +296,7 @@ You:  business_reports_dpst_sku + mws_items join (SC) or
 
 ### Pattern 4 — Custom query
 ```
-User: "Total spend by campaign type last 30 days for Hydrapak"
+User: "Total spend by campaign type last 30 days for Ridgepak"
 You:  Run `mixshift data query --sql "SELECT CampaignType,
                                             SUM(Cost) AS total_spend
                                        FROM campaignmetric

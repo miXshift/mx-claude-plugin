@@ -72296,7 +72296,7 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
   registerBrandEnrichCommand(brand);
   registerBrandMergeDeltaCommand(brand);
   const key = brand.command("key").description(
-    'Manage your "key brands" \u2014 the focused subset of brands portfolio skills default to. Accepts display names ("Skratch Labs"), acronyms ("AOP"), prefixes ("Home IQ"), or slugs.'
+    'Manage your "key brands" \u2014 the focused subset of brands portfolio skills default to. Accepts display names ("Summit Labs"), acronyms ("AOP"), prefixes ("Hearth IQ"), or slugs.'
   );
   key.command("add <input...>").description(
     "Add one or more brands to your key list. Each argument can be a slug or a fuzzy display-name match (resolver handles casing, punctuation, acronyms, prefixes). Ambiguous inputs are reported with candidates; multi-arg invocations process partial successes."
@@ -77523,7 +77523,7 @@ function renderWelcomeChat(args) {
     if (state === "A") {
       if (brandCounts && brandCounts.active > 3) {
         lines.push(
-          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** \u2014 portfolio skills will default to those instead of all ${brandCounts.active}.`
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Summit, Ridgeline Cell, AOP, and Hearth IQ"*) and I'll mark them as **key** \u2014 portfolio skills will default to those instead of all ${brandCounts.active}.`
         );
       } else {
         lines.push(

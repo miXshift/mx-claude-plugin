@@ -102,7 +102,7 @@ shapes:
 #     - narrative   # "Coming Next Month"
 #     - footer
 #
-# Example for a Hydrapak-style unified brand:
+# Example for a Ridgepak-style unified brand:
 #   sections:
 #     - nav_header
 #     - title_block

@@ -367,7 +367,7 @@ function renderWelcomeChat(args: {
       // accounts, asking them to "narrow" feels weird.
       if (brandCounts && brandCounts.active > 3) {
         lines.push(
-          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Skratch, Hydro Cell, AOP, and Home IQ"*) and I'll mark them as **key** — portfolio skills will default to those instead of all ${brandCounts.active}.`,
+          `With ${brandCounts.active} active brands, you probably focus on a smaller set day-to-day. Tell me which ones (e.g. *"I manage Summit, Ridgeline Cell, AOP, and Hearth IQ"*) and I'll mark them as **key** — portfolio skills will default to those instead of all ${brandCounts.active}.`,
         );
       } else {
         lines.push(

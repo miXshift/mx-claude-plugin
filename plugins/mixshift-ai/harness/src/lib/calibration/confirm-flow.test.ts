@@ -52,7 +52,7 @@ let brandDir: string;
 
 beforeEach(async () => {
   testDir = join(tmpdir(), `mxtest-confirm-${process.pid}-${Date.now()}-${Math.random()}`);
-  brandDir = join(testDir, 'clients', 'skratch');
+  brandDir = join(testDir, 'clients', 'summit');
   await mkdir(brandDir, { recursive: true });
 });
 
@@ -63,8 +63,8 @@ afterEach(async () => {
 describe('prepareConfirmation', () => {
   it('flags first run when no config.yaml exists', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -76,8 +76,8 @@ describe('prepareConfirmation', () => {
   it('resolves seed_from from context.yaml on first run', async () => {
     const ctxYaml = `
 schema_version: 1
-brand_slug: skratch
-brand_name: Skratch
+brand_slug: summit
+brand_name: Summit
 last_updated: 2026-05-01
 accounts:
   - seller_id: 123
@@ -101,8 +101,8 @@ posture:
 `;
     await writeFile(join(brandDir, 'context.yaml'), ctxYaml, 'utf-8');
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -114,8 +114,8 @@ posture:
 
   it('uses default when no seed and no stored', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -134,8 +134,8 @@ posture:
       'utf-8',
     );
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -149,8 +149,8 @@ posture:
   it('flags missing required when no seed, no default', async () => {
     // No context, no stored — objective has no default so it's missing.
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -166,8 +166,8 @@ posture:
       'utf-8',
     );
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -184,8 +184,8 @@ describe('applyConfirmation — confirm action', () => {
       'utf-8',
     );
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -205,8 +205,8 @@ describe('applyConfirmation — confirm action', () => {
 
   it('blocks confirm when required fields are missing', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -224,8 +224,8 @@ describe('applyConfirmation — confirm action', () => {
 describe('applyConfirmation — edit action', () => {
   it('parses edits and persists when save=true', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -253,8 +253,8 @@ describe('applyConfirmation — edit action', () => {
 
   it('does not persist when save=false', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -282,8 +282,8 @@ describe('applyConfirmation — edit action', () => {
       'utf-8',
     );
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -305,8 +305,8 @@ describe('applyConfirmation — edit action', () => {
 
   it('returns validation_failed without persisting on bad input', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -327,8 +327,8 @@ describe('applyConfirmation — edit action', () => {
 
   it('rejects edits to unknown fields', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -350,8 +350,8 @@ describe('applyConfirmation — edit action', () => {
 describe('applyConfirmation — cancel', () => {
   it('returns cancelled status without persisting', async () => {
     const payload = await prepareConfirmation({
-      brandSlug: 'skratch',
-      brandName: 'Skratch',
+      brandSlug: 'summit',
+      brandName: 'Summit',
       skillId: 'dhc',
       manifest,
       dataDirOverride: testDir,
@@ -369,7 +369,7 @@ describe('applyConfirmation — cancel', () => {
 describe('writeRunOclSnapshot', () => {
   it('writes the snapshot under runs/<skill>/<date>/ocl.yaml', async () => {
     const result = await writeRunOclSnapshot({
-      brandSlug: 'skratch',
+      brandSlug: 'summit',
       skillId: 'dhc',
       runDate: '2026-05-18',
       effective: { objective: 'growth', dampening: 0.6 },
