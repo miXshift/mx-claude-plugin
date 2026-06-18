@@ -14,7 +14,7 @@
  * are authored by skills as JSON and validated against the same schema.
  */
 
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { pendingDiscoveriesPath } from '../paths/resolve.js';
@@ -132,5 +132,38 @@ export async function appendCaptureDiscoveries(
     };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Read the brand's pending discoveries (null when absent or malformed). The
+ * Phase-9 drain reads this, folds the proposals into the brain, then clears it.
+ */
+export async function readPendingDiscoveries(
+  brandSlug: string,
+  dataDirOverride?: string,
+): Promise<DiscoveriesDoc | null> {
+  const path = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  try {
+    const raw = await readFile(path, 'utf-8');
+    return discoveriesDocSchema.parse(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove the pending-discoveries file (called after a successful drain so the
+ * same proposals aren't re-applied). Best-effort: absent file is a no-op.
+ */
+export async function clearPendingDiscoveries(
+  brandSlug: string,
+  dataDirOverride?: string,
+): Promise<void> {
+  const path = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  try {
+    await unlink(path);
+  } catch {
+    // absent — nothing to clear
   }
 }

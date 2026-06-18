@@ -21,6 +21,7 @@ import {
   type BrainStatusFile,
 } from '../lib/brain/fetch.js';
 import { loadBrain } from '../lib/brain/read.js';
+import { drainPendingDiscoveries } from '../lib/brain/observe.js';
 import { brainStatusPath } from '../lib/paths/resolve.js';
 
 interface RootOptions {
@@ -126,6 +127,44 @@ export function registerBrandBrainCommands(brand: Command): void {
       }
       process.stdout.write(lines.join('\n') + '\n');
       return;
+    });
+
+  brain
+    .command('apply-discoveries <slug>')
+    .description(
+      'Fold pending capture proposals (.pending-discoveries.json, written when ' +
+        "you set a shared field on a skill's confirm card) into the brain as " +
+        'count-weighted observations, then clear them. Observations are ' +
+        'suggestions, promoted to Tier-3 context only on your confirmation. Run ' +
+        '`brain fetch` first if the brand has no brain yet (proposals are kept).',
+    )
+    .action(async (slug: string, _opts: unknown, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const result = await drainPendingDiscoveries(slug, root.dataDir);
+
+      if (root.json) {
+        process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + '\n');
+        process.exitCode = result.ok ? 0 : 1;
+        return;
+      }
+      if (!result.ok) {
+        process.stderr.write(
+          `\n✗ Could not apply discoveries for ${slug}: ${result.reason}\n` +
+            `  If the brain isn't populated yet, run \`mixshift brand brain fetch ${slug}\` ` +
+            `then retry. Your proposals are kept.\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      if (result.drained === 0) {
+        process.stdout.write(`\n• No pending discoveries to apply for ${slug}.\n`);
+        return;
+      }
+      process.stdout.write(
+        `\n✓ Applied ${result.applied} discovery proposal(s) to ${slug}'s brain as ` +
+          `observations (suggestions — confirm to promote to brand context).\n` +
+          `  ${result.path}\n`,
+      );
     });
 }
 

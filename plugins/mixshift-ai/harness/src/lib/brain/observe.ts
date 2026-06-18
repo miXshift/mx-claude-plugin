@@ -20,6 +20,10 @@
 import { z } from 'zod';
 import type { BrandBrain } from './schema.js';
 import { loadBrain, saveBrain } from './read.js';
+import {
+  readPendingDiscoveries,
+  clearPendingDiscoveries,
+} from './discoveries.js';
 
 export const brainObservationSchema = z.object({
   /** Dotted field path, namespaced by domain
@@ -88,4 +92,61 @@ export async function recordObservations(
   const next = applyObservations(loaded.brain, observations);
   const { path } = await saveBrain(next, dataDirOverride);
   return { ok: true, path, applied: observations.length };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9: drain capture proposals into the brain (the progressive loop)
+// ---------------------------------------------------------------------------
+
+export type DrainResult =
+  | { ok: true; drained: number; applied: number; path: string | null }
+  | { ok: false; reason: string; drained: 0 };
+
+/**
+ * Drain a brand's pending capture proposals (`.pending-discoveries.json`,
+ * emitted by the confirm-flow when an AM sets a SHARED field) into the brain's
+ * count-weighted `observations` map, then clear the pending file.
+ *
+ * This is the back half of the progressive loop: Phase-4 capture writes a
+ * proposal; this folds it into Tier-2 as an observation (a SUGGESTION, never a
+ * fact — promoted to Tier-3 context only by explicit AM confirmation). Repeated
+ * captures of the same field bump `count`, so a value the AM keeps choosing
+ * accrues confidence.
+ *
+ * Safety: if the brain isn't available yet (no fetch), nothing is applied AND
+ * the pending file is LEFT IN PLACE (proposals are never lost) — the caller
+ * runs `brand brain fetch` then retries. Idempotent: a second run finds no
+ * pending file and no-ops.
+ */
+export async function drainPendingDiscoveries(
+  brandSlug: string,
+  dataDirOverride?: string,
+): Promise<DrainResult> {
+  const pending = await readPendingDiscoveries(brandSlug, dataDirOverride);
+  const proposals = pending?.discoveries.context_field_proposals ?? [];
+  if (proposals.length === 0) {
+    return { ok: true, drained: 0, applied: 0, path: null };
+  }
+
+  const observations: BrainObservation[] = proposals.map((p) => ({
+    field: p.field,
+    value: p.proposed_value,
+    confidence: p.confidence,
+    observed_by: p.observed_by,
+    observed_at: p.observed_at,
+  }));
+
+  const result = await recordObservations(brandSlug, observations, dataDirOverride);
+  if (!result.ok) {
+    // Brain unavailable — keep the pending file so proposals survive the retry.
+    return { ok: false, reason: result.reason, drained: 0 };
+  }
+
+  await clearPendingDiscoveries(brandSlug, dataDirOverride);
+  return {
+    ok: true,
+    drained: proposals.length,
+    applied: result.applied,
+    path: result.path,
+  };
 }
