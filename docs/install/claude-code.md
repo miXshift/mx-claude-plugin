@@ -96,6 +96,16 @@ mixshift data sample --table campaignmetric --seller-id <N> --limit 10
 mixshift brand discover --json
 ```
 
+You can also pull live from Amazon right after sign-in, no brand setup required:
+
+```
+"list my Amazon merchants"
+"pull a Sales and Traffic report for seller [your SellerID] for last week"
+"show my live Amazon Ads campaigns for [brand]"
+```
+
+Amazon Ads changes (pause, bid and budget edits, negatives) run through `mx-amazon-ads`, which previews every change and applies it only after you confirm. See the [README capability overview](../../README.md#what-the-plugin-can-do).
+
 ---
 
 ## Updates

@@ -172,6 +172,7 @@ The new sign-in overwrites the `datahub` block in `~/.mixshift/auth/credentials`
 - **No IP whitelist.** The auth service runs from a single static egress IP that's pre-whitelisted on the warehouse. Your IP is irrelevant.
 - **No password in chat.** Your MixShift password is entered on the browser sign-in page; it never goes through chat or any plugin command.
 - **No file path juggling.** No `--password-file`, no temp YAML, no command-line credentials.
+- **No Amazon secrets.** The Amazon SP-API and Ads API credentials are held by MixShift's service server-side. The plugin calls Amazon through the service and never sees an Amazon token or secret.
 
 ---
 
@@ -215,7 +216,7 @@ The `~/.mixshift/auth/credentials` file is per-OS-user. Cowork's chat backend ma
 
 `mixshift auth login` needs a human in a browser, and the tokens it stores rotate on refresh. Neither works for automation: a scheduled Cowork task wakes in a fresh sandbox with nobody at the keyboard, a cloud job reads its secrets from a read-only env, and CI has no browser anywhere. Service credentials cover exactly that.
 
-A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at `https://mcp.mixshift.io/admin`. It is scoped read-only, revocable instantly, and rotatable with zero downtime. Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
+A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at `https://mcp.mixshift.io/admin`. It is scoped read-only by default, revocable instantly, and rotatable with zero downtime. (Amazon Ads writes need an explicit `ads:write` scope on the credential, issued by the admin; see below.) Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
 
 ### Setup (default: one-time setup code, no secret handling)
 
@@ -231,6 +232,8 @@ The easiest path is chat-driven: in the Claude workspace where the automation wi
    The exchange creates the credential server-side at that moment and writes it directly into this machine's credentials file, then verifies by minting a real token.
 
 3. Done. Every plugin command now authenticates as the service credential when no human sign-in is present. Data queries, report pulls, and pricing calls all work identically.
+
+**Amazon Ads writes from an unattended run** need the credential to carry the `ads:write` scope. An interactive human session holds it implicitly; a service credential needs it issued explicitly by the tenant admin at `https://mcp.mixshift.io/admin`. Without it, reads work but a write returns `insufficient_scope`.
 
 ### Setup (raw secret, for CI / secret managers)
 

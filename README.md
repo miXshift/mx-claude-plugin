@@ -9,13 +9,23 @@
 
 A Claude plugin for MixShift customers — Amazon advertising + retail data exploration and analytical workflows, built by [MixShift](https://mixshift.ai).
 
-**Status:** Pre-beta. The `mx-data-explore` skill (query / sample / export your MixShift warehouse) is the initial launch surface. Analytical skills (daily health checks, bid management, search-term workflows, etc.) are present in the codebase but staged behind vetting and not yet enabled for general customer use.
+**Status:** Pre-beta (0.5.x). Everything that needs only sign-in is usable today: warehouse query and export (`mx-data-explore`), on-demand Amazon SP-API reports, live retail lookups, AMC and DSP analytics, and Amazon Ads management (including audited writes). The analytical PPC tier (daily health checks, bid management, search-term workflows) needs a one-time brand-context build per brand and is rolling out in waves as each skill is validated.
 
 ---
 
 ## What this is
 
-`mixshift-ai` is a Claude plugin that lets you talk to your MixShift warehouse from inside Claude — sample tables, export CSVs, run ad-hoc SQL, and (soon) get full analytical reports. The plugin is read-only and routes every query through a bundled CLI that authenticates with your MixShift credentials.
+`mixshift-ai` is a Claude plugin that lets you work with your Amazon advertising and retail data from inside Claude. Sample and export your MixShift warehouse, run ad-hoc SQL, pull reports and live lookups straight from Amazon, and make audited changes to your Amazon Ads campaigns. Everything routes through a bundled CLI that signs in with your MixShift account. Warehouse access is read-only; any change to Amazon previews first and is sent only after you confirm it.
+
+## What the plugin can do
+
+Everything runs through the bundled `mixshift` CLI, which signs in once with your MixShift account and routes every call through MixShift's auth service at `mcp.mixshift.io` over a single Bearer token. There are no raw database passwords on disk and no per-user IP whitelist; the service holds the one static egress IP server-side.
+
+- **Authenticate to MixShift.** Browser-based sign-in for people, or an admin-issued service credential for unattended runs (scheduled Cowork tasks, CI, cron). Tokens are short-lived and stored locally at `~/.mixshift/auth/credentials`.
+- **Explore your historical warehouse data.** Query, sample, and CSV-export the MixShift warehouse: Sponsored Ads (SP/SB/SD), DSP, Seller and Vendor Central revenue and orders, inventory, and catalog. Read-only.
+- **Pull fresh data straight from Amazon.** On-demand SP-API reports (Sales and Traffic, Brand Analytics, FBA, orders, returns, vendor), live retail lookups (catalog, inventory, finances, pricing), AMC clean-room SQL, DSP reports, and SP-API pricing batches. For data the warehouse does not already hold, or a specific ad-hoc window.
+- **Make changes to your Amazon Ads account.** Pause and enable campaigns, edit bids and budgets, and create or delete keywords, ASIN targets, and negatives across Sponsored Products, Brands, and Display. Every write previews as a dry run first and is sent to Amazon only after you confirm the exact change set; each committed change is logged with an audit id.
+- **Run analytical PPC workflows.** Daily health checks, runaway-spend detection, bid reviews, monthly reports, portfolio triage, and the search-term suite. These read a one-time brand-context build per brand (see [Available skills](#available-skills)) and are rolling out in waves.
 
 ## Which install path is right for me
 
@@ -46,18 +56,23 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **20 skills**. Each is invoked naturally in chat — say what you want and Claude picks the right one. Two tiers based on whether the skill needs a brand-context build first:
+The plugin ships **24 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
 | Skill | What it does |
 |---|---|
-| `welcome` | First-run orientation + your current state + suggested next steps. |
+| `mx-welcome` | First-run orientation: your current state and suggested next steps. |
 | `mx-help` | Navigation and discovery hub: what the plugin can do, how to fix something, where the docs are. Say "help" or "what can this do". |
 | `mx-auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
-| `mx-data-explore` | Query, sample, and CSV-export your MixShift warehouse — Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
-| `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Fetches data the warehouse may not hold yet, or a known report for a specific time frame. Read-only. |
-| `feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
+| `mx-auth-service-setup` | Set up an admin-issued service credential for unattended runs: scheduled Cowork tasks, CI, cron. |
+| `mx-data-explore` | Query, sample, and CSV-export your MixShift warehouse: Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
+| `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Read-only. |
+| `mx-amazon-retail` | Live SP-API retail lookups: catalog, inventory, orders, finances, listings, offer pricing. The title / brand source for ASINs missing from the warehouse. Read-only. |
+| `mx-amazon-amc` | Run Amazon Marketing Cloud (AMC) clean-room SQL: submit a query, poll it, fetch the result CSV. Read-only. |
+| `mx-amazon-dsp` | Pull Amazon DSP reports (campaign, inventory, audience) on demand. Read-only. |
+| `mx-amazon-ads` | Read and change a live Amazon Ads account: campaign / ad group / keyword / target lists, live bids and budgets, recommendations, plus pause / enable, bid and budget edits, and keyword / target / negative create and delete across SP / SB / SD. Writes preview first and need your explicit confirmation. |
+| `mx-feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
 | `mx-share-skill` | Share a skill you built with the plugin so MixShift can add it to the library. Say "I built a skill". |
 | `mx-brand-context` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. (Formerly `mx-account-cold-start`.) |
 
@@ -88,11 +103,11 @@ Everything else — brand context, run history, output destinations — lives at
 
 ## Architecture in one paragraph
 
-A deterministic harness (`mixshift` CLI, bundled in this repo) handles authentication, pre-fetch, validation, and audit. Claude (the model) only analyzes pre-fetched data and writes recommendations — it never reads SQL files directly, never executes queries, and never pushes to Amazon's APIs. Skills are read-only by default; execution capabilities are opt-in additions that will be staged in later releases. The harness writes all state to `~/.mixshift/` on your machine; the plugin install itself ships no customer data.
+A deterministic harness (the `mixshift` CLI, bundled in this repo) handles authentication, pre-fetch, validation, and audit. Claude (the model) analyzes pre-fetched data and writes recommendations; it never reads SQL files directly and never executes queries itself. Warehouse access is read-only. Writes to Amazon Ads go through the harness's audited path: the service validates the change, snapshots current state, and returns a preview, and nothing reaches Amazon until you confirm it with an explicit commit. The harness writes all state to `~/.mixshift/` on your machine; the plugin install itself ships no customer data.
 
 ## Security & privacy
 
-- The plugin is **read-only** at the database level — every warehouse user issued by MixShift has SELECT permissions only.
+- **The warehouse is read-only.** Every warehouse user issued by MixShift has SELECT permissions only, so no plugin command can modify warehouse data. Changes to your live Amazon Ads account are a separate, audited path: they preview first and reach Amazon only after your explicit confirmation (see `mx-amazon-ads`).
 - Your **session tokens** (Bearer + refresh, issued by MixShift's auth service on sign-in) live at `~/.mixshift/auth/credentials` on your local machine, mode 0600. They never leave your device. Your MixShift password is entered on the sign-in page in your browser and is never seen by the plugin or by Claude.
 - Tokens are short-lived: 24h access, 30d refresh. Expired access tokens auto-refresh; if the refresh token expires or is revoked, you re-run `welcome` / `auth login` to sign in again. No per-user IP whitelist coordination — MixShift's auth service holds the single static egress IP that talks to the warehouse.
 - **Beta telemetry:** during the beta, the plugin sends anonymized usage events (which skills run, query timings, onboarding funnel transitions) to MixShift's Supabase so we can iterate. We do **not** collect query result contents, your tokens, your brand context files, or your chat with Claude. Full details + opt-out instructions in [`docs/privacy.md`](./docs/privacy.md). The welcome screen shows a short notice on first run.

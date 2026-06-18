@@ -42,6 +42,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 
 **Quick checklist:**
 
+- [ ] **Docs & changelog current** (run the `release-docs` skill): `npm run check-docs` passes; `CHANGELOG.md` has the new version's entry; if the skill roster or capability surface changed this release, the README skills table + count and the `plugin.json` / `marketplace.json` descriptions are updated too.
 - [ ] If this release flips any catalog query to `dispatch: named`: `npm run check-named-pack` passes (every named id resolves against the DEPLOYED auth-service pack — deploy the pack entries first, or users hit `unknown_query`)
 - [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
@@ -60,6 +61,7 @@ npm run typecheck
 npm run test
 npm run validate-manifests
 npm run check-skills
+npm run check-docs          # README skills table + count, plugin/marketplace version sync
 npm run check-named-pack   # only gates dispatch:named flips; needs `mixshift auth login`
 npm run build
 ```

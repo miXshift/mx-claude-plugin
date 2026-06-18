@@ -9,10 +9,10 @@ name: ci
 # One job:
 #   gates — typecheck, test (incl. the golden fixture), manifest validation, the
 #   skill telemetry convention, and the build are BLOCKING (green on main today).
-#   check-versions is BLOCKING (the SKILL.md <-> manifest version drift was cleared
-#   in the pre-beta cleanup). check-contracts stays ADVISORY (continue-on-error) until
-#   the `sidecar compare` references are resolved (port the drift system or drop the
-#   refs); promote it to blocking then.
+#   check-versions and check-docs are BLOCKING (check-docs gates the README skill
+#   table + count and the plugin.json <-> marketplace.json version sync).
+#   check-contracts stays ADVISORY (continue-on-error) until the `sidecar compare`
+#   references are resolved (port the drift system or drop the refs); promote it then.
 #
 # Intentionally NOT here: `check-named-pack`. It needs a live `mixshift auth
 # login` against mcp.mixshift.io, which CI cannot do. It stays a manual release
@@ -33,7 +33,7 @@ defaults:
 
 jobs:
   gates:
-    name: Harness gates (typecheck, test, manifests, telemetry, versions, build; contracts advisory)
+    name: Harness gates (typecheck, test, manifests, telemetry, versions, docs, build; contracts advisory)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -63,6 +63,9 @@ jobs:
 
       - name: Skill version consistency (SKILL.md <-> manifest)
         run: npm run check-versions
+
+      - name: Docs currency (README skill table + count, plugin/marketplace version sync)
+        run: npm run check-docs
 
       - name: Skill contract resolution (sql_ids, context fields, upstream) [ADVISORY — sidecar-compare warnings]
         run: npm run check-contracts

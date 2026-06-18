@@ -106,6 +106,8 @@ The CLI surface is fully documented via `--help`:
 mixshift --help
 mixshift data --help
 mixshift brand --help
+mixshift amazon --help
+mixshift ads --help
 ```
 
 Common operations:
@@ -124,6 +126,18 @@ mixshift data sample --table campaignmetric --seller-id <N> --limit 10
 mixshift data query --sql "SELECT COUNT(*) FROM campaignmetric WHERE SellerID = <N>"
 mixshift data export --table campaignmetric --seller-id <N> \
   --start 2026-04-01 --end 2026-04-30 --out ~/campaign-q2.csv
+
+# Pull live from Amazon (SP-API reports, retail lookups, AMC, DSP, pricing)
+mixshift amazon merchants
+mixshift amazon list-reports
+mixshift amazon report start --type GET_SALES_AND_TRAFFIC_REPORT --seller-id <N>   # then: report poll / report get
+mixshift amazon operations                                                         # browse live SP-API read operations
+
+# Amazon Ads: reads + audited writes
+mixshift ads profiles
+mixshift ads operations                                                            # browse callable Ads operations
+mixshift ads call <operation> --profile-id <id> --body-file changes.json           # DRY-RUN by default: validates + previews, nothing reaches Amazon
+mixshift ads call <operation> --profile-id <id> --body-file changes.json --commit  # only --commit mutates, after you review the preview
 
 # Send feedback / report bugs / request table access
 mixshift feedback "your message" --category bug

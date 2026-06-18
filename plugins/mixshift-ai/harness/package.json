@@ -16,6 +16,7 @@
     "validate-manifests": "tsx scripts/validate-manifests.mjs",
     "check-skills": "node scripts/check-skill-telemetry.mjs",
     "check-versions": "node scripts/check-version-consistency.mjs",
+    "check-docs": "node scripts/check-docs.mjs",
     "check-contracts": "node scripts/check-skill-contracts.mjs",
     "check-named-pack": "tsx scripts/check-named-pack.mjs"
   },
