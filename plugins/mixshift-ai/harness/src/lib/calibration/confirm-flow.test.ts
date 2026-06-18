@@ -511,6 +511,69 @@ describe('applyConfirmation — edit action', () => {
   });
 });
 
+describe('applyConfirmation — percent consumption (whole-number)', () => {
+  const pctM: CalibrationManifest = {
+    schema_version: 1,
+    fields: [
+      {
+        id: 'acos_target',
+        prompt: 'ACoS?',
+        type: 'percent',
+        range: { min: 0.05, max: 1 },
+        seed_from: 'context.management.acos_target_pct',
+        required: false,
+        deprecated: false,
+      },
+    ],
+  };
+
+  it('returns whole-number percents for consumption (display stays [0,1])', async () => {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 22\n`,
+      'utf-8',
+    );
+    const p = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: pctM,
+      dataDirOverride: testDir,
+    });
+    expect(p.fields[0]!.effective_value).toBeCloseTo(0.22, 5); // [0,1] for display
+    const res = await applyConfirmation(
+      p,
+      { action: 'confirm' },
+      { dataDirOverride: testDir },
+    );
+    expect(res.status).toBe('ok');
+    expect(res.effective_config.acos_target).toBe(22); // whole for the skill
+  });
+
+  it('persists [0,1] to config.yaml on save while returning whole', async () => {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 22\n`,
+      'utf-8',
+    );
+    const p = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: pctM,
+      dataDirOverride: testDir,
+    });
+    const res = await applyConfirmation(
+      p,
+      { action: 'edit', edits: { acos_target: '30' }, save: true },
+      { dataDirOverride: testDir },
+    );
+    expect(res.effective_config.acos_target).toBe(30); // consumed whole
+    const raw = await readFile(join(brandDir, 'config.yaml'), 'utf-8');
+    expect(raw).toMatch(/acos_target: 0\.3\b/); // stored [0,1]
+  });
+});
+
 describe('applyConfirmation — cancel', () => {
   it('returns cancelled status without persisting', async () => {
     const payload = await prepareConfirmation({

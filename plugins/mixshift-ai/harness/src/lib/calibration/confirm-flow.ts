@@ -301,7 +301,7 @@ export async function applyConfirmation(
     }
     return {
       status: 'ok',
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: [],
@@ -347,7 +347,7 @@ export async function applyConfirmation(
   if (!decision.save) {
     return {
       status: 'ok',
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: [],
@@ -364,7 +364,7 @@ export async function applyConfirmation(
   );
   return {
     status: 'ok',
-    effective_config: effective,
+    effective_config: toConsumableConfig(payload.fields, effective),
     did_persist: true,
     saved_to: path,
     validation_issues: [],
@@ -541,6 +541,31 @@ function normalizeSeedForField(field: CalibrationField, value: unknown): unknown
     return value > 1 ? value / 100 : value;
   }
   return value;
+}
+
+/**
+ * Denormalize percent fields from the OCL's internal [0,1] representation to
+ * the WHOLE-number convention that brand state, the warehouse, and every skill
+ * formula use (acos_target 0.22 -> 22). Storage in config.yaml and the
+ * confirm-card display stay [0,1]; only the CONSUMED config (what a skill reads
+ * to run) is whole, so a skill's math is identical whether a threshold came
+ * from brand context or an OCL override. Non-percent fields pass through.
+ * Mirrors the context-editor's denormalize-on-write so every consumption
+ * surface agrees on whole-number percents.
+ */
+function toConsumableConfig(
+  fields: ConfirmationFieldEntry[],
+  effective: Record<string, unknown>,
+): Record<string, unknown> {
+  const typeById = new Map(fields.map((e) => [e.field.id, e.field.type]));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(effective)) {
+    out[k] =
+      typeById.get(k) === 'percent' && typeof v === 'number'
+        ? Math.round(v * 10000) / 100
+        : v;
+  }
+  return out;
 }
 
 function stripContextPrefix(seedPath: string): string {
