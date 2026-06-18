@@ -15,7 +15,6 @@ allowed_tools: [file_read, file_write]
 side_effect_policy: recommendation_only
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
   - mx-search-term-data-pull artifact absent or stale (> 7 days)
   - conflict check finds a protected_term in candidate set (suppress and surface)
 sql_ids: []   # pure consumer; depends on mx-search-term-data-pull artifact via upstream_skills

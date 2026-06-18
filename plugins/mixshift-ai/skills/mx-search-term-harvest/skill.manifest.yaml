@@ -14,7 +14,6 @@ allowed_tools: [db_read, file_read, file_write, prefetch]
 side_effect_policy: recommendation_only
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
   - mx-search-term-data-pull artifact absent (upstream dependency not met)
   - harvest candidate matches a negation.protected_term (suppress and surface)
 sql_ids:
@@ -60,3 +59,25 @@ notes: >
   lifetime performance slices; it does not run STDP-* queries directly.
   Harvest candidates must be checked against negation.lane_rules mismatch lists before
   promotion to ensure irrelevant terms are not added to explicit campaigns.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# Harvest qualification ("converting efficiently") is judged against an ACoS
+# ceiling; that is the one scalar lever, surfaced as an optional per-skill
+# override defaulting to the brand target (Tier-3 context.yaml, else the
+# Tier-2 brain). Structured context (lane_rules mismatch lists, brand_terms,
+# sub_brands) is read through the resolver, not surfaced here.
+calibration:
+  schema_version: 1
+  fields:
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS ceiling a term must beat to be a harvest candidate for {brand_name}?"
+      help: >
+        Auto / broad terms converting at or below this ACoS are promotion
+        candidates. Defaults to your brand's ACoS target (Tier-3 context.yaml,
+        else the Tier-2 brain). Override only if harvest should use a different
+        efficiency bar than the brand default.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false

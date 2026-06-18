@@ -74,3 +74,25 @@ notes: >
   TACOS-primary accounts do not require implied/reference TACOS fields; use
   management.tacos_target_pct/tacos_goal_pct when present and treat forecast/bridge
   artifacts as runtime inputs until DB-integrated.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# Report audience (reporting.audience) and voice lint (reporting.voice_lint)
+# are structured brand context read through the resolver, not scalar OCL knobs.
+# The one scalar lever surfaced here is the ACoS target used to frame the
+# efficiency narrative, as an optional per-skill override defaulting to the
+# brand target (Tier-3 context.yaml, else the Tier-2 brain).
+calibration:
+  schema_version: 1
+  fields:
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the monthly report should frame against for {brand_name}?"
+      help: >
+        Reference ACoS for the efficiency narrative and beat/miss framing.
+        Defaults to your brand's ACoS target (Tier-3 context.yaml, else the
+        Tier-2 brain). Override only if the report should frame against a
+        different target than operational management.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false

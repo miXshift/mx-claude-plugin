@@ -65,6 +65,10 @@ import {
   validateAgainstManifest,
   type SkillConfigView,
 } from './brand-config.js';
+import {
+  resolveBrandFields,
+  brandFieldKeyForContextPath,
+} from '../brain/read.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -170,14 +174,34 @@ export async function prepareConfirmation(
   // Context (for seeds). Missing context.yaml is OK — every seed_from just
   // resolves to undefined and the field falls through to default.
   const ctx = await tryReadContext(brandSlug, dataDirOverride);
+  // Tier-2 brain fallback for seeds: resolve the registered brand-level fields
+  // once (context + brain) so a field whose seed_from path is absent from
+  // context.yaml can still pre-fill from a freshly fetched brain.
+  const brandFields = await resolveBrandFields(brandSlug, dataDirOverride);
 
   const entries: ConfirmationFieldEntry[] = manifest.fields
     .filter((f) => !f.deprecated)
     .map((field): ConfirmationFieldEntry => {
       const stored_value = storedBlock?.[field.id];
-      const seed_value = field.seed_from
+      let seed_value = field.seed_from
         ? getByPath(ctx, stripContextPrefix(field.seed_from))
         : undefined;
+      if (seed_value === undefined && field.seed_from) {
+        // Context lacked it — fall back to the brand brain (Tier 2) for the
+        // same logical field, when seed_from maps to a registered brand field.
+        const key = brandFieldKeyForContextPath(
+          stripContextPrefix(field.seed_from),
+        );
+        const resolved = key ? brandFields[key] : null;
+        if (resolved && resolved.source === 'brain') {
+          seed_value = resolved.value;
+        }
+      }
+      // Reconcile units: brand state stores percentages whole (acos_target_pct:
+      // 22), but the OCL `percent` type stores normalized [0,1]. Apply the same
+      // rule parseFieldInput uses for typed input so seeded and typed values
+      // agree. Idempotent for already-normalized values; no-op for non-percent.
+      seed_value = normalizeSeedForField(field, seed_value);
       const default_value = hasDefault(field) ? field.default : undefined;
 
       // Effective resolution priority: stored > seed > default > missing
@@ -402,6 +426,27 @@ export async function writeRunOclSnapshot(args: {
 
 function hasDefault(field: CalibrationField): boolean {
   return (field as { default?: unknown }).default !== undefined;
+}
+
+/**
+ * Reconcile a seed value's units to the OCL field's storage convention.
+ *
+ * Brand state (context.yaml + the Tier-2 brain) stores percentages as whole
+ * numbers — `management.acos_target_pct: 22`, `bid_health.scale_threshold_pct:
+ * 50` — but the OCL `percent` type stores normalized [0,1] and renders `* 100`.
+ * Without this, a seeded 22 would display "2200%" and, on confirm-as-is,
+ * persist 22 (out of every percent field's [0,1] range). We apply the SAME
+ * `n > 1 ? n / 100 : n` rule parseFieldInput uses for typed input, so a seeded
+ * percent and a hand-typed percent normalize identically. Idempotent for values
+ * already in [0,1] (a brain that ever stored 0.22 passes through). Non-percent
+ * fields and non-numeric values pass through untouched.
+ */
+function normalizeSeedForField(field: CalibrationField, value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (field.type === 'percent' && typeof value === 'number') {
+    return value > 1 ? value / 100 : value;
+  }
+  return value;
 }
 
 function stripContextPrefix(seedPath: string): string {
