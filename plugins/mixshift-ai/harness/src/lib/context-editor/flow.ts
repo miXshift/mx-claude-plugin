@@ -153,7 +153,10 @@ function buildFieldState(
   entry: BrandContextEntry,
   ctx: Record<string, unknown>,
 ): BrandContextFieldState {
-  const stored_value = getByPath(ctx, entry.context_path);
+  const stored_value = normalizePercentForDisplay(
+    entry.field,
+    getByPath(ctx, entry.context_path),
+  );
   const default_value = hasDefault(entry.field)
     ? (entry.field as { default?: unknown }).default
     : undefined;
@@ -255,7 +258,7 @@ export async function applyBrandConfigEdit(
     }
     parsedEdits.push({
       path: entry.context_path,
-      value: parsed.value,
+      value: denormalizePercentForStorage(entry.field, parsed.value),
       field_id: fieldId,
     });
   }
@@ -334,6 +337,38 @@ export async function applyBrandConfigEdit(
 
 function hasDefault(field: CalibrationField): boolean {
   return (field as { default?: unknown }).default !== undefined;
+}
+
+/**
+ * context.yaml stores percentages as WHOLE numbers (acos_target_pct: 22) — the
+ * warehouse / brain / cold-start convention. But the CalibrationField `percent`
+ * type that drives this editor's display (formatFieldValue) and input parsing
+ * (parseFieldInput) works in [0,1]. These two helpers bridge that boundary so
+ * the editor reads/writes whole numbers while the [0,1] machinery is unchanged.
+ * Both are idempotent for values already in [0,1], so they're safe over any
+ * legacy normalized data left by the pre-fix editor.
+ */
+function normalizePercentForDisplay(
+  field: CalibrationField,
+  v: unknown,
+): unknown {
+  if (field.type === 'percent' && typeof v === 'number') {
+    return v > 1 ? v / 100 : v;
+  }
+  return v;
+}
+
+function denormalizePercentForStorage(
+  field: CalibrationField,
+  v: unknown,
+): unknown {
+  if (field.type === 'percent' && typeof v === 'number') {
+    // parseFieldInput already produced a [0,1] fraction; scale back to the
+    // whole-number storage convention, rounding to 2 decimals to clear
+    // floating-point noise (e.g. 0.07 * 100).
+    return Math.round(v * 10000) / 100;
+  }
+  return v;
 }
 
 function getByPath(obj: unknown, path: string): unknown {

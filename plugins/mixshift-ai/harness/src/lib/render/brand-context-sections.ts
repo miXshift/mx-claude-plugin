@@ -23,7 +23,7 @@ import {
   renderAuditSection,
   renderAnomalyBlock,
   renderStatusPill,
-  formatPct,
+  formatWholePct,
   formatInt,
   escapeHtml,
   type ProofCardOptions,
@@ -294,8 +294,8 @@ export function sectionAccountSnapshot(s: ReportState): string {
   const isTacosPrimary = m.primary_metric === 'TACOS';
   const primaryLabel = isTacosPrimary ? 'TACoS target' : 'ACoS target';
   const primaryValue = isTacosPrimary
-    ? formatPct(m.tacos_target_pct ?? m.tacos_goal_pct, 0)
-    : formatPct(m.acos_target_pct, 0);
+    ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0)
+    : formatWholePct(m.acos_target_pct, 0);
 
   const scorecards = renderScorecardRow([
     { label: 'Accounts', value: formatInt(accounts.length) },
@@ -517,7 +517,7 @@ export function sectionCalibration(s: ReportState): string {
     });
   }
   const rows = [
-    { field: 'Capture rate', value: cal.capture_rate_pct !== undefined ? formatPct(cal.capture_rate_pct, 1) : '—' },
+    { field: 'Capture rate', value: cal.capture_rate_pct !== undefined ? formatWholePct(cal.capture_rate_pct, 1) : '—' },
     { field: 'Fresh-day ACoS lift (pts)', value: cal.fresh_day_acos_improvement_pts !== undefined ? `${cal.fresh_day_acos_improvement_pts.toFixed(2)} pts` : '—' },
     { field: 'Settlement application rule', value: cal.settlement_application_rule ?? '—' },
     { field: 'Stability score', value: cal.stability_score ? sentenceCase(cal.stability_score) : '—' },
