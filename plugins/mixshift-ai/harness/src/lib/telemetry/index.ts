@@ -156,7 +156,7 @@ export async function maybeFlush(
  * `--surface` flag the wrapper passes through. CLI-direct invocations
  * (no plugin runtime) report "cli".
  */
-function detectInstallPath(): string {
+export function detectInstallPath(): string {
   if (process.env.CLAUDE_PLUGIN_ROOT) return 'plugin-host';
   return 'cli';
 }

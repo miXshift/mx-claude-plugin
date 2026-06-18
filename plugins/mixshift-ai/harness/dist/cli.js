@@ -64286,18 +64286,43 @@ var init_events = __esm({
 // src/lib/telemetry/surface.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function detectSurface(flagValue) {
+  return probeSurface(flagValue).result;
+}
+function probeSurface(flagValue) {
+  const env = {
+    MIXSHIFT_SURFACE: process.env[ENV_VAR_OVERRIDE],
+    COWORK: process.env.COWORK,
+    COWORK_VERSION: process.env.COWORK_VERSION,
+    COWORK_PLUGIN_HOST: process.env.COWORK_PLUGIN_HOST,
+    CLAUDECODE: process.env.CLAUDECODE,
+    CLAUDE_CODE: process.env.CLAUDE_CODE,
+    CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
+    CLAUDE_CODE_VERSION: process.env.CLAUDE_CODE_VERSION,
+    CLAUDE_PLUGIN_ROOT: process.env.CLAUDE_PLUGIN_ROOT
+  };
+  const paths = runtimePaths();
+  const coworkMarkerPresent = paths.some(
+    (p) => p.toLowerCase().includes(COWORK_PATH_MARKER)
+  );
+  const base = {
+    env,
+    flag: flagValue,
+    runtimePaths: paths,
+    coworkMarker: COWORK_PATH_MARKER,
+    coworkMarkerPresent
+  };
   const envOverride = process.env[ENV_VAR_OVERRIDE];
   if (envOverride && isKnownSurface(envOverride)) {
-    return envOverride;
+    return { ...base, result: envOverride, decidedBy: "env_override" };
   }
   if (flagValue && isKnownSurface(flagValue)) {
-    return flagValue;
+    return { ...base, result: flagValue, decidedBy: "flag" };
   }
-  for (const detector of detectors) {
-    const result = detector();
-    if (result !== null) return result;
+  for (const d of detectors) {
+    const result = d.detect();
+    if (result !== null) return { ...base, result, decidedBy: d.name };
   }
-  return "cli";
+  return { ...base, result: "cli", decidedBy: "fallback" };
 }
 function detectCowork() {
   if (process.env.COWORK === "1") return "cowork";
@@ -64341,10 +64366,10 @@ var init_surface = __esm({
     ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
     COWORK_PATH_MARKER = "local-agent-mode-sessions";
     detectors = [
-      detectCowork,
-      // MUST be first — Cowork also sets CLAUDECODE (embeds CC engine).
-      detectClaudeCode,
-      detectPluginHostUnknown
+      // MUST be first — Cowork also sets CLAUDECODE (embeds the CC engine).
+      { name: "cowork", detect: detectCowork },
+      { name: "claude_code", detect: detectClaudeCode },
+      { name: "plugin_host_unknown", detect: detectPluginHostUnknown }
     ];
     KNOWN_SURFACES = /* @__PURE__ */ new Set([
       "cowork",
@@ -78580,9 +78605,12 @@ function registerVersionCommand(program3) {
 
 // src/commands/telemetry.ts
 init_telemetry();
+init_surface();
 init_resolve();
 init_queue();
 init_flush_log();
+import { platform as platform2, release as release2 } from "node:os";
+init_plugin_version();
 var VALID_OUTCOMES = /* @__PURE__ */ new Set(["ok", "failed", "timeout", "deferred", "skipped"]);
 function registerTelemetryCommands(program3) {
   const telemetry = program3.command("telemetry").description(
@@ -78649,6 +78677,61 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
   - queue path:       ${telemetryQueuePath(root.dataDir)}
   - queue size:       ${queueBytes} bytes
 ` + flushSection + "\nSee docs/privacy.md for what we collect and why.\n"
+    );
+  });
+  telemetry.command("surface").description(
+    "Diagnose surface detection. Prints the resolved surface, which rule decided it, and every raw host signal it read. Run this INSIDE a real Claude Code session AND a real Cowork session to capture ground truth on which markers actually reach the harness at emit time."
+  ).action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const probe = probeSurface(root.surface);
+    const installPath = detectInstallPath();
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            ...probe,
+            install_path: installPath,
+            plugin_version: getPluginVersion(),
+            node_version: process.version,
+            platform: `${platform2()}-${release2()}`,
+            argv: process.argv,
+            cwd: process.cwd()
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    const show = (v) => v === void 0 ? "(unset)" : v;
+    const envLines = Object.entries(probe.env).map(([k, v]) => `    ${k.padEnd(22)} = ${show(v)}`).join("\n");
+    const pathLines = probe.runtimePaths.length > 0 ? probe.runtimePaths.map((p) => `      - ${p}`).join("\n") : "      (none)";
+    const verdict = probe.result === "cli" ? "\u2192 Resolved to the `cli` FALLBACK: no host marker matched. If you ran\n  this inside a real Claude Code / Cowork session, the host is not\n  propagating any marker to this process \u2014 paste this whole block back.\n" : `\u2192 Resolved to \`${probe.result}\` via ${probe.decidedBy}.
+`;
+    process.stdout.write(
+      `
+Surface detection probe
+=======================
+
+  Resolved surface:  ${probe.result}
+  Decided by:        ${probe.decidedBy}
+  install_path:      ${installPath}
+  --surface flag:    ${show(probe.flag)}
+
+Host env signals (undefined = not set by the runtime):
+${envLines}
+
+Cowork payload marker ("${probe.coworkMarker}"): ${probe.coworkMarkerPresent ? "FOUND" : "NOT FOUND"}
+  runtime paths checked:
+${pathLines}
+
+Context:
+    plugin_version = ${getPluginVersion()}
+    node           = ${process.version}
+    platform       = ${platform2()}-${release2()}
+    cwd            = ${process.cwd()}
+
+` + verdict + "\n"
     );
   });
   telemetry.command("opt-out").description("Persistently disable telemetry for this install.").action(async (_opts, cmd) => {

@@ -61,6 +61,47 @@ export type Surface =
   | 'claude_desktop'
   | 'other';
 
+/**
+ * Diagnostic snapshot returned by {@link probeSurface}. Captures the resolved
+ * surface AND every raw signal the decision was made from, so we can inspect
+ * what a real host actually exposes at emit time instead of inferring it.
+ */
+export interface SurfaceProbe {
+  /** What detectSurface() resolves to right now — the value stamped on every
+   *  telemetry event emitted by this process. */
+  result: Surface;
+  /** Which precedence rule produced `result`. `fallback` means no host marker
+   *  matched and detection defaulted to `cli`. */
+  decidedBy:
+    | 'env_override'
+    | 'flag'
+    | 'cowork'
+    | 'claude_code'
+    | 'plugin_host_unknown'
+    | 'fallback';
+  /** Raw env signals the detectors read. `undefined` = variable not set. */
+  env: {
+    MIXSHIFT_SURFACE?: string;
+    COWORK?: string;
+    COWORK_VERSION?: string;
+    COWORK_PLUGIN_HOST?: string;
+    CLAUDECODE?: string;
+    CLAUDE_CODE?: string;
+    CLAUDE_CODE_ENTRYPOINT?: string;
+    CLAUDE_CODE_VERSION?: string;
+    CLAUDE_PLUGIN_ROOT?: string;
+  };
+  /** The `--surface` flag value detection saw (undefined when not passed). */
+  flag?: string;
+  /** Paths checked for the Cowork payload marker: CLAUDE_PLUGIN_ROOT, argv[1],
+   *  and this module's own path. */
+  runtimePaths: string[];
+  /** The marker string searched for in `runtimePaths`. */
+  coworkMarker: string;
+  /** Whether `coworkMarker` appears in any `runtimePaths` entry. */
+  coworkMarkerPresent: boolean;
+}
+
 const ENV_VAR_OVERRIDE = 'MIXSHIFT_SURFACE';
 
 /**
@@ -71,25 +112,62 @@ const ENV_VAR_OVERRIDE = 'MIXSHIFT_SURFACE';
  * Safe to call multiple times; pure over its inputs (env, argv, module path).
  */
 export function detectSurface(flagValue?: string | undefined): Surface {
+  return probeSurface(flagValue).result;
+}
+
+/**
+ * Diagnostic counterpart of {@link detectSurface}: returns the resolved
+ * surface, which precedence rule decided it, and every raw signal that fed the
+ * decision. detectSurface() delegates to this, so the probe can NEVER drift
+ * from the real decision.
+ *
+ * Surfaced via `mixshift telemetry surface` so we can capture GROUND TRUTH from
+ * inside a real host — which markers actually reach the harness at emit time —
+ * instead of guessing. (Guessing is the trap the 2026-06-16 path-marker fix
+ * fell into: it shipped on an *assumed* Cowork payload path that was never
+ * verified against a live env dump.)
+ */
+export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
+  const env: SurfaceProbe['env'] = {
+    MIXSHIFT_SURFACE: process.env[ENV_VAR_OVERRIDE],
+    COWORK: process.env.COWORK,
+    COWORK_VERSION: process.env.COWORK_VERSION,
+    COWORK_PLUGIN_HOST: process.env.COWORK_PLUGIN_HOST,
+    CLAUDECODE: process.env.CLAUDECODE,
+    CLAUDE_CODE: process.env.CLAUDE_CODE,
+    CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
+    CLAUDE_CODE_VERSION: process.env.CLAUDE_CODE_VERSION,
+    CLAUDE_PLUGIN_ROOT: process.env.CLAUDE_PLUGIN_ROOT,
+  };
+  const paths = runtimePaths();
+  const coworkMarkerPresent = paths.some((p) =>
+    p.toLowerCase().includes(COWORK_PATH_MARKER),
+  );
+  const base = {
+    env,
+    flag: flagValue,
+    runtimePaths: paths,
+    coworkMarker: COWORK_PATH_MARKER,
+    coworkMarkerPresent,
+  };
+
+  // Mirror detectSurface precedence EXACTLY — this loop IS the decision.
   // 1. Env override — debugging / testing escape hatch
   const envOverride = process.env[ENV_VAR_OVERRIDE];
   if (envOverride && isKnownSurface(envOverride)) {
-    return envOverride as Surface;
+    return { ...base, result: envOverride as Surface, decidedBy: 'env_override' };
   }
-
   // 2. Flag value from CLI
   if (flagValue && isKnownSurface(flagValue)) {
-    return flagValue as Surface;
+    return { ...base, result: flagValue as Surface, decidedBy: 'flag' };
   }
-
   // 3. Env-based detection (try each detector in order)
-  for (const detector of detectors) {
-    const result = detector();
-    if (result !== null) return result;
+  for (const d of detectors) {
+    const result = d.detect();
+    if (result !== null) return { ...base, result, decidedBy: d.name };
   }
-
   // 4. Fallback
-  return 'cli';
+  return { ...base, result: 'cli', decidedBy: 'fallback' };
 }
 
 // ---------------------------------------------------------------------------
@@ -168,10 +246,18 @@ function detectPluginHostUnknown(): Surface | null {
   return null;
 }
 
-const detectors: Detector[] = [
-  detectCowork, // MUST be first — Cowork also sets CLAUDECODE (embeds CC engine).
-  detectClaudeCode,
-  detectPluginHostUnknown,
+/**
+ * Ordered detector chain. Each entry's `name` is reported as `decidedBy` in
+ * the surface probe when that detector fires. Order matters — see header.
+ */
+const detectors: ReadonlyArray<{
+  name: 'cowork' | 'claude_code' | 'plugin_host_unknown';
+  detect: Detector;
+}> = [
+  // MUST be first — Cowork also sets CLAUDECODE (embeds the CC engine).
+  { name: 'cowork', detect: detectCowork },
+  { name: 'claude_code', detect: detectClaudeCode },
+  { name: 'plugin_host_unknown', detect: detectPluginHostUnknown },
 ];
 
 // ---------------------------------------------------------------------------

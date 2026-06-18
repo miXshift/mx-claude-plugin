@@ -9,25 +9,31 @@
  *   - `flush`        Force a drain of the local queue (debugging / CI).
  */
 
+import { platform, release } from 'node:os';
 import type { Command } from 'commander';
 import {
   getTelemetryStatus,
   setOptedOut,
   maybeFlush,
   track,
+  detectInstallPath,
   EventName,
 } from '../lib/telemetry/index.js';
 import type { Outcome } from '../lib/telemetry/events.js';
+import { probeSurface } from '../lib/telemetry/surface.js';
 import { telemetryQueuePath } from '../lib/paths/resolve.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { tailFlushLog, flushLogPath } from '../lib/telemetry/flush-log.js';
 import { loadDotenvIfPresent, candidatePaths } from '../lib/env/load-dotenv.js';
+import { getPluginVersion } from '../lib/plugin-version.js';
 
 const VALID_OUTCOMES = new Set(['ok', 'failed', 'timeout', 'deferred', 'skipped']);
 
 interface RootOptions {
   json?: boolean;
   dataDir?: string;
+  /** Global `--surface` flag — forwarded so the probe mirrors detection. */
+  surface?: string;
 }
 
 export function registerTelemetryCommands(program: Command): void {
@@ -109,6 +115,81 @@ export function registerTelemetryCommands(program: Command): void {
           `  - queue size:       ${queueBytes} bytes\n` +
           flushSection +
           '\nSee docs/privacy.md for what we collect and why.\n',
+      );
+    });
+
+  telemetry
+    .command('surface')
+    .description(
+      'Diagnose surface detection. Prints the resolved surface, which rule ' +
+        'decided it, and every raw host signal it read. Run this INSIDE a real ' +
+        'Claude Code session AND a real Cowork session to capture ground truth ' +
+        'on which markers actually reach the harness at emit time.',
+    )
+    .action(async (_opts, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      // probeSurface() IS the detector detectSurface() delegates to, so this
+      // reports exactly what a telemetry event emitted from this process would
+      // carry. install_path is the companion field that also collapses to
+      // 'cli' when CLAUDE_PLUGIN_ROOT is absent.
+      const probe = probeSurface(root.surface);
+      const installPath = detectInstallPath();
+
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              ...probe,
+              install_path: installPath,
+              plugin_version: getPluginVersion(),
+              node_version: process.version,
+              platform: `${platform()}-${release()}`,
+              argv: process.argv,
+              cwd: process.cwd(),
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        return;
+      }
+
+      const show = (v: string | undefined): string => (v === undefined ? '(unset)' : v);
+      const envLines = Object.entries(probe.env)
+        .map(([k, v]) => `    ${k.padEnd(22)} = ${show(v)}`)
+        .join('\n');
+      const pathLines =
+        probe.runtimePaths.length > 0
+          ? probe.runtimePaths.map((p) => `      - ${p}`).join('\n')
+          : '      (none)';
+
+      const verdict =
+        probe.result === 'cli'
+          ? '→ Resolved to the `cli` FALLBACK: no host marker matched. If you ran\n' +
+            '  this inside a real Claude Code / Cowork session, the host is not\n' +
+            '  propagating any marker to this process — paste this whole block back.\n'
+          : `→ Resolved to \`${probe.result}\` via ${probe.decidedBy}.\n`;
+
+      process.stdout.write(
+        '\nSurface detection probe\n' +
+          '=======================\n\n' +
+          `  Resolved surface:  ${probe.result}\n` +
+          `  Decided by:        ${probe.decidedBy}\n` +
+          `  install_path:      ${installPath}\n` +
+          `  --surface flag:    ${show(probe.flag)}\n\n` +
+          'Host env signals (undefined = not set by the runtime):\n' +
+          `${envLines}\n\n` +
+          `Cowork payload marker ("${probe.coworkMarker}"): ` +
+          `${probe.coworkMarkerPresent ? 'FOUND' : 'NOT FOUND'}\n` +
+          '  runtime paths checked:\n' +
+          `${pathLines}\n\n` +
+          'Context:\n' +
+          `    plugin_version = ${getPluginVersion()}\n` +
+          `    node           = ${process.version}\n` +
+          `    platform       = ${platform()}-${release()}\n` +
+          `    cwd            = ${process.cwd()}\n\n` +
+          verdict +
+          '\n',
       );
     });
 
