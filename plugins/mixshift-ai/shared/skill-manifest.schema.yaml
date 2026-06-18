@@ -44,7 +44,7 @@ shapes:
       Skills that produce structured output (reports, data artifacts) without
       a go/no-go call use [OBSERVATIONAL] only.
       Skills with actionable exception logic use [GREEN, YELLOW, RED] (or subset).
-      mx-account-cold-start uses [] (produces context, not a verdict).
+      mx-brand-context uses [] (produces context, not a verdict).
 
   risk_tier:
     enum: [1, 2, 3]

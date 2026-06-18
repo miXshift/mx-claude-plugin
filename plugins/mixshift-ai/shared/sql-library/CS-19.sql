@@ -2,7 +2,7 @@
 -- Purpose: VC brand catalog — distinct (CustomBrand, Brand, ItemGroup)
 --          combinations with ASIN counts.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (Query 15, VC path)
+-- Consumers: brand-context (Query 15, VC path)
 -- Tier: 1
 
 SELECT DISTINCT

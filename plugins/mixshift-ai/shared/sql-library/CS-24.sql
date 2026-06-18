@@ -4,7 +4,7 @@
 --          discovery_auto / brand_conquest / conquest / awareness_sb /
 --          awareness_sd / unknown via CampaignName tag patterns.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 18)
+-- Consumers: brand-context (Query 18)
 -- Tier: 1
 
 SELECT

@@ -6,7 +6,7 @@
  * the two JSON sidecars (headline + review).
  *
  * Called by `mixshift brand render-context <slug>` and (in the future) by
- * post_execution hook of the mx-account-cold-start manifest.
+ * post_execution hook of the mx-brand-context manifest.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';

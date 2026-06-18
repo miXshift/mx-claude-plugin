@@ -2,7 +2,7 @@
 -- Purpose: Confirm account identity and merchant type (SC vs VC) for each
 --          seller in the cold-start scope.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (Query 1)
+-- Consumers: brand-context (Query 1)
 -- Tier: 1
 --
 -- :seller_id_list is a comma-separated INT list expanded by the caller.

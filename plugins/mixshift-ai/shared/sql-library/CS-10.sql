@@ -2,7 +2,7 @@
 -- Purpose: SC item-group derivation from CampaignName (last hyphen
 --          segment) for accounts without explicit ItemGroup metadata.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 6, SC path)
+-- Consumers: brand-context (Query 6, SC path)
 -- Tier: 1
 --
 -- This is a coarse heuristic — relies on the convention that

@@ -2,7 +2,7 @@
 -- Purpose: SC brand catalog -- distinct brands and enabled ASIN counts
 --          derived from campaign.Brand x productad.ASIN.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 15, SC path)
+-- Consumers: brand-context (Query 15, SC path)
 -- Tier: 1
 --
 -- Fix (2026-04-27): original query targeted business_reports_dpst_date.Brand

@@ -2,7 +2,7 @@
 -- Purpose: T-30 keyword spend concentration — top keywords by spend with
 --          14-day attributed conversions.
 -- Params: :seller_id, :limit
--- Consumers: account-cold-start (Query 17, keyword concentration)
+-- Consumers: brand-context (Query 17, keyword concentration)
 -- Tier: 1
 --
 -- Default :limit = 50. Filters to recordType = 'Keyword Targeting' to

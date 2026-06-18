@@ -2,7 +2,7 @@
 -- Purpose: Per-campaign T-30 budget utilization — surfaces campaigns
 --          consuming the largest share of their daily budget cap.
 -- Params: :seller_id, :limit
--- Consumers: account-cold-start (Query 17, budget utilization)
+-- Consumers: brand-context (Query 17, budget utilization)
 -- Tier: 1
 --
 -- Default :limit = 50.

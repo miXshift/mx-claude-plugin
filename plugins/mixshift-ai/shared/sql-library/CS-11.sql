@@ -2,7 +2,7 @@
 -- Purpose: VC sub-brand monthly revenue split (T-12 months) joined to
 --          vendor_items for CustomBrand attribution.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 7, VC only)
+-- Consumers: brand-context (Query 7, VC only)
 -- Tier: 1
 
 SELECT vi.CustomBrand AS sub_brand,

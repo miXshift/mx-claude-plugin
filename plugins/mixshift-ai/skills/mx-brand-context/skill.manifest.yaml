@@ -1,9 +1,10 @@
 schema_version: 1
-skill_id: mx-account-cold-start
-display_name: Account Cold Start -- Tier 3 Context Builder
+skill_id: mx-brand-context
+display_name: Brand Context Setup
 version: "2.5.1"
 description: >
-  Builds a Tier 3 brand context directory for a new Amazon PPC account from scratch.
+  Brand Context setup: onboards a brand by building its Tier 3 brand context directory
+  for a new Amazon PPC account from scratch (formerly mx-account-cold-start).
   Runs structured Phase 0 through Phase 5 collection (web scrub, DB queries, AM intake,
   typed YAML output, deterministic renderer, validator). Produces context.yaml,
   narrative.md, corpora/, and a human-reviewable brand-context.html ("Brand Context
@@ -131,16 +132,20 @@ artifacts:
 verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
-  - cold start
-  - new account setup
-  - build brand context
-  - account onboarding
-  - run cold start
-  - kicking off a new client
-  - onboarding a brand
+  # Primary "Brand Context" phrasings (renamed surface)
   - set up brand context
+  - build brand context
+  - build brand context for <brand>
+  - onboard <brand>
+  - onboarding a brand
+  - new account setup
+  - account onboarding
   - new brand
   - kick off this brand
+  - kicking off a new client
+  # Deprecated cold-start aliases (kept 1-2 releases for the rename window)
+  - cold start
+  - run cold start
 upstream_skills: []
 notes: >
   CS-02 applies to SC; CS-03 applies to VC (model picks based on account_type).

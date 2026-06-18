@@ -49,7 +49,7 @@ Each `.sql` file MUST:
 
 | Skill | Prefix |
 |---|---|
-| mx-account-cold-start | CS |
+| mx-brand-context | CS |
 | mx-daily-health-check | DHC |
 | mx-keyword-bid-health | KBH |
 | mx-runaway-spend-check | RSC |

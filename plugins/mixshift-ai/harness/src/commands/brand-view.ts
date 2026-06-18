@@ -206,7 +206,7 @@ export async function renderBrandView(
       renderCard({
         title: 'Context',
         body: `
-<p>No cold-start context yet. Run <code>/mx-account-cold-start ${escapeHtml(args.slug)}</code> in chat to capture posture, goals, and structural events.</p>`,
+<p>No brand context yet. Run <code>/mx-brand-context ${escapeHtml(args.slug)}</code> in chat to capture posture, goals, and structural events.</p>`,
       }),
     );
   }

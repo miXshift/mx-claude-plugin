@@ -65,7 +65,7 @@ export async function readBrandContextSources(
   const enrichmentPath = join(
     dir,
     'runs',
-    'mx-account-cold-start',
+    'mx-brand-context',
     runDate,
     `${runDate}.enrichment.json`,
   );

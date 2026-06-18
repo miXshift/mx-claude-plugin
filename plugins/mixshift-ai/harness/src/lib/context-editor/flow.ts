@@ -27,9 +27,9 @@
  *    setNested(). The whole file is parsed → mutated → re-written, NOT
  *    a per-skill block replacement. Atomic via temp + rename in writer.
  *
- * 3. GATING: context.yaml must already exist (cold-start has run).
- *    Editing brand config on a not-yet-cold-started brand returns an
- *    error pointing at /mx-account-cold-start.
+ * 3. GATING: context.yaml must already exist (brand-context setup has run).
+ *    Editing brand config on a brand with no context yet returns an
+ *    error pointing at /mx-brand-context.
  *
  * 4. last_updated BUMP: every successful write updates
  *    context.yaml::last_updated to today's date. Keeps the freshness

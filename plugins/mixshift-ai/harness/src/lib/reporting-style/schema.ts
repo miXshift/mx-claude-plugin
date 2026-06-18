@@ -2,7 +2,7 @@
  * Zod schema for per-brand reporting-style.yaml.
  *
  * Lives at `~/.mixshift/clients/<brand-slug>/reporting-style.yaml`. Optional
- * file. Produced by mx-account-cold-start Phase 2 sub-step (Reporting Style
+ * file. Produced by mx-brand-context Phase 2 sub-step (Reporting Style
  * Intake) when the AM uploads a reference monthly report. Consumed by
  * mx-monthly-report to match the brand's house style.
  *

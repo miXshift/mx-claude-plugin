@@ -3,7 +3,7 @@
 --          orders, CVR, CTR) over trailing 365 days. Used by enrich-context.py
 --          for statistical change-point detection across the historical window.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (v2.3 enrichment)
+-- Consumers: brand-context (v2.3 enrichment)
 -- Tier: 1
 --
 -- 365 daily rows. Account-type-agnostic (campaignmetric works for both SC and

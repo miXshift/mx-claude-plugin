@@ -59,9 +59,9 @@ The plugin ships **20 skills**. Each is invoked naturally in chat — say what y
 | `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Fetches data the warehouse may not hold yet, or a known report for a specific time frame. Read-only. |
 | `feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
 | `mx-share-skill` | Share a skill you built with the plugin so MixShift can add it to the library. Say "I built a skill". |
-| `mx-account-cold-start` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. |
+| `mx-brand-context` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. (Formerly `mx-account-cold-start`.) |
 
-### Require brand context (run `mx-account-cold-start <brand>` first)
+### Require brand context (run `mx-brand-context <brand>` first)
 
 | Skill | What it does |
 |---|---|

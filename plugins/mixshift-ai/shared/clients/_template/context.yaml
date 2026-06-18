@@ -3,7 +3,7 @@
 # This file is a STARTER, not a runtime context. Real per-brand contexts live at
 # ~/.mixshift/clients/<brand-slug>/context.yaml on the user's machine.
 #
-# Run `mx-account-cold-start` to generate a populated context.yaml for a real brand.
+# Run `mx-brand-context` to generate a populated context.yaml for a real brand.
 # This template exists so that:
 #   1. Schema validators have a known-good reference
 #   2. Users can read a complete example before running cold-start

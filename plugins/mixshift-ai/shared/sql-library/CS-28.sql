@@ -3,7 +3,7 @@
 --          Trailing 90 days. Expands the single CS-06/CS-07 improvement_pts
 --          number into a daily-curve shape for cold-start v2.3 enrichment.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (v2.3 enrichment)
+-- Consumers: brand-context (v2.3 enrichment)
 -- Tier: 1
 --
 -- Output is reshaped by enrich-context.py into:
