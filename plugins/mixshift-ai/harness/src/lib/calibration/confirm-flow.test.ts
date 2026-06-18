@@ -143,6 +143,86 @@ describe('prepareConfirmation — Tier-2 brain seed fallback', () => {
   });
 });
 
+describe('prepareConfirmation — percent seed unit normalization', () => {
+  const pctManifest: CalibrationManifest = {
+    schema_version: 1,
+    fields: [
+      {
+        id: 'acos_target',
+        prompt: 'ACoS target?',
+        type: 'percent',
+        range: { min: 0.05, max: 1.0 },
+        seed_from: 'context.management.acos_target_pct',
+        required: false,
+        deprecated: false,
+      },
+    ],
+  };
+
+  it('normalizes a whole-number percent seed from context (22 -> 0.22, "22%")', async () => {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 22\n`,
+      'utf-8',
+    );
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: pctManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    expect(f.source).toBe('seed');
+    expect(f.seed_value).toBeCloseTo(0.22, 5);
+    expect(f.effective_value).toBeCloseTo(0.22, 5);
+    // Renders as 22%, not 2200%.
+    expect(f.display).toBe('22%');
+  });
+
+  it('passes an already-normalized percent seed through unchanged (0.3 -> "30%")', async () => {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 0.3\n`,
+      'utf-8',
+    );
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: pctManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    expect(f.seed_value).toBeCloseTo(0.3, 5);
+    expect(f.display).toBe('30%');
+  });
+
+  it('normalizes a whole-number percent seed from the Tier-2 brain (25 -> 0.25)', async () => {
+    // No context.yaml — the seed falls back to the brain, which also stores
+    // whole-number percent (ACOSTarget "25.0" -> seller.acos_target_pct 25).
+    const brain = assembleBrain({
+      brandSlug: 'summit',
+      sellerRows: [{ ID: 7, MerchantAlias: 'Summit', ACOSTarget: '25.0' }],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@test',
+      now: new Date('2026-06-10T12:00:00.000Z'),
+    });
+    await saveBrain(brain, testDir);
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: pctManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    expect(f.source).toBe('seed');
+    expect(f.seed_value).toBeCloseTo(0.25, 5);
+    expect(f.display).toBe('25%');
+  });
+});
+
 describe('prepareConfirmation', () => {
   it('flags first run when no config.yaml exists', async () => {
     const payload = await prepareConfirmation({
