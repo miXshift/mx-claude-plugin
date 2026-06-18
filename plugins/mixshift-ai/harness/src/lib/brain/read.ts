@@ -287,6 +287,27 @@ export async function resolveBrandFields(
   return out;
 }
 
+// Reverse map: context dotted-path (a `seed_from` target, minus the `context.`
+// prefix) → registry key. Lets the confirm-flow brain-fall-back a seed when
+// context.yaml lacks the value. Built once at module load.
+const CONTEXT_PATH_TO_KEY: Record<string, BrandFieldKey> = {};
+for (const k of BRAND_FIELD_KEYS) {
+  const spec: FieldSpec = BRAND_FIELD_REGISTRY[k];
+  if (spec.contextPath !== undefined) CONTEXT_PATH_TO_KEY[spec.contextPath] = k;
+}
+
+/**
+ * Map a `seed_from` context dotted-path (minus the `context.` prefix) to its
+ * registry key, so the confirm-flow can resolve the same logical field from
+ * the brain when context.yaml doesn't provide it. Null when the path isn't a
+ * registered brand-level field.
+ */
+export function brandFieldKeyForContextPath(
+  contextDotPath: string,
+): BrandFieldKey | null {
+  return CONTEXT_PATH_TO_KEY[contextDotPath] ?? null;
+}
+
 function isFileNotFoundError(err: unknown): boolean {
   return (
     typeof err === 'object' &&

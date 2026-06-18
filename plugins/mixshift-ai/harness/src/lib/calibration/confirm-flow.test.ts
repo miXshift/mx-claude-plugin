@@ -8,6 +8,8 @@ import {
   writeRunOclSnapshot,
 } from './confirm-flow.js';
 import type { CalibrationManifest } from './manifest-schema.js';
+import { assembleBrain } from '../brain/assemble.js';
+import { saveBrain } from '../brain/read.js';
 
 const manifest: CalibrationManifest = {
   schema_version: 1,
@@ -58,6 +60,87 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(testDir, { recursive: true, force: true });
+});
+
+describe('prepareConfirmation — Tier-2 brain seed fallback', () => {
+  const NOW = new Date('2026-06-10T12:00:00.000Z');
+
+  it('seeds a both-tiers field from the brain when context.yaml is absent', async () => {
+    // Brain present (seller.marketplace), no context.yaml written.
+    const brain = assembleBrain({
+      brandSlug: 'summit',
+      sellerRows: [
+        { ID: 7, MerchantAlias: 'Summit', MarketPlaceName: 'Amazon.com', ACOSTarget: '25.0' },
+      ],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@test',
+      now: NOW,
+    });
+    await saveBrain(brain, testDir);
+
+    const m: CalibrationManifest = {
+      schema_version: 1,
+      fields: [
+        {
+          id: 'marketplace',
+          prompt: 'Marketplace?',
+          type: 'string',
+          max_length: 280,
+          seed_from: 'context.accounts.0.marketplace',
+          required: false,
+          deprecated: false,
+        },
+      ],
+    };
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: m,
+      dataDirOverride: testDir,
+    });
+    expect(payload.fields[0]!.seed_value).toBe('Amazon.com');
+    expect(payload.fields[0]!.source).toBe('seed');
+  });
+
+  it('does NOT brain-seed a Tier-3-only field (no brain path)', async () => {
+    const brain = assembleBrain({
+      brandSlug: 'summit',
+      sellerRows: [{ ID: 7, MerchantAlias: 'Summit', ACOSTarget: '25.0' }],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@test',
+      now: NOW,
+    });
+    await saveBrain(brain, testDir);
+
+    const m: CalibrationManifest = {
+      schema_version: 1,
+      fields: [
+        {
+          id: 'objective',
+          prompt: 'Posture?',
+          type: 'enum',
+          options: [
+            { value: 'scale', label: 'Scale' },
+            { value: 'defend', label: 'Defend' },
+          ],
+          seed_from: 'context.posture.stance',
+          required: false,
+          deprecated: false,
+        },
+      ],
+    };
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'x',
+      manifest: m,
+      dataDirOverride: testDir,
+    });
+    // posture.stance is Tier-3-only — brain carries no value, so the seed stays unset.
+    expect(payload.fields[0]!.seed_value).toBeUndefined();
+    expect(payload.fields[0]!.source).toBe('missing');
+  });
 });
 
 describe('prepareConfirmation', () => {

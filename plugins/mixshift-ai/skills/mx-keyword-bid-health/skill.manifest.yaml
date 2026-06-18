@@ -13,7 +13,6 @@ allowed_tools: [db_read, file_read, file_write, renderer, prefetch, ads_write]
 side_effect_policy: write_gated   # live sp.update_keywords --commit; dry-run default, user-confirmed
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
   - objective_calibration absent (bid recs will fall back to global threshold)
   - verdict regresses GREEN→RED without structural_events explanation
   - prior-run sidecar absent
@@ -35,8 +34,6 @@ required_context_fields:
   - accounts[*].account_type
   - management.acos_target_pct
   - management.attribution_window_days
-  - bid_health.scale_threshold_pct
-  - bid_health.pullback_threshold_pct
   - posture.stance
   - posture.multiplier
   - brand_terms
@@ -59,3 +56,44 @@ notes: >
   so VCPM placements never reach the skill). KBH-02 pulls current bid and Amazon bid guidance.
   Structural events (price tests, recent bid actions) must be checked before finalizing
   any recommendation.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# bid_health.* thresholds are KBH-specific (1 skill) and seed from the brand's
+# bid_health.* until the Phase-5 migrator moves them out of context.yaml into
+# config.yaml::<skill>. acos_target is the shared brand target, surfaced only as
+# an optional per-skill override (defaults to the brand value via the resolver /
+# Tier-2 brain). Seeds resolve context.yaml first, then the brain.
+calibration:
+  schema_version: 1
+  fields:
+    - id: scale_threshold_pct
+      label: "Scale threshold (ACoS)"
+      prompt: "Below what ACoS is a converting keyword a scale-up candidate for {brand_name}?"
+      help: >
+        Keywords with proven conversions running under this ACoS surface as
+        bid-increase (scale) candidates. Tighter = fewer, safer scale-ups.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.bid_health.scale_threshold_pct
+      required: true
+    - id: pullback_threshold_pct
+      label: "Pullback threshold (ACoS)"
+      prompt: "Above what ACoS is a keyword a bid-reduction candidate for {brand_name}?"
+      help: >
+        Keywords running above this ACoS surface as bid-cut (pullback) candidates
+        via the Excess Spend formula.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.bid_health.pullback_threshold_pct
+      required: true
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target KBH should use for {brand_name}?"
+      help: >
+        Reference ACoS for the bid-health math. Defaults to your brand's ACoS
+        target (Tier-3 context.yaml, else the Tier-2 brain). Override only if KBH
+        should use a different target than the brand default.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false

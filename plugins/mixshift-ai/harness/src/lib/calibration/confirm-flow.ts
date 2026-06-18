@@ -65,6 +65,10 @@ import {
   validateAgainstManifest,
   type SkillConfigView,
 } from './brand-config.js';
+import {
+  resolveBrandFields,
+  brandFieldKeyForContextPath,
+} from '../brain/read.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -170,14 +174,29 @@ export async function prepareConfirmation(
   // Context (for seeds). Missing context.yaml is OK — every seed_from just
   // resolves to undefined and the field falls through to default.
   const ctx = await tryReadContext(brandSlug, dataDirOverride);
+  // Tier-2 brain fallback for seeds: resolve the registered brand-level fields
+  // once (context + brain) so a field whose seed_from path is absent from
+  // context.yaml can still pre-fill from a freshly fetched brain.
+  const brandFields = await resolveBrandFields(brandSlug, dataDirOverride);
 
   const entries: ConfirmationFieldEntry[] = manifest.fields
     .filter((f) => !f.deprecated)
     .map((field): ConfirmationFieldEntry => {
       const stored_value = storedBlock?.[field.id];
-      const seed_value = field.seed_from
+      let seed_value = field.seed_from
         ? getByPath(ctx, stripContextPrefix(field.seed_from))
         : undefined;
+      if (seed_value === undefined && field.seed_from) {
+        // Context lacked it — fall back to the brand brain (Tier 2) for the
+        // same logical field, when seed_from maps to a registered brand field.
+        const key = brandFieldKeyForContextPath(
+          stripContextPrefix(field.seed_from),
+        );
+        const resolved = key ? brandFields[key] : null;
+        if (resolved && resolved.source === 'brain') {
+          seed_value = resolved.value;
+        }
+      }
       const default_value = hasDefault(field) ? field.default : undefined;
 
       // Effective resolution priority: stored > seed > default > missing
