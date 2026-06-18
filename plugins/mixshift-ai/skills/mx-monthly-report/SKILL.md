@@ -27,13 +27,13 @@ handoff_optional: true
 ## Before You Start
 
 Read these files:
-- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `primary_metric`, `acos_target_pct`, `implied_tacos_pct`, `attribution_window_days`, `tacos_in_bottom_line`, `tacos_reference_line`, `goals.*`, `capture_rate_calibration`, `sub_brands`, `brand_terms`, `structural_events`, `delivery.reports_local_dir`, `delivery.archive_dir`, `reporting.audience`, `reporting.voice_lint`, `attribution_rule`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `primary_metric`, `implied_tacos_pct`, `attribution_window_days`, `tacos_in_bottom_line`, `tacos_reference_line`, `goals.*`, `capture_rate_calibration`, `sub_brands`, `brand_terms`, `structural_events`, `delivery.reports_local_dir`, `delivery.archive_dir`, `reporting.audience`, `reporting.voice_lint`, `attribution_rule`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly. The efficiency-framing ACoS target (`acos_target`) comes from the calibration card in Step 1.5, not from this list.
 - **`~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
 - `~/.mixshift/clients/<brand-slug>/narrative.md` — interpretive prose only (positioning, MoM/YoY narrative cues, per-skill guidance). Do not extract numbers from this file.
 
 **Do NOT read the references/ folder.** Brand context comes exclusively from context.yaml and narrative.md above. The references/ folder contains cross-brand architecture documents that are not inputs to skill execution.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the report sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); revenue/pacing targets absent → omit the pacing-vs-target line and say so; `posture.stance` → `scale`. Still do NOT invent numbers from prose — label them missing instead. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the report sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); the efficiency-framing ACoS target (`acos_target`) is resolved in Step 1.5, not here (if absent there, run observational — report ACoS as-is, don't frame vs a target); revenue/pacing targets absent → omit the pacing-vs-target line and say so; `posture.stance` → `scale`. Still do NOT invent numbers from prose — label them missing instead. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Capture-rate calibration (cold-start v2.3.1+):** the `capture_rate_calibration` field now includes an optional `daily_settlement_curve` sub-block with per-campaign-type and per-day-of-week settlement data. Monthly-report operates primarily on settled month-end figures (`sellermonthmetric` for VC, business-reports for SC) so no fresh-day correction is applied for prior-month metrics. **For in-progress-month MTD projections** where a fresh-day correction would be useful, prefer `daily_settlement_curve.by_campaign_type.sponsoredProducts` over the legacy account-blended `capture_rate_pct` — the curve is more precise and has DOW offsets. Fall back to the legacy `capture_rate_pct` if the curve is absent or the SP row is null.
 
@@ -102,6 +102,27 @@ When audience=client: strip nav, strip prior-month section. Save to same local r
 4. Check: any forward-looking assertions? Each needs a model projection or confirmed data
 5. Voice scan: em dashes? "blended ACOS"? unsigned deltas? invented causality?
 6. Check item group callouts for internal consistency
+
+---
+
+## Step 1.5 — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-monthly-report --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `22` = 22%): `acos_target` (reference ACoS for the efficiency narrative / beat-miss framing — an optional override of the brand target). Seeded from brand context where set, else absent.
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-monthly-report --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review).
+
+**Resolve the working value (whole-number percent) from the returned `effective_config`:**
+- `acos_target` — reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target).
+
+Never block on this step — confirm-as-is is always available.
 
 ---
 
@@ -260,6 +281,7 @@ After report is published, append to the brand's monthly_report_outs section:
 - [ ] Substantiation review passed
 - [ ] Language review passed (no squishy language)
 - [ ] Forecast beat/miss included where available
+- [ ] Efficiency framing used the resolved `acos_target` (Step 1.5); if absent, framed observational (ACoS as-is, not vs a target)
 
 ---
 

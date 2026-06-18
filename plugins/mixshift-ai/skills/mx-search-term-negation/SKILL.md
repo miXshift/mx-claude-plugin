@@ -21,30 +21,33 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 0. Stop and surface the failure if any item cannot be checked off.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`). The ACoS reference resolves from the calibration card (Step 0.5) or runs observational — it never blocks a run. Structured negation context (`negation.lane_rules`, `negation.protected_terms`, `brand_terms`, `sub_brands`) is read from context via the resolver and defaulted-and-labeled when absent per Step 0.
 
 ```
 PREFLIGHT — mx-search-term-negation — <brand> — <date>
-[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
-[ ] Load these fields (default + label when missing — do NOT stop):
-      accounts[*].seller_id, accounts[*].account_type   (the only hard requirement — from `mixshift brand add`)
-      management.acos_target_pct, management.attribution_window_days
-      negation.protected_terms
-      *** SAFETY: if absent, default to [] and WARN prominently ("no protected terms configured — review candidates so brand anchors aren't negated; set with `mixshift brand config`"). Do NOT stop — the dry-run default + explicit confirm-before-`--commit` write gate is the real protection. ***
-      negation.lane_rules
-      *** SAFETY: if absent, default to {} and classify BORDERLINE terms conservatively (route to review, never auto-negate); label "uncalibrated — set lane rules to sharpen". Do NOT stop. ***
-      brand_terms, sub_brands
-      campaign_structure.naming_pattern, campaign_structure.objectives
-      paused_campaigns (list — may be empty)
-      posture.stance
+[ ] Brand resolves with accounts[*].seller_id + account_type
+      (if absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 0.5): acos_target resolved from brand context, an
+      OCL override, or run observational (no target → judge ACoS as-is) — never blocks
+[ ] negation.lane_rules present
+      (if absent: default to {} and classify BORDERLINE terms conservatively — route to
+       review, never auto-negate; label "uncalibrated — set lane rules to sharpen")
+[ ] negation.protected_terms present
+      (if absent: default to [] and WARN prominently ("no protected terms configured —
+       review candidates so brand anchors aren't negated; set with `mixshift brand config`");
+       the dry-run default + confirm-before-`--commit` write gate is the real protection)
 [ ] Pre-fetch artifact present: ~/.mixshift/clients/<brand>/runs/mx-search-term-negation/<date>/data.md (or data.json)
-    (if absent: run pre-fetch-data.py — see Step 1)
+    (if absent: run prefetch — see Step 1)
 [ ] Prior-run sidecar loaded: runs/<brand>/mx-search-term-negation/ (most recent)
     (if absent: continue — no baseline yet; note in output)
 [ ] No active escalation conditions:
+      - negation.lane_rules absent (cannot classify cleanly without lane boundaries) → surface, then run conservatively
+      - Tier A keep candidate volume > 80% of corpus (likely context misconfiguration) → surface before delivering
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
       - protected_terms breach attempted in prior run → investigate context integrity before proceeding
 ```
+
+Stop only if the brand has no accounts. Missing brand-context fields are expected — use the documented default, label it, and continue; never halt.
 
 ---
 
@@ -55,18 +58,37 @@ Before starting the negation workflow, load Tier-3 brand context. Insufficient p
 ### Step 0 — Load Tier-3 brand context
 
 Read the context snapshot, prior run, and narrative:
-- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `acos_target_pct`, `attribution_window_days`, `sub_brands`, `brand_terms`, `negation.protected_terms`, `negation.lane_rules`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `campaign_structure.naming_pattern`, `campaign_structure.objectives`, `campaign_structure.campaign_types_active`, `paused_campaigns`, `structural_events`, `posture.stance`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+- **`~/.mixshift/clients/<brand-slug>/context.yaml (validated via `mixshift brand validate <brand-slug>`)`** — compact context snapshot pre-extracted by the pre-fetch script. Fields: `seller_id`, `account_type`, `attribution_window_days`, `sub_brands`, `brand_terms`, `negation.protected_terms`, `negation.lane_rules`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `campaign_structure.naming_pattern`, `campaign_structure.objectives`, `campaign_structure.campaign_types_active`, `paused_campaigns`, `structural_events`, `posture.stance`. The ACoS reference (`acos_target`) comes from the calibration card in Step 0.5, not here. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
 - **`~/.mixshift/clients/<brand-slug>/runs/mx-search-term-negation/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip.
 - `~/.mixshift/clients/<brand-slug>/narrative.md` — prose only (brand positioning, partnerships, lifestyle context, judgment guidance for borderline cases). Do not extract numbers from this file.
 - ASIN-level corpora (manual conquest lists, competitor ASIN lists) at `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); negation sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.protected_terms` / `negation.lane_rules` / brand portfolio / ACOS target are missing, default + label per the preflight SAFETY notes above rather than stopping — and rely on the dry-run-default + confirm-before-`--commit` write gate as the safety net. Do not infer these from prose; label them missing. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); negation sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.protected_terms` / `negation.lane_rules` / brand portfolio are missing, default + label per the preflight SAFETY notes above rather than stopping — and rely on the dry-run-default + confirm-before-`--commit` write gate as the safety net. Do not infer these from prose; label them missing. The ACoS reference comes from the calibration card in Step 0.5, not here — if absent there, the review runs observational (judge ACoS as-is, don't flag vs a target). Load the structured negation fields (`negation.protected_terms`, `negation.lane_rules`, `brand_terms`, `sub_brands`, etc.) in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 ### Data Access Setup
 - Search term performance data (impressions, clicks, cost, sales, conversions)
 - Campaign and keyword targeting data
 - Historical performance metrics (T-30, T-60, T-90, lifetime)
 - ASIN targeting and performance data
+
+### Step 0.5 — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-search-term-negation --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `45` = 45%): `acos_target` (the reference ACoS used to judge efficiency — an optional override of the brand target). Seeded from brand context where set, else absent.
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-search-term-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and is proposed for brand-wide promotion (recorded for review).
+
+**Resolve the working reference (whole-number percent) from the returned `effective_config`:**
+- `acos_target` — if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
+
+Never block on this step — confirm-as-is is always available.
 
 ---
 
@@ -121,7 +143,7 @@ Join pre-fetched query results on the shared key to produce one unified record p
 
 1. **Aggregate performance analysis**:
    - Calculate ACOS for each campaign type/product line
-   - Compare against brand ACOS targets
+   - Compare against the resolved `acos_target` (Step 0.5; whole %). If no target was resolved, judge efficiency on ACoS as-is and do not flag vs a target (observational).
    - Flag anomalous group performance
 2. **Individual term trend analysis**:
    - Pull T-30, T-60, T-90, lifetime performance for high-spend terms

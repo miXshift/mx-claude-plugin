@@ -1,0 +1,71 @@
+# Discoveries artifact schema (source of truth)
+# =============================================
+#
+# A `discoveries` document is a set of TYPED OBSERVATIONS a skill surfaced that
+# may warrant a brand-context (Tier-3 context.yaml) update. Discoveries are
+# PROPOSALS, never auto-applied edits — a separate review step (and, in time,
+# the Tier-2 Brain write-back applier in harness/src/lib/brain/observe.ts)
+# promotes them. The presence of the file is itself the signal that the skill
+# considered discoveries; an empty `discoveries: {}` means "considered, nothing
+# to propose."
+#
+# Two emission scopes share this shape:
+#   - RUN-SCOPED   runs/<skill_id>/<date>/<date>.discoveries.json
+#                  per-run proposals (cold-start anomalies, analytical findings)
+#   - BRAND-SCOPED clients/<slug>/.pending-discoveries.json
+#                  capture proposals accumulated across runs (the confirm card:
+#                  when an AM sets a SHARED brand field, it is proposed for
+#                  context promotion). Drained by the Phase-9 promotion step.
+#
+# Runtime validation lives in harness/src/lib/brain/discoveries.ts (Zod); this
+# YAML is the documentation source of truth and what SKILL.md files cite.
+
+schema_version: 1            # literal 1; bump on a breaking shape change
+
+generated_by: string         # required — "<skill_id>@<version>" or "confirm-flow@<harness-version>"
+generated_at: string         # required — ISO-8601 timestamp
+
+# `discoveries` — category -> array of typed items. OMIT a category entirely
+# when it has no items (do not emit empty arrays). Categories are open-ended;
+# the ones below are the established set. Every item carries the common
+# envelope; category-specific fields are additive.
+discoveries:
+
+  # context_field_proposals — a value an AM set/confirmed that maps to a SHARED
+  # brand-context field (the 2+/1 litmus: lives in BRAND_FIELD_REGISTRY). The
+  # confirm card emits these when a shared field is edited+saved, so the value
+  # can be promoted from a single skill's OCL up to brand context for every
+  # skill. This is the Phase-4 "emit on capture" surface.
+  context_field_proposals:
+    - field: string          # dotted context path, e.g. "management.acos_target_pct"
+      proposed_value: any     # the captured value, in the brand-state convention (whole-number percents)
+      source_skill: string    # skill_id the capture happened under
+      confidence: number      # 0..1 — AM-set captures are high (>= 0.9)
+      note: string            # optional human-readable rationale
+      observed_by: string     # "<skill_id>@<version>" or "confirm-flow@<version>"
+      observed_at: string     # ISO-8601
+
+  # campaign_label_anomalies — cold-start: campaign names that don't parse
+  # against the documented naming_pattern.
+  campaign_label_anomalies:
+    - value: any
+      confidence: number
+      observed_by: string
+      observed_at: string
+      note: string            # optional
+
+  # stockout_candidates — cold-start Phase 1.5 enrichment mirror.
+  stockout_candidates:
+    - value: any
+      confidence: number
+      observed_by: string
+      observed_at: string
+      note: string
+
+  # brand_term_typo_candidates — cold-start Phase 1.5 enrichment mirror.
+  brand_term_typo_candidates:
+    - value: any
+      confidence: number
+      observed_by: string
+      observed_at: string
+      note: string

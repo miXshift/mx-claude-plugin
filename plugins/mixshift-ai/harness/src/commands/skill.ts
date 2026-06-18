@@ -28,10 +28,12 @@ import { extractCalibration } from '../lib/calibration/manifest-schema.js';
 import {
   prepareConfirmation,
   applyConfirmation,
+  selectCaptureCandidates,
   type ConfirmationDecision,
 } from '../lib/calibration/confirm-flow.js';
 import {
   renderConfirmationCard,
+  renderCaptureCandidates,
   indexConfirmationEntries,
   joinCard,
   renderValidationIssues,
@@ -88,6 +90,12 @@ export function registerSkillCommands(program: Command): void {
       'read-only inspect — alias for the default action when no flags are passed',
       false,
     )
+    .option(
+      '--missing',
+      'list the unset-but-valuable fields (the "improve this skill" surface) ' +
+        'instead of the full confirmation card',
+      false,
+    )
     .action(
       async (
         skillId: string,
@@ -97,6 +105,7 @@ export function registerSkillCommands(program: Command): void {
           reset: boolean;
           yes: boolean;
           show: boolean;
+          missing: boolean;
         },
         cmd: Command,
       ) => {
@@ -148,6 +157,19 @@ export function registerSkillCommands(program: Command): void {
                 `It runs with whatever the skill code defines internally.\n\n`,
             );
             return;
+          }
+
+          // --missing path: "improve this skill" read-only surface
+          if (opts.missing) {
+            return await runMissing({
+              skillId,
+              brandSlug: brandRow.slug,
+              brandName: brandRow.display_name,
+              manifestDisplayName: manifest.display_name,
+              calibration,
+              json: root.json,
+              dataDir: root.dataDir,
+            });
           }
 
           // --apply path (decision-driven, non-interactive)
@@ -320,6 +342,56 @@ async function runShow(args: {
   });
   process.stdout.write('\n' + joinCard(card) + '\n\n');
   return;
+}
+
+async function runMissing(args: {
+  skillId: string;
+  brandSlug: string;
+  brandName: string;
+  manifestDisplayName: string;
+  calibration: NonNullable<ReturnType<typeof extractCalibration>>;
+  json?: boolean;
+  dataDir?: string;
+}): Promise<void> {
+  const payload = await prepareConfirmation({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    skillId: args.skillId,
+    manifest: args.calibration,
+    dataDirOverride: args.dataDir,
+  });
+  const candidates = selectCaptureCandidates(payload);
+
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: 'ok',
+          skill_id: args.skillId,
+          brand_slug: args.brandSlug,
+          candidate_count: candidates.length,
+          candidates: candidates.map((c) => ({
+            id: c.field.id,
+            target: c.target,
+            context_path: c.context_path ?? null,
+            reason: c.reason,
+            required: c.field.required,
+          })),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return;
+  }
+
+  const text = renderCaptureCandidates(candidates, {
+    skillId: args.skillId,
+    skillDisplayName: args.manifestDisplayName,
+    brandName: args.brandName,
+    brandSlug: args.brandSlug,
+  });
+  process.stdout.write('\n' + text + '\n\n');
 }
 
 async function runApplyDecision(args: {

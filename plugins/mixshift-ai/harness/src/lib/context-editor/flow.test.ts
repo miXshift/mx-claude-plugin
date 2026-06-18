@@ -29,7 +29,7 @@ sources:
   ops_date_field: d
 management:
   primary_metric: ACOS
-  acos_target_pct: 0.28
+  acos_target_pct: 28
   attribution_window_days: 7
 `;
 
@@ -102,6 +102,44 @@ describe('prepareBrandConfigEdit', () => {
   });
 });
 
+describe('percent unit bridging — whole-number context storage', () => {
+  it('renders a whole-number stored percent correctly (28 -> "28%")', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    const acos = payload.fields.find((f) => f.field.id === 'acos_target_pct')!;
+    expect(acos.effective_value).toBe(0.28); // [0,1] internally
+    expect(acos.display).toBe('28%'); // rendered as a whole percent
+  });
+
+  it('round-trips an edit: writes whole, reads back as the same percent', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    let payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    await applyBrandConfigEdit(
+      payload,
+      { action: 'edit', edits: { acos_target_pct: '32' } },
+      { dataDirOverride: testDir },
+    );
+    const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
+    expect(raw).toMatch(/acos_target_pct: 32\b/); // whole on disk
+    payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    const acos = payload.fields.find((f) => f.field.id === 'acos_target_pct')!;
+    expect(acos.display).toBe('32%');
+    expect(acos.effective_value).toBe(0.32);
+  });
+});
+
 describe('applyBrandConfigEdit — confirm action', () => {
   it('returns ok without writing on confirm-as-is', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
@@ -140,10 +178,10 @@ describe('applyBrandConfigEdit — edit action', () => {
     expect(result.did_write).toBe(true);
     expect(result.changed_field_count).toBe(2);
 
-    // Verify on-disk
+    // Verify on-disk — stored WHOLE (the context.yaml convention), not [0,1].
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
-    expect(raw).toMatch(/acos_target_pct: 0\.32/);
-    expect(raw).toMatch(/tacos_target_pct: 0\.18/);
+    expect(raw).toMatch(/acos_target_pct: 32\b/);
+    expect(raw).toMatch(/tacos_target_pct: 18\b/);
   });
 
   it('preserves untouched fields (accounts, sources)', async () => {
@@ -219,7 +257,7 @@ describe('applyBrandConfigEdit — edit action', () => {
     // File should be unchanged
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     expect(raw).toContain('primary_metric: ACOS');
-    expect(raw).toContain('acos_target_pct: 0.28');
+    expect(raw).toContain('acos_target_pct: 28');
   });
 
   it('rejects edits to unknown brand-config fields', async () => {

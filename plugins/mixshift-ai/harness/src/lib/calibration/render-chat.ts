@@ -34,9 +34,11 @@
  */
 
 import {
+  selectCaptureCandidates,
   type ConfirmationPayload,
   type ConfirmationFieldEntry,
   type ApplyResult,
+  type CaptureCandidate,
 } from './confirm-flow.js';
 import {
   type CalibrationField,
@@ -73,6 +75,7 @@ export function renderConfirmationCard(
   options: RenderOptions = {},
 ): {
   header: string;
+  capture_note: string | null;
   fields: string;
   extras_note: string | null;
   blocking_note: string | null;
@@ -103,6 +106,17 @@ export function renderConfirmationCard(
     ? renderBlockingNote(payload.blocking.missing_keys)
     : null;
 
+  // First-run capture nudge: surface the top few unset-but-valuable fields so
+  // the user can sharpen the skill now or defer ("run" on defaults). Only on
+  // first run for the brand; subsequent runs lean on the field list + hints.
+  const captureCandidates = payload.is_first_run
+    ? selectCaptureCandidates(payload, { limit: 3 })
+    : [];
+  const capture_note =
+    captureCandidates.length > 0
+      ? renderCaptureNudge(captureCandidates, payload.brand_name)
+      : null;
+
   const action_prompt = payload.blocking.has_missing_required
     ? `Some required fields are unset. Choose a number above to set, or "cancel".`
     : payload.is_first_run
@@ -111,6 +125,7 @@ export function renderConfirmationCard(
 
   return {
     header,
+    capture_note,
     fields,
     extras_note,
     blocking_note,
@@ -126,11 +141,95 @@ export function renderConfirmationCard(
 export function joinCard(
   parts: ReturnType<typeof renderConfirmationCard>,
 ): string {
-  const blocks: string[] = [parts.header, '', parts.fields];
+  const blocks: string[] = [parts.header];
+  if (parts.capture_note) blocks.push('', parts.capture_note);
+  blocks.push('', parts.fields);
   if (parts.extras_note) blocks.push('', parts.extras_note);
   if (parts.blocking_note) blocks.push('', parts.blocking_note);
   blocks.push('', parts.action_prompt);
   return blocks.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// "Improve this skill" — the unset-but-valuable surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the read-only "what could I set to sharpen this skill" list
+ * (`skill config --missing`). Groups candidates by urgency and tags each with
+ * where a value would live (shared brand context vs this skill only), so the
+ * user understands the inheritance before setting anything.
+ *
+ * Plain text, no em dashes (customer-facing chat copy).
+ */
+export function renderCaptureCandidates(
+  candidates: CaptureCandidate[],
+  ctx: {
+    skillId: string;
+    skillDisplayName: string;
+    brandName: string;
+    brandSlug: string;
+  },
+): string {
+  if (candidates.length === 0) {
+    return (
+      `${ctx.skillDisplayName} is fully configured for ${ctx.brandName}: ` +
+      `every field resolves from your config or brand context. ` +
+      `Nothing to set right now.`
+    );
+  }
+
+  const lines: string[] = [`Sharpen ${ctx.skillDisplayName} for ${ctx.brandName}`, ''];
+  const required = candidates.filter((c) => c.reason === 'missing_required');
+  const rest = candidates.filter((c) => c.reason !== 'missing_required');
+
+  if (required.length > 0) {
+    lines.push(`Needed before a sharp run (${required.length}):`);
+    for (const c of required) lines.push(...renderCandidateBlock(c));
+    lines.push('');
+  }
+  if (rest.length > 0) {
+    lines.push(
+      `Optional refinements (${rest.length}). The skill runs without these:`,
+    );
+    for (const c of rest) lines.push(...renderCandidateBlock(c));
+    lines.push('');
+  }
+
+  lines.push('Set any of these:');
+  lines.push(`  mixshift skill config ${ctx.skillId} --brand ${ctx.brandSlug}`);
+  return lines.join('\n');
+}
+
+function renderCandidateBlock(c: CaptureCandidate): string[] {
+  const tier =
+    c.target === 'context' ? 'shared brand context' : 'this skill';
+  const out = [`  - ${humanLabel(c.field)}  (${tier})`];
+  if (c.field.help) {
+    const help = c.field.help.replace(/\s+/g, ' ').trim();
+    out.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
+  }
+  return out;
+}
+
+/**
+ * First-run nudge shown atop the confirmation card: the top unset-but-valuable
+ * fields the user can set now or defer. Concise by design (the caller caps the
+ * count) so first run is a light touch, not a full intake. No em dashes.
+ */
+function renderCaptureNudge(
+  candidates: CaptureCandidate[],
+  brandName: string,
+): string {
+  const lines = [
+    `First run for ${brandName}. Set these now to sharpen it, or say "run" to use sensible defaults:`,
+  ];
+  for (const c of candidates) {
+    const tier =
+      c.target === 'context' ? 'shared brand context' : 'this skill';
+    lines.push(`  - ${humanLabel(c.field)}  (${tier})`);
+  }
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -286,8 +385,12 @@ export function renderValidationIssues(
  * chat after the skill output. Examples:
  *
  *   "Saved your edits to Summit's mx-daily-health-check config."
- *   "Used your edits for this run only. Run again to re-set on Summit."
- *   "Ran with existing config."
+ *   "Learned for Summit: ACoS target = 22%. Recorded to apply across your skills."
+ *
+ * The second line is the end-of-run "I learned X" acknowledgment: when the
+ * user set a SHARED brand value (e.g. the ACoS target), it names what was
+ * captured and notes it carries brand-wide (recorded for promotion; see
+ * lib/brain/discoveries.ts). Skill-only edits and use-once runs stay quiet.
  */
 export function renderPersistenceFooter(
   result: ApplyResult,
@@ -295,10 +398,17 @@ export function renderPersistenceFooter(
   skillDisplayName: string,
 ): string {
   if (result.status !== 'ok') return '';
-  if (result.did_persist) {
-    return `Saved your edits to ${brandName}'s ${skillDisplayName} config.`;
+  if (!result.did_persist) return ''; // confirm-as-is / use-once — no footer.
+
+  const lines = [`Saved your edits to ${brandName}'s ${skillDisplayName} config.`];
+  const learned = result.captured ?? [];
+  if (learned.length > 0) {
+    const items = learned.map((c) => `${c.label} = ${c.value}`).join(', ');
+    lines.push(
+      `Learned for ${brandName}: ${items}. Recorded to apply across your skills.`,
+    );
   }
-  return ''; // Don't clutter the chat on confirm-as-is or use-once.
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------

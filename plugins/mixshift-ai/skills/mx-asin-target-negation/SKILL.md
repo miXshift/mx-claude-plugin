@@ -64,20 +64,16 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 0a. Stop and surface the failure if any item cannot be checked off.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`). The negate-eligibility floor and ACoS target resolve from the calibration card (Step 0d) or a labeled default — they never block a run.
 
 ```
 PREFLIGHT — mx-asin-target-negation — <brand> — <date>
-[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
-[ ] Required fields present and non-null:
-      accounts[*].seller_id, accounts[*].account_type
-      negation.lane_rules, negation.protected_terms
-      negation.asin_negation.pre_check_lifetime_orders_threshold
-      sub_brands, campaign_structure.naming_pattern
-      management.acos_target_pct, management.attribution_window_days
-      posture.stance, structural_events
-[ ] negation.asin_negation.pre_check_lifetime_orders_threshold present and numeric
-    *** DEFAULT-WHEN-MISSING: if absent, use this skill's default lifetime-orders threshold and label "using default threshold N — set with `mixshift brand config` to tune". Do NOT stop. (This field moves to the skill's OCL in the Brand Context pivot.) ***
+[ ] Brand resolves with accounts[].seller_id + account_type
+      (if absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 0d): pre_check_lifetime_orders, acos_target each
+      resolved from brand context, an OCL override, or a labeled default — never blocks
+[ ] negation.lane_rules / negation.protected_terms loaded from brand context
+      (if absent: note and continue — structured negation context still read via the resolver)
 [ ] corpora/conq_asins.csv present at ~/.mixshift/clients/<brand>/corpora/
     (if absent: surface warning — Layer 1 suppression mask unavailable; continue with Layer 2 only)
 [ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/mx-asin-target-negation/<date>/data.md (or data.json)
@@ -88,13 +84,15 @@ PREFLIGHT — mx-asin-target-negation — <brand> — <date>
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
 ```
 
+Stop only if the brand has no accounts. Missing brand-context fields are expected — use the documented default, label it, and continue; never halt.
+
 ---
 
 ## Execution Prerequisites
 
 **Step 0a — Read this SKILL.md.** Already done.
 
-**Step 0b — Load brand context (from pre-fetched snapshot):** Read `~/.mixshift/clients/<brand-slug>/context.yaml (direct read, OR run `mixshift brand validate <brand-slug> --json` for a parsed JSON view)` — compact context snapshot pre-extracted by the pre-fetch script. Required fields: `seller_id`, `account_type`, `negation.lane_rules`, `negation.protected_terms`, `negation.asin_negation.pre_check_lifetime_orders_threshold`, `sub_brands`, `campaign_structure.naming_pattern`, `acos_target_pct`, `attribution_window_days`, `posture.stance`, `structural_events`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly.
+**Step 0b — Load brand context (from pre-fetched snapshot):** Read `~/.mixshift/clients/<brand-slug>/context.yaml (direct read, OR run `mixshift brand validate <brand-slug> --json` for a parsed JSON view)` — compact context snapshot pre-extracted by the pre-fetch script. Extract: `seller_id`, `account_type`, `negation.lane_rules`, `negation.protected_terms`, `sub_brands`, `campaign_structure.naming_pattern`, `attribution_window_days`, `posture.stance`, `structural_events`. If absent, fall back to reading `~/.mixshift/clients/<brand-slug>/context.yaml` directly. The lifetime-orders pre-check floor (`pre_check_lifetime_orders`) and `acos_target` come from the calibration card in Step 0d, not here.
 
 Read **`~/.mixshift/clients/<brand-slug>/runs/mx-asin-target-negation/ (pick the most recent `<date>-<run-id>.json` sidecar)`** — prior run sidecar (~65 lines). If present, use for drift context. If absent, skip.
 
@@ -102,9 +100,29 @@ Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose interpretati
 
 If the skill consumes manual conquest ASIN lists, read `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); the review sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.lane_rules` / `protected_terms` / the pre-check threshold are missing, default + label per the preflight rather than stopping; the conquest corpus (`corpora/conq_asins.csv`) already degrades with a warning. Negations are dry-run by default and require explicit confirm before `--commit` — that write gate is the safety net. Do not infer fields from prose. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); the review sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.lane_rules` / `protected_terms` are missing, default + label rather than stopping; the conquest corpus (`corpora/conq_asins.csv`) already degrades with a warning. The negate-eligibility floor and ACoS target resolve in Step 0d (your set value, else a labeled default) — they never block. Negations are dry-run by default and require explicit confirm before `--commit` — that write gate is the safety net. Do not infer fields from prose. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Step 0c — Confirm PDP review is in scope.** This phase requires actual PDP overlap assessment. Do not defer PDP review to the human. Inspect the PDP (title, form factor, category, price) and classify overlap before routing to a bucket.
+
+### Step 0d — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-asin-target-negation --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use: `pre_check_lifetime_orders` (an integer count — the minimum lifetime orders at a location before an ASIN target is eligible to negate) and `acos_target` (a WHOLE-number percent, e.g. `22` = 22%, an optional override of the brand target). Each is seeded from brand context where set, else absent.
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-asin-target-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pre_check_lifetime_orders":"40"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review); the pre-check floor persists to this skill.
+
+**Resolve the working values from the returned `effective_config`:**
+- `pre_check_lifetime_orders` — use `effective_config.pre_check_lifetime_orders` (the minimum lifetime orders at a location before an ASIN target is eligible to negate); defaults to 25 when unset.
+- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target).
+
+Never block on this step — confirm-as-is is always available.
 
 ---
 
@@ -363,6 +381,7 @@ The manual targeting list IS the positive training set. Before Phase 2 PDP revie
 - [ ] Location-granular lifetime performance used (not account-wide aggregate)
 - [ ] Item-group context applied where relevant
 - [ ] Clean negate candidates vs. review candidates clearly separated
+- [ ] Pre-check lifetime-orders floor and acos_target taken from the calibration card (Step 0d); any default labeled
 - [ ] No em dashes in output
 
 ---

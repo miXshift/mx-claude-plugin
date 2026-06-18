@@ -69,6 +69,7 @@ import {
   resolveBrandFields,
   brandFieldKeyForContextPath,
 } from '../brain/read.js';
+import { appendCaptureDiscoveries } from '../brain/discoveries.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -140,6 +141,11 @@ export interface ApplyResult {
    *  status === 'validation_failed' — caller should re-show the card with
    *  the issues highlighted. */
   validation_issues: Array<{ field: string; message: string }>;
+  /** Shared brand fields the user just set+saved that were proposed for
+   *  brand-wide promotion (GAP-04). Drives the end-of-run "I learned X"
+   *  acknowledgment (renderPersistenceFooter). Empty/absent on confirm-as-is,
+   *  use-once, skill-only edits, cancel, or validation failure. */
+  captured?: Array<{ label: string; value: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +307,7 @@ export async function applyConfirmation(
     }
     return {
       status: 'ok',
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: [],
@@ -347,7 +353,7 @@ export async function applyConfirmation(
   if (!decision.save) {
     return {
       status: 'ok',
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: [],
@@ -362,13 +368,136 @@ export async function applyConfirmation(
     blockToSave,
     opts.dataDirOverride,
   );
+
+  // GAP-04 capture-on-save: edited fields that map to a SHARED brand-context
+  // field (2+/1 litmus via the registry) are proposed for context promotion —
+  // appended to the brand's pending-discoveries file for the Phase-9 applier,
+  // and surfaced as the end-of-run "I learned X" acknowledgment. Best-effort:
+  // a discovery-write failure never fails the save.
+  const shared = collectSharedCaptures(payload, decision, effective);
+  if (shared.length > 0) {
+    const observed_at = new Date().toISOString();
+    await appendCaptureDiscoveries(
+      payload.brand_slug,
+      shared.map((s) => ({
+        field: s.contextPath,
+        proposed_value: s.consumableValue,
+        source_skill: payload.skill_id,
+        observed_by: 'confirm-flow',
+        observed_at,
+        confidence: 0.95,
+      })),
+      opts.dataDirOverride,
+    ).catch(() => {
+      // best-effort: a discovery-write failure never fails the save
+    });
+  }
+
   return {
     status: 'ok',
-    effective_config: effective,
+    effective_config: toConsumableConfig(payload.fields, effective),
     did_persist: true,
     saved_to: path,
     validation_issues: [],
+    captured: shared.map((s) => ({
+      label: s.field.label ?? humanizeFieldId(s.field.id),
+      value: s.display,
+    })),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Capture candidates (first-capture + "improve this skill")
+//
+// A skill runs on defaults + whatever brand context already provides. These
+// helpers answer "what could the user set to sharpen this skill?" — the unset
+// fields, ranked, each tagged with WHERE a captured value should persist per
+// the 2+/1 litmus. The first-run flow surfaces the top few as micro-prompts;
+// the `skill config --missing` surface lists them all on demand.
+// ---------------------------------------------------------------------------
+
+/** Where a captured value persists.
+ *  - `context`: a shared brand field (its seed_from maps to a registered
+ *    brand-context key — used by 2+ skills) → context.yaml (Tier 3), so every
+ *    skill inherits it.
+ *  - `ocl`: a skill-specific knob → config.yaml::<skill_id>. */
+export type CaptureTier = 'context' | 'ocl';
+
+/** Why a field is a capture candidate, in descending value:
+ *  - `missing_required`: required, no value anywhere — the run can't proceed
+ *    well without it (the first thing to ask).
+ *  - `missing_optional`: optional, no value anywhere — the skill runs, but
+ *    blind on this lever.
+ *  - `using_default`: a skill default is in effect; the brand-specific value
+ *    is simply unknown (lowest urgency — sharpening, not a gap). */
+export type CaptureReason =
+  | 'missing_required'
+  | 'missing_optional'
+  | 'using_default';
+
+export interface CaptureCandidate {
+  field: CalibrationField;
+  /** Persistence target per the 2+/1 litmus (see CaptureTier). */
+  target: CaptureTier;
+  /** Context dotted-path (no `context.` prefix) when target === 'context';
+   *  the writer uses it to place the value. Undefined for OCL targets. */
+  context_path?: string;
+  reason: CaptureReason;
+  /** Higher surfaces first: missing_required 3 > missing_optional 2 >
+   *  using_default 1. */
+  priority: number;
+}
+
+const CAPTURE_PRIORITY: Record<CaptureReason, number> = {
+  missing_required: 3,
+  missing_optional: 2,
+  using_default: 1,
+};
+
+/**
+ * Select the fields worth capturing from a prepared confirmation payload —
+ * the substrate for both the first-run micro-prompt and the
+ * `skill config --missing` ("improve this skill") surface.
+ *
+ * A field is a candidate when the brand has not supplied a value: source is
+ * `missing` (nothing anywhere) or `default` (skill fallback, brand value
+ * unknown). Fields already resolved from context/brain (`seed`) or set by the
+ * user (`stored`) are NOT candidates. Each candidate is tagged with its
+ * persistence target via the registry-encoded litmus: if its seed_from maps to
+ * a registered brand-context field it is shared → `context`, else it is this
+ * skill's `ocl` knob.
+ *
+ * Ordered by priority (required gaps first), then manifest order within a tier.
+ */
+export function selectCaptureCandidates(
+  payload: ConfirmationPayload,
+  opts: { limit?: number } = {},
+): CaptureCandidate[] {
+  const candidates: CaptureCandidate[] = [];
+  payload.fields.forEach((entry, idx) => {
+    if (entry.field.deprecated) return;
+    if (entry.source === 'stored' || entry.source === 'seed') return;
+    const reason: CaptureReason =
+      entry.source === 'missing'
+        ? entry.field.required
+          ? 'missing_required'
+          : 'missing_optional'
+        : 'using_default';
+    const ctxPath = entry.field.seed_from
+      ? stripContextPrefix(entry.field.seed_from)
+      : undefined;
+    const shared =
+      ctxPath !== undefined && brandFieldKeyForContextPath(ctxPath) !== null;
+    candidates.push({
+      field: entry.field,
+      target: shared ? 'context' : 'ocl',
+      context_path: shared ? ctxPath : undefined,
+      reason,
+      priority: CAPTURE_PRIORITY[reason] * 1000 - idx, // stable within a tier
+    });
+  });
+  candidates.sort((a, b) => b.priority - a.priority);
+  return opts.limit !== undefined ? candidates.slice(0, opts.limit) : candidates;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +576,84 @@ function normalizeSeedForField(field: CalibrationField, value: unknown): unknown
     return value > 1 ? value / 100 : value;
   }
   return value;
+}
+
+/**
+ * Denormalize percent fields from the OCL's internal [0,1] representation to
+ * the WHOLE-number convention that brand state, the warehouse, and every skill
+ * formula use (acos_target 0.22 -> 22). Storage in config.yaml and the
+ * confirm-card display stay [0,1]; only the CONSUMED config (what a skill reads
+ * to run) is whole, so a skill's math is identical whether a threshold came
+ * from brand context or an OCL override. Non-percent fields pass through.
+ * Mirrors the context-editor's denormalize-on-write so every consumption
+ * surface agrees on whole-number percents.
+ */
+function toConsumableConfig(
+  fields: ConfirmationFieldEntry[],
+  effective: Record<string, unknown>,
+): Record<string, unknown> {
+  const typeById = new Map(fields.map((e) => [e.field.id, e.field.type]));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(effective)) {
+    out[k] =
+      typeById.get(k) === 'percent' && typeof v === 'number'
+        ? Math.round(v * 10000) / 100
+        : v;
+  }
+  return out;
+}
+
+/**
+ * GAP-04 capture-on-save: turn edited fields that map to a SHARED brand-context
+ * field (registered in BRAND_FIELD_REGISTRY) into context-promotion proposals
+ * on the brand's pending-discoveries file. Skill-only knobs (no seed_from, or a
+ * seed_from that isn't a registered brand field) are NOT proposed. The proposed
+ * value is the whole-number (consumable) form, matching context's convention.
+ * Best-effort — never throws.
+ */
+interface SharedCapture {
+  /** Dotted context path (seed_from minus the `context.` prefix). */
+  contextPath: string;
+  field: CalibrationField;
+  /** Whole-number (consumable) value for the discovery proposal. */
+  consumableValue: unknown;
+  /** Human display string ("22%") for the end-of-run acknowledgment. */
+  display: string;
+}
+
+/**
+ * Collect the edited fields that map to a SHARED brand-context field (the 2+/1
+ * litmus via BRAND_FIELD_REGISTRY). Only fires for edit+save (a genuine
+ * capture); skill-only knobs (no seed_from, or a seed_from that isn't a
+ * registered brand field) are excluded. Pure — no I/O.
+ */
+function collectSharedCaptures(
+  payload: ConfirmationPayload,
+  decision: ConfirmationDecision,
+  effective: Record<string, unknown>,
+): SharedCapture[] {
+  if (decision.action !== 'edit' || !decision.save) return [];
+  const consumable = toConsumableConfig(payload.fields, effective);
+  const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
+  const out: SharedCapture[] = [];
+  for (const id of Object.keys(decision.edits)) {
+    const field = fieldsById.get(id);
+    if (!field?.seed_from) continue; // skill-only knob — no brand-context home
+    const contextPath = stripContextPrefix(field.seed_from);
+    if (!brandFieldKeyForContextPath(contextPath)) continue; // not a SHARED field
+    out.push({
+      contextPath,
+      field,
+      consumableValue: consumable[id],
+      display: formatFieldValue(field, effective[id]),
+    });
+  }
+  return out;
+}
+
+/** Fallback label when a calibration field declares no explicit `label`. */
+function humanizeFieldId(id: string): string {
+  return id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }
 
 function stripContextPrefix(seedPath: string): string {

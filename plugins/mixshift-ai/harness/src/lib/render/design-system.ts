@@ -1172,6 +1172,22 @@ export function formatPct(
 }
 
 /**
+ * Format a percentage stored as a WHOLE number — the context.yaml / warehouse
+ * convention, where `acos_target_pct: 22` means 22%. Bridges to formatPct
+ * (which expects a [0,1] fraction). Idempotent for values already in [0,1], so
+ * a legacy normalized value (0.22) still renders "22%" — safe across the
+ * unit-migration boundary. (Sub-1% targets are unrealistic for the fields this
+ * serves, so the >1 split is safe, matching parseFieldInput's own rule.)
+ */
+export function formatWholePct(
+  value: number | null | undefined,
+  precision: number = 1,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  return formatPct(value > 1 ? value / 100 : value, precision);
+}
+
+/**
  * Format a RoAS (return on ad spend) multiplier — the inverse of ACoS.
  *   ACoS 28%  → RoAS 3.57x
  *   TACoS 18% → TRoAS 5.56x
