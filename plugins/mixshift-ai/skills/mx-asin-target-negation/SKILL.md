@@ -21,7 +21,7 @@ sample_output: |
   Bottom line: 6 PDPs surfaced as irrelevant never-converted ASIN targets, 4 relevant-looking
   but persistent losers surfaced for review, and 9 ASINs were suppressed because they are
   already manually targeted.
-  Delivery: Google Sheet with tabs All ASIN Targets, Irrelevant Never Converted,
+  Delivery: an HTML report with sections All ASIN Targets, Irrelevant Never Converted,
   Relevant-Looking Persistent Losers, Protected Manual Targets, Watchlist.
 standalone: true
 handoff_optional: true
@@ -68,8 +68,7 @@ Complete this checklist before Step 0a. Stop and surface the failure if any item
 
 ```
 PREFLIGHT — mx-asin-target-negation — <brand> — <date>
-[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
-    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       negation.lane_rules, negation.protected_terms
@@ -457,7 +456,7 @@ apply the clean-negate bucket, use the audited Ads write surface:
 4. Show the user the preview and ask for explicit confirmation of this exact
    set. Only the clean-negate bucket is eligible; review/watch ASINs never go
    in a change set without their own explicit user decision.
-5. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

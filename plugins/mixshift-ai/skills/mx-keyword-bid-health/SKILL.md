@@ -338,7 +338,7 @@ all bid changes, use the audited Ads write surface instead of manual entry:
 3. Show the user the preview AND the `before_state` snapshot (current bids),
    then ask for explicit confirmation of this exact change set. Never skip
    this step, and never include bids that were not in the confirmed table.
-4. Only after the user confirms, re-run the SAME command with `--commit`.
+4. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

@@ -25,8 +25,7 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — mx-search-term-negation — <brand> — <date>
-[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
-    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
 [ ] Load these fields (default + label when missing — do NOT stop):
       accounts[*].seller_id, accounts[*].account_type   (the only hard requirement — from `mixshift brand add`)
       management.acos_target_pct, management.attribution_window_days
@@ -333,7 +332,7 @@ negatives, use the audited Ads write surface instead of manual entry:
 4. Show the user the preview and ask for explicit confirmation of this exact
    set. Phrase negatives have blast radius: NEGATIVE_PHRASE entries deserve a
    second look in the preview before anyone confirms.
-5. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

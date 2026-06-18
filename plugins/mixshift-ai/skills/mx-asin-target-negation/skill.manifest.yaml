@@ -58,6 +58,8 @@ trigger_phrases:
   - pdp overlap review
   - phase 2 negations
   - asin exact negations
+  - which competitor asins are on my product pages
+  - competitor asins showing on my listings
 notes: >
   ANEG-04 queries both keywordtargetingmetric and targetexpressionsmetric and UNIONs before
   aggregating. Manual asinSameAs/asinCategorySameAs CONQ/PROF targets record performance in

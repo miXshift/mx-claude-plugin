@@ -53,8 +53,7 @@ Complete this checklist before Step 1. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — mx-daily-health-check — <brand> — <date>
-[ ] context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (via `mixshift brand validate <brand>`)
-    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       management.primary_metric, management.acos_target_pct, management.attribution_window_days
