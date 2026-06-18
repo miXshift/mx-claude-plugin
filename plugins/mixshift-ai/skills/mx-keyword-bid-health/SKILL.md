@@ -32,17 +32,15 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 1. Stop and surface the failure if any item cannot be checked off.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`). Thresholds and targets resolve from the calibration card (Step 1.5) or a labeled default — they never block a run.
 
 ```
 PREFLIGHT — mx-keyword-bid-health — <brand> — <date>
-[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml
-[ ] Required fields present and non-null:
-      accounts[*].seller_id, accounts[*].account_type
-      management.acos_target_pct, management.attribution_window_days
-      bid_health.scale_threshold_pct, bid_health.pullback_threshold_pct
-      posture.stance, posture.multiplier
-      brand_terms, campaign_structure.naming_pattern
+[ ] Brand resolves with accounts[].seller_id + account_type
+      (if absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 1.5): scale_threshold_pct, pullback_threshold_pct,
+      acos_target each resolved from brand context, an OCL override, or a labeled
+      default (derived from acos_target, else fixed fallback) — never blocks
 [ ] objective_calibration present (if absent: note in Bottom Line — global thresholds used)
 [ ] Prior-run sidecar loaded from ~/.mixshift/clients/<brand>/runs/mx-keyword-bid-health/
     (most recent <date>-<run-id>.json; if absent, continue and note "no week-over-week baseline yet")
@@ -50,7 +48,7 @@ PREFLIGHT — mx-keyword-bid-health — <brand> — <date>
       - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
 ```
 
-If any HARD GATE fails, surface the failure clearly and stop.
+Stop only if the brand has no accounts. Missing brand-context fields are expected — use the documented default, label it, and continue; never halt.
 
 ---
 
@@ -71,16 +69,38 @@ Output tells you which keywords to cut, which to grow, and which to evaluate for
 
 Read `~/.mixshift/clients/<brand-slug>/context.yaml` (or validate via `mixshift brand validate <brand-slug> --json`). Extract mechanically:
 - `accounts[*].seller_id`, `accounts[*].account_type`
-- `management.acos_target_pct`, `management.attribution_window_days`
-- `bid_health.scale_threshold_pct`, `bid_health.pullback_threshold_pct`
+- `management.attribution_window_days`
 - `posture.stance`, `posture.multiplier`
 - `brand_terms` (canonical + variants, for brand vs nonbrand classification)
 - `campaign_structure.naming_pattern`
 - `structural_events[]` filtered to currently active
 
+The bid thresholds (`scale_threshold_pct`, `pullback_threshold_pct`) and `acos_target` come from the calibration card in Step 1.5, not here.
+
 Read `narrative.md` for prose context only.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the `bid_health.*` thresholds → this skill's global defaults (note "set these to sharpen future runs"). Load these fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the bid thresholds → resolved in Step 1.5 (your set value, else derived from `acos_target`, else a fixed fallback — labeled). Load the non-threshold fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
+
+### Step 1.5 — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-keyword-bid-health --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `45` = 45%): `scale_threshold_pct`, `pullback_threshold_pct` (bid math thresholds) and `acos_target` (reference ACoS — an optional override of the brand target). Each is seeded from brand context where set, else absent.
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-keyword-bid-health --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pullback_threshold_pct":"50"},"save":true}' --json`. A shared field (`acos_target`) persists to brand context for every skill; the bid thresholds persist to this skill.
+
+**Resolve the working thresholds (whole-number percents) from the returned `effective_config`:**
+- `pullback_threshold_pct` — if present, use it; else `acos_target × 1.5`; else (no target) `45`. Label any default in the Bottom Line ("default — set to sharpen").
+- `scale_threshold_pct` — if present, use it; else `acos_target × 0.7`; else `30`. Label any default.
+- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1.
+
+Never block on this step — confirm-as-is is always available.
 
 ### Step 2 — Run prefetch
 
@@ -106,20 +126,20 @@ For each keyword, join the four query outputs on `(KeywordText, MatchType, Campa
 
 **Excess Spend formula:**
 ```
-excess_spend = spend_t30 - (adsales_t30 × acos_target_pct / 100)
+excess_spend = spend_t30 - (adsales_t30 × acos_target / 100)   # acos_target from Step 1.5 (whole %)
 if adsales_t30 == 0: excess_spend = spend_t30
 ```
 
 **High ACOS bucket — bid CUT candidates:**
 ```
 Flag if: spend_t30 ≥ p25(spend_t30)         (only material-spend keywords)
-     AND acos_t30 > bid_health.pullback_threshold_pct
+     AND acos_t30 > pullback_threshold_pct   (from Step 1.5)
 ```
 Sort by `excess_spend DESC`. Top 20 to summary table.
 
 **Scale Opportunity bucket — bid RAISE candidates:**
 ```
-Flag if: acos_t30 < bid_health.scale_threshold_pct
+Flag if: acos_t30 < scale_threshold_pct   (from Step 1.5)
      AND conversions_t30 ≥ 3
      AND spend_t30 ≥ p25(spend_t30)
 ```
@@ -208,8 +228,8 @@ Add up to two sentences referencing:
 ### Step 9 — Self-Review
 
 - [ ] All three buckets surfaced (or explicitly noted empty)
-- [ ] Excess Spend formula applied with brand's acos_target_pct
-- [ ] Pullback / scale thresholds from bid_health (not hardcoded)
+- [ ] Excess Spend formula applied with the resolved acos_target (Step 1.5)
+- [ ] Pullback / scale thresholds from the calibration card (Step 1.5); any derived/fallback default labeled
 - [ ] Headroom rule applied to nonbrand scale candidates
 - [ ] Brand keywords classified using brand_terms (not hardcoded brand strings)
 - [ ] Structural events annotated, not used to suppress
