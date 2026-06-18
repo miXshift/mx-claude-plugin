@@ -28877,6 +28877,9 @@ function brainStatusPath(brandSlug, dataDirOverride) {
 function brandConfigPath(brandSlug, dataDirOverride) {
   return join4(brandDir(brandSlug, dataDirOverride), "config.yaml");
 }
+function pendingDiscoveriesPath(brandSlug, dataDirOverride) {
+  return join4(brandDir(brandSlug, dataDirOverride), ".pending-discoveries.json");
+}
 function runAppliedPath(brandSlug, skillId, runDate, dataDirOverride) {
   return join4(
     brandDir(brandSlug, dataDirOverride),
@@ -30767,14 +30770,14 @@ function handleArrayResult(result, final, index) {
   final.value[index] = result.value;
 }
 function handlePropertyResult(result, final, key, input, isOptionalIn, isOptionalOut) {
-  const isPresent = key in input;
+  const isPresent2 = key in input;
   if (result.issues.length) {
-    if (isOptionalIn && isOptionalOut && !isPresent) {
+    if (isOptionalIn && isOptionalOut && !isPresent2) {
       return;
     }
     final.issues.push(...prefixIssues(key, result.issues));
   }
-  if (!isPresent && !isOptionalIn) {
+  if (!isPresent2 && !isOptionalIn) {
     if (!result.issues.length) {
       final.issues.push({
         code: "invalid_type",
@@ -30786,7 +30789,7 @@ function handlePropertyResult(result, final, key, input, isOptionalIn, isOptiona
     return;
   }
   if (result.value === void 0) {
-    if (isPresent) {
+    if (isPresent2) {
       final.value[key] = void 0;
     }
   } else {
@@ -30989,9 +30992,9 @@ function handleTupleResult(result, final, index) {
 function handleTupleResults(itemResults, final, items, input, optoutStart) {
   for (let i = 0; i < items.length; i++) {
     const r = itemResults[i];
-    const isPresent = i < input.length;
+    const isPresent2 = i < input.length;
     if (r.issues.length) {
-      if (!isPresent && i >= optoutStart) {
+      if (!isPresent2 && i >= optoutStart) {
         final.value.length = i;
         break;
       }
@@ -67521,6 +67524,10 @@ function formatPct(value, precision = 1) {
   if (value === null || value === void 0 || Number.isNaN(value)) return "\u2014";
   return `${(value * 100).toFixed(precision)}%`;
 }
+function formatWholePct(value, precision = 1) {
+  if (value === null || value === void 0 || Number.isNaN(value)) return "\u2014";
+  return formatPct(value > 1 ? value / 100 : value, precision);
+}
 function formatRoas(acosValue, precision = 2) {
   if (acosValue === null || acosValue === void 0 || Number.isNaN(acosValue))
     return "\u2014";
@@ -68710,6 +68717,84 @@ async function saveBrain(brain, dataDirOverride) {
   await rename6(tmp, path2);
   return { path: path2 };
 }
+var BRAND_FIELD_REGISTRY = {
+  // Both tiers — context wins, brain pre-fills.
+  acos_target_pct: { contextPath: "management.acos_target_pct", brainPath: "seller.acos_target_pct", brainSource: "seller" },
+  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc" },
+  marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller" },
+  // Tier 3 only — human judgment.
+  primary_metric: { contextPath: "management.primary_metric" },
+  attribution_window_days: { contextPath: "management.attribution_window_days" },
+  tacos_target_pct: { contextPath: "management.tacos_target_pct" },
+  tacos_goal_pct: { contextPath: "management.tacos_goal_pct" },
+  posture_stance: { contextPath: "posture.stance" },
+  posture_multiplier: { contextPath: "posture.multiplier" },
+  monthly_total_sales_target: { contextPath: "goals.monthly_total_sales_target" },
+  quarterly_total_sales_target: { contextPath: "goals.quarterly_total_sales_target" },
+  protected_terms: { contextPath: "negation.protected_terms" },
+  lane_rules: { contextPath: "negation.lane_rules" },
+  campaign_naming_pattern: { contextPath: "campaign_structure.naming_pattern" },
+  structural_events: { contextPath: "structural_events" },
+  paused_campaigns: { contextPath: "paused_campaigns" },
+  // Tier 2 only — auto-derived; the brain is authoritative.
+  monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller" },
+  recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity" },
+  recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity" },
+  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc" },
+  hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc" }
+};
+var BRAND_FIELD_KEYS = Object.keys(
+  BRAND_FIELD_REGISTRY
+);
+function getByPath(obj, path2) {
+  return path2.split(".").reduce((acc, seg) => {
+    if (acc == null || typeof acc !== "object") return void 0;
+    const key = /^\d+$/.test(seg) ? Number(seg) : seg;
+    return acc[key];
+  }, obj);
+}
+function isPresent(v) {
+  if (v == null) return false;
+  if (typeof v === "string") return v.length > 0;
+  if (typeof v === "number") return Number.isFinite(v);
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return true;
+}
+function resolveFieldFrom(ctx, brain, spec) {
+  if (spec.contextPath && ctx.ok) {
+    const v = getByPath(ctx.context, spec.contextPath);
+    if (isPresent(v)) return { value: v, source: "context" };
+  }
+  if (spec.brainPath && brain.ok) {
+    const v = getByPath(brain.brain, spec.brainPath);
+    if (isPresent(v)) {
+      return {
+        value: v,
+        source: "brain",
+        fetched_at: spec.brainSource ? brain.brain.sources[spec.brainSource]?.fetched_at : void 0
+      };
+    }
+  }
+  return null;
+}
+async function resolveBrandFields(brandSlug, dataDirOverride) {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  const brain = await loadBrain(brandSlug, dataDirOverride);
+  const out = {};
+  for (const key of BRAND_FIELD_KEYS) {
+    out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
+  }
+  return out;
+}
+var CONTEXT_PATH_TO_KEY = {};
+for (const k of BRAND_FIELD_KEYS) {
+  const spec = BRAND_FIELD_REGISTRY[k];
+  if (spec.contextPath !== void 0) CONTEXT_PATH_TO_KEY[spec.contextPath] = k;
+}
+function brandFieldKeyForContextPath(contextDotPath) {
+  return CONTEXT_PATH_TO_KEY[contextDotPath] ?? null;
+}
 function isFileNotFoundError11(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
@@ -69076,6 +69161,53 @@ function exitCodeFor(result) {
     case "failed":
       return 1;
   }
+}
+
+// src/commands/brand-context.ts
+function registerBrandContextCommands(brand) {
+  const context = brand.command("context").description(
+    "Resolved brand context \u2014 the brand-level fields skills read, each tagged with its source (Tier-3 context.yaml = you confirmed it, Tier-2 brain = auto pre-filled) so output can show confidence."
+  );
+  context.command("resolve <slug>").description(
+    "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at } | null }; a null field means neither tier has it \u2014 use the skill default."
+  ).action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const fields = await resolveBrandFields(slug, root.dataDir);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + "\n");
+      return;
+    }
+    const lines = [`
+Resolved brand context for ${slug}:`];
+    let confirmed = 0;
+    let prefilled = 0;
+    let gaps = 0;
+    for (const key of BRAND_FIELD_KEYS) {
+      const r = fields[key];
+      if (r == null) {
+        gaps++;
+        lines.push(`  \u25EF ${key}: (not set \u2014 skill default)`);
+      } else if (r.source === "context") {
+        confirmed++;
+        lines.push(`  \u2713 ${key}: ${formatValue(r.value)} (you confirmed)`);
+      } else {
+        prefilled++;
+        lines.push(
+          `  \u2299 ${key}: ${formatValue(r.value)} (pre-filled` + (r.fetched_at ? `, ${r.fetched_at}` : "") + ")"
+        );
+      }
+    }
+    lines.push(
+      `
+${confirmed} confirmed \xB7 ${prefilled} pre-filled \xB7 ${gaps} not set \u2014 set any with \`mixshift brand config ${slug}\`, or run a skill that captures it.`
+    );
+    process.stdout.write(lines.join("\n") + "\n");
+  });
+}
+function formatValue(v) {
+  if (Array.isArray(v)) return `[${v.length} item${v.length === 1 ? "" : "s"}]`;
+  if (v !== null && typeof v === "object") return "{\u2026}";
+  return String(v);
 }
 
 // src/lib/brain/spawn.ts
@@ -69494,7 +69626,10 @@ async function prepareBrandConfigEdit(opts) {
   };
 }
 function buildFieldState(entry, ctx) {
-  const stored_value = getByPath(ctx, entry.context_path);
+  const stored_value = normalizePercentForDisplay(
+    entry.field,
+    getByPath2(ctx, entry.context_path)
+  );
   const default_value = hasDefault2(entry.field) ? entry.field.default : void 0;
   let effective_value;
   let source;
@@ -69577,7 +69712,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
     }
     parsedEdits.push({
       path: entry.context_path,
-      value: parsed.value,
+      value: denormalizePercentForStorage(entry.field, parsed.value),
       field_id: fieldId
     });
   }
@@ -69611,7 +69746,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   const ctxObj = (0, import_yaml11.parse)(rawText) ?? {};
   let changedCount = 0;
   for (const edit of parsedEdits) {
-    const before = getByPath(ctxObj, edit.path);
+    const before = getByPath2(ctxObj, edit.path);
     if (!deepEqual(before, edit.value)) {
       setNested(ctxObj, edit.path, edit.value);
       changedCount += 1;
@@ -69644,7 +69779,19 @@ async function applyBrandConfigEdit(payload, decision, opts) {
 function hasDefault2(field) {
   return field.default !== void 0;
 }
-function getByPath(obj, path2) {
+function normalizePercentForDisplay(field, v) {
+  if (field.type === "percent" && typeof v === "number") {
+    return v > 1 ? v / 100 : v;
+  }
+  return v;
+}
+function denormalizePercentForStorage(field, v) {
+  if (field.type === "percent" && typeof v === "number") {
+    return Math.round(v * 1e4) / 100;
+  }
+  return v;
+}
+function getByPath2(obj, path2) {
   if (obj === null || obj === void 0) return void 0;
   const parts = path2.split(".");
   let cur = obj;
@@ -70031,18 +70178,18 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
   let open_gaps_count = 0;
   for (const label of labels) {
     const value = context ? resolveAuditPath(context, label.path) : void 0;
-    const isPresent = !isAuditMissing(value);
-    const isStale2 = !!(label.fresh_check && isPresent && typeof value === "string" && isStaleDate(value, now));
+    const isPresent2 = !isAuditMissing(value);
+    const isStale2 = !!(label.fresh_check && isPresent2 && typeof value === "string" && isStaleDate(value, now));
     if (isStale2) stale_count += 1;
     if (label.tier === "required") {
       required_total += 1;
-      if (isPresent) required_present += 1;
+      if (isPresent2) required_present += 1;
     } else if (label.tier === "recommended") {
       recommended_total += 1;
-      if (isPresent) recommended_present += 1;
+      if (isPresent2) recommended_present += 1;
     }
     let status;
-    if (!isPresent) {
+    if (!isPresent2) {
       status = label.tier === "required" ? "miss" : label.tier === "recommended" ? "warn" : "muted";
     } else if (isStale2) {
       status = "warn";
@@ -70053,7 +70200,7 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
       label,
       value,
       status,
-      display: formatAuditValue(label, value, isPresent, isStale2),
+      display: formatAuditValue(label, value, isPresent2, isStale2),
       is_stale: isStale2
     });
     if (label.path === "open_gaps" && Array.isArray(value)) {
@@ -70116,8 +70263,8 @@ function isStaleDate(value, now, days = 30) {
     return false;
   }
 }
-function formatAuditValue(label, value, isPresent, isStale2) {
-  if (!isPresent) {
+function formatAuditValue(label, value, isPresent2, isStale2) {
+  if (!isPresent2) {
     return label.tier === "required" ? "missing (required)" : label.tier === "recommended" ? "missing (recommended)" : "not set";
   }
   if (isStale2 && typeof value === "string") return `${value} (stale)`;
@@ -70365,7 +70512,7 @@ function sectionAccountSnapshot(s) {
   const m = ctx?.management ?? {};
   const isTacosPrimary = m.primary_metric === "TACOS";
   const primaryLabel = isTacosPrimary ? "TACoS target" : "ACoS target";
-  const primaryValue = isTacosPrimary ? formatPct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatPct(m.acos_target_pct, 0);
+  const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
   const scorecards = renderScorecardRow([
     { label: "Accounts", value: formatInt(accounts.length) },
     {
@@ -70529,7 +70676,7 @@ function sectionCalibration(s) {
     });
   }
   const rows = [
-    { field: "Capture rate", value: cal.capture_rate_pct !== void 0 ? formatPct(cal.capture_rate_pct, 1) : "\u2014" },
+    { field: "Capture rate", value: cal.capture_rate_pct !== void 0 ? formatWholePct(cal.capture_rate_pct, 1) : "\u2014" },
     { field: "Fresh-day ACoS lift (pts)", value: cal.fresh_day_acos_improvement_pts !== void 0 ? `${cal.fresh_day_acos_improvement_pts.toFixed(2)} pts` : "\u2014" },
     { field: "Settlement application rule", value: cal.settlement_application_rule ?? "\u2014" },
     { field: "Stability score", value: cal.stability_score ? sentenceCase2(cal.stability_score) : "\u2014" }
@@ -72328,6 +72475,7 @@ Next: run \`/mx-account-cold-start ${match.slug}\` in Claude.
   });
   registerBrandViewCommand(brand);
   registerBrandBrainCommands(brand);
+  registerBrandContextCommands(brand);
   registerBrandConfigCommand(brand);
   registerBrandRenderContextCommand(brand);
   registerBrandEnrichCommand(brand);
@@ -75696,7 +75844,10 @@ var allowedToolEnum = external_exports.enum([
   "renderer",
   "validator",
   "web_search",
-  "prefetch"
+  "prefetch",
+  // Mutating Amazon Ads API calls via `mixshift ads call ... --commit`
+  // (dry-run/preview by default; every commit is user-confirmed).
+  "ads_write"
 ]);
 var artifactSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -75734,7 +75885,11 @@ var skillManifestSchema = external_exports.object({
     "none",
     "artifact_write",
     "context_write",
-    "recommendation_only"
+    "recommendation_only",
+    // Mutates external state (Amazon Ads API) via the bundled CLI; dry-run /
+    // preview by default, every commit requires explicit user confirmation of
+    // the exact change set (pairs with review_required: always).
+    "write_gated"
   ]),
   review_required: external_exports.enum(["never", "on_non_green", "always"]),
   sql_ids: external_exports.array(external_exports.string()).default([]),
@@ -77984,8 +78139,79 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile25 } from "node:fs/promises";
+import { readFile as readFile26 } from "node:fs/promises";
 init_resolve();
+
+// src/lib/brain/discoveries.ts
+init_zod();
+init_resolve();
+import { readFile as readFile25, writeFile as writeFile18, mkdir as mkdir20, rename as rename13 } from "node:fs/promises";
+import { dirname as dirname24 } from "node:path";
+var contextFieldProposalSchema = external_exports.object({
+  field: external_exports.string().min(1),
+  proposed_value: external_exports.unknown(),
+  source_skill: external_exports.string().min(1),
+  confidence: external_exports.number().min(0).max(1),
+  note: external_exports.string().optional(),
+  observed_by: external_exports.string().min(1),
+  observed_at: external_exports.string().min(1)
+});
+var looseItemSchema = external_exports.object({}).passthrough();
+var discoveriesDocSchema = external_exports.object({
+  schema_version: external_exports.literal(1).default(1),
+  generated_by: external_exports.string().min(1),
+  generated_at: external_exports.string().min(1),
+  discoveries: external_exports.object({
+    context_field_proposals: external_exports.array(contextFieldProposalSchema).optional()
+  }).catchall(external_exports.array(looseItemSchema)).default({})
+});
+async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
+  if (captures.length === 0) return { ok: false, reason: "no captures supplied" };
+  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  let doc;
+  try {
+    const raw = await readFile25(path2, "utf-8");
+    doc = discoveriesDocSchema.parse(JSON.parse(raw));
+  } catch {
+    doc = {
+      schema_version: 1,
+      generated_by: captures[0].observed_by,
+      generated_at: captures[0].observed_at,
+      discoveries: {}
+    };
+  }
+  const byField = new Map(
+    (doc.discoveries.context_field_proposals ?? []).map((p) => [p.field, p])
+  );
+  for (const c of captures) {
+    byField.set(c.field, {
+      field: c.field,
+      proposed_value: c.proposed_value,
+      source_skill: c.source_skill,
+      confidence: c.confidence ?? 0.95,
+      ...c.note ? { note: c.note } : {},
+      observed_by: c.observed_by,
+      observed_at: c.observed_at
+    });
+  }
+  doc.discoveries.context_field_proposals = [...byField.values()];
+  doc.generated_at = captures[captures.length - 1].observed_at;
+  try {
+    await mkdir20(dirname24(path2), { recursive: true });
+    const tmp = `${path2}.tmp`;
+    await writeFile18(tmp, JSON.stringify(doc, null, 2), "utf-8");
+    await rename13(tmp, path2);
+    return {
+      ok: true,
+      path: path2,
+      count: doc.discoveries.context_field_proposals.length
+    };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// src/lib/calibration/confirm-flow.ts
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
   const { config: brandConfig } = await readBrandConfig(
@@ -77995,9 +78221,20 @@ async function prepareConfirmation(opts) {
   const storedBlock = brandConfig[skillId];
   const view = buildSkillConfigView(storedBlock, manifest);
   const ctx = await tryReadContext(brandSlug, dataDirOverride);
+  const brandFields = await resolveBrandFields(brandSlug, dataDirOverride);
   const entries = manifest.fields.filter((f) => !f.deprecated).map((field) => {
     const stored_value = storedBlock?.[field.id];
-    const seed_value = field.seed_from ? getByPath2(ctx, stripContextPrefix(field.seed_from)) : void 0;
+    let seed_value = field.seed_from ? getByPath3(ctx, stripContextPrefix(field.seed_from)) : void 0;
+    if (seed_value === void 0 && field.seed_from) {
+      const key = brandFieldKeyForContextPath(
+        stripContextPrefix(field.seed_from)
+      );
+      const resolved = key ? brandFields[key] : null;
+      if (resolved && resolved.source === "brain") {
+        seed_value = resolved.value;
+      }
+    }
+    seed_value = normalizeSeedForField(field, seed_value);
     const default_value = hasDefault3(field) ? field.default : void 0;
     let effective_value;
     let source;
@@ -78069,7 +78306,7 @@ async function applyConfirmation(payload, decision, opts) {
     }
     return {
       status: "ok",
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: []
@@ -78107,7 +78344,7 @@ async function applyConfirmation(payload, decision, opts) {
   if (!decision.save) {
     return {
       status: "ok",
-      effective_config: effective,
+      effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
       validation_issues: []
@@ -78120,21 +78357,104 @@ async function applyConfirmation(payload, decision, opts) {
     blockToSave,
     opts.dataDirOverride
   );
+  const shared = collectSharedCaptures(payload, decision, effective);
+  if (shared.length > 0) {
+    const observed_at = (/* @__PURE__ */ new Date()).toISOString();
+    await appendCaptureDiscoveries(
+      payload.brand_slug,
+      shared.map((s) => ({
+        field: s.contextPath,
+        proposed_value: s.consumableValue,
+        source_skill: payload.skill_id,
+        observed_by: "confirm-flow",
+        observed_at,
+        confidence: 0.95
+      })),
+      opts.dataDirOverride
+    ).catch(() => {
+    });
+  }
   return {
     status: "ok",
-    effective_config: effective,
+    effective_config: toConsumableConfig(payload.fields, effective),
     did_persist: true,
     saved_to: path2,
-    validation_issues: []
+    validation_issues: [],
+    captured: shared.map((s) => ({
+      label: s.field.label ?? humanizeFieldId(s.field.id),
+      value: s.display
+    }))
   };
+}
+var CAPTURE_PRIORITY = {
+  missing_required: 3,
+  missing_optional: 2,
+  using_default: 1
+};
+function selectCaptureCandidates(payload, opts = {}) {
+  const candidates = [];
+  payload.fields.forEach((entry, idx) => {
+    if (entry.field.deprecated) return;
+    if (entry.source === "stored" || entry.source === "seed") return;
+    const reason = entry.source === "missing" ? entry.field.required ? "missing_required" : "missing_optional" : "using_default";
+    const ctxPath = entry.field.seed_from ? stripContextPrefix(entry.field.seed_from) : void 0;
+    const shared = ctxPath !== void 0 && brandFieldKeyForContextPath(ctxPath) !== null;
+    candidates.push({
+      field: entry.field,
+      target: shared ? "context" : "ocl",
+      context_path: shared ? ctxPath : void 0,
+      reason,
+      priority: CAPTURE_PRIORITY[reason] * 1e3 - idx
+      // stable within a tier
+    });
+  });
+  candidates.sort((a, b) => b.priority - a.priority);
+  return opts.limit !== void 0 ? candidates.slice(0, opts.limit) : candidates;
 }
 function hasDefault3(field) {
   return field.default !== void 0;
 }
+function normalizeSeedForField(field, value) {
+  if (value === null || value === void 0) return value;
+  if (field.type === "percent" && typeof value === "number") {
+    return value > 1 ? value / 100 : value;
+  }
+  return value;
+}
+function toConsumableConfig(fields, effective) {
+  const typeById = new Map(fields.map((e) => [e.field.id, e.field.type]));
+  const out = {};
+  for (const [k, v] of Object.entries(effective)) {
+    out[k] = typeById.get(k) === "percent" && typeof v === "number" ? Math.round(v * 1e4) / 100 : v;
+  }
+  return out;
+}
+function collectSharedCaptures(payload, decision, effective) {
+  if (decision.action !== "edit" || !decision.save) return [];
+  const consumable = toConsumableConfig(payload.fields, effective);
+  const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
+  const out = [];
+  for (const id of Object.keys(decision.edits)) {
+    const field = fieldsById.get(id);
+    if (!field?.seed_from) continue;
+    const contextPath2 = stripContextPrefix(field.seed_from);
+    if (!brandFieldKeyForContextPath(contextPath2)) continue;
+    out.push({
+      contextPath: contextPath2,
+      field,
+      consumableValue: consumable[id],
+      display: formatFieldValue(field, effective[id])
+    });
+  }
+  return out;
+}
+function humanizeFieldId(id) {
+  return id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
 function stripContextPrefix(seedPath) {
   return seedPath.replace(/^context\./, "");
 }
-function getByPath2(obj, path2) {
+function getByPath3(obj, path2) {
   if (obj === null || obj === void 0) return void 0;
   const parts = path2.split(".");
   let cur = obj;
@@ -78149,7 +78469,7 @@ function getByPath2(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile25(path2, "utf-8");
+    const raw = await readFile26(path2, "utf-8");
     return (0, import_yaml18.parse)(raw);
   } catch {
     return null;
@@ -78176,9 +78496,12 @@ function renderConfirmationCard(payload, options = {}) {
   const fields = lines.join("\n");
   const extras_note = Object.keys(payload.extras).length > 0 ? renderExtrasNote(payload.extras) : null;
   const blocking_note = payload.blocking.has_missing_required ? renderBlockingNote(payload.blocking.missing_keys) : null;
+  const captureCandidates = payload.is_first_run ? selectCaptureCandidates(payload, { limit: 3 }) : [];
+  const capture_note = captureCandidates.length > 0 ? renderCaptureNudge(captureCandidates, payload.brand_name) : null;
   const action_prompt = payload.blocking.has_missing_required ? `Some required fields are unset. Choose a number above to set, or "cancel".` : payload.is_first_run ? `Confirm and run, or edit a field?  [number to edit / "run" / "cancel"]` : `Confirm and run, or edit?  [Enter / number to edit / "cancel"]`;
   return {
     header,
+    capture_note,
     fields,
     extras_note,
     blocking_note,
@@ -78186,11 +78509,55 @@ function renderConfirmationCard(payload, options = {}) {
   };
 }
 function joinCard(parts) {
-  const blocks = [parts.header, "", parts.fields];
+  const blocks = [parts.header];
+  if (parts.capture_note) blocks.push("", parts.capture_note);
+  blocks.push("", parts.fields);
   if (parts.extras_note) blocks.push("", parts.extras_note);
   if (parts.blocking_note) blocks.push("", parts.blocking_note);
   blocks.push("", parts.action_prompt);
   return blocks.join("\n");
+}
+function renderCaptureCandidates(candidates, ctx) {
+  if (candidates.length === 0) {
+    return `${ctx.skillDisplayName} is fully configured for ${ctx.brandName}: every field resolves from your config or brand context. Nothing to set right now.`;
+  }
+  const lines = [`Sharpen ${ctx.skillDisplayName} for ${ctx.brandName}`, ""];
+  const required2 = candidates.filter((c) => c.reason === "missing_required");
+  const rest = candidates.filter((c) => c.reason !== "missing_required");
+  if (required2.length > 0) {
+    lines.push(`Needed before a sharp run (${required2.length}):`);
+    for (const c of required2) lines.push(...renderCandidateBlock(c));
+    lines.push("");
+  }
+  if (rest.length > 0) {
+    lines.push(
+      `Optional refinements (${rest.length}). The skill runs without these:`
+    );
+    for (const c of rest) lines.push(...renderCandidateBlock(c));
+    lines.push("");
+  }
+  lines.push("Set any of these:");
+  lines.push(`  mixshift skill config ${ctx.skillId} --brand ${ctx.brandSlug}`);
+  return lines.join("\n");
+}
+function renderCandidateBlock(c) {
+  const tier = c.target === "context" ? "shared brand context" : "this skill";
+  const out = [`  - ${humanLabel2(c.field)}  (${tier})`];
+  if (c.field.help) {
+    const help = c.field.help.replace(/\s+/g, " ").trim();
+    out.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
+  }
+  return out;
+}
+function renderCaptureNudge(candidates, brandName) {
+  const lines = [
+    `First run for ${brandName}. Set these now to sharpen it, or say "run" to use sensible defaults:`
+  ];
+  for (const c of candidates) {
+    const tier = c.target === "context" ? "shared brand context" : "this skill";
+    lines.push(`  - ${humanLabel2(c.field)}  (${tier})`);
+  }
+  return lines.join("\n");
 }
 function renderFieldLine2(entry, labelWidth) {
   const num = entryIndex(entry).toString().padStart(2, " ");
@@ -78234,10 +78601,16 @@ function renderValidationIssues(result, fieldsById) {
 }
 function renderPersistenceFooter(result, brandName, skillDisplayName) {
   if (result.status !== "ok") return "";
-  if (result.did_persist) {
-    return `Saved your edits to ${brandName}'s ${skillDisplayName} config.`;
+  if (!result.did_persist) return "";
+  const lines = [`Saved your edits to ${brandName}'s ${skillDisplayName} config.`];
+  const learned = result.captured ?? [];
+  if (learned.length > 0) {
+    const items = learned.map((c) => `${c.label} = ${c.value}`).join(", ");
+    lines.push(
+      `Learned for ${brandName}: ${items}. Recorded to apply across your skills.`
+    );
   }
-  return "";
+  return lines.join("\n");
 }
 function humanLabel2(field) {
   if (field.label && field.label.length > 0) return field.label;
@@ -78256,8 +78629,8 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir20, readFile as readFile26, writeFile as writeFile18 } from "node:fs/promises";
-import { dirname as dirname24 } from "node:path";
+import { mkdir as mkdir21, readFile as readFile27, writeFile as writeFile19 } from "node:fs/promises";
+import { dirname as dirname25 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -78274,6 +78647,10 @@ function registerSkillCommands(program3) {
   ).option(
     "--show",
     "read-only inspect \u2014 alias for the default action when no flags are passed",
+    false
+  ).option(
+    "--missing",
+    'list the unset-but-valuable fields (the "improve this skill" surface) instead of the full confirmation card',
     false
   ).action(
     async (skillId, opts, cmd) => {
@@ -78321,6 +78698,17 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
 `
           );
           return;
+        }
+        if (opts.missing) {
+          return await runMissing({
+            skillId,
+            brandSlug: brandRow.slug,
+            brandName: brandRow.display_name,
+            manifestDisplayName: manifest.display_name,
+            calibration,
+            json: root.json,
+            dataDir: root.dataDir
+          });
         }
         if (opts.apply) {
           return await runApplyDecision2({
@@ -78457,6 +78845,45 @@ async function runShow2(args) {
   });
   process.stdout.write("\n" + joinCard(card) + "\n\n");
   return;
+}
+async function runMissing(args) {
+  const payload = await prepareConfirmation({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    skillId: args.skillId,
+    manifest: args.calibration,
+    dataDirOverride: args.dataDir
+  });
+  const candidates = selectCaptureCandidates(payload);
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: "ok",
+          skill_id: args.skillId,
+          brand_slug: args.brandSlug,
+          candidate_count: candidates.length,
+          candidates: candidates.map((c) => ({
+            id: c.field.id,
+            target: c.target,
+            context_path: c.context_path ?? null,
+            reason: c.reason,
+            required: c.field.required
+          }))
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  const text = renderCaptureCandidates(candidates, {
+    skillId: args.skillId,
+    skillDisplayName: args.manifestDisplayName,
+    brandName: args.brandName,
+    brandSlug: args.brandSlug
+  });
+  process.stdout.write("\n" + text + "\n\n");
 }
 async function runApplyDecision2(args) {
   let decision;
@@ -78601,7 +79028,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname24(path2);
+  const runDir = dirname25(path2);
   const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -78648,8 +79075,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir20(dirname24(path2), { recursive: true });
-  await writeFile18(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir21(dirname25(path2), { recursive: true });
+  await writeFile19(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -78678,7 +79105,7 @@ ${candidates}`
 }
 async function readJsonIfExists2(path2) {
   try {
-    const raw = await readFile26(path2, "utf-8");
+    const raw = await readFile27(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -78729,8 +79156,8 @@ import { resolve as resolvePath2 } from "node:path";
 // src/lib/amazon/reports.ts
 init_credentials();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir21 } from "node:fs/promises";
-import { dirname as dirname25 } from "node:path";
+import { mkdir as mkdir22 } from "node:fs/promises";
+import { dirname as dirname26 } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -78881,7 +79308,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
   if (!res.body) {
     return hostUnreachable("the report download returned an empty response body");
   }
-  await mkdir21(dirname25(outPath), { recursive: true });
+  await mkdir22(dirname26(outPath), { recursive: true });
   const out = createWriteStream2(outPath);
   const source = Readable.fromWeb(
     res.body
@@ -79240,14 +79667,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml19 = __toESM(require_dist(), 1);
-import { readFile as readFile27 } from "node:fs/promises";
-import { dirname as dirname26, join as join17 } from "node:path";
+import { readFile as readFile28 } from "node:fs/promises";
+import { dirname as dirname27, join as join17 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile27(path2, "utf-8");
+      const raw = await readFile28(path2, "utf-8");
       const parsed = (0, import_yaml19.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
@@ -79292,12 +79719,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname26(fileURLToPath6(import.meta.url));
+  const here = dirname27(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
     candidates.push(join17(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname26(dir);
+    const parent = dirname27(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -79312,7 +79739,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile29 } from "node:fs/promises";
+import { readFile as readFile30 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -79405,12 +79832,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir22, readFile as readFile28, rename as rename13, writeFile as writeFile19 } from "node:fs/promises";
-import { dirname as dirname27 } from "node:path";
+import { mkdir as mkdir23, readFile as readFile29, rename as rename14, writeFile as writeFile20 } from "node:fs/promises";
+import { dirname as dirname28 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile28(path2, "utf8");
+    const raw = await readFile29(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -79421,10 +79848,10 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir22(dirname27(path2), { recursive: true });
+  await mkdir23(dirname28(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile19(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename13(tmp, path2);
+  await writeFile20(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename14(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -79815,7 +80242,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile29(file2, "utf8");
+    const text = await readFile30(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -79884,7 +80311,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile30 } from "node:fs/promises";
+import { readFile as readFile31 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -79999,7 +80426,7 @@ function registerCall(amazon) {
         return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile30(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile31(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -80739,7 +81166,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile31 } from "node:fs/promises";
+import { readFile as readFile32 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -80904,7 +81331,7 @@ function registerCall2(ads) {
         return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile31(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile32(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -81536,7 +81963,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname28, join as join18 } from "node:path";
+import { dirname as dirname29, join as join18 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -81671,7 +82098,7 @@ async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     return join18(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname28(fileURLToPath7(import.meta.url));
+  let dir = dirname29(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
       const candidate = join18(dir, "skills");
@@ -81679,7 +82106,7 @@ async function findSkillsDir() {
       if (stat4.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname28(dir);
+    const parent = dirname29(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -81718,6 +82145,17 @@ function renderHelpChat(args) {
     }
     L.push("");
   }
+  L.push("### Sharpen a skill for a brand");
+  L.push(
+    "Skills run on sensible defaults and get sharper as you fill in a brand's context, so you never have to set everything up front."
+  );
+  L.push(
+    '- See what a skill is still missing and set it: say **"improve <skill> for <brand>"** (or run `mixshift skill config <skill> --brand <brand> --missing`). It lists the unset knobs that would sharpen that skill, marked needed vs optional.'
+  );
+  L.push(
+    "- Set a shared value once (like your ACoS target) and it carries across every skill for that brand."
+  );
+  L.push("");
   L.push("### Stuck, or something is broken?");
   L.push(
     '- Say **"run a diagnostic"** for a health check (version, sign-in, connectivity, query-pack status) with the exact fix for anything wrong.'
@@ -81768,6 +82206,7 @@ function renderHelpTerminal(args) {
     for (const id of uncatalogued) L.push(`  ${id}`);
     L.push("");
   }
+  L.push("Sharpen a skill:   mixshift skill config <skill> --brand <brand> --missing");
   L.push("Stuck or broken?   run `mixshift doctor`");
   L.push('Feedback / bugs:   say "send feedback"  (or `mixshift feedback "..."`)');
   L.push('Share a skill:     say "I built a skill"  (or `mixshift share-skill <path>`)');
