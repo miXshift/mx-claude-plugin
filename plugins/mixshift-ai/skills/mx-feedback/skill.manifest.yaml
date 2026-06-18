@@ -1,14 +1,16 @@
 schema_version: 1
 skill_id: feedback
 display_name: Send Feedback to MixShift
-version: "0.1.0"
+version: "0.1.1"
 description: >
-  One-line entry point for sending feedback to MixShift -- bug reports,
-  feature requests, comments, "this is broken", "I wish this did X". Routes
-  through the `mixshift feedback` CLI, which sends to the MixShift Discord
-  ops channel + records the feedback in Supabase for the engineering team
-  to triage and act on. Works alongside any other skill -- mid-session
-  feedback is fine.
+  Entry point for sending feedback to MixShift, and for catching complaints or
+  frustration about the plugin even when the user does not say "feedback" (e.g.
+  "this is broken", "this is too slow", "it feels broken", "this is confusing").
+  Covers bug reports, feature requests, and comments. Routes through the
+  `mixshift feedback` CLI, which sends to the MixShift Discord ops channel +
+  records the feedback in Supabase for the engineering team to triage and act
+  on. The skill confirms before sending. Works alongside any other skill;
+  mid-session feedback is fine. (Troubleshooting "how do I fix X" is mx-help.)
 
 # Modeled as per_account because the trigger_phrases include account-oriented
 # entry points; the skill itself is account-agnostic but lives in the
@@ -43,6 +45,10 @@ trigger_phrases:
   - i wish this could
   - this is broken
   - this isnt working
+  - this is too slow
+  - it feels broken
+  - this is frustrating
+  - this is confusing
   - tell mixshift
   - let mixshift know
   - mixshift feedback
