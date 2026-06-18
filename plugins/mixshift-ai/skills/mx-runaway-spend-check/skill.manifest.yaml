@@ -65,6 +65,11 @@ notes: >
 # target surfaced as an optional per-skill override (defaults to the brand
 # value via the resolver / Tier-2 brain). Seeds resolve context.yaml first,
 # then the brain; whole-number percents normalize to [0,1] at the seam.
+# Both are `required: false` (deferable): when a brand hasn't set the pullback
+# threshold, the skill derives it from acos_target (pullback = target x 1.5),
+# else a fixed fallback (pullback 45%), labeled as a default in output — see
+# SKILL.md Step 1.5. So a first run is never blocked; the confirm card just
+# nudges these as sharpening candidates.
 calibration:
   schema_version: 1
   fields:
@@ -78,7 +83,7 @@ calibration:
       type: percent
       range: { min: 0.05, max: 1.0 }
       seed_from: context.bid_health.pullback_threshold_pct
-      required: true
+      required: false
     - id: acos_target
       label: "ACoS target"
       prompt: "ACoS target the runaway check should use for {brand_name}?"

@@ -49,17 +49,16 @@ below can still use the IDs.
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 1. Stop and surface the failure if any item cannot be checked off. Do not proceed with a partial preflight.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`) — `account_type` also selects the SC vs VC data path. Targets and knobs resolve from the calibration card (Step 1.5) or a labeled default; they never block a run. The DHC-04 (anomaly_detection_settings) check below is a separate DATA gate — warehouse data, not brand context — and still stops the run when thresholds are absent.
 
 ```
 PREFLIGHT — mx-daily-health-check — <brand> — <date>
-[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
-[ ] Required fields present and non-null:
-      accounts[*].seller_id, accounts[*].account_type
-      management.primary_metric, management.acos_target_pct, management.attribution_window_days
-      goals.monthly_total_sales_target, goals.tacos_goal_pct
-      posture.stance, posture.multiplier
-      sub_brands, campaign_structure.naming_pattern
+[ ] Brand resolves with accounts[*].seller_id + accounts[*].account_type
+      (validate via `mixshift brand validate <brand>`, or read context.yaml directly;
+       if both absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 0.5): acos_target, tacos_target, min_spend_to_flag,
+      hero_skus, quiet_paused each resolved from brand context, an OCL override, or a
+      labeled default — never blocks
 [ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/mx-daily-health-check/<date>/data.md (or data.json)
 [ ] DHC-04 (anomaly_detection_settings) present in artifact with non-null thresholds
     *** HARD GATE: if absent or thresholds null, STOP. Cannot compute CI. ***
@@ -69,6 +68,8 @@ PREFLIGHT — mx-daily-health-check — <brand> — <date>
       - context stale > 7 days → surface warning, do not block
       - verdict regresses RED without structural_events explanation → surface before delivering
 ```
+
+Stop only if the brand has no accounts (or the DHC-04 data gate fails). Missing brand-context fields are expected — use the documented default, label it, and continue; never halt.
 
 ---
 
@@ -101,12 +102,36 @@ Read these sources simultaneously:
 4. `~/.mixshift/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
 
 **Brand context is optional — never fail closed on it.** Run on whatever is present in the snapshot / `context.yaml`, via `mixshift brand context resolve <brand-slug> --json` — one call returns each field's `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled). The skill sharpens as context accrues but never requires cold-start. The only truly required field is `account_type` (it selects the SC vs VC data path and comes from `mixshift brand add`); if it is genuinely absent, stop and say "run `mixshift brand add <brand-slug>`". Otherwise default-and-label rather than stopping:
-- `acos_target_pct` missing → use the Brain value if present and label it (e.g. *"ACoS target pre-filled from your MixShift platform setting (25%) — confirm or change with `mixshift brand config <brand-slug>`"*); if the Brain is also null, run in observational mode (report ACoS as-is, no vs-target flagging) labeled "no ACoS target configured". Never invent a target.
+- `acos_target` / `tacos_target` — resolved in Step 0.5 from the calibration card (your set value, else the brand context / Brain seed). If a target is absent there, run that metric observational (report it as-is, no vs-target flagging) labeled "no target configured". Never invent a target.
+- `min_spend_to_flag`, `hero_skus`, `quiet_paused` — resolved in Step 0.5 (defaults: $5 floor, empty protect list, hide paused). Label any value running on its default.
 - `primary_metric` missing → assume ACoS, label "(assumed; tell me if it's TACoS)".
 - `posture.stance` missing → default `scale`.
 - other fields (`capture_rate_calibration`, `goals`, `structural_events`, `sub_brands`, `campaign_structure`) missing → omit the dependent line and note it.
 
 (The `anomaly_detection_settings` / DHC-04 threshold check in the preflight is a separate DATA gate — warehouse data, not brand context — and still stops the run when thresholds are absent.)
+
+### Step 0.5 — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-daily-health-check --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use: the two ACoS/TACoS targets come back as WHOLE-number percents (e.g. `22` = 22%); the rest are int/list/bool. The fields: `acos_target`, `tacos_target` (the targets DHC flags against), `min_spend_to_flag` (int dollar floor), `hero_skus` (ASIN protect list), `quiet_paused` (bool). Each is seeded from brand context where set, else absent (falls back to the documented default below).
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-daily-health-check --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"min_spend_to_flag":"10"},"save":true}' --json`. A shared field (`acos_target`, `tacos_target`) persists to brand context for every skill; the DHC-specific knobs (`min_spend_to_flag`, `hero_skus`, `quiet_paused`) persist to this skill.
+
+**Resolve the working values from the returned `effective_config`:**
+- `acos_target` — whole-number percent. If absent, run observational (report ACoS as-is, do not flag vs target) per Step 0. Label any default in the report.
+- `tacos_target` — whole-number percent. If absent, run observational (report TACoS as-is, do not flag vs target). Label any default.
+- `min_spend_to_flag` — int dollars; if absent, default `5`. Campaigns spending less than this on the analysis day are suppressed from the exception list.
+- `hero_skus` — ASIN list; if absent, default empty (no SKUs protected).
+- `quiet_paused` — bool; if absent, default `true` (paused campaigns hidden from the exception list).
+
+Never block on this step — confirm-as-is is always available.
 
 ### Step 1: Verify Data Completeness
 
@@ -253,6 +278,8 @@ From Batch D daily actuals:
 
 ### Step 6: Detect Anomalies
 
+**Exception-list floor:** Suppress any campaign whose T-1 spend is below `min_spend_to_flag` (from Step 0.5; default $5) from the YELLOW/RED exception list, even if its ACOS is high. A floor of 0 flags everything. This trims tiny campaigns from the action queue; it does not change account-level CI math.
+
 **Spend CI Breach:**
 - Flag if T-1 Spend > Upper CI (upper breach)
 - Flag if T-1 Spend < Lower CI (lower breach)
@@ -260,9 +287,11 @@ From Batch D daily actuals:
 **ACOS CI Breach:**
 - Flag if T-1 ACOS > Upper CI
 
+(CI bounds are read dynamically from anomaly_detection_settings — never from the calibration card. The `acos_target` / `tacos_target` from Step 0.5 are the vs-target reference for the summary table and dimensional narrative; if either is absent, report that metric as-is and do not flag it vs target.)
+
 **TACOS vs. Target:**
-- Flag if T-1 TACOS > TACOS goal
-- Flag if T-1 TACOS within 3 percentage points of goal (approaching)
+- Flag if T-1 TACOS > `tacos_target` (from Step 0.5; if absent, run observational — do not flag vs target)
+- Flag if T-1 TACOS within 3 percentage points of `tacos_target` (approaching)
 
 **Pacing vs. Target:**
 - Compute `pacing_gap_pct` = (pacing_total_sales - monthly_target) / monthly_target × 100
@@ -278,6 +307,8 @@ Before making any intervention call, cross-reference brand context for:
 - Confirmed data anomalies within the T-30 window
 
 If a structural event explains a breach, keep the status flag but label it explicitly in narrative. A promo-driven spend breach during Easter sale is YELLOW, not RED, and must be named as such.
+
+**Hero-SKU protection:** Any item in `hero_skus` (from Step 0.5; default empty) is excluded from RED/YELLOW recommendations to reduce bids or pause. It can still surface informationally with its metrics — protection downgrades the recommendation, it does not hide the row. With an empty list, standard rules apply to every SKU.
 
 ### Step 8: Compute Summary Table
 
@@ -315,6 +346,8 @@ For each dimension (Campaign Type, Objective, Item Group; Brand if applicable), 
 **Always include:** A Total row (sum of spend/sales, blended ACOS).
 
 **Never include:** T-1 Orders column, Rate labels, or "vs CI" inline annotations. CI context belongs in narrative only.
+
+**Paused-campaign visibility:** When `quiet_paused` is true (from Step 0.5; default true), omit paused campaigns from the exception / action listing — they cannot bleed spend. They remain in the dimensional aggregate rows and the Total (do not drop them from the rollup numbers). When `quiet_paused` is false, surface paused campaigns in the exception listing too (useful during a cleanup sprint or for stale-targeting / pending-review flags).
 
 ### Step 10: Write Narrative Sections
 
@@ -401,7 +434,10 @@ Before delivering output:
 - [ ] No em dashes in any narrative
 - [ ] T-7 Avg columns present in all dimensional tables
 - [ ] Grouped column headers with distinct visual bands for T-1 / T-7 / T-30
-- [ ] CI sensitivity level shown in header (never hardcoded)
+- [ ] CI sensitivity level shown in header (never hardcoded; CI is dynamic, not from the calibration card)
+- [ ] acos_target / tacos_target taken from the calibration card (Step 0.5); if either absent, that metric reported observational and any default labeled
+- [ ] min_spend_to_flag floor (Step 0.5) applied to the exception list; quiet_paused (Step 0.5) governs paused-campaign visibility without dropping them from dimensional totals
+- [ ] hero_skus (Step 0.5) protected from RED/YELLOW cut/pause recommendations, still shown informationally
 - [ ] Causal statements verified against actual query data (no day-of-week assumptions, no attribution language)
 - [ ] Structural events cross-referenced; if present, named in relevant sections
 - [ ] VC accounts: Adj. ACOS row present with all five columns (T-1, T-7, T-30, MTD, Pacing)

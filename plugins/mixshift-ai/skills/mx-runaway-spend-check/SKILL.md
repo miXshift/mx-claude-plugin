@@ -33,27 +33,26 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 1. Stop and surface the failure if any item cannot be checked off.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`). Thresholds and targets resolve from the calibration card (Step 1.5) or a labeled default — they never block a run. The data and run-state gates below DO still stop the run: those are warehouse data and run prerequisites, not brand context.
 
 ```
 PREFLIGHT — mx-runaway-spend-check — <brand> — <date>
-[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml
-[ ] Required fields present and non-null:
-      accounts[*].seller_id, accounts[*].account_type
-      management.acos_target_pct, management.attribution_window_days
-      posture.stance, posture.multiplier
-      bid_health.pullback_threshold_pct
-      structural_events (list — may be empty)
-      paused_campaigns (list — may be empty)
+[ ] Brand resolves with accounts[].seller_id + account_type
+      (if absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 1.5): pullback_threshold_pct, acos_target each
+      resolved from brand context, an OCL override, or a labeled default
+      (derived from acos_target, else fixed fallback) — never blocks
 [ ] anomaly_detection_settings row exists for SellerID (DHC-04 returns ≥1 row)
     *** HARD GATE: if absent, STOP. Cannot compute CI without thresholds. ***
 [ ] Data freshness ≤ 2 days for keywordtargetingmetric
     *** HARD GATE: if data older than 2 days, STOP and surface to user. ***
 [ ] Prior-run sidecar loaded from ~/.mixshift/clients/<brand>/runs/mx-runaway-spend-check/
     (if absent: continue — no baseline yet; note in output header)
+[ ] No active escalation conditions:
+      - verdict regresses GREEN→RED without structural_events explanation → surface before delivering
 ```
 
-If any HARD GATE fails, surface the failure clearly and stop. Do not proceed with a partial run.
+Stop only if the brand has no accounts or a HARD GATE (data freshness / `anomaly_detection_settings` row) fails. Missing brand-context fields are expected — use the documented default, label it, and continue; never halt on a context field.
 
 ---
 
@@ -84,14 +83,35 @@ mixshift brand validate <brand-slug> --json
 
 Extract mechanically (do NOT infer from narrative prose):
 - `accounts[*].seller_id`, `accounts[*].account_type`
-- `management.acos_target_pct`, `management.attribution_window_days`
+- `management.attribution_window_days`
 - `posture.stance`, `posture.multiplier`
-- `bid_health.pullback_threshold_pct`
 - `structural_events[]` filtered to currently active
 - `attribution_rule` — per-campaign-type window
 - `paused_campaigns` — exclude flagged keywords inside these
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the check sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it rather than stopping: `management.acos_target_pct` → observational (flag absolute spend spikes only, not vs-target); `posture.stance` → `scale`; `bid_health.pullback_threshold_pct` → this skill's default. (This is separate from the `anomaly_detection_settings` data gate below, which still stops the run — that is warehouse data, not brand context.) Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
+The pullback threshold (`pullback_threshold_pct`) and `acos_target` come from the calibration card in Step 1.5, not here.
+
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the check sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.acos_target_pct` → observational (flag absolute spend spikes only, not vs-target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the pullback threshold → resolved in Step 1.5 (your set value, else derived from `acos_target`, else a fixed fallback — labeled). (This is separate from the `anomaly_detection_settings` data gate below, which still stops the run — that is warehouse data, not brand context.) Load the non-threshold fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
+
+### Step 1.5 — Confirm calibration
+
+Get this run's knobs (and let the user sharpen them) via the confirm card:
+
+```bash
+mixshift skill config mx-runaway-spend-check --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `45` = 45%): `pullback_threshold_pct` (the runaway bid-cut ceiling) and `acos_target` (reference ACoS — an optional override of the brand target). Each is seeded from brand context where set, else absent.
+
+Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown values: `mixshift skill config mx-runaway-spend-check --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pullback_threshold_pct":"50"},"save":true}' --json`. A shared field (`acos_target`) persists to brand context for every skill; the pullback threshold persists to this skill.
+
+**Resolve the working thresholds (whole-number percents) from the returned `effective_config`:**
+- `pullback_threshold_pct` — if present in `effective_config` use it; else `acos_target × 1.5`; else (no target) `45`. Label any default "default — set to sharpen".
+- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1.
+
+Never block on this step — confirm-as-is is always available.
 
 ### Step 2 — Run prefetch
 
@@ -202,6 +222,7 @@ Three elements:
 
 - [ ] Two anomaly types checked (CI breach AND zero conversions)
 - [ ] T-1 CI bounds from `anomaly_detection_settings` (not hardcoded)
+- [ ] Pullback threshold / acos_target from the calibration card (Step 1.5); any derived/fallback default labeled
 - [ ] Material history filter applied to zero-conversion flag
 - [ ] Structural events cross-referenced
 - [ ] Paused campaigns excluded
@@ -230,11 +251,11 @@ Compose the sidecar input JSON (write to a temp file, then call the harness):
     "account_type": "SC|VC",
     "seller_id": 0,
     "primary_metric": "ACOS|TACOS",
-    "acos_target_pct": 0,
+    "acos_target_pct": 0,                    // acos_target resolved in Step 1.5 (whole %), else null if observational
     "attribution_window_days": 0,
     "posture_stance": "scale|efficiency|defend|clear_bleed",
     "posture_multiplier": 0,
-    "bid_health_pullback_threshold_pct": 0
+    "bid_health_pullback_threshold_pct": 0   // pullback_threshold_pct resolved in Step 1.5 (whole %; your set value, else derived/fallback)
   },
   "headline_metrics": {
     "runaway_count": 0,

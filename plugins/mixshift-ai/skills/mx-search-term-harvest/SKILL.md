@@ -18,19 +18,14 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 ## Preflight — Risk Tier 3 (Required)
 
-Complete this checklist before Step 0. Stop and surface the failure if any item cannot be checked off.
+Run on whatever brand context exists; never fail closed on it. The ONLY hard requirement is that the brand has at least one account (`accounts[].seller_id` + `account_type`, from `mixshift brand add`). The ACoS ceiling resolves from the calibration card (Step 1.5) or runs observational — it never blocks a run. The upstream ST data-pull artifact is a genuine data dependency and IS a hard gate.
 
 ```
 PREFLIGHT — mx-search-term-harvest — <brand> — <date>
-[ ] context.yaml loaded from ~/.mixshift/clients/<brand>/context.yaml
-[ ] Required fields present and non-null:
-      accounts[*].seller_id
-      management.acos_target_pct
-      sub_brands, campaign_structure.naming_pattern
-      campaign_structure.account_codes, campaign_structure.objectives
-      brand_terms, negation.lane_rules
-      paused_campaigns (list — may be empty)
-      posture.stance
+[ ] Brand resolves with accounts[].seller_id + account_type
+      (if absent → stop; ask the user to run `mixshift brand add`)
+[ ] Calibration confirmed (Step 1.5): acos_target resolved from brand context,
+      an OCL override, or run observational — never blocks
 [ ] Upstream mx-search-term-data-pull artifact present
     *** HARD GATE: if absent, STOP. Cannot run harvest without ST corpus. ***
 [ ] STH-01 prefetch artifact present: ~/.mixshift/clients/<brand>/runs/mx-search-term-harvest/<date>/data.json
@@ -39,6 +34,8 @@ PREFLIGHT — mx-search-term-harvest — <brand> — <date>
     (if absent: continue — no baseline yet)
 [ ] Confirm no harvest candidate is in negation.lane_rules mismatch list before promoting
 ```
+
+Stop only if the brand has no accounts or the upstream ST data-pull artifact is absent. Missing brand-context fields are expected — use the documented default, label it, and continue; never halt.
 
 ---
 
@@ -60,7 +57,6 @@ The original monolithic negation skill buried harvest as an afterthought. Harves
 - Data artifact: ST data pull output (JSON)
 - **Tier-3 brand context** at `~/.mixshift/clients/<brand-slug>/context.yaml`. Extract mechanically:
   - `accounts[].seller_id`
-  - `management.acos_target_pct` — drives Tier S thresholds (`acos_target * 0.75` and `<= acos_target`)
   - `sub_brands[]` and `campaign_structure.naming_pattern`, `campaign_structure.account_codes`, `campaign_structure.objectives` — drive item-group taxonomy mapping and placement campaign naming
   - `brand_terms` — for brand-adjacent term routing (BRAND vs RSCH-NONBRAND placement)
   - `negation.lane_rules` — confirm harvest candidates are not in a `mismatch` list before promoting (schema-validated by `mixshift brand validate <brand-slug>`)
@@ -70,7 +66,7 @@ The original monolithic negation skill buried harvest as an afterthought. Harves
 
 ASIN harvest cross-references manual conquest lists in `~/.mixshift/clients/<brand-slug>/corpora/*.csv` when available.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); harvest sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — plus the upstream ST data-pull artifact (a data dependency, gated below). When `management.acos_target_pct` is missing, surface harvest candidates by absolute efficiency and label "no ACOS target configured"; when `campaign_structure.*` item-group taxonomy is missing, omit the "Recommended Campaign" placement and say so. Do not infer ACOS target or taxonomy from prose — label them missing instead. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); harvest sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — plus the upstream ST data-pull artifact (a data dependency, gated below). The ACoS ceiling (`acos_target`) comes from the calibration card in Step 1.5, not here; when it is absent, run observational (surface harvest candidates by absolute efficiency, do not bar vs a target). When `campaign_structure.*` item-group taxonomy is missing, omit the "Recommended Campaign" placement and say so. Do not infer ACOS target or taxonomy from prose — label them missing instead. Load the structured brand-context fields (taxonomy, brand_terms, lane_rules) in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Paused campaign rule (mandatory):** A ST converting in a paused campaign is valid signal for the corpus and lifetime data — include it. But never recommend promoting a ST to explicit targeting inside a paused campaign. Do not credit a paused campaign's CPC data for starting bid calculations. Filter paused campaign rows from harvest recommendations.
 
@@ -79,6 +75,25 @@ ASIN harvest cross-references manual conquest lists in `~/.mixshift/clients/<bra
 - `lifetime_keyword_by_item_group` — determine which item group the ST is performing in
 - `lifetime_keyword_by_location` — identify which specific ad group is capturing the converting traffic
 - `stream1_keyword` — window location data for CPC calculation
+
+**Step 1.5 — Confirm calibration**
+
+Get this run's knob (and let the user sharpen it) via the confirm card:
+
+```bash
+mixshift skill config mx-search-term-harvest --brand <brand-slug> --json
+```
+
+The `confirmation` payload's `effective_config` holds the value this run will use, as a WHOLE-number percent (e.g. `22` = 22%): `acos_target` — the ACoS ceiling a converting term must beat to be a harvest candidate; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target). It is seeded from brand context where set, else absent.
+
+Show the user the card — it lists the field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
+- **confirm / defer** → run on the shown value: `mixshift skill config mx-search-term-harvest --brand <brand-slug> --apply '{"action":"confirm"}' --json`
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is a shared field — it persists to brand context for every skill.
+
+**Resolve the working ACoS ceiling (whole-number percent) from the returned `effective_config`:**
+- `acos_target` — if present, use it; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target).
+
+Never block on this step — confirm-as-is is always available.
 
 **Step 1 — Run prefetch:**
 
@@ -100,11 +115,11 @@ The lifetime/window search-term corpus itself comes from the upstream `mx-search
 
 ## Phase 1 — Tier S Classification (Keyword Stream)
 
-From the data artifact Stream 1, classify as Tier S:
+From the data artifact Stream 1, classify as Tier S (`acos_target` is the Step-1.5 resolved value, whole %; if absent, run observational — surface efficient converters on ACoS as-is, do not apply the `acos_target`-gated tiers below):
 
 ```
 lifetime_orders >= min_keep_orders
-AND lifetime_acos <= acos_target * 0.75
+AND lifetime_acos <= acos_target * 0.75          # acos_target from Step 1.5 (whole %)
 AND SearchTerm.lower() NOT IN explicit_keywords
 ```
 
@@ -113,7 +128,7 @@ The `acos_target * 0.75` threshold identifies terms performing well below the ac
 **Secondary Tier S (converting but not exceptional):**
 ```
 lifetime_orders >= min_keep_orders
-AND lifetime_acos <= acos_target
+AND lifetime_acos <= acos_target                 # acos_target from Step 1.5 (whole %)
 AND SearchTerm.lower() NOT IN explicit_keywords
 ```
 
@@ -123,11 +138,11 @@ Label these as `harvest_tier: primary` vs `harvest_tier: secondary` in output.
 
 ## Phase 2 — ASIN Harvest Classification
 
-From the data artifact Stream 2, classify ASIN targets as harvest candidates:
+From the data artifact Stream 2, classify ASIN targets as harvest candidates (`acos_target` is the Step-1.5 resolved value, whole %; if absent, run observational — surface efficient converters on ACoS as-is, do not apply the `acos_target` gate):
 
 ```
 lifetime_orders >= min_keep_orders
-AND lifetime_acos <= acos_target
+AND lifetime_acos <= acos_target                 # acos_target from Step 1.5 (whole %)
 AND bare_asin NOT IN manual_targets (from data artifact)
 ```
 
