@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="plugins/mixshift-ai/harness/assets/design-system/mixshift-logo-white.svg">
+    <img alt="MixShift" src="plugins/mixshift-ai/harness/assets/design-system/mixshift-logo-dark.svg" width="300">
+  </picture>
+</p>
+
 # mx-claude-plugin
 
 A Claude plugin for MixShift customers — Amazon advertising + retail data exploration and analytical workflows, built by [MixShift](https://mixshift.ai).

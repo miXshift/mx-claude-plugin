@@ -10,6 +10,13 @@
           font-size: 13px; color: #222; background: #f5f5f5; padding: 20px; }
   .report-wrap { max-width: 1500px; margin: 0 auto; background: #fff;
                   border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.12); padding: 24px; }
+  .ms-masthead { display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+                  padding-bottom: 14px; border-bottom: 1px solid #e0e0e0; }
+  .ms-mark { width: 26px; height: 26px; flex: none; }
+  .ms-word { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+              font-weight: 600; font-size: 14px; letter-spacing: .28em; color: #222; }
+  .ms-word span { color: #16a34a; }
+  .ms-word b { color: #16a34a; font-weight: 600; letter-spacing: 0; }
   h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
   .verdict-badge { display:inline-block; padding: 3px 10px; border-radius: 4px;
@@ -75,6 +82,16 @@
 </head>
 <body>
 <div class="report-wrap">
+
+<div class="ms-masthead">
+  <svg class="ms-mark" viewBox="0 0 210 210" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path fill="#343D3A" d="M173.32 207.34H36.01C17.26 207.34 2 192.08 2 173.33V36.01C2 17.26 17.26 2 36.01 2H173.32C192.07 2 207.33 17.26 207.33 36.01V173.32C207.33 192.08 192.08 207.34 173.32 207.34ZM36.01 17.38C25.74 17.38 17.38 25.74 17.38 36.01V173.32C17.38 183.59 25.74 191.95 36.01 191.95H173.32C183.59 191.95 191.95 183.59 191.95 173.32V36.01C191.95 25.74 183.59 17.38 173.32 17.38H36.01Z"/>
+    <path fill="#343D3A" d="M90.13 57.49L78.79 40.11H46.34L73.84 82.46L90.13 57.49Z"/>
+    <path fill="#343D3A" d="M106.41 82.46L90.13 107.53L130.19 169.23H162.99L106.41 82.46Z"/>
+    <path fill="#16a34a" d="M46.34 169.23L130.54 40.11H162.99L79.14 169.23H46.34Z"/>
+  </svg>
+  <span class="ms-word">MI<span>X</span>SHIFT<b>.ai</b></span>
+</div>
 
 <h1>[Brand] &mdash; Keyword Bid Health Review
   <span class="verdict-badge">[GREEN|YELLOW|RED]</span>
