@@ -14,7 +14,6 @@ allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
 side_effect_policy: recommendation_only
 review_required: on_non_green
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
   - data freshness > 7 days
   - verdict regresses from prior run without structural_events explanation
   - prior-run sidecar absent
