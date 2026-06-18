@@ -14,8 +14,7 @@ allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
 side_effect_policy: recommendation_only
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
-  - anomaly_detection_settings row absent for SellerID (HARD GATE)
+  - anomaly_detection_settings row absent for SellerID (CI thresholds fall back to global defaults)
   - data freshness > 2 days (acute check -- stale data produces false negatives)
   - prior-run sidecar absent
 sql_ids:
@@ -38,7 +37,6 @@ required_context_fields:
   - management.attribution_window_days
   - posture.stance
   - posture.multiplier
-  - bid_health.pullback_threshold_pct
   - structural_events
   - attribution_rule
 optional_context_fields:
@@ -59,3 +57,37 @@ notes: >
   Both are batched in Round 1 of prefetch. Acute detection logic (CI breach,
   zero-conversion flag, structural-event downgrade) lives in the skill model,
   not the SQL.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# pullback_threshold_pct is the runaway-specific bid-cut ceiling (1 skill),
+# seeded from the brand's bid_health.pullback_threshold_pct until the Phase-5
+# migrator moves it into config.yaml::<skill>. acos_target is the shared brand
+# target surfaced as an optional per-skill override (defaults to the brand
+# value via the resolver / Tier-2 brain). Seeds resolve context.yaml first,
+# then the brain; whole-number percents normalize to [0,1] at the seam.
+calibration:
+  schema_version: 1
+  fields:
+    - id: pullback_threshold_pct
+      label: "Pullback threshold (ACoS)"
+      prompt: "Above what ACoS is a spiking keyword a bid-reduction candidate for {brand_name}?"
+      help: >
+        A keyword whose T-1 spend spiked against its T-30 baseline surfaces as
+        a pullback candidate when its ACoS is also above this ceiling. Tighter
+        = more aggressive runaway cuts.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.bid_health.pullback_threshold_pct
+      required: true
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the runaway check should use for {brand_name}?"
+      help: >
+        Reference ACoS for the zero-conversion / overspend judgment. Defaults
+        to your brand's ACoS target (Tier-3 context.yaml, else the Tier-2
+        brain). Override only if this check should use a different target than
+        the brand default.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false

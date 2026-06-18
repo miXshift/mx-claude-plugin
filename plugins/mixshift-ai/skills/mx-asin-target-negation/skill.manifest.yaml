@@ -14,8 +14,6 @@ allowed_tools: [db_read, file_read, file_write, renderer, prefetch, ads_write]
 side_effect_policy: write_gated   # live sp.create_negative_targets --commit; dry-run default, user-confirmed
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
-  - negation.asin_negation.pre_check_lifetime_orders_threshold absent (HARD GATE)
   - corpora/conq_asins.csv absent (Layer 1 suppression mask unavailable — surface warning)
 sql_ids:
   - ANEG-01
@@ -38,7 +36,6 @@ required_context_fields:
   - accounts[*].account_type
   - negation.lane_rules
   - negation.protected_terms
-  - negation.asin_negation.pre_check_lifetime_orders_threshold
   - sub_brands
   - campaign_structure.naming_pattern
   - management.acos_target_pct
@@ -66,3 +63,39 @@ notes: >
   targetexpressionsmetric only -- querying only keywordtargetingmetric will undercount orders.
   Location-granular lifetime data is required for negate decisions; account-wide aggregates
   are context only.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# pre_check_lifetime_orders is the negate-safety floor (a location needs at
+# least this many lifetime orders before an ASIN target is eligible to negate),
+# seeded from the brand's negation.asin_negation.pre_check_lifetime_orders_threshold
+# with a conservative default so the skill never fail-closes when context is
+# thin. acos_target is the shared brand target as an optional per-skill
+# override. Structured negation context (lane_rules, protected_terms) is read
+# through the resolver, not surfaced here.
+calibration:
+  schema_version: 1
+  fields:
+    - id: pre_check_lifetime_orders
+      label: "Min lifetime orders to negate"
+      prompt: "Minimum lifetime orders at a location before an ASIN target can be negated for {brand_name}?"
+      help: >
+        Protects converting locations: an ASIN target is not a negate candidate
+        until the location has at least this many lifetime orders. Higher =
+        more conservative (negate less). Defaults to a conservative floor when
+        the brand has not set one.
+      type: int
+      default: 25
+      range: { min: 0, max: 100000 }
+      seed_from: context.negation.asin_negation.pre_check_lifetime_orders_threshold
+      required: true
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the ASIN negation review should use for {brand_name}?"
+      help: >
+        Reference ACoS for the negate / keep / watch bucketing. Defaults to
+        your brand's ACoS target (Tier-3 context.yaml, else the Tier-2 brain).
+        Override only if this review should use a different target.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false

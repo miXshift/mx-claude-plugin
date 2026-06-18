@@ -14,7 +14,6 @@ allowed_tools: [db_read, file_read, file_write, prefetch, ads_write]
 side_effect_policy: write_gated   # live sp.create_negative_keywords --commit; dry-run default, user-confirmed
 review_required: always
 escalation_conditions:
-  - required context fields missing or null (HARD GATE)
   - negation.lane_rules absent (cannot classify without lane boundaries)
   - Tier A keep candidate volume > 80% of corpus (likely context misconfiguration)
 sql_ids:
@@ -70,3 +69,25 @@ notes: >
   STN-04 is the theme analysis pull for phrase-negative assessment.
   This skill typically consumes the mx-search-term-data-pull JSON artifact for the ST corpus
   and issues the STN-* queries for additional tier-classification and historical context.
+
+# OCL — Objective Level Configuration (the confirm-on-run knobs).
+# Search-term tier routing is shaped by structured brand context (lane_rules,
+# protected_terms, brand_terms) read through the resolver — those are not
+# scalar OCL knobs. The one scalar lever is the ACoS reference used to judge
+# efficiency, surfaced here as an optional per-skill override defaulting to the
+# brand target (Tier-3 context.yaml, else the Tier-2 brain).
+calibration:
+  schema_version: 1
+  fields:
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the negation review should use for {brand_name}?"
+      help: >
+        Reference ACoS for tier routing (efficient keep vs wasteful negate).
+        Defaults to your brand's ACoS target (Tier-3 context.yaml, else the
+        Tier-2 brain). Override only if this review should use a different
+        target than the brand default.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false
