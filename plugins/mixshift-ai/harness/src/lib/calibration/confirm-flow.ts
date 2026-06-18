@@ -372,6 +372,100 @@ export async function applyConfirmation(
 }
 
 // ---------------------------------------------------------------------------
+// Capture candidates (first-capture + "improve this skill")
+//
+// A skill runs on defaults + whatever brand context already provides. These
+// helpers answer "what could the user set to sharpen this skill?" — the unset
+// fields, ranked, each tagged with WHERE a captured value should persist per
+// the 2+/1 litmus. The first-run flow surfaces the top few as micro-prompts;
+// the `skill config --missing` surface lists them all on demand.
+// ---------------------------------------------------------------------------
+
+/** Where a captured value persists.
+ *  - `context`: a shared brand field (its seed_from maps to a registered
+ *    brand-context key — used by 2+ skills) → context.yaml (Tier 3), so every
+ *    skill inherits it.
+ *  - `ocl`: a skill-specific knob → config.yaml::<skill_id>. */
+export type CaptureTier = 'context' | 'ocl';
+
+/** Why a field is a capture candidate, in descending value:
+ *  - `missing_required`: required, no value anywhere — the run can't proceed
+ *    well without it (the first thing to ask).
+ *  - `missing_optional`: optional, no value anywhere — the skill runs, but
+ *    blind on this lever.
+ *  - `using_default`: a skill default is in effect; the brand-specific value
+ *    is simply unknown (lowest urgency — sharpening, not a gap). */
+export type CaptureReason =
+  | 'missing_required'
+  | 'missing_optional'
+  | 'using_default';
+
+export interface CaptureCandidate {
+  field: CalibrationField;
+  /** Persistence target per the 2+/1 litmus (see CaptureTier). */
+  target: CaptureTier;
+  /** Context dotted-path (no `context.` prefix) when target === 'context';
+   *  the writer uses it to place the value. Undefined for OCL targets. */
+  context_path?: string;
+  reason: CaptureReason;
+  /** Higher surfaces first: missing_required 3 > missing_optional 2 >
+   *  using_default 1. */
+  priority: number;
+}
+
+const CAPTURE_PRIORITY: Record<CaptureReason, number> = {
+  missing_required: 3,
+  missing_optional: 2,
+  using_default: 1,
+};
+
+/**
+ * Select the fields worth capturing from a prepared confirmation payload —
+ * the substrate for both the first-run micro-prompt and the
+ * `skill config --missing` ("improve this skill") surface.
+ *
+ * A field is a candidate when the brand has not supplied a value: source is
+ * `missing` (nothing anywhere) or `default` (skill fallback, brand value
+ * unknown). Fields already resolved from context/brain (`seed`) or set by the
+ * user (`stored`) are NOT candidates. Each candidate is tagged with its
+ * persistence target via the registry-encoded litmus: if its seed_from maps to
+ * a registered brand-context field it is shared → `context`, else it is this
+ * skill's `ocl` knob.
+ *
+ * Ordered by priority (required gaps first), then manifest order within a tier.
+ */
+export function selectCaptureCandidates(
+  payload: ConfirmationPayload,
+  opts: { limit?: number } = {},
+): CaptureCandidate[] {
+  const candidates: CaptureCandidate[] = [];
+  payload.fields.forEach((entry, idx) => {
+    if (entry.field.deprecated) return;
+    if (entry.source === 'stored' || entry.source === 'seed') return;
+    const reason: CaptureReason =
+      entry.source === 'missing'
+        ? entry.field.required
+          ? 'missing_required'
+          : 'missing_optional'
+        : 'using_default';
+    const ctxPath = entry.field.seed_from
+      ? stripContextPrefix(entry.field.seed_from)
+      : undefined;
+    const shared =
+      ctxPath !== undefined && brandFieldKeyForContextPath(ctxPath) !== null;
+    candidates.push({
+      field: entry.field,
+      target: shared ? 'context' : 'ocl',
+      context_path: shared ? ctxPath : undefined,
+      reason,
+      priority: CAPTURE_PRIORITY[reason] * 1000 - idx, // stable within a tier
+    });
+  });
+  candidates.sort((a, b) => b.priority - a.priority);
+  return opts.limit !== undefined ? candidates.slice(0, opts.limit) : candidates;
+}
+
+// ---------------------------------------------------------------------------
 // Per-run snapshot (audit trail)
 // ---------------------------------------------------------------------------
 

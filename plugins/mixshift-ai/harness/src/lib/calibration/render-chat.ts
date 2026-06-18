@@ -37,6 +37,7 @@ import {
   type ConfirmationPayload,
   type ConfirmationFieldEntry,
   type ApplyResult,
+  type CaptureCandidate,
 } from './confirm-flow.js';
 import {
   type CalibrationField,
@@ -131,6 +132,68 @@ export function joinCard(
   if (parts.blocking_note) blocks.push('', parts.blocking_note);
   blocks.push('', parts.action_prompt);
   return blocks.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// "Improve this skill" — the unset-but-valuable surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the read-only "what could I set to sharpen this skill" list
+ * (`skill config --missing`). Groups candidates by urgency and tags each with
+ * where a value would live (shared brand context vs this skill only), so the
+ * user understands the inheritance before setting anything.
+ *
+ * Plain text, no em dashes (customer-facing chat copy).
+ */
+export function renderCaptureCandidates(
+  candidates: CaptureCandidate[],
+  ctx: {
+    skillId: string;
+    skillDisplayName: string;
+    brandName: string;
+    brandSlug: string;
+  },
+): string {
+  if (candidates.length === 0) {
+    return (
+      `${ctx.skillDisplayName} is fully configured for ${ctx.brandName}: ` +
+      `every field resolves from your config or brand context. ` +
+      `Nothing to set right now.`
+    );
+  }
+
+  const lines: string[] = [`Sharpen ${ctx.skillDisplayName} for ${ctx.brandName}`, ''];
+  const required = candidates.filter((c) => c.reason === 'missing_required');
+  const rest = candidates.filter((c) => c.reason !== 'missing_required');
+
+  if (required.length > 0) {
+    lines.push(`Needed before a sharp run (${required.length}):`);
+    for (const c of required) lines.push(...renderCandidateBlock(c));
+    lines.push('');
+  }
+  if (rest.length > 0) {
+    lines.push(
+      `Optional refinements (${rest.length}). The skill runs without these:`,
+    );
+    for (const c of rest) lines.push(...renderCandidateBlock(c));
+    lines.push('');
+  }
+
+  lines.push('Set any of these:');
+  lines.push(`  mixshift skill config ${ctx.skillId} --brand ${ctx.brandSlug}`);
+  return lines.join('\n');
+}
+
+function renderCandidateBlock(c: CaptureCandidate): string[] {
+  const tier =
+    c.target === 'context' ? 'shared brand context' : 'this skill';
+  const out = [`  - ${humanLabel(c.field)}  (${tier})`];
+  if (c.field.help) {
+    const help = c.field.help.replace(/\s+/g, ' ').trim();
+    out.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

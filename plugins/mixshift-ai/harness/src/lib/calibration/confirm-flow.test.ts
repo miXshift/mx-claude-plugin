@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import {
   prepareConfirmation,
   applyConfirmation,
+  selectCaptureCandidates,
   writeRunOclSnapshot,
 } from './confirm-flow.js';
 import type { CalibrationManifest } from './manifest-schema.js';
@@ -526,6 +527,109 @@ describe('applyConfirmation — cancel', () => {
     );
     expect(result.status).toBe('cancelled');
     expect(result.did_persist).toBe(false);
+  });
+});
+
+describe('selectCaptureCandidates', () => {
+  const mixedManifest: CalibrationManifest = {
+    schema_version: 1,
+    fields: [
+      {
+        id: 'objective',
+        prompt: 'Posture?',
+        type: 'enum',
+        options: [
+          { value: 'scale', label: 'Scale' },
+          { value: 'defend', label: 'Defend' },
+        ],
+        seed_from: 'context.posture.stance',
+        required: true,
+        deprecated: false,
+      },
+      {
+        id: 'scale_threshold_pct',
+        prompt: 'Scale threshold?',
+        type: 'percent',
+        range: { min: 0.05, max: 1 },
+        seed_from: 'context.bid_health.scale_threshold_pct',
+        required: true,
+        deprecated: false,
+      },
+      {
+        id: 'acos_target',
+        prompt: 'ACoS target?',
+        type: 'percent',
+        range: { min: 0.05, max: 1 },
+        seed_from: 'context.management.acos_target_pct',
+        required: false,
+        deprecated: false,
+      },
+      {
+        id: 'min_spend',
+        prompt: 'Min spend?',
+        type: 'int',
+        default: 5,
+        range: { min: 0, max: 1000 },
+        required: true,
+        deprecated: false,
+      },
+    ],
+  };
+
+  const prep = () =>
+    prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: mixedManifest,
+      dataDirOverride: testDir,
+    });
+
+  it('ranks by urgency and tags each candidate with its persistence tier', async () => {
+    const c = selectCaptureCandidates(await prep()); // no context, no config
+    expect(c.map((x) => x.field.id)).toEqual([
+      'objective',
+      'scale_threshold_pct',
+      'acos_target',
+      'min_spend',
+    ]);
+    // posture.stance + acos_target_pct are registered brand-context fields ->
+    // captured to context.yaml (shared). bid_health.* + the default-only field
+    // are skill-specific -> OCL.
+    expect(c[0]).toMatchObject({
+      reason: 'missing_required',
+      target: 'context',
+      context_path: 'posture.stance',
+    });
+    expect(c[1]).toMatchObject({ reason: 'missing_required', target: 'ocl' });
+    expect(c[2]).toMatchObject({
+      reason: 'missing_optional',
+      target: 'context',
+      context_path: 'management.acos_target_pct',
+    });
+    expect(c[3]).toMatchObject({ reason: 'using_default', target: 'ocl' });
+  });
+
+  it('excludes fields resolved from context (seed) or set by the user (stored)', async () => {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 22\nposture:\n  stance: defend\n  multiplier: 0.5\n`,
+      'utf-8',
+    );
+    await writeFile(
+      join(brandDir, 'config.yaml'),
+      `mx-keyword-bid-health:\n  min_spend: 8\n`,
+      'utf-8',
+    );
+    const c = selectCaptureCandidates(await prep());
+    // objective + acos seeded from context; min_spend stored. Only the
+    // unseeded skill threshold remains.
+    expect(c.map((x) => x.field.id)).toEqual(['scale_threshold_pct']);
+  });
+
+  it('honors the limit option', async () => {
+    const c = selectCaptureCandidates(await prep(), { limit: 2 });
+    expect(c.map((x) => x.field.id)).toEqual(['objective', 'scale_threshold_pct']);
   });
 });
 
