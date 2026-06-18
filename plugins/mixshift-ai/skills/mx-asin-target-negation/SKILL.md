@@ -78,7 +78,7 @@ PREFLIGHT — mx-asin-target-negation — <brand> — <date>
       management.acos_target_pct, management.attribution_window_days
       posture.stance, structural_events
 [ ] negation.asin_negation.pre_check_lifetime_orders_threshold present and numeric
-    *** HARD GATE: if absent, STOP. Cannot compute Corpus Layer 2 without lifetime orders threshold. ***
+    *** DEFAULT-WHEN-MISSING: if absent, use this skill's default lifetime-orders threshold and label "using default threshold N — set with `mixshift brand config` to tune". Do NOT stop. (This field moves to the skill's OCL in the Brand Context pivot.) ***
 [ ] corpora/conq_asins.csv present at ~/.mixshift/clients/<brand>/corpora/
     (if absent: surface warning — Layer 1 suppression mask unavailable; continue with Layer 2 only)
 [ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/mx-asin-target-negation/<date>/data.md (or data.json)
@@ -103,7 +103,7 @@ Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose interpretati
 
 If the skill consumes manual conquest ASIN lists, read `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer fields from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); the review sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.lane_rules` / `protected_terms` / the pre-check threshold are missing, default + label per the preflight rather than stopping; the conquest corpus (`corpora/conq_asins.csv`) already degrades with a warning. Negations are dry-run by default and require explicit confirm before `--commit` — that write gate is the safety net. Do not infer fields from prose.
 
 **Step 0c — Confirm PDP review is in scope.** This phase requires actual PDP overlap assessment. Do not defer PDP review to the human. Inspect the PDP (title, form factor, category, price) and classify overlap before routing to a bucket.
 

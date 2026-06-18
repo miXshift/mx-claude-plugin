@@ -91,7 +91,7 @@ Extract mechanically (do NOT infer from narrative prose):
 - `attribution_rule` — per-campaign-type window
 - `paused_campaigns` — exclude flagged keywords inside these
 
-Fail closed: if any required field is missing or null, stop and direct the user to run the `mx-account-cold-start` skill to complete intake.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the check sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it rather than stopping: `management.acos_target_pct` → observational (flag absolute spend spikes only, not vs-target); `posture.stance` → `scale`; `bid_health.pullback_threshold_pct` → this skill's default. (This is separate from the `anomaly_detection_settings` data gate below, which still stops the run — that is warehouse data, not brand context.)
 
 ### Step 2 — Run prefetch
 

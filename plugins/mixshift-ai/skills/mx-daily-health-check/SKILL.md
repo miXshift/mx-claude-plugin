@@ -89,7 +89,7 @@ Before executing, you need:
 2. **Access to MySQL database** with advertising metrics tables (campaignmetric, business_reports_dpst_date for SC; vendor_sales_manufacturing_asin for VC; anomaly_detection_settings; anomaly_detection_MV)
 3. **Account configuration** drawn from `context.yaml` — never hardcode
 
-If `context.yaml` is missing or fails validation, run the mx-account-cold-start skill first.
+Brand context is optional (see Step 0): run on whatever is present; only `account_type` (the SC/VC data-path selector, from `mixshift brand add`) is truly required. The `anomaly_detection_settings` data gate in Step 1 still applies.
 
 ## Execution Steps
 
@@ -101,13 +101,13 @@ Read these sources simultaneously:
 3. **`~/.mixshift/clients/<brand-slug>/runs/mx-daily-health-check/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip — no baseline yet.
 4. `~/.mixshift/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
 
-**Fail closed, with one Brand Brain exception:** if the context snapshot is absent AND `context.yaml` is absent or missing `account_type`, stop and direct the user to cold-start. Do not infer from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever is present in the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback (`mixshift brand brain status <brand-slug> --json`). The skill sharpens as context accrues but never requires cold-start. The only truly required field is `account_type` (it selects the SC vs VC data path and comes from `mixshift brand add`); if it is genuinely absent, stop and say "run `mixshift brand add <brand-slug>`". Otherwise default-and-label rather than stopping:
+- `acos_target_pct` missing → use the Brain value if present and label it (e.g. *"ACoS target pre-filled from your MixShift platform setting (25%) — confirm or change with `mixshift brand config <brand-slug>`"*); if the Brain is also null, run in observational mode (report ACoS as-is, no vs-target flagging) labeled "no ACoS target configured". Never invent a target.
+- `primary_metric` missing → assume ACoS, label "(assumed; tell me if it's TACoS)".
+- `posture.stance` missing → default `scale`.
+- other fields (`capture_rate_calibration`, `goals`, `structural_events`, `sub_brands`, `campaign_structure`) missing → omit the dependent line and note it.
 
-The exception covers exactly one field, the ACoS target. When everything else is available but `acos_target_pct` is missing, check the Tier-2 Brand Brain before stopping: run `mixshift brand brain status <brand-slug> --json` and read `brain.acos_target_pct`. If it is non-null, use it and label every number that depends on it, for example:
-
-> *ACoS target pre-filled from your MixShift platform setting (25%). Confirm or change it with `mixshift brand config <brand-slug>`.*
-
-If the brain value is also null (or no brain exists), stop and direct the user to cold-start, or to set the target via `mixshift brand config <brand-slug>`. Never invent a target.
+(The `anomaly_detection_settings` / DHC-04 threshold check in the preflight is a separate DATA gate — warehouse data, not brand context — and still stops the run when thresholds are absent.)
 
 ### Step 1: Verify Data Completeness
 

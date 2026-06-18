@@ -80,7 +80,7 @@ Read `~/.mixshift/clients/<brand-slug>/context.yaml` (or validate via `mixshift 
 
 Read `narrative.md` for prose context only.
 
-Fail closed: if `context.yaml` is absent or fails schema validation, stop and direct the user to run `mx-account-cold-start`.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the `bid_health.*` thresholds → this skill's global defaults (note "set these to sharpen future runs").
 
 ### Step 2 — Run prefetch
 
