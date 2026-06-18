@@ -161,6 +161,12 @@ export const contextSchema = z
     capture_rate_calibration: captureRateCalibrationSchema.optional(),
     sub_brands: z.array(subBrandSchema).optional(),
     brand_terms: z.unknown().optional(),
+    // DEPRECATED (Phase 5 — Brand Context pivot): bid_health.* are single-skill
+    // scalar knobs whose canonical home is now KBH's OCL (config.yaml). Run
+    // `mixshift brand migrate-config <slug>` to copy them across. Kept
+    // `.optional()` + still resolvable as a seed (and runaway's pullback seed)
+    // for back-compat; a future release drops it. No schema_version bump —
+    // the field moved, the envelope is unchanged. See lib/migrations/config-migrations.ts.
     bid_health: bidHealthSchema.optional(),
     goals: goalsSchema.optional(),
     active_watch: z.unknown().optional(),

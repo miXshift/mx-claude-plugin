@@ -29,6 +29,7 @@ import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
 import { registerBrandEnrichCommand } from './brand-enrich.js';
 import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
+import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
 
 interface RootOptions {
   json?: boolean;
@@ -578,6 +579,10 @@ export function registerBrandCommands(program: Command): void {
   // `mixshift brand merge-delta <slug>` — patches settlement curve from the
   // enrichment artifact into context.yaml. Preserves AM-edited fields.
   registerBrandMergeDeltaCommand(brand);
+
+  // `mixshift brand migrate-config <slug>` — one-time context -> OCL migration
+  // of single-skill scalar knobs (bid_health.* -> KBH). Idempotent + sovereign.
+  registerBrandMigrateConfigCommand(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.
