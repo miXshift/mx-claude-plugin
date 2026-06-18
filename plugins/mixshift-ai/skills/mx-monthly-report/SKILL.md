@@ -218,14 +218,12 @@ This two-pass gate is a hard requirement before Step 6.
 
 ## Step 6 — Build and Deliver the Report
 
-Compose the report as **markdown** (default) or HTML (if the user explicitly requests HTML).
+Compose the report as **HTML** — the canonical deliverable (a monthly HTML report; manifest artifact `monthly-report.html`, type `report_html`).
 
 Save the report to the brand's local reports directory using the Write tool:
 ```
-~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md
+~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.html
 ```
-
-(For HTML: same path with `.html` extension.)
 
 The `<YYYY-MM>` segment is the reported month, not the run wall-clock date — e.g., the March 2026 report lives under `reports/2026-03/`.
 
@@ -310,7 +308,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick MPR
     // {"id": "MPR-02", "params": {"seller_id": 0, "prior_month_start": "YYYY-MM-01", "current_month_end": "YYYY-MM-DD"}}
   ],
   "artifacts": {
-    "report_html_path": "~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md"
+    "report_html_path": "~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.html"
   }
 }
 ```
