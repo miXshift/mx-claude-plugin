@@ -23,13 +23,12 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 ```
 PREFLIGHT — mx-phrase-negative-discovery — <brand> — <date>
 [ ] context.yaml loaded from ~/.mixshift/clients/<brand>/context.yaml
-[ ] Required fields present and non-null:
-      accounts[*].seller_id
-      management.acos_target_pct
-      negation.protected_terms, negation.lane_rules
-      brand_terms, sub_brands
-      campaign_structure.naming_pattern
-      paused_campaigns (list — may be empty)
+[ ] Load these fields (default + label when missing — do NOT stop; phrase negatives are recommendation-only and validated before apply):
+      accounts[*].seller_id   (the only hard requirement — from `mixshift brand add`)
+      management.acos_target_pct   (if absent: observational, no vs-target flagging)
+      negation.protected_terms   (if absent: default [] and WARN — without protected anchors, review candidates carefully before applying)
+      negation.lane_rules   (if absent: default {} and cluster/filter conservatively; label "uncalibrated")
+      brand_terms, sub_brands, campaign_structure.naming_pattern, paused_campaigns (may be empty)
 [ ] Upstream mx-search-term-data-pull artifact present
     *** HARD GATE: if absent, STOP. Cannot build n-gram corpus without ST data pull. ***
 [ ] Prior-run sidecar loaded: ~/.mixshift/clients/<brand>/runs/mx-phrase-negative-discovery/ (most recent)
@@ -82,7 +81,7 @@ A phrase negative recommendation must never be issued without:
   - `paused_campaigns` — exclude from recommendations and blast-radius counts
 - `~/.mixshift/clients/<brand-slug>/narrative.md` — prose interpretation only (lane judgment, blast-radius philosophy). Do not extract numbers from this file.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer fields from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (`context.yaml`, Tier-2 Brand Brain as fallback); discovery sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` (from `mixshift brand add`) plus the upstream ST data-pull artifact (a data dependency, gated above). When `negation.protected_terms` / `negation.lane_rules` are missing, default + label per the preflight rather than stopping — phrase negatives are recommendation-only and never auto-applied (the Blast Radius Rule + validation are the safety net). Do not infer fields from prose. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Paused campaign rule (mandatory):**
 - Include STs from paused campaigns in the n-gram corpus and conflict check (real conversion signal)

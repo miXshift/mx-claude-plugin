@@ -57,7 +57,7 @@ For each account in the config, read `~/.mixshift/clients/<brand-slug>/context.y
 
 Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose card-line guidance only. Do not extract numbers from this file.
 
-**Fail closed (per account):** if a given account's `context.yaml` is absent or fails schema validation, render that account's card as an explicit "context missing — run mx-account-cold-start" error card. Do not infer fields from prose. Other accounts continue.
+**Brand context is optional — never fail closed on it (per account).** Render each account's card from whatever context is present (Tier-2 Brand Brain as fallback); cards sharpen as context accrues but never require cold-start. The only hard requirement per account is `seller_id` + `account_type` (from `mixshift brand add`) — without those, that account's card shows "not bootstrapped — run `mixshift brand add <slug>`". When an account is missing targets/posture, render its card in observational mode and label it ("no ACoS target configured — set with `mixshift brand config <slug>`") instead of an error card. Other accounts continue regardless. Per account, load the brand-context fields in one call via `mixshift brand context resolve <slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 ---
 

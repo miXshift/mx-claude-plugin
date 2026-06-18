@@ -21,7 +21,7 @@ sample_output: |
   Bottom line: 6 PDPs surfaced as irrelevant never-converted ASIN targets, 4 relevant-looking
   but persistent losers surfaced for review, and 9 ASINs were suppressed because they are
   already manually targeted.
-  Delivery: Google Sheet with tabs All ASIN Targets, Irrelevant Never Converted,
+  Delivery: an HTML report with sections All ASIN Targets, Irrelevant Never Converted,
   Relevant-Looking Persistent Losers, Protected Manual Targets, Watchlist.
 standalone: true
 handoff_optional: true
@@ -68,8 +68,7 @@ Complete this checklist before Step 0a. Stop and surface the failure if any item
 
 ```
 PREFLIGHT — mx-asin-target-negation — <brand> — <date>
-[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
-    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
 [ ] Required fields present and non-null:
       accounts[*].seller_id, accounts[*].account_type
       negation.lane_rules, negation.protected_terms
@@ -78,7 +77,7 @@ PREFLIGHT — mx-asin-target-negation — <brand> — <date>
       management.acos_target_pct, management.attribution_window_days
       posture.stance, structural_events
 [ ] negation.asin_negation.pre_check_lifetime_orders_threshold present and numeric
-    *** HARD GATE: if absent, STOP. Cannot compute Corpus Layer 2 without lifetime orders threshold. ***
+    *** DEFAULT-WHEN-MISSING: if absent, use this skill's default lifetime-orders threshold and label "using default threshold N — set with `mixshift brand config` to tune". Do NOT stop. (This field moves to the skill's OCL in the Brand Context pivot.) ***
 [ ] corpora/conq_asins.csv present at ~/.mixshift/clients/<brand>/corpora/
     (if absent: surface warning — Layer 1 suppression mask unavailable; continue with Layer 2 only)
 [ ] Data artifact present: ~/.mixshift/clients/<brand>/runs/mx-asin-target-negation/<date>/data.md (or data.json)
@@ -103,7 +102,7 @@ Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose interpretati
 
 If the skill consumes manual conquest ASIN lists, read `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer fields from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); the review sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.lane_rules` / `protected_terms` / the pre-check threshold are missing, default + label per the preflight rather than stopping; the conquest corpus (`corpora/conq_asins.csv`) already degrades with a warning. Negations are dry-run by default and require explicit confirm before `--commit` — that write gate is the safety net. Do not infer fields from prose. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Step 0c — Confirm PDP review is in scope.** This phase requires actual PDP overlap assessment. Do not defer PDP review to the human. Inspect the PDP (title, form factor, category, price) and classify overlap before routing to a bucket.
 
@@ -457,7 +456,7 @@ apply the clean-negate bucket, use the audited Ads write surface:
 4. Show the user the preview and ask for explicit confirmation of this exact
    set. Only the clean-negate bucket is eligible; review/watch ASINs never go
    in a change set without their own explicit user decision.
-5. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

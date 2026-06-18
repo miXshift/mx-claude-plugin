@@ -20,14 +20,13 @@ required_context_fields:
   - management.primary_metric
   - management.acos_target_pct
   - management.tacos_in_bottom_line
-  - goals.monthly_revenue_target
-  - goals.quarterly_revenue_target
-  - goals.report_quarterly_pacing
   - posture.stance
   - posture.multiplier
   - structural_events
   - delivery.reports_local_dir
 optional_context_fields:
+  - goals.monthly_total_sales_target    # pacing card line when set (was the dead goals.monthly_revenue_target)
+  - goals.quarterly_total_sales_target  # quarterly pacing when set (was the dead goals.quarterly_revenue_target)
   - capture_rate_calibration   # VC accounts only, for Adj. ACOS card line
 upstream_skills:
   - mx-daily-health-check

@@ -166,7 +166,7 @@ Read `data.md` for synthesis. The full row sets (especially CS-28..31 which can 
 **Key execution rules:**
 - SC accounts use CS-02 for ops data; VC accounts use CS-03. Never mix paths.
 - CS-09/CS-11/CS-12/CS-13/CS-19/CS-25 apply to VC only; CS-10/CS-20 apply to SC only. Non-matching queries return empty rows — discard.
-- CS-16 references `mws_inventory_history` (confirmed empty-column stub 2026-04-27); always returns empty.
+- CS-16 references `mws_inventory_history` (catalog.yaml corrected 2026-06-14: real FBA daily snapshots, 14mo+ depth incl. FulfillableQuantity — no longer an empty stub).
 - Multi-SellerID accounts: queries use `:seller_id_list` and span every SellerID in `accounts[]`.
 
 **Phase 1 outputs to capture for Tier 3:**

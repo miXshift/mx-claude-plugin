@@ -10,8 +10,8 @@ description: >
 run_kind: per_account
 cadence: on_demand
 risk_tier: 3
-allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
-side_effect_policy: recommendation_only
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch, ads_write]
+side_effect_policy: write_gated   # live sp.create_negative_targets --commit; dry-run default, user-confirmed
 review_required: always
 escalation_conditions:
   - required context fields missing or null (HARD GATE)
@@ -50,7 +50,7 @@ optional_context_fields:
 artifacts:
   - name: mx-asin-target-negation.html
     type: report_html
-verdict_range: [OBSERVATIONAL]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - run asin negation review
@@ -58,6 +58,8 @@ trigger_phrases:
   - pdp overlap review
   - phase 2 negations
   - asin exact negations
+  - which competitor asins are on my product pages
+  - competitor asins showing on my listings
 notes: >
   ANEG-04 queries both keywordtargetingmetric and targetexpressionsmetric and UNIONs before
   aggregating. Manual asinSameAs/asinCategorySameAs CONQ/PROF targets record performance in

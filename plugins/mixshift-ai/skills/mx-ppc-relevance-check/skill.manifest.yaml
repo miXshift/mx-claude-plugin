@@ -28,7 +28,7 @@ upstream_skills:
 artifacts:
   - name: mx-ppc-relevance-check.html
     type: report_html
-verdict_range: [OBSERVATIONAL]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - run relevance check

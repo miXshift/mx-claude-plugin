@@ -25,15 +25,14 @@ Complete this checklist before Step 0. Stop and surface the failure if any item 
 
 ```
 PREFLIGHT — mx-search-term-negation — <brand> — <date>
-[ ] Context snapshot loaded: ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`)
-    (fallback: ~/.mixshift/clients/<brand>/context.yaml — extract required fields manually)
-[ ] Required fields present and non-null:
-      accounts[*].seller_id, accounts[*].account_type
+[ ] Brand context loaded from ~/.mixshift/clients/<brand>/context.yaml (validate via `mixshift brand validate <brand>`; if validation is unavailable, read the file directly and extract the fields)
+[ ] Load these fields (default + label when missing — do NOT stop):
+      accounts[*].seller_id, accounts[*].account_type   (the only hard requirement — from `mixshift brand add`)
       management.acos_target_pct, management.attribution_window_days
       negation.protected_terms
-      *** HARD GATE: if negation.protected_terms absent, STOP. Cannot protect anchors from accidental negation. ***
+      *** SAFETY: if absent, default to [] and WARN prominently ("no protected terms configured — review candidates so brand anchors aren't negated; set with `mixshift brand config`"). Do NOT stop — the dry-run default + explicit confirm-before-`--commit` write gate is the real protection. ***
       negation.lane_rules
-      *** HARD GATE: if negation.lane_rules absent, STOP. Cannot classify BORDERLINE terms without lane rules. ***
+      *** SAFETY: if absent, default to {} and classify BORDERLINE terms conservatively (route to review, never auto-negate); label "uncalibrated — set lane rules to sharpen". Do NOT stop. ***
       brand_terms, sub_brands
       campaign_structure.naming_pattern, campaign_structure.objectives
       paused_campaigns (list — may be empty)
@@ -61,7 +60,7 @@ Read the context snapshot, prior run, and narrative:
 - `~/.mixshift/clients/<brand-slug>/narrative.md` — prose only (brand positioning, partnerships, lifestyle context, judgment guidance for borderline cases). Do not extract numbers from this file.
 - ASIN-level corpora (manual conquest lists, competitor ASIN lists) at `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Fail closed:** if the context snapshot is absent AND `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer brand portfolio, lane rules, or ACOS targets from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); negation sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.protected_terms` / `negation.lane_rules` / brand portfolio / ACOS target are missing, default + label per the preflight SAFETY notes above rather than stopping — and rely on the dry-run-default + confirm-before-`--commit` write gate as the safety net. Do not infer these from prose; label them missing. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 ### Data Access Setup
 - Search term performance data (impressions, clicks, cost, sales, conversions)
@@ -333,7 +332,7 @@ negatives, use the audited Ads write surface instead of manual entry:
 4. Show the user the preview and ask for explicit confirmation of this exact
    set. Phrase negatives have blast radius: NEGATIVE_PHRASE entries deserve a
    second look in the preview before anyone confirms.
-5. Only after the user confirms, re-run the SAME command with `--commit`.
+5. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this

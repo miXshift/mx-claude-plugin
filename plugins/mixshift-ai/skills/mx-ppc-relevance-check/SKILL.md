@@ -64,7 +64,7 @@ Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose positioning,
 
 ASIN corpora used for the ASIN relevance phase live at `~/.mixshift/clients/<brand-slug>/corpora/*.csv`.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer lane rules or brand terms from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback); the classifier sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`). When `negation.lane_rules` / `brand_terms` are absent, classify on the data + the brand-name signal alone and label the run "uncalibrated — set lane rules / brand terms with `mixshift brand config <brand-slug>` to sharpen"; do not invent lane rules from prose. Relevance verdicts are recommendations only — no write path — so an uncalibrated run is safe to surface for review. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Step 1 — Classify each term:**
 

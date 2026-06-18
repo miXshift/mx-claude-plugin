@@ -33,7 +33,7 @@ Read these files:
 
 **Do NOT read the references/ folder.** Brand context comes exclusively from context.yaml and narrative.md above. The references/ folder contains cross-brand architecture documents that are not inputs to skill execution.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer fields from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the report sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); revenue/pacing targets absent → omit the pacing-vs-target line and say so; `posture.stance` → `scale`. Still do NOT invent numbers from prose — label them missing instead. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Capture-rate calibration (cold-start v2.3.1+):** the `capture_rate_calibration` field now includes an optional `daily_settlement_curve` sub-block with per-campaign-type and per-day-of-week settlement data. Monthly-report operates primarily on settled month-end figures (`sellermonthmetric` for VC, business-reports for SC) so no fresh-day correction is applied for prior-month metrics. **For in-progress-month MTD projections** where a fresh-day correction would be useful, prefer `daily_settlement_curve.by_campaign_type.sponsoredProducts` over the legacy account-blended `capture_rate_pct` — the curve is more precise and has DOW offsets. Fall back to the legacy `capture_rate_pct` if the curve is absent or the SP row is null.
 
@@ -218,14 +218,12 @@ This two-pass gate is a hard requirement before Step 6.
 
 ## Step 6 — Build and Deliver the Report
 
-Compose the report as **markdown** (default) or HTML (if the user explicitly requests HTML).
+Compose the report as **HTML** — the canonical deliverable (a monthly HTML report; manifest artifact `monthly-report.html`, type `report_html`).
 
 Save the report to the brand's local reports directory using the Write tool:
 ```
-~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md
+~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.html
 ```
-
-(For HTML: same path with `.html` extension.)
 
 The `<YYYY-MM>` segment is the reported month, not the run wall-clock date — e.g., the March 2026 report lives under `reports/2026-03/`.
 
@@ -310,7 +308,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick MPR
     // {"id": "MPR-02", "params": {"seller_id": 0, "prior_month_start": "YYYY-MM-01", "current_month_end": "YYYY-MM-DD"}}
   ],
   "artifacts": {
-    "report_html_path": "~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.md"
+    "report_html_path": "~/.mixshift/clients/<brand-slug>/reports/<YYYY-MM>/monthly-report.html"
   }
 }
 ```

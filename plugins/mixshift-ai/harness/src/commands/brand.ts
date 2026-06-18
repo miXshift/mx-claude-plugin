@@ -23,6 +23,7 @@ import {
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandBrainCommands } from './brand-brain.js';
+import { registerBrandContextCommands } from './brand-context.js';
 import { spawnBrainFetchDetached } from '../lib/brain/spawn.js';
 import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
@@ -552,6 +553,12 @@ export function registerBrandCommands(program: Command): void {
   // `brand key add`; these commands cover retries + the chat polling
   // surface.
   registerBrandBrainCommands(brand);
+
+  // `mixshift brand context resolve <slug>` — read side of the accessor seam
+  // (lib/brain/read.ts): resolves every brand-level field across the tiers
+  // (context.yaml wins, brain pre-fills) in one pass, with per-field source
+  // labels. Skills call this at Step 0 instead of ad-hoc context reads.
+  registerBrandContextCommands(brand);
 
   // `mixshift brand config <slug>` — confirm-on-edit flow for brand-level
   // context fields (ACoS/TACoS targets, attribution window, goals). Mirror

@@ -70,7 +70,7 @@ The original monolithic negation skill buried harvest as an afterthought. Harves
 
 ASIN harvest cross-references manual conquest lists in `~/.mixshift/clients/<brand-slug>/corpora/*.csv` when available.
 
-**Fail closed:** if `context.yaml` is absent or fails schema validation, stop and direct user to run the `mx-account-cold-start` skill. Do not infer ACOS target or item-group taxonomy from prose.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, Tier-2 Brand Brain as fallback); harvest sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — plus the upstream ST data-pull artifact (a data dependency, gated below). When `management.acos_target_pct` is missing, surface harvest candidates by absolute efficiency and label "no ACOS target configured"; when `campaign_structure.*` item-group taxonomy is missing, omit the "Recommended Campaign" placement and say so. Do not infer ACOS target or taxonomy from prose — label them missing instead. Load the brand-context fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 **Paused campaign rule (mandatory):** A ST converting in a paused campaign is valid signal for the corpus and lifetime data — include it. But never recommend promoting a ST to explicit targeting inside a paused campaign. Do not credit a paused campaign's CPC data for starting bid calculations. Filter paused campaign rows from harvest recommendations.
 

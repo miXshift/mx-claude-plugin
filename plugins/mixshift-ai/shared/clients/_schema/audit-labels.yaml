@@ -108,11 +108,11 @@ fields:
     description: "How many days post-click Amazon credits to the ad"
     category: targets
     tier: required
-  - path: goals.monthly_revenue_target
+  - path: goals.monthly_total_sales_target
     label: "Monthly revenue target"
     category: targets
     tier: optional
-  - path: goals.quarterly_revenue_target
+  - path: goals.quarterly_total_sales_target
     label: "Quarterly revenue target"
     category: targets
     tier: optional

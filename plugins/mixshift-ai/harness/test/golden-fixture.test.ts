@@ -36,24 +36,19 @@ const BRANDS = ['goldenbrand-sc-acos', 'goldenbrand-vc-tacos'] as const;
 
 /**
  * `required_context_fields` paths that DON'T survive Zod parsing — known
- * skill<->schema contract gaps surfaced by Phase 1. The schema sub-objects
- * (bidHealthSchema, campaignStructureSchema, goalsSchema) are strict
- * `z.object()`s that strip these undeclared keys; the `goals.*_revenue_target`
- * pair additionally uses the wrong name (the schema field is
- * `monthly_total_sales_target`). Tracked in the QA backlog.
+ * skill<->schema contract gaps. EMPTIED 2026-06-17 (Brand Context pivot,
+ * Phase 1 manifest pass): the dead keys were removed from skills'
+ * `required_context_fields` — the `goals.*_revenue_target` pair renamed to the
+ * canonical `goals.{monthly,quarterly}_total_sales_target` and moved to
+ * `optional_context_fields`; the no-schema-home keys (`bid_health.re_entry_rule`,
+ * `campaign_structure.campaign_types_active`, `goals.forecast_tracking`,
+ * `goals.report_quarterly_pacing`) dropped. Every required field now resolves.
  *
- * This set is PINNED on purpose: if a schema fix makes one of these resolve,
- * or a NEW required field stops resolving, the resolution test fails and forces
- * a deliberate update here — so the contract can't drift silently.
+ * This set is PINNED on purpose: if a NEW required field stops resolving, the
+ * resolution test fails and forces a deliberate update here — so the contract
+ * can't drift silently.
  */
-const KNOWN_UNRESOLVED = new Set<string>([
-  'bid_health.re_entry_rule',
-  'campaign_structure.campaign_types_active',
-  'goals.forecast_tracking',
-  'goals.monthly_revenue_target',
-  'goals.quarterly_revenue_target',
-  'goals.report_quarterly_pacing',
-]);
+const KNOWN_UNRESOLVED = new Set<string>([]);
 
 /**
  * Does `path` resolve to a non-null value in `root`? Handles dotted nesting and

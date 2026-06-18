@@ -26,6 +26,9 @@ const allowedToolEnum = z.enum([
   'validator',
   'web_search',
   'prefetch',
+  // Mutating Amazon Ads API calls via `mixshift ads call ... --commit`
+  // (dry-run/preview by default; every commit is user-confirmed).
+  'ads_write',
 ]);
 
 const artifactSchema = z.object({
@@ -71,6 +74,10 @@ export const skillManifestSchema = z.object({
     'artifact_write',
     'context_write',
     'recommendation_only',
+    // Mutates external state (Amazon Ads API) via the bundled CLI; dry-run /
+    // preview by default, every commit requires explicit user confirmation of
+    // the exact change set (pairs with review_required: always).
+    'write_gated',
   ]),
   review_required: z.enum(['never', 'on_non_green', 'always']),
   sql_ids: z.array(z.string()).default([]),

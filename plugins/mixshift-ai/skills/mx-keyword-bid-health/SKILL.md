@@ -80,7 +80,7 @@ Read `~/.mixshift/clients/<brand-slug>/context.yaml` (or validate via `mixshift 
 
 Read `narrative.md` for prose context only.
 
-Fail closed: if `context.yaml` is absent or fails schema validation, stop and direct the user to run `mx-account-cold-start`.
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires cold-start. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the `bid_health.*` thresholds → this skill's global defaults (note "set these to sharpen future runs"). Load these fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
 
 ### Step 2 — Run prefetch
 
@@ -338,7 +338,7 @@ all bid changes, use the audited Ads write surface instead of manual entry:
 3. Show the user the preview AND the `before_state` snapshot (current bids),
    then ask for explicit confirmation of this exact change set. Never skip
    this step, and never include bids that were not in the confirmed table.
-4. Only after the user confirms, re-run the SAME command with `--commit`.
+4. Only after the user confirms — in a SEPARATE turn, having seen the dry-run — re-run the SAME command with `--commit`. The user's original request (even a specific one) is NOT commit authorization: it authorizes the dry-run, not the mutation; never run the dry-run and the `--commit` in the same turn.
    Report per-item success/error counts and the `audit_id`.
 
 Hard rules: never pass `--commit` without the user's confirmation of this
