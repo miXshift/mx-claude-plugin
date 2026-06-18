@@ -9,8 +9,8 @@ description: >
 run_kind: per_account
 cadence: weekly
 risk_tier: 3
-allowed_tools: [db_read, file_read, file_write, renderer, prefetch]
-side_effect_policy: recommendation_only
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch, ads_write]
+side_effect_policy: write_gated   # live sp.update_keywords --commit; dry-run default, user-confirmed
 review_required: always
 escalation_conditions:
   - required context fields missing or null (HARD GATE)

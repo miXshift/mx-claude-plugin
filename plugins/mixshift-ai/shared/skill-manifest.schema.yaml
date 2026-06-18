@@ -12,7 +12,7 @@ required:
   - cadence           # daily | weekly | monthly | on_demand
   - risk_tier         # 1 | 2 | 3 — controls required (see skill-runtime-contract.md)
   - allowed_tools     # list of tool tokens the skill may invoke (see contract)
-  - side_effect_policy  # none | artifact_write | context_write | recommendation_only
+  - side_effect_policy  # none | artifact_write | context_write | recommendation_only | write_gated
   - review_required   # never | on_non_green | always
   - sql_ids           # list of canonical library IDs, or "UPSTREAM:<skill-id>" entries
   - required_context_fields  # dot-notation context.yaml paths this skill reads
@@ -56,7 +56,7 @@ shapes:
 
   allowed_tools:
     type: list
-    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch]
+    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch, ads_write]
     note: |
       db_read    — SQL queries via pre-fetch-data.py
       file_read  — read context.yaml, narrative.md, sidecars, artifacts
@@ -65,14 +65,16 @@ shapes:
       validator  — run validate-context.py or check-sql-drift.py
       web_search — external web/social searches (Phase 0.5 only)
       prefetch   — invoke pre-fetch-data.py
+      ads_write  — mutating Amazon Ads API calls via `mixshift ads call ... --commit` (dry-run default; user-confirmed)
 
   side_effect_policy:
-    enum: [none, artifact_write, context_write, recommendation_only]
+    enum: [none, artifact_write, context_write, recommendation_only, write_gated]
     note: |
       none               — session-only output, nothing written
       artifact_write     — writes to tmp/ only (transient, reviewable)
       context_write      — writes to shared/clients/<brand>/ (durable)
       recommendation_only — writes report to tmp/; execution requires human approval
+      write_gated        — mutates external state (Amazon Ads API) via the bundled CLI; dry-run/preview by default, every commit requires explicit user confirmation (pairs with review_required: always)
 
   review_required:
     enum: [never, on_non_green, always]

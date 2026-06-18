@@ -25,8 +25,8 @@ cadence: on_demand
 risk_tier: 3
 # bash harness invocations are implicit. No db_read/prefetch/renderer: this
 # skill reads/writes the Ads API and saves exports/reports to disk only.
-allowed_tools: [file_read, file_write]
-side_effect_policy: recommendation_only   # writes are user-confirmed, dry-run by default; mirrors the PPC apply skills
+allowed_tools: [file_read, file_write, ads_write]
+side_effect_policy: write_gated   # mutating Ads writes via `mixshift ads call ... --commit`; dry-run default, user-confirmed
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no library SQL; warehouse history routes through mx-data-explore
 
