@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { renderConfirmationCard, joinCard } from './render-chat.js';
+import {
+  renderConfirmationCard,
+  joinCard,
+  renderPersistenceFooter,
+} from './render-chat.js';
 import type {
   ConfirmationPayload,
   ConfirmationFieldEntry,
+  ApplyResult,
 } from './confirm-flow.js';
 import type { CalibrationField } from './manifest-schema.js';
 
@@ -122,5 +127,48 @@ describe('renderConfirmationCard — first-run capture nudge', () => {
       .split('\n')
       .filter((l) => l.trim().startsWith('- '));
     expect(bullets).toHaveLength(3);
+  });
+});
+
+describe('renderPersistenceFooter — end-of-run "I learned X"', () => {
+  const persisted = (captured?: ApplyResult['captured']): ApplyResult => ({
+    status: 'ok',
+    effective_config: {},
+    did_persist: true,
+    saved_to: '/x/config.yaml',
+    validation_issues: [],
+    captured,
+  });
+
+  it('names captured shared fields after a persisted edit', () => {
+    const out = renderPersistenceFooter(
+      persisted([{ label: 'ACoS target', value: '22%' }]),
+      'Summit',
+      'KBH',
+    );
+    expect(out).toContain("Saved your edits to Summit's KBH config.");
+    expect(out).toContain('Learned for Summit: ACoS target = 22%');
+    expect(out).toContain('apply across your skills');
+  });
+
+  it('omits the learned line when no shared field was captured', () => {
+    const out = renderPersistenceFooter(persisted([]), 'Summit', 'KBH');
+    expect(out).toContain('Saved your edits');
+    expect(out).not.toContain('Learned for');
+  });
+
+  it('is empty on a use-once run (no persist)', () => {
+    const out = renderPersistenceFooter(
+      {
+        status: 'ok',
+        effective_config: {},
+        did_persist: false,
+        saved_to: null,
+        validation_issues: [],
+      },
+      'Summit',
+      'KBH',
+    );
+    expect(out).toBe('');
   });
 });

@@ -385,8 +385,12 @@ export function renderValidationIssues(
  * chat after the skill output. Examples:
  *
  *   "Saved your edits to Summit's mx-daily-health-check config."
- *   "Used your edits for this run only. Run again to re-set on Summit."
- *   "Ran with existing config."
+ *   "Learned for Summit: ACoS target = 22%. Recorded to apply across your skills."
+ *
+ * The second line is the end-of-run "I learned X" acknowledgment: when the
+ * user set a SHARED brand value (e.g. the ACoS target), it names what was
+ * captured and notes it carries brand-wide (recorded for promotion; see
+ * lib/brain/discoveries.ts). Skill-only edits and use-once runs stay quiet.
  */
 export function renderPersistenceFooter(
   result: ApplyResult,
@@ -394,10 +398,17 @@ export function renderPersistenceFooter(
   skillDisplayName: string,
 ): string {
   if (result.status !== 'ok') return '';
-  if (result.did_persist) {
-    return `Saved your edits to ${brandName}'s ${skillDisplayName} config.`;
+  if (!result.did_persist) return ''; // confirm-as-is / use-once — no footer.
+
+  const lines = [`Saved your edits to ${brandName}'s ${skillDisplayName} config.`];
+  const learned = result.captured ?? [];
+  if (learned.length > 0) {
+    const items = learned.map((c) => `${c.label} = ${c.value}`).join(', ');
+    lines.push(
+      `Learned for ${brandName}: ${items}. Recorded to apply across your skills.`,
+    );
   }
-  return ''; // Don't clutter the chat on confirm-as-is or use-once.
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------

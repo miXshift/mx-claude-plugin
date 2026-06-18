@@ -69,7 +69,7 @@ import {
   resolveBrandFields,
   brandFieldKeyForContextPath,
 } from '../brain/read.js';
-import { appendCaptureDiscoveries, type CaptureInput } from '../brain/discoveries.js';
+import { appendCaptureDiscoveries } from '../brain/discoveries.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -141,6 +141,11 @@ export interface ApplyResult {
    *  status === 'validation_failed' — caller should re-show the card with
    *  the issues highlighted. */
   validation_issues: Array<{ field: string; message: string }>;
+  /** Shared brand fields the user just set+saved that were proposed for
+   *  brand-wide promotion (GAP-04). Drives the end-of-run "I learned X"
+   *  acknowledgment (renderPersistenceFooter). Empty/absent on confirm-as-is,
+   *  use-once, skill-only edits, cancel, or validation failure. */
+  captured?: Array<{ label: string; value: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -365,10 +370,28 @@ export async function applyConfirmation(
   );
 
   // GAP-04 capture-on-save: edited fields that map to a SHARED brand-context
-  // field (2+/1 litmus via the registry) are proposed for context promotion,
-  // appended to the brand's pending-discoveries file for the Phase-9 applier.
-  // Best-effort — a discovery-write failure never fails the save.
-  await emitCaptureDiscoveries(payload, decision, effective, opts.dataDirOverride);
+  // field (2+/1 litmus via the registry) are proposed for context promotion —
+  // appended to the brand's pending-discoveries file for the Phase-9 applier,
+  // and surfaced as the end-of-run "I learned X" acknowledgment. Best-effort:
+  // a discovery-write failure never fails the save.
+  const shared = collectSharedCaptures(payload, decision, effective);
+  if (shared.length > 0) {
+    const observed_at = new Date().toISOString();
+    await appendCaptureDiscoveries(
+      payload.brand_slug,
+      shared.map((s) => ({
+        field: s.contextPath,
+        proposed_value: s.consumableValue,
+        source_skill: payload.skill_id,
+        observed_by: 'confirm-flow',
+        observed_at,
+        confidence: 0.95,
+      })),
+      opts.dataDirOverride,
+    ).catch(() => {
+      // best-effort: a discovery-write failure never fails the save
+    });
+  }
 
   return {
     status: 'ok',
@@ -376,6 +399,10 @@ export async function applyConfirmation(
     did_persist: true,
     saved_to: path,
     validation_issues: [],
+    captured: shared.map((s) => ({
+      label: s.field.label ?? humanizeFieldId(s.field.id),
+      value: s.display,
+    })),
   };
 }
 
@@ -584,37 +611,49 @@ function toConsumableConfig(
  * value is the whole-number (consumable) form, matching context's convention.
  * Best-effort — never throws.
  */
-async function emitCaptureDiscoveries(
+interface SharedCapture {
+  /** Dotted context path (seed_from minus the `context.` prefix). */
+  contextPath: string;
+  field: CalibrationField;
+  /** Whole-number (consumable) value for the discovery proposal. */
+  consumableValue: unknown;
+  /** Human display string ("22%") for the end-of-run acknowledgment. */
+  display: string;
+}
+
+/**
+ * Collect the edited fields that map to a SHARED brand-context field (the 2+/1
+ * litmus via BRAND_FIELD_REGISTRY). Only fires for edit+save (a genuine
+ * capture); skill-only knobs (no seed_from, or a seed_from that isn't a
+ * registered brand field) are excluded. Pure — no I/O.
+ */
+function collectSharedCaptures(
   payload: ConfirmationPayload,
   decision: ConfirmationDecision,
   effective: Record<string, unknown>,
-  dataDirOverride?: string,
-): Promise<void> {
-  if (decision.action !== 'edit' || !decision.save) return;
+): SharedCapture[] {
+  if (decision.action !== 'edit' || !decision.save) return [];
   const consumable = toConsumableConfig(payload.fields, effective);
   const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
-  const observed_at = new Date().toISOString();
-  const captures: CaptureInput[] = [];
+  const out: SharedCapture[] = [];
   for (const id of Object.keys(decision.edits)) {
     const field = fieldsById.get(id);
     if (!field?.seed_from) continue; // skill-only knob — no brand-context home
-    const ctxPath = stripContextPrefix(field.seed_from);
-    if (!brandFieldKeyForContextPath(ctxPath)) continue; // not a SHARED field
-    captures.push({
-      field: ctxPath,
-      proposed_value: consumable[id],
-      source_skill: payload.skill_id,
-      observed_by: 'confirm-flow',
-      observed_at,
-      confidence: 0.95,
+    const contextPath = stripContextPrefix(field.seed_from);
+    if (!brandFieldKeyForContextPath(contextPath)) continue; // not a SHARED field
+    out.push({
+      contextPath,
+      field,
+      consumableValue: consumable[id],
+      display: formatFieldValue(field, effective[id]),
     });
   }
-  if (captures.length === 0) return;
-  try {
-    await appendCaptureDiscoveries(payload.brand_slug, captures, dataDirOverride);
-  } catch {
-    // best-effort: a discovery-write failure never fails the save
-  }
+  return out;
+}
+
+/** Fallback label when a calibration field declares no explicit `label`. */
+function humanizeFieldId(id: string): string {
+  return id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }
 
 function stripContextPrefix(seedPath: string): string {

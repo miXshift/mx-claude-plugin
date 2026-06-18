@@ -281,6 +281,18 @@ function renderHelpChat(args: {
     L.push('');
   }
 
+  L.push('### Sharpen a skill for a brand');
+  L.push(
+    'Skills run on sensible defaults and get sharper as you fill in a brand\'s context, so you never have to set everything up front.',
+  );
+  L.push(
+    '- See what a skill is still missing and set it: say **"improve <skill> for <brand>"** (or run `mixshift skill config <skill> --brand <brand> --missing`). It lists the unset knobs that would sharpen that skill, marked needed vs optional.',
+  );
+  L.push(
+    '- Set a shared value once (like your ACoS target) and it carries across every skill for that brand.',
+  );
+  L.push('');
+
   L.push('### Stuck, or something is broken?');
   L.push(
     '- Say **"run a diagnostic"** for a health check (version, sign-in, connectivity, query-pack status) with the exact fix for anything wrong.',
@@ -342,6 +354,7 @@ function renderHelpTerminal(args: {
     for (const id of uncatalogued) L.push(`  ${id}`);
     L.push('');
   }
+  L.push('Sharpen a skill:   mixshift skill config <skill> --brand <brand> --missing');
   L.push('Stuck or broken?   run `mixshift doctor`');
   L.push('Feedback / bugs:   say "send feedback"  (or `mixshift feedback "..."`)');
   L.push('Share a skill:     say "I built a skill"  (or `mixshift share-skill <path>`)');

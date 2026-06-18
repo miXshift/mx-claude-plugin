@@ -584,7 +584,7 @@ describe('applyConfirmation — capture-on-save discoveries (GAP-04)', () => {
       manifest,
       dataDirOverride: testDir,
     });
-    await applyConfirmation(
+    const res = await applyConfirmation(
       payload,
       { action: 'edit', edits: { objective: 'growth' }, save: true },
       { dataDirOverride: testDir },
@@ -598,6 +598,8 @@ describe('applyConfirmation — capture-on-save discoveries (GAP-04)', () => {
       (p: { field: string }) => p.field,
     );
     expect(fields).toContain('posture.stance');
+    // ...and surfaced for the "I learned X" footer (label + display value).
+    expect(res.captured).toEqual([{ label: 'Objective', value: 'Growth' }]);
   });
 
   it('does NOT propose a skill-only edited field (no seed_from)', async () => {
@@ -609,15 +611,16 @@ describe('applyConfirmation — capture-on-save discoveries (GAP-04)', () => {
       manifest,
       dataDirOverride: testDir,
     });
-    await applyConfirmation(
+    const res = await applyConfirmation(
       payload,
       { action: 'edit', edits: { dampening: '0.4' }, save: true },
       { dataDirOverride: testDir },
     );
-    // No shared field touched -> no pending-discoveries file written.
+    // No shared field touched -> no pending-discoveries file, no "learned" footer.
     await expect(
       readFile(join(brandDir, '.pending-discoveries.json'), 'utf-8'),
     ).rejects.toThrow();
+    expect(res.captured ?? []).toEqual([]);
   });
 
   it('does NOT propose on edit without save (no capture)', async () => {
