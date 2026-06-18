@@ -45,7 +45,6 @@ required_context_fields:
   - negation.asin_negation.pre_check_lifetime_orders_threshold
   - campaign_structure.naming_pattern
   - campaign_structure.objectives
-  - campaign_structure.campaign_types_active
   - structural_events
   - posture.stance
 optional_context_fields:
@@ -56,7 +55,7 @@ upstream_skills:
 artifacts:
   - name: mx-search-term-negation.html
     type: report_html
-verdict_range: [OBSERVATIONAL]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - run search term negation

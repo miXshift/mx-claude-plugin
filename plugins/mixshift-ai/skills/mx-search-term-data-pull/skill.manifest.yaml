@@ -44,7 +44,7 @@ optional_context_fields:
 artifacts:
   - name: st-data.json
     type: json_artifact
-verdict_range: [OBSERVATIONAL]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - pull search term data

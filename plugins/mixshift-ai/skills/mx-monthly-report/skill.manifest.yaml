@@ -41,10 +41,6 @@ required_context_fields:
   - management.acos_target_pct
   - management.attribution_window_days
   - management.tacos_in_bottom_line
-  - goals.monthly_revenue_target
-  - goals.quarterly_revenue_target
-  - goals.forecast_tracking
-  - goals.report_quarterly_pacing
   - sub_brands
   - brand_terms
   - structural_events
@@ -53,6 +49,8 @@ required_context_fields:
   - reporting.audience
   - reporting.voice_lint
 optional_context_fields:
+  - goals.monthly_total_sales_target    # MoM pacing when set (was the dead goals.monthly_revenue_target)
+  - goals.quarterly_total_sales_target  # quarterly pacing when set (was the dead goals.quarterly_revenue_target)
   - capture_rate_calibration   # required for VC Adj. ACOS in monthly read
   - attribution_rule           # per campaign type window (SC vs VC)
 artifacts:
