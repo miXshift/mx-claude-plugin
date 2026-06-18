@@ -34,6 +34,7 @@
  */
 
 import {
+  selectCaptureCandidates,
   type ConfirmationPayload,
   type ConfirmationFieldEntry,
   type ApplyResult,
@@ -74,6 +75,7 @@ export function renderConfirmationCard(
   options: RenderOptions = {},
 ): {
   header: string;
+  capture_note: string | null;
   fields: string;
   extras_note: string | null;
   blocking_note: string | null;
@@ -104,6 +106,17 @@ export function renderConfirmationCard(
     ? renderBlockingNote(payload.blocking.missing_keys)
     : null;
 
+  // First-run capture nudge: surface the top few unset-but-valuable fields so
+  // the user can sharpen the skill now or defer ("run" on defaults). Only on
+  // first run for the brand; subsequent runs lean on the field list + hints.
+  const captureCandidates = payload.is_first_run
+    ? selectCaptureCandidates(payload, { limit: 3 })
+    : [];
+  const capture_note =
+    captureCandidates.length > 0
+      ? renderCaptureNudge(captureCandidates, payload.brand_name)
+      : null;
+
   const action_prompt = payload.blocking.has_missing_required
     ? `Some required fields are unset. Choose a number above to set, or "cancel".`
     : payload.is_first_run
@@ -112,6 +125,7 @@ export function renderConfirmationCard(
 
   return {
     header,
+    capture_note,
     fields,
     extras_note,
     blocking_note,
@@ -127,7 +141,9 @@ export function renderConfirmationCard(
 export function joinCard(
   parts: ReturnType<typeof renderConfirmationCard>,
 ): string {
-  const blocks: string[] = [parts.header, '', parts.fields];
+  const blocks: string[] = [parts.header];
+  if (parts.capture_note) blocks.push('', parts.capture_note);
+  blocks.push('', parts.fields);
   if (parts.extras_note) blocks.push('', parts.extras_note);
   if (parts.blocking_note) blocks.push('', parts.blocking_note);
   blocks.push('', parts.action_prompt);
@@ -194,6 +210,26 @@ function renderCandidateBlock(c: CaptureCandidate): string[] {
     out.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
   }
   return out;
+}
+
+/**
+ * First-run nudge shown atop the confirmation card: the top unset-but-valuable
+ * fields the user can set now or defer. Concise by design (the caller caps the
+ * count) so first run is a light touch, not a full intake. No em dashes.
+ */
+function renderCaptureNudge(
+  candidates: CaptureCandidate[],
+  brandName: string,
+): string {
+  const lines = [
+    `First run for ${brandName}. Set these now to sharpen it, or say "run" to use sensible defaults:`,
+  ];
+  for (const c of candidates) {
+    const tier =
+      c.target === 'context' ? 'shared brand context' : 'this skill';
+    lines.push(`  - ${humanLabel(c.field)}  (${tier})`);
+  }
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
