@@ -143,6 +143,150 @@ export async function resolveAcosTargetPct(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Generalized cross-tier resolution (the accessor seam)
+//
+// Skills read brand-level fields THROUGH here, never by parsing a brand file
+// directly. `getBrandField` / `resolveBrandFields` resolve a logical field
+// across the tiers (Tier 3 context.yaml wins; Tier 2 brain pre-fills),
+// returning the value + its source so output can label confirmed (context)
+// vs pre-filled (brain) vs gap (absent). OCL still sits above this, applied
+// by the calibration layer at the skill boundary.
+// ---------------------------------------------------------------------------
+
+type ContextResult = Awaited<ReturnType<typeof validateBrandContext>>;
+
+/**
+ * Where a brand-level field lives in each tier. `contextPath`-only =
+ * Tier-3-only (human judgment the brain can't derive: posture, targets,
+ * protected terms). `brainPath`-only = Tier-2-only (auto-derived telemetry:
+ * recent activity, hero ASINs). Dotted paths support numeric array indices
+ * (e.g. `accounts.0.marketplace`).
+ */
+interface FieldSpec {
+  contextPath?: string;
+  brainPath?: string;
+  /** sources[] entry whose fetched_at stamps a brain-sourced value. */
+  brainSource?: keyof BrandBrain['sources'];
+}
+
+/**
+ * The brand-level fields 2+ skills consume (the crossover set) — the single
+ * source of truth for "what is brand context", so skills and the
+ * `brand context resolve` command agree. Add a field here when a SECOND
+ * skill needs it (the 2+/1 litmus); single-skill knobs stay in OCL.
+ */
+const BRAND_FIELD_REGISTRY = {
+  // Both tiers — context wins, brain pre-fills.
+  acos_target_pct: { contextPath: 'management.acos_target_pct', brainPath: 'seller.acos_target_pct', brainSource: 'seller' },
+  sub_brands: { contextPath: 'sub_brands', brainPath: 'catalog.sub_brands', brainSource: 'catalog_sc' },
+  marketplace: { contextPath: 'accounts.0.marketplace', brainPath: 'seller.marketplace', brainSource: 'seller' },
+  // Tier 3 only — human judgment.
+  primary_metric: { contextPath: 'management.primary_metric' },
+  attribution_window_days: { contextPath: 'management.attribution_window_days' },
+  tacos_target_pct: { contextPath: 'management.tacos_target_pct' },
+  tacos_goal_pct: { contextPath: 'management.tacos_goal_pct' },
+  posture_stance: { contextPath: 'posture.stance' },
+  posture_multiplier: { contextPath: 'posture.multiplier' },
+  monthly_total_sales_target: { contextPath: 'goals.monthly_total_sales_target' },
+  quarterly_total_sales_target: { contextPath: 'goals.quarterly_total_sales_target' },
+  protected_terms: { contextPath: 'negation.protected_terms' },
+  lane_rules: { contextPath: 'negation.lane_rules' },
+  campaign_naming_pattern: { contextPath: 'campaign_structure.naming_pattern' },
+  structural_events: { contextPath: 'structural_events' },
+  paused_campaigns: { contextPath: 'paused_campaigns' },
+  // Tier 2 only — auto-derived; the brain is authoritative.
+  monthly_budget: { brainPath: 'seller.monthly_budget', brainSource: 'seller' },
+  recent_spend_30d: { brainPath: 'recent_activity.spend_30d', brainSource: 'recent_activity' },
+  recent_acos_30d: { brainPath: 'recent_activity.acos_30d', brainSource: 'recent_activity' },
+  item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc' },
+  hero_asins: { brainPath: 'catalog.top_asins', brainSource: 'hero_sc' },
+} satisfies Record<string, FieldSpec>;
+
+export type BrandFieldKey = keyof typeof BRAND_FIELD_REGISTRY;
+
+export const BRAND_FIELD_KEYS = Object.keys(
+  BRAND_FIELD_REGISTRY,
+) as BrandFieldKey[];
+
+function getByPath(obj: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((acc, seg) => {
+    if (acc == null || typeof acc !== 'object') return undefined;
+    const key = /^\d+$/.test(seg) ? Number(seg) : seg;
+    return (acc as Record<string | number, unknown>)[key];
+  }, obj);
+}
+
+/** "Present" = meaningfully set. null/undefined, empty string, empty array,
+ *  and empty object all count as absent, so the resolver falls through to
+ *  the next tier (or reports the gap). */
+function isPresent(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === 'string') return v.length > 0;
+  if (typeof v === 'number') return Number.isFinite(v);
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as object).length > 0;
+  return true; // boolean
+}
+
+/** Pure tier resolution from already-loaded docs (no I/O). */
+function resolveFieldFrom(
+  ctx: ContextResult,
+  brain: LoadBrainResult,
+  spec: FieldSpec,
+): ResolvedField<unknown> | null {
+  if (spec.contextPath && ctx.ok) {
+    const v = getByPath(ctx.context, spec.contextPath);
+    if (isPresent(v)) return { value: v, source: 'context' };
+  }
+  if (spec.brainPath && brain.ok) {
+    const v = getByPath(brain.brain, spec.brainPath);
+    if (isPresent(v)) {
+      return {
+        value: v,
+        source: 'brain',
+        fetched_at: spec.brainSource
+          ? brain.brain.sources[spec.brainSource]?.fetched_at
+          : undefined,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve ONE brand-level field across the tiers. Null when neither tier
+ * has it (the caller applies its skill default and labels the gap).
+ */
+export async function getBrandField(
+  brandSlug: string,
+  key: BrandFieldKey,
+  dataDirOverride?: string,
+): Promise<ResolvedField<unknown> | null> {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  const brain = await loadBrain(brandSlug, dataDirOverride);
+  return resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
+}
+
+/**
+ * Resolve EVERY registered brand-level field in one pass (context + brain
+ * read once). The payload behind `mixshift brand context resolve`: a skill
+ * makes a single call instead of N ad-hoc reads, then labels each value ✓
+ * (context) vs ⊙ (brain) vs gap (null = use the skill default).
+ */
+export async function resolveBrandFields(
+  brandSlug: string,
+  dataDirOverride?: string,
+): Promise<Record<BrandFieldKey, ResolvedField<unknown> | null>> {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  const brain = await loadBrain(brandSlug, dataDirOverride);
+  const out = {} as Record<BrandFieldKey, ResolvedField<unknown> | null>;
+  for (const key of BRAND_FIELD_KEYS) {
+    out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
+  }
+  return out;
+}
+
 function isFileNotFoundError(err: unknown): boolean {
   return (
     typeof err === 'object' &&

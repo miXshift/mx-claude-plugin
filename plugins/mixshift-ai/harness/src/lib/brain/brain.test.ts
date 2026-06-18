@@ -13,7 +13,13 @@ import {
   assembleRecentActivity,
   hashRows,
 } from './assemble.js';
-import { loadBrain, saveBrain, resolveAcosTargetPct } from './read.js';
+import {
+  loadBrain,
+  saveBrain,
+  resolveAcosTargetPct,
+  getBrandField,
+  resolveBrandFields,
+} from './read.js';
 import { applyObservations, recordObservations } from './observe.js';
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
@@ -345,6 +351,107 @@ describe('saveBrain + loadBrain round-trip', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('getBrandField / resolveBrandFields (accessor seam)', () => {
+  const validContext = {
+    schema_version: 1,
+    brand_slug: 'foragers-pantry',
+    brand_name: "Forager's Pantry",
+    last_updated: '2026-06-10',
+    accounts: [
+      {
+        seller_id: 574,
+        seller_name: 'Aspen Outdoor Provisions',
+        account_type: 'SC',
+        status: 'active',
+        role: 'primary',
+        marketplace: 'Amazon.com',
+      },
+    ],
+    sources: {
+      ad_metrics: 'campaignmetric',
+      ops_revenue: 'business_reports_dpst_date',
+      ops_revenue_field: 'SalesAmount',
+      ops_units_field: 'UnitsOrdered',
+      ops_date_field: 'DateTime',
+    },
+    management: { primary_metric: 'ACOS', acos_target_pct: 22, attribution_window_days: 14 },
+    posture: { stance: 'scale', multiplier: 0.5 },
+  };
+
+  async function withFixtures(
+    withContext: boolean,
+    fn: (dir: string) => Promise<void>,
+  ): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
+    try {
+      // brain: acos 25, marketplace Amazon.com, monthly_budget 18000
+      await saveBrain(assembledAop(), dir);
+      if (withContext) {
+        const brandDir = join(dir, 'clients', 'foragers-pantry');
+        await mkdir(brandDir, { recursive: true });
+        await writeFile(
+          join(brandDir, 'context.yaml'),
+          stringifyYaml(validContext),
+          'utf-8',
+        );
+      }
+      await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('Tier 3 wins for a both-tiers field (context 22 beats brain 25)', async () => {
+    await withFixtures(true, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'acos_target_pct', dir);
+      expect(r).toMatchObject({ value: 22, source: 'context' });
+    });
+  });
+
+  it('falls back to the brain for a both-tiers field when context is absent', async () => {
+    await withFixtures(false, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'acos_target_pct', dir);
+      expect(r).toMatchObject({
+        value: 25,
+        source: 'brain',
+        fetched_at: NOW.toISOString(),
+      });
+    });
+  });
+
+  it('resolves a Tier-2-only field from the brain (monthly_budget)', async () => {
+    await withFixtures(true, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'monthly_budget', dir);
+      expect(r).toMatchObject({ value: 18000, source: 'brain' });
+    });
+  });
+
+  it('resolves a Tier-3-only field from context, null when absent', async () => {
+    await withFixtures(true, async (dir) => {
+      expect(
+        await getBrandField('foragers-pantry', 'posture_stance', dir),
+      ).toMatchObject({ value: 'scale', source: 'context' });
+    });
+    await withFixtures(false, async (dir) => {
+      // posture is Tier-3-only; no context => null (caller defaults to 'scale')
+      expect(
+        await getBrandField('foragers-pantry', 'posture_stance', dir),
+      ).toBeNull();
+    });
+  });
+
+  it('resolveBrandFields returns the full map with per-field source labels', async () => {
+    await withFixtures(true, async (dir) => {
+      const all = await resolveBrandFields('foragers-pantry', dir);
+      expect(all.acos_target_pct).toMatchObject({ value: 22, source: 'context' });
+      expect(all.monthly_budget).toMatchObject({ source: 'brain' });
+      expect(all.primary_metric).toMatchObject({ value: 'ACOS', source: 'context' });
+      // a Tier-3-only field not set in this context => gap (null)
+      expect(all.protected_terms).toBeNull();
+    });
   });
 });
 
