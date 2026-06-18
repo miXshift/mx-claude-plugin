@@ -116,7 +116,7 @@ The `confirmation` payload's `effective_config` holds the values this run will u
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-asin-target-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
-- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pre_check_lifetime_orders":"40"},"save":true}' --json`. A shared field (`acos_target`) persists to brand context for every skill; the pre-check floor persists to this skill.
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pre_check_lifetime_orders":"40"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review); the pre-check floor persists to this skill.
 
 **Resolve the working values from the returned `effective_config`:**
 - `pre_check_lifetime_orders` — use `effective_config.pre_check_lifetime_orders` (the minimum lifetime orders at a location before an ASIN target is eligible to negate); defaults to 25 when unset.

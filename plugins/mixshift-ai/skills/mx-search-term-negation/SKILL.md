@@ -83,7 +83,7 @@ The `confirmation` payload's `effective_config` holds the values this run will u
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-search-term-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
-- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and persists to brand context for every skill.
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working reference (whole-number percent) from the returned `effective_config`:**
 - `acos_target` — if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).

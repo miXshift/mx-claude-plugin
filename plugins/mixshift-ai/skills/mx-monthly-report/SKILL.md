@@ -117,7 +117,7 @@ The `confirmation` payload's `effective_config` holds the values this run will u
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-monthly-report --brand <brand-slug> --apply '{"action":"confirm"}' --json`
-- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) persists to brand context for every skill.
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working value (whole-number percent) from the returned `effective_config`:**
 - `acos_target` — reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target).

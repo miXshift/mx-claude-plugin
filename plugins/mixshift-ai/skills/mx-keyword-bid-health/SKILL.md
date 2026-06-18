@@ -93,7 +93,7 @@ The `confirmation` payload's `effective_config` holds the values this run will u
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-keyword-bid-health --brand <brand-slug> --apply '{"action":"confirm"}' --json`
-- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pullback_threshold_pct":"50"},"save":true}' --json`. A shared field (`acos_target`) persists to brand context for every skill; the bid thresholds persist to this skill.
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"pullback_threshold_pct":"50"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review); the bid thresholds persist to this skill.
 
 **Resolve the working thresholds (whole-number percents) from the returned `effective_config`:**
 - `pullback_threshold_pct` — if present, use it; else `acos_target × 1.5`; else (no target) `45`. Label any default in the Bottom Line ("default — set to sharpen").

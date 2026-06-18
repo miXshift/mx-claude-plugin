@@ -574,6 +574,71 @@ describe('applyConfirmation — percent consumption (whole-number)', () => {
   });
 });
 
+describe('applyConfirmation — capture-on-save discoveries (GAP-04)', () => {
+  it('proposes a SHARED edited field for context promotion', async () => {
+    // `objective` seeds from context.posture.stance — a registered SHARED field.
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+    await applyConfirmation(
+      payload,
+      { action: 'edit', edits: { objective: 'growth' }, save: true },
+      { dataDirOverride: testDir },
+    );
+    const raw = await readFile(
+      join(brandDir, '.pending-discoveries.json'),
+      'utf-8',
+    );
+    const doc = JSON.parse(raw);
+    const fields = doc.discoveries.context_field_proposals.map(
+      (p: { field: string }) => p.field,
+    );
+    expect(fields).toContain('posture.stance');
+  });
+
+  it('does NOT propose a skill-only edited field (no seed_from)', async () => {
+    // `dampening` has no seed_from — it is a skill-only knob, not promotable.
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+    await applyConfirmation(
+      payload,
+      { action: 'edit', edits: { dampening: '0.4' }, save: true },
+      { dataDirOverride: testDir },
+    );
+    // No shared field touched -> no pending-discoveries file written.
+    await expect(
+      readFile(join(brandDir, '.pending-discoveries.json'), 'utf-8'),
+    ).rejects.toThrow();
+  });
+
+  it('does NOT propose on edit without save (no capture)', async () => {
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+    await applyConfirmation(
+      payload,
+      { action: 'edit', edits: { objective: 'growth' }, save: false },
+      { dataDirOverride: testDir },
+    );
+    await expect(
+      readFile(join(brandDir, '.pending-discoveries.json'), 'utf-8'),
+    ).rejects.toThrow();
+  });
+});
+
 describe('applyConfirmation — cancel', () => {
   it('returns cancelled status without persisting', async () => {
     const payload = await prepareConfirmation({

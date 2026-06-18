@@ -97,6 +97,19 @@ export function brandConfigPath(brandSlug: string, dataDirOverride?: string): st
 }
 
 /**
+ * Brand-level pending discoveries — capture proposals accumulated across runs
+ * (the confirm card proposing a SHARED brand field for context promotion).
+ * Drained by the Phase-9 promotion step. Schema: shared/clients/_schema/
+ * discoveries.schema.yaml; runtime contract: lib/brain/discoveries.ts.
+ */
+export function pendingDiscoveriesPath(
+  brandSlug: string,
+  dataDirOverride?: string,
+): string {
+  return join(brandDir(brandSlug, dataDirOverride), '.pending-discoveries.json');
+}
+
+/**
  * Per-run OCL snapshot — captures the effective config used for one run of
  * one skill. Lives under runs/<skill_id>/<run_date>/ocl.yaml so audit can
  * answer "what config was actually used for this run".

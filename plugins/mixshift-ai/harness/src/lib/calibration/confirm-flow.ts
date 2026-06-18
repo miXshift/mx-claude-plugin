@@ -69,6 +69,7 @@ import {
   resolveBrandFields,
   brandFieldKeyForContextPath,
 } from '../brain/read.js';
+import { appendCaptureDiscoveries, type CaptureInput } from '../brain/discoveries.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -362,6 +363,13 @@ export async function applyConfirmation(
     blockToSave,
     opts.dataDirOverride,
   );
+
+  // GAP-04 capture-on-save: edited fields that map to a SHARED brand-context
+  // field (2+/1 litmus via the registry) are proposed for context promotion,
+  // appended to the brand's pending-discoveries file for the Phase-9 applier.
+  // Best-effort — a discovery-write failure never fails the save.
+  await emitCaptureDiscoveries(payload, decision, effective, opts.dataDirOverride);
+
   return {
     status: 'ok',
     effective_config: toConsumableConfig(payload.fields, effective),
@@ -566,6 +574,47 @@ function toConsumableConfig(
         : v;
   }
   return out;
+}
+
+/**
+ * GAP-04 capture-on-save: turn edited fields that map to a SHARED brand-context
+ * field (registered in BRAND_FIELD_REGISTRY) into context-promotion proposals
+ * on the brand's pending-discoveries file. Skill-only knobs (no seed_from, or a
+ * seed_from that isn't a registered brand field) are NOT proposed. The proposed
+ * value is the whole-number (consumable) form, matching context's convention.
+ * Best-effort — never throws.
+ */
+async function emitCaptureDiscoveries(
+  payload: ConfirmationPayload,
+  decision: ConfirmationDecision,
+  effective: Record<string, unknown>,
+  dataDirOverride?: string,
+): Promise<void> {
+  if (decision.action !== 'edit' || !decision.save) return;
+  const consumable = toConsumableConfig(payload.fields, effective);
+  const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
+  const observed_at = new Date().toISOString();
+  const captures: CaptureInput[] = [];
+  for (const id of Object.keys(decision.edits)) {
+    const field = fieldsById.get(id);
+    if (!field?.seed_from) continue; // skill-only knob — no brand-context home
+    const ctxPath = stripContextPrefix(field.seed_from);
+    if (!brandFieldKeyForContextPath(ctxPath)) continue; // not a SHARED field
+    captures.push({
+      field: ctxPath,
+      proposed_value: consumable[id],
+      source_skill: payload.skill_id,
+      observed_by: 'confirm-flow',
+      observed_at,
+      confidence: 0.95,
+    });
+  }
+  if (captures.length === 0) return;
+  try {
+    await appendCaptureDiscoveries(payload.brand_slug, captures, dataDirOverride);
+  } catch {
+    // best-effort: a discovery-write failure never fails the save
+  }
 }
 
 function stripContextPrefix(seedPath: string): string {
