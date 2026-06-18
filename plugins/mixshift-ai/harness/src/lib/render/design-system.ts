@@ -308,6 +308,9 @@ body { background: var(--rc-bg); }
   margin: 0 0 var(--space-3);
 }
 .rc-card-body { color: var(--rc-text); font-size: var(--fs-body-sm); }
+/* Inline marker rendered after a card title (e.g. confidence glyph). Lighter
+   weight than the title so the glyph reads as an annotation, not a word. */
+.rc-card-title-accessory { font-weight: 400; font-size: 0.85em; }
 /* Table */
 .rc-table {
   width: 100%;
@@ -400,6 +403,81 @@ body { background: var(--rc-bg); }
   background: color-mix(in srgb, var(--rc-info) 14%, transparent);
   color: var(--rc-info);
 }
+/* Confidence markers — ✓ confirmed (Tier-3 context), ⊙ pre-filled
+   (Tier-2 brain), ◯ gap (neither tier). The three glyphs the page reads
+   "what we know about this brand, and how sure we are" by. */
+.rc-conf {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-feature-settings: 'tnum' 1;
+}
+.rc-conf-glyph {
+  font-weight: 700;
+  line-height: 1;
+  width: 1em;
+  text-align: center;
+  flex: none;
+}
+.rc-conf.is-confirmed  .rc-conf-glyph { color: var(--rc-positive); }
+.rc-conf.is-prefilled  .rc-conf-glyph { color: var(--rc-info); }
+.rc-conf.is-gap        .rc-conf-glyph { color: var(--rc-text-mute); }
+.rc-conf-note {
+  color: var(--rc-text-sub);
+  font-size: 11px;
+  font-style: italic;
+}
+/* Confidence legend — the key shown once near the top of the page. */
+.rc-conf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-size: 11.5px;
+  color: var(--rc-text-sub);
+  padding: var(--space-2) var(--space-3);
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-md);
+}
+.rc-conf-legend .rc-conf-glyph { font-size: 12px; }
+/* Set-hint — paste-ready chat snippet for filling a gap / confirming. */
+.rc-set-hint {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--rc-text-sub);
+}
+.rc-set-hint code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--rc-chip-bg);
+  border: 1px solid var(--rc-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--rc-text);
+}
+/* Confidence field list — the "what we know" roll-up of registered fields. */
+.rc-conf-list { list-style: none; padding: 0; margin: 0; }
+.rc-conf-list > li {
+  display: grid;
+  grid-template-columns: 1em minmax(160px, 1fr) 1.4fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rc-divider);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.rc-conf-list > li:last-child { border-bottom: 0; }
+.rc-conf-list .rc-conf-glyph { font-size: 12px; }
+.rc-conf-field { color: var(--rc-text); font-weight: 500; }
+.rc-conf-val {
+  color: var(--rc-text-sub);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+.rc-conf-val.is-gap { font-family: inherit; font-style: italic; color: var(--rc-text-mute); }
 /* Proof cards — bordered card w/ title, status pill, body, source chips */
 .rc-proof-grid {
   display: grid;
@@ -833,11 +911,17 @@ export interface CardOptions {
   title?: string;
   /** Inner HTML — caller is responsible for escaping. */
   body: string;
+  /** Optional RAW HTML rendered inline after the (escaped) title — e.g. a
+   *  confidence marker glyph. Caller is responsible for escaping its content. */
+  title_accessory?: string;
 }
 
 export function renderCard(opts: CardOptions): string {
+  const accessory = opts.title_accessory
+    ? ` <span class="rc-card-title-accessory">${opts.title_accessory}</span>`
+    : '';
   const title = opts.title
-    ? `<h3 class="rc-card-title">${escapeHtml(opts.title)}</h3>`
+    ? `<h3 class="rc-card-title">${escapeHtml(opts.title)}${accessory}</h3>`
     : '';
   return `<div class="rc-card">${title}<div class="rc-card-body">${opts.body}</div></div>`;
 }
@@ -867,6 +951,111 @@ export type StatusTone = 'complete' | 'partial' | 'missing' | 'runtime';
 
 export function renderStatusPill(text: string, tone: StatusTone): string {
   return `<span class="rc-status-pill is-${tone}">${escapeHtml(text)}</span>`;
+}
+
+// ---------------------------------------------------------------------------
+// Confidence markers — ✓ confirmed / ⊙ pre-filled / ◯ gap
+//
+// The page-wide language for "what we know about this brand, and how sure we
+// are." Sourced from provenance: ✓ = value confirmed in Tier-3 context.yaml,
+// ⊙ = pre-filled from the Tier-2 brain (optionally with when it was fetched),
+// ◯ = neither tier has it yet (a soft "not set", never an error).
+// ---------------------------------------------------------------------------
+
+export type Confidence = 'confirmed' | 'prefilled' | 'gap';
+
+const CONFIDENCE_GLYPH: Record<Confidence, string> = {
+  confirmed: '✓',
+  prefilled: '⊙',
+  gap: '◯',
+};
+
+const CONFIDENCE_WORD: Record<Confidence, string> = {
+  confirmed: 'confirmed',
+  prefilled: 'pre-filled',
+  gap: 'not set yet',
+};
+
+/** The bare glyph span (used inline next to a value). */
+export function renderConfidenceGlyph(level: Confidence): string {
+  return `<span class="rc-conf-glyph" title="${escapeAttr(CONFIDENCE_WORD[level])}" aria-label="${escapeAttr(CONFIDENCE_WORD[level])}">${CONFIDENCE_GLYPH[level]}</span>`;
+}
+
+export interface ConfidenceMarkerOptions {
+  level: Confidence;
+  /** Optional trailing note, e.g. a fetched_at stamp for pre-filled values. */
+  note?: string;
+}
+
+/** Glyph + optional italic note, wrapped so the glyph color tracks the level. */
+export function renderConfidenceMarker(opts: ConfidenceMarkerOptions): string {
+  const note = opts.note
+    ? ` <span class="rc-conf-note">${escapeHtml(opts.note)}</span>`
+    : '';
+  return `<span class="rc-conf is-${opts.level}">${renderConfidenceGlyph(opts.level)}${note}</span>`;
+}
+
+/** The one-time key shown near the top of the page. */
+export function renderConfidenceLegend(): string {
+  const item = (level: Confidence, gloss: string): string =>
+    `<span class="rc-conf is-${level}">${renderConfidenceGlyph(level)} ${escapeHtml(gloss)}</span>`;
+  return `<div class="rc-conf-legend" role="note" aria-label="Confidence key">
+  ${item('confirmed', 'confirmed — you set this')}
+  ${item('prefilled', 'pre-filled — from the brand brain, confirm when you can')}
+  ${item('gap', 'not set yet — how to set it is shown inline')}
+</div>`;
+}
+
+/**
+ * Paste-ready chat snippet the user can copy to set or confirm a field.
+ * Lightweight by design — a hint, not a form. `command` defaults to the
+ * `set <field> for <brand>` shorthand.
+ */
+export function renderSetHint(opts: {
+  field: string;
+  brand: string;
+  command?: string;
+}): string {
+  const cmd = opts.command ?? `set ${opts.field} for ${opts.brand}`;
+  return `<span class="rc-set-hint">set it: <code>${escapeHtml(cmd)}</code></span>`;
+}
+
+export interface ConfidenceListItem {
+  /** Human label for the field. */
+  label: string;
+  level: Confidence;
+  /** Pre-formatted display value (already escaped-safe text). */
+  value: string;
+  /** Optional fetched_at / freshness note for pre-filled values. */
+  note?: string;
+  /** Optional paste-ready set hint (rendered for gaps / confirmable values). */
+  hint?: string;
+}
+
+/**
+ * The "what we know" roll-up: one row per field with its confidence glyph,
+ * value, and (for gaps) how to set it. Used by the brand-context summary.
+ */
+export function renderConfidenceList(items: ConfidenceListItem[]): string {
+  if (items.length === 0)
+    return '<div class="rc-empty">No tracked fields for this brand yet.</div>';
+  const rows = items
+    .map((it) => {
+      const valCls = it.level === 'gap' ? 'rc-conf-val is-gap' : 'rc-conf-val';
+      const valText =
+        it.level === 'gap' ? 'not set yet' : it.value;
+      const note = it.note
+        ? ` <span class="rc-conf-note">${escapeHtml(it.note)}</span>`
+        : '';
+      const hint = it.hint ? ' ' + it.hint : '';
+      return `<li class="is-${it.level}">
+  ${renderConfidenceGlyph(it.level)}
+  <span class="rc-conf-field">${escapeHtml(it.label)}</span>
+  <span class="${valCls}">${escapeHtml(valText)}${note}${hint}</span>
+</li>`;
+    })
+    .join('\n');
+  return `<ul class="rc-conf-list">${rows}</ul>`;
 }
 
 // ---------------------------------------------------------------------------
