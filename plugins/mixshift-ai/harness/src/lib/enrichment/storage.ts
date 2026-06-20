@@ -1,8 +1,8 @@
 /**
  * Enrichment artifact read/write.
  *
- * Lives at `runs/mx-account-cold-start/<date>/<date>.enrichment.json`.
- * Written by `mixshift brand enrich`; read by the cold-start renderer
+ * Lives at `runs/mx-brand-context/<date>/<date>.enrichment.json`.
+ * Written by `mixshift brand enrich`; read by the brand-context renderer
  * (Detected Anomalies section) and by `mixshift brand merge-delta`
  * (delta-mode merge into context.yaml).
  *

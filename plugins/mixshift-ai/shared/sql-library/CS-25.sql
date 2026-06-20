@@ -1,7 +1,7 @@
 -- ID: CS-25
 -- Purpose: VC catalog completeness — list ASINs missing ItemGroup tagging.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (Query 19, blank ItemGroup pull)
+-- Consumers: brand-context (Query 19, blank ItemGroup pull)
 -- Tier: 1
 
 SELECT Asin, ItemName, CustomBrand

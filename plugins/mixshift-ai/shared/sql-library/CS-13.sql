@@ -2,7 +2,7 @@
 -- Purpose: VC monthly ASP (average selling price) by sub-brand and item
 --          group across T-12 months — used as a promotional-pricing flag.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 9, VC only)
+-- Consumers: brand-context (Query 9, VC only)
 -- Tier: 1
 
 SELECT vi.CustomBrand AS sub_brand,

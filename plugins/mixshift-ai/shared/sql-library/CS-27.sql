@@ -3,7 +3,7 @@
 --          campaigns whose CampaignName lacks any of the canonical
 --          objective tags (CONQ, DISC, PROF, RSCH, HDLN, SBV, SD).
 -- Params: :seller_id_list, :spend_floor, :limit
--- Consumers: account-cold-start (Query 19, campaign objective completeness)
+-- Consumers: brand-context (Query 19, campaign objective completeness)
 -- Tier: 1
 --
 -- Default :spend_floor = 5, :limit = 30.

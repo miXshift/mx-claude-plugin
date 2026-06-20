@@ -150,10 +150,14 @@ export function runAppliedPath(
 }
 
 /**
- * Cold-start Phase 1.5 enrichment artifact (settlement curve + stockout
+ * Brand-context Phase 1.5 enrichment artifact (settlement curve + stockout
  * candidates + brand-typo clusters). Written by `mixshift brand enrich`
  * (or auto by delta-mode); read by the renderer's Detected Anomalies
  * section and by `mixshift brand merge-delta` for patching into context.
+ *
+ * Run-dir is keyed to the mx-brand-context skill (formerly mx-account-cold-start).
+ * New runs land under runs/mx-brand-context/; pre-rename artifacts under the old
+ * dir are regenerable and not migrated.
  */
 export function enrichmentPath(
   brandSlug: string,
@@ -163,7 +167,7 @@ export function enrichmentPath(
   return join(
     brandDir(brandSlug, dataDirOverride),
     'runs',
-    'mx-account-cold-start',
+    'mx-brand-context',
     runDate,
     `${runDate}.enrichment.json`,
   );

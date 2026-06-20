@@ -138,7 +138,7 @@ async function runShow(args: {
   if (payload.context_missing) {
     process.stdout.write(
       `\nNo brand context yet for ${args.brandName}.\n\n` +
-        `Run /mx-account-cold-start ${args.brandSlug} in chat to capture ` +
+        `Run /mx-brand-context ${args.brandSlug} in chat to capture ` +
         `the brand's positioning, targets, and structural events.\n\n`,
     );
     return;
@@ -210,7 +210,7 @@ async function runApplyDecision(args: {
   switch (result.status) {
     case 'context_missing':
       process.stderr.write(
-        `\nNo brand context yet for ${args.brandName}. Run /mx-account-cold-start ` +
+        `\nNo brand context yet for ${args.brandName}. Run /mx-brand-context ` +
           `${args.brandSlug} first.\n\n`,
       );
       process.exitCode = 5;

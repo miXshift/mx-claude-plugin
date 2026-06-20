@@ -6,7 +6,7 @@
 # The mx-monthly-report skill consults this during report-data.json
 # assembly to match the brand's house style.
 #
-# Provenance: produced by mx-account-cold-start when the AM uploads a
+# Provenance: produced by mx-brand-context when the AM uploads a
 # reference report (Phase 2 sub-step: Reporting Style Intake). Editable by
 # AMs over time as the brand's preferences evolve.
 #

@@ -1,7 +1,7 @@
 /**
  * `mixshift brand merge-delta <slug>` — delta-mode context patcher.
  *
- * Merges the settlement curve from `runs/mx-account-cold-start/<date>/<date>.
+ * Merges the settlement curve from `runs/mx-brand-context/<date>/<date>.
  * enrichment.json` into the brand's context.yaml without touching AM-edited
  * fields. See lib/enrichment/delta-merge.ts for the field-level rules.
  *
@@ -81,7 +81,7 @@ export function registerBrandMergeDeltaCommand(brandCmd: Command): void {
               return;
             case 'context_missing':
               process.stderr.write(
-                `\nNo context.yaml for "${brand.slug}". Run /mx-account-cold-start first.\n\n`,
+                `\nNo context.yaml for "${brand.slug}". Run /mx-brand-context first.\n\n`,
               );
               process.exitCode = 5;
               return;

@@ -3,7 +3,7 @@
 --          most recent full month — derives the attribution-window factor
 --          and the daily-backfill calibration baseline.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 5, SC SP path)
+-- Consumers: brand-context (Query 5, SC SP path)
 -- Tier: 1
 
 SELECT

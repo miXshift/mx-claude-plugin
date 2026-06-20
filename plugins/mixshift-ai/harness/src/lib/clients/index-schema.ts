@@ -55,7 +55,7 @@ export type IndexAccount = z.infer<typeof indexAccountSchema>;
  * accounts during save.
  *
  * `cold_started` flips to `true` once the brand goes through
- * mx-account-cold-start (and stays true even if the brand later goes dormant,
+ * mx-brand-context (and stays true even if the brand later goes dormant,
  * so the on-disk context isn't lost across transient lapses).
  */
 export const indexBrandSchema = z.object({

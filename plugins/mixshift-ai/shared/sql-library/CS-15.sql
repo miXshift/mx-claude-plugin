@@ -1,7 +1,7 @@
 -- ID: CS-15
 -- Purpose: Spend trend — T-30 vs T-90 daily averages from campaignmetric.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 11)
+-- Consumers: brand-context (Query 11)
 -- Tier: 1
 
 SELECT

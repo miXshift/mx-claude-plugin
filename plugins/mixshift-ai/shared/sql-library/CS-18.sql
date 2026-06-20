@@ -4,7 +4,7 @@
 --          business_reports_dpst_date (total) joined to campaignmetric
 --          (ad).
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 14, SC only)
+-- Consumers: brand-context (Query 14, SC only)
 -- Tier: 1
 
 SELECT br.month,

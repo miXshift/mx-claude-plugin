@@ -4,7 +4,7 @@
 --          enrich-context only has to group consecutive dates per ASIN into
 --          contiguous out-of-stock windows.
 -- Params: :seller_id_list
--- Consumers: account-cold-start (v2.3 enrichment, harness stockout-windows.ts)
+-- Consumers: brand-context (v2.3 enrichment, harness stockout-windows.ts)
 -- Tier: 1
 --
 -- 2026-06-14 re-point: source is now `mws_inventory_history`, NOT

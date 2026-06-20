@@ -2,7 +2,7 @@
 -- Purpose: VC item group revenue concentration for the most recent full
 --          month (sub_brand x item_group breakdown).
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 8, VC only)
+-- Consumers: brand-context (Query 8, VC only)
 -- Tier: 1
 
 SELECT vi.CustomBrand AS sub_brand,

@@ -2,7 +2,7 @@
 -- Purpose: VC SP attribution window comparison (1-day vs 14-day) for the
 --          most recent full month.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 5, VC SP path)
+-- Consumers: brand-context (Query 5, VC SP path)
 -- Tier: 1
 --
 -- Kept separate from CS-06 because the comparison column differs

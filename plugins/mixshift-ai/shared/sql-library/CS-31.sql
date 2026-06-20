@@ -3,7 +3,7 @@
 --          Used by enrich-context.py for brand-name typo detection
 --          (Levenshtein 1-2 hits vs brand_terms canonicals/variants).
 -- Params: :seller_id_list
--- Consumers: account-cold-start (v2.3 enrichment)
+-- Consumers: brand-context (v2.3 enrichment)
 -- Tier: 1
 --
 -- Aggregated to SearchTerm grain (campaign / ad group / match type rolled up).

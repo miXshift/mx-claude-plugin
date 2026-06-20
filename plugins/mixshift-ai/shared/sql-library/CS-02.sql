@@ -2,7 +2,7 @@
 -- Purpose: SC 24-month revenue baseline by month — total sales, units,
 --          sessions, and CVR.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 2, SC path)
+-- Consumers: brand-context (Query 2, SC path)
 -- Tier: 1
 --
 -- Source: business_reports_dpst_date. Column names: DateTime, SalesAmount,

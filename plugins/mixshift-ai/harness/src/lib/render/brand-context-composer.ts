@@ -6,7 +6,7 @@
  * the two JSON sidecars (headline + review).
  *
  * Called by `mixshift brand render-context <slug>` and (in the future) by
- * post_execution hook of the mx-account-cold-start manifest.
+ * post_execution hook of the mx-brand-context manifest.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -25,6 +25,7 @@ import {
 } from './brand-context-report.js';
 import {
   sectionHeader,
+  sectionConfidenceSummary,
   sectionBrandSummary,
   sectionReviewAtAGlance,
   sectionRuntimeInputs,
@@ -42,7 +43,9 @@ import {
   sectionOpenGaps,
   sectionAuditChecklist,
   type ReportState,
+  type ResolvedFieldMap,
 } from './brand-context-sections.js';
+import { resolveBrandFields } from '../brain/read.js';
 import type { BucketCardOptions } from './design-system.js';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +96,15 @@ export async function composeBrandContextReport(
   // 4. Compute skill readiness (per downstream skill: context + manifest contract)
   const skillReadiness = computeSkillReadiness(sources, coverage);
 
+  // 4b. Resolve every registered brand field across the tiers (Tier 3 context
+  //     wins, Tier 2 brain pre-fills, null = gap). Drives the confidence
+  //     markers (✓ / ⊙ / ◯). Reads context + brain once; the render is
+  //     otherwise context-only, so this is the page's provenance source.
+  const resolvedFields: ResolvedFieldMap = await resolveBrandFields(
+    args.brandSlug,
+    args.dataDirOverride,
+  );
+
   // 5. Compute verdict (validator pass = required_present == required_total,
   //    which is our coverage model — we don't shell out to zod here)
   const { verdict, reason } = computeVerdict({
@@ -113,11 +125,15 @@ export async function composeBrandContextReport(
     verdict_reason: reason,
     buckets,
     skill_readiness: skillReadiness,
+    resolved_fields: resolvedFields,
   };
 
-  // 7. Render the 19-section body in template order
+  // 7. Render the body in template order. The header now carries the
+  //    confidence framing + legend, and a "what we know" confidence summary
+  //    sits right after it so the page leads with provenance.
   const body = [
     sectionHeader(state),
+    sectionConfidenceSummary(state),
     sectionBrandSummary(state),
     sectionReviewAtAGlance(state),
     sectionRuntimeInputs(state),
@@ -141,7 +157,7 @@ export async function composeBrandContextReport(
   // 8. Wrap in the design-system page chrome
   const html = await renderPage({
     title: `${args.brandName} — Brand Context`,
-    subtitle: `Cold-start render · ${args.runDate}`,
+    subtitle: `What we know about this brand, and how sure we are · ${args.runDate}`,
     theme: args.theme ?? 'light',
     body,
   });
@@ -345,6 +361,10 @@ function composeReviewJson(s: ReportState): Record<string, unknown> {
       item_count: b.details?.items.length ?? 0,
     })),
     skill_readiness: s.skill_readiness,
+    // Per-field provenance behind the ✓ / ⊙ / ◯ markers, machine-readable for
+    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain,
+    // gap = neither). Counts let a consumer gauge confidence at a glance.
+    confidence: composeConfidenceSummary(s),
     audit_rows: s.coverage.rows.map((r) => ({
       path: r.label.path,
       category: r.label.category,
@@ -354,6 +374,38 @@ function composeReviewJson(s: ReportState): Record<string, unknown> {
       is_stale: r.is_stale,
     })),
   };
+}
+
+/**
+ * Reduce the resolved-field map to a compact provenance summary: per-field
+ * level + counts. Mirrors the ✓ / ⊙ / ◯ the HTML shows.
+ */
+function composeConfidenceSummary(s: ReportState): {
+  confirmed: number;
+  prefilled: number;
+  gap: number;
+  fields: Record<string, { level: 'confirmed' | 'prefilled' | 'gap'; source: 'context' | 'brain' | null; fetched_at?: string }>;
+} {
+  const fields: Record<
+    string,
+    { level: 'confirmed' | 'prefilled' | 'gap'; source: 'context' | 'brain' | null; fetched_at?: string }
+  > = {};
+  let confirmed = 0;
+  let prefilled = 0;
+  let gap = 0;
+  for (const [key, resolved] of Object.entries(s.resolved_fields)) {
+    if (resolved == null) {
+      gap++;
+      fields[key] = { level: 'gap', source: null };
+    } else if (resolved.source === 'context') {
+      confirmed++;
+      fields[key] = { level: 'confirmed', source: 'context' };
+    } else {
+      prefilled++;
+      fields[key] = { level: 'prefilled', source: 'brain', fetched_at: resolved.fetched_at };
+    }
+  }
+  return { confirmed, prefilled, gap, fields };
 }
 
 // ---------------------------------------------------------------------------

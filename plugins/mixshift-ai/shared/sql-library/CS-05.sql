@@ -1,7 +1,7 @@
 -- ID: CS-05
 -- Purpose: 24-month ACOS by campaign type (SP/SB/SD) per month.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 4)
+-- Consumers: brand-context (Query 4)
 -- Tier: 1
 
 SELECT DATE_FORMAT(DateTime, '%Y-%m') AS month, CampaignType,

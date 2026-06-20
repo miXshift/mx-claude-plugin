@@ -1,7 +1,7 @@
 -- ID: CS-04
 -- Purpose: 24-month ACOS baseline by month — total spend, ad sales, ACOS%.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 3)
+-- Consumers: brand-context (Query 3)
 -- Tier: 1
 
 SELECT DATE_FORMAT(DateTime, '%Y-%m') AS month,

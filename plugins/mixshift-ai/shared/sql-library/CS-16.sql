@@ -3,7 +3,7 @@
 --          (low/zero fulfillable quantity rows per month) over the last
 --          14 months.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 12, SC only)
+-- Consumers: brand-context (Query 12, SC only)
 -- Tier: 1
 --
 -- 2026-05-21 update: removed the "empty-column stub" framing. The table

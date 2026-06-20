@@ -97,7 +97,7 @@ shapes:
       Distinct from typed structural_events[] / brand_terms — those require AM
       confirmation before promotion. detected_anomalies is rewritten on every
       delta-mode run and is treated as transient AI output. Lives in
-      tmp/<brand>-mx-account-cold-start-<date>.enrichment.json (NOT in
+      tmp/<brand>-mx-brand-context-<date>.enrichment.json (NOT in
       context.yaml directly), so the AM-curated context.yaml stays clean.
 
       stockout_candidates[]: list of {asin, item_name, started, ended,

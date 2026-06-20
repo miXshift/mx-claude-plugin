@@ -2,7 +2,7 @@
 -- Purpose: Same-SKU vs Other-SKU cross-sell ratio per campaign type for
 --          the most recent full month (productadmetric).
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 13)
+-- Consumers: brand-context (Query 13)
 -- Tier: 1
 
 SELECT CampaignType,

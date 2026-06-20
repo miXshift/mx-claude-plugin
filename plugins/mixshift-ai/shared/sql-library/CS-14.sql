@@ -3,7 +3,7 @@
 --          via CampaignName tag patterns (-PROF-BRAND-, -HDLN-PROF-BRAND-,
 --          -HDLN-BRAND-).
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 10)
+-- Consumers: brand-context (Query 10)
 -- Tier: 1
 
 SELECT DATE_FORMAT(DateTime, '%Y-%m') AS month,

@@ -2,7 +2,7 @@
 -- Purpose: VC sub-brand and item group structure with ASIN counts and
 --          target ACOS averages.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 6, VC path)
+-- Consumers: brand-context (Query 6, VC path)
 -- Tier: 1
 
 SELECT CustomBrand, ItemGroup, COUNT(*) AS asin_count,

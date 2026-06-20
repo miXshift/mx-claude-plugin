@@ -2,7 +2,7 @@
 -- Purpose: VC 24-month revenue baseline by month — ordered revenue and
 --          ordered units.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 2, VC path)
+-- Consumers: brand-context (Query 2, VC path)
 -- Tier: 1
 --
 -- Source: vendor_sales_manufacturing_asin. No sessions/CVR for VC.

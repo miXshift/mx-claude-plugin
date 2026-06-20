@@ -3,7 +3,7 @@
 --          the last ~90 settled days. Caller computes the median or mean
 --          improvement_pts to derive the daily backfill multiplier.
 -- Params: :seller_id
--- Consumers: account-cold-start (Query 5, daily calibration)
+-- Consumers: brand-context (Query 5, daily calibration)
 -- Tier: 1
 --
 -- Window: T-104 through T-7 (T-7 ceiling guarantees attribution settled).

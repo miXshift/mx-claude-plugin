@@ -18,5 +18,12 @@ Thumbs.db
 # Files matching *.local.* are never committed.
 *.local.*
 
+# Brand-context render-test byproducts: the offline render suite
+# (lib/render/brand-context-render.test.ts) renders into the committed golden
+# fixtures and reads the output back, so these regenerate on every run.
+test/fixtures/golden-data-dir/clients/*/brand-context.html
+test/fixtures/golden-data-dir/clients/*/brand-context.headline.json
+test/fixtures/golden-data-dir/clients/*/brand-context.review.json
+
 # Note: dist/ is committed. The plugin runtime invokes the built JS
 # directly; users should not need to npm install to run the harness.

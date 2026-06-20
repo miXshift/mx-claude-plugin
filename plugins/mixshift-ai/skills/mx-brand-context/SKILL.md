@@ -1,9 +1,11 @@
 ---
-name: mx-account-cold-start
-description: "Build a Tier 3 brand context directory for a new Amazon PPC account from scratch. Collects account metadata, runs structured database queries, synthesizes into a typed context.yaml + narrative.md + corpora/, and renders a human-reviewable Brand Context page. Use this skill whenever the user mentions a cold start, new account setup, account onboarding, building brand context, kicking off a new client, or onboarding a brand — even if they don't say 'cold start' explicitly. Always run before any other Amazon PPC skill on an account that doesn't yet have a populated ~/.mixshift/clients/<brand>/context.yaml."
+name: mx-brand-context
+description: "Set up Brand Context for a brand: build its Tier 3 brand context directory for a new Amazon PPC account from scratch. Collects account metadata, runs structured database queries, synthesizes into a typed context.yaml + narrative.md + corpora/, and renders a human-reviewable Brand Context page. Use this skill whenever the user mentions setting up or building brand context, onboarding a brand, a cold start, new account setup, account onboarding, or kicking off a new client — even if they don't say 'brand context' explicitly. Always run before any other Amazon PPC skill on an account that doesn't yet have a populated ~/.mixshift/clients/<brand>/context.yaml."
 ---
 
-# Account Cold Start — Tier 3 Context Builder
+# Brand Context Setup — Tier 3 Context Builder
+
+*(formerly mx-account-cold-start.)*
 
 **Use only data returned by the prefetched queries, `context.yaml`, `narrative.md`, and source-backed `brand-intelligence.yaml`. Do not supplement with general Amazon or e-commerce knowledge, industry benchmarks, or assumed platform dynamics not present in those inputs.**
 
@@ -47,7 +49,7 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
   brand-context.html           # Brand Context page (human review) — renderer output
   brand-context.headline.json  # ~500-token summary for the model
   brand-context.review.json    # compact review map: buckets, runtime inputs, skill readiness
-  runs/mx-account-cold-start/<date>/
+  runs/mx-brand-context/<date>/
     <run-id>.json              # sidecar (auto-emitted by renderer)
     <date>.data.json           # prefetch artifact (full machine-readable)
     <date>.data.md             # prefetch artifact (markdown summary, model-facing)
@@ -147,7 +149,7 @@ Run after Phase 0, before Phase 1. The AM doesn't need to be present. Search seq
 Run the harness's prefetch command, which executes the catalog SQL declared in `skill.manifest.yaml`:
 
 ```bash
-mixshift prefetch --brand <brand-slug> --skill mx-account-cold-start --date <YYYY-MM-DD>
+mixshift prefetch --brand <brand-slug> --skill mx-brand-context --date <YYYY-MM-DD>
 ```
 
 The runner executes CS-01..CS-31 in three rounds (see manifest `batch_plan`):
@@ -156,8 +158,8 @@ The runner executes CS-01..CS-31 in three rounds (see manifest `batch_plan`):
 - **Round 3:** `CS-16..CS-27` — additional structure + calibration queries; `CS-28..CS-31` — v2.3 enrichment inputs (settlement curve, inventory history, daily metrics, search-term corpus)
 
 Artifacts:
-- `~/.mixshift/clients/<brand-slug>/runs/mx-account-cold-start/<date>/data.json` — full machine-readable
-- `~/.mixshift/clients/<brand-slug>/runs/mx-account-cold-start/<date>/data.md` — capped markdown summary
+- `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/data.json` — full machine-readable
+- `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/data.md` — capped markdown summary
 
 Read `data.md` for synthesis. The full row sets (especially CS-28..31 which can run to thousands of rows) live in `data.json` — load that file directly when you need rows the markdown cap omitted.
 
@@ -204,7 +206,7 @@ After prefetch completes and context exists, run the harness's enrichment to com
 mixshift brand enrich --brand <brand-slug> --date <YYYY-MM-DD>
 ```
 
-It reads the prefetch artifact plus the existing `context.yaml` and writes `runs/mx-account-cold-start/<date>/<date>.enrichment.json` containing:
+It reads the prefetch artifact plus the existing `context.yaml` and writes `runs/mx-brand-context/<date>/<date>.enrichment.json` containing:
 
 1. **Daily attribution settlement curve** (from CS-28) — per-campaign-type ACOS at 1d/7d/14d, day-of-week offsets, stability score. Reshaped to `capture_rate_calibration.daily_settlement_curve`. Cells with insufficient data (low-volume campaign types where 1-day or 7-day attribution doesn't accrue) are labeled "insufficient data" rather than `null`.
 2. **Stockout candidates** (from CS-29 + CS-30) — contiguous windows ≥3 days where `SellableQuantity = 0` OR Alert active OR `DaysOfSupply < 14`. Each entry includes impacted ad-sales for the window. VC accounts: FBA-only. **Limitation:** ASIN suppression-for-profitability events (Amazon de-ranks an ASIN despite inventory) are not detectable from `mws_inventory_health` — those still require AM input as `structural_events[]`.
@@ -218,7 +220,7 @@ It reads the prefetch artifact plus the existing `context.yaml` and writes `runs
 mixshift brand merge-delta --brand <brand-slug> --date <YYYY-MM-DD>
 ```
 
-Detected anomalies stay in `runs/mx-account-cold-start/<date>/<date>.enrichment.json` and are surfaced by the renderer in the "Detected Anomalies (Advisory)" section. They are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants` — AM confirmation required first. The pending list survives across cold-start runs (additive merge) until the AM confirms or dismisses.
+Detected anomalies stay in `runs/mx-brand-context/<date>/<date>.enrichment.json` and are surfaced by the renderer in the "Detected Anomalies (Advisory)" section. They are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants` — AM confirmation required first. The pending list survives across brand-context runs (additive merge) until the AM confirms or dismisses.
 
 ---
 
@@ -414,7 +416,7 @@ mixshift brand render-context --brand <brand-slug> --date <YYYY-MM-DD>
 - `~/.mixshift/clients/<brand-slug>/brand-context.html` — human-reviewable Brand Context page
 - `~/.mixshift/clients/<brand-slug>/brand-context.headline.json` — ~500-token model summary
 - `~/.mixshift/clients/<brand-slug>/brand-context.review.json` — compact machine map of missing-context buckets, runtime inputs, and skill readiness
-- `~/.mixshift/clients/<brand-slug>/runs/mx-account-cold-start/<date>/<run-id>.json` — sidecar
+- `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/<run-id>.json` — sidecar
 - Optional copy to `context.delivery.reports_local_dir` (warning-only if path unavailable)
 
 **Verdict logic** (computed by renderer):
@@ -465,7 +467,7 @@ If the verdict is GREEN, or the only remaining items are runtime-only uploads / 
 3. Append a `file://` link to `brand-context.html` for the operator's review.
 4. Stop.
 
-The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar write` invocation needed. Sidecar lands at `~/.mixshift/clients/<brand-slug>/runs/mx-account-cold-start/<data-date>/<run-id>.json`.
+The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar write` invocation needed. Sidecar lands at `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<data-date>/<run-id>.json`.
 
 ---
 
@@ -509,7 +511,7 @@ After the primary deliverable is written, emit typed observations this run surfa
 
 Write to:
 ```
-~/.mixshift/clients/<brand-slug>/runs/mx-account-cold-start/<data-date>/<date>.discoveries.json
+~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<data-date>/<date>.discoveries.json
 ```
 
 Schema source of truth: `shared/clients/_schema/discoveries.schema.yaml`.
@@ -531,15 +533,15 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 At the START of this skill, run:
 
 ```bash
-mixshift telemetry emit skill.invoked --skill mx-account-cold-start
+mixshift telemetry emit skill.invoked --skill mx-brand-context
 # If natural-language trigger matched (NOT a /slash command), also run:
-mixshift telemetry emit skill.trigger_phrase_matched --skill mx-account-cold-start --trigger-phrase "<the user's exact phrase>"
+mixshift telemetry emit skill.trigger_phrase_matched --skill mx-brand-context --trigger-phrase "<the user's exact phrase>"
 ```
 
 At the END of this skill, run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-account-cold-start --outcome <ok|failed|deferred|skipped>
+mixshift telemetry emit skill.completed --skill mx-brand-context --outcome <ok|failed|deferred|skipped>
 ```
 
 Outcomes: `ok` (skill ran cleanly), `failed` (CLI errored or prereq missing), `deferred` (paused waiting for user input that didn't come back), `skipped` (user opted out or prereq guard fired).
