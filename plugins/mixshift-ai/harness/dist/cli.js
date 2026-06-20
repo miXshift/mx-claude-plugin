@@ -79458,7 +79458,11 @@ async function runApplyDecision2(args) {
           effective_config: result.effective_config,
           did_persist: result.did_persist,
           saved_to: result.saved_to,
-          validation_issues: result.validation_issues
+          validation_issues: result.validation_issues,
+          // Shared fields just captured (the "I learned X" surface) so the
+          // JSON-driven caller (Claude in chat) can acknowledge them, matching
+          // the human CLI footer (renderPersistenceFooter).
+          captured: result.captured ?? []
         },
         null,
         2
