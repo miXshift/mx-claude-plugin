@@ -68599,7 +68599,7 @@ var BRAIN_SCHEMA_VERSION = 1;
 // src/lib/brain/assemble.ts
 function assembleBrain(input) {
   const now = input.now ?? /* @__PURE__ */ new Date();
-  const seller = assembleSellerSection(input.sellerRows);
+  const seller = assembleSellerSection(input.sellerRows, input.primarySellerId);
   const meta3 = (src) => ({
     sproc: src.sproc,
     fetched_at: now.toISOString(),
@@ -68641,8 +68641,9 @@ function assembleBrain(input) {
     observations: input.previousObservations ?? {}
   };
 }
-function assembleSellerSection(rows) {
-  const primary = rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+function assembleSellerSection(rows, primarySellerId) {
+  const byId = primarySellerId != null ? rows.find((r) => toNumber2(r.ID) === primarySellerId) : void 0;
+  const primary = byId ?? rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
   return {
     merchant_alias: toTrimmedString(primary.MerchantAlias),
     storefront_name: toTrimmedString(primary.Name),
@@ -68938,6 +68939,25 @@ var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
 var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
 var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
 var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
+function pickPrimarySeat(accounts) {
+  if (accounts.length === 0) return null;
+  const candidates = accounts.filter((a) => a.ads_active).length > 0 ? accounts.filter((a) => a.ads_active) : accounts.filter((a) => a.is_active).length > 0 ? accounts.filter((a) => a.is_active) : accounts;
+  const accountTypeRank = {
+    SC: 0,
+    VC: 1,
+    DSP: 2,
+    unknown: 3
+  };
+  const marketplaceRank = (m) => m === "United States" ? 0 : 1;
+  const sorted = [...candidates].sort((a, b) => {
+    const byType = accountTypeRank[a.account_type] - accountTypeRank[b.account_type];
+    if (byType !== 0) return byType;
+    const byMarket = marketplaceRank(a.marketplace) - marketplaceRank(b.marketplace);
+    if (byMarket !== 0) return byMarket;
+    return a.seller_id - b.seller_id;
+  });
+  return sorted[0].seller_id;
+}
 async function fetchBrandBrain(opts) {
   const now = opts.now ?? /* @__PURE__ */ new Date();
   const t0 = Date.now();
@@ -68951,6 +68971,7 @@ async function fetchBrandBrain(opts) {
   if (sellerIds.length === 0) {
     return { status: "no_accounts", slug };
   }
+  const primarySeatId = pickPrimarySeat(brand.accounts);
   const existing = await loadBrain(slug, dataDirOverride);
   const previousObservations = existing.ok ? existing.brain.observations : void 0;
   if (!opts.refresh && existing.ok) {
@@ -69039,6 +69060,7 @@ async function fetchBrandBrain(opts) {
     brandSlug: slug,
     sellerRows: sellerOut.rows,
     sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+    primarySellerId: primarySeatId,
     generator: `plugin@${getPluginVersion()}`,
     now,
     previousObservations,
@@ -70608,11 +70630,27 @@ function computeVerdict(args) {
       reason: "Phase 1 complete; Phase 2 AM intake pending."
     };
   }
-  if (!args.validator_passed || args.coverage.required_present < args.coverage.required_total) {
+  const contextState = args.context_state ?? (args.validator_passed ? "valid" : "invalid");
+  if (contextState === "absent") {
+    return args.brain_present ? {
+      verdict: "OBSERVATIONAL",
+      reason: "Auto-discovered from your account \u2014 confirm and enrich to sharpen."
+    } : {
+      verdict: "OBSERVATIONAL",
+      reason: "Nothing captured yet \u2014 add the brand and run setup to populate context."
+    };
+  }
+  if (contextState === "invalid") {
+    return {
+      verdict: "RED",
+      reason: "Schema validator failed \u2014 fix context.yaml and re-render."
+    };
+  }
+  if (args.coverage.required_present < args.coverage.required_total) {
     const missing = args.coverage.required_total - args.coverage.required_present;
     return {
       verdict: "RED",
-      reason: !args.validator_passed ? "Schema validator failed \u2014 fix context.yaml and re-render." : `${missing} required field(s) missing.`
+      reason: `${missing} required field(s) missing.`
     };
   }
   if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
@@ -71287,10 +71325,23 @@ async function composeBrandContextReport(args) {
     args.brandSlug,
     args.dataDirOverride
   );
+  const ctxValidation = await validateBrandContext(
+    args.brandSlug,
+    args.dataDirOverride
+  );
+  const contextState = ctxValidation.ok ? "valid" : ctxValidation.kind === "file_missing" ? "absent" : "invalid";
+  const brainPresent = Object.values(resolvedFields).some(
+    (r) => r?.source === "brain"
+  );
   const { verdict, reason } = computeVerdict({
     coverage,
     observational: !!args.observational,
-    validator_passed: coverage.required_present === coverage.required_total
+    // validator pass = required_present == required_total, our coverage model;
+    // we don't shell out to zod for the coverage ladder. The precise context
+    // state below is what gates the early-state vs RED branch.
+    validator_passed: coverage.required_present === coverage.required_total,
+    context_state: contextState,
+    brain_present: brainPresent
   });
   const state = {
     brand_slug: args.brandSlug,
