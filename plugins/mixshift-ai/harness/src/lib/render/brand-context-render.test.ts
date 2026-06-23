@@ -18,9 +18,11 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stringify as stringifyYaml } from 'yaml';
 import { composeBrandContextReport } from './brand-context-composer.js';
 import {
   sectionSubBrands,
@@ -28,6 +30,8 @@ import {
   type ResolvedFieldMap,
 } from './brand-context-sections.js';
 import { BRAND_FIELD_KEYS } from '../brain/read.js';
+import { assembleBrain } from '../brain/assemble.js';
+import { saveBrain } from '../brain/read.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(here, '..', '..', '..', 'test', 'fixtures', 'golden-data-dir');
@@ -139,6 +143,133 @@ describe('brand-context render — provenance correctness', () => {
     expect(f.tacos_target_pct.level).toBe('confirmed');
     expect(f.primary_metric.level).toBe('confirmed');
     expect(f.monthly_budget.level).toBe('prefilled');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brain-only early state (FIX 2): a brand keyed via `brand key add` has its
+// Tier-2 brain auto-fetched but NO context.yaml. It must render a non-RED
+// "auto-discovered" early state — not the RED "fix context.yaml" schema-fail —
+// while the ⊙ brain confidence rendering stays intact.
+// ---------------------------------------------------------------------------
+
+const BRAIN_ONLY_SLUG = 'goldenbrand-brain-only';
+
+/** Compose a brand that has a brain but no context.yaml, in an isolated temp
+ *  data dir. Mirrors the post-`brand key add`, pre-cold-start state. */
+async function composeBrainOnly(): Promise<Composed & { verdictReason: string }> {
+  const dir = await mkdtemp(join(tmpdir(), 'mx-brain-only-'));
+  try {
+    // Build + persist a Tier-2 brain (seller scalars present), no context.yaml.
+    const brain = assembleBrain({
+      brandSlug: BRAIN_ONLY_SLUG,
+      sellerRows: [
+        {
+          ID: 900303,
+          ACOSTarget: '23.0',
+          MerchantAlias: 'Brookhaven Provisions US',
+          Name: 'Brookhaven Provisions',
+          MonthlyBudget: 28000,
+          MarketPlaceName: 'US',
+          DefaultCurrencyCode: 'USD',
+        },
+      ],
+      sellerSproc: 'sp_brain_seller_fetch',
+      primarySellerId: 900303,
+      generator: 'plugin@test',
+      now: new Date('2026-06-16T13:40:00.000Z'),
+    });
+    await saveBrain(brain, dir);
+
+    const res = await composeBrandContextReport({
+      brandSlug: BRAIN_ONLY_SLUG,
+      brandName: 'Brookhaven Provisions',
+      runDate: '2026-06-18',
+      theme: 'light',
+      dataDirOverride: dir,
+    });
+    const [html, reviewRaw] = await Promise.all([
+      readFile(res.html_path, 'utf-8'),
+      readFile(res.review_path, 'utf-8'),
+    ]);
+    return {
+      html,
+      review: JSON.parse(reviewRaw),
+      verdict: res.verdict,
+      verdictReason: res.verdict_reason,
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+describe('brand-context render — brain-only early state (FIX 2)', () => {
+  it('does NOT render the RED schema-fail verdict for a brain-only brand', async () => {
+    const { verdict, verdictReason, html } = await composeBrainOnly();
+    expect(verdict).not.toBe('RED');
+    // The old jarring message must be gone.
+    expect(verdictReason).not.toContain('Schema validator failed');
+    expect(html).not.toContain('Schema validator failed');
+  });
+
+  it('renders the ⊙ auto-discovered early-state framing (non-RED verdict + reframed reason)', async () => {
+    const { verdict, verdictReason, html } = await composeBrainOnly();
+    // OBSERVATIONAL is the non-RED early-state verdict (blue "runtime" tone).
+    expect(verdict).toBe('OBSERVATIONAL');
+    expect(verdictReason.toLowerCase()).toContain('auto-discovered');
+    expect(verdictReason).toContain('confirm and enrich');
+    // The ⊙ brain confidence rendering (Phase 7) must still work: brain-sourced
+    // seller scalars resolve as pre-filled, and the glyph renders.
+    expect(html).toContain('⊙');
+    expect(html).toContain('What we know, and how sure we are');
+  });
+
+  it('resolves brain-sourced fields as pre-filled, with context fields as gaps', async () => {
+    const { review } = await composeBrainOnly();
+    const f = review.confidence.fields;
+    // Brain supplies these (seller row) → pre-filled.
+    expect(f.acos_target_pct.level).toBe('prefilled');
+    expect(f.monthly_budget.level).toBe('prefilled');
+    expect(f.marketplace.level).toBe('prefilled');
+    // Tier-3-only fields with no context → gaps (not errors).
+    expect(f.primary_metric.level).toBe('gap');
+    expect(f.protected_terms.level).toBe('gap');
+    // At least one field resolved from the brain (the early-state trigger).
+    expect(review.confidence.prefilled).toBeGreaterThan(0);
+  });
+
+  it('still renders every section in the early state (no section dropped)', async () => {
+    const { html } = await composeBrainOnly();
+    const missing = SECTION_SENTINELS.filter((s) => !html.includes(s));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('brand-context render — malformed context stays RED (FIX 2 guard)', () => {
+  it('a PRESENT but schema-invalid context.yaml still renders RED', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-bad-ctx-'));
+    try {
+      // context.yaml present but schema-invalid (missing required structure) →
+      // genuinely broken, must stay RED with the schema-fail message. No brain.
+      const brandDir = join(dir, 'clients', 'goldenbrand-bad-context');
+      await mkdir(brandDir, { recursive: true });
+      await writeFile(
+        join(brandDir, 'context.yaml'),
+        stringifyYaml({ schema_version: 1, totally: 'not a valid context' }),
+        'utf-8',
+      );
+      const res = await composeBrandContextReport({
+        brandSlug: 'goldenbrand-bad-context',
+        brandName: 'Broken Brand',
+        runDate: '2026-06-18',
+        theme: 'light',
+        dataDirOverride: dir,
+      });
+      expect(res.verdict).toBe('RED');
+      expect(res.verdict_reason).toContain('Schema validator failed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

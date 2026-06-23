@@ -351,11 +351,29 @@ function formatAuditValue(
 
 export type Verdict = 'GREEN' | 'YELLOW' | 'RED' | 'OBSERVATIONAL';
 
+/**
+ * Whether a Tier-3 context.yaml exists and validates:
+ *   - 'valid'   — present and schema-valid (the cold-started case).
+ *   - 'invalid' — present but malformed/schema-invalid (genuinely broken → RED).
+ *   - 'absent'  — no context.yaml on disk yet (an EARLY state, not an error;
+ *                 a brand may be Tier-2-brain-only after `brand key add`).
+ */
+export type ContextState = 'valid' | 'invalid' | 'absent';
+
 export interface VerdictArgs {
   coverage: AuditCoverage;
   observational: boolean;
   /** True when the run is Phase 1 only (Phase 2 AMA pending). */
   validator_passed: boolean;
+  /** Tri-state context presence. Distinguishes "no context yet" (early) from
+   *  "context present but broken" (RED). Defaults to deriving from
+   *  `validator_passed` so existing callers keep their behavior:
+   *  passed → 'valid', failed → 'invalid'. */
+  context_state?: ContextState;
+  /** True when a Tier-2 brain exists (auto-fetched after `brand key add`).
+   *  A brain-only brand (context absent + brain present) is a legitimate
+   *  early state, rendered non-RED. Defaults to false. */
+  brain_present?: boolean;
 }
 
 export function computeVerdict(args: VerdictArgs): { verdict: Verdict; reason: string } {
@@ -365,13 +383,45 @@ export function computeVerdict(args: VerdictArgs): { verdict: Verdict; reason: s
       reason: 'Phase 1 complete; Phase 2 AM intake pending.',
     };
   }
-  if (!args.validator_passed || args.coverage.required_present < args.coverage.required_total) {
+
+  // Derive the context state for callers that pass only `validator_passed`.
+  const contextState: ContextState =
+    args.context_state ?? (args.validator_passed ? 'valid' : 'invalid');
+
+  // EARLY STATE — no context.yaml yet. This is NOT a broken brand: a brand
+  // that has only been `brand key add`-ed has its Tier-2 brain auto-fetched
+  // but no cold-start context. Render a non-RED "auto-discovered" state (the
+  // ⊙ brain data + ◯ gaps still render below). If there's no brain either,
+  // it's the truly-empty "nothing yet" state — still non-RED, just a nudge to
+  // set the brand up.
+  if (contextState === 'absent') {
+    return args.brain_present
+      ? {
+          verdict: 'OBSERVATIONAL',
+          reason:
+            'Auto-discovered from your account — confirm and enrich to sharpen.',
+        }
+      : {
+          verdict: 'OBSERVATIONAL',
+          reason:
+            'Nothing captured yet — add the brand and run setup to populate context.',
+        };
+  }
+
+  // GENUINELY BROKEN — context.yaml is present but malformed/invalid. Keep
+  // this RED so a real schema error stays loud (distinct from the early state).
+  if (contextState === 'invalid') {
+    return {
+      verdict: 'RED',
+      reason: 'Schema validator failed — fix context.yaml and re-render.',
+    };
+  }
+
+  if (args.coverage.required_present < args.coverage.required_total) {
     const missing = args.coverage.required_total - args.coverage.required_present;
     return {
       verdict: 'RED',
-      reason: !args.validator_passed
-        ? 'Schema validator failed — fix context.yaml and re-render.'
-        : `${missing} required field(s) missing.`,
+      reason: `${missing} required field(s) missing.`,
     };
   }
   if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {

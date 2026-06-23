@@ -21,8 +21,27 @@ import {
   resolveBrandFields,
 } from './read.js';
 import { applyObservations, recordObservations } from './observe.js';
+import { pickPrimarySeat, pickPrimarySeatByMetrics } from './fetch.js';
+import type { IndexAccount } from '../clients/index-schema.js';
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
+
+/** Build an IndexAccount with sensible defaults; override the fields a test
+ *  cares about. Keeps the seat fixtures readable. */
+function seat(over: Partial<IndexAccount> & { seller_id: number }): IndexAccount {
+  return {
+    seller_id: over.seller_id,
+    seller_name: over.seller_name ?? `seat-${over.seller_id}`,
+    merchant_alias: over.merchant_alias ?? null,
+    account_type: over.account_type ?? 'SC',
+    marketplace: over.marketplace ?? null,
+    region: over.region ?? null,
+    is_active: over.is_active ?? true,
+    is_mws_user: over.is_mws_user ?? true,
+    ads_active: over.ads_active ?? true,
+    retail_active: over.retail_active ?? true,
+  };
+}
 
 const aopRow = {
   ID: 574,
@@ -131,6 +150,212 @@ describe('assembleBrain', () => {
       value: ['B00TEST'],
       count: 1,
     });
+  });
+});
+
+describe('pickPrimarySeat', () => {
+  it("picks AOP's active US Seller-Central seat (574) over its VC + non-US seats", () => {
+    // Real AOP seats. Row order deliberately puts the VC seat (577) first to
+    // prove the pick is by metadata, not array position.
+    const accounts = [
+      seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
+      seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(574);
+  });
+
+  it("picks HydraPak's US Seller-Central seat (384) across a wide VC + SC fleet", () => {
+    const accounts = [
+      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(384);
+  });
+
+  it('returns the best VC seat for a VC-only brand (not hardcoded to SC)', () => {
+    // No SC seat exists — the US VC seat wins over the non-US VC seats. Proves
+    // SC is a PREFERENCE, applied only when present.
+    const accounts = [
+      seat({ seller_id: 900, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 901, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 902, account_type: 'VC', marketplace: 'Canada' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(901);
+  });
+
+  it('falls back to is_active seats when none are ads_active, then to all', () => {
+    // No ads_active seat → consider is_active. The active US SC seat (20) wins
+    // over the active VC seat (10); the inactive US SC seat (30) is excluded.
+    const someActive = [
+      seat({ seller_id: 10, account_type: 'VC', marketplace: 'United States', ads_active: false, is_active: true }),
+      seat({ seller_id: 30, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: false }),
+      seat({ seller_id: 20, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: true }),
+    ];
+    expect(pickPrimarySeat(someActive)).toBe(20);
+
+    // Nothing active at all → all accounts are candidates; SC + US still wins.
+    const noneActive = [
+      seat({ seller_id: 41, account_type: 'VC', marketplace: 'United States', ads_active: false, is_active: false }),
+      seat({ seller_id: 40, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: false }),
+    ];
+    expect(pickPrimarySeat(noneActive)).toBe(40);
+  });
+
+  it('returns null when the brand has no accounts', () => {
+    expect(pickPrimarySeat([])).toBeNull();
+  });
+});
+
+describe('pickPrimarySeatByMetrics', () => {
+  // Real AOP seats. The per-seat USD revenue+spend values below are the
+  // warehouse-validated trailing-30d numbers (2026-06-23): seat 574 leads on
+  // economic activity, which is what we want — same answer as the heuristic
+  // here, but for the RIGHT reason (it's the economic leader, not just US-SC).
+  const aopAccounts = [
+    seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
+    seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
+    seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
+    seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+  ];
+  const aopMetrics = [
+    { seller_id: 577, usd_revenue: '1161.39', usd_spend: '0.00' },
+    { seller_id: 575, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 573, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 574, usd_revenue: '213262.80', usd_spend: '30489.40' },
+  ];
+
+  it('picks the seat with the highest (usd_revenue + usd_spend): AOP -> 574', () => {
+    expect(pickPrimarySeatByMetrics(aopMetrics, aopAccounts)).toBe(574);
+  });
+
+  it('picks the economic leader even when it disagrees with the heuristic: HydraPak -> 113 (US VC), NOT the dormant US-SC seat 384', () => {
+    // The warehouse truth that motivated this change. HydraPak is a 1P-heavy
+    // brand: its US Vendor seat (113) does $1.3M revenue+spend/30d while its
+    // US Seller-Central seat (384) is dormant ($0/$0). The heuristic would
+    // pick 384 (SC>VC, US-first); the metrics pick is 113, which is correct.
+    const hydrapakAccounts = [
+      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    const hydrapakMetrics = [
+      { seller_id: 113, usd_revenue: 1143114.2, usd_spend: 156594.6 },
+      { seller_id: 655, usd_revenue: 100532.61, usd_spend: 3275.43 },
+      { seller_id: 524, usd_revenue: 28998.67, usd_spend: 2962.66 },
+      { seller_id: 523, usd_revenue: 17367.51, usd_spend: 873.58 },
+      { seller_id: 522, usd_revenue: 15983.25, usd_spend: 1270.74 },
+      { seller_id: 408, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 411, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 384, usd_revenue: 0, usd_spend: 0 },
+    ];
+    // Verify it really diverges from the heuristic on this fleet.
+    expect(pickPrimarySeat(hydrapakAccounts)).toBe(384);
+    expect(pickPrimarySeatByMetrics(hydrapakMetrics, hydrapakAccounts)).toBe(113);
+  });
+
+  it('coerces numeric-string wire values when ranking', () => {
+    const accounts = [seat({ seller_id: 10 }), seat({ seller_id: 20 })];
+    const rows = [
+      { seller_id: '10', usd_revenue: '100.00', usd_spend: '5.00' },
+      { seller_id: '20', usd_revenue: '90.00', usd_spend: '50.00' }, // 140 > 105
+    ];
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(20);
+  });
+
+  it('breaks exact ties deterministically by ascending seller_id', () => {
+    const accounts = [seat({ seller_id: 30 }), seat({ seller_id: 20 }), seat({ seller_id: 40 })];
+    const rows = [
+      { seller_id: 30, usd_revenue: 500, usd_spend: 0 },
+      { seller_id: 20, usd_revenue: 200, usd_spend: 300 }, // also 500
+      { seller_id: 40, usd_revenue: 500, usd_spend: 0 }, // also 500
+    ];
+    // Row order deliberately not ascending; the lowest tied id (20) wins.
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(20);
+  });
+
+  it('ignores metric rows for seats not in the brand registry (defensive)', () => {
+    const accounts = [seat({ seller_id: 574 })];
+    const rows = [
+      { seller_id: 999, usd_revenue: 9_999_999, usd_spend: 0 }, // not a known seat
+      { seller_id: 574, usd_revenue: 10, usd_spend: 0 },
+    ];
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(574);
+  });
+
+  it('returns null on empty rows so the caller falls back to the heuristic', () => {
+    expect(pickPrimarySeatByMetrics([], aopAccounts)).toBeNull();
+  });
+
+  it('returns null when every eligible seat scores zero (no economic signal)', () => {
+    // A quiet brand: all seats present but zero revenue+spend. No economic
+    // signal -> defer to the heuristic rather than pick an arbitrary zero row.
+    const rows = [
+      { seller_id: 574, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 575, usd_revenue: '0.00', usd_spend: null },
+    ];
+    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
+  });
+
+  it('returns null when no row matches a registry seat', () => {
+    const rows = [{ seller_id: 12345, usd_revenue: 100, usd_spend: 100 }];
+    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
+  });
+});
+
+describe('assembleSellerSection with a primary seat id', () => {
+  // Rows where an EARLIER row carries a non-null ACOSTarget (the old heuristic
+  // would lift it), but the registry-chosen primary is a LATER row. The fix
+  // must lift the later row's scalars.
+  const multiSeatRows = [
+    {
+      ID: 577,
+      ACOSTarget: '40', // non-null → old heuristic would pick this row
+      MerchantAlias: "Backpacker's Pantry",
+      MonthlyBudget: 2000,
+      MarketPlaceName: 'Amazon.com (VC)',
+    },
+    {
+      ID: 574,
+      ACOSTarget: '25',
+      MerchantAlias: 'Aspen Outdoor Provisions',
+      MonthlyBudget: 30000,
+      MarketPlaceName: 'Amazon.com',
+    },
+  ];
+
+  it('lifts scalars from the row whose ID matches primarySellerId (not the earlier ACOSTarget row)', () => {
+    const seller = assembleSellerSection(multiSeatRows, 574);
+    expect(seller.primary_seller_id).toBe(574);
+    expect(seller.acos_target_pct).toBe(25);
+    expect(seller.merchant_alias).toBe('Aspen Outdoor Provisions');
+    expect(seller.monthly_budget).toBe(30000);
+    expect(seller.marketplace).toBe('Amazon.com');
+  });
+
+  it('falls back to the legacy heuristic when the primary id matches no row', () => {
+    const seller = assembleSellerSection(multiSeatRows, 999);
+    // 999 not found → first row with a non-null ACOSTarget (577).
+    expect(seller.primary_seller_id).toBe(577);
+    expect(seller.acos_target_pct).toBe(40);
+  });
+
+  it('is backward-compatible: no primarySellerId uses the legacy heuristic', () => {
+    const seller = assembleSellerSection(multiSeatRows);
+    expect(seller.primary_seller_id).toBe(577);
+    expect(seller.acos_target_pct).toBe(40);
   });
 });
 

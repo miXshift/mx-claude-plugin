@@ -39,6 +39,10 @@ export interface AssembleBrainInput {
   sellerRows: RawSellerRow[];
   /** Which procedure/query produced sellerRows (provenance). */
   sellerSproc: string;
+  /** The brand's PRIMARY seat id (registry-derived; see
+   *  fetch.ts::pickPrimarySeat). When set, the seller scalars lift from the
+   *  row whose `ID` matches this, instead of the arbitrary-row heuristic. */
+  primarySellerId?: number | null;
   /** e.g. `plugin@0.5.21`. P2 passes `brain-service@x.y`. */
   generator: string;
   /** Injected for determinism in tests; defaults to now. */
@@ -69,7 +73,7 @@ export interface AssembleBrainInput {
  */
 export function assembleBrain(input: AssembleBrainInput): BrandBrain {
   const now = input.now ?? new Date();
-  const seller = assembleSellerSection(input.sellerRows);
+  const seller = assembleSellerSection(input.sellerRows, input.primarySellerId);
 
   const meta = <Row,>(src: SourceInput<Row>): BrainSourceMeta => ({
     sproc: src.sproc,
@@ -129,14 +133,25 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
 /**
  * Lift the seller section from the fetched rows. Multi-marketplace
  * brands return one row per seller id; scalar fields lift from the
- * PRIMARY row: the first row with a non-null ACOSTarget, else the first
- * row. Per-account detail lives in the registry (index.yaml), not here.
+ * PRIMARY row. When `primarySellerId` is supplied (registry-derived; see
+ * fetch.ts::pickPrimarySeat), the primary is the row whose `ID` matches it —
+ * that's the truthful pick for multi-seat brands. Falls back to the legacy
+ * heuristic (first row with a non-null ACOSTarget, else the first row) when no
+ * id is given or no row matches it, so existing callers stay correct.
+ * Per-account detail lives in the registry (index.yaml), not here.
  *
  * Exported for unit tests.
  */
-export function assembleSellerSection(rows: RawSellerRow[]): BrainSeller {
+export function assembleSellerSection(
+  rows: RawSellerRow[],
+  primarySellerId?: number | null,
+): BrainSeller {
+  const byId =
+    primarySellerId != null
+      ? rows.find((r) => toNumber(r.ID) === primarySellerId)
+      : undefined;
   const primary =
-    rows.find((r) => toNumber(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+    byId ?? rows.find((r) => toNumber(r.ACOSTarget) !== null) ?? rows[0] ?? {};
 
   return {
     merchant_alias: toTrimmedString(primary.MerchantAlias),

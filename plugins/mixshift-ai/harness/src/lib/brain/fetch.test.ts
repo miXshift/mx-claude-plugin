@@ -456,6 +456,113 @@ describe('fetchBrandBrain — multi-source orchestration', () => {
   });
 });
 
+describe('fetchBrandBrain — primary-seat selection (metrics vs heuristic)', () => {
+  // Brand with a US Seller-Central seat (800) and a US Vendor seat (900).
+  // The registry heuristic prefers SC over VC, so it picks 800. The seller
+  // source returns a row per seat with a distinguishable alias so we can read
+  // back which seat supplied the brain's seller scalars.
+  const twoSeatAccounts: FixtureAccount[] = [
+    { seller_id: 800, account_type: 'SC' },
+    { seller_id: 900, account_type: 'VC' },
+  ];
+  const sellerRows = [
+    { ID: 800, MerchantAlias: 'SC Seat 800', ACOSTarget: 25, MarketPlaceName: 'Amazon.com' },
+    { ID: 900, MerchantAlias: 'VC Seat 900', ACOSTarget: 18, MarketPlaceName: 'Amazon.com (VC)' },
+  ];
+
+  it('prefers the metrics pick (900) over the heuristic (800) when seat metrics are present', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir, twoSeatAccounts);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', sellerRows),
+        // 900 (VC) is the economic leader despite the heuristic favoring SC.
+        'BRAIN-SEAT-METRICS': ok('BRAIN-SEAT-METRICS', [
+          { seller_id: 800, usd_revenue: 1000, usd_spend: 0 },
+          { seller_id: 900, usd_revenue: 500000, usd_spend: 75000 },
+        ]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+
+      // The metrics source ran over ALL seats.
+      expect(callFor('BRAIN-SEAT-METRICS')!.params).toEqual({ seller_ids: [800, 900] });
+
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) {
+        // Primary seat = the metrics leader (900), NOT the heuristic (800).
+        expect(brain.brain.seller?.primary_seller_id).toBe(900);
+        expect(brain.brain.seller?.merchant_alias).toBe('VC Seat 900');
+        expect(brain.brain.seller?.acos_target_pct).toBe(18);
+      } else {
+        expect.fail('brain should load');
+      }
+    });
+  });
+
+  it('falls back to the heuristic (800) when the seat-metrics source returns no rows', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir, twoSeatAccounts);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', sellerRows),
+        'BRAIN-SEAT-METRICS': ok('BRAIN-SEAT-METRICS', []), // not registered / nothing
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) {
+        // No economic signal -> registry heuristic picks the US SC seat (800).
+        expect(brain.brain.seller?.primary_seller_id).toBe(800);
+        expect(brain.brain.seller?.merchant_alias).toBe('SC Seat 800');
+      } else {
+        expect.fail('brain should load');
+      }
+    });
+  });
+
+  it('falls back to the heuristic when the seat-metrics source FAILS (non-fatal)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir, twoSeatAccounts);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', sellerRows),
+        'BRAIN-SEAT-METRICS': failed(
+          'BRAIN-SEAT-METRICS',
+          'No query pack entry with id BRAIN-SEAT-METRICS',
+        ),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      // Selection-only source: its failure is NOT a failed_source and NOT fatal.
+      expect(result.status).toBe('complete');
+      if (result.status === 'complete') {
+        expect(result.summary.failed_sources).not.toContain('seat_metrics');
+        expect(result.summary.failed_sources).not.toContain('BRAIN-SEAT-METRICS');
+      }
+
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) {
+        expect(brain.brain.seller?.primary_seller_id).toBe(800);
+      } else {
+        expect.fail('brain should load');
+      }
+    });
+  });
+});
+
 describe('spawn helper', () => {
   it('builds the detached argv with the data-dir flag', () => {
     expect(buildBrainFetchArgv('/cli.js', 'acme', '/tmp/data')).toEqual([

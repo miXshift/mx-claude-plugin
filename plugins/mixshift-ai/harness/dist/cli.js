@@ -68599,7 +68599,7 @@ var BRAIN_SCHEMA_VERSION = 1;
 // src/lib/brain/assemble.ts
 function assembleBrain(input) {
   const now = input.now ?? /* @__PURE__ */ new Date();
-  const seller = assembleSellerSection(input.sellerRows);
+  const seller = assembleSellerSection(input.sellerRows, input.primarySellerId);
   const meta3 = (src) => ({
     sproc: src.sproc,
     fetched_at: now.toISOString(),
@@ -68641,8 +68641,9 @@ function assembleBrain(input) {
     observations: input.previousObservations ?? {}
   };
 }
-function assembleSellerSection(rows) {
-  const primary = rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+function assembleSellerSection(rows, primarySellerId) {
+  const byId = primarySellerId != null ? rows.find((r) => toNumber2(r.ID) === primarySellerId) : void 0;
+  const primary = byId ?? rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
   return {
     merchant_alias: toTrimmedString(primary.MerchantAlias),
     storefront_name: toTrimmedString(primary.Name),
@@ -68938,6 +68939,46 @@ var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
 var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
 var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
 var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
+var BRAIN_SEAT_METRICS_QUERY_ID = "BRAIN-SEAT-METRICS";
+function pickPrimarySeat(accounts) {
+  if (accounts.length === 0) return null;
+  const candidates = accounts.filter((a) => a.ads_active).length > 0 ? accounts.filter((a) => a.ads_active) : accounts.filter((a) => a.is_active).length > 0 ? accounts.filter((a) => a.is_active) : accounts;
+  const accountTypeRank = {
+    SC: 0,
+    VC: 1,
+    DSP: 2,
+    unknown: 3
+  };
+  const marketplaceRank = (m) => m === "United States" ? 0 : 1;
+  const sorted = [...candidates].sort((a, b) => {
+    const byType = accountTypeRank[a.account_type] - accountTypeRank[b.account_type];
+    if (byType !== 0) return byType;
+    const byMarket = marketplaceRank(a.marketplace) - marketplaceRank(b.marketplace);
+    if (byMarket !== 0) return byMarket;
+    return a.seller_id - b.seller_id;
+  });
+  return sorted[0].seller_id;
+}
+function pickPrimarySeatByMetrics(metricRows, accounts) {
+  if (metricRows.length === 0 || accounts.length === 0) return null;
+  const known = new Set(accounts.map((a) => a.seller_id));
+  let best = null;
+  for (const row of metricRows) {
+    const sellerId = toFiniteNumber(row.seller_id);
+    if (sellerId === null || !known.has(sellerId)) continue;
+    const score = (toFiniteNumber(row.usd_revenue) ?? 0) + (toFiniteNumber(row.usd_spend) ?? 0);
+    if (best === null || score > best.score || score === best.score && sellerId < best.sellerId) {
+      best = { sellerId, score };
+    }
+  }
+  if (best === null || best.score <= 0) return null;
+  return best.sellerId;
+}
+function toFiniteNumber(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 async function fetchBrandBrain(opts) {
   const now = opts.now ?? /* @__PURE__ */ new Date();
   const t0 = Date.now();
@@ -68951,6 +68992,7 @@ async function fetchBrandBrain(opts) {
   if (sellerIds.length === 0) {
     return { status: "no_accounts", slug };
   }
+  const heuristicSeatId = pickPrimarySeat(brand.accounts);
   const existing = await loadBrain(slug, dataDirOverride);
   const previousObservations = existing.ok ? existing.brain.observations : void 0;
   if (!opts.refresh && existing.ok) {
@@ -69009,7 +69051,16 @@ async function fetchBrandBrain(opts) {
       return { ok: false, error: message };
     }
   };
-  const [sellerOut, scOut, vcOut, campaignOut, heroScOut, heroVcOut, recentOut] = await Promise.all([
+  const [
+    sellerOut,
+    scOut,
+    vcOut,
+    campaignOut,
+    heroScOut,
+    heroVcOut,
+    recentOut,
+    seatMetricsOut
+  ] = await Promise.all([
     runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
     scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds) : Promise.resolve(null),
     vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds) : Promise.resolve(null),
@@ -69017,8 +69068,15 @@ async function fetchBrandBrain(opts) {
     scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds) : Promise.resolve(null),
     vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds) : Promise.resolve(null),
     // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds)
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
+    // Brand-level: per-seat revenue+spend for primary-seat selection.
+    // Best-effort and SELECTION-ONLY — not folded into a brain section,
+    // so a failure isn't even a "failed source"; it just means the
+    // heuristic decides the primary seat.
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, sellerIds)
   ]);
+  const metricSeatId = seatMetricsOut.ok ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts) : null;
+  const primarySeatId = metricSeatId ?? heuristicSeatId;
   if (!sellerOut.ok) {
     return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
   }
@@ -69039,6 +69097,7 @@ async function fetchBrandBrain(opts) {
     brandSlug: slug,
     sellerRows: sellerOut.rows,
     sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+    primarySellerId: primarySeatId,
     generator: `plugin@${getPluginVersion()}`,
     now,
     previousObservations,
@@ -69086,7 +69145,11 @@ async function fetchBrandBrain(opts) {
         campaign_count: summary.campaign_count,
         hero_asin_count: summary.hero_asin_count,
         has_recent_activity: summary.has_recent_activity,
-        failed_sources: failedSources
+        failed_sources: failedSources,
+        // Which selector chose the primary seat: 'metrics' (per-seat
+        // revenue+spend ranking) or 'heuristic' (registry fallback).
+        primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
+        primary_seat_id: primarySeatId
       }
     },
     dataDirOverride
@@ -70608,11 +70671,27 @@ function computeVerdict(args) {
       reason: "Phase 1 complete; Phase 2 AM intake pending."
     };
   }
-  if (!args.validator_passed || args.coverage.required_present < args.coverage.required_total) {
+  const contextState = args.context_state ?? (args.validator_passed ? "valid" : "invalid");
+  if (contextState === "absent") {
+    return args.brain_present ? {
+      verdict: "OBSERVATIONAL",
+      reason: "Auto-discovered from your account \u2014 confirm and enrich to sharpen."
+    } : {
+      verdict: "OBSERVATIONAL",
+      reason: "Nothing captured yet \u2014 add the brand and run setup to populate context."
+    };
+  }
+  if (contextState === "invalid") {
+    return {
+      verdict: "RED",
+      reason: "Schema validator failed \u2014 fix context.yaml and re-render."
+    };
+  }
+  if (args.coverage.required_present < args.coverage.required_total) {
     const missing = args.coverage.required_total - args.coverage.required_present;
     return {
       verdict: "RED",
-      reason: !args.validator_passed ? "Schema validator failed \u2014 fix context.yaml and re-render." : `${missing} required field(s) missing.`
+      reason: `${missing} required field(s) missing.`
     };
   }
   if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
@@ -71287,10 +71366,23 @@ async function composeBrandContextReport(args) {
     args.brandSlug,
     args.dataDirOverride
   );
+  const ctxValidation = await validateBrandContext(
+    args.brandSlug,
+    args.dataDirOverride
+  );
+  const contextState = ctxValidation.ok ? "valid" : ctxValidation.kind === "file_missing" ? "absent" : "invalid";
+  const brainPresent = Object.values(resolvedFields).some(
+    (r) => r?.source === "brain"
+  );
   const { verdict, reason } = computeVerdict({
     coverage,
     observational: !!args.observational,
-    validator_passed: coverage.required_present === coverage.required_total
+    // validator pass = required_present == required_total, our coverage model;
+    // we don't shell out to zod for the coverage ladder. The precise context
+    // state below is what gates the early-state vs RED branch.
+    validator_passed: coverage.required_present === coverage.required_total,
+    context_state: contextState,
+    brain_present: brainPresent
   });
   const state = {
     brand_slug: args.brandSlug,
