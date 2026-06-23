@@ -64304,12 +64304,16 @@ function probeSurface(flagValue) {
   const coworkMarkerPresent = paths.some(
     (p) => p.toLowerCase().includes(COWORK_PATH_MARKER)
   );
+  const ci = isCiEnv();
+  const tty = hasInteractiveTty();
   const base = {
     env,
     flag: flagValue,
     runtimePaths: paths,
     coworkMarker: COWORK_PATH_MARKER,
-    coworkMarkerPresent
+    coworkMarkerPresent,
+    tty,
+    ci
   };
   const envOverride = process.env[ENV_VAR_OVERRIDE];
   if (envOverride && isKnownSurface(envOverride)) {
@@ -64322,7 +64326,11 @@ function probeSurface(flagValue) {
     const result = d.detect();
     if (result !== null) return { ...base, result, decidedBy: d.name };
   }
-  return { ...base, result: "cli", decidedBy: "fallback" };
+  return {
+    ...base,
+    result: ci || !tty ? "cli_headless" : "cli",
+    decidedBy: "fallback"
+  };
 }
 function detectCowork() {
   if (process.env.COWORK === "1") return "cowork";
@@ -64356,6 +64364,14 @@ function detectPluginHostUnknown() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin_host_unknown";
   return null;
 }
+function isCiEnv() {
+  return Boolean(
+    process.env.CI || process.env.CONTINUOUS_INTEGRATION || process.env.GITHUB_ACTIONS || process.env.GITLAB_CI || process.env.BUILDKITE || process.env.CIRCLECI || process.env.JENKINS_URL || process.env.TEAMCITY_VERSION || process.env.TF_BUILD
+  );
+}
+function hasInteractiveTty() {
+  return Boolean(process.stdout.isTTY || process.stderr.isTTY);
+}
 function isKnownSurface(s) {
   return KNOWN_SURFACES.has(s);
 }
@@ -64376,6 +64392,7 @@ var init_surface = __esm({
       "claude_code",
       "plugin_host_unknown",
       "cli",
+      "cli_headless",
       "chatgpt",
       "claude_desktop",
       "other"
@@ -78706,7 +78723,11 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
     const show = (v) => v === void 0 ? "(unset)" : v;
     const envLines = Object.entries(probe.env).map(([k, v]) => `    ${k.padEnd(22)} = ${show(v)}`).join("\n");
     const pathLines = probe.runtimePaths.length > 0 ? probe.runtimePaths.map((p) => `      - ${p}`).join("\n") : "      (none)";
-    const verdict = probe.result === "cli" ? "\u2192 Resolved to the `cli` FALLBACK: no host marker matched. If you ran\n  this inside a real Claude Code / Cowork session, the host is not\n  propagating any marker to this process \u2014 paste this whole block back.\n" : `\u2192 Resolved to \`${probe.result}\` via ${probe.decidedBy}.
+    const verdict = probe.decidedBy === "fallback" ? `\u2192 No host marker matched \u2014 resolved to the \`${probe.result}\` fallback (${probe.result === "cli_headless" ? "headless: CI env or no TTY" : "interactive terminal"}).
+  If you ran this inside a real Claude Code / Cowork session and still
+  see a fallback, the host did not propagate any marker to this process
+  \u2014 paste this whole block back.
+` : `\u2192 Resolved to \`${probe.result}\` via ${probe.decidedBy}.
 `;
     process.stdout.write(
       `
@@ -78717,6 +78738,8 @@ Surface detection probe
   Decided by:        ${probe.decidedBy}
   install_path:      ${installPath}
   --surface flag:    ${show(probe.flag)}
+  interactive TTY:   ${probe.tty}
+  CI environment:    ${probe.ci}
 
 Host env signals (undefined = not set by the runtime):
 ${envLines}
@@ -83291,7 +83314,7 @@ program2.name("mixshift").description(
   "override MIXSHIFT_DATA_DIR (default: ~/.mixshift)"
 ).option(
   "--surface <surface>",
-  "force surface detection: claude_code | cowork | chat"
+  "force surface detection: claude_code | cowork | cli | cli_headless"
 );
 registerProfileCommands(program2);
 registerAuthCommands(program2);

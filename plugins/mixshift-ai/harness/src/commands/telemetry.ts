@@ -164,10 +164,12 @@ export function registerTelemetryCommands(program: Command): void {
           : '      (none)';
 
       const verdict =
-        probe.result === 'cli'
-          ? '→ Resolved to the `cli` FALLBACK: no host marker matched. If you ran\n' +
-            '  this inside a real Claude Code / Cowork session, the host is not\n' +
-            '  propagating any marker to this process — paste this whole block back.\n'
+        probe.decidedBy === 'fallback'
+          ? `→ No host marker matched — resolved to the \`${probe.result}\` fallback ` +
+            `(${probe.result === 'cli_headless' ? 'headless: CI env or no TTY' : 'interactive terminal'}).\n` +
+            '  If you ran this inside a real Claude Code / Cowork session and still\n' +
+            '  see a fallback, the host did not propagate any marker to this process\n' +
+            '  — paste this whole block back.\n'
           : `→ Resolved to \`${probe.result}\` via ${probe.decidedBy}.\n`;
 
       process.stdout.write(
@@ -176,7 +178,9 @@ export function registerTelemetryCommands(program: Command): void {
           `  Resolved surface:  ${probe.result}\n` +
           `  Decided by:        ${probe.decidedBy}\n` +
           `  install_path:      ${installPath}\n` +
-          `  --surface flag:    ${show(probe.flag)}\n\n` +
+          `  --surface flag:    ${show(probe.flag)}\n` +
+          `  interactive TTY:   ${probe.tty}\n` +
+          `  CI environment:    ${probe.ci}\n\n` +
           'Host env signals (undefined = not set by the runtime):\n' +
           `${envLines}\n\n` +
           `Cowork payload marker ("${probe.coworkMarker}"): ` +

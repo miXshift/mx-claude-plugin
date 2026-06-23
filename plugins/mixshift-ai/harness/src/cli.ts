@@ -101,7 +101,7 @@ program
   )
   .option(
     '--surface <surface>',
-    'force surface detection: claude_code | cowork | chat',
+    'force surface detection: claude_code | cowork | cli | cli_headless',
   );
 
 // Register all command groups. Each module is responsible for its own

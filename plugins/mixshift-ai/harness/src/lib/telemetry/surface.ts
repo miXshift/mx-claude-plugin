@@ -8,8 +8,9 @@
  * --------------------------------------------------------------------------
  * Why this is its own module
  * --------------------------------------------------------------------------
- * The set of surfaces grows over time. Today: cowork, claude_code, cli.
- * Future: ChatGPT plugin, Claude Desktop, third-party LLM hosts. Each adds
+ * The set of surfaces grows over time. Today: cowork, claude_code, cli,
+ * cli_headless. Future: ChatGPT plugin, Claude Desktop, third-party LLM hosts.
+ * Each adds
  * a new detector. Keeping detection in a chain of detectors (each returns
  * a Surface or null; first non-null wins) makes adding a new host one
  * function instead of editing the call site.
@@ -42,7 +43,11 @@
  *   3. Env/path detection: Cowork (COWORK_* env OR payload-path marker) →
  *      Claude Code (CLAUDECODE) → plugin_host_unknown (CLAUDE_PLUGIN_ROOT set,
  *      no other signal)
- *   4. Fallback → cli
+ *   4. Fallback (no host signal): `cli` when an interactive TTY is attached,
+ *      else `cli_headless` (a CI env var is set, or no TTY — CI, test rigs,
+ *      piped automation, or a host session that lost its env). Splitting these
+ *      keeps real human terminal use distinct from headless noise that would
+ *      otherwise masquerade as direct CLI usage.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -56,6 +61,10 @@ export type Surface =
   | 'claude_code'
   | 'plugin_host_unknown'
   | 'cli'
+  // Direct CLI in a non-interactive context: CI, test rig, piped automation, or
+  // a host session that lost its env. Split from `cli` (interactive human
+  // terminal) so headless noise doesn't masquerade as real direct usage.
+  | 'cli_headless'
   // Future surfaces — keep documented so analytics can pre-bucket:
   | 'chatgpt'
   | 'claude_desktop'
@@ -71,7 +80,7 @@ export interface SurfaceProbe {
    *  telemetry event emitted by this process. */
   result: Surface;
   /** Which precedence rule produced `result`. `fallback` means no host marker
-   *  matched and detection defaulted to `cli`. */
+   *  matched and detection resolved `cli` / `cli_headless` by interactivity. */
   decidedBy:
     | 'env_override'
     | 'flag'
@@ -100,6 +109,12 @@ export interface SurfaceProbe {
   coworkMarker: string;
   /** Whether `coworkMarker` appears in any `runtimePaths` entry. */
   coworkMarkerPresent: boolean;
+  /** Whether an interactive TTY is attached (stdout or stderr). At the
+   *  fallback this picks `cli` (true) vs `cli_headless` (false). */
+  tty: boolean;
+  /** Whether a CI/automation env var is set. Forces `cli_headless` at the
+   *  fallback even if a TTY happens to be attached. */
+  ci: boolean;
 }
 
 const ENV_VAR_OVERRIDE = 'MIXSHIFT_SURFACE';
@@ -143,12 +158,16 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
   const coworkMarkerPresent = paths.some((p) =>
     p.toLowerCase().includes(COWORK_PATH_MARKER),
   );
+  const ci = isCiEnv();
+  const tty = hasInteractiveTty();
   const base = {
     env,
     flag: flagValue,
     runtimePaths: paths,
     coworkMarker: COWORK_PATH_MARKER,
     coworkMarkerPresent,
+    tty,
+    ci,
   };
 
   // Mirror detectSurface precedence EXACTLY — this loop IS the decision.
@@ -166,8 +185,15 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
     const result = d.detect();
     if (result !== null) return { ...base, result, decidedBy: d.name };
   }
-  // 4. Fallback
-  return { ...base, result: 'cli', decidedBy: 'fallback' };
+  // 4. Fallback (no host signal). Split interactive human terminal use (`cli`)
+  // from headless contexts — CI, test rigs, piped automation, or a host session
+  // that lost its env (`cli_headless`) — so the latter stops masquerading as
+  // direct CLI usage in analytics.
+  return {
+    ...base,
+    result: ci || !tty ? 'cli_headless' : 'cli',
+    decidedBy: 'fallback',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +272,43 @@ function detectPluginHostUnknown(): Surface | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Bare-CLI fallback classifiers — only consulted when no host signal matched.
+// They split the fallback into `cli` (interactive human terminal) vs
+// `cli_headless` (CI / test rig / piped automation / host that lost its env).
+// ---------------------------------------------------------------------------
+
+/**
+ * CI / automation environment markers. Any one set means this invocation is
+ * almost certainly not a human at an interactive terminal — so the bare-CLI
+ * fallback should resolve `cli_headless`, not `cli`. `CI` alone covers most
+ * providers (GitHub Actions, GitLab, CircleCI, Travis, …); the rest are
+ * belt-and-suspenders for providers that don't set it.
+ */
+function isCiEnv(): boolean {
+  return Boolean(
+    process.env.CI ||
+      process.env.CONTINUOUS_INTEGRATION ||
+      process.env.GITHUB_ACTIONS ||
+      process.env.GITLAB_CI ||
+      process.env.BUILDKITE ||
+      process.env.CIRCLECI ||
+      process.env.JENKINS_URL ||
+      process.env.TEAMCITY_VERSION ||
+      process.env.TF_BUILD,
+  );
+}
+
+/**
+ * Whether an interactive terminal is attached. Checks stdout AND stderr so
+ * `mixshift … | grep` (stdout piped, stderr still a TTY) still reads as
+ * interactive human use. Headless contexts (CI, fully redirected, test rigs,
+ * a Bash-tool subprocess that lost CLAUDECODE) have neither.
+ */
+function hasInteractiveTty(): boolean {
+  return Boolean(process.stdout.isTTY || process.stderr.isTTY);
+}
+
 /**
  * Ordered detector chain. Each entry's `name` is reported as `decidedBy` in
  * the surface probe when that detector fires. Order matters — see header.
@@ -269,6 +332,7 @@ const KNOWN_SURFACES = new Set<string>([
   'claude_code',
   'plugin_host_unknown',
   'cli',
+  'cli_headless',
   'chatgpt',
   'claude_desktop',
   'other',
