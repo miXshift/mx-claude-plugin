@@ -68939,6 +68939,7 @@ var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
 var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
 var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
 var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
+var BRAIN_SEAT_METRICS_QUERY_ID = "BRAIN-SEAT-METRICS";
 function pickPrimarySeat(accounts) {
   if (accounts.length === 0) return null;
   const candidates = accounts.filter((a) => a.ads_active).length > 0 ? accounts.filter((a) => a.ads_active) : accounts.filter((a) => a.is_active).length > 0 ? accounts.filter((a) => a.is_active) : accounts;
@@ -68958,6 +68959,26 @@ function pickPrimarySeat(accounts) {
   });
   return sorted[0].seller_id;
 }
+function pickPrimarySeatByMetrics(metricRows, accounts) {
+  if (metricRows.length === 0 || accounts.length === 0) return null;
+  const known = new Set(accounts.map((a) => a.seller_id));
+  let best = null;
+  for (const row of metricRows) {
+    const sellerId = toFiniteNumber(row.seller_id);
+    if (sellerId === null || !known.has(sellerId)) continue;
+    const score = (toFiniteNumber(row.usd_revenue) ?? 0) + (toFiniteNumber(row.usd_spend) ?? 0);
+    if (best === null || score > best.score || score === best.score && sellerId < best.sellerId) {
+      best = { sellerId, score };
+    }
+  }
+  if (best === null || best.score <= 0) return null;
+  return best.sellerId;
+}
+function toFiniteNumber(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 async function fetchBrandBrain(opts) {
   const now = opts.now ?? /* @__PURE__ */ new Date();
   const t0 = Date.now();
@@ -68971,7 +68992,7 @@ async function fetchBrandBrain(opts) {
   if (sellerIds.length === 0) {
     return { status: "no_accounts", slug };
   }
-  const primarySeatId = pickPrimarySeat(brand.accounts);
+  const heuristicSeatId = pickPrimarySeat(brand.accounts);
   const existing = await loadBrain(slug, dataDirOverride);
   const previousObservations = existing.ok ? existing.brain.observations : void 0;
   if (!opts.refresh && existing.ok) {
@@ -69030,7 +69051,16 @@ async function fetchBrandBrain(opts) {
       return { ok: false, error: message };
     }
   };
-  const [sellerOut, scOut, vcOut, campaignOut, heroScOut, heroVcOut, recentOut] = await Promise.all([
+  const [
+    sellerOut,
+    scOut,
+    vcOut,
+    campaignOut,
+    heroScOut,
+    heroVcOut,
+    recentOut,
+    seatMetricsOut
+  ] = await Promise.all([
     runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
     scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds) : Promise.resolve(null),
     vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds) : Promise.resolve(null),
@@ -69038,8 +69068,15 @@ async function fetchBrandBrain(opts) {
     scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds) : Promise.resolve(null),
     vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds) : Promise.resolve(null),
     // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds)
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
+    // Brand-level: per-seat revenue+spend for primary-seat selection.
+    // Best-effort and SELECTION-ONLY — not folded into a brain section,
+    // so a failure isn't even a "failed source"; it just means the
+    // heuristic decides the primary seat.
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, sellerIds)
   ]);
+  const metricSeatId = seatMetricsOut.ok ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts) : null;
+  const primarySeatId = metricSeatId ?? heuristicSeatId;
   if (!sellerOut.ok) {
     return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
   }
@@ -69108,7 +69145,11 @@ async function fetchBrandBrain(opts) {
         campaign_count: summary.campaign_count,
         hero_asin_count: summary.hero_asin_count,
         has_recent_activity: summary.has_recent_activity,
-        failed_sources: failedSources
+        failed_sources: failedSources,
+        // Which selector chose the primary seat: 'metrics' (per-seat
+        // revenue+spend ranking) or 'heuristic' (registry fallback).
+        primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
+        primary_seat_id: primarySeatId
       }
     },
     dataDirOverride
