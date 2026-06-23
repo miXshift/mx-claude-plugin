@@ -21,7 +21,7 @@ import {
   resolveBrandFields,
 } from './read.js';
 import { applyObservations, recordObservations } from './observe.js';
-import { pickPrimarySeat } from './fetch.js';
+import { pickPrimarySeat, pickPrimarySeatByMetrics } from './fetch.js';
 import type { IndexAccount } from '../clients/index-schema.js';
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
@@ -211,6 +211,107 @@ describe('pickPrimarySeat', () => {
 
   it('returns null when the brand has no accounts', () => {
     expect(pickPrimarySeat([])).toBeNull();
+  });
+});
+
+describe('pickPrimarySeatByMetrics', () => {
+  // Real AOP seats. The per-seat USD revenue+spend values below are the
+  // warehouse-validated trailing-30d numbers (2026-06-23): seat 574 leads on
+  // economic activity, which is what we want — same answer as the heuristic
+  // here, but for the RIGHT reason (it's the economic leader, not just US-SC).
+  const aopAccounts = [
+    seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
+    seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
+    seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
+    seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+  ];
+  const aopMetrics = [
+    { seller_id: 577, usd_revenue: '1161.39', usd_spend: '0.00' },
+    { seller_id: 575, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 573, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 574, usd_revenue: '213262.80', usd_spend: '30489.40' },
+  ];
+
+  it('picks the seat with the highest (usd_revenue + usd_spend): AOP -> 574', () => {
+    expect(pickPrimarySeatByMetrics(aopMetrics, aopAccounts)).toBe(574);
+  });
+
+  it('picks the economic leader even when it disagrees with the heuristic: HydraPak -> 113 (US VC), NOT the dormant US-SC seat 384', () => {
+    // The warehouse truth that motivated this change. HydraPak is a 1P-heavy
+    // brand: its US Vendor seat (113) does $1.3M revenue+spend/30d while its
+    // US Seller-Central seat (384) is dormant ($0/$0). The heuristic would
+    // pick 384 (SC>VC, US-first); the metrics pick is 113, which is correct.
+    const hydrapakAccounts = [
+      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    const hydrapakMetrics = [
+      { seller_id: 113, usd_revenue: 1143114.2, usd_spend: 156594.6 },
+      { seller_id: 655, usd_revenue: 100532.61, usd_spend: 3275.43 },
+      { seller_id: 524, usd_revenue: 28998.67, usd_spend: 2962.66 },
+      { seller_id: 523, usd_revenue: 17367.51, usd_spend: 873.58 },
+      { seller_id: 522, usd_revenue: 15983.25, usd_spend: 1270.74 },
+      { seller_id: 408, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 411, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 384, usd_revenue: 0, usd_spend: 0 },
+    ];
+    // Verify it really diverges from the heuristic on this fleet.
+    expect(pickPrimarySeat(hydrapakAccounts)).toBe(384);
+    expect(pickPrimarySeatByMetrics(hydrapakMetrics, hydrapakAccounts)).toBe(113);
+  });
+
+  it('coerces numeric-string wire values when ranking', () => {
+    const accounts = [seat({ seller_id: 10 }), seat({ seller_id: 20 })];
+    const rows = [
+      { seller_id: '10', usd_revenue: '100.00', usd_spend: '5.00' },
+      { seller_id: '20', usd_revenue: '90.00', usd_spend: '50.00' }, // 140 > 105
+    ];
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(20);
+  });
+
+  it('breaks exact ties deterministically by ascending seller_id', () => {
+    const accounts = [seat({ seller_id: 30 }), seat({ seller_id: 20 }), seat({ seller_id: 40 })];
+    const rows = [
+      { seller_id: 30, usd_revenue: 500, usd_spend: 0 },
+      { seller_id: 20, usd_revenue: 200, usd_spend: 300 }, // also 500
+      { seller_id: 40, usd_revenue: 500, usd_spend: 0 }, // also 500
+    ];
+    // Row order deliberately not ascending; the lowest tied id (20) wins.
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(20);
+  });
+
+  it('ignores metric rows for seats not in the brand registry (defensive)', () => {
+    const accounts = [seat({ seller_id: 574 })];
+    const rows = [
+      { seller_id: 999, usd_revenue: 9_999_999, usd_spend: 0 }, // not a known seat
+      { seller_id: 574, usd_revenue: 10, usd_spend: 0 },
+    ];
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(574);
+  });
+
+  it('returns null on empty rows so the caller falls back to the heuristic', () => {
+    expect(pickPrimarySeatByMetrics([], aopAccounts)).toBeNull();
+  });
+
+  it('returns null when every eligible seat scores zero (no economic signal)', () => {
+    // A quiet brand: all seats present but zero revenue+spend. No economic
+    // signal -> defer to the heuristic rather than pick an arbitrary zero row.
+    const rows = [
+      { seller_id: 574, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 575, usd_revenue: '0.00', usd_spend: null },
+    ];
+    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
+  });
+
+  it('returns null when no row matches a registry seat', () => {
+    const rows = [{ seller_id: 12345, usd_revenue: 100, usd_spend: 100 }];
+    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
   });
 });
 

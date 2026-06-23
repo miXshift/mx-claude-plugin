@@ -539,3 +539,22 @@ queries:
       Scoped by all of the brand's seller ids (request sellerIds). Brand
       roll-up, NOT DHC-01-on-primary (that returned nulls for VC-primary
       brands whose ad activity sits on another seat).
+
+  - id: BRAIN-SEAT-METRICS
+    file: BRAIN-SEAT-METRICS.sql
+    dispatch: named
+    sproc: sp_brain_seat_metrics
+    purpose: Per-seat trailing-30d USD-normalized retail revenue + ad spend (one row per seller seat) so the brain ranks a brand's PRIMARY seat by economic activity (revenue + spend, high->low) instead of the registry heuristic. Selection-only; not folded into a brain section.
+    consumers: [brand-brain-fetch]
+    tier: 1
+    notes: |
+      Scoped by all of the brand's seller ids (request sellerIds). Returns
+      seller_id, usd_revenue, usd_spend per seat; fetch.ts ranks by the sum.
+      SC revenue from business_reports_dpst_date.SalesAmount, VC from
+      vendor_sales_manufacturing_asin.OrderedRevenueAmount, channel split by
+      seller.MerchantType. Local->USD via currency_metric latest-rate-per-
+      marketplace USD column (usd = local * currency_metric.USD; verified
+      2026-06-23). Window is a fixed query constant (30d), NOT a caller param.
+      Unlike the other born-named brain pulls, this keeps a committed .sql as
+      the DEV-FALLBACK + server-side byte-diff reference (like DHC-01); the
+      PROD body must still be registered in the mx-legacy-auth query pack.

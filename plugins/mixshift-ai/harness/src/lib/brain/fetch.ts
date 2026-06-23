@@ -49,6 +49,13 @@ const BRAIN_HERO_VC_QUERY_ID = 'BRAIN-HERO-VC';
  *  that returned nulls for VC-primary brands whose ad activity sits on a
  *  different seat. */
 const BRAIN_RECENT_ACTIVITY_QUERY_ID = 'BRAIN-RECENT-ACTIVITY';
+/** Per-seat USD-normalized retail revenue + ad spend (trailing window),
+ *  one row per seat. Ranked by (usd_revenue + usd_spend) DESC to pick the
+ *  brand's PRIMARY seat by economic activity — the real signal the
+ *  registry heuristic (pickPrimarySeat) only approximated. Best-effort:
+ *  when the named query isn't registered server-side (or returns nothing),
+ *  selection falls back to the heuristic. */
+const BRAIN_SEAT_METRICS_QUERY_ID = 'BRAIN-SEAT-METRICS';
 
 export interface BrainFetchOptions {
   slug: string;
@@ -112,11 +119,16 @@ export interface BrainStatusFile {
  * one corrupts every seller scalar (e.g. AOP rendering its tiny VC seat 577
  * instead of the $30k/mo US SC seat 574).
  *
- * HEURISTIC, tuned for MixShift's predominantly-US-3P brand base: prefer the
- * active US Seller-Central seat. The truest signal — per-seat ad spend — isn't
- * carried on the seller row, so we approximate from the registry's account
- * metadata. The registry's `role`/spend signals can refine this later (e.g.
- * once a per-seat spend column lands, rank by spend first).
+ * FALLBACK HEURISTIC, tuned for MixShift's predominantly-US-3P brand base:
+ * prefer the active US Seller-Central seat. The truest signal — per-seat
+ * economic activity — now lives in pickPrimarySeatByMetrics (ranks seats by
+ * USD-normalized revenue + spend from BRAIN-SEAT-METRICS), which supersedes
+ * this when it has data. This function is what decides the primary seat only
+ * when that metrics query returns no usable signal (not registered
+ * server-side, failed, or no recent revenue/spend). It is intentionally
+ * registry-only and biased (SC isn't always primary; US isn't always home) —
+ * see HydraPak, whose US-VC seat 113 dwarfs its dormant US-SC seat 384, so the
+ * metrics pick (113) is right and this heuristic (384) is the safety net.
  *
  * Ranking:
  *   1. Restrict to `ads_active` seats; if none, fall back to `is_active`; if
@@ -159,6 +171,67 @@ export function pickPrimarySeat(accounts: IndexAccount[]): number | null {
   return sorted[0]!.seller_id;
 }
 
+/** One BRAIN-SEAT-METRICS row: a seat's trailing-window USD-normalized
+ *  retail revenue + ad spend. Values arrive untyped from the wire. */
+export type SeatMetricRow = Record<string, unknown>;
+
+/**
+ * Choose the brand's PRIMARY seat by ECONOMIC ACTIVITY — the real signal
+ * the registry heuristic (pickPrimarySeat) only approximated. Ranks the
+ * brand's seats by per-seat USD-normalized (retail revenue + ad spend),
+ * high→low, from the BRAIN-SEAT-METRICS rows, and returns the top seat's
+ * seller_id.
+ *
+ * This is the PREFERRED selector; pickPrimarySeat is the documented
+ * fallback for when the named query isn't registered server-side or
+ * returns nothing.
+ *
+ * Returns null — so the caller falls back to the heuristic — when:
+ *   - no metric rows were returned, OR
+ *   - no row carries a seller_id that matches one of the brand's accounts
+ *     (defensive: only registry-known seats are eligible), OR
+ *   - every eligible seat scores zero (a brand with no recent economic
+ *     activity carries no economic signal; the SC/US heuristic is the
+ *     better tiebreak there than an arbitrary zero-row pick).
+ *
+ * Ties (equal revenue+spend) break deterministically by ascending
+ * seller_id, matching pickPrimarySeat's stable tiebreak.
+ */
+export function pickPrimarySeatByMetrics(
+  metricRows: SeatMetricRow[],
+  accounts: IndexAccount[],
+): number | null {
+  if (metricRows.length === 0 || accounts.length === 0) return null;
+  const known = new Set(accounts.map((a) => a.seller_id));
+
+  let best: { sellerId: number; score: number } | null = null;
+  for (const row of metricRows) {
+    const sellerId = toFiniteNumber(row.seller_id);
+    if (sellerId === null || !known.has(sellerId)) continue;
+    const score =
+      (toFiniteNumber(row.usd_revenue) ?? 0) + (toFiniteNumber(row.usd_spend) ?? 0);
+    if (
+      best === null ||
+      score > best.score ||
+      (score === best.score && sellerId < best.sellerId)
+    ) {
+      best = { sellerId, score };
+    }
+  }
+
+  // No eligible row, or the leader has no economic activity → no signal.
+  if (best === null || best.score <= 0) return null;
+  return best.sellerId;
+}
+
+/** Coerce a wire value (number | numeric string | null) to a finite
+ *  number, or null. Local to selection; assembly has its own copy. */
+function toFiniteNumber(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function fetchBrandBrain(
   opts: BrainFetchOptions,
 ): Promise<BrainFetchResult> {
@@ -176,10 +249,12 @@ export async function fetchBrandBrain(
   if (sellerIds.length === 0) {
     return { status: 'no_accounts', slug };
   }
-  // The seat whose row supplies the seller scalars. The seller source runs
-  // over ALL seats, so sellerOut.rows holds every seat's row; this tells
-  // assembly which one is the brand's primary (vs. arbitrary row order).
-  const primarySeatId = pickPrimarySeat(brand.accounts);
+  // Registry heuristic for the primary seat (SC>VC, US-first). Kept as the
+  // FALLBACK: it's used only when the per-seat economic ranking
+  // (BRAIN-SEAT-METRICS, below) returns no usable signal — e.g. the named
+  // query isn't registered server-side yet, or the brand has no recent
+  // revenue/spend. The metrics pick, when present, supersedes it.
+  const heuristicSeatId = pickPrimarySeat(brand.accounts);
 
   // 2. TTL gate. A fresh seller source is a no-op unless forced.
   const existing = await loadBrain(slug, dataDirOverride);
@@ -268,25 +343,46 @@ export async function fetchBrandBrain(
     }
   };
 
-  const [sellerOut, scOut, vcOut, campaignOut, heroScOut, heroVcOut, recentOut] =
-    await Promise.all([
-      runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
-      scIds.length > 0
-        ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds)
-        : Promise.resolve(null),
-      vcIds.length > 0
-        ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds)
-        : Promise.resolve(null),
-      runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
-      scIds.length > 0
-        ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds)
-        : Promise.resolve(null),
-      vcIds.length > 0
-        ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds)
-        : Promise.resolve(null),
-      // Brand-level: every seller's ad rows roll into one baseline.
-      runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
-    ]);
+  const [
+    sellerOut,
+    scOut,
+    vcOut,
+    campaignOut,
+    heroScOut,
+    heroVcOut,
+    recentOut,
+    seatMetricsOut,
+  ] = await Promise.all([
+    runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
+    scIds.length > 0
+      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds)
+      : Promise.resolve(null),
+    vcIds.length > 0
+      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds)
+      : Promise.resolve(null),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
+    scIds.length > 0
+      ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds)
+      : Promise.resolve(null),
+    vcIds.length > 0
+      ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds)
+      : Promise.resolve(null),
+    // Brand-level: every seller's ad rows roll into one baseline.
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
+    // Brand-level: per-seat revenue+spend for primary-seat selection.
+    // Best-effort and SELECTION-ONLY — not folded into a brain section,
+    // so a failure isn't even a "failed source"; it just means the
+    // heuristic decides the primary seat.
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, sellerIds),
+  ]);
+
+  // Primary seat: prefer the per-seat economic ranking; fall back to the
+  // registry heuristic when the metrics query gave no usable signal (not
+  // registered server-side, failed, or no recent revenue/spend).
+  const metricSeatId = seatMetricsOut.ok
+    ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts)
+    : null;
+  const primarySeatId = metricSeatId ?? heuristicSeatId;
 
   // Seller is the spine: identity failure is fatal. Catalog/campaign/hero/
   // activity failures are partial — the brain is still written with
@@ -369,6 +465,10 @@ export async function fetchBrandBrain(
         hero_asin_count: summary.hero_asin_count,
         has_recent_activity: summary.has_recent_activity,
         failed_sources: failedSources,
+        // Which selector chose the primary seat: 'metrics' (per-seat
+        // revenue+spend ranking) or 'heuristic' (registry fallback).
+        primary_seat_source: metricSeatId !== null ? 'metrics' : 'heuristic',
+        primary_seat_id: primarySeatId,
       },
     },
     dataDirOverride,
