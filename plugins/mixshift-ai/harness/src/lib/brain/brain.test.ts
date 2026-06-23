@@ -21,8 +21,27 @@ import {
   resolveBrandFields,
 } from './read.js';
 import { applyObservations, recordObservations } from './observe.js';
+import { pickPrimarySeat } from './fetch.js';
+import type { IndexAccount } from '../clients/index-schema.js';
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
+
+/** Build an IndexAccount with sensible defaults; override the fields a test
+ *  cares about. Keeps the seat fixtures readable. */
+function seat(over: Partial<IndexAccount> & { seller_id: number }): IndexAccount {
+  return {
+    seller_id: over.seller_id,
+    seller_name: over.seller_name ?? `seat-${over.seller_id}`,
+    merchant_alias: over.merchant_alias ?? null,
+    account_type: over.account_type ?? 'SC',
+    marketplace: over.marketplace ?? null,
+    region: over.region ?? null,
+    is_active: over.is_active ?? true,
+    is_mws_user: over.is_mws_user ?? true,
+    ads_active: over.ads_active ?? true,
+    retail_active: over.retail_active ?? true,
+  };
+}
 
 const aopRow = {
   ID: 574,
@@ -131,6 +150,111 @@ describe('assembleBrain', () => {
       value: ['B00TEST'],
       count: 1,
     });
+  });
+});
+
+describe('pickPrimarySeat', () => {
+  it("picks AOP's active US Seller-Central seat (574) over its VC + non-US seats", () => {
+    // Real AOP seats. Row order deliberately puts the VC seat (577) first to
+    // prove the pick is by metadata, not array position.
+    const accounts = [
+      seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
+      seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(574);
+  });
+
+  it("picks HydraPak's US Seller-Central seat (384) across a wide VC + SC fleet", () => {
+    const accounts = [
+      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(384);
+  });
+
+  it('returns the best VC seat for a VC-only brand (not hardcoded to SC)', () => {
+    // No SC seat exists — the US VC seat wins over the non-US VC seats. Proves
+    // SC is a PREFERENCE, applied only when present.
+    const accounts = [
+      seat({ seller_id: 900, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 901, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 902, account_type: 'VC', marketplace: 'Canada' }),
+    ];
+    expect(pickPrimarySeat(accounts)).toBe(901);
+  });
+
+  it('falls back to is_active seats when none are ads_active, then to all', () => {
+    // No ads_active seat → consider is_active. The active US SC seat (20) wins
+    // over the active VC seat (10); the inactive US SC seat (30) is excluded.
+    const someActive = [
+      seat({ seller_id: 10, account_type: 'VC', marketplace: 'United States', ads_active: false, is_active: true }),
+      seat({ seller_id: 30, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: false }),
+      seat({ seller_id: 20, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: true }),
+    ];
+    expect(pickPrimarySeat(someActive)).toBe(20);
+
+    // Nothing active at all → all accounts are candidates; SC + US still wins.
+    const noneActive = [
+      seat({ seller_id: 41, account_type: 'VC', marketplace: 'United States', ads_active: false, is_active: false }),
+      seat({ seller_id: 40, account_type: 'SC', marketplace: 'United States', ads_active: false, is_active: false }),
+    ];
+    expect(pickPrimarySeat(noneActive)).toBe(40);
+  });
+
+  it('returns null when the brand has no accounts', () => {
+    expect(pickPrimarySeat([])).toBeNull();
+  });
+});
+
+describe('assembleSellerSection with a primary seat id', () => {
+  // Rows where an EARLIER row carries a non-null ACOSTarget (the old heuristic
+  // would lift it), but the registry-chosen primary is a LATER row. The fix
+  // must lift the later row's scalars.
+  const multiSeatRows = [
+    {
+      ID: 577,
+      ACOSTarget: '40', // non-null → old heuristic would pick this row
+      MerchantAlias: "Backpacker's Pantry",
+      MonthlyBudget: 2000,
+      MarketPlaceName: 'Amazon.com (VC)',
+    },
+    {
+      ID: 574,
+      ACOSTarget: '25',
+      MerchantAlias: 'Aspen Outdoor Provisions',
+      MonthlyBudget: 30000,
+      MarketPlaceName: 'Amazon.com',
+    },
+  ];
+
+  it('lifts scalars from the row whose ID matches primarySellerId (not the earlier ACOSTarget row)', () => {
+    const seller = assembleSellerSection(multiSeatRows, 574);
+    expect(seller.primary_seller_id).toBe(574);
+    expect(seller.acos_target_pct).toBe(25);
+    expect(seller.merchant_alias).toBe('Aspen Outdoor Provisions');
+    expect(seller.monthly_budget).toBe(30000);
+    expect(seller.marketplace).toBe('Amazon.com');
+  });
+
+  it('falls back to the legacy heuristic when the primary id matches no row', () => {
+    const seller = assembleSellerSection(multiSeatRows, 999);
+    // 999 not found → first row with a non-null ACOSTarget (577).
+    expect(seller.primary_seller_id).toBe(577);
+    expect(seller.acos_target_pct).toBe(40);
+  });
+
+  it('is backward-compatible: no primarySellerId uses the legacy heuristic', () => {
+    const seller = assembleSellerSection(multiSeatRows);
+    expect(seller.primary_seller_id).toBe(577);
+    expect(seller.acos_target_pct).toBe(40);
   });
 });
 

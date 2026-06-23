@@ -21,6 +21,7 @@ import { dirname } from 'node:path';
 import { runDispatched, MissingParamsError } from '../data/dispatch.js';
 import { getQueryEntry } from '../prefetch/sql-library.js';
 import { readIndex } from '../clients/index.js';
+import type { IndexAccount } from '../clients/index-schema.js';
 import { brainStatusPath } from '../paths/resolve.js';
 import { getPluginVersion } from '../plugin-version.js';
 import { track, EventName } from '../telemetry/index.js';
@@ -103,6 +104,61 @@ export interface BrainStatusFile {
   error?: string;
 }
 
+/**
+ * Choose the brand's PRIMARY seat from its registry accounts — the seat whose
+ * seller row supplies the brain's seller scalars (acos_target, monthly_budget,
+ * merchant_alias, marketplace, activation). A brand has many seats (one per
+ * marketplace × platform: Seller Central vs Vendor Central); picking the wrong
+ * one corrupts every seller scalar (e.g. AOP rendering its tiny VC seat 577
+ * instead of the $30k/mo US SC seat 574).
+ *
+ * HEURISTIC, tuned for MixShift's predominantly-US-3P brand base: prefer the
+ * active US Seller-Central seat. The truest signal — per-seat ad spend — isn't
+ * carried on the seller row, so we approximate from the registry's account
+ * metadata. The registry's `role`/spend signals can refine this later (e.g.
+ * once a per-seat spend column lands, rank by spend first).
+ *
+ * Ranking:
+ *   1. Restrict to `ads_active` seats; if none, fall back to `is_active`; if
+ *      still none, consider all accounts.
+ *   2. Sort the candidates by, in order:
+ *        a. account_type rank — SC(0) < VC(1) < DSP(2) < unknown(3)
+ *        b. marketplace rank  — 'United States'(0) < everything else(1)
+ *        c. seller_id ascending (stable tiebreak)
+ *   3. Return candidates[0].seller_id.
+ *
+ * Returns null when the brand has no accounts.
+ */
+export function pickPrimarySeat(accounts: IndexAccount[]): number | null {
+  if (accounts.length === 0) return null;
+
+  const candidates =
+    accounts.filter((a) => a.ads_active).length > 0
+      ? accounts.filter((a) => a.ads_active)
+      : accounts.filter((a) => a.is_active).length > 0
+        ? accounts.filter((a) => a.is_active)
+        : accounts;
+
+  const accountTypeRank: Record<IndexAccount['account_type'], number> = {
+    SC: 0,
+    VC: 1,
+    DSP: 2,
+    unknown: 3,
+  };
+  const marketplaceRank = (m: string | null): number =>
+    m === 'United States' ? 0 : 1;
+
+  const sorted = [...candidates].sort((a, b) => {
+    const byType = accountTypeRank[a.account_type] - accountTypeRank[b.account_type];
+    if (byType !== 0) return byType;
+    const byMarket = marketplaceRank(a.marketplace) - marketplaceRank(b.marketplace);
+    if (byMarket !== 0) return byMarket;
+    return a.seller_id - b.seller_id;
+  });
+
+  return sorted[0]!.seller_id;
+}
+
 export async function fetchBrandBrain(
   opts: BrainFetchOptions,
 ): Promise<BrainFetchResult> {
@@ -120,6 +176,10 @@ export async function fetchBrandBrain(
   if (sellerIds.length === 0) {
     return { status: 'no_accounts', slug };
   }
+  // The seat whose row supplies the seller scalars. The seller source runs
+  // over ALL seats, so sellerOut.rows holds every seat's row; this tells
+  // assembly which one is the brand's primary (vs. arbitrary row order).
+  const primarySeatId = pickPrimarySeat(brand.accounts);
 
   // 2. TTL gate. A fresh seller source is a no-op unless forced.
   const existing = await loadBrain(slug, dataDirOverride);
@@ -256,6 +316,7 @@ export async function fetchBrandBrain(
     brandSlug: slug,
     sellerRows: sellerOut.rows,
     sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+    primarySellerId: primarySeatId,
     generator: `plugin@${getPluginVersion()}`,
     now,
     previousObservations,
