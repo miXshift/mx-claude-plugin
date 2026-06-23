@@ -16,7 +16,7 @@ The skill content (prompts, SQL patterns, format conventions, narrative voice) w
 
 ## What was carried over
 
-- 13 skills (`SKILL.md` + `skill.manifest.yaml` + generic `references/` per skill)
+- 13 skills (`SKILL.md` + `skill.manifest.yaml` + generic `references/` per skill). The productized plugin has since grown to 24 skills, adding the live Amazon API surface (SP-API reports, retail lookups, AMC, DSP, and Amazon Ads reads plus audited writes) and the onboarding / help / feedback skills.
 - 66 SQL queries in `shared/sql-library/` keyed by skill prefix
 - Schema and contract documents in `shared/_schema/`, `shared/skill-runtime-contract.md`, `shared/skill-manifest.schema.yaml`, `shared/run-sidecar.schema.yaml`, `shared/tables.yaml`
 - The `.mcp.json` MySQL MCP shim for warehouse read access

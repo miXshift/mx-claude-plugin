@@ -1,5 +1,7 @@
 # Local IDE / editor config
-.claude/
+.claude/*
+# ...except committed maintainer skills (e.g. release-docs), shared with the team.
+!.claude/skills/
 .vscode/
 .idea/
 

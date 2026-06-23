@@ -160,9 +160,11 @@ Whatever your MixShift account has access to in the legacy `dashamazon` warehous
 
 The full curated list is in `mixshift data list-tables`. There are ~38 surfaced tables; some legacy tables exist but aren't surfaced because they're empty stubs or deprecated.
 
+Beyond the warehouse, the plugin can also pull **live, on-demand data straight from Amazon** for any merchant you're authorized for: SP-API reports (Sales and Traffic, Brand Analytics, FBA, orders, returns, vendor), point-in-time retail lookups (catalog, inventory, finances, pricing), AMC clean-room SQL, and DSP reports. See `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, and `mx-amazon-dsp`.
+
 ### Can I get data MixShift doesn't have?
 
-No. The plugin is a query interface to your MixShift warehouse — if MixShift's ingestion pipeline isn't pulling a data source for you, the plugin can't access it. Open a feature request via `mixshift feedback "need data source: X"` and we'll route it to MixShift's data team.
+Two answers, depending on the source. **From the warehouse:** no, the warehouse holds whatever MixShift's ingestion pipeline pulls for you, so if a source isn't ingested, `mx-data-explore` can't see it. Open a feature request via `mixshift feedback "need data source: X"` and we'll route it to MixShift's data team. **Straight from Amazon:** often yes, the `mx-amazon-*` skills call Amazon's APIs live for any merchant you're authorized for, so you can pull reports, catalog, inventory, pricing, AMC, and DSP data the warehouse doesn't hold.
 
 ### What's the data freshness?
 
@@ -170,15 +172,22 @@ Depends on the source. Ad metrics typically update daily (T-1 freshness). Seller
 
 ### Are the analytical skills (mx-daily-health-check, mx-runaway-spend-check, etc.) available?
 
-Present in the codebase but **not yet enabled for general customer use** during pre-beta. We're vetting each skill end-to-end with real brand contexts before opening them broadly. The launch surface today is:
+The boundary is whether a skill needs a brand-context build. **Everything that needs only sign-in is available today:**
 
-- `welcome` — first-run orientation
-- `mx-auth-login` — browser-based sign-in
-- `mx-data-explore` — ad-hoc query / sample / export
-- `brand discover` + `brand add` — brand onboarding plumbing
-- `feedback` — send feedback / bug reports / feature requests
+- `mx-welcome`, `mx-auth-login`, `mx-auth-service-setup`, `mx-help`, `mx-feedback`, `mx-share-skill` for onboarding and support
+- `mx-data-explore` for ad-hoc warehouse query, sample, and export
+- `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, `mx-amazon-dsp` for live reads straight from Amazon
+- `mx-amazon-ads` for live Amazon Ads reads plus audited writes (preview, confirm, commit)
 
-The analytical skills will be opened in subsequent releases as each one is validated. Watch the changelog / release notes.
+The **analytical PPC tier** (`mx-daily-health-check`, `mx-runaway-spend-check`, `mx-keyword-bid-health`, `mx-monthly-report`, `mx-portfolio-quick-scan`, and the search-term suite) reads a one-time brand-context build per brand. These are being vetted end-to-end on real brand contexts and roll out in waves. Watch the changelog / release notes.
+
+### Can I pause campaigns, edit bids, or create negatives from the plugin?
+
+Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keywords, targets, bids, budgets) and makes **audited changes** to it: pause and enable campaigns, edit bids and budgets, and create or delete keywords, ASIN targets, and negatives across Sponsored Products, Brands, and Display. It works right after sign-in, with no brand-context build required.
+
+### How do Amazon Ads writes work?
+
+Every write is preview-gated. The harness sends the change to MixShift's service as a **dry run** first: the service validates it, snapshots the current state, logs an audit row, and returns a preview of the exact change set without touching Amazon. Claude shows you that preview and waits. Only when you explicitly confirm does it re-issue the call with `--commit`, the only thing that mutates your account. A declined preview sends nothing. Each committed change carries an audit id so it can be traced and reversed.
 
 ### What's cold-start and why do I need it?
 

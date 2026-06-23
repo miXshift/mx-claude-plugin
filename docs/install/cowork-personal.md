@@ -73,11 +73,17 @@ Now you should see the "you are already set up" view with four actions:
 - Onboard a brand for analytical skills (pre-beta — not generally enabled yet)
 - Re-run sign-in (if you need to switch accounts)
 
-Then try the mx-data-explore skill:
+Then try a skill. For your warehouse data:
 
 - "what tables can I query"
 - "show me a sample of campaignmetric for seller [your SellerID]"
 - "export [brand]'s campaign data for last week to CSV"
+
+Or pull live from Amazon (no brand setup needed):
+
+- "list my Amazon merchants"
+- "pull a Brand Analytics report for [brand] for last month"
+- "show my live Amazon Ads campaigns for [brand]"
 
 If you don't know your SellerIDs, say "discover my brands" and Claude runs `mixshift brand discover` to list them.
 

@@ -37,6 +37,11 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Duration and row count
 - Error classification (`access_denied_table`, `timeout`, `syntax_error`, etc.) — friendly category, not raw stack traces
 
+**Amazon API events:**
+- Which Amazon operation or report type ran (report type, Ads operation, pricing batch, AMC / DSP run)
+- Duration, item / row counts, and outcome (success or failure class)
+- We do **not** collect the returned documents or payloads, and never the `amazonSellerId`
+
 **Feedback:**
 - Whatever you send via `mixshift feedback "..."` — these are direct submissions to MixShift, not passive collection.
 
