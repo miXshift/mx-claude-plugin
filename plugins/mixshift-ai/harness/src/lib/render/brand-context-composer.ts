@@ -46,6 +46,8 @@ import {
   type ResolvedFieldMap,
 } from './brand-context-sections.js';
 import { resolveBrandFields } from '../brain/read.js';
+import { validateBrandContext } from '../context/load.js';
+import type { ContextState } from './brand-context-report.js';
 import type { BucketCardOptions } from './design-system.js';
 
 // ---------------------------------------------------------------------------
@@ -105,12 +107,35 @@ export async function composeBrandContextReport(
     args.dataDirOverride,
   );
 
-  // 5. Compute verdict (validator pass = required_present == required_total,
-  //    which is our coverage model — we don't shell out to zod here)
+  // 5. Compute verdict. We need a PRECISE context state (absent vs malformed)
+  //    so a brain-only brand renders the early "auto-discovered" state instead
+  //    of a RED schema-fail. `readBrandContextSources` collapses both into a
+  //    null `context`, so re-validate here to recover the distinction:
+  //      file_missing  → 'absent'  (early state, never RED)
+  //      malformed/schema_violation → 'invalid' (genuinely broken → RED)
+  //      ok            → 'valid'   (the coverage model takes over)
+  const ctxValidation = await validateBrandContext(
+    args.brandSlug,
+    args.dataDirOverride,
+  );
+  const contextState: ContextState = ctxValidation.ok
+    ? 'valid'
+    : ctxValidation.kind === 'file_missing'
+      ? 'absent'
+      : 'invalid';
+  // A Tier-2 brain exists if any registered field resolved from the brain.
+  const brainPresent = Object.values(resolvedFields).some(
+    (r) => r?.source === 'brain',
+  );
   const { verdict, reason } = computeVerdict({
     coverage,
     observational: !!args.observational,
+    // validator pass = required_present == required_total, our coverage model;
+    // we don't shell out to zod for the coverage ladder. The precise context
+    // state below is what gates the early-state vs RED branch.
     validator_passed: coverage.required_present === coverage.required_total,
+    context_state: contextState,
+    brain_present: brainPresent,
   });
 
   // 6. Build state passed to every section
