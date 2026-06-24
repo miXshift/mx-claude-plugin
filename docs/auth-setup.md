@@ -8,6 +8,8 @@ This doc covers signing in to the MixShift warehouse from the plugin. Three path
 
 The interactive flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
 
+Building your own application against the warehouse instead of using the plugin? See [Querying from your own app](#querying-from-your-own-app-direct-api) for the direct HTTP path: mint a token, then post SQL.
+
 ---
 
 ## What sign-in does
@@ -267,6 +269,77 @@ One failure mode: HTTP 401 from the token endpoint, which means the credential w
 ### Rotation (admin side)
 
 Admins rotate without downtime: rotate at `/admin` (both old and new secrets work during the overlap), update the automation's secret at your own pace, verify it mints, then confirm the rotation (old secret dies). Revocation is instant and kills new token mints immediately.
+
+---
+
+## Querying from your own app (direct API)
+
+If you run your own application (a scheduled job, a sync pipeline, a BI backend) and want to read your warehouse without the plugin, call the API directly. The plugin is only a client of this same HTTP surface: anything `mixshift data run-query` does, your app can do with two requests. Mint a token, then post SQL.
+
+This path reads **your own tenant database**. A service credential resolves server-side to your dedicated warehouse, which uses the standard MixShift schema, so your queries only ever see your own data. The database user behind the endpoint is **read-only**, so writes are rejected at the database itself.
+
+### 1. Get a service credential
+
+Your tenant admin creates one at `https://mcp.mixshift.io/admin` with "Create with raw secret" and gives you the `client_id` and `client_secret`. It is read-only and revocable at any time. Because raw SQL spans every data domain, this path needs the credential to carry the full read set (`account:read`, `ads:read`, `retail:read`, `brand_analytics:read`), which is the default for a read-only credential. The narrower per-domain scopes apply to the `/v1` endpoints, not to raw SQL. You do not need the plugin or `mixshift auth service-setup` for this path, only the two strings. Keep the secret in your app's secret store, not in source control.
+
+### 2. Mint an access token
+
+Exchange the credential for a short-lived (about 1 hour) bearer token using the OAuth client_credentials grant:
+
+```bash
+curl -sS https://mcp.mixshift.io/oauth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credentials","client_id":"svc_abc123...","client_secret":"..."}'
+```
+
+```json
+{ "access_token": "eyJ...", "expires_in": 3600 }
+```
+
+Mint once per run and reuse the token until it nears expiry. Re-mint when you get a 401.
+
+### 3. Run read-only SQL
+
+Post your statement to `/api/query` with the token as a bearer credential:
+
+```bash
+curl -sS https://mcp.mixshift.io/api/query \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"SELECT campaignName, SUM(cost) AS spend FROM campaign WHERE SellerID = ? GROUP BY 1","params":[12345],"queryTimeoutMs":60000}'
+```
+
+Bind untrusted input with placeholders instead of string-building. `params` accepts a positional array (bind with `?`) or a named object.
+
+A successful call returns rows in an envelope:
+
+```json
+{ "ok": true, "rows": [ { "campaignName": "...", "spend": 1234.56 } ], "rowCount": 1, "durationMs": 412 }
+```
+
+A failure uses the same envelope with `ok: false`:
+
+```json
+{ "ok": false, "kind": "access_denied_table", "table_name": "some_table", "message": "...", "friendly": "..." }
+```
+
+`kind` is one of `access_denied_table`, `access_denied_db`, `unknown_table`, `syntax_error`, `timeout`, `host_unreachable`, `too_many_rows`, `response_too_large`, `unknown`. `access_denied_table` means your credential is not granted SELECT on that table, so ask MixShift to extend the grant. A `401` means the token expired or was revoked, so mint a new one.
+
+### Discovering your schema
+
+Two helper endpoints let your app introspect the warehouse, both using the same bearer token and hitting only your tenant database:
+
+- `GET /api/tables` lists your tables: `{ "ok": true, "tables": ["campaign", ...], "rowCount": N, "durationMs": N }`.
+- `GET /api/table/<name>` returns that table's columns (a `SHOW COLUMNS` result in the same envelope).
+
+### Notes and limits
+
+- **Read-only.** The database user cannot write. This is enforced at the database, not in your app.
+- **Your data only.** The credential is bound to your tenant database, so queries only ever see your own data. You still filter by `SellerID` to pick a seller or marketplace where a table holds several.
+- **Schema.** Your database uses the standard MixShift warehouse schema (the `dashamazon` layout). The table and column names you query over MySQL today apply here unchanged.
+- **Timeout.** `queryTimeoutMs` sets the statement timeout (MySQL `MAX_EXECUTION_TIME`). It defaults to `60000` (60s) and accepts `1000` to `120000` (1s to 120s); values outside that range are rejected.
+- **Result size.** One response is capped at 50,000 rows (`too_many_rows`) and 10 MB serialized (`response_too_large`). The call fails rather than returning a partial slice, so paginate large extracts with `LIMIT`/`OFFSET` or chunk by date or seller.
+- **Stability.** This is raw SQL against the warehouse schema, so your queries couple to that schema. We keep it stable, but if you would rather have a versioned contract than raw SQL, ask us about the named-query surface.
 
 ---
 
