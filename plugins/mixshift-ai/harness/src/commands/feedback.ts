@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { loadProfile } from '../lib/profile/load.js';
+import { resolveActorEmail } from '../lib/auth/actor-email.js';
 import { track, maybeFlush, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -20,6 +20,12 @@ interface RootOptions {
  * If the flush fails (no network, Supabase down, …), the event stays in
  * the local queue and gets retried on the next CLI invocation — feedback
  * is never lost, just delayed.
+ *
+ * Identity is best-effort (see resolveActorEmail): we attach the user's email
+ * when we can resolve one (profile, else the credential person_label), but a
+ * missing identity NEVER blocks the send — feedback goes out anonymously
+ * rather than being lost at an email gate (which used to downgrade it to a
+ * bare cli.command_run row).
  *
  * Note: this command intentionally keeps its mid-handler `maybeFlush()`
  * call (unlike every other command, which lets cli.ts's finally-block
@@ -56,13 +62,12 @@ export function registerFeedbackCommand(program: Command): void {
       ) => {
         const root = cmd.optsWithGlobals<RootOptions>();
         try {
-          const { profile } = await loadProfile(root.dataDir);
-          const userEmail = profile.user?.email;
-          if (!userEmail) {
-            throw new Error(
-              'No user email on file. Run `mixshift auth setup` first so we can attach an identity to your feedback.',
-            );
-          }
+          // Resolve the best-known identity, but NEVER block on it: feedback is
+          // a solicited send, so a missing email must not drop the message. (It
+          // used to throw here, downgrading feedback to a generic
+          // cli.command_run row.) Falls back profile -> credential
+          // person_label -> anonymous.
+          const userEmail = await resolveActorEmail(root.dataDir);
 
           await track(
             {
@@ -91,6 +96,7 @@ export function registerFeedbackCommand(program: Command): void {
               JSON.stringify(
                 {
                   status: delivered ? 'ok' : 'queued',
+                  attributed: Boolean(userEmail),
                   flush_status: flush.status,
                   events_sent: flush.events_sent,
                   ...(flush.error ? { error: flush.error } : {}),
@@ -101,7 +107,10 @@ export function registerFeedbackCommand(program: Command): void {
             );
           } else if (delivered) {
             process.stderr.write(
-              `\n✓ Feedback sent to MixShift ops. Thanks!\n`,
+              `\n✓ Feedback sent to MixShift ops. Thanks!\n` +
+                (userEmail
+                  ? ''
+                  : `  (Sent without an account identity. Run \`mixshift auth login\` so we can follow up.)\n`),
             );
           } else {
             // Event is on disk in the queue; will retry on the next CLI
