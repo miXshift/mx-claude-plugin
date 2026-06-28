@@ -799,7 +799,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
   const enr = s.sources.enrichment as
     | {
         stockout_candidates?: Array<{ asin?: string; item_name?: string; days_in_window?: number }>;
-        brand_term_typo_candidates?: Array<{ canonical_match?: string; total_variants?: number }>;
+        brand_term_typo_candidates?: Array<{ canonical_match?: string; variant_count?: number }>;
       }
     | null;
   const blocks: string[] = [];
@@ -811,7 +811,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
   }
   if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
     const items = enr.brand_term_typo_candidates.slice(0, 10).map(
-      (c) => `${c.canonical_match ?? '(unknown)'} — ${c.total_variants ?? 0} variant(s)`,
+      (c) => `${c.canonical_match ?? '(unknown)'} — ${c.variant_count ?? 0} variant(s)`,
     );
     blocks.push(renderAnomalyBlock({ title: 'Brand-term typo clusters (advisory)', items }));
   }
@@ -819,7 +819,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
     title: 'Detected anomalies (advisory)',
     body: blocks.length > 0
       ? blocks.join('\n')
-      : '<div class="rc-empty">No advisory findings. Phase 1.5 enrichment will populate stockout + brand-term-typo candidates here once enabled.</div>',
+      : '<div class="rc-empty">No advisory findings. The brand brain populates stockout + brand-term-typo candidates here as it detects them.</div>',
   });
 }
 

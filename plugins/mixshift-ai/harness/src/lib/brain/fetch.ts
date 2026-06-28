@@ -619,7 +619,8 @@ async function writeBrainStatus(
  * Best-effort read of the brand's Tier-3 brand_terms (+ negation.competitor_brands)
  * for the typo detector. Returns undefined when context.yaml is absent or carries
  * no brand_terms (a brand-new brand whose cold-start hasn't run) — the typo
- * section then no-ops cleanly. Mirrors brand-enrich.ts::tryReadContextForTypos.
+ * section then no-ops cleanly. (Gating mirrors the retired cold-start enrich
+ * step: typo detection needs Tier-3 brand_terms canonicals to match against.)
  */
 async function readBrandTermsInput(
   slug: string,

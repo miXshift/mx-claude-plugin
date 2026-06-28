@@ -29,6 +29,7 @@ import {
   contextPath,
   narrativePath,
 } from '../paths/resolve.js';
+import { loadBrain } from '../brain/read.js';
 
 // ---------------------------------------------------------------------------
 // Source shapes (loose — we degrade gracefully on missing fields)
@@ -54,7 +55,7 @@ export interface BrandContextSources {
 
 export async function readBrandContextSources(
   brandSlug: string,
-  runDate: string,
+  _runDate: string,
   dataDirOverride?: string,
 ): Promise<BrandContextSources> {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -62,21 +63,26 @@ export async function readBrandContextSources(
   const dir = brandDir(brandSlug, dataDirOverride);
   const briPath = join(dir, 'brand-intelligence.yaml');
   const corporaPath = join(dir, 'corpora');
-  const enrichmentPath = join(
-    dir,
-    'runs',
-    'mx-brand-context',
-    runDate,
-    `${runDate}.enrichment.json`,
-  );
-
-  const [context, narrative, intel, corpora, enrichment] = await Promise.all([
+  const [context, narrative, intel, corpora, brainResult] = await Promise.all([
     readYamlIfExists(ctxPath),
     readTextIfExists(narPath),
     readYamlIfExists(briPath),
     summarizeCorpora(corporaPath),
-    readJsonIfExists(enrichmentPath),
+    loadBrain(brandSlug, dataDirOverride),
   ]);
+
+  // Phase 8: the three advisory analyses (settlement curve, stockout windows,
+  // brand-term typos) come from the Tier-2 brain now (computed on `brand key
+  // add` / `brand brain refresh`), not a per-run enrichment.json. Shape the
+  // brain's sections into the `enrichment` Record the sections already read.
+  const enrichment = brainResult.ok
+    ? {
+        daily_settlement_curve:
+          brainResult.brain.capture_rate_calibration?.daily_settlement_curve ?? null,
+        stockout_candidates: brainResult.brain.stockouts ?? [],
+        brand_term_typo_candidates: brainResult.brain.brand_term_typos ?? [],
+      }
+    : null;
 
   const last_updated =
     (context as { last_updated?: string } | null)?.last_updated ?? null;
@@ -502,15 +508,6 @@ async function readYamlIfExists(path: string): Promise<unknown | null> {
 async function readTextIfExists(path: string): Promise<string | null> {
   try {
     return await readFile(path, 'utf-8');
-  } catch {
-    return null;
-  }
-}
-
-async function readJsonIfExists(path: string): Promise<unknown | null> {
-  try {
-    const raw = await readFile(path, 'utf-8');
-    return JSON.parse(raw);
   } catch {
     return null;
   }

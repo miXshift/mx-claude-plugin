@@ -28889,15 +28889,6 @@ function runAppliedPath(brandSlug, skillId, runDate, dataDirOverride) {
     "applied.json"
   );
 }
-function enrichmentPath(brandSlug, runDate, dataDirOverride) {
-  return join4(
-    brandDir(brandSlug, dataDirOverride),
-    "runs",
-    "mx-brand-context",
-    runDate,
-    `${runDate}.enrichment.json`
-  );
-}
 function indexPath(dataDirOverride) {
   return join4(clientsDir(dataDirOverride), "index.yaml");
 }
@@ -60986,7 +60977,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join21(tree) {
+      function join20(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61012,7 +61003,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join21(parse4(query));
+        tree = join20(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -65268,15 +65259,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir21, readFile as readFile27 } from "node:fs/promises";
-import { join as join17, dirname as dirname25 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir20, readFile as readFile25 } from "node:fs/promises";
+import { join as join16, dirname as dirname24 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join17(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join16(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir21(dirname25(path2), { recursive: true });
+    await mkdir20(dirname24(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -65287,7 +65278,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile27(path2, "utf-8");
+    const raw = await readFile25(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -71298,26 +71289,24 @@ var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
 import { readFile as readFile17, readdir as readdir2, stat as stat3 } from "node:fs/promises";
 import { dirname as dirname15, join as join9 } from "node:path";
-async function readBrandContextSources(brandSlug, runDate, dataDirOverride) {
+async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const narPath = narrativePath(brandSlug, dataDirOverride);
   const dir = brandDir(brandSlug, dataDirOverride);
   const briPath = join9(dir, "brand-intelligence.yaml");
   const corporaPath = join9(dir, "corpora");
-  const enrichmentPath2 = join9(
-    dir,
-    "runs",
-    "mx-brand-context",
-    runDate,
-    `${runDate}.enrichment.json`
-  );
-  const [context, narrative, intel, corpora, enrichment] = await Promise.all([
+  const [context, narrative, intel, corpora, brainResult] = await Promise.all([
     readYamlIfExists(ctxPath),
     readTextIfExists(narPath),
     readYamlIfExists(briPath),
     summarizeCorpora(corporaPath),
-    readJsonIfExists(enrichmentPath2)
+    loadBrain(brandSlug, dataDirOverride)
   ]);
+  const enrichment = brainResult.ok ? {
+    daily_settlement_curve: brainResult.brain.capture_rate_calibration?.daily_settlement_curve ?? null,
+    stockout_candidates: brainResult.brain.stockouts ?? [],
+    brand_term_typo_candidates: brainResult.brain.brand_term_typos ?? []
+  } : null;
   const last_updated = context?.last_updated ?? null;
   return {
     context,
@@ -71558,14 +71547,6 @@ async function readYamlIfExists(path2) {
 async function readTextIfExists(path2) {
   try {
     return await readFile17(path2, "utf-8");
-  } catch {
-    return null;
-  }
-}
-async function readJsonIfExists(path2) {
-  try {
-    const raw = await readFile17(path2, "utf-8");
-    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -72045,13 +72026,13 @@ function sectionDetectedAnomalies(s) {
   }
   if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
     const items = enr.brand_term_typo_candidates.slice(0, 10).map(
-      (c) => `${c.canonical_match ?? "(unknown)"} \u2014 ${c.total_variants ?? 0} variant(s)`
+      (c) => `${c.canonical_match ?? "(unknown)"} \u2014 ${c.variant_count ?? 0} variant(s)`
     );
     blocks.push(renderAnomalyBlock({ title: "Brand-term typo clusters (advisory)", items }));
   }
   return renderCard({
     title: "Detected anomalies (advisory)",
-    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No advisory findings. Phase 1.5 enrichment will populate stockout + brand-term-typo candidates here once enabled.</div>'
+    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No advisory findings. The brand brain populates stockout + brand-term-typo candidates here as it detects them.</div>'
   });
 }
 function sectionBrandIdentity(s) {
@@ -72560,269 +72541,47 @@ function emitError3(json2, message) {
   process.exitCode = 1;
 }
 
-// src/commands/brand-enrich.ts
-import { readFile as readFile19 } from "node:fs/promises";
-import { join as join11 } from "node:path";
-
-// src/lib/enrichment/storage.ts
-init_resolve();
-import { mkdir as mkdir13, readFile as readFile18, rename as rename10, writeFile as writeFile13 } from "node:fs/promises";
-import { dirname as dirname16 } from "node:path";
-async function writeEnrichmentArtifact(brandSlug, runDate, artifact, dataDirOverride) {
-  const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
-  await mkdir13(dirname16(path2), { recursive: true });
-  const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile13(tmpPath, JSON.stringify(artifact, null, 2), "utf-8");
-  await rename10(tmpPath, path2);
-  return { path: path2 };
-}
-async function readEnrichmentArtifact(brandSlug, runDate, dataDirOverride) {
-  const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
-  try {
-    const raw = await readFile18(path2, "utf-8");
-    return JSON.parse(raw);
-  } catch (err) {
-    if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
-      return null;
-    }
-    throw err;
-  }
-}
-function emptyArtifact(brandSlug, runDate, accountCount) {
-  return {
-    schema_version: 1,
-    brand_slug: brandSlug,
-    run_date: runDate,
-    generated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    account_count: accountCount,
-    partial: false,
-    partial_reasons: [],
-    daily_settlement_curve: null,
-    stockout_candidates: [],
-    brand_term_typo_candidates: []
-  };
-}
-
-// src/commands/brand-enrich.ts
+// src/lib/enrichment/delta-merge.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-init_resolve();
-init_telemetry();
-import { readFile as fsReadFile } from "node:fs/promises";
-function registerBrandEnrichCommand(brandCmd) {
-  brandCmd.command("enrich <slug>").description(
-    "Run Phase 1.5 enrichment: settlement curve from CS-28, stockout windows from CS-29+CS-30, brand-name typo clusters from CS-31. Writes runs/mx-brand-context/<date>/<date>.enrichment.json. Read by the brand-context renderer (Detected Anomalies section) + the `brand merge-delta` patcher."
-  ).option("--date <date>", "run date (YYYY-MM-DD). Defaults to today.").action(
-    async (slug, opts, cmd) => {
-      const root = cmd.optsWithGlobals();
-      try {
-        const brand = await resolveBrand2(slug, root.dataDir);
-        if (!brand) {
-          return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
-        }
-        const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const prefetchPath = join11(
-          brandDir(brand.slug, root.dataDir),
-          "runs",
-          "mx-brand-context",
-          runDate,
-          "data.json"
-        );
-        let prefetch = null;
-        try {
-          const raw = await readFile19(prefetchPath, "utf-8");
-          prefetch = JSON.parse(raw);
-        } catch {
-          return emitError4(
-            root.json,
-            `No prefetch artifact at ${prefetchPath}. Run \`mixshift prefetch --skill mx-brand-context --brand ${brand.slug} --date ${runDate}\` first.`
-          );
-        }
-        const { index } = await readIndex(root.dataDir);
-        const row = index.brands.find((b) => b.slug === brand.slug);
-        const accountCount = row?.accounts.length ?? 0;
-        const artifact = emptyArtifact(brand.slug, runDate, accountCount);
-        const partial_reasons = [];
-        const cs28Rows = extractQueryRows(prefetch, "CS-28");
-        if (cs28Rows.length === 0) {
-          partial_reasons.push("CS-28 returned no rows \u2014 settlement curve unavailable");
-        } else {
-          artifact.daily_settlement_curve = computeSettlementCurve(cs28Rows);
-          if (artifact.daily_settlement_curve === null) {
-            partial_reasons.push("Settlement curve computation returned null");
-          }
-        }
-        const cs29Rows = extractQueryRows(prefetch, "CS-29");
-        const cs30Rows = extractQueryRows(prefetch, "CS-30");
-        if (cs29Rows.length === 0) {
-          partial_reasons.push("CS-29 returned no rows \u2014 stockout detection skipped");
-        } else {
-          artifact.stockout_candidates = detectStockoutWindows(cs29Rows, cs30Rows);
-        }
-        const cs31Rows = extractQueryRows(prefetch, "CS-31");
-        if (cs31Rows.length === 0) {
-          partial_reasons.push("CS-31 returned no rows \u2014 brand-typo clustering skipped");
-        } else {
-          const ctx = await tryReadContextForTypos(brand.slug, root.dataDir);
-          if (!ctx || !ctx.brand_terms) {
-            partial_reasons.push(
-              "context.yaml::brand_terms missing \u2014 brand-typo clustering needs canonicals to match against"
-            );
-          } else {
-            artifact.brand_term_typo_candidates = detectBrandTermTypos(
-              cs31Rows,
-              ctx.brand_terms,
-              {
-                competitor_brands: ctx.negation?.competitor_brands ?? []
-              }
-            );
-          }
-        }
-        artifact.partial_reasons = partial_reasons;
-        artifact.partial = partial_reasons.length > 0;
-        const { path: path2 } = await writeEnrichmentArtifact(
-          brand.slug,
-          runDate,
-          artifact,
-          root.dataDir
-        );
-        await track(
-          {
-            event_name: "brand.enrichment_run",
-            payload: {
-              brand_slug: brand.slug,
-              run_date: runDate,
-              partial: artifact.partial,
-              settlement_computed: artifact.daily_settlement_curve !== null,
-              stockout_count: artifact.stockout_candidates.length,
-              typo_cluster_count: artifact.brand_term_typo_candidates.length
-            }
-          },
-          root.dataDir
-        );
-        if (root.json) {
-          process.stdout.write(
-            JSON.stringify(
-              {
-                status: "ok",
-                enrichment_path: path2,
-                partial: artifact.partial,
-                partial_reasons: artifact.partial_reasons
-              },
-              null,
-              2
-            ) + "\n"
-          );
-          return;
-        }
-        process.stdout.write(
-          `
-\u2713 Enrichment artifact written to ${path2}
-  Settlement curve: ${artifact.daily_settlement_curve ? `computed (stability: ${artifact.daily_settlement_curve.stability_score})` : "unavailable"}
-  Stockout candidates: ${artifact.stockout_candidates.length}
-  Brand-typo clusters: ${artifact.brand_term_typo_candidates.length}
-` + (artifact.partial ? `  Partial \u2014 ${artifact.partial_reasons.length} pending: ${artifact.partial_reasons.join("; ")}
-
-` : `
-`)
-        );
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return emitError4(root.json, message);
-      }
-    }
-  );
-}
-async function tryReadContextForTypos(brandSlug, dataDir) {
-  try {
-    const raw = await fsReadFile(contextPath(brandSlug, dataDir), "utf-8");
-    const parsed = (0, import_yaml14.parse)(raw);
-    if (parsed === null || typeof parsed !== "object") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-function extractQueryRows(prefetch, queryId) {
-  if (prefetch === null || typeof prefetch !== "object") return [];
-  const queries = prefetch.queries;
-  if (!queries || typeof queries !== "object") return [];
-  const q = queries[queryId];
-  if (!q || typeof q !== "object") return [];
-  const rows = q.rows;
-  if (!Array.isArray(rows)) return [];
-  return rows.filter((r) => r !== null && typeof r === "object");
-}
-async function resolveBrand2(input, dataDir) {
-  const { index } = await readIndex(dataDir);
-  const exact = index.brands.find((b) => b.slug === input);
-  if (exact) return { slug: exact.slug, display_name: exact.display_name };
-  const resolved = resolveBrandName(input, index);
-  if (resolved.status === "found") {
-    return { slug: resolved.brand.slug, display_name: resolved.brand.display_name };
-  }
-  if (resolved.status === "ambiguous") {
-    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
-    throw new Error(
-      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
-${candidates}`
-    );
-  }
-  return null;
-}
-function emitError4(json2, message) {
-  if (json2) {
-    process.stdout.write(
-      JSON.stringify({ status: "error", message }, null, 2) + "\n"
-    );
-  } else {
-    process.stderr.write(`error: ${message}
-`);
-  }
-  process.exitCode = 1;
-}
-
-// src/lib/enrichment/delta-merge.ts
-var import_yaml15 = __toESM(require_dist(), 1);
-init_resolve();
-import { readFile as readFile20, writeFile as writeFile14, rename as rename11, mkdir as mkdir14, chmod as chmod5 } from "node:fs/promises";
-import { dirname as dirname17 } from "node:path";
-async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
+import { readFile as readFile18, writeFile as writeFile13, rename as rename10, mkdir as mkdir13, chmod as chmod5 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
+async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
-  const enrichment = await readEnrichmentArtifact(brandSlug, runDate, dataDirOverride);
-  if (!enrichment) {
+  const loaded = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded.ok) {
     return {
-      status: "no_enrichment",
+      status: "no_brain",
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+      brain_path: loaded.path
     };
   }
-  if (!enrichment.daily_settlement_curve) {
+  const curve = loaded.brain.capture_rate_calibration?.daily_settlement_curve;
+  if (!curve) {
     return {
       status: "no_curve",
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+      brain_path: loaded.path
     };
   }
   let ctxText;
   try {
-    ctxText = await readFile20(ctxPath, "utf-8");
+    ctxText = await readFile18(ctxPath, "utf-8");
   } catch (err) {
     if (isFileNotFoundError13(err)) {
       return {
         status: "context_missing",
         context_path: ctxPath,
         fields_updated: [],
-        enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+        brain_path: loaded.path
       };
     }
     throw err;
   }
-  const doc = (0, import_yaml15.parseDocument)(ctxText, { keepSourceTokens: true });
-  const fieldsUpdated = patchSettlementCurve(doc, enrichment);
+  const doc = (0, import_yaml14.parseDocument)(ctxText, { keepSourceTokens: true });
+  const fieldsUpdated = patchSettlementCurve(doc, curve);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   doc.set("last_updated", today);
   fieldsUpdated.push("last_updated");
@@ -72831,12 +72590,10 @@ async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
     status: "ok",
     context_path: ctxPath,
     fields_updated: fieldsUpdated,
-    enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+    brain_path: loaded.path
   };
 }
-function patchSettlementCurve(doc, enrichment) {
-  const curve = enrichment.daily_settlement_curve;
-  if (!curve) return [];
+function patchSettlementCurve(doc, curve) {
   const updated = [];
   doc.setIn(
     ["capture_rate_calibration", "daily_settlement_curve"],
@@ -72864,14 +72621,14 @@ function patchSettlementCurve(doc, enrichment) {
   return updated;
 }
 async function writeYamlAtomic(path2, text) {
-  await mkdir14(dirname17(path2), { recursive: true });
+  await mkdir13(dirname16(path2), { recursive: true });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile14(tmpPath, text, "utf-8");
+  await writeFile13(tmpPath, text, "utf-8");
   try {
     await chmod5(tmpPath, 384);
   } catch {
   }
-  await rename11(tmpPath, path2);
+  await rename10(tmpPath, path2);
 }
 function isFileNotFoundError13(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -72881,19 +72638,18 @@ function isFileNotFoundError13(err) {
 init_telemetry();
 function registerBrandMergeDeltaCommand(brandCmd) {
   brandCmd.command("merge-delta <slug>").description(
-    "Merge the settlement curve from a Phase 1.5 enrichment artifact into the brand's context.yaml. Preserves AM-edited fields (negation, structural_events, brand_terms, posture, etc.) and comments. Idempotent."
+    "Merge the settlement curve from the brand brain into the brand's context.yaml. Preserves AM-edited fields (negation, structural_events, brand_terms, posture, etc.) and comments. Idempotent."
   ).option("--date <date>", "run date (YYYY-MM-DD). Defaults to today.").action(
     async (slug, opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
-        const brand = await resolveBrand3(slug, root.dataDir);
+        const brand = await resolveBrand2(slug, root.dataDir);
         if (!brand) {
-          return emitError5(root.json, `Brand "${slug}" not found in the registry.`);
+          return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
         }
         const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         const result = await mergeEnrichmentIntoContext(
           brand.slug,
-          runDate,
           root.dataDir
         );
         await track(
@@ -72914,11 +72670,11 @@ function registerBrandMergeDeltaCommand(brandCmd) {
           return;
         }
         switch (result.status) {
-          case "no_enrichment":
+          case "no_brain":
             process.stderr.write(
               `
-No enrichment artifact at ${result.enrichment_path}.
-Run \`mixshift brand enrich --brand ${brand.slug} --date ${runDate}\` first.
+No brand brain at ${result.brain_path}.
+Run \`mixshift brand brain fetch ${brand.slug}\` (or \`refresh\`) first.
 
 `
             );
@@ -72927,7 +72683,7 @@ Run \`mixshift brand enrich --brand ${brand.slug} --date ${runDate}\` first.
           case "no_curve":
             process.stderr.write(
               `
-Enrichment artifact has no settlement curve. Likely CS-28 returned no rows; check the prefetch.
+The brand brain has no settlement curve yet. Run \`mixshift brand brain refresh ${brand.slug}\` (CS-28 may have returned no rows).
 
 `
             );
@@ -72957,12 +72713,12 @@ No context.yaml for "${brand.slug}". Run /mx-brand-context first.
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError5(root.json, message);
+        return emitError4(root.json, message);
       }
     }
   );
 }
-async function resolveBrand3(input, dataDir) {
+async function resolveBrand2(input, dataDir) {
   const { index } = await readIndex(dataDir);
   const exact = index.brands.find((b) => b.slug === input);
   if (exact) return { slug: exact.slug, display_name: exact.display_name };
@@ -72979,7 +72735,7 @@ ${candidates}`
   }
   return null;
 }
-function emitError5(json2, message) {
+function emitError4(json2, message) {
   if (json2) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -73484,7 +73240,6 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
   registerBrandContextCommands(brand);
   registerBrandConfigCommand(brand);
   registerBrandRenderContextCommand(brand);
-  registerBrandEnrichCommand(brand);
   registerBrandMergeDeltaCommand(brand);
   registerBrandMigrateConfigCommand(brand);
   const key = brand.command("key").description(
@@ -73711,8 +73466,8 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile21 } from "node:fs/promises";
+var import_yaml15 = __toESM(require_dist(), 1);
+import { readFile as readFile19 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -76472,7 +76227,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile21(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile19(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -76624,7 +76379,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile21(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile19(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -76644,10 +76399,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile21(path2, "utf-8");
+  const raw = await readFile19(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml16.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml15.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -76840,10 +76595,10 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml17 = __toESM(require_dist(), 1);
+var import_yaml16 = __toESM(require_dist(), 1);
 init_plugin_root();
 init_format_error();
-import { readFile as readFile22 } from "node:fs/promises";
+import { readFile as readFile20 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -76920,7 +76675,7 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile22(path2, "utf-8");
+    raw = await readFile20(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError14(err)) {
       throw new Error(
@@ -76929,7 +76684,7 @@ async function loadSkillManifest(skillId) {
     }
     throw err;
   }
-  const parsed = (0, import_yaml17.parse)(raw);
+  const parsed = (0, import_yaml16.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -77055,14 +76810,14 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir15, writeFile as writeFile15, rename as rename12 } from "node:fs/promises";
-import { dirname as dirname18, join as join12 } from "node:path";
+import { mkdir as mkdir14, writeFile as writeFile14, rename as rename11 } from "node:fs/promises";
+import { dirname as dirname17, join as join11 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir15(runDir, { recursive: true });
-  const dataJsonPath = join12(runDir, "data.json");
-  const dataMdPath = join12(runDir, "data.md");
+  await mkdir14(runDir, { recursive: true });
+  const dataJsonPath = join11(runDir, "data.json");
+  const dataMdPath = join11(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -77090,7 +76845,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join12(
+  return join11(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -77187,10 +76942,10 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir15(dirname18(path2), { recursive: true });
+  await mkdir14(dirname17(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile15(tmpPath, content, { encoding: "utf-8" });
-  await rename12(tmpPath, path2);
+  await writeFile14(tmpPath, content, { encoding: "utf-8" });
+  await rename11(tmpPath, path2);
 }
 
 // src/lib/prefetch/runner.ts
@@ -77472,12 +77227,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile23 } from "node:fs/promises";
+import { readFile as readFile21 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir16, writeFile as writeFile16, rename as rename13 } from "node:fs/promises";
-import { join as join13, dirname as dirname19 } from "node:path";
+import { mkdir as mkdir15, writeFile as writeFile15, rename as rename12 } from "node:fs/promises";
+import { join as join12, dirname as dirname18 } from "node:path";
 import { createHash as createHash3, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -77588,7 +77343,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir16(dirname19(path2), { recursive: true });
+  await mkdir15(dirname18(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -77616,7 +77371,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join13(
+  return join12(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -77646,8 +77401,8 @@ function hashParams(params) {
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile16(tmpPath, content, { encoding: "utf-8" });
-  await rename13(tmpPath, path2);
+  await writeFile15(tmpPath, content, { encoding: "utf-8" });
+  await rename12(tmpPath, path2);
 }
 
 // src/commands/sidecar.ts
@@ -77666,7 +77421,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile23(opts.inputFile, "utf-8");
+      const raw = await readFile21(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -77740,16 +77495,16 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile24 } from "node:fs/promises";
-import { dirname as dirname20, join as join14 } from "node:path";
+var import_yaml17 = __toESM(require_dist(), 1);
+import { readFile as readFile22 } from "node:fs/promises";
+import { dirname as dirname19, join as join13 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile24(path2, "utf-8");
-      const parsed = (0, import_yaml18.parse)(raw);
+      const raw = await readFile22(path2, "utf-8");
+      const parsed = (0, import_yaml17.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize(name, meta3)
@@ -77777,12 +77532,12 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname20(fileURLToPath5(import.meta.url));
+  const here = dirname19(fileURLToPath5(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join14(dir, "shared", "data-tables.yaml"));
-    const parent = dirname20(dir);
+    candidates.push(join13(dir, "shared", "data-tables.yaml"));
+    const parent = dirname19(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -77828,8 +77583,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir17 } from "node:fs/promises";
-import { dirname as dirname21 } from "node:path";
+import { mkdir as mkdir16 } from "node:fs/promises";
+import { dirname as dirname20 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -77937,7 +77692,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir17(dirname21(opts.outPath), { recursive: true });
+  await mkdir16(dirname20(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -77979,9 +77734,9 @@ function synthFailure(opts, message) {
 // src/commands/data.ts
 init_query_runner();
 init_resolve();
-import { writeFile as writeFile17 } from "node:fs/promises";
-import { mkdir as mkdir18 } from "node:fs/promises";
-import { dirname as dirname22 } from "node:path";
+import { writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir17 } from "node:fs/promises";
+import { dirname as dirname21 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
@@ -77995,7 +77750,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableList(tables) + "\n");
       }
     } catch (err) {
-      emitError6(err, !!root.json);
+      emitError5(err, !!root.json);
     }
   });
   data.command("describe <table>").description("Show description + scoping hints for one table").action(async (table, _opts, cmd) => {
@@ -78013,7 +77768,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableDetail(meta3) + "\n");
       }
     } catch (err) {
-      emitError6(err, !!root.json);
+      emitError5(err, !!root.json);
     }
   });
   data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
@@ -78066,7 +77821,7 @@ function registerDataCommands(program3) {
           process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -78122,7 +77877,7 @@ function registerDataCommands(program3) {
           );
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -78160,8 +77915,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir18(dirname22(opts.out), { recursive: true });
-          await writeFile17(opts.out, csv, "utf-8");
+          await mkdir17(dirname21(opts.out), { recursive: true });
+          await writeFile16(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -78192,7 +77947,7 @@ function registerDataCommands(program3) {
           }
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -78268,7 +78023,7 @@ function handleAccessDeniedExit(kind) {
   if (kind === "access_denied_table") return 4;
   return 1;
 }
-function emitError6(err, json2) {
+function emitError5(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     process.stdout.write(
@@ -78384,22 +78139,22 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile25, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname23 } from "node:path";
-import { join as join15 } from "node:path";
+import { readFile as readFile23, writeFile as writeFile17, mkdir as mkdir18 } from "node:fs/promises";
+import { dirname as dirname22 } from "node:path";
+import { join as join14 } from "node:path";
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join15(resolveDataDir(dataDirOverride), "version-check.json");
+  return join14(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile25(cachePath2, "utf-8");
+    const raw = await readFile23(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -78420,8 +78175,8 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir19(dirname23(cachePath2), { recursive: true });
-        await writeFile18(
+        await mkdir18(dirname22(cachePath2), { recursive: true });
+        await writeFile17(
           cachePath2,
           JSON.stringify(
             {
@@ -78917,8 +78672,8 @@ init_plugin_version();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile26, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
-import { dirname as dirname24, join as join16 } from "node:path";
+import { readFile as readFile24, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
+import { dirname as dirname23, join as join15 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -78958,13 +78713,13 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join16(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join15(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile26(path2, "utf-8");
+    const raw = await readFile24(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
       cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
@@ -78979,8 +78734,8 @@ async function loadChangelog(opts = {}) {
   const fetched = await fetchChangelogMarkdown();
   if (fetched.markdown !== null) {
     try {
-      await mkdir20(dirname24(path2), { recursive: true });
-      await writeFile19(
+      await mkdir19(dirname23(path2), { recursive: true });
+      await writeFile18(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), markdown: fetched.markdown }, null, 2) + "\n",
         "utf-8"
@@ -79306,8 +79061,8 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
 }
 
 // src/lib/calibration/confirm-flow.ts
-var import_yaml19 = __toESM(require_dist(), 1);
-import { readFile as readFile28 } from "node:fs/promises";
+var import_yaml18 = __toESM(require_dist(), 1);
+import { readFile as readFile26 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -79566,8 +79321,8 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile28(path2, "utf-8");
-    return (0, import_yaml19.parse)(raw);
+    const raw = await readFile26(path2, "utf-8");
+    return (0, import_yaml18.parse)(raw);
   } catch {
     return null;
   }
@@ -79726,8 +79481,8 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir22, readFile as readFile29, writeFile as writeFile20 } from "node:fs/promises";
-import { dirname as dirname26 } from "node:path";
+import { mkdir as mkdir21, readFile as readFile27, writeFile as writeFile19 } from "node:fs/promises";
+import { dirname as dirname25 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -79755,7 +79510,7 @@ function registerSkillCommands(program3) {
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError7(
+          return emitError6(
             root.json,
             `Brand "${opts.brand}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands. The resolver accepts slugs, display names, acronyms, and prefixes.`
           );
@@ -79830,7 +79585,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError7(root.json, message);
+        return emitError6(root.json, message);
       }
     }
   );
@@ -79846,7 +79601,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError7(
+          return emitError6(
             root.json,
             `Brand "${opts.brand}" not in the registry.`
           );
@@ -79913,7 +79668,7 @@ Real Amazon writes will land once the write MCP/API is wired. Same contract.
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError7(root.json, message);
+        return emitError6(root.json, message);
       }
     }
   );
@@ -79987,7 +79742,7 @@ async function runApplyDecision2(args) {
   try {
     decision = JSON.parse(args.decisionJson);
   } catch (err) {
-    return emitError7(
+    return emitError6(
       args.json,
       `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
     );
@@ -80129,14 +79884,14 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname26(path2);
-  const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
+  const runDir = dirname25(path2);
+  const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
       `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
     );
   }
-  const overrides = await readJsonIfExists2(`${runDir}/overrides.json`) ?? {
+  const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {
     rows: []
   };
   const suggestionRows = extractRows(suggestions);
@@ -80176,8 +79931,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir22(dirname26(path2), { recursive: true });
-  await writeFile20(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir21(dirname25(path2), { recursive: true });
+  await writeFile19(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -80204,9 +79959,9 @@ ${candidates}`
   }
   return null;
 }
-async function readJsonIfExists2(path2) {
+async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile29(path2, "utf-8");
+    const raw = await readFile27(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -80239,7 +79994,7 @@ function stableRowId(row) {
   }
   return null;
 }
-function emitError7(json2, message) {
+function emitError6(json2, message) {
   if (json2) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
@@ -80257,8 +80012,8 @@ import { resolve as resolvePath2 } from "node:path";
 // src/lib/amazon/reports.ts
 init_credentials();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir23 } from "node:fs/promises";
-import { dirname as dirname27 } from "node:path";
+import { mkdir as mkdir22 } from "node:fs/promises";
+import { dirname as dirname26 } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -80409,7 +80164,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
   if (!res.body) {
     return hostUnreachable("the report download returned an empty response body");
   }
-  await mkdir23(dirname27(outPath), { recursive: true });
+  await mkdir22(dirname26(outPath), { recursive: true });
   const out = createWriteStream2(outPath);
   const source = Readable.fromWeb(
     res.body
@@ -80767,16 +80522,16 @@ function safeJsonPreview(json2) {
 }
 
 // src/lib/reports/catalog.ts
-var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile30 } from "node:fs/promises";
-import { dirname as dirname28, join as join18 } from "node:path";
+var import_yaml19 = __toESM(require_dist(), 1);
+import { readFile as readFile28 } from "node:fs/promises";
+import { dirname as dirname27, join as join17 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile30(path2, "utf-8");
-      const parsed = (0, import_yaml20.parse)(raw);
+      const raw = await readFile28(path2, "utf-8");
+      const parsed = (0, import_yaml19.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
     } catch (err) {
@@ -80820,12 +80575,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname28(fileURLToPath6(import.meta.url));
+  const here = dirname27(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join18(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname28(dir);
+    candidates.push(join17(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname27(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -80840,7 +80595,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile32 } from "node:fs/promises";
+import { readFile as readFile30 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -80933,12 +80688,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir24, readFile as readFile31, rename as rename14, writeFile as writeFile21 } from "node:fs/promises";
-import { dirname as dirname29 } from "node:path";
+import { mkdir as mkdir23, readFile as readFile29, rename as rename13, writeFile as writeFile20 } from "node:fs/promises";
+import { dirname as dirname28 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile31(path2, "utf8");
+    const raw = await readFile29(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -80949,10 +80704,10 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir24(dirname29(path2), { recursive: true });
+  await mkdir23(dirname28(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile21(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename14(tmp, path2);
+  await writeFile20(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename13(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -81343,7 +81098,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile32(file2, "utf8");
+    const text = await readFile30(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -81412,7 +81167,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile33 } from "node:fs/promises";
+import { readFile as readFile31 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -81498,7 +81253,7 @@ function registerOperations(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError7(err, !!root.json);
     }
   });
 }
@@ -81524,10 +81279,10 @@ function registerCall(amazon) {
     try {
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError7(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile33(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile31(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -81570,7 +81325,7 @@ function registerCall(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError7(err, !!root.json);
     }
   });
 }
@@ -81616,7 +81371,7 @@ function emitFailure2(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError8(err, json2) {
+function emitError7(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson2({ status: "error", message });
@@ -81701,7 +81456,7 @@ function registerMerchants(amazon) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81728,7 +81483,7 @@ function registerListReports(amazon) {
         }
         return;
       } catch (err) {
-        emitError9(err, !!root.json);
+        emitError8(err, !!root.json);
       }
     }
   );
@@ -81753,7 +81508,7 @@ function registerDescribeReport(amazon) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81803,7 +81558,7 @@ Next: \`mixshift amazon report poll ${result.runId}\` until ready, then \`amazon
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81846,7 +81601,7 @@ Poll again in a few seconds.
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81905,7 +81660,7 @@ function registerReportGet(report) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -82063,7 +81818,7 @@ function registerReportRun(report) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -82133,7 +81888,7 @@ function renderCandidates(candidates) {
   lines.push("");
   return lines.join("\n") + "\n";
 }
-function emitError9(err, json2) {
+function emitError8(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson3({ status: "error", message });
@@ -82267,7 +82022,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile34 } from "node:fs/promises";
+import { readFile as readFile32 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -82372,7 +82127,7 @@ function registerProfiles(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82405,7 +82160,7 @@ function registerOperations2(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82429,10 +82184,10 @@ function registerCall2(ads) {
     try {
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile34(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile32(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -82508,7 +82263,7 @@ function registerCall2(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82554,7 +82309,7 @@ function emitFailure4(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError10(err, json2) {
+function emitError9(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson4({ status: "error", message });
@@ -83064,7 +82819,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname30, join as join19 } from "node:path";
+import { dirname as dirname29, join as join18 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -83197,17 +82952,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join19(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join18(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname30(fileURLToPath7(import.meta.url));
+  let dir = dirname29(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join19(dir, "skills");
+      const candidate = join18(dir, "skills");
       const stat4 = await fs.stat(candidate);
       if (stat4.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname30(dir);
+    const parent = dirname29(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -83319,14 +83074,14 @@ function renderHelpTerminal(args) {
 }
 
 // src/commands/share-skill.ts
-var import_yaml21 = __toESM(require_dist(), 1);
+var import_yaml20 = __toESM(require_dist(), 1);
 init_load();
 init_credentials();
 init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join20, relative, basename } from "node:path";
+import { resolve as resolve2, join as join19, relative, basename } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -83651,7 +83406,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join20(dir, e.name);
+        const abs = join19(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -83675,7 +83430,7 @@ function findFrontmatter(files) {
   const m = skillMd.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return null;
   try {
-    const parsed = (0, import_yaml21.parse)(m[1]);
+    const parsed = (0, import_yaml20.parse)(m[1]);
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;

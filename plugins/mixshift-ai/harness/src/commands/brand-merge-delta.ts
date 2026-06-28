@@ -24,9 +24,9 @@ export function registerBrandMergeDeltaCommand(brandCmd: Command): void {
   brandCmd
     .command('merge-delta <slug>')
     .description(
-      'Merge the settlement curve from a Phase 1.5 enrichment artifact into ' +
-        "the brand's context.yaml. Preserves AM-edited fields (negation, " +
-        'structural_events, brand_terms, posture, etc.) and comments. Idempotent.',
+      "Merge the settlement curve from the brand brain into the brand's " +
+        'context.yaml. Preserves AM-edited fields (negation, structural_events, ' +
+        'brand_terms, posture, etc.) and comments. Idempotent.',
     )
     .option('--date <date>', 'run date (YYYY-MM-DD). Defaults to today.')
     .action(
@@ -41,7 +41,6 @@ export function registerBrandMergeDeltaCommand(brandCmd: Command): void {
 
           const result = await mergeEnrichmentIntoContext(
             brand.slug,
-            runDate,
             root.dataDir,
           );
 
@@ -65,17 +64,17 @@ export function registerBrandMergeDeltaCommand(brandCmd: Command): void {
           }
 
           switch (result.status) {
-            case 'no_enrichment':
+            case 'no_brain':
               process.stderr.write(
-                `\nNo enrichment artifact at ${result.enrichment_path}.\n` +
-                  `Run \`mixshift brand enrich --brand ${brand.slug} --date ${runDate}\` first.\n\n`,
+                `\nNo brand brain at ${result.brain_path}.\n` +
+                  `Run \`mixshift brand brain fetch ${brand.slug}\` (or \`refresh\`) first.\n\n`,
               );
               process.exitCode = 4;
               return;
             case 'no_curve':
               process.stderr.write(
-                `\nEnrichment artifact has no settlement curve. ` +
-                  `Likely CS-28 returned no rows; check the prefetch.\n\n`,
+                `\nThe brand brain has no settlement curve yet. ` +
+                  `Run \`mixshift brand brain refresh ${brand.slug}\` (CS-28 may have returned no rows).\n\n`,
               );
               process.exitCode = 4;
               return;

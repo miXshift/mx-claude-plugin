@@ -53,9 +53,7 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
     <run-id>.json              # sidecar (auto-emitted by renderer)
     <date>.data.json           # prefetch artifact (full machine-readable)
     <date>.data.md             # prefetch artifact (markdown summary, model-facing)
-    <date>.enrichment.json     # legacy enrichment artifact (pre-v2.6.0). The 3
-                               # analyses now come from the brain in all modes;
-                               # the re-pointed skill flow no longer writes it.
+    # (the 3 enrichment analyses live in the brain now, not a per-run file)
     <date>.discoveries.json    # typed observations PROPOSED for context promotion
 ```
 
@@ -63,13 +61,13 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
 
 **Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
-**Delta sequence:** Phase 1 (refresh the brain: `mixshift brand brain refresh`, plus delta baselines) → Phase 1.5 (read the refreshed enrichment from the brain) → Phase 3a (surgically re-write the refreshed `capture_rate_calibration` from the brain into context.yaml, leaving AM-edited fields untouched) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+**Delta sequence:** Phase 1 (refresh the brain: `mixshift brand brain refresh`, plus delta baselines) → Phase 1.5 (read the refreshed enrichment from the brain) → `mixshift brand merge-delta` (patches the brain's settlement curve into context.yaml, AM-edited fields untouched) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
 **Where Tier-3 truth comes from (v2.6.0):** the Tier-2 Brand Brain (`~/.mixshift/clients/<brand-slug>/brand-brain.yaml`, auto-filled when the brand was keyed via `brand key add`) is the source for brand taxonomy (sub-brands, item groups, top ASINs), campaign-structure shape (distinct objectives / item groups / brands, objective-tag completeness), and the three enrichment analyses (attribution capture-rate calibration incl. the daily settlement curve, stockout windows, brand-term typo clusters). The deep cold-start reads those from the brain and CONFIRMS/ENRICHES them into Tier 3; it does not re-derive them. The remaining historical baselines (revenue, ACOS history, budget utilization, objective classification) are still pulled at runtime via `mixshift prefetch`.
 
 **Modes:**
 - `--mode fresh` (default): full cold-start build. Bootstraps a minimal context shell, LOADS the brain for taxonomy + enrichment, runs the historical-baseline queries through prefetch, emits typed YAML + narrative.md + corpora/, renders, validates, then reports the Bottom Line.
-- `--mode delta` (v2.3+): re-run on an existing account to refresh enrichment fields without overwriting AM-edited context. Refreshes the brain (`mixshift brand brain refresh`), then re-reads the brain's refreshed `capture_rate_calibration` (incl. `daily_settlement_curve`) and surgically updates ONLY that block in context.yaml, re-renders. AM-curated fields (negation, structural_events, brand_terms, posture, etc.) are never touched.
+- `--mode delta` (v2.3+): re-run on an existing account to refresh enrichment fields without overwriting AM-edited context. Refreshes the brain (`mixshift brand brain refresh`), then patches the brain's refreshed `capture_rate_calibration.daily_settlement_curve` into context.yaml via `mixshift brand merge-delta`, re-renders. AM-curated fields (negation, structural_events, brand_terms, posture, etc.) are never touched.
 
 ---
 
@@ -230,13 +228,14 @@ The three advisory analyses are computed by the Brand Brain (the same `lib/enric
 
 These are ADVISORY: surface them for AM confirmation in Phase 2; they are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants[]`. If the brain shows them empty/omitted on a first cold-start (no `brand_terms` existed when the brain last fetched), refresh the brain after Phase 1a writes the draft `brand_terms` (`mixshift brand brain refresh <brand-slug>`).
 
-**Delta mode:** refresh the brain, then surgically update the settlement curve in `context.yaml` (preserving comments + AM-edited fields):
+**Delta mode:** refresh the brain, then patch the settlement curve into `context.yaml` (preserving comments + AM-edited fields):
 
 ```bash
 mixshift brand brain refresh <brand-slug>
+mixshift brand merge-delta <brand-slug>
 ```
 
-After the refresh, re-read the brain's `capture_rate_calibration.daily_settlement_curve` (+ `stability_score`, `last_calibrated`) and update ONLY that sub-block in context.yaml; AM-curated fields are never touched. Detected stockout/typo advisories surface through the brain and the renderer's "Detected Anomalies (Advisory)" section; AM confirmation is required before any promotion to typed fields. (The legacy `mixshift brand enrich` / `mixshift brand merge-delta` commands are superseded by the brain and pending retirement.)
+`merge-delta` reads the brain's `capture_rate_calibration.daily_settlement_curve` (+ `stability_score`, `last_calibrated`) and patches ONLY that sub-block into context.yaml; AM-curated fields are never touched. Detected stockout/typo advisories surface through the brain and the renderer's "Detected Anomalies (Advisory)" section; AM confirmation is required before any promotion to typed fields. (The old `mixshift brand enrich` command was retired in v2.6.0 — the brain computes enrichment now.)
 
 ---
 
