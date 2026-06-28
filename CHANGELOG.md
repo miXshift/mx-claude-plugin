@@ -69,9 +69,3 @@ the skills, hardens the build, and renames one skill for consistency.
 
 - Removed an internal-only skill that was not intended to ship in the public
   plugin.
-
-### Internal
-
-- Added continuous integration (type-check, test suite, manifest and skill
-  validation, version-consistency check, build) on every pull request.
-- Added a golden-fixture test layer built on fully synthetic brand data.

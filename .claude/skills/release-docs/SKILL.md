@@ -26,7 +26,9 @@ does the prose-level pass a script cannot, and drafts the changelog.
 
 ## What "current" means
 
-The customer-facing surface is: `README.md`, `docs/faq.md`, `docs/privacy.md`,
+The customer-facing surface is: `README.md`, the public `CHANGELOG.md` (rendered
+verbatim to users by `mixshift whatsnew` and the public `/releases` page),
+`docs/faq.md`, `docs/privacy.md`,
 `docs/auth-setup.md`, `docs/install/*.md`, `UPSTREAM.md`, and the `description`
 fields in `plugins/mixshift-ai/.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` (those two show in the Cowork directory). Ground
@@ -56,11 +58,26 @@ truth is the shipped code: `plugins/mixshift-ai/skills/<id>/` (the roster + each
    (dry-run by default, explicit confirm, `--commit`). Correct anything that
    over- or under-claims. Keep customer-facing copy free of em dashes.
 
-4. **Draft the CHANGELOG entry.** `git log <last-tag>..HEAD --oneline` (last tag:
-   `git describe --tags --abbrev=0`). Group into Added / Changed / Fixed / Removed /
-   Internal, in the plain-language, customer-readable voice of the existing
-   `CHANGELOG.md` (describe behavior, not commit subjects). Put it under a new
-   `## X.Y.Z` heading at the top.
+4. **Draft the CHANGELOG entry — two tiers (the public file is a customer surface).**
+   `git log <last-tag>..HEAD --oneline` (last tag: `git describe --tags --abbrev=0`),
+   then split the work into two destinations:
+   - **Public `CHANGELOG.md`** (repo root) — customer-safe ONLY. Group into
+     Added / Changed / Fixed / Removed, in the plain-language, customer-readable
+     voice of the existing entries (describe behavior, not commit subjects), under a
+     new `## X.Y.Z` heading at the top. This file is **rendered verbatim to users**
+     by `mixshift whatsnew` and the public `/releases` page, so treat every line as
+     public marketing copy. **Do NOT add an `### Internal` section here.**
+   - **Internal `internal/CHANGELOG-internal.md`** (gitignored, main checkout) — the
+     engineering detail that is NOT for customers: CI / test-infra, internal
+     mechanics, refactors, anything naming internal-only tooling, unreleased roadmap,
+     or competitive posture. Same `## X.Y.Z` heading; this never ships or renders.
+   Apply the **public-safe screen** to every public line before it lands: no
+   customer/brand names, no internal-only tooling names, no unreleased roadmap, no
+   competitive positioning, no internal mechanics a competitor would value (describe
+   the user-visible benefit, not the algorithm). When in doubt, it goes in the
+   internal tier. Rationale: release notes are competitor-visible (a competitor can
+   install the plugin and run `whatsnew`), so the public tier is protected
+   **editorially**, not by the delivery channel.
 
 5. **Flag terminology drift, do not churn it.** If "cold start" vs "brand context"
    wording is mid-transition, list the inconsistent spots but coordinate the actual
@@ -79,3 +96,9 @@ truth is the shipped code: `plugins/mixshift-ai/skills/<id>/` (the roster + each
 - Customer-facing copy (README, docs/, UI strings, the two descriptions): no em dashes.
 - The README "ships **N** skills" line is load-bearing for `check-docs`; keep that
   exact phrasing when you update the count.
+- **Two-tier changelog (Step 4):** the public `CHANGELOG.md` is customer-facing copy
+  (rendered by `mixshift whatsnew` + the public `/releases` page) — keep it
+  public-safe, with no `### Internal` section. Engineering / internal detail goes in
+  the gitignored `internal/CHANGELOG-internal.md`. The `/releases` page is de-indexed
+  (noindex + out of the sitemap) and also strips any `### Internal` at render as a
+  backstop, but the public file itself is the thing to keep clean.
