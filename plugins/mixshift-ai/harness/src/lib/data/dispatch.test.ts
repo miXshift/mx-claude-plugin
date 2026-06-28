@@ -292,6 +292,57 @@ describe('runDispatched named backend (BRAIN-SELLER, real catalog)', () => {
   });
 });
 
+describe('runDispatched named repo-fallback (Phase 8 migration bridge)', () => {
+  it('falls back to the committed .sql when the server pack lacks the id (unknown_query)', async () => {
+    // CS-02 is dispatch:named (Phase 8 S3b) but still ships a committed .sql.
+    runNamedQueryMock.mockResolvedValueOnce({
+      ok: false,
+      kind: 'unknown_query',
+      message: "No query pack entry with id 'CS-02'.",
+      friendly: "'CS-02' is not a known library query.",
+      durationMs: 2,
+    });
+    runQueryMock.mockResolvedValueOnce(okResult([{ month: '2026-05' }]));
+
+    const result = await runDispatched('CS-02', { params: { seller_id: 574 } });
+
+    // Tried the server pack first, then ran the committed contract.
+    expect(runNamedQueryMock).toHaveBeenCalledTimes(1);
+    expect(runQueryMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.usedDispatch).toBe('named_repo_fallback');
+  });
+
+  it('does NOT fall back for a born-named query with no committed .sql', async () => {
+    // BRAIN-SELLER is dispatch:named with no .sql body in the repo.
+    runNamedQueryMock.mockResolvedValueOnce({
+      ok: false,
+      kind: 'unknown_query',
+      message: 'x',
+      friendly: 'x',
+      durationMs: 1,
+    });
+    const result = await runDispatched('BRAIN-SELLER', { sellerIds: [574] });
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.usedDispatch).toBe('named');
+  });
+
+  it('does NOT fall back on a real failure (timeout) — only unknown_query bridges', async () => {
+    runNamedQueryMock.mockResolvedValueOnce({
+      ok: false,
+      kind: 'timeout',
+      message: 'timed out',
+      friendly: 'The query timed out.',
+      durationMs: 60000,
+    });
+    const result = await runDispatched('CS-02', { params: { seller_id: 574 } });
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failure.kind).toBe('timeout');
+  });
+});
+
 describe('resolveLocalNamedSql', () => {
   it('returns undefined when neither env var is set', async () => {
     expect(

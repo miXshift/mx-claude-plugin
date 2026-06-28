@@ -68353,7 +68353,12 @@ async function runDispatched(id, opts = {}) {
     if (localSql !== void 0) {
       return runSqlText(id, stripSqlHeader(localSql), opts, "named_local_dev");
     }
-    return runNamed(id, opts);
+    const named = await runNamed(id, opts);
+    if (!named.ok && named.failure.kind === "unknown_query" && entry.file) {
+      const { sql: sql2 } = await readQuerySql(id);
+      return runSqlText(id, sql2, opts, "named_repo_fallback");
+    }
+    return named;
   }
   if (entry.dispatch === "sproc") {
     const localSql = await resolveLocalSprocSql(entry.sproc);

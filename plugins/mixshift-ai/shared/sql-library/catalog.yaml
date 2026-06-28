@@ -85,24 +85,28 @@ queries:
 
   - id: CS-02
     file: CS-02.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: SC 14-month revenue baseline (sales, units, sessions, CVR) by month.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-03
     file: CS-03.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: VC 12-month revenue baseline (ordered revenue, units) by month.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-04
     file: CS-04.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: 12-month account-level ACOS baseline by month.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-05
     file: CS-05.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: 12-month ACOS by campaign type and month.
     consumers: [mx-brand-context]
     tier: 1
@@ -142,24 +146,28 @@ queries:
 
   - id: CS-09
     file: CS-09.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: VC sub-brand x item group structure with ASIN counts and target ACOS.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-11
     file: CS-11.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: VC sub-brand monthly ordered-revenue split over T-12 months.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-12
     file: CS-12.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: VC item group revenue concentration for the most recent full month.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-13
     file: CS-13.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: VC monthly ASP by sub-brand x item group (T-12 months).
     consumers: [mx-brand-context]
     tier: 1
@@ -173,6 +181,7 @@ queries:
 
   - id: CS-15
     file: CS-15.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: T-30 vs T-90 daily average spend trend.
     consumers: [mx-brand-context]
     tier: 1
@@ -193,24 +202,28 @@ queries:
 
   - id: CS-22
     file: CS-22.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: Per-campaign T-30 budget utilization (top spenders).
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-23
     file: CS-23.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: T-30 keyword spend concentration with 14d attributed orders.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-24
     file: CS-24.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: Campaign-level T-30 objective classification via CampaignName tags.
     consumers: [mx-brand-context]
     tier: 1
 
   - id: CS-26
     file: CS-26.sql
+    dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
     purpose: T-90 ordered revenue for a specified ASIN list (active-subset filter).
     consumers: [mx-brand-context]
     tier: 1
