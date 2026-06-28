@@ -72157,7 +72157,6 @@ async function composeBrandContextReport(args) {
   const labels = await loadAuditLabels();
   const coverage = computeAuditCoverage(sources.context, labels);
   const buckets = buildBuckets(sources, coverage);
-  const skillReadiness = computeSkillReadiness(sources, coverage);
   const resolvedFields = await resolveBrandFields(
     args.brandSlug,
     args.dataDirOverride
@@ -72169,6 +72168,12 @@ async function composeBrandContextReport(args) {
   const contextState = ctxValidation.ok ? "valid" : ctxValidation.kind === "file_missing" ? "absent" : "invalid";
   const brainPresent = Object.values(resolvedFields).some(
     (r) => r?.source === "brain"
+  );
+  const skillReadiness = computeSkillReadiness(
+    sources,
+    coverage,
+    resolvedFields,
+    brainPresent
   );
   const { verdict, reason } = computeVerdict({
     coverage,
@@ -72283,38 +72288,37 @@ function buildBuckets(sources, coverage) {
   }
   return buckets;
 }
-function computeSkillReadiness(sources, coverage) {
+function computeSkillReadiness(sources, coverage, resolvedFields, brainPresent) {
   const ctx = sources.context;
-  const hasManagement = !!ctx?.management?.primary_metric;
+  const bootstrapped = Array.isArray(ctx?.accounts) && ctx.accounts.length > 0 || brainPresent;
   const requiredOk = coverage.required_present === coverage.required_total;
-  const hasCalibration = !!ctx?.capture_rate_calibration?.enabled;
-  const skills = [
-    {
-      skill: "mx-daily-health-check",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-runaway-spend-check",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-keyword-bid-health",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-monthly-report",
-      status: hasManagement && hasCalibration ? "Ready" : "Ready with caveats",
-      tone: hasManagement && hasCalibration ? "complete" : "partial",
-      notes: hasCalibration ? "Capture-rate calibration available." : "Calibration not enabled \u2014 MoM/YoY uses raw aggregates."
-    }
+  const tier = requiredOk ? "context" : brainPresent ? "brain" : ctx ? "partial" : "defaults";
+  const readyNote = tier === "context" ? "All required context confirmed." : tier === "brain" ? "Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen." : tier === "partial" ? "Partial context; unset fields fall back to skill defaults." : "No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.";
+  const readyTone = tier === "context" ? "complete" : "partial";
+  const notBootstrapped = {
+    status: "Blocked",
+    tone: "missing",
+    notes: "Brand not bootstrapped: run `mixshift brand add <slug>` first."
+  };
+  const analytical = (skill) => bootstrapped ? { skill, status: "Ready", tone: readyTone, notes: readyNote } : { skill, ...notBootstrapped };
+  const calib = resolvedFields["daily_settlement_curve"] ?? resolvedFields["capture_rate_calibration"];
+  const monthly = !bootstrapped ? { skill: "mx-monthly-report", ...notBootstrapped } : calib ? {
+    skill: "mx-monthly-report",
+    status: "Ready",
+    tone: "complete",
+    notes: `Capture-rate calibration available (${calib.source === "brain" ? "from brand brain" : "context-confirmed"}).`
+  } : {
+    skill: "mx-monthly-report",
+    status: "Ready with caveats",
+    tone: "partial",
+    notes: "Calibration not set yet; MoM/YoY uses raw aggregates until the brain fetches it."
+  };
+  return [
+    analytical("mx-daily-health-check"),
+    analytical("mx-runaway-spend-check"),
+    analytical("mx-keyword-bid-health"),
+    monthly
   ];
-  return skills;
 }
 function composeHeadlineJson(s) {
   const ctx = s.sources.context;
