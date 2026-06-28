@@ -176,6 +176,10 @@ const FIELD_LABELS: Record<BrandFieldKey, string> = {
   recent_acos_30d: '30-day ACoS',
   item_groups: 'Item groups',
   hero_asins: 'Hero ASINs',
+  capture_rate_calibration: 'Capture-rate calibration',
+  daily_settlement_curve: 'Daily settlement curve',
+  stockouts: 'Stockout windows',
+  brand_term_typos: 'Brand-term typos',
 };
 
 /** Percent-style fields render with a trailing %. */

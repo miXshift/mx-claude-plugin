@@ -117,21 +117,21 @@ queries:
     file: CS-06.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: SC SP attribution-window comparison (1d vs 7d) for prior full month.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
 
   - id: CS-07
     file: CS-07.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: VC SP attribution-window comparison (1d vs 14d) for prior full month.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
 
   - id: CS-08
     file: CS-08.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily 1d-vs-7d SP ACOS calibration distribution over T-104..T-7.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
 
   - id: CS-09
@@ -264,7 +264,7 @@ queries:
     file: CS-28.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for cold-start v2.3 enrichment.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
     notes: |
       Expands the CS-06/CS-07 single improvement_pts number into a daily curve
@@ -276,7 +276,7 @@ queries:
     file: CS-29.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Historical FBA stockout windows (out-of-stock ASIN-days, trailing 365d) from mws_inventory_history.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
     notes: |
       One row per FBA-OOS ASIN-day (total FulfillableQuantity = 0) so the
@@ -289,7 +289,7 @@ queries:
     file: CS-30.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily account-level ad metrics (spend, sales, ACOS, clicks, orders, CVR, CTR) over trailing 365 days.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
     notes: |
       Drives change-point detection on revenue / ACOS / CVR series during
@@ -300,7 +300,7 @@ queries:
     file: CS-31.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Account-level converting search-term corpus (trailing 90d) for brand-name typo detection.
-    consumers: [mx-brand-context]
+    consumers: [mx-brand-context, brand-brain-fetch]
     tier: 1
     notes: |
       Cold-start enrichment uses this for Levenshtein 1-2 hits vs brand_terms

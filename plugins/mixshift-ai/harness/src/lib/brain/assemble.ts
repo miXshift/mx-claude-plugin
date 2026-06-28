@@ -18,7 +18,30 @@ import {
   type BrainHeroAsin,
   type BrainRecentActivity,
   type BrainSourceMeta,
+  type BrainCaptureRateCalibration,
+  type BrainStockout,
+  type BrainBrandTermTypo,
 } from './schema.js';
+import {
+  computeSettlementCurve,
+  type CS28Row,
+} from '../enrichment/settlement-curve.js';
+import {
+  detectStockoutWindows,
+  type CS29Row,
+  type CS30Row,
+} from '../enrichment/stockout-windows.js';
+import {
+  detectBrandTermTypos,
+  type CS31Row,
+  type BrandTermsBlock,
+} from '../enrichment/brand-typos.js';
+import {
+  deriveCaptureRateCalibration,
+  type CS06Row,
+  type CS07Row,
+  type CS08Row,
+} from '../enrichment/capture-rate.js';
 
 /** Raw row shape as returned by the brain SPs (or the local dev
  *  fallback SQL). Values arrive untyped from the wire; normalization is
@@ -63,6 +86,29 @@ export interface AssembleBrainInput {
    *  (trailing-30d ad spend/sales rolled up across all the brand's
    *  sellers). */
   recentActivity?: SourceInput<RawSellerRow>;
+  // -- Phase 8 enrichment sources (I/O-free computers; called directly) --
+  /** CS-28 settlement-curve rows. Drives the nested daily curve AND the
+   *  `capture_rate` source meta (the canonical capture-rate provenance). */
+  settlement?: SourceInput<CS28Row>;
+  /** CS-06 (SC) attribution-window monthly rows — capture-rate scalars. */
+  captureRateSc?: SourceInput<CS06Row>;
+  /** CS-07 (VC) attribution-window monthly rows — capture-rate scalars. */
+  captureRateVc?: SourceInput<CS07Row>;
+  /** CS-08 daily 1d-vs-7d distribution — capture-rate scalars. */
+  captureRateDaily?: SourceInput<CS08Row>;
+  /** CS-29 FBA out-of-stock ASIN-day rows (stockout windows). */
+  stockout?: SourceInput<CS29Row>;
+  /** CS-30 daily ad-sales rows — impact-$ helper for stockout windows
+   *  (NOT a brain section of its own; structural_events is descoped). */
+  stockoutImpact?: SourceInput<CS30Row>;
+  /** CS-31 converting search-term corpus rows (brand-term typos). */
+  brandTypos?: SourceInput<CS31Row>;
+  /** Tier-3 brand_terms (+ competitor_brands) for the typo detector. Absent
+   *  for a brand-new brand → the typo section NO-OPS cleanly (omitted). */
+  brandTermsInput?: {
+    brand_terms: BrandTermsBlock;
+    competitor_brands?: string[];
+  };
 }
 
 /**
@@ -91,6 +137,22 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
   if (input.heroSc) sources.hero_sc = meta(input.heroSc);
   if (input.heroVc) sources.hero_vc = meta(input.heroVc);
   if (input.recentActivity) sources.recent_activity = meta(input.recentActivity);
+  // Phase 8 enrichment source metas. capture_rate is canonically the CS-28
+  // settlement source (richest; drives the nested curve); the CS-06/07/08
+  // scalar sources fold into the same section without their own meta keys,
+  // mirroring how CS-30 helps stockout without its own key.
+  if (input.settlement) sources.capture_rate = meta(input.settlement);
+  if (input.stockout) sources.stockout = meta(input.stockout);
+  if (input.brandTypos) sources.brand_typos = meta(input.brandTypos);
+
+  const captureRate = assembleCaptureRateSection(input);
+  const stockouts = input.stockout
+    ? assembleStockoutSection(
+        input.stockout.rows,
+        input.stockoutImpact?.rows ?? [],
+      )
+    : undefined;
+  const brandTermTypos = assembleBrandTypoSection(input);
 
   // Catalog section renders when any catalog OR hero source ran — hero
   // ASINs hang off catalog.top_asins, and a brand could (in principle)
@@ -126,6 +188,9 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
           ),
         }
       : {}),
+    ...(captureRate ? { capture_rate_calibration: captureRate } : {}),
+    ...(stockouts !== undefined ? { stockouts } : {}),
+    ...(brandTermTypos !== undefined ? { brand_term_typos: brandTermTypos } : {}),
     observations: input.previousObservations ?? {},
   };
 }
@@ -331,6 +396,76 @@ const SMART_BID_VALUES = new Set([
   'true',
   '1',
 ]);
+
+// ---------------------------------------------------------------------------
+// Phase 8 enrichment section builders. Each wraps an I/O-free computer
+// (settlement-curve / stockout-windows / brand-typos) or the new capture-rate
+// deriver and shapes its output to the brain schema. Pure: no I/O, no Date.now
+// of their own beyond what the computers already do.
+// ---------------------------------------------------------------------------
+
+/**
+ * Capture-rate calibration: the CS-06/07/08 scalars (deriveCaptureRateCalibration)
+ * plus the nested CS-28 daily curve (computeSettlementCurve). Returns undefined
+ * when neither source produced anything, so the section is omitted entirely. When
+ * only the curve computes, the scalars carry a null/curve-only fallback so the
+ * block still renders the richer signal monthly-report prefers.
+ */
+export function assembleCaptureRateSection(
+  input: AssembleBrainInput,
+): BrainCaptureRateCalibration | undefined {
+  const scalars = deriveCaptureRateCalibration({
+    cs06: input.captureRateSc?.rows ?? null,
+    cs07: input.captureRateVc?.rows ?? null,
+    cs08: input.captureRateDaily?.rows ?? null,
+  });
+  const curve = input.settlement
+    ? computeSettlementCurve(input.settlement.rows)
+    : null;
+
+  if (!scalars && !curve) return undefined;
+
+  const base: BrainCaptureRateCalibration = scalars ?? {
+    enabled: true,
+    capture_rate_pct: null,
+    fresh_day_acos_improvement_pts: null,
+    settlement_application_rule:
+      'Derived from the daily settlement curve only; no monthly attribution-window comparison was available.',
+    basis: null,
+    settled_window_days: null,
+  };
+  return curve ? { ...base, daily_settlement_curve: curve } : base;
+}
+
+/**
+ * Detected FBA stockout windows (advisory). Direct pass-through of
+ * detectStockoutWindows; StockoutCandidate is structurally BrainStockout.
+ * Returns [] when the source ran and found none.
+ */
+export function assembleStockoutSection(
+  cs29Rows: CS29Row[],
+  cs30Rows: CS30Row[],
+): BrainStockout[] {
+  return detectStockoutWindows(cs29Rows, cs30Rows);
+}
+
+/**
+ * Detected brand-term typo clusters (advisory). NO-OPS cleanly (returns
+ * undefined → section omitted) when the brand has no Tier-3 brand_terms yet
+ * (cold-start hasn't run) or the search-term source didn't run; it populates on
+ * a later refresh once brand_terms exists. Returns [] when it ran with
+ * brand_terms but found no typos.
+ */
+export function assembleBrandTypoSection(
+  input: AssembleBrainInput,
+): BrainBrandTermTypo[] | undefined {
+  if (!input.brandTypos || !input.brandTermsInput) return undefined;
+  return detectBrandTermTypos(
+    input.brandTypos.rows,
+    input.brandTermsInput.brand_terms,
+    { competitor_brands: input.brandTermsInput.competitor_brands ?? [] },
+  );
+}
 
 function addIf(set: Set<string>, v: string | null | undefined): void {
   if (v) set.add(v);
