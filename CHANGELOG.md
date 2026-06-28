@@ -67,8 +67,8 @@ the skills, hardens the build, and renames one skill for consistency.
 
 ### Removed
 
-- Removed the `mx-competitive-analysis` skill. It was an internal MixShift tool
-  that was not intended to ship in the public plugin.
+- Removed an internal-only skill that was not intended to ship in the public
+  plugin.
 
 ### Internal
 
