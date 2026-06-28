@@ -169,6 +169,15 @@ export const brainCampaignStructureSchema = z.object({
   distinct_objectives: z.array(z.string()),
   distinct_item_groups: z.array(z.string()),
   distinct_brands: z.array(z.string()),
+  /** % of campaigns carrying a non-empty Objective tag. The brain's
+   *  substitute for the deep skill's retired CS-27 (campaign-objective
+   *  completeness). Whole number 0-100. NOTE: unlike CS-27 this is NOT
+   *  spend-weighted and does not pre-filter to T-30 spending campaigns — it
+   *  is a flat share over every campaign row the BRAIN-CAMPAIGN source
+   *  returned (enabled + paused). null only when there are no campaigns.
+   *  `.optional()` for backward-compat: brains fetched before this field
+   *  existed (and older test fixtures) must still validate on load. */
+  objective_tag_completeness_pct: z.number().min(0).max(100).nullable().optional(),
   /** % of campaigns on smart/default bid optimization. Derivation
    *  assumption (BidOptimization value semantics) is flagged in the SP
    *  draft; verify against real warehouse values. */
@@ -178,6 +187,122 @@ export const brainCampaignStructureSchema = z.object({
 });
 
 export type BrainCampaignStructure = z.infer<typeof brainCampaignStructureSchema>;
+
+/**
+ * Capture-rate (attribution-window) calibration (source class S1+S2,
+ * Phase 8 enrichment). Auto-derived from CS-06/07/08 (the scalars) +
+ * CS-28 (the nested daily curve); see lib/enrichment/capture-rate.ts and
+ * lib/enrichment/settlement-curve.ts. Mirrors context.yaml's
+ * `capture_rate_calibration` block (lib/context/schema.ts) so a brain
+ * pre-fill and an AM-confirmed value are directly comparable — Tier 3 wins.
+ *
+ * PERCENTAGE-NUMBER convention throughout (e.g. 28.5 = 28.5%, 12.0 = 12
+ * points), matching settlement-curve.ts + the Tier-3 schema. The brain
+ * adds two provenance scalars not in the Tier-3 shape (`basis`,
+ * `settled_window_days`) so a consumer knows which channel/window the
+ * scalars were measured on.
+ */
+export const brainSettlementCellSchema = z.object({
+  acos_1day: z.number().nullable(),
+  acos_7day: z.number().nullable(),
+  acos_14day: z.number().nullable(),
+  improvement_pts_1_to_7: z.number().nullable(),
+  improvement_pts_1_to_14: z.number().nullable(),
+  settled_pct_at_1day: z.number().nullable(),
+  status: z.enum(['computed', 'insufficient_data']).optional(),
+});
+
+export const brainDailySettlementCurveSchema = z.object({
+  by_campaign_type: z.object({
+    sponsoredProducts: brainSettlementCellSchema,
+    sponsoredBrands: brainSettlementCellSchema,
+    sponsoredDisplay: brainSettlementCellSchema,
+  }),
+  dow_offset_pts: z.object({
+    monday: z.number(),
+    tuesday: z.number(),
+    wednesday: z.number(),
+    thursday: z.number(),
+    friday: z.number(),
+    saturday: z.number(),
+    sunday: z.number(),
+  }),
+  stability_score: z.enum(['high', 'medium', 'low']),
+  last_calibrated: z.string(),
+});
+
+export const brainCaptureRateCalibrationSchema = z.object({
+  enabled: z.boolean(),
+  capture_rate_pct: z.number().nullable(),
+  fresh_day_acos_improvement_pts: z.number().nullable(),
+  settlement_application_rule: z.string(),
+  /** Which channel/window the scalars were measured on. */
+  basis: z.enum(['SC', 'VC']).nullable(),
+  settled_window_days: z.number().int().nullable(),
+  /** The CS-28 daily curve, nested exactly as in the Tier-3 block.
+   *  Present only when the settlement source ran and produced a curve. */
+  daily_settlement_curve: brainDailySettlementCurveSchema.optional(),
+});
+
+export type BrainCaptureRateCalibration = z.infer<
+  typeof brainCaptureRateCalibrationSchema
+>;
+
+/**
+ * One ADVISORY stockout window (source class S2, Phase 8 enrichment).
+ * Auto-detected from CS-29 (FBA OOS ASIN-days) + CS-30 (daily ad sales)
+ * by lib/enrichment/stockout-windows.ts. Advisory: a finding for an AM to
+ * confirm into structural_events[], NOT a confirmed fact. Mirrors
+ * StockoutCandidate (lib/enrichment/types.ts).
+ */
+export const brainStockoutSchema = z.object({
+  asin: z.string(),
+  item_name: z.string(),
+  started: z.string(),
+  ended: z.string(),
+  days_in_window: z.number().int(),
+  days_at_zero: z.number().int(),
+  impacted_revenue_usd: z.number(),
+  signal_source: z.enum([
+    'sellable_zero',
+    'alert_active',
+    'days_of_supply_low',
+    'multi',
+  ]),
+});
+
+export type BrainStockout = z.infer<typeof brainStockoutSchema>;
+
+/**
+ * One ADVISORY brand-term typo cluster (source class S2, Phase 8
+ * enrichment). Auto-detected from CS-31 (converting search-term corpus)
+ * vs Tier-3 brand_terms by lib/enrichment/brand-typos.ts. Advisory: a
+ * finding for an AM to confirm into brand_terms.variants[], NOT a fact.
+ * NO-OPS for brand-new brands with no brand_terms yet (the section is
+ * simply omitted; it populates on a later refresh once cold-start ran).
+ * Mirrors BrandTermTypoCluster (lib/enrichment/types.ts).
+ */
+export const brainBrandTermVariantSchema = z.object({
+  term: z.string(),
+  orders: z.number(),
+  sales: z.number(),
+  spend: z.number(),
+});
+
+export const brainBrandTermTypoSchema = z.object({
+  canonical_match: z.string(),
+  root_token: z.string(),
+  distance: z.number().int(),
+  match_type: z.enum(['levenshtein', 'token_membership']),
+  variant_count: z.number().int(),
+  total_orders: z.number(),
+  total_sales: z.number(),
+  total_spend: z.number(),
+  top_variants: z.array(brainBrandTermVariantSchema),
+  all_variants: z.array(brainBrandTermVariantSchema),
+});
+
+export type BrainBrandTermTypo = z.infer<typeof brainBrandTermTypoSchema>;
 
 /**
  * One S3 observation aggregate: what skills have noticed, merged by
@@ -217,6 +342,10 @@ export const brandBrainSchema = z.object({
     hero_sc: brainSourceMetaSchema.optional(),
     hero_vc: brainSourceMetaSchema.optional(),
     recent_activity: brainSourceMetaSchema.optional(),
+    // Phase 8 enrichment sources.
+    capture_rate: brainSourceMetaSchema.optional(),
+    stockout: brainSourceMetaSchema.optional(),
+    brand_typos: brainSourceMetaSchema.optional(),
   }),
   seller: brainSellerSchema.optional(),
   /** Present when at least one catalog source (SC or VC) fetched ok. */
@@ -226,6 +355,18 @@ export const brandBrainSchema = z.object({
   /** Brand-wide ad-activity baseline (cached BRAIN-RECENT-ACTIVITY).
    *  Present when the recent-activity source fetched ok. */
   recent_activity: brainRecentActivitySchema.optional(),
+  /** Attribution-window calibration scalars (+ nested daily curve).
+   *  Present when CS-06/07/08 and/or CS-28 produced usable signal. */
+  capture_rate_calibration: brainCaptureRateCalibrationSchema.optional(),
+  /** ADVISORY: detected FBA stockout windows (CS-29 + CS-30). Present
+   *  when the stockout source ran; empty array when it ran and found
+   *  none. AM confirms these into structural_events[]. */
+  stockouts: z.array(brainStockoutSchema).optional(),
+  /** ADVISORY: detected brand-term typo clusters (CS-31 vs Tier-3
+   *  brand_terms). Omitted entirely when the brand has no brand_terms
+   *  yet (cold-start hasn't run). AM confirms these into
+   *  brand_terms.variants[]. */
+  brand_term_typos: z.array(brainBrandTermTypoSchema).optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),

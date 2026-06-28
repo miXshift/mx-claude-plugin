@@ -469,6 +469,20 @@ describe('assembleCampaignSection', () => {
     expect(section.distinct_brands).toEqual(['AF', 'BP']);
     expect(section.smart_default_adoption_pct).toBe(67); // 2 of 3 known
     expect(section.brand_entity_id_presence_pct).toBe(67); // 2 of 3 rows
+    expect(section.objective_tag_completeness_pct).toBe(100); // all 3 rows tagged
+  });
+
+  it('computes objective_tag_completeness_pct (CS-27 substitute) as the non-empty-Objective share', () => {
+    // 2 of 4 campaigns carry a non-empty Objective (NULL/'' = untagged), so
+    // completeness is 50%. distinct_objectives dedups; this counts rows.
+    const section = assembleCampaignSection([
+      { Objective: 'defend', State: 'enabled' },
+      { Objective: 'defend', State: 'enabled' }, // same objective, still a tagged row
+      { Objective: '', State: 'enabled' },
+      { Objective: null, State: 'paused' },
+    ]);
+    expect(section.objective_tag_completeness_pct).toBe(50);
+    expect(section.distinct_objectives).toEqual(['defend']);
   });
 
   it('treats the BidOptimization flag as off when NULL or empty (verified warehouse convention)', () => {
@@ -485,11 +499,13 @@ describe('assembleCampaignSection', () => {
   it('returns null percentages only when there are no campaigns at all', () => {
     expect(assembleCampaignSection([]).smart_default_adoption_pct).toBeNull();
     expect(assembleCampaignSection([]).brand_entity_id_presence_pct).toBeNull();
+    expect(assembleCampaignSection([]).objective_tag_completeness_pct).toBeNull();
     const noBidColumn = assembleCampaignSection([
       { Objective: 'defend', State: 'enabled' },
     ]);
     expect(noBidColumn.smart_default_adoption_pct).toBe(0);
     expect(noBidColumn.brand_entity_id_presence_pct).toBe(0);
+    expect(noBidColumn.objective_tag_completeness_pct).toBe(100); // the 1 row is tagged
   });
 });
 

@@ -53,20 +53,21 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
     <run-id>.json              # sidecar (auto-emitted by renderer)
     <date>.data.json           # prefetch artifact (full machine-readable)
     <date>.data.md             # prefetch artifact (markdown summary, model-facing)
-    <date>.enrichment.json     # Phase 1.5 enrichment output (settlement curve,
-                               # stockout candidates, brand-typo clusters)
+    # (the 3 enrichment analyses live in the brain now, not a per-run file)
     <date>.discoveries.json    # typed observations PROPOSED for context promotion
 ```
 
 **Schema source of truth:** the Zod schema in the harness (mirrored by `shared/clients/_schema/context.schema.yaml`). Validate with `mixshift brand validate <brand-slug>` before declaring complete.
 
-**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Prefetched Data) → Phase 1a (Draft Context for Enrichment) → Phase 1.5 (Enrich, v2.3+) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
-**Delta sequence:** Phase 1 (delta prefetch only) → Phase 1.5 (Enrich) → `mixshift brand merge-delta` → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+**Delta sequence:** Phase 1 (refresh the brain: `mixshift brand brain refresh`, plus delta baselines) → Phase 1.5 (read the refreshed enrichment from the brain) → `mixshift brand merge-delta` (patches the brain's settlement curve into context.yaml, AM-edited fields untouched) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+
+**Where Tier-3 truth comes from (v2.6.0):** the Tier-2 Brand Brain (`~/.mixshift/clients/<brand-slug>/brand-brain.yaml`, auto-filled when the brand was keyed via `brand key add`) is the source for brand taxonomy (sub-brands, item groups, top ASINs), campaign-structure shape (distinct objectives / item groups / brands, objective-tag completeness), and the three enrichment analyses (attribution capture-rate calibration incl. the daily settlement curve, stockout windows, brand-term typo clusters). The deep cold-start reads those from the brain and CONFIRMS/ENRICHES them into Tier 3; it does not re-derive them. The remaining historical baselines (revenue, ACOS history, budget utilization, objective classification) are still pulled at runtime via `mixshift prefetch`.
 
 **Modes:**
-- `--mode fresh` (default): full cold-start build. Bootstraps a minimal context shell, runs all CS-* queries through prefetch, emits typed YAML + narrative.md + corpora/, enriches, renders, validates, then reports the Bottom Line.
-- `--mode delta` (v2.3+): re-run on an existing account to refresh enrichment fields without overwriting AM-edited context. Runs only enrichment-tagged queries (CS-28/29/30/31), patches `capture_rate_calibration.daily_settlement_curve` into context.yaml, refreshes the enrichment artifact, re-renders. AM-curated fields (negation, structural_events, brand_terms, posture, etc.) are never touched.
+- `--mode fresh` (default): full cold-start build. Bootstraps a minimal context shell, LOADS the brain for taxonomy + enrichment, runs the historical-baseline queries through prefetch, emits typed YAML + narrative.md + corpora/, renders, validates, then reports the Bottom Line.
+- `--mode delta` (v2.3+): re-run on an existing account to refresh enrichment fields without overwriting AM-edited context. Refreshes the brain (`mixshift brand brain refresh`), then patches the brain's refreshed `capture_rate_calibration.daily_settlement_curve` into context.yaml via `mixshift brand merge-delta`, re-renders. AM-curated fields (negation, structural_events, brand_terms, posture, etc.) are never touched.
 
 ---
 
@@ -76,7 +77,7 @@ These rules supersede any other instruction. Violating them produces inconsisten
 
 - **Do NOT read the `references/` folder during execution.** It contains cross-brand architecture notes, Amazon API references, and legacy prose-style brand .md files for human reference only — they are not skill inputs and will produce inconsistent output if mixed into synthesis. Brand context comes from `context.yaml`, `narrative.md`, optional source-backed `brand-intelligence.yaml`, and renderer-produced compact sidecars.
 - **DO read `kickoff.md` at the start of Phase 0** (in the same skill directory). It's the AM-facing intake script — the human-readable companion to this procedure manual. Walking the AM through it is the first concrete step of any cold-start run.
-- **Do NOT read SQL library files or run ad hoc SQL.** The only approved data path is `mixshift prefetch`, which writes Phase 1 query results before the model consumes them.
+- **Do NOT read SQL library files or run ad hoc SQL.** The only approved data paths are the Tier-2 Brand Brain (read via `mixshift brand context resolve` / `mixshift brand brain status`, or the generated `brand-brain.yaml`) for taxonomy + enrichment, and `mixshift prefetch` for the historical baselines. Both write/produce their results before the model consumes them; never hand-author SQL.
 - **Do NOT write or edit `brand-context.html`, `brand-context.headline.json`, `brand-context.review.json`, or the run sidecar manually.** The renderer (Phase 3b) is the single writer of these artifacts.
 - **Do NOT echo HTML, full audit tables, or full data tables in your output.** The HTML is the deliverable; your model output is a Bottom Line + `file://` link to the HTML.
 - **Do NOT supplement with general Amazon or e-commerce knowledge** not present in the prefetched data or cited `brand-intelligence.yaml` sources.
@@ -128,7 +129,7 @@ Run after Phase 0, before Phase 1. The AM doesn't need to be present. Search seq
 
 **Outputs:** official positioning, Amazon storefront surface, Reddit/forum presence, YouTube positioning, social presence, customer language samples, competitive set, negative press flags, brand awareness stage, source-backed milestone facts, and brand-manager-facing proof points. Write the durable research map to `brand-intelligence.yaml`; feed concise prose into `narrative.md ## Brand Identity` and typed terms/guardrails into `context.yaml::brand_terms` / `negation`. Named competitor/reference brands belong in `context.yaml::negation.competitor_brands` so the renderer can show a Competitive / Reference Brand Dictionary and enrichment can suppress competitor collisions from brand-misspelling review. Keep competitor names separate from protected brand terms: competitors are comparison surfaces, not automatic negatives. If a surface returns zero signal (e.g., no Reddit presence), document it as a baseline finding rather than silently omitting.
 
-**Customer-language auto-population contract:** Do not leave Brand Voice / Buyer Language partial if the brand has enough evidence in public surfaces or CS-31 converting search terms. Build a compact buyer-language corpus from three layers: (1) official product/support wording for intended product jobs, (2) review/forum/editorial language for customer pain and failure modes, and (3) top converting CS-31 search terms for the nouns customers actually type. Write durable prose to `narrative.md` using `## Brand Positioning` or `## Brand Identity` plus `## Customer Language Samples`; write structured examples to `brand-intelligence.yaml::customer_language_corpus`. Use short phrases and intent clusters, not full review dumps. If Amazon reviews or forums are blocked, say so in `open_research_gaps[]` only after using available search-term and official/support language.
+**Customer-language auto-population contract:** Do not leave Brand Voice / Buyer Language partial if the brand has enough evidence in public surfaces or the brain's converting-term signal. Build a compact buyer-language corpus from three layers: (1) official product/support wording for intended product jobs, (2) review/forum/editorial language for customer pain and failure modes, and (3) the brain's `brand_term_typos` clusters for the brand-variant nouns customers actually type (the brain derives these from the converting search-term corpus; for deeper buyer-vocabulary mining the operator can pull the full corpus via mx-data-explore). Write durable prose to `narrative.md` using `## Brand Positioning` or `## Brand Identity` plus `## Customer Language Samples`; write structured examples to `brand-intelligence.yaml::customer_language_corpus`. Use short phrases and intent clusters, not full review dumps. If Amazon reviews or forums are blocked, say so in `open_research_gaps[]` only after using available brain-derived and official/support language.
 
 **Mindblowing first-paragraph rule:** `brand-intelligence.yaml::hero_narrative` must explain what the brand is, why the public story matters for PPC, and which internal management facts MixShift remembers. It should connect company/product history, category position, competitors, social/press/customer signals, and durable ad-account interpretation. Do not make claims without source-backed evidence or internal context evidence.
 
@@ -144,83 +145,97 @@ Run after Phase 0, before Phase 1. The AM doesn't need to be present. Search seq
 
 ---
 
-## Phase 1 — Load Prefetched Data
+## Phase 1 — Load the Brand Brain + Prefetched Baselines
 
-Run the harness's prefetch command, which executes the catalog SQL declared in `skill.manifest.yaml`:
+Phase 1 has two reads. First the Tier-2 Brand Brain (taxonomy + enrichment, already computed); then the historical baselines via prefetch.
+
+**1a. Load the brain.** Resolve the brain-sourced fields in one pass:
+
+```bash
+mixshift brand context resolve <brand-slug> --json
+```
+
+Each field comes back as `{value, source, fetched_at}` (`source: context` = ✓ a Tier-3 value already confirmed; `brain` = ⊙ pre-filled by the Brain; `null` = neither tier has it). PREFER the brain values for:
+- **Taxonomy:** `sub_brands`, `item_groups`, `hero_asins` (the brain's `catalog.top_asins`).
+- **Enrichment:** `capture_rate_calibration` (+ `daily_settlement_curve`), `stockouts`, `brand_term_typos`.
+
+For the campaign-structure shape (`distinct_objectives` / `distinct_item_groups` / `distinct_brands`, `paused_campaign_count`, `smart_default_adoption_pct`, `objective_tag_completeness_pct`) read the brain summary or the generated doc directly:
+
+```bash
+mixshift brand brain status <brand-slug> --json   # summary; confirms the brain is populated
+# full sections, when needed: ~/.mixshift/clients/<brand-slug>/brand-brain.yaml
+```
+
+The brain is the SOURCE for taxonomy + enrichment. The ceremony confirms those into Tier 3 (the AM may correct them in Phase 2); it does not re-derive them.
+
+**HARD GATE (brand bootstrapped?)** Before anything else, confirm the brand exists in the registry with at least one account (it was bootstrapped via `mixshift brand add` / discovered, and ideally keyed so the brain fetched). Check `mixshift brand context resolve <brand-slug> --json` (or `mixshift brand list`): if the brand is unknown or has no accounts, **STOP IMMEDIATELY** and tell the operator to run `mixshift brand add <brand-slug>` first. Do not proceed with a partial dataset. (If the registry has the brand but `brand brain status` shows the brain never fetched, continue: the baselines still run, but note that taxonomy/enrichment will be sparse until `mixshift brand brain fetch <brand-slug>` completes.)
+
+**1b. Load the historical baselines.** Run the harness's prefetch command, which executes the baseline SQL declared in `skill.manifest.yaml`:
 
 ```bash
 mixshift prefetch --brand <brand-slug> --skill mx-brand-context --date <YYYY-MM-DD>
 ```
 
-The runner executes CS-01..CS-31 in three rounds (see manifest `batch_plan`):
-- **Round 1:** `CS-01` — identity check (must confirm SellerID before other queries proceed)
-- **Round 2:** `CS-02..CS-15` — revenue baselines, ACOS history, attribution calibration, sub-brand / item-group structure, brand terms, negatives inventory
-- **Round 3:** `CS-16..CS-27` — additional structure + calibration queries; `CS-28..CS-31` — v2.3 enrichment inputs (settlement curve, inventory history, daily metrics, search-term corpus)
+The runner executes the baseline queries in two rounds (see manifest `batch_plan`):
+- **Round 1:** `CS-02..CS-15` covering revenue baselines, ACOS history, VC sub-brand/item-group structure + ASP, brand-vs-nonbrand split, spend trend.
+- **Round 2:** `CS-17, CS-18, CS-22, CS-23, CS-24, CS-26` covering cross-sell ratio, ads-share/TACOS stability, budget utilization, keyword spend concentration, per-campaign objective classification, VC active-subset revenue.
 
 Artifacts:
 - `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/data.json` — full machine-readable
 - `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/data.md` — capped markdown summary
 
-Read `data.md` for synthesis. The full row sets (especially CS-28..31 which can run to thousands of rows) live in `data.json` — load that file directly when you need rows the markdown cap omitted.
-
-**HARD GATE:** If CS-01 is absent or returns no row for the SellerID, **STOP IMMEDIATELY.** Do not proceed with a partial dataset. Report the failed query and the error.
+Read `data.md` for synthesis; load `data.json` directly when you need rows the markdown cap omitted.
 
 **Key execution rules:**
 - SC accounts use CS-02 for ops data; VC accounts use CS-03. Never mix paths.
-- CS-09/CS-11/CS-12/CS-13/CS-19/CS-25 apply to VC only; CS-10/CS-20 apply to SC only. Non-matching queries return empty rows — discard.
-- CS-16 references `mws_inventory_history` (catalog.yaml corrected 2026-06-14: real FBA daily snapshots, 14mo+ depth incl. FulfillableQuantity — no longer an empty stub).
+- CS-09/CS-11/CS-12/CS-13/CS-26 apply to VC only. Non-matching queries return empty rows (discard them).
 - Multi-SellerID accounts: queries use `:seller_id_list` and span every SellerID in `accounts[]`.
 
 **Phase 1 outputs to capture for Tier 3:**
-- Account and seller identification confirmed (CS-01)
+- Brand bootstrapped + seller scope confirmed (registry / brain)
 - 24-month revenue baseline by month (CS-02/CS-03/CS-11)
 - 24-month ACOS baseline by month and by campaign type (CS-04/CS-05/CS-18)
-- Attribution window calibration improvement points (CS-06/CS-07/CS-08)
-- Sub-brand and item-group structure (CS-09/CS-10/CS-12/CS-13/CS-19/CS-25)
-- Brand term dictionary (catalog-derived) (CS-19/CS-20)
-- Enabled negatives inventory (CS-21)
+- Sub-brand and item-group structure: from the **brain** (`sub_brands`, `item_groups`), enriched for VC by CS-09 (sub-brand × item-group cross + per-pair target ACOS) and CS-12/CS-13 (revenue concentration + ASP)
+- Brand term dictionary: from the **brain** catalog (sub-brands) + Phase 2 AM variants
+- Attribution / capture-rate calibration (+ daily settlement curve): from the **brain** (`capture_rate_calibration`)
 - Budget utilization and keyword spend concentration (CS-22/CS-23)
-- Objective config and label completeness gaps (CS-24/CS-27)
-
-**v2.3 enrichment rows (CS-28..31):** prefetched but post-processing not yet ported. Read the headers for awareness; defer detailed analysis. CS-31's converting-search-term corpus is still useful for Phase 3a buyer-language synthesis (aggregate top N terms by lane / product job — bounded aggregation, not full row consumption).
+- Objective classification (CS-24); objective-tag completeness from the **brain** (`objective_tag_completeness_pct`)
+- Stockout windows and brand-term typo clusters: from the **brain** (`stockouts`, `brand_term_typos`)
 
 ---
 
-## Phase 1a — Draft Context for Enrichment (fresh mode only)
+## Phase 1a — Draft Context from the Brain (fresh mode only)
 
-Before running Phase 1.5 enrichment in fresh mode, update the bootstrap shell into a draft context with the Phase 1 fields that enrichment needs:
-- `accounts[]` confirmed and enriched (status, role, marketplace, region from CS-01)
-- `brand_terms` (canonical + variants from CS-19/CS-20)
+Before Phase 2, update the bootstrap shell into a draft context with the Phase 1 fields:
+- `accounts[]` confirmed and enriched (status, role, marketplace, region from the registry / brain `seller`)
+- `brand_terms` (canonical from the brain catalog sub-brands; variants added in Phase 2)
 - `negation.competitor_brands` if known from Phase 0.5 or Phase 1
-- `capture_rate_calibration` placeholder if attribution-window calibration is applicable
+- `capture_rate_calibration` seeded from the brain's `capture_rate_calibration` (Tier 3 confirms it)
 
-This draft is still not final. Its purpose is to let enrichment detect stockout candidates and brand-name typo clusters using the current brand term dictionary. Phase 2 then confirms which advisory findings should be promoted into durable typed fields.
+This draft is still not final. Its purpose is to carry the brain-sourced taxonomy + calibration forward so Phase 2 can confirm them and so the renderer has a populated draft. The brand-term typo clusters and stockout windows are ALREADY detected in the brain (`brand_term_typos`, `stockouts`); Phase 2 confirms which advisory findings should be promoted into durable typed fields.
+
+> Note: the brain computes brand-term typos against whatever Tier-3 `brand_terms` existed at brain-fetch time. On a true first cold-start the brain may have had no `brand_terms` yet, so `brand_term_typos` can be empty/omitted. If so, refresh the brain after this draft's `brand_terms` are written (`mixshift brand brain refresh <brand-slug>`) to populate typo clusters for Phase 2 review.
 
 ---
 
-## Phase 1.5 — Enrichment (v2.3+)
+## Phase 1.5 — Confirm Brain Enrichment (v2.6.0)
 
-After prefetch completes and context exists, run the harness's enrichment to compute three advisory analyses. In fresh mode, run this after Phase 1a. In delta mode, run this against the existing reviewed context.
+The three advisory analyses are computed by the Brand Brain (the same `lib/enrichment/` computers), not re-run here. Read them from the brain (resolved in Phase 1a) and carry them into the review:
 
-```bash
-mixshift brand enrich --brand <brand-slug> --date <YYYY-MM-DD>
-```
+1. **Daily attribution settlement curve** (brain `capture_rate_calibration.daily_settlement_curve`): per-campaign-type ACOS at 1d/7d/14d, day-of-week offsets, stability score. Cells with insufficient data (low-volume campaign types where 1-day or 7-day attribution doesn't accrue) are labeled "insufficient data" rather than `null`. This is the source for the `capture_rate_calibration.daily_settlement_curve` sub-block in Tier 3.
+2. **Stockout candidates** (brain `stockouts`): contiguous FBA out-of-stock windows with impacted ad-sales per window. **Limitation:** ASIN suppression-for-profitability events (Amazon de-ranks an ASIN despite inventory) are not detectable from inventory history; those still require AM input as `structural_events[]`.
+3. **Brand-name typo clusters** (brain `brand_term_typos`): converting search terms within Levenshtein 1-2 of any canonical brand term, not already in variants, **clustered** by `(canonical_match, root_token)` so the AM gets one decision per cluster. Plural-only matches and competitor-brand collisions are filtered out before clustering (competitor prefixes come from `negation.competitor_brands`).
 
-It reads the prefetch artifact plus the existing `context.yaml` and writes `runs/mx-brand-context/<date>/<date>.enrichment.json` containing:
+These are ADVISORY: surface them for AM confirmation in Phase 2; they are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants[]`. If the brain shows them empty/omitted on a first cold-start (no `brand_terms` existed when the brain last fetched), refresh the brain after Phase 1a writes the draft `brand_terms` (`mixshift brand brain refresh <brand-slug>`).
 
-1. **Daily attribution settlement curve** (from CS-28) — per-campaign-type ACOS at 1d/7d/14d, day-of-week offsets, stability score. Reshaped to `capture_rate_calibration.daily_settlement_curve`. Cells with insufficient data (low-volume campaign types where 1-day or 7-day attribution doesn't accrue) are labeled "insufficient data" rather than `null`.
-2. **Stockout candidates** (from CS-29 + CS-30) — contiguous windows ≥3 days where `SellableQuantity = 0` OR Alert active OR `DaysOfSupply < 14`. Each entry includes impacted ad-sales for the window. VC accounts: FBA-only. **Limitation:** ASIN suppression-for-profitability events (Amazon de-ranks an ASIN despite inventory) are not detectable from `mws_inventory_health` — those still require AM input as `structural_events[]`.
-3. **Brand-name typo clusters** (v2.3.1+, from CS-31 + `brand_terms` + `negation.competitor_brands`) — converting search terms within Levenshtein 1-2 of any canonical brand term, not already in variants. **Clustered** by `(canonical_match, root_token)` so the AM gets one decision per cluster instead of N flat rows. Plural-only matches (e.g. "glacier bottles" vs canonical "glacier bottle") and competitor-brand collisions (e.g. "ridgepeak" when canonical is "ridgepak") are filtered out before clustering — competitor-brand prefixes are read from the optional `negation.competitor_brands` list in `context.yaml`.
-
-**Removed in v2.3.1:** Change-point detection. The retroactive listing produced too much noise — most "unexplained" breaks were Q4 ramps and post-holiday drops the AM didn't remember. Forward-looking change-point capture (writing breaks to `structural_events[]` as they emerge from daily runs) is a candidate for a separate skill.
-
-**Delta mode:** after enrichment, run `mixshift brand merge-delta` to patch the settlement curve into `context.yaml` (preserves comments and AM-edited fields):
+**Delta mode:** refresh the brain, then patch the settlement curve into `context.yaml` (preserving comments + AM-edited fields):
 
 ```bash
-mixshift brand merge-delta --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift brand brain refresh <brand-slug>
+mixshift brand merge-delta <brand-slug>
 ```
 
-Detected anomalies stay in `runs/mx-brand-context/<date>/<date>.enrichment.json` and are surfaced by the renderer in the "Detected Anomalies (Advisory)" section. They are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants` — AM confirmation required first. The pending list survives across brand-context runs (additive merge) until the AM confirms or dismisses.
+`merge-delta` reads the brain's `capture_rate_calibration.daily_settlement_curve` (+ `stability_score`, `last_calibrated`) and patches ONLY that sub-block into context.yaml; AM-curated fields are never touched. Detected stockout/typo advisories surface through the brain and the renderer's "Detected Anomalies (Advisory)" section; AM confirmation is required before any promotion to typed fields. (The old `mixshift brand enrich` command was retired in v2.6.0 — the brain computes enrichment now.)
 
 ---
 
@@ -238,7 +253,7 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 - Prioritize required operating decisions first, then high-impact anomalies, then optional context that would improve downstream skill quality.
 - Keep runtime-only uploads separate. Forecast, HCAM/H-Bridge, monthly-report screenshots are runtime inputs, not Brand Context gaps unless the operator says they do not exist.
 - If a question can be answered by the automated data review, answer it yourself and cite the finding in context rather than asking the operator.
-- Before asking about stockouts, check CS-16 / inventory signals + revenue + session patterns. If data shows an inventory trough but no per-ASIN OOS window, record an advisory note instead of asking the operator to confirm a stockout.
+- Before asking about stockouts, check the brain's `stockouts` (detected FBA OOS windows) + revenue + session patterns. If data shows an inventory trough but no detected OOS window, record an advisory note instead of asking the operator to confirm a stockout.
 - Before asking whether a promo caused a spike, check revenue, units, ASP/price proxy, spend, conversion. If ASP held while units spiked, treat as deal placement or demand surge rather than discount unless price history proves markdown.
 
 **Critical execution rules** (model behavior, not AM-facing prose):
@@ -269,7 +284,7 @@ without learning the schema.
   report time" is a legacy schema term. The AM-facing prompt is: "Do
   you currently provide reports (forecast, HCAM, monthly bridges) you'd
   like the monthly report to match? Or should I use a default template?"
-- **Don't ask anything answerable from data.** If CS-19 enumerated the
+- **Don't ask anything answerable from data.** If the brain enumerated the
   catalog item-groups, don't ask the AM to type them — show what was
   discovered and ask them to confirm/correct.
 - **Prefer 2-3 small progressive screens over one giant form.** A 12-field
@@ -333,16 +348,16 @@ Populate every required and applicable optional section per the Zod schema (run 
 | `accounts[]` | Phase 0 | One entry per SellerID. `account_type ∈ {SC, VC}`. `status ∈ {active, wind_down, inactive}`. `role ∈ {primary, legacy, secondary}`. |
 | `sources` | Phase 0 + Phase 1 verification | `ad_metrics` is always `campaignmetric`. `ops_revenue` is `vendor_sales_manufacturing_asin` (VC) or `business_reports_dpst_date` (SC). |
 | `management` | Phase 2 | `primary_metric ∈ {ACOS, TACOS}`. `acos_target_pct` numeric. `attribution_window_days` integer. |
-| `capture_rate_calibration` | Phase 1 (CS-06/CS-07/CS-28) | Required if `attribution_window_days > 1`. Daily-curve sub-block (`daily_settlement_curve`) deferred until enrichment is ported. |
-| `sub_brands[]` | Phase 1 + Phase 2 | One entry per CustomBrand. List `item_groups`. |
-| `brand_terms` | Phase 1 catalog + Phase 2 variants | Per sub-brand: `canonical[]` and `variants[]`. |
+| `capture_rate_calibration` | Brain (`capture_rate_calibration`) confirmed Phase 2 | Required if `attribution_window_days > 1`. The `daily_settlement_curve` sub-block comes from the brain (the brain computes it from CS-06/07/08 + CS-28); Tier 3 confirms it. |
+| `sub_brands[]` | Brain (`sub_brands` / `item_groups`) + Phase 2; VC cross from CS-09 | One entry per CustomBrand. List `item_groups`. The brain gives the flat distinct sets; CS-09 supplies the VC sub-brand × item-group cross + per-pair target ACOS. |
+| `brand_terms` | Brain catalog (sub-brands) + Phase 2 variants | Per sub-brand: `canonical[]` and `variants[]`. |
 | `bid_health` | Phase 2 | `scale_threshold_pct`, `pullback_threshold_pct`. |
 | `posture` | Phase 2 | `stance ∈ {scale, efficiency, defend, clear_bleed}`. `multiplier ∈ [0.0, 1.0]`. |
 | `goals` | Phase 2 | Use explicit `null` for absent targets — never omit the key. |
-| `structural_events[]` | Phase 0 | Type from enum. Always include `interpretation`. |
+| `structural_events[]` | Phase 0 (+ brain `stockouts` advisories, AM-confirmed) | Type from enum. Always include `interpretation`. |
 | `objective_calibration` | Phase 1 (CS-24) | Per-objective expected ACOS — used by health-check skills. |
-| `campaign_structure` | Phase 1 (CS-22) | `naming_pattern` with `{Token}` placeholders. `objectives` token map. |
-| `paused_campaigns[]` | Phase 1 | List campaign names where `state='paused'`. |
+| `campaign_structure` | Phase 1 (CS-24 naming) + brain shape | `naming_pattern` with `{Token}` placeholders. `objectives` token map. Distinct objectives/groups/brands + `objective_tag_completeness_pct` come from the brain. |
+| `paused_campaigns[]` | Brain (`paused_campaign_count`) + Phase 2 | The brain gives the paused count; capture specific campaign names from AM input when the names matter. |
 | `negation` | Phase 0.5 + Phase 2 | `protected_terms[]`, `lane_rules{}`, `asin_negation.pre_check_lifetime_orders_threshold`. |
 | `reporting` | Phase 2 | `audience ∈ {executive, account_manager, analyst}`. `voice_lint[]` regexes. |
 | `delivery` | Phase 2 + Phase 3 setup | Local reports dir, archive path. |
@@ -478,7 +493,7 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 - **ASIN-level TACOS is unreliable.** Account-level ACOS is the only clean management metric.
 - **VC ops data path:** Always `vendor_sales_manufacturing_asin` (CS-03). Never use SC path for VC.
 - **Management history matters.** If the account changed management or strategy mid-period, treat trend signals as unreliable until sufficient post-transition data accumulates.
-- **Settlement application (VC accounts):** Use weighted formula for MTD ACOS — do not apply full improvement_pts uniformly. Formula in CS-06/CS-07 results.
+- **Settlement application (VC accounts):** Use weighted formula for MTD ACOS; do not apply full improvement_pts uniformly. The weighting comes from the brain's `capture_rate_calibration` (settlement curve + improvement points).
 - **VC monthly metric coverage:** Verify `sellermonthmetric` is populated. If empty, monthly reports must use raw `campaignmetric` aggregates.
 
 ---
@@ -519,14 +534,14 @@ Schema source of truth: `shared/clients/_schema/discoveries.schema.yaml`.
 **Categories this skill emits when applicable** (omit a category entirely if no items; do not emit empty arrays):
 
 - `campaign_label_anomalies`
-- `stockout_candidates` (mirrored from Phase 1.5 enrichment for context-promotion review)
-- `brand_term_typo_candidates` (mirrored from Phase 1.5 enrichment)
+- `stockout_candidates` (mirrored from the brain's `stockouts` for context-promotion review)
+- `brand_term_typo_candidates` (mirrored from the brain's `brand_term_typos`)
 
 If no discoveries surface this run, write a minimal file with `"discoveries": {}`. The presence of the file is itself the signal that the skill considered discoveries and emitted nothing.
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Current version: v2.5.1.*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Current version: v2.6.0.*
 
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 

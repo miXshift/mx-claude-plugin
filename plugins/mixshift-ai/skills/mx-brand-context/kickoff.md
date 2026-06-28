@@ -81,22 +81,26 @@ Buyer-language checklist:
 
 Findings populate `brand-intelligence.yaml` first: source map, hero narrative, proof points, `customer_language_corpus`, PPC implications, and open research gaps. Durable prose feeds `narrative.md ## Brand Identity` or `## Brand Positioning` plus `## Customer Language Samples`; typed terms and guardrails feed `context.yaml::brand_terms` / `negation`.
 
-**MixShift DB pre-fetched queries**
+**MixShift data I already have**
 
-Horizon rule: monthly revenue and ACOS baselines should use 24 months when available so seasonality, YoY context, and anomaly separation are visible. Daily enrichment windows can remain shorter for efficiency.
+Most of the brand's shape and calibration is already computed in the Brand Brain (built when the brand was set up). I read it rather than re-deriving it:
 
-- **Identity check**: confirm SellerID exists, account type, ad-data presence.
+- **Brand taxonomy**: sub-brands, item groups, and the top ASINs by revenue.
+- **Campaign-structure shape**: the distinct objectives, item groups, and brands in use, plus how completely campaigns are tagged with an objective.
+- **Attribution settlement calibration**: how much ACOS improves between fresh and settled reads, including the per-campaign-type daily settlement curve.
+- **Stockout windows**: detected out-of-stock periods that may have deflated specific months.
+- **Brand-term typo clusters**: coined misspellings and variants customers actually type.
+
+**MixShift data I pull fresh as historical baselines**
+
+Horizon rule: monthly revenue and ACOS baselines should use 24 months when available so seasonality, YoY context, and anomaly separation are visible.
+
 - **24-month monthly revenue baseline when available**: seasonal shape, trend direction, anomaly months, YoY context.
-- **24-month monthly ACOS baseline when available**: by month, by campaign type, by sub-brand.
-- **Attribution settlement lift**: how much ACOS improves between fresh and settled reads. SC must distinguish SP 7d from SB/SD 14d when data exists.
-- **Sub-brand and item-group structure**: extracted from catalog and campaign naming.
-- **Brand term variants**: coined misspellings and variants from auto-search-term data.
-- **Existing negatives inventory**: what's already negated in the account.
+- **24-month monthly ACOS baseline when available**: by month and by campaign type.
+- **VC sub-brand and item-group detail**: revenue concentration, ASP, and per-pair target ACOS where the brain's flat lists are not enough.
 - **Budget utilization**: which campaigns are capped vs. running wide open.
 - **Keyword spend concentration**: top-N keyword share of spend.
 - **Objective config**: campaign-level intent classification from naming.
-- **Label completeness gaps**: missing ItemGroup or Objective labels.
-- **Enrichment queries**: daily settlement curve, stockout candidates, and brand-name typo clusters.
 
 After Phase 1 reads complete, surface a one-line summary to the AM:
 
