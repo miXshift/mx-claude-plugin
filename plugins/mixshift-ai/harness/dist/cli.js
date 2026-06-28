@@ -68553,6 +68553,15 @@ var brainCampaignStructureSchema = external_exports.object({
   distinct_objectives: external_exports.array(external_exports.string()),
   distinct_item_groups: external_exports.array(external_exports.string()),
   distinct_brands: external_exports.array(external_exports.string()),
+  /** % of campaigns carrying a non-empty Objective tag. The brain's
+   *  substitute for the deep skill's retired CS-27 (campaign-objective
+   *  completeness). Whole number 0-100. NOTE: unlike CS-27 this is NOT
+   *  spend-weighted and does not pre-filter to T-30 spending campaigns — it
+   *  is a flat share over every campaign row the BRAIN-CAMPAIGN source
+   *  returned (enabled + paused). null only when there are no campaigns.
+   *  `.optional()` for backward-compat: brains fetched before this field
+   *  existed (and older test fixtures) must still validate on load. */
+  objective_tag_completeness_pct: external_exports.number().min(0).max(100).nullable().optional(),
   /** % of campaigns on smart/default bid optimization. Derivation
    *  assumption (BidOptimization value semantics) is flagged in the SP
    *  draft; verify against real warehouse values. */
@@ -69409,10 +69418,13 @@ function assembleCampaignSection(rows) {
   const itemGroups = /* @__PURE__ */ new Set();
   const brands = /* @__PURE__ */ new Set();
   let paused = 0;
+  let withObjective = 0;
   let bidSmart = 0;
   let brandEntity = 0;
   for (const r of rows) {
-    addIf(objectives, toTrimmedString(r.Objective));
+    const objective = toTrimmedString(r.Objective);
+    addIf(objectives, objective);
+    if (objective) withObjective++;
     addIf(itemGroups, toTrimmedString(r.ItemGroup));
     addIf(brands, toTrimmedString(r.Brand));
     if (toTrimmedString(r.State)?.toLowerCase() === "paused") paused++;
@@ -69426,6 +69438,7 @@ function assembleCampaignSection(rows) {
     distinct_objectives: [...objectives].sort(),
     distinct_item_groups: [...itemGroups].sort(),
     distinct_brands: [...brands].sort(),
+    objective_tag_completeness_pct: rows.length > 0 ? Math.round(withObjective / rows.length * 100) : null,
     smart_default_adoption_pct: rows.length > 0 ? Math.round(bidSmart / rows.length * 100) : null,
     brand_entity_id_presence_pct: rows.length > 0 ? Math.round(brandEntity / rows.length * 100) : null
   };
@@ -71945,7 +71958,7 @@ function sectionBrandTerms(s) {
     return renderCard({
       title: "Brand term dictionary",
       title_accessory: marker,
-      body: '<div class="rc-empty">No brand terms captured yet. Phase 1 CS-19/CS-20 + Phase 2 AM variants populate this.</div>'
+      body: '<div class="rc-empty">No brand terms captured yet. The Brand Brain catalog and Phase 2 AM variants populate this.</div>'
     });
   }
   return renderCard({

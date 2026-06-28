@@ -83,12 +83,6 @@ queries:
     consumers: [mx-daily-health-check]
     tier: 1
 
-  - id: CS-01
-    file: CS-01.sql
-    purpose: Confirm seller identity and merchant type (SC/VC) for cold-start scope.
-    consumers: [mx-brand-context]
-    tier: 1
-
   - id: CS-02
     file: CS-02.sql
     purpose: SC 14-month revenue baseline (sales, units, sessions, CVR) by month.
@@ -117,32 +111,38 @@ queries:
     file: CS-06.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: SC SP attribution-window comparison (1d vs 7d) for prior full month.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
+    notes: |
+      Capture-rate scalar source. Consumed by the Brand Brain
+      (capture_rate_calibration); the deep mx-brand-context skill reads the
+      assembled value from the brain rather than re-pulling this (v2.6.0).
 
   - id: CS-07
     file: CS-07.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: VC SP attribution-window comparison (1d vs 14d) for prior full month.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
+    notes: |
+      Capture-rate scalar source (VC). Consumed by the Brand Brain
+      (capture_rate_calibration); the deep mx-brand-context skill reads the
+      assembled value from the brain rather than re-pulling this (v2.6.0).
 
   - id: CS-08
     file: CS-08.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily 1d-vs-7d SP ACOS calibration distribution over T-104..T-7.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
+    notes: |
+      Capture-rate daily-distribution source. Consumed by the Brand Brain
+      (capture_rate_calibration); the deep mx-brand-context skill reads the
+      assembled value from the brain rather than re-pulling this (v2.6.0).
 
   - id: CS-09
     file: CS-09.sql
     purpose: VC sub-brand x item group structure with ASIN counts and target ACOS.
-    consumers: [mx-brand-context]
-    tier: 1
-
-  - id: CS-10
-    file: CS-10.sql
-    purpose: SC item-group derivation from CampaignName trailing token (heuristic).
     consumers: [mx-brand-context]
     tier: 1
 
@@ -177,17 +177,6 @@ queries:
     consumers: [mx-brand-context]
     tier: 1
 
-  - id: CS-16
-    file: CS-16.sql
-    purpose: SC inventory history monthly counts (low/zero quantity rows) over T-14 months.
-    consumers: [mx-brand-context]
-    tier: 1
-    notes: |
-      mws_inventory_history carries real daily snapshots back 14+ months
-      (FulfillableQuantity verified live 2026-06-14; the earlier "empty-column
-      stub" note was wrong). FBA-only via FulfillmentChannel <> 'DEFAULT'
-      (the DEFAULT bucket is MFN; 'AFN' is dead and matches nothing).
-
   - id: CS-17
     file: CS-17.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
@@ -199,28 +188,6 @@ queries:
     file: CS-18.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: SC ads-share / ACOS / TACOS stability check by month over T-14 months.
-    consumers: [mx-brand-context]
-    tier: 1
-
-  - id: CS-19
-    file: CS-19.sql
-    purpose: VC brand catalog — distinct CustomBrand/Brand/ItemGroup with ASIN counts.
-    consumers: [mx-brand-context]
-    tier: 1
-
-  - id: CS-20
-    file: CS-20.sql
-    purpose: SC brand catalog -- distinct brands and enabled ASIN counts (campaign x productad).
-    consumers: [mx-brand-context]
-    tier: 1
-    notes: |
-      Fixed 2026-04-27: original source targeted business_reports_dpst_date.Brand/.Asin,
-      confirmed absent in tables.yaml. Rewritten to use campaign.Brand JOIN productad.ASIN
-      (correct canonical source for brand-level ASIN structure).
-
-  - id: CS-21
-    file: CS-21.sql
-    purpose: Enabled negative-keyword inventory by campaign / ad group.
     consumers: [mx-brand-context]
     tier: 1
 
@@ -242,41 +209,30 @@ queries:
     consumers: [mx-brand-context]
     tier: 1
 
-  - id: CS-25
-    file: CS-25.sql
-    purpose: VC ASINs missing ItemGroup tagging.
-    consumers: [mx-brand-context]
-    tier: 1
-
   - id: CS-26
     file: CS-26.sql
     purpose: T-90 ordered revenue for a specified ASIN list (active-subset filter).
     consumers: [mx-brand-context]
     tier: 1
 
-  - id: CS-27
-    file: CS-27.sql
-    purpose: Campaign-objective completeness — T-30 spending campaigns lacking objective tag.
-    consumers: [mx-brand-context]
-    tier: 1
-
   - id: CS-28
     file: CS-28.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
-    purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for cold-start v2.3 enrichment.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    purpose: Attribution settlement curve by campaign type x day-of-week (trailing 90d) for the Brand Brain capture-rate enrichment.
+    consumers: [brand-brain-fetch]
     tier: 1
     notes: |
       Expands the CS-06/CS-07 single improvement_pts number into a daily curve
-      shape. Output is reshaped by the cold-start renderer into
+      shape. The Brand Brain reshapes it into
       capture_rate_calibration.daily_settlement_curve.by_campaign_type[CT] and
-      .dow_offset_pts[DOW]. DAYOFWEEK convention: 1=Sun..7=Sat.
+      .dow_offset_pts[DOW]; the deep mx-brand-context skill reads that from the
+      brain (v2.6.0, was a cold-start prefetch). DAYOFWEEK convention: 1=Sun..7=Sat.
 
   - id: CS-29
     file: CS-29.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Historical FBA stockout windows (out-of-stock ASIN-days, trailing 365d) from mws_inventory_history.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
     notes: |
       One row per FBA-OOS ASIN-day (total FulfillableQuantity = 0) so the
@@ -284,28 +240,32 @@ queries:
       windows. Re-pointed 2026-06-14 from mws_inventory_health (current-state,
       no usable history) to mws_inventory_history (real 14mo+ daily history +
       live FulfillableQuantity). FBA-only via FulfillmentChannel <> 'DEFAULT'.
+      Consumed by the Brand Brain (stockouts[]); the deep mx-brand-context skill
+      reads detected windows from the brain (v2.6.0).
 
   - id: CS-30
     file: CS-30.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Daily account-level ad metrics (spend, sales, ACOS, clicks, orders, CVR, CTR) over trailing 365 days.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
     notes: |
-      Drives change-point detection on revenue / ACOS / CVR series during
-      cold-start enrichment. Account-type-agnostic (campaignmetric works for
-      both SC and VC).
+      Impact-$ helper for stockout-window scoring (paired with CS-29). Consumed
+      by the Brand Brain stockout detector; the deep mx-brand-context skill
+      reads detected windows from the brain (v2.6.0). Account-type-agnostic
+      (campaignmetric works for both SC and VC).
 
   - id: CS-31
     file: CS-31.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
     purpose: Account-level converting search-term corpus (trailing 90d) for brand-name typo detection.
-    consumers: [mx-brand-context, brand-brain-fetch]
+    consumers: [brand-brain-fetch]
     tier: 1
     notes: |
-      Cold-start enrichment uses this for Levenshtein 1-2 hits vs brand_terms
-      canonicals/variants. Aggregated to SearchTerm grain; filtered to terms
-      with >=1 attributed order.
+      The Brand Brain uses this for Levenshtein 1-2 hits vs brand_terms
+      canonicals/variants (brand_term_typos[]); the deep mx-brand-context skill
+      reads detected clusters from the brain (v2.6.0). Aggregated to SearchTerm
+      grain; filtered to terms with >=1 attributed order.
 
   - id: ANEG-01
     file: ANEG-01.sql

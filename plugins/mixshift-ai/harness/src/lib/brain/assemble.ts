@@ -345,6 +345,13 @@ export function assembleRecentActivity(
  * Aggregate enabled+paused campaign rows into the campaign-structure
  * section. Percentages are whole numbers.
  *
+ * objective_tag_completeness_pct: share of ALL campaigns carrying a
+ * non-empty Objective. The brain's substitute for the deep skill's retired
+ * CS-27 (campaign-objective completeness). Loses CS-27's spend-weighting and
+ * its T-30-spending pre-filter (acceptable: the brain stores shape, not the
+ * per-campaign spend list) — it is a flat row share over every BRAIN-CAMPAIGN
+ * row.
+ *
  * smart_default_adoption_pct: share of ALL campaigns whose
  * BidOptimization flag is set. Verified against the warehouse
  * 2026-06-12: the column is a nullable '1' flag (NULL / '' = off,
@@ -361,11 +368,14 @@ export function assembleCampaignSection(
   const itemGroups = new Set<string>();
   const brands = new Set<string>();
   let paused = 0;
+  let withObjective = 0;
   let bidSmart = 0;
   let brandEntity = 0;
 
   for (const r of rows) {
-    addIf(objectives, toTrimmedString(r.Objective));
+    const objective = toTrimmedString(r.Objective);
+    addIf(objectives, objective);
+    if (objective) withObjective++;
     addIf(itemGroups, toTrimmedString(r.ItemGroup));
     addIf(brands, toTrimmedString(r.Brand));
     if (toTrimmedString(r.State)?.toLowerCase() === 'paused') paused++;
@@ -380,6 +390,8 @@ export function assembleCampaignSection(
     distinct_objectives: [...objectives].sort(),
     distinct_item_groups: [...itemGroups].sort(),
     distinct_brands: [...brands].sort(),
+    objective_tag_completeness_pct:
+      rows.length > 0 ? Math.round((withObjective / rows.length) * 100) : null,
     smart_default_adoption_pct:
       rows.length > 0 ? Math.round((bidSmart / rows.length) * 100) : null,
     brand_entity_id_presence_pct:

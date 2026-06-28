@@ -685,7 +685,7 @@ export function sectionBrandTerms(s: ReportState): string {
     return renderCard({
       title: 'Brand term dictionary',
       title_accessory: marker,
-      body: '<div class="rc-empty">No brand terms captured yet. Phase 1 CS-19/CS-20 + Phase 2 AM variants populate this.</div>',
+      body: '<div class="rc-empty">No brand terms captured yet. The Brand Brain catalog and Phase 2 AM variants populate this.</div>',
     });
   }
   return renderCard({

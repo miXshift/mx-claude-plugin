@@ -169,6 +169,15 @@ export const brainCampaignStructureSchema = z.object({
   distinct_objectives: z.array(z.string()),
   distinct_item_groups: z.array(z.string()),
   distinct_brands: z.array(z.string()),
+  /** % of campaigns carrying a non-empty Objective tag. The brain's
+   *  substitute for the deep skill's retired CS-27 (campaign-objective
+   *  completeness). Whole number 0-100. NOTE: unlike CS-27 this is NOT
+   *  spend-weighted and does not pre-filter to T-30 spending campaigns — it
+   *  is a flat share over every campaign row the BRAIN-CAMPAIGN source
+   *  returned (enabled + paused). null only when there are no campaigns.
+   *  `.optional()` for backward-compat: brains fetched before this field
+   *  existed (and older test fixtures) must still validate on load. */
+  objective_tag_completeness_pct: z.number().min(0).max(100).nullable().optional(),
   /** % of campaigns on smart/default bid optimization. Derivation
    *  assumption (BidOptimization value semantics) is flagged in the SP
    *  draft; verify against real warehouse values. */
