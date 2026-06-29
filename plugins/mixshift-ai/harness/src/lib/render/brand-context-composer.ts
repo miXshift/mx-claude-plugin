@@ -95,8 +95,8 @@ export async function composeBrandContextReport(
   // 3. Compute open-gap buckets
   const buckets = buildBuckets(sources, coverage);
 
-  // 4. Compute skill readiness (per downstream skill: context + manifest contract)
-  const skillReadiness = computeSkillReadiness(sources, coverage);
+  // 4. Skill readiness is computed below (after the brain resolve) so it is
+  //    brain-aware: the Tier-2 brain unblocks skills, not just Tier-3 context.
 
   // 4b. Resolve every registered brand field across the tiers (Tier 3 context
   //     wins, Tier 2 brain pre-fills, null = gap). Drives the confidence
@@ -126,6 +126,17 @@ export async function composeBrandContextReport(
   // A Tier-2 brain exists if any registered field resolved from the brain.
   const brainPresent = Object.values(resolvedFields).some(
     (r) => r?.source === 'brain',
+  );
+
+  // Brain-aware skill readiness: skills run from the brain + per-skill defaults;
+  // missing AM/OCL knobs sharpen output, they don't block it. Computed here (not
+  // before the brain resolve) so a brain-only brand reads "Ready", not the stale
+  // "BLOCKED BY CONTEXT" the Tier-3-only check produced.
+  const skillReadiness = computeSkillReadiness(
+    sources,
+    coverage,
+    resolvedFields,
+    brainPresent,
   );
   const { verdict, reason } = computeVerdict({
     coverage,
@@ -283,41 +294,72 @@ function buildBuckets(
 function computeSkillReadiness(
   sources: BrandContextSources,
   coverage: AuditCoverage,
+  resolvedFields: ResolvedFieldMap,
+  brainPresent: boolean,
 ): ReportState['skill_readiness'] {
-  const ctx = sources.context as
-    | { management?: { primary_metric?: string }; capture_rate_calibration?: { enabled?: boolean } }
-    | null;
-  const hasManagement = !!ctx?.management?.primary_metric;
+  const ctx = sources.context as { accounts?: unknown[] } | null;
+  // Pivot model: the Tier-2 brain unblocks skills. A brand is runnable once it
+  // is bootstrapped (accounts present) AND has a brain or confirmed context;
+  // unset AM/OCL knobs fall back to per-skill defaults, which sharpen output but
+  // never block it. The ONLY true blocker is a brand that was never bootstrapped.
+  const bootstrapped =
+    (Array.isArray(ctx?.accounts) && ctx.accounts.length > 0) || brainPresent;
   const requiredOk = coverage.required_present === coverage.required_total;
-  const hasCalibration = !!ctx?.capture_rate_calibration?.enabled;
 
-  const skills: Array<{ skill: string; status: string; tone: 'complete' | 'partial' | 'missing' | 'runtime'; notes: string }> = [
-    {
-      skill: 'mx-daily-health-check',
-      status: requiredOk ? 'Ready' : 'Blocked by context',
-      tone: requiredOk ? 'complete' : 'missing',
-      notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
-    },
-    {
-      skill: 'mx-runaway-spend-check',
-      status: requiredOk ? 'Ready' : 'Blocked by context',
-      tone: requiredOk ? 'complete' : 'missing',
-      notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
-    },
-    {
-      skill: 'mx-keyword-bid-health',
-      status: requiredOk ? 'Ready' : 'Blocked by context',
-      tone: requiredOk ? 'complete' : 'missing',
-      notes: requiredOk ? 'All required context populated.' : 'Required schema fields missing.',
-    },
-    {
-      skill: 'mx-monthly-report',
-      status: hasManagement && hasCalibration ? 'Ready' : 'Ready with caveats',
-      tone: hasManagement && hasCalibration ? 'complete' : 'partial',
-      notes: hasCalibration ? 'Capture-rate calibration available.' : 'Calibration not enabled — MoM/YoY uses raw aggregates.',
-    },
+  const tier: 'context' | 'brain' | 'partial' | 'defaults' = requiredOk
+    ? 'context'
+    : brainPresent
+      ? 'brain'
+      : ctx
+        ? 'partial'
+        : 'defaults';
+  const readyNote =
+    tier === 'context'
+      ? 'All required context confirmed.'
+      : tier === 'brain'
+        ? 'Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen.'
+        : tier === 'partial'
+          ? 'Partial context; unset fields fall back to skill defaults.'
+          : 'No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.';
+  const readyTone: 'complete' | 'partial' = tier === 'context' ? 'complete' : 'partial';
+
+  const notBootstrapped = {
+    status: 'Blocked',
+    tone: 'missing' as const,
+    notes: 'Brand not bootstrapped: run `mixshift brand add <slug>` first.',
+  };
+  const analytical = (skill: string) =>
+    bootstrapped
+      ? { skill, status: 'Ready', tone: readyTone, notes: readyNote }
+      : { skill, ...notBootstrapped };
+
+  // monthly-report: capture-rate calibration now comes from the brain too, so it
+  // is "available" whenever the brain (or context) resolved it.
+  const calib =
+    resolvedFields['daily_settlement_curve'] ??
+    resolvedFields['capture_rate_calibration'];
+  const monthly = !bootstrapped
+    ? { skill: 'mx-monthly-report', ...notBootstrapped }
+    : calib
+      ? {
+          skill: 'mx-monthly-report',
+          status: 'Ready',
+          tone: 'complete' as const,
+          notes: `Capture-rate calibration available (${calib.source === 'brain' ? 'from brand brain' : 'context-confirmed'}).`,
+        }
+      : {
+          skill: 'mx-monthly-report',
+          status: 'Ready with caveats',
+          tone: 'partial' as const,
+          notes: 'Calibration not set yet; MoM/YoY uses raw aggregates until the brain fetches it.',
+        };
+
+  return [
+    analytical('mx-daily-health-check'),
+    analytical('mx-runaway-spend-check'),
+    analytical('mx-keyword-bid-health'),
+    monthly,
   ];
-  return skills;
 }
 
 // ---------------------------------------------------------------------------

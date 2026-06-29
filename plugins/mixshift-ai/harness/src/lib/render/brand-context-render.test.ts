@@ -212,6 +212,23 @@ describe('brand-context render — brain-only early state (FIX 2)', () => {
     expect(html).not.toContain('Schema validator failed');
   });
 
+  it('marks downstream skills Ready (brain unblocks), not Blocked by context', async () => {
+    const { review } = await composeBrainOnly();
+    const readiness =
+      (review as { skill_readiness?: Array<{ skill: string; status: string; notes: string }> })
+        .skill_readiness ?? [];
+    // The unravel's contract: a brain-only brand runs every analytical skill
+    // from the brain + defaults; nothing reads "Blocked by context".
+    const analytical = readiness.filter((r) => r.skill !== 'mx-monthly-report');
+    expect(analytical.length).toBe(3);
+    for (const r of analytical) {
+      expect(r.status).toBe('Ready');
+      expect(r.notes.toLowerCase()).toContain('brain');
+    }
+    expect(readiness.find((r) => r.skill === 'mx-monthly-report')?.status).toContain('Ready');
+    expect(readiness.every((r) => !r.status.toLowerCase().includes('blocked'))).toBe(true);
+  });
+
   it('renders the ⊙ auto-discovered early-state framing (non-RED verdict + reframed reason)', async () => {
     const { verdict, verdictReason, html } = await composeBrainOnly();
     // OBSERVATIONAL is the non-RED early-state verdict (blue "runtime" tone).
