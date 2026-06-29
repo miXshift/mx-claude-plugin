@@ -26,6 +26,16 @@ In any Claude Code session, run:
 
 Claude Code fetches the marketplace manifest from the public GitHub repo. This is a per-user operation — only your Claude Code install knows about the marketplace, not anyone else's.
 
+### Beta testers: pin the `stable` channel
+
+The command above tracks the default branch (the internal / latest build). To install the **stable beta** build, add the marketplace pinned to the `stable` branch instead:
+
+```
+/plugin marketplace add https://github.com/miXshift/mx-claude-plugin.git#stable
+```
+
+Use the `.git#stable` form (full git URL plus a `#ref`). Ref pinning needs the full git URL: the `owner/repo@stable` shorthand resolves to an SSH clone and fails without SSH keys. To update later, run `/plugin marketplace update mixshift`, then `/plugin update mixshift-ai`.
+
 > **Use the full HTTPS URL, not the `owner/repo` shorthand.** The shorthand (`miXshift/mx-claude-plugin`) expands to an SSH clone URL (`git@github.com:...`), which fails with "Permission denied (publickey)" unless you have GitHub SSH keys configured. The HTTPS URL clones without any key setup.
 >
 > Run this on its own. Do not paste it together with the install command on the next line, or the add command will swallow the second line as part of the URL.
