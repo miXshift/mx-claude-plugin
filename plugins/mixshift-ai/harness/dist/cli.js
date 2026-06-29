@@ -64470,7 +64470,11 @@ var init_telemetry = __esm({
 });
 
 // src/lib/data/query-runner.ts
-async function runQuery(sql, params = [], options = {}) {
+function isServiceCapFailure(r) {
+  if (r.ok) return false;
+  return /service cap/i.test(`${r.message ?? ""} ${r.friendly ?? ""}`);
+}
+async function runOnce(sql, params, options) {
   let creds;
   try {
     creds = await resolveCreds(options);
@@ -64488,6 +64492,55 @@ async function runQuery(sql, params = [], options = {}) {
     return runDatahubQuery(creds, sql, params, options);
   }
   return runMysqlQuery(creds, sql, params, options);
+}
+async function runQuery(sql, params = [], options = {}) {
+  const first = await runOnce(sql, params, options);
+  if (!isServiceCapFailure(first)) return first;
+  return paginateOverCap(
+    sql,
+    (pageSql) => runOnce(pageSql, params, options)
+  );
+}
+async function paginateOverCap(sql, exec4) {
+  const t0 = Date.now();
+  const inner = sql.trim().replace(/;\s*$/, "");
+  if (!/^\s*(select|with)\b/i.test(inner)) {
+    const message = "Result exceeds the 50,000-row service cap and the statement is not a SELECT, so it cannot be paginated. Narrow the query.";
+    return { ok: false, kind: "unknown", message, friendly: message, durationMs: Date.now() - t0 };
+  }
+  const probe = await exec4(`SELECT * FROM (${inner}) AS _mx_page LIMIT 1`);
+  if (!probe.ok) return probe;
+  const ncols = probe.rows.length ? Object.keys(probe.rows[0]).length : 0;
+  if (ncols === 0) {
+    return { ok: true, rows: [], rowCount: 0, durationMs: Date.now() - t0 };
+  }
+  const orderBy = Array.from({ length: ncols }, (_, i) => String(i + 1)).join(", ");
+  const all = [];
+  let pageSize = SERVICE_ROW_CAP;
+  let offset = 0;
+  for (let iter = 0; iter < 1e4; iter++) {
+    const r = await exec4(
+      `SELECT * FROM (${inner}) AS _mx_page ORDER BY ${orderBy} LIMIT ${pageSize} OFFSET ${offset}`
+    );
+    if (!r.ok) {
+      if (isServiceCapFailure(r) && pageSize > MIN_PAGE_SIZE) {
+        pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+        continue;
+      }
+      return r;
+    }
+    all.push(...r.rows);
+    if (r.rows.length < pageSize) {
+      return { ok: true, rows: all, rowCount: all.length, durationMs: Date.now() - t0 };
+    }
+    offset += r.rows.length;
+    if (all.length >= MAX_PAGINATED_ROWS) {
+      const m2 = `Result exceeds ${MAX_PAGINATED_ROWS} rows even after pagination; narrow the query (add a WHERE filter or aggregate).`;
+      return { ok: false, kind: "unknown", message: m2, friendly: m2, durationMs: Date.now() - t0 };
+    }
+  }
+  const m = "Pagination did not converge; narrow the query.";
+  return { ok: false, kind: "unknown", message: m, friendly: m, durationMs: Date.now() - t0 };
 }
 async function runMysqlQuery(creds, sql, params, options) {
   const t0 = Date.now();
@@ -64900,7 +64953,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, DatahubNetworkError;
+var import_promise, SERVICE_ROW_CAP, MIN_PAGE_SIZE, MAX_PAGINATED_ROWS, DatahubNetworkError;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -64908,6 +64961,9 @@ var init_query_runner = __esm({
     init_credentials();
     init_schema2();
     init_telemetry();
+    SERVICE_ROW_CAP = 5e4;
+    MIN_PAGE_SIZE = 1e3;
+    MAX_PAGINATED_ROWS = 2e6;
     DatahubNetworkError = class extends Error {
       constructor(msg2) {
         super(msg2);
