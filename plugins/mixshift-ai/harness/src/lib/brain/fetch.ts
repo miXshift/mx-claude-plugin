@@ -16,13 +16,14 @@
  * observations.
  */
 
-import { writeFile, mkdir, rename } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { runDispatched, MissingParamsError } from '../data/dispatch.js';
 import { getQueryEntry } from '../prefetch/sql-library.js';
 import { readIndex } from '../clients/index.js';
 import type { IndexAccount } from '../clients/index-schema.js';
-import { brainStatusPath } from '../paths/resolve.js';
+import { brainStatusPath, contextPath } from '../paths/resolve.js';
 import { getPluginVersion } from '../plugin-version.js';
 import { track, EventName } from '../telemetry/index.js';
 import {
@@ -32,6 +33,7 @@ import {
 } from './assemble.js';
 import { loadBrain, saveBrain } from './read.js';
 import type { BrandBrain } from './schema.js';
+import type { BrandTermsBlock } from '../enrichment/brand-typos.js';
 
 /** Seller-source TTL: re-fetches inside this window are no-ops unless
  *  forced. 30 days per internal/BACKGROUND-DISCOVERY.md. */
@@ -56,6 +58,20 @@ const BRAIN_RECENT_ACTIVITY_QUERY_ID = 'BRAIN-RECENT-ACTIVITY';
  *  when the named query isn't registered server-side (or returns nothing),
  *  selection falls back to the heuristic. */
 const BRAIN_SEAT_METRICS_QUERY_ID = 'BRAIN-SEAT-METRICS';
+
+// Phase 8 enrichment sources reuse the ALREADY-DEPLOYED CS-* named queries
+// (dispatch:named, server pack + local .sql dev-fallback) rather than new
+// BRAIN-* ids — no new SQL and no cross-repo prod gap (the deep mx-brand-context
+// skill already runs these in prod via prefetch). Their outputs feed the pure
+// enrichment computers (lib/enrichment/*) inside assembleBrain. Native binds:
+// CS-06/07/08 take a single :seller_id; CS-28/29/30/31 take :seller_id_list.
+const CS_CAPTURE_RATE_SC_QUERY_ID = 'CS-06';
+const CS_CAPTURE_RATE_VC_QUERY_ID = 'CS-07';
+const CS_CAPTURE_RATE_DAILY_QUERY_ID = 'CS-08';
+const CS_SETTLEMENT_QUERY_ID = 'CS-28';
+const CS_STOCKOUT_QUERY_ID = 'CS-29';
+const CS_STOCKOUT_IMPACT_QUERY_ID = 'CS-30';
+const CS_TYPO_CORPUS_QUERY_ID = 'CS-31';
 
 export interface BrainFetchOptions {
   slug: string;
@@ -91,9 +107,18 @@ export interface BrainFetchSummary {
   hero_asin_count: number | null;
   /** True when the recent-activity baseline (DHC-01) cached ok. */
   has_recent_activity: boolean;
+  /** True when the capture-rate calibration section (CS-06/07/08 + CS-28)
+   *  produced usable signal. */
+  has_capture_rate: boolean;
+  /** Detected stockout windows (CS-29) when the source ran; null otherwise. */
+  stockout_count: number | null;
+  /** Detected brand-term typo clusters (CS-31) when brand_terms existed and the
+   *  source ran; null otherwise (e.g. a pre-cold-start brand). */
+  brand_typo_count: number | null;
   /** Non-fatal source failures (seller failing is fatal and surfaces as
    *  status 'failed' instead). Names: catalog_sc | catalog_vc | campaign |
-   *  hero_sc | hero_vc | recent_activity. */
+   *  hero_sc | hero_vc | recent_activity | capture_rate | stockout |
+   *  brand_typos. */
   failed_sources: string[];
 }
 
@@ -307,6 +332,23 @@ export async function fetchBrandBrain(
   const vcIds = brand.accounts
     .filter((a) => a.account_type === 'VC')
     .map((a) => a.seller_id);
+  // Phase 8 capture-rate seat scoping. CS-06/07/08 bind a SINGLE :seller_id
+  // (per-account attribution math), so pick a representative seat per channel:
+  // the heuristic primary when it's that channel, else the channel's first seat.
+  // (The metric-ranked primary isn't known until after the fetch below; the
+  // heuristic seat is a fine representative for attribution calibration.)
+  const pickChannelSeat = (ids: number[]): number | null =>
+    heuristicSeatId != null && ids.includes(heuristicSeatId)
+      ? heuristicSeatId
+      : (ids[0] ?? null);
+  const scPrimary = pickChannelSeat(scIds);
+  const vcPrimary = pickChannelSeat(vcIds);
+  // Tier-3 brand_terms (+ competitor_brands) for the typo detector. Best-effort
+  // read of context.yaml — the brain's only Tier-3 touch, kept in the I/O layer
+  // so assembleBrain stays pure. Absent for a brand-new brand → typo section
+  // no-ops. (A future server-side brain has no context.yaml; the typo section
+  // there populates only on a client-side refresh.)
+  const brandTermsInput = await readBrandTermsInput(slug, dataDirOverride);
 
   type SourceOutcome =
     | { ok: true; rows: RawSellerRow[]; usedDispatch: string }
@@ -314,14 +356,16 @@ export async function fetchBrandBrain(
 
   const runSource = async (
     queryId: string,
-    ids: number[],
+    params: Record<string, unknown>,
   ): Promise<SourceOutcome> => {
     try {
       const result = await runDispatched<RawSellerRow>(queryId, {
-        // seller_ids inside params serves BOTH backends: the sproc path
-        // routes it to the second CALL argument; the local dev fallback
-        // substitutes :seller_ids in the SQL text.
-        params: { seller_ids: ids },
+        // Caller supplies the query's native bind params. BRAIN-* sources pass
+        // { seller_ids } (routed to the request's top-level seller scope); the
+        // reused CS-* enrichment queries pass their own binds ({ seller_id } or
+        // { seller_id_list }), exactly as the prefetch runner does — so the
+        // already-deployed server-side query pack resolves them unchanged.
+        params,
         dataDirOverride,
       });
       if (!result.ok) {
@@ -335,7 +379,7 @@ export async function fetchBrandBrain(
     } catch (err) {
       const message =
         err instanceof MissingParamsError
-          ? `${err.message} (local dev fallback SQL must reference :seller_ids)`
+          ? `${err.message} (local dev fallback SQL is missing a bind param)`
           : err instanceof Error
             ? err.message
             : String(err);
@@ -352,28 +396,57 @@ export async function fetchBrandBrain(
     heroVcOut,
     recentOut,
     seatMetricsOut,
+    settlementOut,
+    captureScOut,
+    captureVcOut,
+    captureDailyOut,
+    stockoutOut,
+    stockoutImpactOut,
+    typoOut,
   ] = await Promise.all([
-    runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
+    runSource(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds }),
     scIds.length > 0
-      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds)
+      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds })
       : Promise.resolve(null),
     vcIds.length > 0
-      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds)
+      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds })
       : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds }),
     scIds.length > 0
-      ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds)
+      ? runSource(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds })
       : Promise.resolve(null),
     vcIds.length > 0
-      ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds)
+      ? runSource(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds })
       : Promise.resolve(null),
     // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds }),
     // Brand-level: per-seat revenue+spend for primary-seat selection.
     // Best-effort and SELECTION-ONLY — not folded into a brain section,
     // so a failure isn't even a "failed source"; it just means the
     // heuristic decides the primary seat.
-    runSource(BRAIN_SEAT_METRICS_QUERY_ID, sellerIds),
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds }),
+    // Phase 8 enrichment (reused CS-* named queries, native binds). All
+    // best-effort: a failure just omits that section. Settlement (CS-28) spans
+    // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
+    // channel seat; stockout (CS-29) + its impact-$ helper (CS-30) are
+    // SC-FBA-scoped; the typo corpus (CS-31) spans all seats.
+    runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
+    scPrimary != null
+      ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary })
+      : Promise.resolve(null),
+    vcPrimary != null
+      ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary })
+      : Promise.resolve(null),
+    scPrimary != null
+      ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary })
+      : Promise.resolve(null),
+    scIds.length > 0
+      ? runSource(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds })
+      : Promise.resolve(null),
+    scIds.length > 0
+      ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds })
+      : Promise.resolve(null),
+    runSource(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds }),
   ]);
 
   // Primary seat: prefer the per-seat economic ranking; fall back to the
@@ -397,6 +470,12 @@ export async function fetchBrandBrain(
   if (heroScOut && !heroScOut.ok) failedSources.push('hero_sc');
   if (heroVcOut && !heroVcOut.ok) failedSources.push('hero_vc');
   if (!recentOut.ok) failedSources.push('recent_activity');
+  // Phase 8 enrichment (non-fatal; a failure omits the section). Report the
+  // canonical source per family: settlement (CS-28) drives capture_rate, CS-29
+  // drives stockout, CS-31 drives brand_typos.
+  if (settlementOut && !settlementOut.ok) failedSources.push('capture_rate');
+  if (stockoutOut && !stockoutOut.ok) failedSources.push('stockout');
+  if (typoOut && !typoOut.ok) failedSources.push('brand_typos');
 
   const sourceInput = async (
     queryId: string,
@@ -422,6 +501,23 @@ export async function fetchBrandBrain(
     heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
     heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
     recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
+    // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
+    // assignable to the typed SourceInput<CSxxRow> params (the computer row
+    // types are all-optional/unknown), so the existing helper is reused.
+    settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
+    captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
+    captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
+    captureRateDaily: await sourceInput(
+      CS_CAPTURE_RATE_DAILY_QUERY_ID,
+      captureDailyOut,
+    ),
+    stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
+    stockoutImpact: await sourceInput(
+      CS_STOCKOUT_IMPACT_QUERY_ID,
+      stockoutImpactOut,
+    ),
+    brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
+    brandTermsInput,
   });
   const { path } = await saveBrain(brain, dataDirOverride);
 
@@ -438,6 +534,9 @@ export async function fetchBrandBrain(
         (brain.catalog.top_asins.vc?.length ?? 0)
       : null,
     has_recent_activity: brain.recent_activity !== undefined,
+    has_capture_rate: brain.capture_rate_calibration !== undefined,
+    stockout_count: brain.stockouts?.length ?? null,
+    brand_typo_count: brain.brand_term_typos?.length ?? null,
     failed_sources: failedSources,
   };
   await writeBrainStatus(
@@ -514,6 +613,37 @@ async function writeBrainStatus(
   const tmp = `${path}.tmp`;
   await writeFile(tmp, JSON.stringify(status, null, 2), 'utf-8');
   await rename(tmp, path);
+}
+
+/**
+ * Best-effort read of the brand's Tier-3 brand_terms (+ negation.competitor_brands)
+ * for the typo detector. Returns undefined when context.yaml is absent or carries
+ * no brand_terms (a brand-new brand whose cold-start hasn't run) — the typo
+ * section then no-ops cleanly. (Gating mirrors the retired cold-start enrich
+ * step: typo detection needs Tier-3 brand_terms canonicals to match against.)
+ */
+async function readBrandTermsInput(
+  slug: string,
+  dataDirOverride?: string,
+): Promise<
+  { brand_terms: BrandTermsBlock; competitor_brands?: string[] } | undefined
+> {
+  try {
+    const raw = await readFile(contextPath(slug, dataDirOverride), 'utf-8');
+    const parsed = parseYaml(raw) as {
+      brand_terms?: BrandTermsBlock;
+      negation?: { competitor_brands?: string[] };
+    } | null;
+    if (!parsed || typeof parsed !== 'object' || !parsed.brand_terms) {
+      return undefined;
+    }
+    return {
+      brand_terms: parsed.brand_terms,
+      competitor_brands: parsed.negation?.competitor_brands,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function withinTtl(fetchedAtIso: string, now: Date): boolean {

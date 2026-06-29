@@ -90,10 +90,30 @@ export interface RunQueryTelemetry {
   query_table?: string;
 }
 
-export async function runQuery<Row = Record<string, unknown>>(
+/** Server-side per-request row cap on the datahub gateway (`/api/query`). A
+ *  single request returning MORE than this is REJECTED outright, not
+ *  truncated — so a large mask/export must be paged. */
+export const SERVICE_ROW_CAP = 50_000;
+/** Shrink floor when a page still trips the 10 MB byte cap (wide rows). */
+export const MIN_PAGE_SIZE = 1_000;
+/** Hard ceiling on assembled rows before we tell the caller to narrow. */
+export const MAX_PAGINATED_ROWS = 2_000_000;
+
+/** Detects EITHER gateway cap rejection — the 50k-row cap ("…service cap is
+ *  50000") OR the 10 MB byte cap ("…service cap of 10.0 MB"). Matched across
+ *  both `message` (raw) and `friendly` because the phrasing differs between
+ *  the two fields. The mysql backend never emits these. */
+export function isServiceCapFailure(r: DataQueryResult<unknown>): boolean {
+  if (r.ok) return false;
+  return /service cap/i.test(`${r.message ?? ''} ${r.friendly ?? ''}`);
+}
+
+/** Resolve creds + route one query to the datahub or mysql backend. The raw
+ *  single shot; `runQuery` wraps this with cap-aware pagination. */
+async function runOnce<Row>(
   sql: string,
-  params: unknown[] | Record<string, unknown> = [],
-  options: RunQueryOptions & RunQueryTelemetry = {},
+  params: unknown[] | Record<string, unknown>,
+  options: RunQueryOptions & RunQueryTelemetry,
 ): Promise<DataQueryResult<Row>> {
   let creds: MysqlCreds | DatahubCreds;
   try {
@@ -115,6 +135,93 @@ export async function runQuery<Row = Record<string, unknown>>(
     return runDatahubQuery<Row>(creds, sql, params, options);
   }
   return runMysqlQuery<Row>(creds, sql, params, options);
+}
+
+/**
+ * Execute a query, transparently paginating when the result exceeds a datahub
+ * gateway per-request cap (50k rows OR 10 MB). Both are hard rejects, so a
+ * large pull (e.g. an account's full negative-keyword exclusion mask) would
+ * otherwise fail outright and starve downstream skills. We page with a STABLE
+ * order (ORDER BY every output column by position) so OFFSET windows neither
+ * skip nor duplicate rows, shrinking the window when a wide-row page trips the
+ * byte cap, then concatenate. Only the datahub backend caps; the mysql backend
+ * returns the single shot unchanged.
+ */
+export async function runQuery<Row = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] | Record<string, unknown> = [],
+  options: RunQueryOptions & RunQueryTelemetry = {},
+): Promise<DataQueryResult<Row>> {
+  const first = await runOnce<Row>(sql, params, options);
+  if (!isServiceCapFailure(first)) return first;
+  return paginateOverCap<Row>(sql, (pageSql) =>
+    runOnce<Row>(pageSql, params, options),
+  );
+}
+
+/**
+ * Page a cap-exceeding SELECT through repeated LIMIT/OFFSET windows. `exec`
+ * runs one already-param-bound statement (LIMIT/OFFSET are inlined integers,
+ * so the original `?`/`:name` params bind unchanged per page). Exported for
+ * unit testing. Non-SELECT statements can't be wrapped — but they don't return
+ * rows, so they never hit the cap.
+ */
+export async function paginateOverCap<Row>(
+  sql: string,
+  exec: (pageSql: string) => Promise<DataQueryResult<Row>>,
+): Promise<DataQueryResult<Row>> {
+  const t0 = Date.now();
+  const inner = sql.trim().replace(/;\s*$/, '');
+  if (!/^\s*(select|with)\b/i.test(inner)) {
+    const message =
+      'Result exceeds the 50,000-row service cap and the statement is not a ' +
+      'SELECT, so it cannot be paginated. Narrow the query.';
+    return { ok: false, kind: 'unknown', message, friendly: message, durationMs: Date.now() - t0 };
+  }
+  // Probe the output column count for a positional, deterministic ORDER BY.
+  const probe = await exec(`SELECT * FROM (${inner}) AS _mx_page LIMIT 1`);
+  if (!probe.ok) return probe;
+  const ncols = probe.rows.length
+    ? Object.keys(probe.rows[0] as Record<string, unknown>).length
+    : 0;
+  if (ncols === 0) {
+    return { ok: true, rows: [], rowCount: 0, durationMs: Date.now() - t0 };
+  }
+  const orderBy = Array.from({ length: ncols }, (_, i) => String(i + 1)).join(', ');
+  const all: Row[] = [];
+  let pageSize = SERVICE_ROW_CAP;
+  let offset = 0;
+  // Bounded: page advances + shrinks are both finite; the iteration cap is a
+  // safety net (real results converge in a handful of iterations).
+  for (let iter = 0; iter < 10_000; iter++) {
+    const r = await exec(
+      `SELECT * FROM (${inner}) AS _mx_page ORDER BY ${orderBy} ` +
+        `LIMIT ${pageSize} OFFSET ${offset}`,
+    );
+    if (!r.ok) {
+      // A page can still trip the 10 MB byte cap (wide rows) even under the
+      // row cap. Halve the window and retry the SAME offset — the stable
+      // ORDER BY keeps offsets consistent across page sizes.
+      if (isServiceCapFailure(r) && pageSize > MIN_PAGE_SIZE) {
+        pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+        continue;
+      }
+      return r;
+    }
+    all.push(...r.rows);
+    if (r.rows.length < pageSize) {
+      return { ok: true, rows: all, rowCount: all.length, durationMs: Date.now() - t0 };
+    }
+    offset += r.rows.length;
+    if (all.length >= MAX_PAGINATED_ROWS) {
+      const m =
+        `Result exceeds ${MAX_PAGINATED_ROWS} rows even after pagination; ` +
+        `narrow the query (add a WHERE filter or aggregate).`;
+      return { ok: false, kind: 'unknown', message: m, friendly: m, durationMs: Date.now() - t0 };
+    }
+  }
+  const m = 'Pagination did not converge; narrow the query.';
+  return { ok: false, kind: 'unknown', message: m, friendly: m, durationMs: Date.now() - t0 };
 }
 
 // ---------------------------------------------------------------------------

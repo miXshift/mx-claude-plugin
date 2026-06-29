@@ -28889,15 +28889,6 @@ function runAppliedPath(brandSlug, skillId, runDate, dataDirOverride) {
     "applied.json"
   );
 }
-function enrichmentPath(brandSlug, runDate, dataDirOverride) {
-  return join4(
-    brandDir(brandSlug, dataDirOverride),
-    "runs",
-    "mx-brand-context",
-    runDate,
-    `${runDate}.enrichment.json`
-  );
-}
 function indexPath(dataDirOverride) {
   return join4(clientsDir(dataDirOverride), "index.yaml");
 }
@@ -49601,7 +49592,7 @@ var require_umd = __commonJS({
         LongPrototype.toInt = function toInt() {
           return this.unsigned ? this.low >>> 0 : this.low;
         };
-        LongPrototype.toNumber = function toNumber3() {
+        LongPrototype.toNumber = function toNumber4() {
           if (this.unsigned)
             return (this.high >>> 0) * TWO_PWR_32_DBL + (this.low >>> 0);
           return this.high * TWO_PWR_32_DBL + (this.low >>> 0);
@@ -64521,7 +64512,11 @@ var init_telemetry = __esm({
 });
 
 // src/lib/data/query-runner.ts
-async function runQuery(sql, params = [], options = {}) {
+function isServiceCapFailure(r) {
+  if (r.ok) return false;
+  return /service cap/i.test(`${r.message ?? ""} ${r.friendly ?? ""}`);
+}
+async function runOnce(sql, params, options) {
   let creds;
   try {
     creds = await resolveCreds(options);
@@ -64539,6 +64534,55 @@ async function runQuery(sql, params = [], options = {}) {
     return runDatahubQuery(creds, sql, params, options);
   }
   return runMysqlQuery(creds, sql, params, options);
+}
+async function runQuery(sql, params = [], options = {}) {
+  const first = await runOnce(sql, params, options);
+  if (!isServiceCapFailure(first)) return first;
+  return paginateOverCap(
+    sql,
+    (pageSql) => runOnce(pageSql, params, options)
+  );
+}
+async function paginateOverCap(sql, exec4) {
+  const t0 = Date.now();
+  const inner = sql.trim().replace(/;\s*$/, "");
+  if (!/^\s*(select|with)\b/i.test(inner)) {
+    const message = "Result exceeds the 50,000-row service cap and the statement is not a SELECT, so it cannot be paginated. Narrow the query.";
+    return { ok: false, kind: "unknown", message, friendly: message, durationMs: Date.now() - t0 };
+  }
+  const probe = await exec4(`SELECT * FROM (${inner}) AS _mx_page LIMIT 1`);
+  if (!probe.ok) return probe;
+  const ncols = probe.rows.length ? Object.keys(probe.rows[0]).length : 0;
+  if (ncols === 0) {
+    return { ok: true, rows: [], rowCount: 0, durationMs: Date.now() - t0 };
+  }
+  const orderBy = Array.from({ length: ncols }, (_, i) => String(i + 1)).join(", ");
+  const all = [];
+  let pageSize = SERVICE_ROW_CAP;
+  let offset = 0;
+  for (let iter = 0; iter < 1e4; iter++) {
+    const r = await exec4(
+      `SELECT * FROM (${inner}) AS _mx_page ORDER BY ${orderBy} LIMIT ${pageSize} OFFSET ${offset}`
+    );
+    if (!r.ok) {
+      if (isServiceCapFailure(r) && pageSize > MIN_PAGE_SIZE) {
+        pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+        continue;
+      }
+      return r;
+    }
+    all.push(...r.rows);
+    if (r.rows.length < pageSize) {
+      return { ok: true, rows: all, rowCount: all.length, durationMs: Date.now() - t0 };
+    }
+    offset += r.rows.length;
+    if (all.length >= MAX_PAGINATED_ROWS) {
+      const m2 = `Result exceeds ${MAX_PAGINATED_ROWS} rows even after pagination; narrow the query (add a WHERE filter or aggregate).`;
+      return { ok: false, kind: "unknown", message: m2, friendly: m2, durationMs: Date.now() - t0 };
+    }
+  }
+  const m = "Pagination did not converge; narrow the query.";
+  return { ok: false, kind: "unknown", message: m, friendly: m, durationMs: Date.now() - t0 };
 }
 async function runMysqlQuery(creds, sql, params, options) {
   const t0 = Date.now();
@@ -64951,7 +64995,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, DatahubNetworkError;
+var import_promise, SERVICE_ROW_CAP, MIN_PAGE_SIZE, MAX_PAGINATED_ROWS, DatahubNetworkError;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -64959,6 +65003,9 @@ var init_query_runner = __esm({
     init_credentials();
     init_schema2();
     init_telemetry();
+    SERVICE_ROW_CAP = 5e4;
+    MIN_PAGE_SIZE = 1e3;
+    MAX_PAGINATED_ROWS = 2e6;
     DatahubNetworkError = class extends Error {
       constructor(msg2) {
         super(msg2);
@@ -68148,10 +68195,11 @@ async function openInBrowser(path2) {
 }
 
 // src/commands/brand-brain.ts
-import { readFile as readFile14 } from "node:fs/promises";
+import { readFile as readFile15 } from "node:fs/promises";
 
 // src/lib/brain/fetch.ts
-import { writeFile as writeFile9, mkdir as mkdir9, rename as rename7 } from "node:fs/promises";
+var import_yaml11 = __toESM(require_dist(), 1);
+import { writeFile as writeFile9, readFile as readFile13, mkdir as mkdir9, rename as rename7 } from "node:fs/promises";
 import { dirname as dirname12 } from "node:path";
 
 // src/lib/data/dispatch.ts
@@ -68403,7 +68451,12 @@ async function runDispatched(id, opts = {}) {
     if (localSql !== void 0) {
       return runSqlText(id, stripSqlHeader(localSql), opts, "named_local_dev");
     }
-    return runNamed(id, opts);
+    const named = await runNamed(id, opts);
+    if (!named.ok && named.failure.kind === "unknown_query" && entry.file) {
+      const { sql: sql2 } = await readQuerySql(id);
+      return runSqlText(id, sql2, opts, "named_repo_fallback");
+    }
+    return named;
   }
   if (entry.dispatch === "sproc") {
     const localSql = await resolveLocalSprocSql(entry.sproc);
@@ -68594,12 +68647,93 @@ var brainCampaignStructureSchema = external_exports.object({
   distinct_objectives: external_exports.array(external_exports.string()),
   distinct_item_groups: external_exports.array(external_exports.string()),
   distinct_brands: external_exports.array(external_exports.string()),
+  /** % of campaigns carrying a non-empty Objective tag. The brain's
+   *  substitute for the deep skill's retired CS-27 (campaign-objective
+   *  completeness). Whole number 0-100. NOTE: unlike CS-27 this is NOT
+   *  spend-weighted and does not pre-filter to T-30 spending campaigns — it
+   *  is a flat share over every campaign row the BRAIN-CAMPAIGN source
+   *  returned (enabled + paused). null only when there are no campaigns.
+   *  `.optional()` for backward-compat: brains fetched before this field
+   *  existed (and older test fixtures) must still validate on load. */
+  objective_tag_completeness_pct: external_exports.number().min(0).max(100).nullable().optional(),
   /** % of campaigns on smart/default bid optimization. Derivation
    *  assumption (BidOptimization value semantics) is flagged in the SP
    *  draft; verify against real warehouse values. */
   smart_default_adoption_pct: external_exports.number().min(0).max(100).nullable(),
   /** % of campaigns carrying a BrandEntityId. */
   brand_entity_id_presence_pct: external_exports.number().min(0).max(100).nullable()
+});
+var brainSettlementCellSchema = external_exports.object({
+  acos_1day: external_exports.number().nullable(),
+  acos_7day: external_exports.number().nullable(),
+  acos_14day: external_exports.number().nullable(),
+  improvement_pts_1_to_7: external_exports.number().nullable(),
+  improvement_pts_1_to_14: external_exports.number().nullable(),
+  settled_pct_at_1day: external_exports.number().nullable(),
+  status: external_exports.enum(["computed", "insufficient_data"]).optional()
+});
+var brainDailySettlementCurveSchema = external_exports.object({
+  by_campaign_type: external_exports.object({
+    sponsoredProducts: brainSettlementCellSchema,
+    sponsoredBrands: brainSettlementCellSchema,
+    sponsoredDisplay: brainSettlementCellSchema
+  }),
+  dow_offset_pts: external_exports.object({
+    monday: external_exports.number(),
+    tuesday: external_exports.number(),
+    wednesday: external_exports.number(),
+    thursday: external_exports.number(),
+    friday: external_exports.number(),
+    saturday: external_exports.number(),
+    sunday: external_exports.number()
+  }),
+  stability_score: external_exports.enum(["high", "medium", "low"]),
+  last_calibrated: external_exports.string()
+});
+var brainCaptureRateCalibrationSchema = external_exports.object({
+  enabled: external_exports.boolean(),
+  capture_rate_pct: external_exports.number().nullable(),
+  fresh_day_acos_improvement_pts: external_exports.number().nullable(),
+  settlement_application_rule: external_exports.string(),
+  /** Which channel/window the scalars were measured on. */
+  basis: external_exports.enum(["SC", "VC"]).nullable(),
+  settled_window_days: external_exports.number().int().nullable(),
+  /** The CS-28 daily curve, nested exactly as in the Tier-3 block.
+   *  Present only when the settlement source ran and produced a curve. */
+  daily_settlement_curve: brainDailySettlementCurveSchema.optional()
+});
+var brainStockoutSchema = external_exports.object({
+  asin: external_exports.string(),
+  item_name: external_exports.string(),
+  started: external_exports.string(),
+  ended: external_exports.string(),
+  days_in_window: external_exports.number().int(),
+  days_at_zero: external_exports.number().int(),
+  impacted_revenue_usd: external_exports.number(),
+  signal_source: external_exports.enum([
+    "sellable_zero",
+    "alert_active",
+    "days_of_supply_low",
+    "multi"
+  ])
+});
+var brainBrandTermVariantSchema = external_exports.object({
+  term: external_exports.string(),
+  orders: external_exports.number(),
+  sales: external_exports.number(),
+  spend: external_exports.number()
+});
+var brainBrandTermTypoSchema = external_exports.object({
+  canonical_match: external_exports.string(),
+  root_token: external_exports.string(),
+  distance: external_exports.number().int(),
+  match_type: external_exports.enum(["levenshtein", "token_membership"]),
+  variant_count: external_exports.number().int(),
+  total_orders: external_exports.number(),
+  total_sales: external_exports.number(),
+  total_spend: external_exports.number(),
+  top_variants: external_exports.array(brainBrandTermVariantSchema),
+  all_variants: external_exports.array(brainBrandTermVariantSchema)
 });
 var brainObservationAggregateSchema = external_exports.object({
   value: external_exports.unknown(),
@@ -68622,7 +68756,11 @@ var brandBrainSchema = external_exports.object({
     campaign: brainSourceMetaSchema.optional(),
     hero_sc: brainSourceMetaSchema.optional(),
     hero_vc: brainSourceMetaSchema.optional(),
-    recent_activity: brainSourceMetaSchema.optional()
+    recent_activity: brainSourceMetaSchema.optional(),
+    // Phase 8 enrichment sources.
+    capture_rate: brainSourceMetaSchema.optional(),
+    stockout: brainSourceMetaSchema.optional(),
+    brand_typos: brainSourceMetaSchema.optional()
   }),
   seller: brainSellerSchema.optional(),
   /** Present when at least one catalog source (SC or VC) fetched ok. */
@@ -68632,3208 +68770,23 @@ var brandBrainSchema = external_exports.object({
   /** Brand-wide ad-activity baseline (cached BRAIN-RECENT-ACTIVITY).
    *  Present when the recent-activity source fetched ok. */
   recent_activity: brainRecentActivitySchema.optional(),
+  /** Attribution-window calibration scalars (+ nested daily curve).
+   *  Present when CS-06/07/08 and/or CS-28 produced usable signal. */
+  capture_rate_calibration: brainCaptureRateCalibrationSchema.optional(),
+  /** ADVISORY: detected FBA stockout windows (CS-29 + CS-30). Present
+   *  when the stockout source ran; empty array when it ran and found
+   *  none. AM confirms these into structural_events[]. */
+  stockouts: external_exports.array(brainStockoutSchema).optional(),
+  /** ADVISORY: detected brand-term typo clusters (CS-31 vs Tier-3
+   *  brand_terms). Omitted entirely when the brand has no brand_terms
+   *  yet (cold-start hasn't run). AM confirms these into
+   *  brand_terms.variants[]. */
+  brand_term_typos: external_exports.array(brainBrandTermTypoSchema).optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({})
 });
 var BRAIN_SCHEMA_VERSION = 1;
-
-// src/lib/brain/assemble.ts
-function assembleBrain(input) {
-  const now = input.now ?? /* @__PURE__ */ new Date();
-  const seller = assembleSellerSection(input.sellerRows, input.primarySellerId);
-  const meta3 = (src) => ({
-    sproc: src.sproc,
-    fetched_at: now.toISOString(),
-    row_count: src.rows.length,
-    source_hash: hashRows(src.rows)
-  });
-  const sources = {
-    seller: meta3({ rows: input.sellerRows, sproc: input.sellerSproc })
-  };
-  if (input.catalogSc) sources.catalog_sc = meta3(input.catalogSc);
-  if (input.catalogVc) sources.catalog_vc = meta3(input.catalogVc);
-  if (input.campaign) sources.campaign = meta3(input.campaign);
-  if (input.heroSc) sources.hero_sc = meta3(input.heroSc);
-  if (input.heroVc) sources.hero_vc = meta3(input.heroVc);
-  if (input.recentActivity) sources.recent_activity = meta3(input.recentActivity);
-  const hasCatalog = input.catalogSc || input.catalogVc || input.heroSc || input.heroVc;
-  return {
-    schema_version: BRAIN_SCHEMA_VERSION,
-    brand_slug: input.brandSlug,
-    generated_at: now.toISOString(),
-    generator: input.generator,
-    sources,
-    seller,
-    ...hasCatalog ? {
-      catalog: assembleCatalogSection(
-        input.catalogSc?.rows ?? null,
-        input.catalogVc?.rows ?? null,
-        input.heroSc?.rows ?? null,
-        input.heroVc?.rows ?? null
-      )
-    } : {},
-    ...input.campaign ? { campaign_structure: assembleCampaignSection(input.campaign.rows) } : {},
-    ...input.recentActivity ? {
-      recent_activity: assembleRecentActivity(
-        input.recentActivity.rows[0],
-        now
-      )
-    } : {},
-    observations: input.previousObservations ?? {}
-  };
-}
-function assembleSellerSection(rows, primarySellerId) {
-  const byId = primarySellerId != null ? rows.find((r) => toNumber2(r.ID) === primarySellerId) : void 0;
-  const primary = byId ?? rows.find((r) => toNumber2(r.ACOSTarget) !== null) ?? rows[0] ?? {};
-  return {
-    merchant_alias: toTrimmedString(primary.MerchantAlias),
-    storefront_name: toTrimmedString(primary.Name),
-    acos_target_pct: toNumber2(primary.ACOSTarget),
-    monthly_budget: toNumber2(primary.MonthlyBudget),
-    marketplace: toTrimmedString(primary.MarketPlaceName),
-    merchant_region: toTrimmedString(primary.MerchantRegion),
-    agency_name: toTrimmedString(primary.AgencyName),
-    default_currency_code: toTrimmedString(primary.DefaultCurrencyCode),
-    i_brand_report_enabled: toBool(primary.iBrandReportEnabled),
-    i_running_initial_pull: toBool(primary.iRunningInitialPull),
-    data_freshness: {
-      ads_latest: toIso2(primary.dtLatestRecordDate),
-      retail_latest: toIso2(primary.dtMWSLatestRecordDate)
-    },
-    activated: {
-      ads: toIso2(primary.dtActivatedOn),
-      retail: toIso2(primary.dtMwsActivatedOn)
-    },
-    primary_seller_id: toNumber2(primary.ID)
-  };
-}
-function assembleCatalogSection(scRows, vcRows, heroScRows = null, heroVcRows = null) {
-  const asins = /* @__PURE__ */ new Set();
-  const subBrands = /* @__PURE__ */ new Set();
-  const itemGroups = /* @__PURE__ */ new Set();
-  const skus = /* @__PURE__ */ new Set();
-  for (const r of scRows ?? []) {
-    addIf(asins, toTrimmedString(r.ASIN ?? r.Asin));
-    addIf(skus, toTrimmedString(r.SKU));
-    addIf(subBrands, toTrimmedString(r.Brand));
-    addIf(itemGroups, toTrimmedString(r.ItemGroup));
-  }
-  for (const r of vcRows ?? []) {
-    addIf(asins, toTrimmedString(r.Asin ?? r.ASIN));
-    addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
-    addIf(itemGroups, toTrimmedString(r.ItemGroup));
-  }
-  const sc = heroScRows ? heroScRows.map(toHeroAsin).filter(isHeroAsin) : null;
-  const vc = heroVcRows ? heroVcRows.map(toHeroAsin).filter(isHeroAsin) : null;
-  const topAsins = sc || vc ? { ...sc ? { sc } : {}, ...vc ? { vc } : {} } : void 0;
-  return {
-    asin_count: asins.size,
-    sku_count: scRows === null ? null : skus.size,
-    sub_brands: [...subBrands].sort(),
-    item_groups: [...itemGroups].sort(),
-    ...topAsins ? { top_asins: topAsins } : {}
-  };
-}
-function toHeroAsin(r) {
-  const asin = toTrimmedString(r.asin ?? r.ASIN ?? r.Asin);
-  if (!asin) return null;
-  return {
-    asin,
-    title: toTrimmedString(r.title ?? r.Title ?? r.ItemName),
-    ordered_revenue_365d: toNumber2(r.ordered_revenue_365d) ?? 0,
-    units_365d: toIntOrNull(r.units_365d),
-    // SC-only stock (VC hero rows omit these → null).
-    sellable_qty: toIntOrNull(r.sellable_qty),
-    days_of_supply: toIntOrNull(r.days_of_supply)
-  };
-}
-function isHeroAsin(v) {
-  return v !== null;
-}
-function assembleRecentActivity(row, now) {
-  const spend = toNumber2(row?.spend_30d);
-  const adSales = toNumber2(row?.ad_sales_30d);
-  const acos = spend !== null && adSales !== null && adSales !== 0 ? Math.round(spend / adSales * 1e4) / 100 : null;
-  return {
-    spend_30d: spend,
-    ad_sales_30d: adSales,
-    acos_30d: acos,
-    as_of: now.toISOString()
-  };
-}
-function assembleCampaignSection(rows) {
-  const objectives = /* @__PURE__ */ new Set();
-  const itemGroups = /* @__PURE__ */ new Set();
-  const brands = /* @__PURE__ */ new Set();
-  let paused = 0;
-  let bidSmart = 0;
-  let brandEntity = 0;
-  for (const r of rows) {
-    addIf(objectives, toTrimmedString(r.Objective));
-    addIf(itemGroups, toTrimmedString(r.ItemGroup));
-    addIf(brands, toTrimmedString(r.Brand));
-    if (toTrimmedString(r.State)?.toLowerCase() === "paused") paused++;
-    const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
-    if (bid && SMART_BID_VALUES.has(bid)) bidSmart++;
-    if (toTrimmedString(r.BrandEntityId)) brandEntity++;
-  }
-  return {
-    campaign_count: rows.length,
-    paused_campaign_count: paused,
-    distinct_objectives: [...objectives].sort(),
-    distinct_item_groups: [...itemGroups].sort(),
-    distinct_brands: [...brands].sort(),
-    smart_default_adoption_pct: rows.length > 0 ? Math.round(bidSmart / rows.length * 100) : null,
-    brand_entity_id_presence_pct: rows.length > 0 ? Math.round(brandEntity / rows.length * 100) : null
-  };
-}
-var SMART_BID_VALUES = /* @__PURE__ */ new Set([
-  "smart",
-  "default",
-  "auto",
-  "optimized",
-  "enabled",
-  "true",
-  "1"
-]);
-function addIf(set2, v) {
-  if (v) set2.add(v);
-}
-function hashRows(rows) {
-  const canonical = JSON.stringify(
-    rows.map(
-      (r) => Object.keys(r).sort().map((k) => [k, normalizeForHash(r[k])])
-    )
-  );
-  return createHash("sha256").update(canonical).digest("hex");
-}
-function normalizeForHash(v) {
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "bigint") return v.toString();
-  return v ?? null;
-}
-function toTrimmedString(v) {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  return s.length > 0 ? s : null;
-}
-function toNumber2(v) {
-  if (v === null || v === void 0 || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function toIntOrNull(v) {
-  const n = toNumber2(v);
-  return n === null ? null : Math.trunc(n);
-}
-function toBool(v) {
-  if (v === null || v === void 0) return null;
-  if (typeof v === "boolean") return v;
-  const n = toNumber2(v);
-  if (n === null) return null;
-  return n !== 0;
-}
-function toIso2(v) {
-  if (v === null || v === void 0 || v === "") return null;
-  const d = v instanceof Date ? v : new Date(String(v));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-// src/lib/brain/read.ts
-var import_yaml10 = __toESM(require_dist(), 1);
-import { readFile as readFile12, writeFile as writeFile8, mkdir as mkdir8, rename as rename6 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
-init_resolve();
-init_format_error();
-async function loadBrain(brandSlug, dataDirOverride) {
-  const path2 = brainPath(brandSlug, dataDirOverride);
-  let raw;
-  try {
-    raw = await readFile12(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError11(err)) {
-      return {
-        ok: false,
-        path: path2,
-        kind: "file_missing",
-        errors: [
-          `No brand-brain.yaml for "${brandSlug}". Run \`mixshift brand brain fetch ${brandSlug}\` to populate it.`
-        ]
-      };
-    }
-    throw err;
-  }
-  let parsed;
-  try {
-    parsed = (0, import_yaml10.parse)(raw);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, path: path2, kind: "malformed_yaml", errors: [message] };
-  }
-  const result = brandBrainSchema.safeParse(parsed);
-  if (!result.success) {
-    return {
-      ok: false,
-      path: path2,
-      kind: "schema_violation",
-      errors: [formatZodError(result.error, `brand-brain.yaml for ${brandSlug}`)]
-    };
-  }
-  return { ok: true, brain: result.data, path: path2 };
-}
-async function saveBrain(brain, dataDirOverride) {
-  const path2 = brainPath(brain.brand_slug, dataDirOverride);
-  await mkdir8(dirname11(path2), { recursive: true });
-  const tmp = `${path2}.tmp`;
-  await writeFile8(tmp, (0, import_yaml10.stringify)(brain), "utf-8");
-  await rename6(tmp, path2);
-  return { path: path2 };
-}
-var BRAND_FIELD_REGISTRY = {
-  // Both tiers — context wins, brain pre-fills.
-  acos_target_pct: { contextPath: "management.acos_target_pct", brainPath: "seller.acos_target_pct", brainSource: "seller" },
-  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc" },
-  marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller" },
-  // Tier 3 only — human judgment.
-  primary_metric: { contextPath: "management.primary_metric" },
-  attribution_window_days: { contextPath: "management.attribution_window_days" },
-  tacos_target_pct: { contextPath: "management.tacos_target_pct" },
-  tacos_goal_pct: { contextPath: "management.tacos_goal_pct" },
-  posture_stance: { contextPath: "posture.stance" },
-  posture_multiplier: { contextPath: "posture.multiplier" },
-  monthly_total_sales_target: { contextPath: "goals.monthly_total_sales_target" },
-  quarterly_total_sales_target: { contextPath: "goals.quarterly_total_sales_target" },
-  protected_terms: { contextPath: "negation.protected_terms" },
-  lane_rules: { contextPath: "negation.lane_rules" },
-  campaign_naming_pattern: { contextPath: "campaign_structure.naming_pattern" },
-  structural_events: { contextPath: "structural_events" },
-  paused_campaigns: { contextPath: "paused_campaigns" },
-  // Tier 2 only — auto-derived; the brain is authoritative.
-  monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller" },
-  recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity" },
-  recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity" },
-  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc" },
-  hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc" }
-};
-var BRAND_FIELD_KEYS = Object.keys(
-  BRAND_FIELD_REGISTRY
-);
-function getByPath(obj, path2) {
-  return path2.split(".").reduce((acc, seg) => {
-    if (acc == null || typeof acc !== "object") return void 0;
-    const key = /^\d+$/.test(seg) ? Number(seg) : seg;
-    return acc[key];
-  }, obj);
-}
-function isPresent(v) {
-  if (v == null) return false;
-  if (typeof v === "string") return v.length > 0;
-  if (typeof v === "number") return Number.isFinite(v);
-  if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === "object") return Object.keys(v).length > 0;
-  return true;
-}
-function resolveFieldFrom(ctx, brain, spec) {
-  if (spec.contextPath && ctx.ok) {
-    const v = getByPath(ctx.context, spec.contextPath);
-    if (isPresent(v)) return { value: v, source: "context" };
-  }
-  if (spec.brainPath && brain.ok) {
-    const v = getByPath(brain.brain, spec.brainPath);
-    if (isPresent(v)) {
-      return {
-        value: v,
-        source: "brain",
-        fetched_at: spec.brainSource ? brain.brain.sources[spec.brainSource]?.fetched_at : void 0
-      };
-    }
-  }
-  return null;
-}
-async function resolveBrandFields(brandSlug, dataDirOverride) {
-  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
-  const brain = await loadBrain(brandSlug, dataDirOverride);
-  const out = {};
-  for (const key of BRAND_FIELD_KEYS) {
-    out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
-  }
-  return out;
-}
-var CONTEXT_PATH_TO_KEY = {};
-for (const k of BRAND_FIELD_KEYS) {
-  const spec = BRAND_FIELD_REGISTRY[k];
-  if (spec.contextPath !== void 0) CONTEXT_PATH_TO_KEY[spec.contextPath] = k;
-}
-function brandFieldKeyForContextPath(contextDotPath) {
-  return CONTEXT_PATH_TO_KEY[contextDotPath] ?? null;
-}
-function isFileNotFoundError11(err) {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
-}
-
-// src/lib/brain/fetch.ts
-var BRAIN_TTL_DAYS = 30;
-var BRAIN_SELLER_QUERY_ID = "BRAIN-SELLER";
-var BRAIN_CATALOG_SC_QUERY_ID = "BRAIN-CATALOG-SC";
-var BRAIN_CATALOG_VC_QUERY_ID = "BRAIN-CATALOG-VC";
-var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
-var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
-var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
-var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
-var BRAIN_SEAT_METRICS_QUERY_ID = "BRAIN-SEAT-METRICS";
-function pickPrimarySeat(accounts) {
-  if (accounts.length === 0) return null;
-  const candidates = accounts.filter((a) => a.ads_active).length > 0 ? accounts.filter((a) => a.ads_active) : accounts.filter((a) => a.is_active).length > 0 ? accounts.filter((a) => a.is_active) : accounts;
-  const accountTypeRank = {
-    SC: 0,
-    VC: 1,
-    DSP: 2,
-    unknown: 3
-  };
-  const marketplaceRank = (m) => m === "United States" ? 0 : 1;
-  const sorted = [...candidates].sort((a, b) => {
-    const byType = accountTypeRank[a.account_type] - accountTypeRank[b.account_type];
-    if (byType !== 0) return byType;
-    const byMarket = marketplaceRank(a.marketplace) - marketplaceRank(b.marketplace);
-    if (byMarket !== 0) return byMarket;
-    return a.seller_id - b.seller_id;
-  });
-  return sorted[0].seller_id;
-}
-function pickPrimarySeatByMetrics(metricRows, accounts) {
-  if (metricRows.length === 0 || accounts.length === 0) return null;
-  const known = new Set(accounts.map((a) => a.seller_id));
-  let best = null;
-  for (const row of metricRows) {
-    const sellerId = toFiniteNumber(row.seller_id);
-    if (sellerId === null || !known.has(sellerId)) continue;
-    const score = (toFiniteNumber(row.usd_revenue) ?? 0) + (toFiniteNumber(row.usd_spend) ?? 0);
-    if (best === null || score > best.score || score === best.score && sellerId < best.sellerId) {
-      best = { sellerId, score };
-    }
-  }
-  if (best === null || best.score <= 0) return null;
-  return best.sellerId;
-}
-function toFiniteNumber(v) {
-  if (v === null || v === void 0 || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-async function fetchBrandBrain(opts) {
-  const now = opts.now ?? /* @__PURE__ */ new Date();
-  const t0 = Date.now();
-  const { slug, dataDirOverride } = opts;
-  const { index } = await readIndex(dataDirOverride);
-  const brand = index.brands.find((b) => b.slug === slug);
-  if (!brand) {
-    return { status: "brand_not_found", slug };
-  }
-  const sellerIds = brand.accounts.map((a) => a.seller_id);
-  if (sellerIds.length === 0) {
-    return { status: "no_accounts", slug };
-  }
-  const heuristicSeatId = pickPrimarySeat(brand.accounts);
-  const existing = await loadBrain(slug, dataDirOverride);
-  const previousObservations = existing.ok ? existing.brain.observations : void 0;
-  if (!opts.refresh && existing.ok) {
-    const fetchedAt = existing.brain.sources.seller?.fetched_at;
-    if (fetchedAt && withinTtl(fetchedAt, now)) {
-      void track(
-        {
-          event_name: EventName.BrainFetchSkipped,
-          payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS }
-        },
-        dataDirOverride
-      );
-      return {
-        status: "skipped_fresh",
-        fetched_at: fetchedAt,
-        ttl_days: BRAIN_TTL_DAYS
-      };
-    }
-  }
-  await writeBrainStatus(
-    { status: "fetching", slug, started_at: now.toISOString() },
-    dataDirOverride
-  );
-  await track(
-    {
-      event_name: EventName.BrainFetchStarted,
-      payload: {
-        brand: slug,
-        account_count: sellerIds.length,
-        refresh: !!opts.refresh
-      }
-    },
-    dataDirOverride
-  );
-  const scIds = brand.accounts.filter((a) => a.account_type === "SC").map((a) => a.seller_id);
-  const vcIds = brand.accounts.filter((a) => a.account_type === "VC").map((a) => a.seller_id);
-  const runSource = async (queryId, ids) => {
-    try {
-      const result = await runDispatched(queryId, {
-        // seller_ids inside params serves BOTH backends: the sproc path
-        // routes it to the second CALL argument; the local dev fallback
-        // substitutes :seller_ids in the SQL text.
-        params: { seller_ids: ids },
-        dataDirOverride
-      });
-      if (!result.ok) {
-        return {
-          ok: false,
-          error: result.failure.friendly,
-          kind: result.failure.kind
-        };
-      }
-      return { ok: true, rows: result.rows, usedDispatch: result.usedDispatch };
-    } catch (err) {
-      const message = err instanceof MissingParamsError ? `${err.message} (local dev fallback SQL must reference :seller_ids)` : err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
-    }
-  };
-  const [
-    sellerOut,
-    scOut,
-    vcOut,
-    campaignOut,
-    heroScOut,
-    heroVcOut,
-    recentOut,
-    seatMetricsOut
-  ] = await Promise.all([
-    runSource(BRAIN_SELLER_QUERY_ID, sellerIds),
-    scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, scIds) : Promise.resolve(null),
-    vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, vcIds) : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, sellerIds),
-    scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, scIds) : Promise.resolve(null),
-    vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, vcIds) : Promise.resolve(null),
-    // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, sellerIds),
-    // Brand-level: per-seat revenue+spend for primary-seat selection.
-    // Best-effort and SELECTION-ONLY — not folded into a brain section,
-    // so a failure isn't even a "failed source"; it just means the
-    // heuristic decides the primary seat.
-    runSource(BRAIN_SEAT_METRICS_QUERY_ID, sellerIds)
-  ]);
-  const metricSeatId = seatMetricsOut.ok ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts) : null;
-  const primarySeatId = metricSeatId ?? heuristicSeatId;
-  if (!sellerOut.ok) {
-    return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
-  }
-  const failedSources = [];
-  if (scOut && !scOut.ok) failedSources.push("catalog_sc");
-  if (vcOut && !vcOut.ok) failedSources.push("catalog_vc");
-  if (campaignOut && !campaignOut.ok) failedSources.push("campaign");
-  if (heroScOut && !heroScOut.ok) failedSources.push("hero_sc");
-  if (heroVcOut && !heroVcOut.ok) failedSources.push("hero_vc");
-  if (!recentOut.ok) failedSources.push("recent_activity");
-  const sourceInput = async (queryId, out) => {
-    if (!out || !out.ok) return void 0;
-    const entry = await getQueryEntry(queryId);
-    return { rows: out.rows, sproc: entry.sproc ?? queryId };
-  };
-  const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
-  const brain = assembleBrain({
-    brandSlug: slug,
-    sellerRows: sellerOut.rows,
-    sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
-    primarySellerId: primarySeatId,
-    generator: `plugin@${getPluginVersion()}`,
-    now,
-    previousObservations,
-    catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
-    catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
-    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
-    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
-    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
-    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut)
-  });
-  const { path: path2 } = await saveBrain(brain, dataDirOverride);
-  const summary = {
-    row_count: sellerOut.rows.length,
-    acos_target_pct: brain.seller?.acos_target_pct ?? null,
-    merchant_alias: brain.seller?.merchant_alias ?? null,
-    used_dispatch: sellerOut.usedDispatch,
-    duration_ms: Date.now() - t0,
-    asin_count: brain.catalog?.asin_count ?? null,
-    campaign_count: brain.campaign_structure?.campaign_count ?? null,
-    hero_asin_count: brain.catalog?.top_asins ? (brain.catalog.top_asins.sc?.length ?? 0) + (brain.catalog.top_asins.vc?.length ?? 0) : null,
-    has_recent_activity: brain.recent_activity !== void 0,
-    failed_sources: failedSources
-  };
-  await writeBrainStatus(
-    {
-      status: "complete",
-      slug,
-      started_at: now.toISOString(),
-      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
-      summary
-    },
-    dataDirOverride
-  );
-  await track(
-    {
-      event_name: EventName.BrainFetchCompleted,
-      outcome: "ok",
-      duration_ms: summary.duration_ms,
-      row_count: summary.row_count,
-      payload: {
-        brand: slug,
-        used_dispatch: summary.used_dispatch,
-        has_acos_target: summary.acos_target_pct !== null,
-        asin_count: summary.asin_count,
-        campaign_count: summary.campaign_count,
-        hero_asin_count: summary.hero_asin_count,
-        has_recent_activity: summary.has_recent_activity,
-        failed_sources: failedSources,
-        // Which selector chose the primary seat: 'metrics' (per-seat
-        // revenue+spend ranking) or 'heuristic' (registry fallback).
-        primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
-        primary_seat_id: primarySeatId
-      }
-    },
-    dataDirOverride
-  );
-  return { status: "complete", path: path2, summary };
-}
-async function failFetch(opts, startedAt, error51, kind) {
-  await writeBrainStatus(
-    {
-      status: "failed",
-      slug: opts.slug,
-      started_at: startedAt.toISOString(),
-      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
-      error: error51
-    },
-    opts.dataDirOverride
-  );
-  await track(
-    {
-      event_name: EventName.BrainFetchFailed,
-      outcome: "failed",
-      error_class: kind,
-      payload: { brand: opts.slug, message: error51.slice(0, 500) }
-    },
-    opts.dataDirOverride
-  );
-  return { status: "failed", error: error51, kind };
-}
-async function writeBrainStatus(status, dataDirOverride) {
-  const path2 = brainStatusPath(status.slug, dataDirOverride);
-  await mkdir9(dirname12(path2), { recursive: true });
-  const tmp = `${path2}.tmp`;
-  await writeFile9(tmp, JSON.stringify(status, null, 2), "utf-8");
-  await rename7(tmp, path2);
-}
-function withinTtl(fetchedAtIso, now) {
-  const fetched = new Date(fetchedAtIso).getTime();
-  if (Number.isNaN(fetched)) return false;
-  const ageMs = now.getTime() - fetched;
-  return ageMs >= 0 && ageMs < BRAIN_TTL_DAYS * 24 * 60 * 60 * 1e3;
-}
-
-// src/lib/brain/observe.ts
-init_zod();
-
-// src/lib/brain/discoveries.ts
-init_zod();
-init_resolve();
-import { readFile as readFile13, writeFile as writeFile10, mkdir as mkdir10, rename as rename8, unlink as unlink3 } from "node:fs/promises";
-import { dirname as dirname13 } from "node:path";
-var contextFieldProposalSchema = external_exports.object({
-  field: external_exports.string().min(1),
-  proposed_value: external_exports.unknown(),
-  source_skill: external_exports.string().min(1),
-  confidence: external_exports.number().min(0).max(1),
-  note: external_exports.string().optional(),
-  observed_by: external_exports.string().min(1),
-  observed_at: external_exports.string().min(1)
-});
-var looseItemSchema = external_exports.object({}).passthrough();
-var discoveriesDocSchema = external_exports.object({
-  schema_version: external_exports.literal(1).default(1),
-  generated_by: external_exports.string().min(1),
-  generated_at: external_exports.string().min(1),
-  discoveries: external_exports.object({
-    context_field_proposals: external_exports.array(contextFieldProposalSchema).optional()
-  }).catchall(external_exports.array(looseItemSchema)).default({})
-});
-async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
-  if (captures.length === 0) return { ok: false, reason: "no captures supplied" };
-  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
-  let doc;
-  try {
-    const raw = await readFile13(path2, "utf-8");
-    doc = discoveriesDocSchema.parse(JSON.parse(raw));
-  } catch {
-    doc = {
-      schema_version: 1,
-      generated_by: captures[0].observed_by,
-      generated_at: captures[0].observed_at,
-      discoveries: {}
-    };
-  }
-  const byField = new Map(
-    (doc.discoveries.context_field_proposals ?? []).map((p) => [p.field, p])
-  );
-  for (const c of captures) {
-    byField.set(c.field, {
-      field: c.field,
-      proposed_value: c.proposed_value,
-      source_skill: c.source_skill,
-      confidence: c.confidence ?? 0.95,
-      ...c.note ? { note: c.note } : {},
-      observed_by: c.observed_by,
-      observed_at: c.observed_at
-    });
-  }
-  doc.discoveries.context_field_proposals = [...byField.values()];
-  doc.generated_at = captures[captures.length - 1].observed_at;
-  try {
-    await mkdir10(dirname13(path2), { recursive: true });
-    const tmp = `${path2}.tmp`;
-    await writeFile10(tmp, JSON.stringify(doc, null, 2), "utf-8");
-    await rename8(tmp, path2);
-    return {
-      ok: true,
-      path: path2,
-      count: doc.discoveries.context_field_proposals.length
-    };
-  } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
-  }
-}
-async function readPendingDiscoveries(brandSlug, dataDirOverride) {
-  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
-  try {
-    const raw = await readFile13(path2, "utf-8");
-    return discoveriesDocSchema.parse(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-async function clearPendingDiscoveries(brandSlug, dataDirOverride) {
-  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
-  try {
-    await unlink3(path2);
-  } catch {
-  }
-}
-
-// src/lib/brain/observe.ts
-var brainObservationSchema = external_exports.object({
-  /** Dotted field path, namespaced by domain
-   *  (e.g. "buy_box_health.chronic_losers"). */
-  field: external_exports.string().min(1),
-  value: external_exports.unknown(),
-  /** Emitter's own confidence in this single observation, 0..1. */
-  confidence: external_exports.number().min(0).max(1),
-  /** Skill id + version, e.g. "mx-featured-offer-watch@1.0.0". */
-  observed_by: external_exports.string().min(1),
-  observed_at: external_exports.iso.datetime()
-});
-function applyObservations(brain, observations) {
-  const merged = { ...brain.observations };
-  for (const obs of observations) {
-    const prior = merged[obs.field];
-    merged[obs.field] = {
-      value: obs.value,
-      confidence: obs.confidence,
-      observed_by: obs.observed_by,
-      observed_at: obs.observed_at,
-      count: (prior?.count ?? 0) + 1
-    };
-  }
-  return { ...brain, observations: merged };
-}
-async function recordObservations(brandSlug, observations, dataDirOverride) {
-  if (observations.length === 0) {
-    return { ok: false, reason: "no observations supplied" };
-  }
-  const loaded = await loadBrain(brandSlug, dataDirOverride);
-  if (!loaded.ok) {
-    return {
-      ok: false,
-      reason: `brain not available for "${brandSlug}" (${loaded.kind}); run \`mixshift brand brain fetch ${brandSlug}\` first`
-    };
-  }
-  const next = applyObservations(loaded.brain, observations);
-  const { path: path2 } = await saveBrain(next, dataDirOverride);
-  return { ok: true, path: path2, applied: observations.length };
-}
-async function drainPendingDiscoveries(brandSlug, dataDirOverride) {
-  const pending = await readPendingDiscoveries(brandSlug, dataDirOverride);
-  const proposals = pending?.discoveries.context_field_proposals ?? [];
-  if (proposals.length === 0) {
-    return { ok: true, drained: 0, applied: 0, path: null };
-  }
-  const observations = proposals.map((p) => ({
-    field: p.field,
-    value: p.proposed_value,
-    confidence: p.confidence,
-    observed_by: p.observed_by,
-    observed_at: p.observed_at
-  }));
-  const result = await recordObservations(brandSlug, observations, dataDirOverride);
-  if (!result.ok) {
-    return { ok: false, reason: result.reason, drained: 0 };
-  }
-  await clearPendingDiscoveries(brandSlug, dataDirOverride);
-  return {
-    ok: true,
-    drained: proposals.length,
-    applied: result.applied,
-    path: result.path
-  };
-}
-
-// src/commands/brand-brain.ts
-init_resolve();
-function registerBrandBrainCommands(brand) {
-  const brain = brand.command("brain").description(
-    "Tier-2 Brand Brain: auto-discovered brand facts (identity, targets, data freshness) that analytical skills consume as pre-fill. Populated automatically in the background when a brand is added to your key list."
-  );
-  brain.command("fetch <slug>").description(
-    `Pull brain sources for one brand. Skips when fresh (<${BRAIN_TTL_DAYS}d) unless --refresh is passed.`
-  ).option("--refresh", "Bypass the freshness gate and re-fetch now.", false).action(async (slug, opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    const result = await fetchBrandBrain({
-      slug,
-      refresh: !!opts.refresh,
-      dataDirOverride: root.dataDir
-    });
-    renderFetchResult(slug, result, !!root.json);
-    process.exitCode = exitCodeFor(result);
-    return;
-  });
-  brain.command("refresh <slug>").description("Re-fetch brain sources now, ignoring the freshness gate.").action(async (slug, _opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    const result = await fetchBrandBrain({
-      slug,
-      refresh: true,
-      dataDirOverride: root.dataDir
-    });
-    renderFetchResult(slug, result, !!root.json);
-    process.exitCode = exitCodeFor(result);
-    return;
-  });
-  brain.command("status <slug>").description(
-    "Show the background-fetch status file plus the stored brain summary. Machine-friendly with --json (the chat surface polls this)."
-  ).action(async (slug, _opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    const statusFile = await readStatusFile(slug, root.dataDir);
-    const brainResult = await loadBrain(slug, root.dataDir);
-    const payload = {
-      slug,
-      status_file: statusFile,
-      brain: brainResult.ok ? {
-        generated_at: brainResult.brain.generated_at,
-        generator: brainResult.brain.generator,
-        acos_target_pct: brainResult.brain.seller?.acos_target_pct ?? null,
-        merchant_alias: brainResult.brain.seller?.merchant_alias ?? null,
-        seller_fetched_at: brainResult.brain.sources.seller?.fetched_at ?? null,
-        observation_count: Object.keys(brainResult.brain.observations).length
-      } : { missing: true, kind: brainResult.kind }
-    };
-    if (root.json) {
-      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
-      return;
-    }
-    const lines = [`
-Brand brain status for ${slug}:`];
-    if (statusFile) {
-      lines.push(
-        `  last run: ${statusFile.status} (started ${statusFile.started_at}` + (statusFile.finished_at ? `, finished ${statusFile.finished_at}` : "") + ")"
-      );
-      if (statusFile.error) lines.push(`  error: ${statusFile.error}`);
-    } else {
-      lines.push("  no fetch has run yet");
-    }
-    if (brainResult.ok) {
-      lines.push(
-        `  brain: generated ${brainResult.brain.generated_at} by ${brainResult.brain.generator}`,
-        `  acos_target_pct: ${brainResult.brain.seller?.acos_target_pct ?? "(not set in platform)"}`
-      );
-    } else {
-      lines.push(`  brain: not populated (${brainResult.kind})`);
-    }
-    process.stdout.write(lines.join("\n") + "\n");
-    return;
-  });
-  brain.command("apply-discoveries <slug>").description(
-    "Fold pending capture proposals (.pending-discoveries.json, written when you set a shared field on a skill's confirm card) into the brain as count-weighted observations, then clear them. Observations are suggestions, promoted to Tier-3 context only on your confirmation. Run `brain fetch` first if the brand has no brain yet (proposals are kept)."
-  ).action(async (slug, _opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    const result = await drainPendingDiscoveries(slug, root.dataDir);
-    if (root.json) {
-      process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
-      process.exitCode = result.ok ? 0 : 1;
-      return;
-    }
-    if (!result.ok) {
-      process.stderr.write(
-        `
-\u2717 Could not apply discoveries for ${slug}: ${result.reason}
-  If the brain isn't populated yet, run \`mixshift brand brain fetch ${slug}\` then retry. Your proposals are kept.
-`
-      );
-      process.exitCode = 1;
-      return;
-    }
-    if (result.drained === 0) {
-      process.stdout.write(`
-\u2022 No pending discoveries to apply for ${slug}.
-`);
-      return;
-    }
-    process.stdout.write(
-      `
-\u2713 Applied ${result.applied} discovery proposal(s) to ${slug}'s brain as observations (suggestions \u2014 confirm to promote to brand context).
-  ${result.path}
-`
-    );
-  });
-}
-async function readStatusFile(slug, dataDirOverride) {
-  try {
-    const raw = await readFile14(brainStatusPath(slug, dataDirOverride), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-function renderFetchResult(slug, result, json2) {
-  if (json2) {
-    process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
-    return;
-  }
-  switch (result.status) {
-    case "complete": {
-      const parts = [
-        `${result.summary.row_count} seller row(s)`,
-        `ACoS target ${result.summary.acos_target_pct ?? "not set in platform"}`
-      ];
-      if (result.summary.asin_count !== null) {
-        parts.push(`${result.summary.asin_count} catalog ASIN(s)`);
-      }
-      if (result.summary.campaign_count !== null) {
-        parts.push(`${result.summary.campaign_count} campaign(s)`);
-      }
-      if (result.summary.hero_asin_count !== null) {
-        parts.push(`${result.summary.hero_asin_count} hero ASIN(s)`);
-      }
-      if (result.summary.has_recent_activity) {
-        parts.push("recent activity");
-      }
-      parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
-      process.stdout.write(
-        `
-\u2713 Brand brain populated for ${slug} (${parts.join(", ")}).
-  ${result.path}
-`
-      );
-      if (result.summary.failed_sources.length > 0) {
-        process.stdout.write(
-          `  \u26A0 Source(s) failed and were skipped: ${result.summary.failed_sources.join(", ")}. Retry later with \`mixshift brand brain refresh ${slug}\`.
-`
-        );
-      }
-      break;
-    }
-    case "skipped_fresh":
-      process.stdout.write(
-        `
-\u2022 Brain for ${slug} is fresh (fetched ${result.fetched_at}; TTL ${result.ttl_days}d). Use --refresh to force.
-`
-      );
-      break;
-    case "brand_not_found":
-      process.stderr.write(
-        `
-\u2717 No brand "${slug}" in the registry. Run \`mixshift brand list\` to see slugs, or \`mixshift brand discover\` to refresh the registry.
-`
-      );
-      break;
-    case "no_accounts":
-      process.stderr.write(
-        `
-\u2717 Brand "${slug}" has no seller accounts in the registry; nothing to fetch.
-`
-      );
-      break;
-    case "failed":
-      process.stderr.write(
-        `
-\u2717 Brain fetch failed for ${slug}: ${result.error}
-  Retry with \`mixshift brand brain refresh ${slug}\`.
-`
-      );
-      break;
-  }
-}
-function exitCodeFor(result) {
-  switch (result.status) {
-    case "complete":
-    case "skipped_fresh":
-      return 0;
-    case "brand_not_found":
-    case "no_accounts":
-      return 4;
-    case "failed":
-      return 1;
-  }
-}
-
-// src/commands/brand-context.ts
-function registerBrandContextCommands(brand) {
-  const context = brand.command("context").description(
-    "Resolved brand context \u2014 the brand-level fields skills read, each tagged with its source (Tier-3 context.yaml = you confirmed it, Tier-2 brain = auto pre-filled) so output can show confidence."
-  );
-  context.command("resolve <slug>").description(
-    "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at } | null }; a null field means neither tier has it \u2014 use the skill default."
-  ).action(async (slug, _opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    const fields = await resolveBrandFields(slug, root.dataDir);
-    if (root.json) {
-      process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + "\n");
-      return;
-    }
-    const lines = [`
-Resolved brand context for ${slug}:`];
-    let confirmed = 0;
-    let prefilled = 0;
-    let gaps = 0;
-    for (const key of BRAND_FIELD_KEYS) {
-      const r = fields[key];
-      if (r == null) {
-        gaps++;
-        lines.push(`  \u25EF ${key}: (not set \u2014 skill default)`);
-      } else if (r.source === "context") {
-        confirmed++;
-        lines.push(`  \u2713 ${key}: ${formatValue(r.value)} (you confirmed)`);
-      } else {
-        prefilled++;
-        lines.push(
-          `  \u2299 ${key}: ${formatValue(r.value)} (pre-filled` + (r.fetched_at ? `, ${r.fetched_at}` : "") + ")"
-        );
-      }
-    }
-    lines.push(
-      `
-${confirmed} confirmed \xB7 ${prefilled} pre-filled \xB7 ${gaps} not set \u2014 set any with \`mixshift brand config ${slug}\`, or run a skill that captures it.`
-    );
-    process.stdout.write(lines.join("\n") + "\n");
-  });
-}
-function formatValue(v) {
-  if (Array.isArray(v)) return `[${v.length} item${v.length === 1 ? "" : "s"}]`;
-  if (v !== null && typeof v === "object") return "{\u2026}";
-  return String(v);
-}
-
-// src/lib/brain/spawn.ts
-import { spawn } from "node:child_process";
-var BRAIN_NO_SPAWN_ENV = "MIXSHIFT_BRAIN_NO_SPAWN";
-function buildBrainFetchArgv(cliEntry, slug, dataDirOverride) {
-  const argv = [cliEntry, "brand", "brain", "fetch", slug];
-  if (dataDirOverride) {
-    argv.push("--data-dir", dataDirOverride);
-  }
-  return argv;
-}
-function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
-  if (env[BRAIN_NO_SPAWN_ENV] === "1") {
-    return { spawned: false, reason: `disabled via ${BRAIN_NO_SPAWN_ENV}=1` };
-  }
-  if (env.VITEST) {
-    return { spawned: false, reason: "test environment (VITEST set)" };
-  }
-  const cliEntry = process.argv[1];
-  if (!cliEntry) {
-    return { spawned: false, reason: "CLI entry path unavailable (argv[1] empty)" };
-  }
-  try {
-    const child = spawn(
-      process.execPath,
-      buildBrainFetchArgv(cliEntry, slug, dataDirOverride),
-      { detached: true, stdio: "ignore" }
-    );
-    child.unref();
-    return { spawned: true };
-  } catch (err) {
-    return {
-      spawned: false,
-      reason: err instanceof Error ? err.message : String(err)
-    };
-  }
-}
-
-// src/lib/context-editor/flow.ts
-var import_yaml11 = __toESM(require_dist(), 1);
-init_resolve();
-import { mkdir as mkdir11, readFile as readFile15, rename as rename9, writeFile as writeFile11, chmod as chmod4 } from "node:fs/promises";
-import { dirname as dirname14 } from "node:path";
-
-// src/lib/calibration/manifest-schema.ts
-init_zod();
-var fieldIdSchema = external_exports.string().regex(
-  /^[a-z][a-z0-9_]*$/,
-  "Field id must be snake_case (lowercase letter start, [a-z0-9_])"
-);
-var seedFromSchema = external_exports.string().regex(
-  /^context\.[a-zA-Z0-9_.[\]*]+$/,
-  'seed_from must be a dotted path into context, e.g. "context.posture.stance"'
-).optional();
-var fieldBase = {
-  id: fieldIdSchema,
-  prompt: external_exports.string().min(1),
-  /** Short sentence-case noun phrase used as the confirmation card label.
-   *  Defaults to a derivation from `prompt` (strips question mark, "for
-   *  {brand_name}" suffix, capitalizes). Set explicitly when:
-   *    - The label contains an acronym ("Hero SKUs", not "Hero skus")
-   *    - The prompt is too long to read as a label
-   *    - You want different copy in the prompt vs. the column header
-   *  Should be under 30 characters and sentence case. */
-  label: external_exports.string().min(1).max(40).optional(),
-  help: external_exports.string().optional(),
-  seed_from: seedFromSchema,
-  required: external_exports.boolean().default(true),
-  deprecated: external_exports.boolean().default(false)
-};
-var enumFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("enum"),
-  options: external_exports.array(
-    external_exports.object({
-      value: external_exports.string().min(1),
-      label: external_exports.string().min(1)
-    })
-  ).min(2),
-  default: external_exports.string().optional()
-});
-var percentFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("percent"),
-  default: external_exports.number().min(0).max(1).optional(),
-  range: external_exports.object({ min: external_exports.number().min(0).max(1), max: external_exports.number().min(0).max(1) }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).default({ min: 0, max: 1 })
-});
-var floatFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("float"),
-  default: external_exports.number().optional(),
-  range: external_exports.object({ min: external_exports.number(), max: external_exports.number() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional(),
-  decimals: external_exports.number().int().min(0).max(6).default(2)
-});
-var intFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("int"),
-  default: external_exports.number().int().optional(),
-  range: external_exports.object({ min: external_exports.number().int(), max: external_exports.number().int() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional()
-});
-var boolFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("bool"),
-  default: external_exports.boolean().optional()
-});
-var stringFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("string"),
-  default: external_exports.string().optional(),
-  max_length: external_exports.number().int().positive().default(280)
-});
-var asinListFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("asin_list"),
-  default: external_exports.array(external_exports.string()).default([]),
-  max_items: external_exports.number().int().positive().default(200)
-});
-var skuListFieldSchema = external_exports.object({
-  ...fieldBase,
-  type: external_exports.literal("sku_list"),
-  default: external_exports.array(external_exports.string()).default([]),
-  max_items: external_exports.number().int().positive().default(500)
-});
-var calibrationFieldSchema = external_exports.discriminatedUnion("type", [
-  enumFieldSchema,
-  percentFieldSchema,
-  floatFieldSchema,
-  intFieldSchema,
-  boolFieldSchema,
-  stringFieldSchema,
-  asinListFieldSchema,
-  skuListFieldSchema
-]);
-var calibrationManifestSchema = external_exports.object({
-  /** Schema version of the calibration block itself. Bump on breaking
-   *  changes to the field-type union. */
-  schema_version: external_exports.literal(1).default(1),
-  /** Ordered field list — the confirm-flow renders in this order. */
-  fields: external_exports.array(calibrationFieldSchema).min(1)
-});
-function extractCalibration(parsedManifest) {
-  if (parsedManifest === null || typeof parsedManifest !== "object" || !("calibration" in parsedManifest)) {
-    return null;
-  }
-  const block = parsedManifest.calibration;
-  if (block === null || block === void 0) return null;
-  return calibrationManifestSchema.parse(block);
-}
-function formatFieldValue(field, value) {
-  if (value === null || value === void 0) return "(not set)";
-  switch (field.type) {
-    case "enum": {
-      const opt = field.options.find((o) => o.value === value);
-      return opt?.label ?? String(value);
-    }
-    case "percent": {
-      if (typeof value !== "number") return String(value);
-      return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
-    }
-    case "float": {
-      if (typeof value !== "number") return String(value);
-      return value.toFixed(field.decimals);
-    }
-    case "int":
-      return String(value);
-    case "bool":
-      return value ? "yes" : "no";
-    case "string":
-      return String(value);
-    case "asin_list":
-    case "sku_list": {
-      if (!Array.isArray(value)) return String(value);
-      if (value.length === 0) return "(none)";
-      if (value.length <= 3) return value.join(", ");
-      return `${value.slice(0, 3).join(", ")} +${value.length - 3} more`;
-    }
-  }
-}
-function parseFieldInput(field, raw) {
-  const trimmed = raw.trim();
-  switch (field.type) {
-    case "enum": {
-      const byValue = field.options.find((o) => o.value === trimmed);
-      if (byValue) return { ok: true, value: byValue.value };
-      const byLabel = field.options.find(
-        (o) => o.label.toLowerCase() === trimmed.toLowerCase()
-      );
-      if (byLabel) return { ok: true, value: byLabel.value };
-      const idx = Number(trimmed);
-      if (Number.isInteger(idx) && idx >= 1 && idx <= field.options.length) {
-        return { ok: true, value: field.options[idx - 1].value };
-      }
-      return {
-        ok: false,
-        error: `Expected one of: ${field.options.map((o) => o.value).join(", ")}`
-      };
-    }
-    case "percent": {
-      const cleaned = trimmed.replace(/%$/, "");
-      const n = Number(cleaned);
-      if (!Number.isFinite(n)) {
-        return { ok: false, error: 'Expected a number (e.g. "32" or "32%")' };
-      }
-      const normalized = n > 1 ? n / 100 : n;
-      if (normalized < field.range.min || normalized > field.range.max) {
-        return {
-          ok: false,
-          error: `Out of range. Must be between ${(field.range.min * 100).toFixed(0)}% and ${(field.range.max * 100).toFixed(0)}%`
-        };
-      }
-      return { ok: true, value: normalized };
-    }
-    case "float": {
-      const n = Number(trimmed);
-      if (!Number.isFinite(n)) {
-        return { ok: false, error: "Expected a number" };
-      }
-      if (field.range && (n < field.range.min || n > field.range.max)) {
-        return {
-          ok: false,
-          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
-        };
-      }
-      return { ok: true, value: n };
-    }
-    case "int": {
-      const n = Number(trimmed);
-      if (!Number.isInteger(n)) {
-        return { ok: false, error: "Expected a whole number" };
-      }
-      if (field.range && (n < field.range.min || n > field.range.max)) {
-        return {
-          ok: false,
-          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
-        };
-      }
-      return { ok: true, value: n };
-    }
-    case "bool": {
-      const lower = trimmed.toLowerCase();
-      if (["y", "yes", "true", "1", "on"].includes(lower))
-        return { ok: true, value: true };
-      if (["n", "no", "false", "0", "off"].includes(lower))
-        return { ok: true, value: false };
-      return { ok: false, error: "Expected yes/no" };
-    }
-    case "string": {
-      if (trimmed.length === 0 && field.required) {
-        return { ok: false, error: "Cannot be empty" };
-      }
-      if (trimmed.length > field.max_length) {
-        return {
-          ok: false,
-          error: `Too long. Max ${field.max_length} characters.`
-        };
-      }
-      return { ok: true, value: trimmed };
-    }
-    case "asin_list": {
-      if (trimmed === "" || trimmed.toLowerCase() === "none") {
-        return { ok: true, value: [] };
-      }
-      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim().toUpperCase()).filter(Boolean);
-      const invalid = parts.filter((p) => !/^B0[A-Z0-9]{8}$/.test(p));
-      if (invalid.length > 0) {
-        return {
-          ok: false,
-          error: `Invalid ASIN(s): ${invalid.slice(0, 3).join(", ")}${invalid.length > 3 ? ` +${invalid.length - 3} more` : ""}. ASINs look like B0XXXXXXXX.`
-        };
-      }
-      if (parts.length > field.max_items) {
-        return {
-          ok: false,
-          error: `Too many ASINs (${parts.length}). Max ${field.max_items}.`
-        };
-      }
-      return { ok: true, value: Array.from(new Set(parts)) };
-    }
-    case "sku_list": {
-      if (trimmed === "" || trimmed.toLowerCase() === "none") {
-        return { ok: true, value: [] };
-      }
-      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
-      if (parts.length > field.max_items) {
-        return {
-          ok: false,
-          error: `Too many SKUs (${parts.length}). Max ${field.max_items}.`
-        };
-      }
-      return { ok: true, value: Array.from(new Set(parts)) };
-    }
-  }
-}
-
-// src/lib/context-editor/manifest.ts
-var BRAND_CONTEXT_MANIFEST = [
-  // -----------------------------------------------------------------------
-  // Management — how the brand views performance
-  // -----------------------------------------------------------------------
-  {
-    context_path: "management.primary_metric",
-    field: {
-      id: "primary_metric",
-      label: "Primary metric",
-      prompt: "Primary metric for {brand_name}?",
-      help: "Drives how every skill frames performance. ACoS-thinkers look at ad-attributed efficiency; TACoS-thinkers look at total revenue. Set once at the brand level; can be flipped to RoAS/TRoAS display via profile.yaml::display.metric_framing.",
-      type: "enum",
-      options: [
-        { value: "ACOS", label: "ACoS (ad-attributed)" },
-        { value: "TACOS", label: "TACoS (total revenue)" }
-      ],
-      required: true,
-      deprecated: false
-    }
-  },
-  {
-    context_path: "management.acos_target_pct",
-    field: {
-      id: "acos_target_pct",
-      label: "ACoS target",
-      prompt: "ACoS target for {brand_name}?",
-      help: "The brand's reference ACoS target. Skills use this as the default threshold for flagging exceptions. Surfaces on every skill's OCL card as the seed value; per-skill overrides happen there.",
-      type: "percent",
-      range: { min: 0.05, max: 1 },
-      required: true,
-      deprecated: false
-    }
-  },
-  {
-    context_path: "management.tacos_target_pct",
-    field: {
-      id: "tacos_target_pct",
-      label: "TACoS target",
-      prompt: "TACoS target for {brand_name}?",
-      help: "Total Advertising Cost of Sales target \u2014 ad spend over TOTAL ordered revenue. Catches over-investment in ads even when ACoS looks clean. Leave empty for ACoS-primary brands that don't track a separate TACoS target.",
-      type: "percent",
-      range: { min: 0.01, max: 1 },
-      required: false,
-      deprecated: false
-    }
-  },
-  {
-    context_path: "management.attribution_window_days",
-    field: {
-      id: "attribution_window_days",
-      label: "Attribution window (days)",
-      prompt: "Attribution window for {brand_name}?",
-      help: "Days from click to attributed conversion. Common values: 7 (most sellers), 14 (longer consideration cycles), 30 (high-AOV). Drives how reports interpret the lag between ad spend and revenue.",
-      type: "int",
-      default: 7,
-      range: { min: 1, max: 60 },
-      required: true,
-      deprecated: false
-    }
-  },
-  // -----------------------------------------------------------------------
-  // Goals — sales / performance targets
-  // -----------------------------------------------------------------------
-  {
-    context_path: "goals.monthly_total_sales_target",
-    field: {
-      id: "monthly_total_sales_target",
-      label: "Monthly sales target",
-      prompt: "Monthly total sales target for {brand_name} (USD)?",
-      help: "Used by mx-monthly-report and the portfolio scorecard. Total ordered revenue across all marketplaces. Leave empty if this brand operates without a monthly sales goal.",
-      type: "int",
-      range: { min: 0, max: 1e8 },
-      required: false,
-      deprecated: false
-    }
-  },
-  {
-    context_path: "goals.tacos_goal_pct",
-    field: {
-      id: "tacos_goal_pct",
-      label: "TACoS goal",
-      prompt: "TACoS goal (forward-looking) for {brand_name}?",
-      help: "Aspirational TACoS \u2014 distinct from `tacos_target_pct` above which is the threshold for flagging. Use this when the brand's running higher than ideal and you want monthly reports to track the gap between current and target.",
-      type: "percent",
-      range: { min: 0.01, max: 1 },
-      required: false,
-      deprecated: false
-    }
-  }
-];
-function findContextEntry(fieldId) {
-  return BRAND_CONTEXT_MANIFEST.find((e) => e.field.id === fieldId);
-}
-
-// src/lib/context-editor/flow.ts
-async function prepareBrandConfigEdit(opts) {
-  const ctx = await tryReadContextObject(opts.brandSlug, opts.dataDirOverride);
-  if (ctx === null) {
-    return {
-      brand_slug: opts.brandSlug,
-      brand_name: opts.brandName,
-      context_missing: true,
-      fields: [],
-      blocking: { has_missing_required: false, missing_keys: [] }
-    };
-  }
-  const fields = BRAND_CONTEXT_MANIFEST.filter(
-    (e) => !e.field.deprecated
-  ).map((entry) => buildFieldState(entry, ctx));
-  const missing_keys = fields.filter((f) => f.field.required && f.source === "missing").map((f) => f.field.id);
-  return {
-    brand_slug: opts.brandSlug,
-    brand_name: opts.brandName,
-    context_missing: false,
-    fields,
-    blocking: {
-      has_missing_required: missing_keys.length > 0,
-      missing_keys
-    }
-  };
-}
-function buildFieldState(entry, ctx) {
-  const stored_value = normalizePercentForDisplay(
-    entry.field,
-    getByPath2(ctx, entry.context_path)
-  );
-  const default_value = hasDefault2(entry.field) ? entry.field.default : void 0;
-  let effective_value;
-  let source;
-  if (stored_value !== void 0) {
-    effective_value = stored_value;
-    source = "stored";
-  } else if (default_value !== void 0) {
-    effective_value = default_value;
-    source = "default";
-  } else {
-    effective_value = void 0;
-    source = "missing";
-  }
-  return {
-    field: entry.field,
-    context_path: entry.context_path,
-    stored_value,
-    default_value,
-    effective_value,
-    source,
-    display: formatFieldValue(entry.field, effective_value)
-  };
-}
-async function applyBrandConfigEdit(payload, decision, opts) {
-  if (payload.context_missing) {
-    return {
-      status: "context_missing",
-      updated_context: null,
-      did_write: false,
-      written_to: null,
-      changed_field_count: 0,
-      validation_issues: []
-    };
-  }
-  if (decision.action === "cancel") {
-    return {
-      status: "cancelled",
-      updated_context: null,
-      did_write: false,
-      written_to: null,
-      changed_field_count: 0,
-      validation_issues: []
-    };
-  }
-  if (decision.action === "confirm") {
-    if (payload.blocking.has_missing_required) {
-      return {
-        status: "validation_failed",
-        updated_context: null,
-        did_write: false,
-        written_to: null,
-        changed_field_count: 0,
-        validation_issues: payload.blocking.missing_keys.map((k) => ({
-          field: k,
-          message: "required, no value set"
-        }))
-      };
-    }
-    return {
-      status: "ok",
-      updated_context: null,
-      did_write: false,
-      written_to: null,
-      changed_field_count: 0,
-      validation_issues: []
-    };
-  }
-  const issues = [];
-  const parsedEdits = [];
-  for (const [fieldId, raw] of Object.entries(decision.edits)) {
-    const entry = findContextEntry(fieldId);
-    if (!entry) {
-      issues.push({ field: fieldId, message: "unknown brand-config field" });
-      continue;
-    }
-    const parsed = parseFieldInput(entry.field, raw);
-    if (!parsed.ok) {
-      issues.push({ field: fieldId, message: parsed.error });
-      continue;
-    }
-    parsedEdits.push({
-      path: entry.context_path,
-      value: denormalizePercentForStorage(entry.field, parsed.value),
-      field_id: fieldId
-    });
-  }
-  if (issues.length > 0) {
-    return {
-      status: "validation_failed",
-      updated_context: null,
-      did_write: false,
-      written_to: null,
-      changed_field_count: 0,
-      validation_issues: issues
-    };
-  }
-  const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
-  let rawText;
-  try {
-    rawText = await readFile15(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError12(err)) {
-      return {
-        status: "context_missing",
-        updated_context: null,
-        did_write: false,
-        written_to: null,
-        changed_field_count: 0,
-        validation_issues: []
-      };
-    }
-    throw err;
-  }
-  const ctxObj = (0, import_yaml11.parse)(rawText) ?? {};
-  let changedCount = 0;
-  for (const edit of parsedEdits) {
-    const before = getByPath2(ctxObj, edit.path);
-    if (!deepEqual(before, edit.value)) {
-      setNested(ctxObj, edit.path, edit.value);
-      changedCount += 1;
-    }
-  }
-  if (changedCount > 0) {
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    setNested(ctxObj, "last_updated", today);
-  }
-  if (changedCount === 0) {
-    return {
-      status: "ok",
-      updated_context: ctxObj,
-      did_write: false,
-      written_to: null,
-      changed_field_count: 0,
-      validation_issues: []
-    };
-  }
-  await writeContextFile(path2, ctxObj);
-  return {
-    status: "ok",
-    updated_context: ctxObj,
-    did_write: true,
-    written_to: path2,
-    changed_field_count: changedCount,
-    validation_issues: []
-  };
-}
-function hasDefault2(field) {
-  return field.default !== void 0;
-}
-function normalizePercentForDisplay(field, v) {
-  if (field.type === "percent" && typeof v === "number") {
-    return v > 1 ? v / 100 : v;
-  }
-  return v;
-}
-function denormalizePercentForStorage(field, v) {
-  if (field.type === "percent" && typeof v === "number") {
-    return Math.round(v * 1e4) / 100;
-  }
-  return v;
-}
-function getByPath2(obj, path2) {
-  if (obj === null || obj === void 0) return void 0;
-  const parts = path2.split(".");
-  let cur = obj;
-  for (const p of parts) {
-    if (cur === null || cur === void 0 || typeof cur !== "object") {
-      return void 0;
-    }
-    cur = cur[p];
-  }
-  return cur;
-}
-function deepEqual(a, b) {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-  if (typeof a !== "object") return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => deepEqual(v, b[i]));
-  }
-  const ao = a;
-  const bo = b;
-  const aKeys = Object.keys(ao);
-  const bKeys = Object.keys(bo);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((k) => deepEqual(ao[k], bo[k]));
-}
-async function tryReadContextObject(brandSlug, dataDirOverride) {
-  const path2 = contextPath(brandSlug, dataDirOverride);
-  try {
-    const raw = await readFile15(path2, "utf-8");
-    const parsed = (0, import_yaml11.parse)(raw);
-    if (parsed === null || parsed === void 0) return {};
-    if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-async function writeContextFile(path2, obj) {
-  await mkdir11(dirname14(path2), { recursive: true });
-  const yamlText = (0, import_yaml11.stringify)(obj, { indent: 2, lineWidth: 0 });
-  const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile11(tmpPath, yamlText, "utf-8");
-  try {
-    await chmod4(tmpPath, 384);
-  } catch {
-  }
-  await rename9(tmpPath, path2);
-}
-function isFileNotFoundError12(err) {
-  return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
-}
-
-// src/commands/brand-config.ts
-init_telemetry();
-function registerBrandConfigCommand(brandCmd) {
-  brandCmd.command("config <slug>").description(
-    "Edit brand-level context fields (ACoS/TACoS targets, attribution window, goals). Shows the confirmation card by default. Pair with --apply <decision-json> to persist edits."
-  ).option(
-    "--apply <decision>",
-    'apply a decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{...}} | {"action":"cancel"}'
-  ).option(
-    "--show",
-    "read-only inspect \u2014 alias for the default action when no flags pass",
-    false
-  ).action(
-    async (slug, opts, cmd) => {
-      const root = cmd.optsWithGlobals();
-      try {
-        const brandRow = await resolveBrandRow(slug, root.dataDir);
-        if (brandRow === null) {
-          return emitError2(
-            root.json,
-            `Brand "${slug}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands.`
-          );
-        }
-        if (opts.apply) {
-          return await runApplyDecision({
-            brandSlug: brandRow.slug,
-            brandName: brandRow.display_name,
-            decisionJson: opts.apply,
-            json: root.json,
-            dataDir: root.dataDir
-          });
-        }
-        return await runShow({
-          brandSlug: brandRow.slug,
-          brandName: brandRow.display_name,
-          json: root.json,
-          dataDir: root.dataDir
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return emitError2(root.json, message);
-      }
-    }
-  );
-}
-async function runShow(args) {
-  const payload = await prepareBrandConfigEdit({
-    brandSlug: args.brandSlug,
-    brandName: args.brandName,
-    dataDirOverride: args.dataDir
-  });
-  indexFields(payload);
-  await track(
-    {
-      event_name: "brand_config.viewed",
-      payload: {
-        brand_slug: args.brandSlug,
-        context_missing: payload.context_missing
-      }
-    },
-    args.dataDir
-  );
-  if (args.json) {
-    process.stdout.write(
-      JSON.stringify({ status: "ok", config: payload }, null, 2) + "\n"
-    );
-    return;
-  }
-  if (payload.context_missing) {
-    process.stdout.write(
-      `
-No brand context yet for ${args.brandName}.
-
-Run /mx-brand-context ${args.brandSlug} in chat to capture the brand's positioning, targets, and structural events.
-
-`
-    );
-    return;
-  }
-  process.stdout.write("\n" + renderBrandConfigCard(payload) + "\n\n");
-}
-async function runApplyDecision(args) {
-  let decision;
-  try {
-    decision = JSON.parse(args.decisionJson);
-  } catch (err) {
-    return emitError2(
-      args.json,
-      `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-  const payload = await prepareBrandConfigEdit({
-    brandSlug: args.brandSlug,
-    brandName: args.brandName,
-    dataDirOverride: args.dataDir
-  });
-  const result = await applyBrandConfigEdit(payload, decision, {
-    dataDirOverride: args.dataDir
-  });
-  if (decision.action === "edit") {
-    await track(
-      {
-        event_name: "brand_config.edited",
-        outcome: result.status === "ok" ? "ok" : "failed",
-        payload: {
-          brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
-          changed_count: result.changed_field_count
-        }
-      },
-      args.dataDir
-    );
-  }
-  if (args.json) {
-    process.stdout.write(
-      JSON.stringify(
-        {
-          status: result.status,
-          did_write: result.did_write,
-          changed_field_count: result.changed_field_count,
-          written_to: result.written_to,
-          validation_issues: result.validation_issues
-        },
-        null,
-        2
-      ) + "\n"
-    );
-    if (result.status === "validation_failed") process.exitCode = 4;
-    if (result.status === "context_missing") process.exitCode = 5;
-    return;
-  }
-  switch (result.status) {
-    case "context_missing":
-      process.stderr.write(
-        `
-No brand context yet for ${args.brandName}. Run /mx-brand-context ${args.brandSlug} first.
-
-`
-      );
-      process.exitCode = 5;
-      return;
-    case "cancelled":
-      process.stdout.write("\nCancelled. No changes saved.\n\n");
-      return;
-    case "validation_failed":
-      process.stderr.write("\nCould not save \u2014 please fix:\n");
-      for (const issue2 of result.validation_issues) {
-        process.stderr.write(`  - ${issue2.field}: ${issue2.message}
-`);
-      }
-      process.stderr.write("\n");
-      process.exitCode = 4;
-      return;
-    case "ok":
-      if (result.did_write) {
-        process.stdout.write(
-          `
-\u2713 Saved ${result.changed_field_count} brand config edit(s) for ${args.brandName}.
-
-`
-        );
-      } else {
-        process.stdout.write(`
-No changes.
-
-`);
-      }
-      return;
-  }
-}
-function renderBrandConfigCard(payload) {
-  const lines = [];
-  lines.push(`Brand config \u2014 ${payload.brand_name}`);
-  lines.push("");
-  for (const f of payload.fields) {
-    lines.push(renderFieldLine(f));
-    const hint = renderSourceHint(f);
-    if (hint) lines.push(`${"".padStart(28)}${hint}`);
-  }
-  lines.push("");
-  if (payload.blocking.has_missing_required) {
-    lines.push(`Missing required: ${payload.blocking.missing_keys.join(", ")}`);
-    lines.push("");
-    lines.push(
-      `Some required fields are unset. Choose a number above to set, or "cancel".`
-    );
-  } else {
-    lines.push(
-      `Confirm or edit?  [Enter to keep / number to edit / "cancel"]`
-    );
-  }
-  return lines.join("\n");
-}
-function renderFieldLine(state) {
-  const idx = state._idx ?? 0;
-  const num = idx.toString().padStart(2, " ");
-  const label = humanLabel(state.field).padEnd(24);
-  return `  ${num}. ${label}  ${state.display}`;
-}
-function renderSourceHint(state) {
-  switch (state.source) {
-    case "stored":
-      return null;
-    case "default":
-      return `(default \u2014 set explicitly if this isn't right)`;
-    case "missing":
-      return state.field.required ? `(required \u2014 must be set)` : `(not set \u2014 optional)`;
-  }
-}
-function humanLabel(field) {
-  if (field.label) return field.label;
-  return field.id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
-}
-function indexFields(payload) {
-  payload.fields.forEach((f, i) => {
-    f._idx = i + 1;
-  });
-}
-async function resolveBrandRow(input, dataDir) {
-  const { index } = await readIndex(dataDir);
-  const exact = index.brands.find((b) => b.slug === input);
-  if (exact) return { slug: exact.slug, display_name: exact.display_name };
-  const resolved = resolveBrandName(input, index);
-  if (resolved.status === "found") {
-    return {
-      slug: resolved.brand.slug,
-      display_name: resolved.brand.display_name
-    };
-  }
-  if (resolved.status === "ambiguous") {
-    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
-    throw new Error(
-      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
-${candidates}`
-    );
-  }
-  return null;
-}
-function emitError2(json2, message) {
-  if (json2) {
-    process.stdout.write(
-      JSON.stringify({ status: "error", message }, null, 2) + "\n"
-    );
-  } else {
-    process.stderr.write(`error: ${message}
-`);
-  }
-  process.exitCode = 1;
-}
-
-// src/commands/brand-render-context.ts
-import { exec as execCb2 } from "node:child_process";
-import { promisify as promisify2 } from "node:util";
-
-// src/lib/render/brand-context-composer.ts
-init_resolve();
-import { mkdir as mkdir12, writeFile as writeFile12 } from "node:fs/promises";
-import { join as join10 } from "node:path";
-
-// src/lib/render/brand-context-report.ts
-var import_yaml12 = __toESM(require_dist(), 1);
-init_resolve();
-import { readFile as readFile16, readdir as readdir2, stat as stat3 } from "node:fs/promises";
-import { dirname as dirname15, join as join9 } from "node:path";
-async function readBrandContextSources(brandSlug, runDate, dataDirOverride) {
-  const ctxPath = contextPath(brandSlug, dataDirOverride);
-  const narPath = narrativePath(brandSlug, dataDirOverride);
-  const dir = brandDir(brandSlug, dataDirOverride);
-  const briPath = join9(dir, "brand-intelligence.yaml");
-  const corporaPath = join9(dir, "corpora");
-  const enrichmentPath2 = join9(
-    dir,
-    "runs",
-    "mx-brand-context",
-    runDate,
-    `${runDate}.enrichment.json`
-  );
-  const [context, narrative, intel, corpora, enrichment] = await Promise.all([
-    readYamlIfExists(ctxPath),
-    readTextIfExists(narPath),
-    readYamlIfExists(briPath),
-    summarizeCorpora(corporaPath),
-    readJsonIfExists(enrichmentPath2)
-  ]);
-  const last_updated = context?.last_updated ?? null;
-  return {
-    context,
-    context_path: ctxPath,
-    narrative_md: narrative,
-    narrative_path: narPath,
-    brand_intelligence: intel,
-    brand_intelligence_path: briPath,
-    corpora_summary: corpora,
-    corpora_path: corporaPath,
-    enrichment,
-    last_updated
-  };
-}
-function parseNarrativeSections(md) {
-  if (!md) return {};
-  const lines = md.split(/\r?\n/);
-  const out = {};
-  let currentKey = null;
-  let currentBody = [];
-  for (const line of lines) {
-    const h2 = line.match(/^##\s+(.+?)\s*$/);
-    if (h2) {
-      if (currentKey !== null) {
-        out[currentKey] = currentBody.join("\n").trim();
-      }
-      currentKey = h2[1].toLowerCase().replace(/[?.!:;,]$/, "").trim();
-      currentBody = [];
-    } else if (currentKey !== null) {
-      currentBody.push(line);
-    }
-  }
-  if (currentKey !== null) {
-    out[currentKey] = currentBody.join("\n").trim();
-  }
-  return out;
-}
-function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date()) {
-  const rows = [];
-  let required_present = 0;
-  let required_total = 0;
-  let recommended_present = 0;
-  let recommended_total = 0;
-  let stale_count = 0;
-  let open_gaps_count = 0;
-  for (const label of labels) {
-    const value = context ? resolveAuditPath(context, label.path) : void 0;
-    const isPresent2 = !isAuditMissing(value);
-    const isStale2 = !!(label.fresh_check && isPresent2 && typeof value === "string" && isStaleDate(value, now));
-    if (isStale2) stale_count += 1;
-    if (label.tier === "required") {
-      required_total += 1;
-      if (isPresent2) required_present += 1;
-    } else if (label.tier === "recommended") {
-      recommended_total += 1;
-      if (isPresent2) recommended_present += 1;
-    }
-    let status;
-    if (!isPresent2) {
-      status = label.tier === "required" ? "miss" : label.tier === "recommended" ? "warn" : "muted";
-    } else if (isStale2) {
-      status = "warn";
-    } else {
-      status = "ok";
-    }
-    rows.push({
-      label,
-      value,
-      status,
-      display: formatAuditValue(label, value, isPresent2, isStale2),
-      is_stale: isStale2
-    });
-    if (label.path === "open_gaps" && Array.isArray(value)) {
-      open_gaps_count = value.length;
-    }
-  }
-  return {
-    rows,
-    required_present,
-    required_total,
-    recommended_present,
-    recommended_total,
-    stale_count,
-    open_gaps_count
-  };
-}
-function resolveAuditPath(obj, path2) {
-  if (obj === null || obj === void 0) return void 0;
-  const arrayWildcard = path2.includes("[]");
-  if (arrayWildcard) {
-    const [head, tail] = path2.split("[]");
-    const arr = getNested(obj, head.replace(/\.$/, ""));
-    if (!Array.isArray(arr)) return void 0;
-    if (!tail || tail === "") return arr;
-    return arr.map((el) => getNested(el, tail.replace(/^\./, "")));
-  }
-  return getNested(obj, path2);
-}
-function getNested(obj, path2) {
-  if (!path2) return obj;
-  const parts = path2.split(".");
-  let cur = obj;
-  for (const p of parts) {
-    if (cur === null || cur === void 0 || typeof cur !== "object") {
-      return void 0;
-    }
-    cur = cur[p];
-  }
-  return cur;
-}
-function isAuditMissing(value) {
-  if (value === void 0 || value === null) return true;
-  if (typeof value === "string" && value.trim() === "") return true;
-  if (Array.isArray(value)) {
-    if (value.length === 0) return true;
-    if (value.every((v) => v === void 0 || v === null || v === "")) return true;
-  }
-  if (typeof value === "object" && !Array.isArray(value)) {
-    if (Object.keys(value).length === 0) return true;
-  }
-  return false;
-}
-function isStaleDate(value, now, days = 30) {
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return false;
-    const ageMs = now.getTime() - d.getTime();
-    return ageMs > days * 24 * 60 * 60 * 1e3;
-  } catch {
-    return false;
-  }
-}
-function formatAuditValue(label, value, isPresent2, isStale2) {
-  if (!isPresent2) {
-    return label.tier === "required" ? "missing (required)" : label.tier === "recommended" ? "missing (recommended)" : "not set";
-  }
-  if (isStale2 && typeof value === "string") return `${value} (stale)`;
-  if (label.aggregate && Array.isArray(value)) {
-    return value.filter((v) => v !== void 0 && v !== null).map(String).join(" / ");
-  }
-  if (label.list_count && Array.isArray(value)) {
-    return `${value.length} ${value.length === 1 ? "entry" : "entries"}`;
-  }
-  if (label.dict_count && typeof value === "object" && !Array.isArray(value)) {
-    return `${Object.keys(value).length} entries`;
-  }
-  if (label.display_as === "status") return "configured";
-  if (typeof value === "number") return String(value);
-  if (typeof value === "string") return value;
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  return JSON.stringify(value);
-}
-function computeVerdict(args) {
-  if (args.observational) {
-    return {
-      verdict: "OBSERVATIONAL",
-      reason: "Phase 1 complete; Phase 2 AM intake pending."
-    };
-  }
-  const contextState = args.context_state ?? (args.validator_passed ? "valid" : "invalid");
-  if (contextState === "absent") {
-    return args.brain_present ? {
-      verdict: "OBSERVATIONAL",
-      reason: "Auto-discovered from your account \u2014 confirm and enrich to sharpen."
-    } : {
-      verdict: "OBSERVATIONAL",
-      reason: "Nothing captured yet \u2014 add the brand and run setup to populate context."
-    };
-  }
-  if (contextState === "invalid") {
-    return {
-      verdict: "RED",
-      reason: "Schema validator failed \u2014 fix context.yaml and re-render."
-    };
-  }
-  if (args.coverage.required_present < args.coverage.required_total) {
-    const missing = args.coverage.required_total - args.coverage.required_present;
-    return {
-      verdict: "RED",
-      reason: `${missing} required field(s) missing.`
-    };
-  }
-  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
-    const parts = [];
-    if (args.coverage.open_gaps_count > 0)
-      parts.push(`${args.coverage.open_gaps_count} open gap(s)`);
-    if (args.coverage.stale_count > 0)
-      parts.push(`${args.coverage.stale_count} stale field(s)`);
-    return {
-      verdict: "YELLOW",
-      reason: parts.join("; ") + "."
-    };
-  }
-  if (args.coverage.recommended_present < args.coverage.recommended_total) {
-    const missing = args.coverage.recommended_total - args.coverage.recommended_present;
-    return {
-      verdict: "YELLOW",
-      reason: `${missing} recommended field(s) not populated.`
-    };
-  }
-  return {
-    verdict: "GREEN",
-    reason: "All required + recommended fields populated; no open gaps; context fresh."
-  };
-}
-async function loadAuditLabels() {
-  const { existsSync: existsSync3 } = await import("node:fs");
-  const { fileURLToPath: fileURLToPath8 } = await import("node:url");
-  const { parse: parse4 } = await import("node:path");
-  let dir = dirname15(fileURLToPath8(import.meta.url));
-  const root = parse4(dir).root;
-  for (let i = 0; i < 10; i++) {
-    const candidate = join9(
-      dir,
-      "shared",
-      "clients",
-      "_schema",
-      "audit-labels.yaml"
-    );
-    if (existsSync3(candidate)) {
-      const raw = await readFile16(candidate, "utf-8");
-      const parsed = (0, import_yaml12.parse)(raw);
-      return parsed.fields ?? [];
-    }
-    if (dir === root) break;
-    dir = dirname15(dir);
-  }
-  return [];
-}
-async function readYamlIfExists(path2) {
-  try {
-    const raw = await readFile16(path2, "utf-8");
-    return (0, import_yaml12.parse)(raw);
-  } catch {
-    return null;
-  }
-}
-async function readTextIfExists(path2) {
-  try {
-    return await readFile16(path2, "utf-8");
-  } catch {
-    return null;
-  }
-}
-async function readJsonIfExists(path2) {
-  try {
-    const raw = await readFile16(path2, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-async function summarizeCorpora(dirPath) {
-  try {
-    const entries = await readdir2(dirPath);
-    const summaries = [];
-    for (const f of entries) {
-      if (!f.endsWith(".csv")) continue;
-      try {
-        const s = await stat3(join9(dirPath, f));
-        if (!s.isFile()) continue;
-        const raw = await readFile16(join9(dirPath, f), "utf-8");
-        const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
-        const row_count = Math.max(0, lines.length - 1);
-        summaries.push({ filename: f, row_count });
-      } catch {
-      }
-    }
-    return summaries;
-  } catch {
-    return [];
-  }
-}
-
-// src/lib/render/brand-context-sections.ts
-function levelOf(resolved) {
-  if (resolved == null) return "gap";
-  return resolved.source === "context" ? "confirmed" : "prefilled";
-}
-function fieldConfidence(s, key) {
-  return levelOf(s.resolved_fields[key]);
-}
-function prefilledNote(resolved) {
-  if (resolved == null || resolved.source !== "brain") return void 0;
-  return resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
-}
-function presenceConfidence(present) {
-  return present ? "confirmed" : "gap";
-}
-function markerFor(s, key) {
-  const resolved = s.resolved_fields[key];
-  return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
-}
-function maxConfidence(a, b) {
-  const rank = { confirmed: 2, prefilled: 1, gap: 0 };
-  return rank[a] >= rank[b] ? a : b;
-}
-function shortDate(v) {
-  return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
-}
-function sectionHeader(s) {
-  const verdictTone = s.verdict === "GREEN" ? "complete" : s.verdict === "YELLOW" ? "partial" : s.verdict === "RED" ? "missing" : "runtime";
-  const freshness = s.sources.last_updated ? `Last updated ${s.sources.last_updated}` : "Freshness unknown";
-  return `<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-  ${renderStatusPill(s.verdict, verdictTone)}
-  <span style="color: var(--rc-text-sub); font-size: 12px;">${escapeHtml(freshness)}</span>
-  <span style="color: var(--rc-text); font-size: 13px;">${escapeHtml(s.verdict_reason)}</span>
-</div>
-<p style="color: var(--rc-text-sub); font-size: 13px; margin: 12px 0 8px; line-height: 1.55;">What we know about this brand, and how sure we are. Each field below is marked ${renderConfidenceGlyph("confirmed")} confirmed, ${renderConfidenceGlyph("prefilled")} pre-filled, or ${renderConfidenceGlyph("gap")} not set yet.</p>
-${renderConfidenceLegend()}`;
-}
-var FIELD_LABELS = {
-  acos_target_pct: "ACoS target",
-  sub_brands: "Sub-brands",
-  marketplace: "Marketplace",
-  primary_metric: "Primary metric",
-  attribution_window_days: "Attribution window (days)",
-  tacos_target_pct: "TACoS target",
-  tacos_goal_pct: "TACoS goal",
-  posture_stance: "Posture stance",
-  posture_multiplier: "Bid-cut intensity",
-  monthly_total_sales_target: "Monthly sales target",
-  quarterly_total_sales_target: "Quarterly sales target",
-  protected_terms: "Protected terms",
-  lane_rules: "Lane-based negation rules",
-  campaign_naming_pattern: "Campaign naming pattern",
-  structural_events: "Structural events",
-  paused_campaigns: "Paused campaigns",
-  monthly_budget: "Monthly budget",
-  recent_spend_30d: "30-day spend",
-  recent_acos_30d: "30-day ACoS",
-  item_groups: "Item groups",
-  hero_asins: "Hero ASINs"
-};
-var PCT_FIELDS = /* @__PURE__ */ new Set([
-  "acos_target_pct",
-  "tacos_target_pct",
-  "tacos_goal_pct",
-  "recent_acos_30d"
-]);
-var MONEY_FIELDS = /* @__PURE__ */ new Set([
-  "monthly_total_sales_target",
-  "quarterly_total_sales_target",
-  "monthly_budget",
-  "recent_spend_30d"
-]);
-function formatResolvedValue(key, value) {
-  if (Array.isArray(value)) {
-    const n = value.length;
-    if (key === "sub_brands") {
-      const names = value.map((v) => v && typeof v === "object" ? v.name ?? v.slug : String(v)).filter(Boolean);
-      return names.length > 0 ? `${n}: ${names.join(", ")}` : `${n} entries`;
-    }
-    if (key === "protected_terms" || key === "item_groups") {
-      const head = value.slice(0, 4).map(String).join(", ");
-      return n > 4 ? `${n}: ${head}, \u2026` : `${n}: ${head}`;
-    }
-    return `${n} ${n === 1 ? "entry" : "entries"}`;
-  }
-  if (value !== null && typeof value === "object") {
-    const n = Object.keys(value).length;
-    return `${n} ${n === 1 ? "entry" : "entries"}`;
-  }
-  if (typeof value === "number") {
-    if (PCT_FIELDS.has(key)) return formatWholePct(value, 0);
-    if (MONEY_FIELDS.has(key)) return `$${formatInt(value)}`;
-    return String(value);
-  }
-  return String(value);
-}
-function sectionConfidenceSummary(s) {
-  const items = BRAND_FIELD_KEYS.map((key) => {
-    const resolved = s.resolved_fields[key];
-    const level = levelOf(resolved);
-    const value = resolved ? formatResolvedValue(key, resolved.value) : "";
-    const hint = level === "gap" || level === "prefilled" ? renderSetHint({ field: key, brand: s.brand_slug }) : void 0;
-    return {
-      label: FIELD_LABELS[key],
-      level,
-      value,
-      note: prefilledNote(resolved),
-      hint
-    };
-  });
-  const confirmed = items.filter((i) => i.level === "confirmed").length;
-  const prefilled = items.filter((i) => i.level === "prefilled").length;
-  const gaps = items.filter((i) => i.level === "gap").length;
-  const tally = `<div style="color: var(--rc-text-sub); font-size: 12px; margin-bottom: 12px;">${renderConfidenceGlyph("confirmed")} ${confirmed} confirmed \xB7 ${renderConfidenceGlyph("prefilled")} ${prefilled} pre-filled \xB7 ${renderConfidenceGlyph("gap")} ${gaps} not set yet</div>`;
-  return renderCard({
-    title: "What we know, and how sure we are",
-    body: `${tally}${renderConfidenceList(items)}`
-  });
-}
-function sectionBrandSummary(s) {
-  const intel = s.sources.brand_intelligence;
-  const heroFromIntel = intel?.hero_narrative;
-  const heroFallback = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
-  const heroProse = heroFromIntel ?? heroFallback;
-  const proofPoints = intel?.proof_points ?? [];
-  const heroBlock = heroProse ? `<div style="padding: 14px 18px; background: var(--rc-subtle); border-left: 4px solid var(--rc-info); border-radius: 6px; margin-bottom: 14px; font-size: 14px; line-height: 1.65;">${mdToHtmlParagraphs(heroProse)}</div>` : `<div class="rc-empty">No brand summary yet. Add a hero narrative in <code>brand-intelligence.yaml::hero_narrative</code> or <code>narrative.md ## Brand Identity</code>.</div>`;
-  const proofCards = proofPoints.map((p) => ({
-    title: p.title,
-    status: p.status,
-    body: escapeHtml(p.summary),
-    sources: (p.evidence ?? []).map(
-      (e) => typeof e === "string" ? { label: e } : { label: e.label, href: e.href }
-    )
-  }));
-  return renderCard({
-    title: "What I know about this brand",
-    body: `${heroBlock}${proofCards.length > 0 ? renderProofGrid(proofCards) : ""}`
-  });
-}
-function sectionReviewAtAGlance(s) {
-  return renderScorecardRow([
-    {
-      label: "Required fields",
-      value: `${s.coverage.required_present}/${s.coverage.required_total}`,
-      delta: s.coverage.required_present === s.coverage.required_total ? { text: "Complete", direction: "positive" } : { text: `${s.coverage.required_total - s.coverage.required_present} missing`, direction: "negative" }
-    },
-    {
-      label: "Recommended fields",
-      value: `${s.coverage.recommended_present}/${s.coverage.recommended_total}`
-    },
-    {
-      label: "Open gaps",
-      value: formatInt(s.coverage.open_gaps_count),
-      delta: s.coverage.open_gaps_count === 0 ? { text: "None", direction: "positive" } : void 0
-    },
-    {
-      label: "Stale fields",
-      value: formatInt(s.coverage.stale_count),
-      delta: s.coverage.stale_count === 0 ? { text: "Fresh", direction: "positive" } : { text: `${s.coverage.stale_count} stale`, direction: "negative" }
-    }
-  ]);
-}
-function sectionRuntimeInputs(s) {
-  const ctx = s.sources.context;
-  const cards = [];
-  if (ctx?.goals?.forecast_tracking) {
-    cards.push({
-      title: "Forecast model",
-      body: `<p>Forecast tracking enabled. Supply the current month's forecast (HCAM / H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`
-    });
-  }
-  return renderCard({
-    title: "Runtime inputs required",
-    body: renderRuntimeGrid(cards)
-  });
-}
-function sectionSkillReadiness(s) {
-  const columns = [
-    {
-      key: "skill",
-      label: "Skill",
-      render: (row) => `<code style="font-size: 12px;">${escapeHtml(String(row.skill))}</code>`
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (row) => renderStatusPill(String(row.status), row.tone)
-    },
-    { key: "notes", label: "Notes" }
-  ];
-  return renderCard({
-    title: "Skill readiness",
-    body: renderTable(columns, s.skill_readiness)
-  });
-}
-function sectionActiveConditions(s) {
-  const ctx = s.sources.context;
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const activeEvents = (ctx?.structural_events ?? []).filter(
-    (e) => isEventActive(e, today)
-  );
-  const watch = ctx?.active_watch ?? [];
-  const blocks = [];
-  for (const evt of activeEvents) {
-    blocks.push({
-      title: evt.id,
-      kind: "event",
-      pill: { text: friendlyEventType(evt.type), tone: "default" },
-      body: escapeHtml(evt.interpretation)
-    });
-  }
-  for (const w of watch) {
-    blocks.push({
-      title: w.id ?? "Open watch",
-      kind: "watch",
-      body: escapeHtml(w.question ?? w.note ?? "")
-    });
-  }
-  const quarterContext = findSection(s.narrative_sections, ["current quarter context"]);
-  const leadHtml = quarterContext ? `<div style="color: var(--rc-text-sub); font-size: 12px; font-style: italic; margin-bottom: 12px;">${mdToHtmlParagraphs(quarterContext)}</div>` : "";
-  const body = blocks.length === 0 ? leadHtml + '<div class="rc-empty">No active conditions documented.</div>' : leadHtml + blocks.map(renderConditionBlock).join("\n");
-  return renderCard({
-    title: "What I'm watching right now",
-    title_accessory: markerFor(s, "structural_events"),
-    body
-  });
-}
-function sectionAccountSnapshot(s) {
-  const ctx = s.sources.context;
-  const accounts = ctx?.accounts ?? [];
-  const m = ctx?.management ?? {};
-  const isTacosPrimary = m.primary_metric === "TACOS";
-  const primaryLabel = isTacosPrimary ? "TACoS target" : "ACoS target";
-  const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
-  const primaryTargetLevel = isTacosPrimary ? maxConfidence(fieldConfidence(s, "tacos_target_pct"), fieldConfidence(s, "tacos_goal_pct")) : fieldConfidence(s, "acos_target_pct");
-  const scorecards = renderScorecardRow([
-    { label: "Accounts", value: formatInt(accounts.length) },
-    {
-      label: "Account types",
-      value: Array.from(new Set(accounts.map((a) => a.account_type))).join(" / ") || "\u2014"
-    },
-    { label: primaryLabel, value: primaryValue },
-    {
-      label: "Attribution window",
-      value: m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "\u2014"
-    }
-  ]);
-  const columns = [
-    { key: "seller_id", label: "SellerID" },
-    { key: "seller_name", label: "Name" },
-    { key: "account_type", label: "Type" },
-    { key: "marketplace", label: "Marketplace" },
-    {
-      key: "status",
-      label: "Status",
-      render: (row) => {
-        const status = String(row.status ?? "active");
-        const tone = status === "active" ? "green" : status === "wind_down" ? "amber" : "ghost";
-        return renderPill(sentenceCase2(status), tone);
-      }
-    },
-    { key: "role", label: "Role" }
-  ];
-  const accountsTable = renderTable(
-    columns,
-    accounts.map((a) => ({
-      seller_id: a.seller_id,
-      seller_name: a.seller_name,
-      account_type: a.account_type,
-      marketplace: a.marketplace ?? "\u2014",
-      status: a.status ?? "active",
-      role: a.role ?? "primary"
-    }))
-  );
-  const targetSetHint = primaryTargetLevel === "gap" ? renderSetHint({ field: isTacosPrimary ? "tacos_target_pct" : "acos_target_pct", brand: s.brand_slug }) : "";
-  const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
-  <span>${markerFor(s, "primary_metric")} Primary metric: ${escapeHtml(String(m.primary_metric ?? "not set yet"))}</span>
-  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetSetHint}</span>
-  <span>${markerFor(s, "attribution_window_days")} Attribution window: ${escapeHtml(m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "not set yet")}</span>
-  <span>${markerFor(s, "marketplace")} Marketplace: ${escapeHtml(marketplaceDisplay(accounts))}</span>
-</div>`;
-  return renderCard({
-    title: "Account snapshot",
-    body: `${annot}${scorecards}<div style="margin-top: var(--space-4);">${accountsTable}</div>`
-  });
-}
-function marketplaceDisplay(accounts) {
-  const mk = accounts[0]?.marketplace;
-  return mk && mk.length > 0 ? mk : "not set yet";
-}
-function sectionSubBrands(s) {
-  const ctx = s.sources.context;
-  const subs = ctx?.sub_brands ?? [];
-  const marker = markerFor(s, "sub_brands");
-  if (subs.length === 0) {
-    const level = fieldConfidence(s, "sub_brands");
-    const body2 = level === "gap" ? `<div class="rc-empty">Single-brand account, or sub-brands not set yet. ${renderSetHint({ field: "sub_brands", brand: s.brand_slug })}</div>` : '<div class="rc-empty">Single-brand account (no sub-brands documented).</div>';
-    return renderCard({ title: "Sub-brand structure", title_accessory: marker, body: body2 });
-  }
-  const itemGroupsHtml = (groups) => Array.isArray(groups) && groups.length > 0 ? groups.map((g) => `<code style="font-size: 11px;">${escapeHtml(g)}</code>`).join(" ") : '<span style="color: var(--rc-text-mute);">\u2014</span>';
-  let body;
-  if (subs.length === 1) {
-    const sb = subs[0];
-    body = `<p style="margin: 0; font-size: 13px; line-height: 1.6;">One sub-brand: <strong>${escapeHtml(sb.name)}</strong> <code>${escapeHtml(sb.slug)}</code>${sb.item_groups && sb.item_groups.length > 0 ? ` \u2014 item groups: ${itemGroupsHtml(sb.item_groups)}` : ""}</p>`;
-  } else if (subs.length <= 4) {
-    const lis = subs.map(
-      (sb) => `<li style="margin-bottom: 6px; line-height: 1.5;"><strong>${escapeHtml(sb.name)}</strong> <code style="font-size: 11px;">${escapeHtml(sb.slug)}</code>${sb.item_groups && sb.item_groups.length > 0 ? `<br><span style="color: var(--rc-text-sub); font-size: 11.5px;">${itemGroupsHtml(sb.item_groups)}</span>` : ""}</li>`
-    ).join("\n");
-    body = `<ul style="list-style: none; padding: 0; margin: 0;">${lis}</ul>`;
-  } else {
-    const names = subs.map((sb) => `<span class="rc-pill is-ghost">${escapeHtml(sb.name)}</span>`).join(" ");
-    const totalGroups = new Set(subs.flatMap((sb) => sb.item_groups ?? [])).size;
-    body = `<p style="margin: 0 0 10px; font-size: 13px;"><strong>${subs.length}</strong> sub-brands spanning <strong>${totalGroups}</strong> item group${totalGroups === 1 ? "" : "s"}.</p>
-<div style="display: flex; flex-wrap: wrap; gap: 5px;">${names}</div>`;
-  }
-  return renderCard({ title: "Sub-brand structure", title_accessory: marker, body });
-}
-function sectionItemGroups(s) {
-  const ctx = s.sources.context;
-  const subs = ctx?.sub_brands ?? [];
-  const rows = [];
-  for (const sb of subs) {
-    for (const ig of sb.item_groups ?? []) {
-      rows.push({ sub_brand: sb.name, item_group: ig });
-    }
-  }
-  const marker = markerFor(s, "item_groups");
-  if (rows.length === 0) {
-    return renderCard({
-      title: "Item groups by sub-brand",
-      title_accessory: marker,
-      body: '<div class="rc-empty">No item-group taxonomy documented.</div>'
-    });
-  }
-  return renderCard({
-    title: "Item groups by sub-brand",
-    title_accessory: marker,
-    body: renderTable(
-      [
-        { key: "sub_brand", label: "Sub-brand" },
-        { key: "item_group", label: "Item group", render: (r) => `<code>${escapeHtml(String(r.item_group))}</code>` }
-      ],
-      rows
-    )
-  });
-}
-function sectionBrandTerms(s) {
-  const ctx = s.sources.context;
-  const terms = ctx?.brand_terms ?? {};
-  const rows = [];
-  for (const [subBrand, entry] of Object.entries(terms)) {
-    rows.push({
-      sub_brand: subBrand,
-      canonical: (entry.canonical ?? []).join(", ") || "\u2014",
-      variants: (entry.variants ?? []).join(", ") || "\u2014"
-    });
-  }
-  const marker = renderConfidenceMarker({ level: presenceConfidence(rows.length > 0) });
-  if (rows.length === 0) {
-    return renderCard({
-      title: "Brand term dictionary",
-      title_accessory: marker,
-      body: '<div class="rc-empty">No brand terms captured yet. Phase 1 CS-19/CS-20 + Phase 2 AM variants populate this.</div>'
-    });
-  }
-  return renderCard({
-    title: "Brand term dictionary",
-    title_accessory: marker,
-    body: renderTable(
-      [
-        { key: "sub_brand", label: "Sub-brand" },
-        { key: "canonical", label: "Canonical" },
-        { key: "variants", label: "Variants" }
-      ],
-      rows
-    )
-  });
-}
-function sectionAsinCorpora(s) {
-  const cards = s.sources.corpora_summary.map((c) => ({
-    name: c.filename.replace(/\.csv$/, ""),
-    sub: "rows",
-    count: c.row_count
-  }));
-  return renderCard({
-    title: "ASIN negation corpora",
-    body: renderLaneGrid(cards)
-  });
-}
-function sectionSeasonality(_s) {
-  const tentpoles = [
-    { event: "Prime Day", window: "mid-July", notes: "Spend + ASP spike across SP and SD; reset baselines after." },
-    { event: "Prime Big Deal Days", window: "October", notes: "Second Prime event; check year-over-year against July." },
-    { event: "Black Friday / Cyber Monday", window: "late November", notes: "Highest-volume week; spend caps often hit." },
-    { event: "Holiday peak", window: "Dec 1\u201320", notes: "Sustained elevated traffic; conversion ramps then declines." },
-    { event: "January reset", window: "first 2 weeks of January", notes: "Traffic + conversion drop; ACoS often inflated." }
-  ];
-  return renderCard({
-    title: "Seasonality & tentpole calendar",
-    body: renderTable(
-      [
-        { key: "event", label: "Event" },
-        { key: "window", label: "Window" },
-        { key: "notes", label: "Notes" }
-      ],
-      tentpoles
-    )
-  });
-}
-function sectionCalibration(s) {
-  const ctx = s.sources.context;
-  const cal = ctx?.capture_rate_calibration;
-  const marker = renderConfidenceMarker({ level: presenceConfidence(!!cal?.enabled) });
-  if (!cal || !cal.enabled) {
-    return renderCard({
-      title: "Attribution backfill calibration",
-      title_accessory: marker,
-      body: '<div class="rc-empty">Capture-rate calibration not enabled for this brand. Required when attribution window > 1 day.</div>'
-    });
-  }
-  const rows = [
-    { field: "Capture rate", value: cal.capture_rate_pct !== void 0 ? formatWholePct(cal.capture_rate_pct, 1) : "\u2014" },
-    { field: "Fresh-day ACoS lift (pts)", value: cal.fresh_day_acos_improvement_pts !== void 0 ? `${cal.fresh_day_acos_improvement_pts.toFixed(2)} pts` : "\u2014" },
-    { field: "Settlement application rule", value: cal.settlement_application_rule ?? "\u2014" },
-    { field: "Stability score", value: cal.stability_score ? sentenceCase2(cal.stability_score) : "\u2014" }
-  ];
-  return renderCard({
-    title: "Attribution backfill calibration",
-    title_accessory: marker,
-    body: renderTable(
-      [
-        { key: "field", label: "Field" },
-        { key: "value", label: "Value" }
-      ],
-      rows
-    )
-  });
-}
-function sectionDetectedAnomalies(s) {
-  const enr = s.sources.enrichment;
-  const blocks = [];
-  if (enr?.stockout_candidates && enr.stockout_candidates.length > 0) {
-    const items = enr.stockout_candidates.slice(0, 10).map(
-      (sc) => `${sc.item_name ?? sc.asin ?? "(unknown)"} \u2014 ${sc.days_in_window ?? 0}d window`
-    );
-    blocks.push(renderAnomalyBlock({ title: "Stockout candidates (advisory)", items }));
-  }
-  if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
-    const items = enr.brand_term_typo_candidates.slice(0, 10).map(
-      (c) => `${c.canonical_match ?? "(unknown)"} \u2014 ${c.total_variants ?? 0} variant(s)`
-    );
-    blocks.push(renderAnomalyBlock({ title: "Brand-term typo clusters (advisory)", items }));
-  }
-  return renderCard({
-    title: "Detected anomalies (advisory)",
-    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No advisory findings. Phase 1.5 enrichment will populate stockout + brand-term-typo candidates here once enabled.</div>'
-  });
-}
-function sectionBrandIdentity(s) {
-  const identity = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
-  const lang = findSection(s.narrative_sections, ["customer language samples", "buyer language"]);
-  const history = findSection(s.narrative_sections, ["historical notes"]);
-  const blocks = [];
-  if (identity) blocks.push(`<h4 style="font-size: 13px; margin: 0 0 8px;">Identity</h4>${mdToHtmlParagraphs(identity)}`);
-  if (lang) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Customer language</h4>${mdToHtmlParagraphs(lang)}`);
-  if (history) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Historical notes</h4>${mdToHtmlParagraphs(history)}`);
-  return renderCard({
-    title: "Brand identity (prose context)",
-    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No narrative prose yet. Add H2 sections to <code>narrative.md</code>: Brand Identity, Customer Language Samples, Historical Notes.</div>'
-  });
-}
-function sectionOpenGaps(s) {
-  return renderCard({
-    title: "Missing context buckets",
-    body: renderBucketGrid(s.buckets)
-  });
-}
-function sectionAuditChecklist(s) {
-  const byCategory = /* @__PURE__ */ new Map();
-  for (const row of s.coverage.rows) {
-    const cat = row.label.category;
-    if (!byCategory.has(cat)) {
-      byCategory.set(cat, {
-        title: categoryLabel(cat),
-        rows: []
-      });
-    }
-    byCategory.get(cat).rows.push({
-      icon: row.status,
-      label: row.label.label,
-      description: row.label.description,
-      value: row.display,
-      valueClass: row.status === "miss" ? "missing" : row.is_stale ? "stale" : void 0
-    });
-  }
-  const blocks = Array.from(byCategory.values());
-  const footer = `<b>${s.coverage.required_present}</b>/${s.coverage.required_total} required \xB7 <b>${s.coverage.recommended_present}</b>/${s.coverage.recommended_total} recommended \xB7 <b>${s.coverage.stale_count}</b> stale \xB7 <b>${s.coverage.open_gaps_count}</b> open gap(s)`;
-  return renderCard({
-    title: "Schema coverage audit",
-    body: renderAuditSection({
-      summary: "Reviewer view \u2014 expand to see field-by-field schema status",
-      blocks,
-      footer
-    })
-  });
-}
-function findSection(sections, candidates) {
-  for (const c of candidates) {
-    if (c in sections && sections[c].length > 0) return sections[c];
-  }
-  return null;
-}
-function mdToHtmlParagraphs(md) {
-  const paragraphs = md.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  return paragraphs.map((p) => {
-    let html = escapeHtml(p);
-    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
-    html = html.replace(/\n/g, "<br>");
-    return `<p style="margin: 0 0 12px;">${html}</p>`;
-  }).join("\n");
-}
-function isEventActive(evt, today) {
-  if (evt.active_through && evt.active_through >= today) return true;
-  if (evt.end && evt.end >= today) return true;
-  if (!evt.end && !evt.active_through && evt.start) {
-    return evt.start <= today;
-  }
-  return false;
-}
-function friendlyEventType(t) {
-  const map2 = {
-    brand_migration: "Brand migration",
-    media_spike: "Media spike",
-    media_spike_recurring: "Recurring media spike",
-    portfolio_decision: "Portfolio decision",
-    promotional_window: "Promo window",
-    promotional_window_recurring: "Recurring promo",
-    stockout: "Stockout",
-    price_test: "Price test",
-    launch: "Launch"
-  };
-  return map2[t] ?? sentenceCase2(t);
-}
-function sentenceCase2(s) {
-  if (!s) return s;
-  const spaced = s.replace(/_/g, " ").toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-function categoryLabel(category) {
-  const map2 = {
-    identity: "Account identity",
-    targets: "Management & targets",
-    calibration: "Attribution backfill calibration",
-    brand_structure: "Brand & sub-brand structure",
-    bid_posture: "Bid health & posture",
-    campaign: "Campaign structure & events",
-    negation: "Negation rules",
-    reporting: "Reporting & delivery",
-    gaps: "Open gaps & TODOs"
-  };
-  return map2[category] ?? sentenceCase2(category);
-}
-
-// src/lib/render/brand-context-composer.ts
-async function composeBrandContextReport(args) {
-  const sources = await readBrandContextSources(
-    args.brandSlug,
-    args.runDate,
-    args.dataDirOverride
-  );
-  const narrativeSections = parseNarrativeSections(sources.narrative_md);
-  const labels = await loadAuditLabels();
-  const coverage = computeAuditCoverage(sources.context, labels);
-  const buckets = buildBuckets(sources, coverage);
-  const skillReadiness = computeSkillReadiness(sources, coverage);
-  const resolvedFields = await resolveBrandFields(
-    args.brandSlug,
-    args.dataDirOverride
-  );
-  const ctxValidation = await validateBrandContext(
-    args.brandSlug,
-    args.dataDirOverride
-  );
-  const contextState = ctxValidation.ok ? "valid" : ctxValidation.kind === "file_missing" ? "absent" : "invalid";
-  const brainPresent = Object.values(resolvedFields).some(
-    (r) => r?.source === "brain"
-  );
-  const { verdict, reason } = computeVerdict({
-    coverage,
-    observational: !!args.observational,
-    // validator pass = required_present == required_total, our coverage model;
-    // we don't shell out to zod for the coverage ladder. The precise context
-    // state below is what gates the early-state vs RED branch.
-    validator_passed: coverage.required_present === coverage.required_total,
-    context_state: contextState,
-    brain_present: brainPresent
-  });
-  const state = {
-    brand_slug: args.brandSlug,
-    brand_name: args.brandName,
-    run_date: args.runDate,
-    sources,
-    narrative_sections: narrativeSections,
-    coverage,
-    verdict,
-    verdict_reason: reason,
-    buckets,
-    skill_readiness: skillReadiness,
-    resolved_fields: resolvedFields
-  };
-  const body = [
-    sectionHeader(state),
-    sectionConfidenceSummary(state),
-    sectionBrandSummary(state),
-    sectionReviewAtAGlance(state),
-    sectionRuntimeInputs(state),
-    sectionSkillReadiness(state),
-    sectionActiveConditions(state),
-    sectionAccountSnapshot(state),
-    sectionSubBrands(state),
-    sectionItemGroups(state),
-    sectionBrandTerms(state),
-    sectionAsinCorpora(state),
-    sectionSeasonality(state),
-    sectionCalibration(state),
-    sectionDetectedAnomalies(state),
-    sectionBrandIdentity(state),
-    sectionOpenGaps(state),
-    sectionAuditChecklist(state)
-    // sectionFooter intentionally omitted — renderPage emits the
-    // design-system footer with copyright + wordmark.
-  ].filter(Boolean).join("\n\n");
-  const html = await renderPage({
-    title: `${args.brandName} \u2014 Brand Context`,
-    subtitle: `What we know about this brand, and how sure we are \xB7 ${args.runDate}`,
-    theme: args.theme ?? "light",
-    body
-  });
-  const headline = composeHeadlineJson(state);
-  const review = composeReviewJson(state);
-  const dir = brandDir(args.brandSlug, args.dataDirOverride);
-  await mkdir12(dir, { recursive: true });
-  const htmlPath = join10(dir, "brand-context.html");
-  const headlinePath = join10(dir, "brand-context.headline.json");
-  const reviewPath = join10(dir, "brand-context.review.json");
-  await Promise.all([
-    writeFile12(htmlPath, html, "utf-8"),
-    writeFile12(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
-    writeFile12(reviewPath, JSON.stringify(review, null, 2), "utf-8")
-  ]);
-  return {
-    html_path: htmlPath,
-    headline_path: headlinePath,
-    review_path: reviewPath,
-    verdict,
-    verdict_reason: reason,
-    coverage
-  };
-}
-function buildBuckets(sources, coverage) {
-  const buckets = [];
-  const ctx = sources.context;
-  const openGaps = ctx?.open_gaps ?? [];
-  const byCategory = /* @__PURE__ */ new Map();
-  for (const gap of openGaps) {
-    const category = gap.category ?? "operating_rules";
-    if (!byCategory.has(category)) byCategory.set(category, []);
-    byCategory.get(category).push(gap);
-  }
-  const categoryMeta = {
-    operating_rules: { title: "Operating rules", description: "Targets, posture, thresholds the AM still needs to set." },
-    brand_voice: { title: "Brand voice & buyer language", description: "Customer-language samples and brand identity prose." },
-    product_coverage: { title: "Product & ASIN coverage", description: "Item-group taxonomy, hero SKUs, conquesting catalog." },
-    reporting_setup: { title: "Reporting setup", description: "Audience, voice-lint, monthly-report style preferences." },
-    runtime_inputs: { title: "Runtime inputs", description: "Forecast, HCAM, H-Bridge \u2014 supplied at skill run time, not cold-start." },
-    accepted: { title: "Accepted gaps", description: "Explicitly acknowledged; not blocking." }
-  };
-  for (const [cat, items] of byCategory.entries()) {
-    const meta3 = categoryMeta[cat] ?? { title: sentenceCase3(cat), description: "" };
-    const tone = cat === "runtime_inputs" ? "runtime" : cat === "accepted" ? "complete" : items.length === 0 ? "complete" : "partial";
-    buckets.push({
-      title: meta3.title,
-      status: tone,
-      description: meta3.description,
-      summary: `${items.length} item(s) in this bucket.`,
-      details: items.length > 0 ? {
-        label: "Show items",
-        items: items.map((g) => g.description ?? g.id ?? "(unspecified)")
-      } : void 0
-    });
-  }
-  if (buckets.length === 0 && coverage.required_present === coverage.required_total) {
-    buckets.push({
-      title: "Context coverage",
-      status: "complete",
-      description: "All required + recommended fields populated; no open gaps documented."
-    });
-  }
-  return buckets;
-}
-function computeSkillReadiness(sources, coverage) {
-  const ctx = sources.context;
-  const hasManagement = !!ctx?.management?.primary_metric;
-  const requiredOk = coverage.required_present === coverage.required_total;
-  const hasCalibration = !!ctx?.capture_rate_calibration?.enabled;
-  const skills = [
-    {
-      skill: "mx-daily-health-check",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-runaway-spend-check",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-keyword-bid-health",
-      status: requiredOk ? "Ready" : "Blocked by context",
-      tone: requiredOk ? "complete" : "missing",
-      notes: requiredOk ? "All required context populated." : "Required schema fields missing."
-    },
-    {
-      skill: "mx-monthly-report",
-      status: hasManagement && hasCalibration ? "Ready" : "Ready with caveats",
-      tone: hasManagement && hasCalibration ? "complete" : "partial",
-      notes: hasCalibration ? "Capture-rate calibration available." : "Calibration not enabled \u2014 MoM/YoY uses raw aggregates."
-    }
-  ];
-  return skills;
-}
-function composeHeadlineJson(s) {
-  const ctx = s.sources.context;
-  return {
-    schema_version: 1,
-    brand_slug: s.brand_slug,
-    brand_name: s.brand_name,
-    run_date: s.run_date,
-    verdict: s.verdict,
-    verdict_reason: s.verdict_reason,
-    headline_metrics: {
-      required_present: s.coverage.required_present,
-      required_total: s.coverage.required_total,
-      recommended_present: s.coverage.recommended_present,
-      recommended_total: s.coverage.recommended_total,
-      stale_count: s.coverage.stale_count,
-      open_gaps_count: s.coverage.open_gaps_count
-    },
-    context_snapshot: ctx ? {
-      primary_metric: ctx.management?.primary_metric,
-      acos_target_pct: ctx.management?.acos_target_pct,
-      tacos_target_pct: ctx.management?.tacos_target_pct,
-      attribution_window_days: ctx.management?.attribution_window_days,
-      account_count: ctx.accounts?.length ?? 0,
-      account_types: Array.from(new Set((ctx.accounts ?? []).map((a) => a.account_type)))
-    } : null,
-    artifacts: {
-      html_path: "brand-context.html",
-      review_path: "brand-context.review.json"
-    }
-  };
-}
-function composeReviewJson(s) {
-  return {
-    schema_version: 1,
-    brand_slug: s.brand_slug,
-    run_date: s.run_date,
-    verdict: s.verdict,
-    coverage: {
-      required_present: s.coverage.required_present,
-      required_total: s.coverage.required_total,
-      recommended_present: s.coverage.recommended_present,
-      recommended_total: s.coverage.recommended_total,
-      stale_count: s.coverage.stale_count,
-      open_gaps_count: s.coverage.open_gaps_count
-    },
-    buckets: s.buckets.map((b) => ({
-      title: b.title,
-      status: b.status,
-      description: b.description,
-      summary: b.summary,
-      item_count: b.details?.items.length ?? 0
-    })),
-    skill_readiness: s.skill_readiness,
-    // Per-field provenance behind the ✓ / ⊙ / ◯ markers, machine-readable for
-    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain,
-    // gap = neither). Counts let a consumer gauge confidence at a glance.
-    confidence: composeConfidenceSummary(s),
-    audit_rows: s.coverage.rows.map((r) => ({
-      path: r.label.path,
-      category: r.label.category,
-      tier: r.label.tier,
-      status: r.status,
-      value: r.display,
-      is_stale: r.is_stale
-    }))
-  };
-}
-function composeConfidenceSummary(s) {
-  const fields = {};
-  let confirmed = 0;
-  let prefilled = 0;
-  let gap = 0;
-  for (const [key, resolved] of Object.entries(s.resolved_fields)) {
-    if (resolved == null) {
-      gap++;
-      fields[key] = { level: "gap", source: null };
-    } else if (resolved.source === "context") {
-      confirmed++;
-      fields[key] = { level: "confirmed", source: "context" };
-    } else {
-      prefilled++;
-      fields[key] = { level: "prefilled", source: "brain", fetched_at: resolved.fetched_at };
-    }
-  }
-  return { confirmed, prefilled, gap, fields };
-}
-function sentenceCase3(s) {
-  if (!s) return s;
-  const spaced = s.replace(/_/g, " ").toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
-// src/commands/brand-render-context.ts
-init_telemetry();
-var exec2 = promisify2(execCb2);
-function registerBrandRenderContextCommand(brandCmd) {
-  brandCmd.command("render-context <slug>").description(
-    "Render the cold-start Brand Context page: brand-context.html + brand-context.headline.json + brand-context.review.json. Reads context.yaml + narrative.md + brand-intelligence.yaml + corpora/. Auto-opens the HTML; --no-open to skip."
-  ).option(
-    "--date <date>",
-    "run date (YYYY-MM-DD). Defaults to today."
-  ).option("--no-open", "write the files but do not open the browser").option(
-    "--theme <theme>",
-    "initial theme (light | dark)",
-    "light"
-  ).option(
-    "--observational",
-    "mark this as Phase 1 only (Phase 2 AMA pending \u2014 verdict will be OBSERVATIONAL)",
-    false
-  ).action(
-    async (slug, opts, cmd) => {
-      const root = cmd.optsWithGlobals();
-      try {
-        const brand = await resolveBrand(slug, root.dataDir);
-        if (!brand) {
-          return emitError3(root.json, `Brand "${slug}" not found in the registry.`);
-        }
-        const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const result = await composeBrandContextReport({
-          brandSlug: brand.slug,
-          brandName: brand.display_name,
-          runDate,
-          theme: opts.theme,
-          observational: opts.observational,
-          dataDirOverride: root.dataDir
-        });
-        await track(
-          {
-            event_name: "brand.context_rendered",
-            payload: {
-              brand_slug: brand.slug,
-              run_date: runDate,
-              verdict: result.verdict,
-              required_present: result.coverage.required_present,
-              required_total: result.coverage.required_total,
-              open_gaps_count: result.coverage.open_gaps_count,
-              stale_count: result.coverage.stale_count
-            }
-          },
-          root.dataDir
-        );
-        if (root.json) {
-          process.stdout.write(
-            JSON.stringify(
-              {
-                status: "ok",
-                brand_slug: brand.slug,
-                run_date: runDate,
-                verdict: result.verdict,
-                verdict_reason: result.verdict_reason,
-                html_path: result.html_path,
-                headline_path: result.headline_path,
-                review_path: result.review_path,
-                coverage: {
-                  required_present: result.coverage.required_present,
-                  required_total: result.coverage.required_total,
-                  recommended_present: result.coverage.recommended_present,
-                  recommended_total: result.coverage.recommended_total,
-                  stale_count: result.coverage.stale_count,
-                  open_gaps_count: result.coverage.open_gaps_count
-                }
-              },
-              null,
-              2
-            ) + "\n"
-          );
-        } else {
-          process.stdout.write(
-            `
-\u2713 Rendered Brand Context for ${brand.display_name}
-  Verdict: ${result.verdict} \u2014 ${result.verdict_reason}
-  HTML:     ${result.html_path}
-  Headline: ${result.headline_path}
-  Review:   ${result.review_path}
-
-`
-          );
-        }
-        if (opts.open) {
-          await openInBrowser2(result.html_path);
-        }
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return emitError3(root.json, message);
-      }
-    }
-  );
-}
-async function resolveBrand(input, dataDir) {
-  const { index } = await readIndex(dataDir);
-  const exact = index.brands.find((b) => b.slug === input);
-  if (exact) return { slug: exact.slug, display_name: exact.display_name };
-  const resolved = resolveBrandName(input, index);
-  if (resolved.status === "found") {
-    return { slug: resolved.brand.slug, display_name: resolved.brand.display_name };
-  }
-  if (resolved.status === "ambiguous") {
-    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
-    throw new Error(
-      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
-${candidates}`
-    );
-  }
-  return null;
-}
-async function openInBrowser2(path2) {
-  try {
-    if (process.platform === "win32") {
-      await exec2(`start "" "${path2}"`);
-    } else if (process.platform === "darwin") {
-      await exec2(`open "${path2}"`);
-    } else {
-      await exec2(`xdg-open "${path2}"`);
-    }
-  } catch {
-  }
-}
-function emitError3(json2, message) {
-  if (json2) {
-    process.stdout.write(
-      JSON.stringify({ status: "error", message }, null, 2) + "\n"
-    );
-  } else {
-    process.stderr.write(`error: ${message}
-`);
-  }
-  process.exitCode = 1;
-}
-
-// src/commands/brand-enrich.ts
-import { readFile as readFile18 } from "node:fs/promises";
-import { join as join11 } from "node:path";
-
-// src/lib/enrichment/storage.ts
-init_resolve();
-import { mkdir as mkdir13, readFile as readFile17, rename as rename10, writeFile as writeFile13 } from "node:fs/promises";
-import { dirname as dirname16 } from "node:path";
-async function writeEnrichmentArtifact(brandSlug, runDate, artifact, dataDirOverride) {
-  const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
-  await mkdir13(dirname16(path2), { recursive: true });
-  const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile13(tmpPath, JSON.stringify(artifact, null, 2), "utf-8");
-  await rename10(tmpPath, path2);
-  return { path: path2 };
-}
-async function readEnrichmentArtifact(brandSlug, runDate, dataDirOverride) {
-  const path2 = enrichmentPath(brandSlug, runDate, dataDirOverride);
-  try {
-    const raw = await readFile17(path2, "utf-8");
-    return JSON.parse(raw);
-  } catch (err) {
-    if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
-      return null;
-    }
-    throw err;
-  }
-}
-function emptyArtifact(brandSlug, runDate, accountCount) {
-  return {
-    schema_version: 1,
-    brand_slug: brandSlug,
-    run_date: runDate,
-    generated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    account_count: accountCount,
-    partial: false,
-    partial_reasons: [],
-    daily_settlement_curve: null,
-    stockout_candidates: [],
-    brand_term_typo_candidates: []
-  };
-}
 
 // src/lib/enrichment/settlement-curve.ts
 function computeSettlementCurve(rows) {
@@ -72318,99 +69271,3290 @@ function round22(n) {
   return Math.round(n * 100) / 100;
 }
 
-// src/commands/brand-enrich.ts
-var import_yaml13 = __toESM(require_dist(), 1);
+// src/lib/enrichment/capture-rate.ts
+function deriveCaptureRateCalibration(input) {
+  const sc = firstUsableMonthly(input.cs06, "sales_7day");
+  const vc = firstUsableMonthly(input.cs07, "sales_14day");
+  const dailyMedianImprovement = medianImprovement(input.cs08 ?? []);
+  let basis = null;
+  let settledWindowDays = null;
+  let captureRatePct = null;
+  let monthlyImprovementPts = null;
+  if (sc) {
+    basis = "SC";
+    settledWindowDays = 7;
+    captureRatePct = ratioPct(sc.sales_1day, sc.sales_7day);
+    monthlyImprovementPts = sc.improvement_pts ?? subPts(sc.acos_1day, sc.acos_7day);
+  } else if (vc) {
+    basis = "VC";
+    settledWindowDays = 14;
+    captureRatePct = ratioPct(vc.sales_1day, vc.sales_14day);
+    monthlyImprovementPts = vc.improvement_pts ?? subPts(vc.acos_1day, vc.acos_14day);
+  }
+  const freshDayImprovement = dailyMedianImprovement ?? monthlyImprovementPts;
+  if (basis === null && freshDayImprovement === null && captureRatePct === null) {
+    return null;
+  }
+  return {
+    enabled: true,
+    capture_rate_pct: round23(captureRatePct),
+    fresh_day_acos_improvement_pts: round23(freshDayImprovement),
+    settlement_application_rule: buildApplicationRule(
+      basis,
+      settledWindowDays,
+      round23(captureRatePct),
+      round23(freshDayImprovement)
+    ),
+    basis,
+    settled_window_days: settledWindowDays
+  };
+}
+function firstUsableMonthly(rows, settledSalesKey) {
+  for (const r of rows ?? []) {
+    const settled = toNumber2(r[settledSalesKey]);
+    const oneDay = toNumber2(r.sales_1day);
+    const acos1 = toNumber2(r.acos_1day);
+    const imp = toNumber2(r.improvement_pts);
+    if (settled !== null || oneDay !== null || acos1 !== null || imp !== null) {
+      return {
+        sales_1day: oneDay,
+        sales_7day: toNumber2(r.sales_7day),
+        sales_14day: toNumber2(r.sales_14day),
+        acos_1day: acos1,
+        acos_7day: toNumber2(r.acos_7day),
+        acos_14day: toNumber2(r.acos_14day),
+        improvement_pts: imp
+      };
+    }
+  }
+  return null;
+}
+function medianImprovement(rows) {
+  const vals = [];
+  for (const r of rows) {
+    const imp = toNumber2(r.improvement_pts) ?? subPts(r.acos_1day, r.acos_7day);
+    if (imp !== null) vals.push(imp);
+  }
+  if (vals.length === 0) return null;
+  vals.sort((a, b) => a - b);
+  const mid = Math.floor(vals.length / 2);
+  return vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
+}
+function ratioPct(numerator, denominator) {
+  const n = toNumber2(numerator);
+  const d = toNumber2(denominator);
+  if (n === null || d === null || d === 0) return null;
+  return n / d * 100;
+}
+function subPts(a, b) {
+  const x = toNumber2(a);
+  const y = toNumber2(b);
+  if (x === null || y === null) return null;
+  return x - y;
+}
+function buildApplicationRule(basis, settledWindowDays, captureRatePct, freshDayImprovementPts) {
+  if (basis === null || settledWindowDays === null) {
+    return "Insufficient attribution-window data to derive a settlement rule.";
+  }
+  const window = `1-day vs ${settledWindowDays}-day`;
+  const capturePart = captureRatePct !== null ? `roughly ${captureRatePct}% of settled ad sales land by the 1-day mark` : "the 1-day capture rate could not be measured";
+  const improvementPart = freshDayImprovementPts !== null ? `1-day ACOS overstates the settled figure by about ${freshDayImprovementPts} points, so subtract that when reading fresh-day ACOS` : "no reliable fresh-day ACOS adjustment could be derived";
+  return `On Sponsored Products (${basis}, ${window}): ${capturePart}; ${improvementPart}.`;
+}
+function toNumber2(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function round23(n) {
+  if (n === null) return null;
+  return Math.round(n * 100) / 100;
+}
+
+// src/lib/brain/assemble.ts
+function assembleBrain(input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const seller = assembleSellerSection(input.sellerRows, input.primarySellerId);
+  const meta3 = (src) => ({
+    sproc: src.sproc,
+    fetched_at: now.toISOString(),
+    row_count: src.rows.length,
+    source_hash: hashRows(src.rows)
+  });
+  const sources = {
+    seller: meta3({ rows: input.sellerRows, sproc: input.sellerSproc })
+  };
+  if (input.catalogSc) sources.catalog_sc = meta3(input.catalogSc);
+  if (input.catalogVc) sources.catalog_vc = meta3(input.catalogVc);
+  if (input.campaign) sources.campaign = meta3(input.campaign);
+  if (input.heroSc) sources.hero_sc = meta3(input.heroSc);
+  if (input.heroVc) sources.hero_vc = meta3(input.heroVc);
+  if (input.recentActivity) sources.recent_activity = meta3(input.recentActivity);
+  if (input.settlement) sources.capture_rate = meta3(input.settlement);
+  if (input.stockout) sources.stockout = meta3(input.stockout);
+  if (input.brandTypos) sources.brand_typos = meta3(input.brandTypos);
+  const captureRate = assembleCaptureRateSection(input);
+  const stockouts = input.stockout ? assembleStockoutSection(
+    input.stockout.rows,
+    input.stockoutImpact?.rows ?? []
+  ) : void 0;
+  const brandTermTypos = assembleBrandTypoSection(input);
+  const hasCatalog = input.catalogSc || input.catalogVc || input.heroSc || input.heroVc;
+  return {
+    schema_version: BRAIN_SCHEMA_VERSION,
+    brand_slug: input.brandSlug,
+    generated_at: now.toISOString(),
+    generator: input.generator,
+    sources,
+    seller,
+    ...hasCatalog ? {
+      catalog: assembleCatalogSection(
+        input.catalogSc?.rows ?? null,
+        input.catalogVc?.rows ?? null,
+        input.heroSc?.rows ?? null,
+        input.heroVc?.rows ?? null
+      )
+    } : {},
+    ...input.campaign ? { campaign_structure: assembleCampaignSection(input.campaign.rows) } : {},
+    ...input.recentActivity ? {
+      recent_activity: assembleRecentActivity(
+        input.recentActivity.rows[0],
+        now
+      )
+    } : {},
+    ...captureRate ? { capture_rate_calibration: captureRate } : {},
+    ...stockouts !== void 0 ? { stockouts } : {},
+    ...brandTermTypos !== void 0 ? { brand_term_typos: brandTermTypos } : {},
+    observations: input.previousObservations ?? {}
+  };
+}
+function assembleSellerSection(rows, primarySellerId) {
+  const byId = primarySellerId != null ? rows.find((r) => toNumber3(r.ID) === primarySellerId) : void 0;
+  const primary = byId ?? rows.find((r) => toNumber3(r.ACOSTarget) !== null) ?? rows[0] ?? {};
+  return {
+    merchant_alias: toTrimmedString(primary.MerchantAlias),
+    storefront_name: toTrimmedString(primary.Name),
+    acos_target_pct: toNumber3(primary.ACOSTarget),
+    monthly_budget: toNumber3(primary.MonthlyBudget),
+    marketplace: toTrimmedString(primary.MarketPlaceName),
+    merchant_region: toTrimmedString(primary.MerchantRegion),
+    agency_name: toTrimmedString(primary.AgencyName),
+    default_currency_code: toTrimmedString(primary.DefaultCurrencyCode),
+    i_brand_report_enabled: toBool(primary.iBrandReportEnabled),
+    i_running_initial_pull: toBool(primary.iRunningInitialPull),
+    data_freshness: {
+      ads_latest: toIso2(primary.dtLatestRecordDate),
+      retail_latest: toIso2(primary.dtMWSLatestRecordDate)
+    },
+    activated: {
+      ads: toIso2(primary.dtActivatedOn),
+      retail: toIso2(primary.dtMwsActivatedOn)
+    },
+    primary_seller_id: toNumber3(primary.ID)
+  };
+}
+function assembleCatalogSection(scRows, vcRows, heroScRows = null, heroVcRows = null) {
+  const asins = /* @__PURE__ */ new Set();
+  const subBrands = /* @__PURE__ */ new Set();
+  const itemGroups = /* @__PURE__ */ new Set();
+  const skus = /* @__PURE__ */ new Set();
+  for (const r of scRows ?? []) {
+    addIf(asins, toTrimmedString(r.ASIN ?? r.Asin));
+    addIf(skus, toTrimmedString(r.SKU));
+    addIf(subBrands, toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  for (const r of vcRows ?? []) {
+    addIf(asins, toTrimmedString(r.Asin ?? r.ASIN));
+    addIf(subBrands, toTrimmedString(r.CustomBrand) ?? toTrimmedString(r.Brand));
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+  }
+  const sc = heroScRows ? heroScRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const vc = heroVcRows ? heroVcRows.map(toHeroAsin).filter(isHeroAsin) : null;
+  const topAsins = sc || vc ? { ...sc ? { sc } : {}, ...vc ? { vc } : {} } : void 0;
+  return {
+    asin_count: asins.size,
+    sku_count: scRows === null ? null : skus.size,
+    sub_brands: [...subBrands].sort(),
+    item_groups: [...itemGroups].sort(),
+    ...topAsins ? { top_asins: topAsins } : {}
+  };
+}
+function toHeroAsin(r) {
+  const asin = toTrimmedString(r.asin ?? r.ASIN ?? r.Asin);
+  if (!asin) return null;
+  return {
+    asin,
+    title: toTrimmedString(r.title ?? r.Title ?? r.ItemName),
+    ordered_revenue_365d: toNumber3(r.ordered_revenue_365d) ?? 0,
+    units_365d: toIntOrNull(r.units_365d),
+    // SC-only stock (VC hero rows omit these → null).
+    sellable_qty: toIntOrNull(r.sellable_qty),
+    days_of_supply: toIntOrNull(r.days_of_supply)
+  };
+}
+function isHeroAsin(v) {
+  return v !== null;
+}
+function assembleRecentActivity(row, now) {
+  const spend = toNumber3(row?.spend_30d);
+  const adSales = toNumber3(row?.ad_sales_30d);
+  const acos = spend !== null && adSales !== null && adSales !== 0 ? Math.round(spend / adSales * 1e4) / 100 : null;
+  return {
+    spend_30d: spend,
+    ad_sales_30d: adSales,
+    acos_30d: acos,
+    as_of: now.toISOString()
+  };
+}
+function assembleCampaignSection(rows) {
+  const objectives = /* @__PURE__ */ new Set();
+  const itemGroups = /* @__PURE__ */ new Set();
+  const brands = /* @__PURE__ */ new Set();
+  let paused = 0;
+  let withObjective = 0;
+  let bidSmart = 0;
+  let brandEntity = 0;
+  for (const r of rows) {
+    const objective = toTrimmedString(r.Objective);
+    addIf(objectives, objective);
+    if (objective) withObjective++;
+    addIf(itemGroups, toTrimmedString(r.ItemGroup));
+    addIf(brands, toTrimmedString(r.Brand));
+    if (toTrimmedString(r.State)?.toLowerCase() === "paused") paused++;
+    const bid = toTrimmedString(r.BidOptimization)?.toLowerCase();
+    if (bid && SMART_BID_VALUES.has(bid)) bidSmart++;
+    if (toTrimmedString(r.BrandEntityId)) brandEntity++;
+  }
+  return {
+    campaign_count: rows.length,
+    paused_campaign_count: paused,
+    distinct_objectives: [...objectives].sort(),
+    distinct_item_groups: [...itemGroups].sort(),
+    distinct_brands: [...brands].sort(),
+    objective_tag_completeness_pct: rows.length > 0 ? Math.round(withObjective / rows.length * 100) : null,
+    smart_default_adoption_pct: rows.length > 0 ? Math.round(bidSmart / rows.length * 100) : null,
+    brand_entity_id_presence_pct: rows.length > 0 ? Math.round(brandEntity / rows.length * 100) : null
+  };
+}
+var SMART_BID_VALUES = /* @__PURE__ */ new Set([
+  "smart",
+  "default",
+  "auto",
+  "optimized",
+  "enabled",
+  "true",
+  "1"
+]);
+function assembleCaptureRateSection(input) {
+  const scalars = deriveCaptureRateCalibration({
+    cs06: input.captureRateSc?.rows ?? null,
+    cs07: input.captureRateVc?.rows ?? null,
+    cs08: input.captureRateDaily?.rows ?? null
+  });
+  const curve = input.settlement ? computeSettlementCurve(input.settlement.rows) : null;
+  if (!scalars && !curve) return void 0;
+  const base = scalars ?? {
+    enabled: true,
+    capture_rate_pct: null,
+    fresh_day_acos_improvement_pts: null,
+    settlement_application_rule: "Derived from the daily settlement curve only; no monthly attribution-window comparison was available.",
+    basis: null,
+    settled_window_days: null
+  };
+  return curve ? { ...base, daily_settlement_curve: curve } : base;
+}
+function assembleStockoutSection(cs29Rows, cs30Rows) {
+  return detectStockoutWindows(cs29Rows, cs30Rows);
+}
+function assembleBrandTypoSection(input) {
+  if (!input.brandTypos || !input.brandTermsInput) return void 0;
+  return detectBrandTermTypos(
+    input.brandTypos.rows,
+    input.brandTermsInput.brand_terms,
+    { competitor_brands: input.brandTermsInput.competitor_brands ?? [] }
+  );
+}
+function addIf(set2, v) {
+  if (v) set2.add(v);
+}
+function hashRows(rows) {
+  const canonical = JSON.stringify(
+    rows.map(
+      (r) => Object.keys(r).sort().map((k) => [k, normalizeForHash(r[k])])
+    )
+  );
+  return createHash("sha256").update(canonical).digest("hex");
+}
+function normalizeForHash(v) {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "bigint") return v.toString();
+  return v ?? null;
+}
+function toTrimmedString(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s.length > 0 ? s : null;
+}
+function toNumber3(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function toIntOrNull(v) {
+  const n = toNumber3(v);
+  return n === null ? null : Math.trunc(n);
+}
+function toBool(v) {
+  if (v === null || v === void 0) return null;
+  if (typeof v === "boolean") return v;
+  const n = toNumber3(v);
+  if (n === null) return null;
+  return n !== 0;
+}
+function toIso2(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// src/lib/brain/read.ts
+var import_yaml10 = __toESM(require_dist(), 1);
+import { readFile as readFile12, writeFile as writeFile8, mkdir as mkdir8, rename as rename6 } from "node:fs/promises";
+import { dirname as dirname11 } from "node:path";
 init_resolve();
+init_format_error();
+async function loadBrain(brandSlug, dataDirOverride) {
+  const path2 = brainPath(brandSlug, dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile12(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError11(err)) {
+      return {
+        ok: false,
+        path: path2,
+        kind: "file_missing",
+        errors: [
+          `No brand-brain.yaml for "${brandSlug}". Run \`mixshift brand brain fetch ${brandSlug}\` to populate it.`
+        ]
+      };
+    }
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml10.parse)(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, path: path2, kind: "malformed_yaml", errors: [message] };
+  }
+  const result = brandBrainSchema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      ok: false,
+      path: path2,
+      kind: "schema_violation",
+      errors: [formatZodError(result.error, `brand-brain.yaml for ${brandSlug}`)]
+    };
+  }
+  return { ok: true, brain: result.data, path: path2 };
+}
+async function saveBrain(brain, dataDirOverride) {
+  const path2 = brainPath(brain.brand_slug, dataDirOverride);
+  await mkdir8(dirname11(path2), { recursive: true });
+  const tmp = `${path2}.tmp`;
+  await writeFile8(tmp, (0, import_yaml10.stringify)(brain), "utf-8");
+  await rename6(tmp, path2);
+  return { path: path2 };
+}
+var BRAND_FIELD_REGISTRY = {
+  // Both tiers — context wins, brain pre-fills.
+  acos_target_pct: { contextPath: "management.acos_target_pct", brainPath: "seller.acos_target_pct", brainSource: "seller" },
+  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc" },
+  marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller" },
+  // Tier 3 only — human judgment.
+  primary_metric: { contextPath: "management.primary_metric" },
+  attribution_window_days: { contextPath: "management.attribution_window_days" },
+  tacos_target_pct: { contextPath: "management.tacos_target_pct" },
+  tacos_goal_pct: { contextPath: "management.tacos_goal_pct" },
+  posture_stance: { contextPath: "posture.stance" },
+  posture_multiplier: { contextPath: "posture.multiplier" },
+  monthly_total_sales_target: { contextPath: "goals.monthly_total_sales_target" },
+  quarterly_total_sales_target: { contextPath: "goals.quarterly_total_sales_target" },
+  protected_terms: { contextPath: "negation.protected_terms" },
+  lane_rules: { contextPath: "negation.lane_rules" },
+  campaign_naming_pattern: { contextPath: "campaign_structure.naming_pattern" },
+  structural_events: { contextPath: "structural_events" },
+  paused_campaigns: { contextPath: "paused_campaigns" },
+  // Tier 2 only — auto-derived; the brain is authoritative.
+  monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller" },
+  recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity" },
+  recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity" },
+  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc" },
+  hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc" },
+  // Phase 8 enrichment (2+ skills each; see internal/BRAND-BRAIN.md audit
+  // 2026-06-27). capture_rate is both-tier (AM-confirmed context wins; brain
+  // pre-fills from CS-06/07/08 + CS-28); daily_settlement_curve is the nested
+  // sub-block monthly-report prefers. stockouts + brand_term_typos are
+  // Tier-2-only advisories (no Tier-3 home; the AM confirms them into
+  // structural_events / brand_terms.variants).
+  capture_rate_calibration: { contextPath: "capture_rate_calibration", brainPath: "capture_rate_calibration", brainSource: "capture_rate" },
+  daily_settlement_curve: { contextPath: "capture_rate_calibration.daily_settlement_curve", brainPath: "capture_rate_calibration.daily_settlement_curve", brainSource: "capture_rate" },
+  stockouts: { brainPath: "stockouts", brainSource: "stockout" },
+  brand_term_typos: { brainPath: "brand_term_typos", brainSource: "brand_typos" }
+};
+var BRAND_FIELD_KEYS = Object.keys(
+  BRAND_FIELD_REGISTRY
+);
+function getByPath(obj, path2) {
+  return path2.split(".").reduce((acc, seg) => {
+    if (acc == null || typeof acc !== "object") return void 0;
+    const key = /^\d+$/.test(seg) ? Number(seg) : seg;
+    return acc[key];
+  }, obj);
+}
+function isPresent(v) {
+  if (v == null) return false;
+  if (typeof v === "string") return v.length > 0;
+  if (typeof v === "number") return Number.isFinite(v);
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return true;
+}
+function resolveFieldFrom(ctx, brain, spec) {
+  if (spec.contextPath && ctx.ok) {
+    const v = getByPath(ctx.context, spec.contextPath);
+    if (isPresent(v)) return { value: v, source: "context" };
+  }
+  if (spec.brainPath && brain.ok) {
+    const v = getByPath(brain.brain, spec.brainPath);
+    if (isPresent(v)) {
+      return {
+        value: v,
+        source: "brain",
+        fetched_at: spec.brainSource ? brain.brain.sources[spec.brainSource]?.fetched_at : void 0
+      };
+    }
+  }
+  return null;
+}
+async function resolveBrandFields(brandSlug, dataDirOverride) {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  const brain = await loadBrain(brandSlug, dataDirOverride);
+  const out = {};
+  for (const key of BRAND_FIELD_KEYS) {
+    out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
+  }
+  return out;
+}
+var CONTEXT_PATH_TO_KEY = {};
+for (const k of BRAND_FIELD_KEYS) {
+  const spec = BRAND_FIELD_REGISTRY[k];
+  if (spec.contextPath !== void 0) CONTEXT_PATH_TO_KEY[spec.contextPath] = k;
+}
+function brandFieldKeyForContextPath(contextDotPath) {
+  return CONTEXT_PATH_TO_KEY[contextDotPath] ?? null;
+}
+function isFileNotFoundError11(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
+// src/lib/brain/fetch.ts
+var BRAIN_TTL_DAYS = 30;
+var BRAIN_SELLER_QUERY_ID = "BRAIN-SELLER";
+var BRAIN_CATALOG_SC_QUERY_ID = "BRAIN-CATALOG-SC";
+var BRAIN_CATALOG_VC_QUERY_ID = "BRAIN-CATALOG-VC";
+var BRAIN_CAMPAIGN_QUERY_ID = "BRAIN-CAMPAIGN";
+var BRAIN_HERO_SC_QUERY_ID = "BRAIN-HERO-SC";
+var BRAIN_HERO_VC_QUERY_ID = "BRAIN-HERO-VC";
+var BRAIN_RECENT_ACTIVITY_QUERY_ID = "BRAIN-RECENT-ACTIVITY";
+var BRAIN_SEAT_METRICS_QUERY_ID = "BRAIN-SEAT-METRICS";
+var CS_CAPTURE_RATE_SC_QUERY_ID = "CS-06";
+var CS_CAPTURE_RATE_VC_QUERY_ID = "CS-07";
+var CS_CAPTURE_RATE_DAILY_QUERY_ID = "CS-08";
+var CS_SETTLEMENT_QUERY_ID = "CS-28";
+var CS_STOCKOUT_QUERY_ID = "CS-29";
+var CS_STOCKOUT_IMPACT_QUERY_ID = "CS-30";
+var CS_TYPO_CORPUS_QUERY_ID = "CS-31";
+function pickPrimarySeat(accounts) {
+  if (accounts.length === 0) return null;
+  const candidates = accounts.filter((a) => a.ads_active).length > 0 ? accounts.filter((a) => a.ads_active) : accounts.filter((a) => a.is_active).length > 0 ? accounts.filter((a) => a.is_active) : accounts;
+  const accountTypeRank = {
+    SC: 0,
+    VC: 1,
+    DSP: 2,
+    unknown: 3
+  };
+  const marketplaceRank = (m) => m === "United States" ? 0 : 1;
+  const sorted = [...candidates].sort((a, b) => {
+    const byType = accountTypeRank[a.account_type] - accountTypeRank[b.account_type];
+    if (byType !== 0) return byType;
+    const byMarket = marketplaceRank(a.marketplace) - marketplaceRank(b.marketplace);
+    if (byMarket !== 0) return byMarket;
+    return a.seller_id - b.seller_id;
+  });
+  return sorted[0].seller_id;
+}
+function pickPrimarySeatByMetrics(metricRows, accounts) {
+  if (metricRows.length === 0 || accounts.length === 0) return null;
+  const known = new Set(accounts.map((a) => a.seller_id));
+  let best = null;
+  for (const row of metricRows) {
+    const sellerId = toFiniteNumber(row.seller_id);
+    if (sellerId === null || !known.has(sellerId)) continue;
+    const score = (toFiniteNumber(row.usd_revenue) ?? 0) + (toFiniteNumber(row.usd_spend) ?? 0);
+    if (best === null || score > best.score || score === best.score && sellerId < best.sellerId) {
+      best = { sellerId, score };
+    }
+  }
+  if (best === null || best.score <= 0) return null;
+  return best.sellerId;
+}
+function toFiniteNumber(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+async function fetchBrandBrain(opts) {
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  const t0 = Date.now();
+  const { slug, dataDirOverride } = opts;
+  const { index } = await readIndex(dataDirOverride);
+  const brand = index.brands.find((b) => b.slug === slug);
+  if (!brand) {
+    return { status: "brand_not_found", slug };
+  }
+  const sellerIds = brand.accounts.map((a) => a.seller_id);
+  if (sellerIds.length === 0) {
+    return { status: "no_accounts", slug };
+  }
+  const heuristicSeatId = pickPrimarySeat(brand.accounts);
+  const existing = await loadBrain(slug, dataDirOverride);
+  const previousObservations = existing.ok ? existing.brain.observations : void 0;
+  if (!opts.refresh && existing.ok) {
+    const fetchedAt = existing.brain.sources.seller?.fetched_at;
+    if (fetchedAt && withinTtl(fetchedAt, now)) {
+      void track(
+        {
+          event_name: EventName.BrainFetchSkipped,
+          payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS }
+        },
+        dataDirOverride
+      );
+      return {
+        status: "skipped_fresh",
+        fetched_at: fetchedAt,
+        ttl_days: BRAIN_TTL_DAYS
+      };
+    }
+  }
+  await writeBrainStatus(
+    { status: "fetching", slug, started_at: now.toISOString() },
+    dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchStarted,
+      payload: {
+        brand: slug,
+        account_count: sellerIds.length,
+        refresh: !!opts.refresh
+      }
+    },
+    dataDirOverride
+  );
+  const scIds = brand.accounts.filter((a) => a.account_type === "SC").map((a) => a.seller_id);
+  const vcIds = brand.accounts.filter((a) => a.account_type === "VC").map((a) => a.seller_id);
+  const pickChannelSeat = (ids) => heuristicSeatId != null && ids.includes(heuristicSeatId) ? heuristicSeatId : ids[0] ?? null;
+  const scPrimary = pickChannelSeat(scIds);
+  const vcPrimary = pickChannelSeat(vcIds);
+  const brandTermsInput = await readBrandTermsInput(slug, dataDirOverride);
+  const runSource = async (queryId, params) => {
+    try {
+      const result = await runDispatched(queryId, {
+        // Caller supplies the query's native bind params. BRAIN-* sources pass
+        // { seller_ids } (routed to the request's top-level seller scope); the
+        // reused CS-* enrichment queries pass their own binds ({ seller_id } or
+        // { seller_id_list }), exactly as the prefetch runner does — so the
+        // already-deployed server-side query pack resolves them unchanged.
+        params,
+        dataDirOverride
+      });
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.failure.friendly,
+          kind: result.failure.kind
+        };
+      }
+      return { ok: true, rows: result.rows, usedDispatch: result.usedDispatch };
+    } catch (err) {
+      const message = err instanceof MissingParamsError ? `${err.message} (local dev fallback SQL is missing a bind param)` : err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  };
+  const [
+    sellerOut,
+    scOut,
+    vcOut,
+    campaignOut,
+    heroScOut,
+    heroVcOut,
+    recentOut,
+    seatMetricsOut,
+    settlementOut,
+    captureScOut,
+    captureVcOut,
+    captureDailyOut,
+    stockoutOut,
+    stockoutImpactOut,
+    typoOut
+  ] = await Promise.all([
+    runSource(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds }),
+    scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds }) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds }) : Promise.resolve(null),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds }),
+    scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds }) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds }) : Promise.resolve(null),
+    // Brand-level: every seller's ad rows roll into one baseline.
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds }),
+    // Brand-level: per-seat revenue+spend for primary-seat selection.
+    // Best-effort and SELECTION-ONLY — not folded into a brain section,
+    // so a failure isn't even a "failed source"; it just means the
+    // heuristic decides the primary seat.
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds }),
+    // Phase 8 enrichment (reused CS-* named queries, native binds). All
+    // best-effort: a failure just omits that section. Settlement (CS-28) spans
+    // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
+    // channel seat; stockout (CS-29) + its impact-$ helper (CS-30) are
+    // SC-FBA-scoped; the typo corpus (CS-31) spans all seats.
+    runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
+    scPrimary != null ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary }) : Promise.resolve(null),
+    vcPrimary != null ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary }) : Promise.resolve(null),
+    scPrimary != null ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary }) : Promise.resolve(null),
+    scIds.length > 0 ? runSource(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds }) : Promise.resolve(null),
+    scIds.length > 0 ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds }) : Promise.resolve(null),
+    runSource(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds })
+  ]);
+  const metricSeatId = seatMetricsOut.ok ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts) : null;
+  const primarySeatId = metricSeatId ?? heuristicSeatId;
+  if (!sellerOut.ok) {
+    return await failFetch(opts, now, sellerOut.error, sellerOut.kind);
+  }
+  const failedSources = [];
+  if (scOut && !scOut.ok) failedSources.push("catalog_sc");
+  if (vcOut && !vcOut.ok) failedSources.push("catalog_vc");
+  if (campaignOut && !campaignOut.ok) failedSources.push("campaign");
+  if (heroScOut && !heroScOut.ok) failedSources.push("hero_sc");
+  if (heroVcOut && !heroVcOut.ok) failedSources.push("hero_vc");
+  if (!recentOut.ok) failedSources.push("recent_activity");
+  if (settlementOut && !settlementOut.ok) failedSources.push("capture_rate");
+  if (stockoutOut && !stockoutOut.ok) failedSources.push("stockout");
+  if (typoOut && !typoOut.ok) failedSources.push("brand_typos");
+  const sourceInput = async (queryId, out) => {
+    if (!out || !out.ok) return void 0;
+    const entry = await getQueryEntry(queryId);
+    return { rows: out.rows, sproc: entry.sproc ?? queryId };
+  };
+  const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
+  const brain = assembleBrain({
+    brandSlug: slug,
+    sellerRows: sellerOut.rows,
+    sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+    primarySellerId: primarySeatId,
+    generator: `plugin@${getPluginVersion()}`,
+    now,
+    previousObservations,
+    catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
+    catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
+    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
+    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
+    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
+    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
+    // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
+    // assignable to the typed SourceInput<CSxxRow> params (the computer row
+    // types are all-optional/unknown), so the existing helper is reused.
+    settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
+    captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
+    captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
+    captureRateDaily: await sourceInput(
+      CS_CAPTURE_RATE_DAILY_QUERY_ID,
+      captureDailyOut
+    ),
+    stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
+    stockoutImpact: await sourceInput(
+      CS_STOCKOUT_IMPACT_QUERY_ID,
+      stockoutImpactOut
+    ),
+    brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
+    brandTermsInput
+  });
+  const { path: path2 } = await saveBrain(brain, dataDirOverride);
+  const summary = {
+    row_count: sellerOut.rows.length,
+    acos_target_pct: brain.seller?.acos_target_pct ?? null,
+    merchant_alias: brain.seller?.merchant_alias ?? null,
+    used_dispatch: sellerOut.usedDispatch,
+    duration_ms: Date.now() - t0,
+    asin_count: brain.catalog?.asin_count ?? null,
+    campaign_count: brain.campaign_structure?.campaign_count ?? null,
+    hero_asin_count: brain.catalog?.top_asins ? (brain.catalog.top_asins.sc?.length ?? 0) + (brain.catalog.top_asins.vc?.length ?? 0) : null,
+    has_recent_activity: brain.recent_activity !== void 0,
+    has_capture_rate: brain.capture_rate_calibration !== void 0,
+    stockout_count: brain.stockouts?.length ?? null,
+    brand_typo_count: brain.brand_term_typos?.length ?? null,
+    failed_sources: failedSources
+  };
+  await writeBrainStatus(
+    {
+      status: "complete",
+      slug,
+      started_at: now.toISOString(),
+      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+      summary
+    },
+    dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchCompleted,
+      outcome: "ok",
+      duration_ms: summary.duration_ms,
+      row_count: summary.row_count,
+      payload: {
+        brand: slug,
+        used_dispatch: summary.used_dispatch,
+        has_acos_target: summary.acos_target_pct !== null,
+        asin_count: summary.asin_count,
+        campaign_count: summary.campaign_count,
+        hero_asin_count: summary.hero_asin_count,
+        has_recent_activity: summary.has_recent_activity,
+        failed_sources: failedSources,
+        // Which selector chose the primary seat: 'metrics' (per-seat
+        // revenue+spend ranking) or 'heuristic' (registry fallback).
+        primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
+        primary_seat_id: primarySeatId
+      }
+    },
+    dataDirOverride
+  );
+  return { status: "complete", path: path2, summary };
+}
+async function failFetch(opts, startedAt, error51, kind) {
+  await writeBrainStatus(
+    {
+      status: "failed",
+      slug: opts.slug,
+      started_at: startedAt.toISOString(),
+      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+      error: error51
+    },
+    opts.dataDirOverride
+  );
+  await track(
+    {
+      event_name: EventName.BrainFetchFailed,
+      outcome: "failed",
+      error_class: kind,
+      payload: { brand: opts.slug, message: error51.slice(0, 500) }
+    },
+    opts.dataDirOverride
+  );
+  return { status: "failed", error: error51, kind };
+}
+async function writeBrainStatus(status, dataDirOverride) {
+  const path2 = brainStatusPath(status.slug, dataDirOverride);
+  await mkdir9(dirname12(path2), { recursive: true });
+  const tmp = `${path2}.tmp`;
+  await writeFile9(tmp, JSON.stringify(status, null, 2), "utf-8");
+  await rename7(tmp, path2);
+}
+async function readBrandTermsInput(slug, dataDirOverride) {
+  try {
+    const raw = await readFile13(contextPath(slug, dataDirOverride), "utf-8");
+    const parsed = (0, import_yaml11.parse)(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.brand_terms) {
+      return void 0;
+    }
+    return {
+      brand_terms: parsed.brand_terms,
+      competitor_brands: parsed.negation?.competitor_brands
+    };
+  } catch {
+    return void 0;
+  }
+}
+function withinTtl(fetchedAtIso, now) {
+  const fetched = new Date(fetchedAtIso).getTime();
+  if (Number.isNaN(fetched)) return false;
+  const ageMs = now.getTime() - fetched;
+  return ageMs >= 0 && ageMs < BRAIN_TTL_DAYS * 24 * 60 * 60 * 1e3;
+}
+
+// src/lib/brain/observe.ts
+init_zod();
+
+// src/lib/brain/discoveries.ts
+init_zod();
 init_resolve();
+import { readFile as readFile14, writeFile as writeFile10, mkdir as mkdir10, rename as rename8, unlink as unlink3 } from "node:fs/promises";
+import { dirname as dirname13 } from "node:path";
+var contextFieldProposalSchema = external_exports.object({
+  field: external_exports.string().min(1),
+  proposed_value: external_exports.unknown(),
+  source_skill: external_exports.string().min(1),
+  confidence: external_exports.number().min(0).max(1),
+  note: external_exports.string().optional(),
+  observed_by: external_exports.string().min(1),
+  observed_at: external_exports.string().min(1)
+});
+var looseItemSchema = external_exports.object({}).passthrough();
+var discoveriesDocSchema = external_exports.object({
+  schema_version: external_exports.literal(1).default(1),
+  generated_by: external_exports.string().min(1),
+  generated_at: external_exports.string().min(1),
+  discoveries: external_exports.object({
+    context_field_proposals: external_exports.array(contextFieldProposalSchema).optional()
+  }).catchall(external_exports.array(looseItemSchema)).default({})
+});
+async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
+  if (captures.length === 0) return { ok: false, reason: "no captures supplied" };
+  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  let doc;
+  try {
+    const raw = await readFile14(path2, "utf-8");
+    doc = discoveriesDocSchema.parse(JSON.parse(raw));
+  } catch {
+    doc = {
+      schema_version: 1,
+      generated_by: captures[0].observed_by,
+      generated_at: captures[0].observed_at,
+      discoveries: {}
+    };
+  }
+  const byField = new Map(
+    (doc.discoveries.context_field_proposals ?? []).map((p) => [p.field, p])
+  );
+  for (const c of captures) {
+    byField.set(c.field, {
+      field: c.field,
+      proposed_value: c.proposed_value,
+      source_skill: c.source_skill,
+      confidence: c.confidence ?? 0.95,
+      ...c.note ? { note: c.note } : {},
+      observed_by: c.observed_by,
+      observed_at: c.observed_at
+    });
+  }
+  doc.discoveries.context_field_proposals = [...byField.values()];
+  doc.generated_at = captures[captures.length - 1].observed_at;
+  try {
+    await mkdir10(dirname13(path2), { recursive: true });
+    const tmp = `${path2}.tmp`;
+    await writeFile10(tmp, JSON.stringify(doc, null, 2), "utf-8");
+    await rename8(tmp, path2);
+    return {
+      ok: true,
+      path: path2,
+      count: doc.discoveries.context_field_proposals.length
+    };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+async function readPendingDiscoveries(brandSlug, dataDirOverride) {
+  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  try {
+    const raw = await readFile14(path2, "utf-8");
+    return discoveriesDocSchema.parse(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+async function clearPendingDiscoveries(brandSlug, dataDirOverride) {
+  const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
+  try {
+    await unlink3(path2);
+  } catch {
+  }
+}
+
+// src/lib/brain/observe.ts
+var brainObservationSchema = external_exports.object({
+  /** Dotted field path, namespaced by domain
+   *  (e.g. "buy_box_health.chronic_losers"). */
+  field: external_exports.string().min(1),
+  value: external_exports.unknown(),
+  /** Emitter's own confidence in this single observation, 0..1. */
+  confidence: external_exports.number().min(0).max(1),
+  /** Skill id + version, e.g. "mx-featured-offer-watch@1.0.0". */
+  observed_by: external_exports.string().min(1),
+  observed_at: external_exports.iso.datetime()
+});
+function applyObservations(brain, observations) {
+  const merged = { ...brain.observations };
+  for (const obs of observations) {
+    const prior = merged[obs.field];
+    merged[obs.field] = {
+      value: obs.value,
+      confidence: obs.confidence,
+      observed_by: obs.observed_by,
+      observed_at: obs.observed_at,
+      count: (prior?.count ?? 0) + 1
+    };
+  }
+  return { ...brain, observations: merged };
+}
+async function recordObservations(brandSlug, observations, dataDirOverride) {
+  if (observations.length === 0) {
+    return { ok: false, reason: "no observations supplied" };
+  }
+  const loaded = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded.ok) {
+    return {
+      ok: false,
+      reason: `brain not available for "${brandSlug}" (${loaded.kind}); run \`mixshift brand brain fetch ${brandSlug}\` first`
+    };
+  }
+  const next = applyObservations(loaded.brain, observations);
+  const { path: path2 } = await saveBrain(next, dataDirOverride);
+  return { ok: true, path: path2, applied: observations.length };
+}
+async function drainPendingDiscoveries(brandSlug, dataDirOverride) {
+  const pending = await readPendingDiscoveries(brandSlug, dataDirOverride);
+  const proposals = pending?.discoveries.context_field_proposals ?? [];
+  if (proposals.length === 0) {
+    return { ok: true, drained: 0, applied: 0, path: null };
+  }
+  const observations = proposals.map((p) => ({
+    field: p.field,
+    value: p.proposed_value,
+    confidence: p.confidence,
+    observed_by: p.observed_by,
+    observed_at: p.observed_at
+  }));
+  const result = await recordObservations(brandSlug, observations, dataDirOverride);
+  if (!result.ok) {
+    return { ok: false, reason: result.reason, drained: 0 };
+  }
+  await clearPendingDiscoveries(brandSlug, dataDirOverride);
+  return {
+    ok: true,
+    drained: proposals.length,
+    applied: result.applied,
+    path: result.path
+  };
+}
+
+// src/commands/brand-brain.ts
+init_resolve();
+function registerBrandBrainCommands(brand) {
+  const brain = brand.command("brain").description(
+    "Tier-2 Brand Brain: auto-discovered brand facts (identity, targets, data freshness) that analytical skills consume as pre-fill. Populated automatically in the background when a brand is added to your key list."
+  );
+  brain.command("fetch <slug>").description(
+    `Pull brain sources for one brand. Skips when fresh (<${BRAIN_TTL_DAYS}d) unless --refresh is passed.`
+  ).option("--refresh", "Bypass the freshness gate and re-fetch now.", false).action(async (slug, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await fetchBrandBrain({
+      slug,
+      refresh: !!opts.refresh,
+      dataDirOverride: root.dataDir
+    });
+    renderFetchResult(slug, result, !!root.json);
+    process.exitCode = exitCodeFor(result);
+    return;
+  });
+  brain.command("refresh <slug>").description("Re-fetch brain sources now, ignoring the freshness gate.").action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await fetchBrandBrain({
+      slug,
+      refresh: true,
+      dataDirOverride: root.dataDir
+    });
+    renderFetchResult(slug, result, !!root.json);
+    process.exitCode = exitCodeFor(result);
+    return;
+  });
+  brain.command("status <slug>").description(
+    "Show the background-fetch status file plus the stored brain summary. Machine-friendly with --json (the chat surface polls this)."
+  ).action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const statusFile = await readStatusFile(slug, root.dataDir);
+    const brainResult = await loadBrain(slug, root.dataDir);
+    const payload = {
+      slug,
+      status_file: statusFile,
+      brain: brainResult.ok ? {
+        generated_at: brainResult.brain.generated_at,
+        generator: brainResult.brain.generator,
+        acos_target_pct: brainResult.brain.seller?.acos_target_pct ?? null,
+        merchant_alias: brainResult.brain.seller?.merchant_alias ?? null,
+        seller_fetched_at: brainResult.brain.sources.seller?.fetched_at ?? null,
+        observation_count: Object.keys(brainResult.brain.observations).length
+      } : { missing: true, kind: brainResult.kind }
+    };
+    if (root.json) {
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+      return;
+    }
+    const lines = [`
+Brand brain status for ${slug}:`];
+    if (statusFile) {
+      lines.push(
+        `  last run: ${statusFile.status} (started ${statusFile.started_at}` + (statusFile.finished_at ? `, finished ${statusFile.finished_at}` : "") + ")"
+      );
+      if (statusFile.error) lines.push(`  error: ${statusFile.error}`);
+    } else {
+      lines.push("  no fetch has run yet");
+    }
+    if (brainResult.ok) {
+      lines.push(
+        `  brain: generated ${brainResult.brain.generated_at} by ${brainResult.brain.generator}`,
+        `  acos_target_pct: ${brainResult.brain.seller?.acos_target_pct ?? "(not set in platform)"}`
+      );
+    } else {
+      lines.push(`  brain: not populated (${brainResult.kind})`);
+    }
+    process.stdout.write(lines.join("\n") + "\n");
+    return;
+  });
+  brain.command("apply-discoveries <slug>").description(
+    "Fold pending capture proposals (.pending-discoveries.json, written when you set a shared field on a skill's confirm card) into the brain as count-weighted observations, then clear them. Observations are suggestions, promoted to Tier-3 context only on your confirmation. Run `brain fetch` first if the brand has no brain yet (proposals are kept)."
+  ).action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const result = await drainPendingDiscoveries(slug, root.dataDir);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
+      process.exitCode = result.ok ? 0 : 1;
+      return;
+    }
+    if (!result.ok) {
+      process.stderr.write(
+        `
+\u2717 Could not apply discoveries for ${slug}: ${result.reason}
+  If the brain isn't populated yet, run \`mixshift brand brain fetch ${slug}\` then retry. Your proposals are kept.
+`
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (result.drained === 0) {
+      process.stdout.write(`
+\u2022 No pending discoveries to apply for ${slug}.
+`);
+      return;
+    }
+    process.stdout.write(
+      `
+\u2713 Applied ${result.applied} discovery proposal(s) to ${slug}'s brain as observations (suggestions \u2014 confirm to promote to brand context).
+  ${result.path}
+`
+    );
+  });
+}
+async function readStatusFile(slug, dataDirOverride) {
+  try {
+    const raw = await readFile15(brainStatusPath(slug, dataDirOverride), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function renderFetchResult(slug, result, json2) {
+  if (json2) {
+    process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
+    return;
+  }
+  switch (result.status) {
+    case "complete": {
+      const parts = [
+        `${result.summary.row_count} seller row(s)`,
+        `ACoS target ${result.summary.acos_target_pct ?? "not set in platform"}`
+      ];
+      if (result.summary.asin_count !== null) {
+        parts.push(`${result.summary.asin_count} catalog ASIN(s)`);
+      }
+      if (result.summary.campaign_count !== null) {
+        parts.push(`${result.summary.campaign_count} campaign(s)`);
+      }
+      if (result.summary.hero_asin_count !== null) {
+        parts.push(`${result.summary.hero_asin_count} hero ASIN(s)`);
+      }
+      if (result.summary.has_recent_activity) {
+        parts.push("recent activity");
+      }
+      parts.push(`${result.summary.duration_ms}ms via ${result.summary.used_dispatch}`);
+      process.stdout.write(
+        `
+\u2713 Brand brain populated for ${slug} (${parts.join(", ")}).
+  ${result.path}
+`
+      );
+      if (result.summary.failed_sources.length > 0) {
+        process.stdout.write(
+          `  \u26A0 Source(s) failed and were skipped: ${result.summary.failed_sources.join(", ")}. Retry later with \`mixshift brand brain refresh ${slug}\`.
+`
+        );
+      }
+      break;
+    }
+    case "skipped_fresh":
+      process.stdout.write(
+        `
+\u2022 Brain for ${slug} is fresh (fetched ${result.fetched_at}; TTL ${result.ttl_days}d). Use --refresh to force.
+`
+      );
+      break;
+    case "brand_not_found":
+      process.stderr.write(
+        `
+\u2717 No brand "${slug}" in the registry. Run \`mixshift brand list\` to see slugs, or \`mixshift brand discover\` to refresh the registry.
+`
+      );
+      break;
+    case "no_accounts":
+      process.stderr.write(
+        `
+\u2717 Brand "${slug}" has no seller accounts in the registry; nothing to fetch.
+`
+      );
+      break;
+    case "failed":
+      process.stderr.write(
+        `
+\u2717 Brain fetch failed for ${slug}: ${result.error}
+  Retry with \`mixshift brand brain refresh ${slug}\`.
+`
+      );
+      break;
+  }
+}
+function exitCodeFor(result) {
+  switch (result.status) {
+    case "complete":
+    case "skipped_fresh":
+      return 0;
+    case "brand_not_found":
+    case "no_accounts":
+      return 4;
+    case "failed":
+      return 1;
+  }
+}
+
+// src/commands/brand-context.ts
+function registerBrandContextCommands(brand) {
+  const context = brand.command("context").description(
+    "Resolved brand context \u2014 the brand-level fields skills read, each tagged with its source (Tier-3 context.yaml = you confirmed it, Tier-2 brain = auto pre-filled) so output can show confidence."
+  );
+  context.command("resolve <slug>").description(
+    "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at } | null }; a null field means neither tier has it \u2014 use the skill default."
+  ).action(async (slug, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const fields = await resolveBrandFields(slug, root.dataDir);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + "\n");
+      return;
+    }
+    const lines = [`
+Resolved brand context for ${slug}:`];
+    let confirmed = 0;
+    let prefilled = 0;
+    let gaps = 0;
+    for (const key of BRAND_FIELD_KEYS) {
+      const r = fields[key];
+      if (r == null) {
+        gaps++;
+        lines.push(`  \u25EF ${key}: (not set \u2014 skill default)`);
+      } else if (r.source === "context") {
+        confirmed++;
+        lines.push(`  \u2713 ${key}: ${formatValue(r.value)} (you confirmed)`);
+      } else {
+        prefilled++;
+        lines.push(
+          `  \u2299 ${key}: ${formatValue(r.value)} (pre-filled` + (r.fetched_at ? `, ${r.fetched_at}` : "") + ")"
+        );
+      }
+    }
+    lines.push(
+      `
+${confirmed} confirmed \xB7 ${prefilled} pre-filled \xB7 ${gaps} not set \u2014 set any with \`mixshift brand config ${slug}\`, or run a skill that captures it.`
+    );
+    process.stdout.write(lines.join("\n") + "\n");
+  });
+}
+function formatValue(v) {
+  if (Array.isArray(v)) return `[${v.length} item${v.length === 1 ? "" : "s"}]`;
+  if (v !== null && typeof v === "object") return "{\u2026}";
+  return String(v);
+}
+
+// src/lib/brain/spawn.ts
+import { spawn } from "node:child_process";
+var BRAIN_NO_SPAWN_ENV = "MIXSHIFT_BRAIN_NO_SPAWN";
+function buildBrainFetchArgv(cliEntry, slug, dataDirOverride) {
+  const argv = [cliEntry, "brand", "brain", "fetch", slug];
+  if (dataDirOverride) {
+    argv.push("--data-dir", dataDirOverride);
+  }
+  return argv;
+}
+function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
+  if (env[BRAIN_NO_SPAWN_ENV] === "1") {
+    return { spawned: false, reason: `disabled via ${BRAIN_NO_SPAWN_ENV}=1` };
+  }
+  if (env.VITEST) {
+    return { spawned: false, reason: "test environment (VITEST set)" };
+  }
+  const cliEntry = process.argv[1];
+  if (!cliEntry) {
+    return { spawned: false, reason: "CLI entry path unavailable (argv[1] empty)" };
+  }
+  try {
+    const child = spawn(
+      process.execPath,
+      buildBrainFetchArgv(cliEntry, slug, dataDirOverride),
+      { detached: true, stdio: "ignore" }
+    );
+    child.unref();
+    return { spawned: true };
+  } catch (err) {
+    return {
+      spawned: false,
+      reason: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+// src/lib/context-editor/flow.ts
+var import_yaml12 = __toESM(require_dist(), 1);
+init_resolve();
+import { mkdir as mkdir11, readFile as readFile16, rename as rename9, writeFile as writeFile11, chmod as chmod4 } from "node:fs/promises";
+import { dirname as dirname14 } from "node:path";
+
+// src/lib/calibration/manifest-schema.ts
+init_zod();
+var fieldIdSchema = external_exports.string().regex(
+  /^[a-z][a-z0-9_]*$/,
+  "Field id must be snake_case (lowercase letter start, [a-z0-9_])"
+);
+var seedFromSchema = external_exports.string().regex(
+  /^context\.[a-zA-Z0-9_.[\]*]+$/,
+  'seed_from must be a dotted path into context, e.g. "context.posture.stance"'
+).optional();
+var fieldBase = {
+  id: fieldIdSchema,
+  prompt: external_exports.string().min(1),
+  /** Short sentence-case noun phrase used as the confirmation card label.
+   *  Defaults to a derivation from `prompt` (strips question mark, "for
+   *  {brand_name}" suffix, capitalizes). Set explicitly when:
+   *    - The label contains an acronym ("Hero SKUs", not "Hero skus")
+   *    - The prompt is too long to read as a label
+   *    - You want different copy in the prompt vs. the column header
+   *  Should be under 30 characters and sentence case. */
+  label: external_exports.string().min(1).max(40).optional(),
+  help: external_exports.string().optional(),
+  seed_from: seedFromSchema,
+  required: external_exports.boolean().default(true),
+  deprecated: external_exports.boolean().default(false)
+};
+var enumFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("enum"),
+  options: external_exports.array(
+    external_exports.object({
+      value: external_exports.string().min(1),
+      label: external_exports.string().min(1)
+    })
+  ).min(2),
+  default: external_exports.string().optional()
+});
+var percentFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("percent"),
+  default: external_exports.number().min(0).max(1).optional(),
+  range: external_exports.object({ min: external_exports.number().min(0).max(1), max: external_exports.number().min(0).max(1) }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).default({ min: 0, max: 1 })
+});
+var floatFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("float"),
+  default: external_exports.number().optional(),
+  range: external_exports.object({ min: external_exports.number(), max: external_exports.number() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional(),
+  decimals: external_exports.number().int().min(0).max(6).default(2)
+});
+var intFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("int"),
+  default: external_exports.number().int().optional(),
+  range: external_exports.object({ min: external_exports.number().int(), max: external_exports.number().int() }).refine((r) => r.min <= r.max, { message: "range.min must be <= range.max" }).optional()
+});
+var boolFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("bool"),
+  default: external_exports.boolean().optional()
+});
+var stringFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("string"),
+  default: external_exports.string().optional(),
+  max_length: external_exports.number().int().positive().default(280)
+});
+var asinListFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("asin_list"),
+  default: external_exports.array(external_exports.string()).default([]),
+  max_items: external_exports.number().int().positive().default(200)
+});
+var skuListFieldSchema = external_exports.object({
+  ...fieldBase,
+  type: external_exports.literal("sku_list"),
+  default: external_exports.array(external_exports.string()).default([]),
+  max_items: external_exports.number().int().positive().default(500)
+});
+var calibrationFieldSchema = external_exports.discriminatedUnion("type", [
+  enumFieldSchema,
+  percentFieldSchema,
+  floatFieldSchema,
+  intFieldSchema,
+  boolFieldSchema,
+  stringFieldSchema,
+  asinListFieldSchema,
+  skuListFieldSchema
+]);
+var calibrationManifestSchema = external_exports.object({
+  /** Schema version of the calibration block itself. Bump on breaking
+   *  changes to the field-type union. */
+  schema_version: external_exports.literal(1).default(1),
+  /** Ordered field list — the confirm-flow renders in this order. */
+  fields: external_exports.array(calibrationFieldSchema).min(1)
+});
+function extractCalibration(parsedManifest) {
+  if (parsedManifest === null || typeof parsedManifest !== "object" || !("calibration" in parsedManifest)) {
+    return null;
+  }
+  const block = parsedManifest.calibration;
+  if (block === null || block === void 0) return null;
+  return calibrationManifestSchema.parse(block);
+}
+function formatFieldValue(field, value) {
+  if (value === null || value === void 0) return "(not set)";
+  switch (field.type) {
+    case "enum": {
+      const opt = field.options.find((o) => o.value === value);
+      return opt?.label ?? String(value);
+    }
+    case "percent": {
+      if (typeof value !== "number") return String(value);
+      return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
+    }
+    case "float": {
+      if (typeof value !== "number") return String(value);
+      return value.toFixed(field.decimals);
+    }
+    case "int":
+      return String(value);
+    case "bool":
+      return value ? "yes" : "no";
+    case "string":
+      return String(value);
+    case "asin_list":
+    case "sku_list": {
+      if (!Array.isArray(value)) return String(value);
+      if (value.length === 0) return "(none)";
+      if (value.length <= 3) return value.join(", ");
+      return `${value.slice(0, 3).join(", ")} +${value.length - 3} more`;
+    }
+  }
+}
+function parseFieldInput(field, raw) {
+  const trimmed = raw.trim();
+  switch (field.type) {
+    case "enum": {
+      const byValue = field.options.find((o) => o.value === trimmed);
+      if (byValue) return { ok: true, value: byValue.value };
+      const byLabel = field.options.find(
+        (o) => o.label.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (byLabel) return { ok: true, value: byLabel.value };
+      const idx = Number(trimmed);
+      if (Number.isInteger(idx) && idx >= 1 && idx <= field.options.length) {
+        return { ok: true, value: field.options[idx - 1].value };
+      }
+      return {
+        ok: false,
+        error: `Expected one of: ${field.options.map((o) => o.value).join(", ")}`
+      };
+    }
+    case "percent": {
+      const cleaned = trimmed.replace(/%$/, "");
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) {
+        return { ok: false, error: 'Expected a number (e.g. "32" or "32%")' };
+      }
+      const normalized = n > 1 ? n / 100 : n;
+      if (normalized < field.range.min || normalized > field.range.max) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${(field.range.min * 100).toFixed(0)}% and ${(field.range.max * 100).toFixed(0)}%`
+        };
+      }
+      return { ok: true, value: normalized };
+    }
+    case "float": {
+      const n = Number(trimmed);
+      if (!Number.isFinite(n)) {
+        return { ok: false, error: "Expected a number" };
+      }
+      if (field.range && (n < field.range.min || n > field.range.max)) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
+        };
+      }
+      return { ok: true, value: n };
+    }
+    case "int": {
+      const n = Number(trimmed);
+      if (!Number.isInteger(n)) {
+        return { ok: false, error: "Expected a whole number" };
+      }
+      if (field.range && (n < field.range.min || n > field.range.max)) {
+        return {
+          ok: false,
+          error: `Out of range. Must be between ${field.range.min} and ${field.range.max}`
+        };
+      }
+      return { ok: true, value: n };
+    }
+    case "bool": {
+      const lower = trimmed.toLowerCase();
+      if (["y", "yes", "true", "1", "on"].includes(lower))
+        return { ok: true, value: true };
+      if (["n", "no", "false", "0", "off"].includes(lower))
+        return { ok: true, value: false };
+      return { ok: false, error: "Expected yes/no" };
+    }
+    case "string": {
+      if (trimmed.length === 0 && field.required) {
+        return { ok: false, error: "Cannot be empty" };
+      }
+      if (trimmed.length > field.max_length) {
+        return {
+          ok: false,
+          error: `Too long. Max ${field.max_length} characters.`
+        };
+      }
+      return { ok: true, value: trimmed };
+    }
+    case "asin_list": {
+      if (trimmed === "" || trimmed.toLowerCase() === "none") {
+        return { ok: true, value: [] };
+      }
+      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim().toUpperCase()).filter(Boolean);
+      const invalid = parts.filter((p) => !/^B0[A-Z0-9]{8}$/.test(p));
+      if (invalid.length > 0) {
+        return {
+          ok: false,
+          error: `Invalid ASIN(s): ${invalid.slice(0, 3).join(", ")}${invalid.length > 3 ? ` +${invalid.length - 3} more` : ""}. ASINs look like B0XXXXXXXX.`
+        };
+      }
+      if (parts.length > field.max_items) {
+        return {
+          ok: false,
+          error: `Too many ASINs (${parts.length}). Max ${field.max_items}.`
+        };
+      }
+      return { ok: true, value: Array.from(new Set(parts)) };
+    }
+    case "sku_list": {
+      if (trimmed === "" || trimmed.toLowerCase() === "none") {
+        return { ok: true, value: [] };
+      }
+      const parts = trimmed.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length > field.max_items) {
+        return {
+          ok: false,
+          error: `Too many SKUs (${parts.length}). Max ${field.max_items}.`
+        };
+      }
+      return { ok: true, value: Array.from(new Set(parts)) };
+    }
+  }
+}
+
+// src/lib/context-editor/manifest.ts
+var BRAND_CONTEXT_MANIFEST = [
+  // -----------------------------------------------------------------------
+  // Management — how the brand views performance
+  // -----------------------------------------------------------------------
+  {
+    context_path: "management.primary_metric",
+    field: {
+      id: "primary_metric",
+      label: "Primary metric",
+      prompt: "Primary metric for {brand_name}?",
+      help: "Drives how every skill frames performance. ACoS-thinkers look at ad-attributed efficiency; TACoS-thinkers look at total revenue. Set once at the brand level; can be flipped to RoAS/TRoAS display via profile.yaml::display.metric_framing.",
+      type: "enum",
+      options: [
+        { value: "ACOS", label: "ACoS (ad-attributed)" },
+        { value: "TACOS", label: "TACoS (total revenue)" }
+      ],
+      required: true,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.acos_target_pct",
+    field: {
+      id: "acos_target_pct",
+      label: "ACoS target",
+      prompt: "ACoS target for {brand_name}?",
+      help: "The brand's reference ACoS target. Skills use this as the default threshold for flagging exceptions. Surfaces on every skill's OCL card as the seed value; per-skill overrides happen there.",
+      type: "percent",
+      range: { min: 0.05, max: 1 },
+      required: true,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.tacos_target_pct",
+    field: {
+      id: "tacos_target_pct",
+      label: "TACoS target",
+      prompt: "TACoS target for {brand_name}?",
+      help: "Total Advertising Cost of Sales target \u2014 ad spend over TOTAL ordered revenue. Catches over-investment in ads even when ACoS looks clean. Leave empty for ACoS-primary brands that don't track a separate TACoS target.",
+      type: "percent",
+      range: { min: 0.01, max: 1 },
+      required: false,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "management.attribution_window_days",
+    field: {
+      id: "attribution_window_days",
+      label: "Attribution window (days)",
+      prompt: "Attribution window for {brand_name}?",
+      help: "Days from click to attributed conversion. Common values: 7 (most sellers), 14 (longer consideration cycles), 30 (high-AOV). Drives how reports interpret the lag between ad spend and revenue.",
+      type: "int",
+      default: 7,
+      range: { min: 1, max: 60 },
+      required: true,
+      deprecated: false
+    }
+  },
+  // -----------------------------------------------------------------------
+  // Goals — sales / performance targets
+  // -----------------------------------------------------------------------
+  {
+    context_path: "goals.monthly_total_sales_target",
+    field: {
+      id: "monthly_total_sales_target",
+      label: "Monthly sales target",
+      prompt: "Monthly total sales target for {brand_name} (USD)?",
+      help: "Used by mx-monthly-report and the portfolio scorecard. Total ordered revenue across all marketplaces. Leave empty if this brand operates without a monthly sales goal.",
+      type: "int",
+      range: { min: 0, max: 1e8 },
+      required: false,
+      deprecated: false
+    }
+  },
+  {
+    context_path: "goals.tacos_goal_pct",
+    field: {
+      id: "tacos_goal_pct",
+      label: "TACoS goal",
+      prompt: "TACoS goal (forward-looking) for {brand_name}?",
+      help: "Aspirational TACoS \u2014 distinct from `tacos_target_pct` above which is the threshold for flagging. Use this when the brand's running higher than ideal and you want monthly reports to track the gap between current and target.",
+      type: "percent",
+      range: { min: 0.01, max: 1 },
+      required: false,
+      deprecated: false
+    }
+  }
+];
+function findContextEntry(fieldId) {
+  return BRAND_CONTEXT_MANIFEST.find((e) => e.field.id === fieldId);
+}
+
+// src/lib/context-editor/flow.ts
+async function prepareBrandConfigEdit(opts) {
+  const ctx = await tryReadContextObject(opts.brandSlug, opts.dataDirOverride);
+  if (ctx === null) {
+    return {
+      brand_slug: opts.brandSlug,
+      brand_name: opts.brandName,
+      context_missing: true,
+      fields: [],
+      blocking: { has_missing_required: false, missing_keys: [] }
+    };
+  }
+  const fields = BRAND_CONTEXT_MANIFEST.filter(
+    (e) => !e.field.deprecated
+  ).map((entry) => buildFieldState(entry, ctx));
+  const missing_keys = fields.filter((f) => f.field.required && f.source === "missing").map((f) => f.field.id);
+  return {
+    brand_slug: opts.brandSlug,
+    brand_name: opts.brandName,
+    context_missing: false,
+    fields,
+    blocking: {
+      has_missing_required: missing_keys.length > 0,
+      missing_keys
+    }
+  };
+}
+function buildFieldState(entry, ctx) {
+  const stored_value = normalizePercentForDisplay(
+    entry.field,
+    getByPath2(ctx, entry.context_path)
+  );
+  const default_value = hasDefault2(entry.field) ? entry.field.default : void 0;
+  let effective_value;
+  let source;
+  if (stored_value !== void 0) {
+    effective_value = stored_value;
+    source = "stored";
+  } else if (default_value !== void 0) {
+    effective_value = default_value;
+    source = "default";
+  } else {
+    effective_value = void 0;
+    source = "missing";
+  }
+  return {
+    field: entry.field,
+    context_path: entry.context_path,
+    stored_value,
+    default_value,
+    effective_value,
+    source,
+    display: formatFieldValue(entry.field, effective_value)
+  };
+}
+async function applyBrandConfigEdit(payload, decision, opts) {
+  if (payload.context_missing) {
+    return {
+      status: "context_missing",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  if (decision.action === "cancel") {
+    return {
+      status: "cancelled",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  if (decision.action === "confirm") {
+    if (payload.blocking.has_missing_required) {
+      return {
+        status: "validation_failed",
+        updated_context: null,
+        did_write: false,
+        written_to: null,
+        changed_field_count: 0,
+        validation_issues: payload.blocking.missing_keys.map((k) => ({
+          field: k,
+          message: "required, no value set"
+        }))
+      };
+    }
+    return {
+      status: "ok",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  const issues = [];
+  const parsedEdits = [];
+  for (const [fieldId, raw] of Object.entries(decision.edits)) {
+    const entry = findContextEntry(fieldId);
+    if (!entry) {
+      issues.push({ field: fieldId, message: "unknown brand-config field" });
+      continue;
+    }
+    const parsed = parseFieldInput(entry.field, raw);
+    if (!parsed.ok) {
+      issues.push({ field: fieldId, message: parsed.error });
+      continue;
+    }
+    parsedEdits.push({
+      path: entry.context_path,
+      value: denormalizePercentForStorage(entry.field, parsed.value),
+      field_id: fieldId
+    });
+  }
+  if (issues.length > 0) {
+    return {
+      status: "validation_failed",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: issues
+    };
+  }
+  const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
+  let rawText;
+  try {
+    rawText = await readFile16(path2, "utf-8");
+  } catch (err) {
+    if (isFileNotFoundError12(err)) {
+      return {
+        status: "context_missing",
+        updated_context: null,
+        did_write: false,
+        written_to: null,
+        changed_field_count: 0,
+        validation_issues: []
+      };
+    }
+    throw err;
+  }
+  const ctxObj = (0, import_yaml12.parse)(rawText) ?? {};
+  let changedCount = 0;
+  for (const edit of parsedEdits) {
+    const before = getByPath2(ctxObj, edit.path);
+    if (!deepEqual(before, edit.value)) {
+      setNested(ctxObj, edit.path, edit.value);
+      changedCount += 1;
+    }
+  }
+  if (changedCount > 0) {
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    setNested(ctxObj, "last_updated", today);
+  }
+  if (changedCount === 0) {
+    return {
+      status: "ok",
+      updated_context: ctxObj,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: []
+    };
+  }
+  await writeContextFile(path2, ctxObj);
+  return {
+    status: "ok",
+    updated_context: ctxObj,
+    did_write: true,
+    written_to: path2,
+    changed_field_count: changedCount,
+    validation_issues: []
+  };
+}
+function hasDefault2(field) {
+  return field.default !== void 0;
+}
+function normalizePercentForDisplay(field, v) {
+  if (field.type === "percent" && typeof v === "number") {
+    return v > 1 ? v / 100 : v;
+  }
+  return v;
+}
+function denormalizePercentForStorage(field, v) {
+  if (field.type === "percent" && typeof v === "number") {
+    return Math.round(v * 1e4) / 100;
+  }
+  return v;
+}
+function getByPath2(obj, path2) {
+  if (obj === null || obj === void 0) return void 0;
+  const parts = path2.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur === null || cur === void 0 || typeof cur !== "object") {
+      return void 0;
+    }
+    cur = cur[p];
+  }
+  return cur;
+}
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => deepEqual(v, b[i]));
+  }
+  const ao = a;
+  const bo = b;
+  const aKeys = Object.keys(ao);
+  const bKeys = Object.keys(bo);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => deepEqual(ao[k], bo[k]));
+}
+async function tryReadContextObject(brandSlug, dataDirOverride) {
+  const path2 = contextPath(brandSlug, dataDirOverride);
+  try {
+    const raw = await readFile16(path2, "utf-8");
+    const parsed = (0, import_yaml12.parse)(raw);
+    if (parsed === null || parsed === void 0) return {};
+    if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+async function writeContextFile(path2, obj) {
+  await mkdir11(dirname14(path2), { recursive: true });
+  const yamlText = (0, import_yaml12.stringify)(obj, { indent: 2, lineWidth: 0 });
+  const tmpPath = `${path2}.${process.pid}.tmp`;
+  await writeFile11(tmpPath, yamlText, "utf-8");
+  try {
+    await chmod4(tmpPath, 384);
+  } catch {
+  }
+  await rename9(tmpPath, path2);
+}
+function isFileNotFoundError12(err) {
+  return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
+}
+
+// src/commands/brand-config.ts
 init_telemetry();
-import { readFile as fsReadFile } from "node:fs/promises";
-function registerBrandEnrichCommand(brandCmd) {
-  brandCmd.command("enrich <slug>").description(
-    "Run Phase 1.5 enrichment: settlement curve from CS-28, stockout windows from CS-29+CS-30, brand-name typo clusters from CS-31. Writes runs/mx-brand-context/<date>/<date>.enrichment.json. Read by the brand-context renderer (Detected Anomalies section) + the `brand merge-delta` patcher."
-  ).option("--date <date>", "run date (YYYY-MM-DD). Defaults to today.").action(
+function registerBrandConfigCommand(brandCmd) {
+  brandCmd.command("config <slug>").description(
+    "Edit brand-level context fields (ACoS/TACoS targets, attribution window, goals). Shows the confirmation card by default. Pair with --apply <decision-json> to persist edits."
+  ).option(
+    "--apply <decision>",
+    'apply a decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{...}} | {"action":"cancel"}'
+  ).option(
+    "--show",
+    "read-only inspect \u2014 alias for the default action when no flags pass",
+    false
+  ).action(
     async (slug, opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
-        const brand = await resolveBrand2(slug, root.dataDir);
-        if (!brand) {
-          return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
-        }
-        const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const prefetchPath = join11(
-          brandDir(brand.slug, root.dataDir),
-          "runs",
-          "mx-brand-context",
-          runDate,
-          "data.json"
-        );
-        let prefetch = null;
-        try {
-          const raw = await readFile18(prefetchPath, "utf-8");
-          prefetch = JSON.parse(raw);
-        } catch {
-          return emitError4(
+        const brandRow = await resolveBrandRow(slug, root.dataDir);
+        if (brandRow === null) {
+          return emitError2(
             root.json,
-            `No prefetch artifact at ${prefetchPath}. Run \`mixshift prefetch --skill mx-brand-context --brand ${brand.slug} --date ${runDate}\` first.`
+            `Brand "${slug}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands.`
           );
         }
-        const { index } = await readIndex(root.dataDir);
-        const row = index.brands.find((b) => b.slug === brand.slug);
-        const accountCount = row?.accounts.length ?? 0;
-        const artifact = emptyArtifact(brand.slug, runDate, accountCount);
-        const partial_reasons = [];
-        const cs28Rows = extractQueryRows(prefetch, "CS-28");
-        if (cs28Rows.length === 0) {
-          partial_reasons.push("CS-28 returned no rows \u2014 settlement curve unavailable");
-        } else {
-          artifact.daily_settlement_curve = computeSettlementCurve(cs28Rows);
-          if (artifact.daily_settlement_curve === null) {
-            partial_reasons.push("Settlement curve computation returned null");
-          }
+        if (opts.apply) {
+          return await runApplyDecision({
+            brandSlug: brandRow.slug,
+            brandName: brandRow.display_name,
+            decisionJson: opts.apply,
+            json: root.json,
+            dataDir: root.dataDir
+          });
         }
-        const cs29Rows = extractQueryRows(prefetch, "CS-29");
-        const cs30Rows = extractQueryRows(prefetch, "CS-30");
-        if (cs29Rows.length === 0) {
-          partial_reasons.push("CS-29 returned no rows \u2014 stockout detection skipped");
-        } else {
-          artifact.stockout_candidates = detectStockoutWindows(cs29Rows, cs30Rows);
+        return await runShow({
+          brandSlug: brandRow.slug,
+          brandName: brandRow.display_name,
+          json: root.json,
+          dataDir: root.dataDir
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return emitError2(root.json, message);
+      }
+    }
+  );
+}
+async function runShow(args) {
+  const payload = await prepareBrandConfigEdit({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    dataDirOverride: args.dataDir
+  });
+  indexFields(payload);
+  await track(
+    {
+      event_name: "brand_config.viewed",
+      payload: {
+        brand_slug: args.brandSlug,
+        context_missing: payload.context_missing
+      }
+    },
+    args.dataDir
+  );
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify({ status: "ok", config: payload }, null, 2) + "\n"
+    );
+    return;
+  }
+  if (payload.context_missing) {
+    process.stdout.write(
+      `
+No brand context yet for ${args.brandName}.
+
+Run /mx-brand-context ${args.brandSlug} in chat to capture the brand's positioning, targets, and structural events.
+
+`
+    );
+    return;
+  }
+  process.stdout.write("\n" + renderBrandConfigCard(payload) + "\n\n");
+}
+async function runApplyDecision(args) {
+  let decision;
+  try {
+    decision = JSON.parse(args.decisionJson);
+  } catch (err) {
+    return emitError2(
+      args.json,
+      `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  const payload = await prepareBrandConfigEdit({
+    brandSlug: args.brandSlug,
+    brandName: args.brandName,
+    dataDirOverride: args.dataDir
+  });
+  const result = await applyBrandConfigEdit(payload, decision, {
+    dataDirOverride: args.dataDir
+  });
+  if (decision.action === "edit") {
+    await track(
+      {
+        event_name: "brand_config.edited",
+        outcome: result.status === "ok" ? "ok" : "failed",
+        payload: {
+          brand_slug: args.brandSlug,
+          edit_count: Object.keys(decision.edits).length,
+          changed_count: result.changed_field_count
         }
-        const cs31Rows = extractQueryRows(prefetch, "CS-31");
-        if (cs31Rows.length === 0) {
-          partial_reasons.push("CS-31 returned no rows \u2014 brand-typo clustering skipped");
-        } else {
-          const ctx = await tryReadContextForTypos(brand.slug, root.dataDir);
-          if (!ctx || !ctx.brand_terms) {
-            partial_reasons.push(
-              "context.yaml::brand_terms missing \u2014 brand-typo clustering needs canonicals to match against"
-            );
-          } else {
-            artifact.brand_term_typo_candidates = detectBrandTermTypos(
-              cs31Rows,
-              ctx.brand_terms,
-              {
-                competitor_brands: ctx.negation?.competitor_brands ?? []
-              }
-            );
-          }
-        }
-        artifact.partial_reasons = partial_reasons;
-        artifact.partial = partial_reasons.length > 0;
-        const { path: path2 } = await writeEnrichmentArtifact(
-          brand.slug,
-          runDate,
-          artifact,
-          root.dataDir
+      },
+      args.dataDir
+    );
+  }
+  if (args.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: result.status,
+          did_write: result.did_write,
+          changed_field_count: result.changed_field_count,
+          written_to: result.written_to,
+          validation_issues: result.validation_issues
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    if (result.status === "validation_failed") process.exitCode = 4;
+    if (result.status === "context_missing") process.exitCode = 5;
+    return;
+  }
+  switch (result.status) {
+    case "context_missing":
+      process.stderr.write(
+        `
+No brand context yet for ${args.brandName}. Run /mx-brand-context ${args.brandSlug} first.
+
+`
+      );
+      process.exitCode = 5;
+      return;
+    case "cancelled":
+      process.stdout.write("\nCancelled. No changes saved.\n\n");
+      return;
+    case "validation_failed":
+      process.stderr.write("\nCould not save \u2014 please fix:\n");
+      for (const issue2 of result.validation_issues) {
+        process.stderr.write(`  - ${issue2.field}: ${issue2.message}
+`);
+      }
+      process.stderr.write("\n");
+      process.exitCode = 4;
+      return;
+    case "ok":
+      if (result.did_write) {
+        process.stdout.write(
+          `
+\u2713 Saved ${result.changed_field_count} brand config edit(s) for ${args.brandName}.
+
+`
         );
+      } else {
+        process.stdout.write(`
+No changes.
+
+`);
+      }
+      return;
+  }
+}
+function renderBrandConfigCard(payload) {
+  const lines = [];
+  lines.push(`Brand config \u2014 ${payload.brand_name}`);
+  lines.push("");
+  for (const f of payload.fields) {
+    lines.push(renderFieldLine(f));
+    const hint = renderSourceHint(f);
+    if (hint) lines.push(`${"".padStart(28)}${hint}`);
+  }
+  lines.push("");
+  if (payload.blocking.has_missing_required) {
+    lines.push(`Missing required: ${payload.blocking.missing_keys.join(", ")}`);
+    lines.push("");
+    lines.push(
+      `Some required fields are unset. Choose a number above to set, or "cancel".`
+    );
+  } else {
+    lines.push(
+      `Confirm or edit?  [Enter to keep / number to edit / "cancel"]`
+    );
+  }
+  return lines.join("\n");
+}
+function renderFieldLine(state) {
+  const idx = state._idx ?? 0;
+  const num = idx.toString().padStart(2, " ");
+  const label = humanLabel(state.field).padEnd(24);
+  return `  ${num}. ${label}  ${state.display}`;
+}
+function renderSourceHint(state) {
+  switch (state.source) {
+    case "stored":
+      return null;
+    case "default":
+      return `(default \u2014 set explicitly if this isn't right)`;
+    case "missing":
+      return state.field.required ? `(required \u2014 must be set)` : `(not set \u2014 optional)`;
+  }
+}
+function humanLabel(field) {
+  if (field.label) return field.label;
+  return field.id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+function indexFields(payload) {
+  payload.fields.forEach((f, i) => {
+    f._idx = i + 1;
+  });
+}
+async function resolveBrandRow(input, dataDir) {
+  const { index } = await readIndex(dataDir);
+  const exact = index.brands.find((b) => b.slug === input);
+  if (exact) return { slug: exact.slug, display_name: exact.display_name };
+  const resolved = resolveBrandName(input, index);
+  if (resolved.status === "found") {
+    return {
+      slug: resolved.brand.slug,
+      display_name: resolved.brand.display_name
+    };
+  }
+  if (resolved.status === "ambiguous") {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+    throw new Error(
+      `Brand input "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`
+    );
+  }
+  return null;
+}
+function emitError2(json2, message) {
+  if (json2) {
+    process.stdout.write(
+      JSON.stringify({ status: "error", message }, null, 2) + "\n"
+    );
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+
+// src/commands/brand-render-context.ts
+import { exec as execCb2 } from "node:child_process";
+import { promisify as promisify2 } from "node:util";
+
+// src/lib/render/brand-context-composer.ts
+init_resolve();
+import { mkdir as mkdir12, writeFile as writeFile12 } from "node:fs/promises";
+import { join as join10 } from "node:path";
+
+// src/lib/render/brand-context-report.ts
+var import_yaml13 = __toESM(require_dist(), 1);
+init_resolve();
+import { readFile as readFile17, readdir as readdir2, stat as stat3 } from "node:fs/promises";
+import { dirname as dirname15, join as join9 } from "node:path";
+async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
+  const ctxPath = contextPath(brandSlug, dataDirOverride);
+  const narPath = narrativePath(brandSlug, dataDirOverride);
+  const dir = brandDir(brandSlug, dataDirOverride);
+  const briPath = join9(dir, "brand-intelligence.yaml");
+  const corporaPath = join9(dir, "corpora");
+  const [context, narrative, intel, corpora, brainResult] = await Promise.all([
+    readYamlIfExists(ctxPath),
+    readTextIfExists(narPath),
+    readYamlIfExists(briPath),
+    summarizeCorpora(corporaPath),
+    loadBrain(brandSlug, dataDirOverride)
+  ]);
+  const enrichment = brainResult.ok ? {
+    daily_settlement_curve: brainResult.brain.capture_rate_calibration?.daily_settlement_curve ?? null,
+    stockout_candidates: brainResult.brain.stockouts ?? [],
+    brand_term_typo_candidates: brainResult.brain.brand_term_typos ?? []
+  } : null;
+  const last_updated = context?.last_updated ?? null;
+  return {
+    context,
+    context_path: ctxPath,
+    narrative_md: narrative,
+    narrative_path: narPath,
+    brand_intelligence: intel,
+    brand_intelligence_path: briPath,
+    corpora_summary: corpora,
+    corpora_path: corporaPath,
+    enrichment,
+    last_updated
+  };
+}
+function parseNarrativeSections(md) {
+  if (!md) return {};
+  const lines = md.split(/\r?\n/);
+  const out = {};
+  let currentKey = null;
+  let currentBody = [];
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      if (currentKey !== null) {
+        out[currentKey] = currentBody.join("\n").trim();
+      }
+      currentKey = h2[1].toLowerCase().replace(/[?.!:;,]$/, "").trim();
+      currentBody = [];
+    } else if (currentKey !== null) {
+      currentBody.push(line);
+    }
+  }
+  if (currentKey !== null) {
+    out[currentKey] = currentBody.join("\n").trim();
+  }
+  return out;
+}
+function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date()) {
+  const rows = [];
+  let required_present = 0;
+  let required_total = 0;
+  let recommended_present = 0;
+  let recommended_total = 0;
+  let stale_count = 0;
+  let open_gaps_count = 0;
+  for (const label of labels) {
+    const value = context ? resolveAuditPath(context, label.path) : void 0;
+    const isPresent2 = !isAuditMissing(value);
+    const isStale2 = !!(label.fresh_check && isPresent2 && typeof value === "string" && isStaleDate(value, now));
+    if (isStale2) stale_count += 1;
+    if (label.tier === "required") {
+      required_total += 1;
+      if (isPresent2) required_present += 1;
+    } else if (label.tier === "recommended") {
+      recommended_total += 1;
+      if (isPresent2) recommended_present += 1;
+    }
+    let status;
+    if (!isPresent2) {
+      status = label.tier === "required" ? "miss" : label.tier === "recommended" ? "warn" : "muted";
+    } else if (isStale2) {
+      status = "warn";
+    } else {
+      status = "ok";
+    }
+    rows.push({
+      label,
+      value,
+      status,
+      display: formatAuditValue(label, value, isPresent2, isStale2),
+      is_stale: isStale2
+    });
+    if (label.path === "open_gaps" && Array.isArray(value)) {
+      open_gaps_count = value.length;
+    }
+  }
+  return {
+    rows,
+    required_present,
+    required_total,
+    recommended_present,
+    recommended_total,
+    stale_count,
+    open_gaps_count
+  };
+}
+function resolveAuditPath(obj, path2) {
+  if (obj === null || obj === void 0) return void 0;
+  const arrayWildcard = path2.includes("[]");
+  if (arrayWildcard) {
+    const [head, tail] = path2.split("[]");
+    const arr = getNested(obj, head.replace(/\.$/, ""));
+    if (!Array.isArray(arr)) return void 0;
+    if (!tail || tail === "") return arr;
+    return arr.map((el) => getNested(el, tail.replace(/^\./, "")));
+  }
+  return getNested(obj, path2);
+}
+function getNested(obj, path2) {
+  if (!path2) return obj;
+  const parts = path2.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur === null || cur === void 0 || typeof cur !== "object") {
+      return void 0;
+    }
+    cur = cur[p];
+  }
+  return cur;
+}
+function isAuditMissing(value) {
+  if (value === void 0 || value === null) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return true;
+    if (value.every((v) => v === void 0 || v === null || v === "")) return true;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    if (Object.keys(value).length === 0) return true;
+  }
+  return false;
+}
+function isStaleDate(value, now, days = 30) {
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return false;
+    const ageMs = now.getTime() - d.getTime();
+    return ageMs > days * 24 * 60 * 60 * 1e3;
+  } catch {
+    return false;
+  }
+}
+function formatAuditValue(label, value, isPresent2, isStale2) {
+  if (!isPresent2) {
+    return label.tier === "required" ? "missing (required)" : label.tier === "recommended" ? "missing (recommended)" : "not set";
+  }
+  if (isStale2 && typeof value === "string") return `${value} (stale)`;
+  if (label.aggregate && Array.isArray(value)) {
+    return value.filter((v) => v !== void 0 && v !== null).map(String).join(" / ");
+  }
+  if (label.list_count && Array.isArray(value)) {
+    return `${value.length} ${value.length === 1 ? "entry" : "entries"}`;
+  }
+  if (label.dict_count && typeof value === "object" && !Array.isArray(value)) {
+    return `${Object.keys(value).length} entries`;
+  }
+  if (label.display_as === "status") return "configured";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return JSON.stringify(value);
+}
+function computeVerdict(args) {
+  if (args.observational) {
+    return {
+      verdict: "OBSERVATIONAL",
+      reason: "Phase 1 complete; Phase 2 AM intake pending."
+    };
+  }
+  const contextState = args.context_state ?? (args.validator_passed ? "valid" : "invalid");
+  if (contextState === "absent") {
+    return args.brain_present ? {
+      verdict: "OBSERVATIONAL",
+      reason: "Auto-discovered from your account \u2014 confirm and enrich to sharpen."
+    } : {
+      verdict: "OBSERVATIONAL",
+      reason: "Nothing captured yet \u2014 add the brand and run setup to populate context."
+    };
+  }
+  if (contextState === "invalid") {
+    return {
+      verdict: "RED",
+      reason: "Schema validator failed \u2014 fix context.yaml and re-render."
+    };
+  }
+  if (args.coverage.required_present < args.coverage.required_total) {
+    const missing = args.coverage.required_total - args.coverage.required_present;
+    return {
+      verdict: "RED",
+      reason: `${missing} required field(s) missing.`
+    };
+  }
+  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
+    const parts = [];
+    if (args.coverage.open_gaps_count > 0)
+      parts.push(`${args.coverage.open_gaps_count} open gap(s)`);
+    if (args.coverage.stale_count > 0)
+      parts.push(`${args.coverage.stale_count} stale field(s)`);
+    return {
+      verdict: "YELLOW",
+      reason: parts.join("; ") + "."
+    };
+  }
+  if (args.coverage.recommended_present < args.coverage.recommended_total) {
+    const missing = args.coverage.recommended_total - args.coverage.recommended_present;
+    return {
+      verdict: "YELLOW",
+      reason: `${missing} recommended field(s) not populated.`
+    };
+  }
+  return {
+    verdict: "GREEN",
+    reason: "All required + recommended fields populated; no open gaps; context fresh."
+  };
+}
+async function loadAuditLabels() {
+  const { existsSync: existsSync3 } = await import("node:fs");
+  const { fileURLToPath: fileURLToPath8 } = await import("node:url");
+  const { parse: parse4 } = await import("node:path");
+  let dir = dirname15(fileURLToPath8(import.meta.url));
+  const root = parse4(dir).root;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join9(
+      dir,
+      "shared",
+      "clients",
+      "_schema",
+      "audit-labels.yaml"
+    );
+    if (existsSync3(candidate)) {
+      const raw = await readFile17(candidate, "utf-8");
+      const parsed = (0, import_yaml13.parse)(raw);
+      return parsed.fields ?? [];
+    }
+    if (dir === root) break;
+    dir = dirname15(dir);
+  }
+  return [];
+}
+async function readYamlIfExists(path2) {
+  try {
+    const raw = await readFile17(path2, "utf-8");
+    return (0, import_yaml13.parse)(raw);
+  } catch {
+    return null;
+  }
+}
+async function readTextIfExists(path2) {
+  try {
+    return await readFile17(path2, "utf-8");
+  } catch {
+    return null;
+  }
+}
+async function summarizeCorpora(dirPath) {
+  try {
+    const entries = await readdir2(dirPath);
+    const summaries = [];
+    for (const f of entries) {
+      if (!f.endsWith(".csv")) continue;
+      try {
+        const s = await stat3(join9(dirPath, f));
+        if (!s.isFile()) continue;
+        const raw = await readFile17(join9(dirPath, f), "utf-8");
+        const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
+        const row_count = Math.max(0, lines.length - 1);
+        summaries.push({ filename: f, row_count });
+      } catch {
+      }
+    }
+    return summaries;
+  } catch {
+    return [];
+  }
+}
+
+// src/lib/render/brand-context-sections.ts
+function levelOf(resolved) {
+  if (resolved == null) return "gap";
+  return resolved.source === "context" ? "confirmed" : "prefilled";
+}
+function fieldConfidence(s, key) {
+  return levelOf(s.resolved_fields[key]);
+}
+function prefilledNote(resolved) {
+  if (resolved == null || resolved.source !== "brain") return void 0;
+  return resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
+}
+function presenceConfidence(present) {
+  return present ? "confirmed" : "gap";
+}
+function markerFor(s, key) {
+  const resolved = s.resolved_fields[key];
+  return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
+}
+function maxConfidence(a, b) {
+  const rank = { confirmed: 2, prefilled: 1, gap: 0 };
+  return rank[a] >= rank[b] ? a : b;
+}
+function shortDate(v) {
+  return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
+}
+function sectionHeader(s) {
+  const verdictTone = s.verdict === "GREEN" ? "complete" : s.verdict === "YELLOW" ? "partial" : s.verdict === "RED" ? "missing" : "runtime";
+  const freshness = s.sources.last_updated ? `Last updated ${s.sources.last_updated}` : "Freshness unknown";
+  return `<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+  ${renderStatusPill(s.verdict, verdictTone)}
+  <span style="color: var(--rc-text-sub); font-size: 12px;">${escapeHtml(freshness)}</span>
+  <span style="color: var(--rc-text); font-size: 13px;">${escapeHtml(s.verdict_reason)}</span>
+</div>
+<p style="color: var(--rc-text-sub); font-size: 13px; margin: 12px 0 8px; line-height: 1.55;">What we know about this brand, and how sure we are. Each field below is marked ${renderConfidenceGlyph("confirmed")} confirmed, ${renderConfidenceGlyph("prefilled")} pre-filled, or ${renderConfidenceGlyph("gap")} not set yet.</p>
+${renderConfidenceLegend()}`;
+}
+var FIELD_LABELS = {
+  acos_target_pct: "ACoS target",
+  sub_brands: "Sub-brands",
+  marketplace: "Marketplace",
+  primary_metric: "Primary metric",
+  attribution_window_days: "Attribution window (days)",
+  tacos_target_pct: "TACoS target",
+  tacos_goal_pct: "TACoS goal",
+  posture_stance: "Posture stance",
+  posture_multiplier: "Bid-cut intensity",
+  monthly_total_sales_target: "Monthly sales target",
+  quarterly_total_sales_target: "Quarterly sales target",
+  protected_terms: "Protected terms",
+  lane_rules: "Lane-based negation rules",
+  campaign_naming_pattern: "Campaign naming pattern",
+  structural_events: "Structural events",
+  paused_campaigns: "Paused campaigns",
+  monthly_budget: "Monthly budget",
+  recent_spend_30d: "30-day spend",
+  recent_acos_30d: "30-day ACoS",
+  item_groups: "Item groups",
+  hero_asins: "Hero ASINs",
+  capture_rate_calibration: "Capture-rate calibration",
+  daily_settlement_curve: "Daily settlement curve",
+  stockouts: "Stockout windows",
+  brand_term_typos: "Brand-term typos"
+};
+var PCT_FIELDS = /* @__PURE__ */ new Set([
+  "acos_target_pct",
+  "tacos_target_pct",
+  "tacos_goal_pct",
+  "recent_acos_30d"
+]);
+var MONEY_FIELDS = /* @__PURE__ */ new Set([
+  "monthly_total_sales_target",
+  "quarterly_total_sales_target",
+  "monthly_budget",
+  "recent_spend_30d"
+]);
+function formatResolvedValue(key, value) {
+  if (Array.isArray(value)) {
+    const n = value.length;
+    if (key === "sub_brands") {
+      const names = value.map((v) => v && typeof v === "object" ? v.name ?? v.slug : String(v)).filter(Boolean);
+      return names.length > 0 ? `${n}: ${names.join(", ")}` : `${n} entries`;
+    }
+    if (key === "protected_terms" || key === "item_groups") {
+      const head = value.slice(0, 4).map(String).join(", ");
+      return n > 4 ? `${n}: ${head}, \u2026` : `${n}: ${head}`;
+    }
+    return `${n} ${n === 1 ? "entry" : "entries"}`;
+  }
+  if (value !== null && typeof value === "object") {
+    const n = Object.keys(value).length;
+    return `${n} ${n === 1 ? "entry" : "entries"}`;
+  }
+  if (typeof value === "number") {
+    if (PCT_FIELDS.has(key)) return formatWholePct(value, 0);
+    if (MONEY_FIELDS.has(key)) return `$${formatInt(value)}`;
+    return String(value);
+  }
+  return String(value);
+}
+function sectionConfidenceSummary(s) {
+  const items = BRAND_FIELD_KEYS.map((key) => {
+    const resolved = s.resolved_fields[key];
+    const level = levelOf(resolved);
+    const value = resolved ? formatResolvedValue(key, resolved.value) : "";
+    const hint = level === "gap" || level === "prefilled" ? renderSetHint({ field: key, brand: s.brand_slug }) : void 0;
+    return {
+      label: FIELD_LABELS[key],
+      level,
+      value,
+      note: prefilledNote(resolved),
+      hint
+    };
+  });
+  const confirmed = items.filter((i) => i.level === "confirmed").length;
+  const prefilled = items.filter((i) => i.level === "prefilled").length;
+  const gaps = items.filter((i) => i.level === "gap").length;
+  const tally = `<div style="color: var(--rc-text-sub); font-size: 12px; margin-bottom: 12px;">${renderConfidenceGlyph("confirmed")} ${confirmed} confirmed \xB7 ${renderConfidenceGlyph("prefilled")} ${prefilled} pre-filled \xB7 ${renderConfidenceGlyph("gap")} ${gaps} not set yet</div>`;
+  return renderCard({
+    title: "What we know, and how sure we are",
+    body: `${tally}${renderConfidenceList(items)}`
+  });
+}
+function sectionBrandSummary(s) {
+  const intel = s.sources.brand_intelligence;
+  const heroFromIntel = intel?.hero_narrative;
+  const heroFallback = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
+  const heroProse = heroFromIntel ?? heroFallback;
+  const proofPoints = intel?.proof_points ?? [];
+  const heroBlock = heroProse ? `<div style="padding: 14px 18px; background: var(--rc-subtle); border-left: 4px solid var(--rc-info); border-radius: 6px; margin-bottom: 14px; font-size: 14px; line-height: 1.65;">${mdToHtmlParagraphs(heroProse)}</div>` : `<div class="rc-empty">No brand summary yet. Add a hero narrative in <code>brand-intelligence.yaml::hero_narrative</code> or <code>narrative.md ## Brand Identity</code>.</div>`;
+  const proofCards = proofPoints.map((p) => ({
+    title: p.title,
+    status: p.status,
+    body: escapeHtml(p.summary),
+    sources: (p.evidence ?? []).map(
+      (e) => typeof e === "string" ? { label: e } : { label: e.label, href: e.href }
+    )
+  }));
+  return renderCard({
+    title: "What I know about this brand",
+    body: `${heroBlock}${proofCards.length > 0 ? renderProofGrid(proofCards) : ""}`
+  });
+}
+function sectionReviewAtAGlance(s) {
+  return renderScorecardRow([
+    {
+      label: "Required fields",
+      value: `${s.coverage.required_present}/${s.coverage.required_total}`,
+      delta: s.coverage.required_present === s.coverage.required_total ? { text: "Complete", direction: "positive" } : { text: `${s.coverage.required_total - s.coverage.required_present} missing`, direction: "negative" }
+    },
+    {
+      label: "Recommended fields",
+      value: `${s.coverage.recommended_present}/${s.coverage.recommended_total}`
+    },
+    {
+      label: "Open gaps",
+      value: formatInt(s.coverage.open_gaps_count),
+      delta: s.coverage.open_gaps_count === 0 ? { text: "None", direction: "positive" } : void 0
+    },
+    {
+      label: "Stale fields",
+      value: formatInt(s.coverage.stale_count),
+      delta: s.coverage.stale_count === 0 ? { text: "Fresh", direction: "positive" } : { text: `${s.coverage.stale_count} stale`, direction: "negative" }
+    }
+  ]);
+}
+function sectionRuntimeInputs(s) {
+  const ctx = s.sources.context;
+  const cards = [];
+  if (ctx?.goals?.forecast_tracking) {
+    cards.push({
+      title: "Forecast model",
+      body: `<p>Forecast tracking enabled. Supply the current month's forecast (HCAM / H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`
+    });
+  }
+  return renderCard({
+    title: "Runtime inputs required",
+    body: renderRuntimeGrid(cards)
+  });
+}
+function sectionSkillReadiness(s) {
+  const columns = [
+    {
+      key: "skill",
+      label: "Skill",
+      render: (row) => `<code style="font-size: 12px;">${escapeHtml(String(row.skill))}</code>`
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => renderStatusPill(String(row.status), row.tone)
+    },
+    { key: "notes", label: "Notes" }
+  ];
+  return renderCard({
+    title: "Skill readiness",
+    body: renderTable(columns, s.skill_readiness)
+  });
+}
+function sectionActiveConditions(s) {
+  const ctx = s.sources.context;
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const activeEvents = (ctx?.structural_events ?? []).filter(
+    (e) => isEventActive(e, today)
+  );
+  const watch = ctx?.active_watch ?? [];
+  const blocks = [];
+  for (const evt of activeEvents) {
+    blocks.push({
+      title: evt.id,
+      kind: "event",
+      pill: { text: friendlyEventType(evt.type), tone: "default" },
+      body: escapeHtml(evt.interpretation)
+    });
+  }
+  for (const w of watch) {
+    blocks.push({
+      title: w.id ?? "Open watch",
+      kind: "watch",
+      body: escapeHtml(w.question ?? w.note ?? "")
+    });
+  }
+  const quarterContext = findSection(s.narrative_sections, ["current quarter context"]);
+  const leadHtml = quarterContext ? `<div style="color: var(--rc-text-sub); font-size: 12px; font-style: italic; margin-bottom: 12px;">${mdToHtmlParagraphs(quarterContext)}</div>` : "";
+  const body = blocks.length === 0 ? leadHtml + '<div class="rc-empty">No active conditions documented.</div>' : leadHtml + blocks.map(renderConditionBlock).join("\n");
+  return renderCard({
+    title: "What I'm watching right now",
+    title_accessory: markerFor(s, "structural_events"),
+    body
+  });
+}
+function sectionAccountSnapshot(s) {
+  const ctx = s.sources.context;
+  const accounts = ctx?.accounts ?? [];
+  const m = ctx?.management ?? {};
+  const isTacosPrimary = m.primary_metric === "TACOS";
+  const primaryLabel = isTacosPrimary ? "TACoS target" : "ACoS target";
+  const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
+  const primaryTargetLevel = isTacosPrimary ? maxConfidence(fieldConfidence(s, "tacos_target_pct"), fieldConfidence(s, "tacos_goal_pct")) : fieldConfidence(s, "acos_target_pct");
+  const scorecards = renderScorecardRow([
+    { label: "Accounts", value: formatInt(accounts.length) },
+    {
+      label: "Account types",
+      value: Array.from(new Set(accounts.map((a) => a.account_type))).join(" / ") || "\u2014"
+    },
+    { label: primaryLabel, value: primaryValue },
+    {
+      label: "Attribution window",
+      value: m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "\u2014"
+    }
+  ]);
+  const columns = [
+    { key: "seller_id", label: "SellerID" },
+    { key: "seller_name", label: "Name" },
+    { key: "account_type", label: "Type" },
+    { key: "marketplace", label: "Marketplace" },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => {
+        const status = String(row.status ?? "active");
+        const tone = status === "active" ? "green" : status === "wind_down" ? "amber" : "ghost";
+        return renderPill(sentenceCase2(status), tone);
+      }
+    },
+    { key: "role", label: "Role" }
+  ];
+  const accountsTable = renderTable(
+    columns,
+    accounts.map((a) => ({
+      seller_id: a.seller_id,
+      seller_name: a.seller_name,
+      account_type: a.account_type,
+      marketplace: a.marketplace ?? "\u2014",
+      status: a.status ?? "active",
+      role: a.role ?? "primary"
+    }))
+  );
+  const targetSetHint = primaryTargetLevel === "gap" ? renderSetHint({ field: isTacosPrimary ? "tacos_target_pct" : "acos_target_pct", brand: s.brand_slug }) : "";
+  const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
+  <span>${markerFor(s, "primary_metric")} Primary metric: ${escapeHtml(String(m.primary_metric ?? "not set yet"))}</span>
+  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetSetHint}</span>
+  <span>${markerFor(s, "attribution_window_days")} Attribution window: ${escapeHtml(m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "not set yet")}</span>
+  <span>${markerFor(s, "marketplace")} Marketplace: ${escapeHtml(marketplaceDisplay(accounts))}</span>
+</div>`;
+  return renderCard({
+    title: "Account snapshot",
+    body: `${annot}${scorecards}<div style="margin-top: var(--space-4);">${accountsTable}</div>`
+  });
+}
+function marketplaceDisplay(accounts) {
+  const mk = accounts[0]?.marketplace;
+  return mk && mk.length > 0 ? mk : "not set yet";
+}
+function sectionSubBrands(s) {
+  const ctx = s.sources.context;
+  const subs = ctx?.sub_brands ?? [];
+  const marker = markerFor(s, "sub_brands");
+  if (subs.length === 0) {
+    const level = fieldConfidence(s, "sub_brands");
+    const body2 = level === "gap" ? `<div class="rc-empty">Single-brand account, or sub-brands not set yet. ${renderSetHint({ field: "sub_brands", brand: s.brand_slug })}</div>` : '<div class="rc-empty">Single-brand account (no sub-brands documented).</div>';
+    return renderCard({ title: "Sub-brand structure", title_accessory: marker, body: body2 });
+  }
+  const itemGroupsHtml = (groups) => Array.isArray(groups) && groups.length > 0 ? groups.map((g) => `<code style="font-size: 11px;">${escapeHtml(g)}</code>`).join(" ") : '<span style="color: var(--rc-text-mute);">\u2014</span>';
+  let body;
+  if (subs.length === 1) {
+    const sb = subs[0];
+    body = `<p style="margin: 0; font-size: 13px; line-height: 1.6;">One sub-brand: <strong>${escapeHtml(sb.name)}</strong> <code>${escapeHtml(sb.slug)}</code>${sb.item_groups && sb.item_groups.length > 0 ? ` \u2014 item groups: ${itemGroupsHtml(sb.item_groups)}` : ""}</p>`;
+  } else if (subs.length <= 4) {
+    const lis = subs.map(
+      (sb) => `<li style="margin-bottom: 6px; line-height: 1.5;"><strong>${escapeHtml(sb.name)}</strong> <code style="font-size: 11px;">${escapeHtml(sb.slug)}</code>${sb.item_groups && sb.item_groups.length > 0 ? `<br><span style="color: var(--rc-text-sub); font-size: 11.5px;">${itemGroupsHtml(sb.item_groups)}</span>` : ""}</li>`
+    ).join("\n");
+    body = `<ul style="list-style: none; padding: 0; margin: 0;">${lis}</ul>`;
+  } else {
+    const names = subs.map((sb) => `<span class="rc-pill is-ghost">${escapeHtml(sb.name)}</span>`).join(" ");
+    const totalGroups = new Set(subs.flatMap((sb) => sb.item_groups ?? [])).size;
+    body = `<p style="margin: 0 0 10px; font-size: 13px;"><strong>${subs.length}</strong> sub-brands spanning <strong>${totalGroups}</strong> item group${totalGroups === 1 ? "" : "s"}.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 5px;">${names}</div>`;
+  }
+  return renderCard({ title: "Sub-brand structure", title_accessory: marker, body });
+}
+function sectionItemGroups(s) {
+  const ctx = s.sources.context;
+  const subs = ctx?.sub_brands ?? [];
+  const rows = [];
+  for (const sb of subs) {
+    for (const ig of sb.item_groups ?? []) {
+      rows.push({ sub_brand: sb.name, item_group: ig });
+    }
+  }
+  const marker = markerFor(s, "item_groups");
+  if (rows.length === 0) {
+    return renderCard({
+      title: "Item groups by sub-brand",
+      title_accessory: marker,
+      body: '<div class="rc-empty">No item-group taxonomy documented.</div>'
+    });
+  }
+  return renderCard({
+    title: "Item groups by sub-brand",
+    title_accessory: marker,
+    body: renderTable(
+      [
+        { key: "sub_brand", label: "Sub-brand" },
+        { key: "item_group", label: "Item group", render: (r) => `<code>${escapeHtml(String(r.item_group))}</code>` }
+      ],
+      rows
+    )
+  });
+}
+function sectionBrandTerms(s) {
+  const ctx = s.sources.context;
+  const terms = ctx?.brand_terms ?? {};
+  const rows = [];
+  for (const [subBrand, entry] of Object.entries(terms)) {
+    rows.push({
+      sub_brand: subBrand,
+      canonical: (entry.canonical ?? []).join(", ") || "\u2014",
+      variants: (entry.variants ?? []).join(", ") || "\u2014"
+    });
+  }
+  const marker = renderConfidenceMarker({ level: presenceConfidence(rows.length > 0) });
+  if (rows.length === 0) {
+    return renderCard({
+      title: "Brand term dictionary",
+      title_accessory: marker,
+      body: '<div class="rc-empty">No brand terms captured yet. The Brand Brain catalog and Phase 2 AM variants populate this.</div>'
+    });
+  }
+  return renderCard({
+    title: "Brand term dictionary",
+    title_accessory: marker,
+    body: renderTable(
+      [
+        { key: "sub_brand", label: "Sub-brand" },
+        { key: "canonical", label: "Canonical" },
+        { key: "variants", label: "Variants" }
+      ],
+      rows
+    )
+  });
+}
+function sectionAsinCorpora(s) {
+  const cards = s.sources.corpora_summary.map((c) => ({
+    name: c.filename.replace(/\.csv$/, ""),
+    sub: "rows",
+    count: c.row_count
+  }));
+  return renderCard({
+    title: "ASIN negation corpora",
+    body: renderLaneGrid(cards)
+  });
+}
+function sectionSeasonality(_s) {
+  const tentpoles = [
+    { event: "Prime Day", window: "mid-July", notes: "Spend + ASP spike across SP and SD; reset baselines after." },
+    { event: "Prime Big Deal Days", window: "October", notes: "Second Prime event; check year-over-year against July." },
+    { event: "Black Friday / Cyber Monday", window: "late November", notes: "Highest-volume week; spend caps often hit." },
+    { event: "Holiday peak", window: "Dec 1\u201320", notes: "Sustained elevated traffic; conversion ramps then declines." },
+    { event: "January reset", window: "first 2 weeks of January", notes: "Traffic + conversion drop; ACoS often inflated." }
+  ];
+  return renderCard({
+    title: "Seasonality & tentpole calendar",
+    body: renderTable(
+      [
+        { key: "event", label: "Event" },
+        { key: "window", label: "Window" },
+        { key: "notes", label: "Notes" }
+      ],
+      tentpoles
+    )
+  });
+}
+function sectionCalibration(s) {
+  const ctx = s.sources.context;
+  const cal = ctx?.capture_rate_calibration;
+  const marker = renderConfidenceMarker({ level: presenceConfidence(!!cal?.enabled) });
+  if (!cal || !cal.enabled) {
+    return renderCard({
+      title: "Attribution backfill calibration",
+      title_accessory: marker,
+      body: '<div class="rc-empty">Capture-rate calibration not enabled for this brand. Required when attribution window > 1 day.</div>'
+    });
+  }
+  const rows = [
+    { field: "Capture rate", value: cal.capture_rate_pct !== void 0 ? formatWholePct(cal.capture_rate_pct, 1) : "\u2014" },
+    { field: "Fresh-day ACoS lift (pts)", value: cal.fresh_day_acos_improvement_pts !== void 0 ? `${cal.fresh_day_acos_improvement_pts.toFixed(2)} pts` : "\u2014" },
+    { field: "Settlement application rule", value: cal.settlement_application_rule ?? "\u2014" },
+    { field: "Stability score", value: cal.stability_score ? sentenceCase2(cal.stability_score) : "\u2014" }
+  ];
+  return renderCard({
+    title: "Attribution backfill calibration",
+    title_accessory: marker,
+    body: renderTable(
+      [
+        { key: "field", label: "Field" },
+        { key: "value", label: "Value" }
+      ],
+      rows
+    )
+  });
+}
+function sectionDetectedAnomalies(s) {
+  const enr = s.sources.enrichment;
+  const blocks = [];
+  if (enr?.stockout_candidates && enr.stockout_candidates.length > 0) {
+    const items = enr.stockout_candidates.slice(0, 10).map(
+      (sc) => `${sc.item_name ?? sc.asin ?? "(unknown)"} \u2014 ${sc.days_in_window ?? 0}d window`
+    );
+    blocks.push(renderAnomalyBlock({ title: "Stockout candidates (advisory)", items }));
+  }
+  if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
+    const items = enr.brand_term_typo_candidates.slice(0, 10).map(
+      (c) => `${c.canonical_match ?? "(unknown)"} \u2014 ${c.variant_count ?? 0} variant(s)`
+    );
+    blocks.push(renderAnomalyBlock({ title: "Brand-term typo clusters (advisory)", items }));
+  }
+  return renderCard({
+    title: "Detected anomalies (advisory)",
+    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No advisory findings. The brand brain populates stockout + brand-term-typo candidates here as it detects them.</div>'
+  });
+}
+function sectionBrandIdentity(s) {
+  const identity = findSection(s.narrative_sections, ["brand identity", "brand positioning"]);
+  const lang = findSection(s.narrative_sections, ["customer language samples", "buyer language"]);
+  const history = findSection(s.narrative_sections, ["historical notes"]);
+  const blocks = [];
+  if (identity) blocks.push(`<h4 style="font-size: 13px; margin: 0 0 8px;">Identity</h4>${mdToHtmlParagraphs(identity)}`);
+  if (lang) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Customer language</h4>${mdToHtmlParagraphs(lang)}`);
+  if (history) blocks.push(`<h4 style="font-size: 13px; margin: 16px 0 8px;">Historical notes</h4>${mdToHtmlParagraphs(history)}`);
+  return renderCard({
+    title: "Brand identity (prose context)",
+    body: blocks.length > 0 ? blocks.join("\n") : '<div class="rc-empty">No narrative prose yet. Add H2 sections to <code>narrative.md</code>: Brand Identity, Customer Language Samples, Historical Notes.</div>'
+  });
+}
+function sectionOpenGaps(s) {
+  return renderCard({
+    title: "Missing context buckets",
+    body: renderBucketGrid(s.buckets)
+  });
+}
+function sectionAuditChecklist(s) {
+  const byCategory = /* @__PURE__ */ new Map();
+  for (const row of s.coverage.rows) {
+    const cat = row.label.category;
+    if (!byCategory.has(cat)) {
+      byCategory.set(cat, {
+        title: categoryLabel(cat),
+        rows: []
+      });
+    }
+    byCategory.get(cat).rows.push({
+      icon: row.status,
+      label: row.label.label,
+      description: row.label.description,
+      value: row.display,
+      valueClass: row.status === "miss" ? "missing" : row.is_stale ? "stale" : void 0
+    });
+  }
+  const blocks = Array.from(byCategory.values());
+  const footer = `<b>${s.coverage.required_present}</b>/${s.coverage.required_total} required \xB7 <b>${s.coverage.recommended_present}</b>/${s.coverage.recommended_total} recommended \xB7 <b>${s.coverage.stale_count}</b> stale \xB7 <b>${s.coverage.open_gaps_count}</b> open gap(s)`;
+  return renderCard({
+    title: "Schema coverage audit",
+    body: renderAuditSection({
+      summary: "Reviewer view \u2014 expand to see field-by-field schema status",
+      blocks,
+      footer
+    })
+  });
+}
+function findSection(sections, candidates) {
+  for (const c of candidates) {
+    if (c in sections && sections[c].length > 0) return sections[c];
+  }
+  return null;
+}
+function mdToHtmlParagraphs(md) {
+  const paragraphs = md.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  return paragraphs.map((p) => {
+    let html = escapeHtml(p);
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+    html = html.replace(/\n/g, "<br>");
+    return `<p style="margin: 0 0 12px;">${html}</p>`;
+  }).join("\n");
+}
+function isEventActive(evt, today) {
+  if (evt.active_through && evt.active_through >= today) return true;
+  if (evt.end && evt.end >= today) return true;
+  if (!evt.end && !evt.active_through && evt.start) {
+    return evt.start <= today;
+  }
+  return false;
+}
+function friendlyEventType(t) {
+  const map2 = {
+    brand_migration: "Brand migration",
+    media_spike: "Media spike",
+    media_spike_recurring: "Recurring media spike",
+    portfolio_decision: "Portfolio decision",
+    promotional_window: "Promo window",
+    promotional_window_recurring: "Recurring promo",
+    stockout: "Stockout",
+    price_test: "Price test",
+    launch: "Launch"
+  };
+  return map2[t] ?? sentenceCase2(t);
+}
+function sentenceCase2(s) {
+  if (!s) return s;
+  const spaced = s.replace(/_/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function categoryLabel(category) {
+  const map2 = {
+    identity: "Account identity",
+    targets: "Management & targets",
+    calibration: "Attribution backfill calibration",
+    brand_structure: "Brand & sub-brand structure",
+    bid_posture: "Bid health & posture",
+    campaign: "Campaign structure & events",
+    negation: "Negation rules",
+    reporting: "Reporting & delivery",
+    gaps: "Open gaps & TODOs"
+  };
+  return map2[category] ?? sentenceCase2(category);
+}
+
+// src/lib/render/brand-context-composer.ts
+async function composeBrandContextReport(args) {
+  const sources = await readBrandContextSources(
+    args.brandSlug,
+    args.runDate,
+    args.dataDirOverride
+  );
+  const narrativeSections = parseNarrativeSections(sources.narrative_md);
+  const labels = await loadAuditLabels();
+  const coverage = computeAuditCoverage(sources.context, labels);
+  const buckets = buildBuckets(sources, coverage);
+  const resolvedFields = await resolveBrandFields(
+    args.brandSlug,
+    args.dataDirOverride
+  );
+  const ctxValidation = await validateBrandContext(
+    args.brandSlug,
+    args.dataDirOverride
+  );
+  const contextState = ctxValidation.ok ? "valid" : ctxValidation.kind === "file_missing" ? "absent" : "invalid";
+  const brainPresent = Object.values(resolvedFields).some(
+    (r) => r?.source === "brain"
+  );
+  const skillReadiness = computeSkillReadiness(
+    sources,
+    coverage,
+    resolvedFields,
+    brainPresent
+  );
+  const { verdict, reason } = computeVerdict({
+    coverage,
+    observational: !!args.observational,
+    // validator pass = required_present == required_total, our coverage model;
+    // we don't shell out to zod for the coverage ladder. The precise context
+    // state below is what gates the early-state vs RED branch.
+    validator_passed: coverage.required_present === coverage.required_total,
+    context_state: contextState,
+    brain_present: brainPresent
+  });
+  const state = {
+    brand_slug: args.brandSlug,
+    brand_name: args.brandName,
+    run_date: args.runDate,
+    sources,
+    narrative_sections: narrativeSections,
+    coverage,
+    verdict,
+    verdict_reason: reason,
+    buckets,
+    skill_readiness: skillReadiness,
+    resolved_fields: resolvedFields
+  };
+  const body = [
+    sectionHeader(state),
+    sectionConfidenceSummary(state),
+    sectionBrandSummary(state),
+    sectionReviewAtAGlance(state),
+    sectionRuntimeInputs(state),
+    sectionSkillReadiness(state),
+    sectionActiveConditions(state),
+    sectionAccountSnapshot(state),
+    sectionSubBrands(state),
+    sectionItemGroups(state),
+    sectionBrandTerms(state),
+    sectionAsinCorpora(state),
+    sectionSeasonality(state),
+    sectionCalibration(state),
+    sectionDetectedAnomalies(state),
+    sectionBrandIdentity(state),
+    sectionOpenGaps(state),
+    sectionAuditChecklist(state)
+    // sectionFooter intentionally omitted — renderPage emits the
+    // design-system footer with copyright + wordmark.
+  ].filter(Boolean).join("\n\n");
+  const html = await renderPage({
+    title: `${args.brandName} \u2014 Brand Context`,
+    subtitle: `What we know about this brand, and how sure we are \xB7 ${args.runDate}`,
+    theme: args.theme ?? "light",
+    body
+  });
+  const headline = composeHeadlineJson(state);
+  const review = composeReviewJson(state);
+  const dir = brandDir(args.brandSlug, args.dataDirOverride);
+  await mkdir12(dir, { recursive: true });
+  const htmlPath = join10(dir, "brand-context.html");
+  const headlinePath = join10(dir, "brand-context.headline.json");
+  const reviewPath = join10(dir, "brand-context.review.json");
+  await Promise.all([
+    writeFile12(htmlPath, html, "utf-8"),
+    writeFile12(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
+    writeFile12(reviewPath, JSON.stringify(review, null, 2), "utf-8")
+  ]);
+  return {
+    html_path: htmlPath,
+    headline_path: headlinePath,
+    review_path: reviewPath,
+    verdict,
+    verdict_reason: reason,
+    coverage
+  };
+}
+function buildBuckets(sources, coverage) {
+  const buckets = [];
+  const ctx = sources.context;
+  const openGaps = ctx?.open_gaps ?? [];
+  const byCategory = /* @__PURE__ */ new Map();
+  for (const gap of openGaps) {
+    const category = gap.category ?? "operating_rules";
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category).push(gap);
+  }
+  const categoryMeta = {
+    operating_rules: { title: "Operating rules", description: "Targets, posture, thresholds the AM still needs to set." },
+    brand_voice: { title: "Brand voice & buyer language", description: "Customer-language samples and brand identity prose." },
+    product_coverage: { title: "Product & ASIN coverage", description: "Item-group taxonomy, hero SKUs, conquesting catalog." },
+    reporting_setup: { title: "Reporting setup", description: "Audience, voice-lint, monthly-report style preferences." },
+    runtime_inputs: { title: "Runtime inputs", description: "Forecast, HCAM, H-Bridge \u2014 supplied at skill run time, not cold-start." },
+    accepted: { title: "Accepted gaps", description: "Explicitly acknowledged; not blocking." }
+  };
+  for (const [cat, items] of byCategory.entries()) {
+    const meta3 = categoryMeta[cat] ?? { title: sentenceCase3(cat), description: "" };
+    const tone = cat === "runtime_inputs" ? "runtime" : cat === "accepted" ? "complete" : items.length === 0 ? "complete" : "partial";
+    buckets.push({
+      title: meta3.title,
+      status: tone,
+      description: meta3.description,
+      summary: `${items.length} item(s) in this bucket.`,
+      details: items.length > 0 ? {
+        label: "Show items",
+        items: items.map((g) => g.description ?? g.id ?? "(unspecified)")
+      } : void 0
+    });
+  }
+  if (buckets.length === 0 && coverage.required_present === coverage.required_total) {
+    buckets.push({
+      title: "Context coverage",
+      status: "complete",
+      description: "All required + recommended fields populated; no open gaps documented."
+    });
+  }
+  return buckets;
+}
+function computeSkillReadiness(sources, coverage, resolvedFields, brainPresent) {
+  const ctx = sources.context;
+  const bootstrapped = Array.isArray(ctx?.accounts) && ctx.accounts.length > 0 || brainPresent;
+  const requiredOk = coverage.required_present === coverage.required_total;
+  const tier = requiredOk ? "context" : brainPresent ? "brain" : ctx ? "partial" : "defaults";
+  const readyNote = tier === "context" ? "All required context confirmed." : tier === "brain" ? "Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen." : tier === "partial" ? "Partial context; unset fields fall back to skill defaults." : "No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.";
+  const readyTone = tier === "context" ? "complete" : "partial";
+  const notBootstrapped = {
+    status: "Blocked",
+    tone: "missing",
+    notes: "Brand not bootstrapped: run `mixshift brand add <slug>` first."
+  };
+  const analytical = (skill) => bootstrapped ? { skill, status: "Ready", tone: readyTone, notes: readyNote } : { skill, ...notBootstrapped };
+  const calib = resolvedFields["daily_settlement_curve"] ?? resolvedFields["capture_rate_calibration"];
+  const monthly = !bootstrapped ? { skill: "mx-monthly-report", ...notBootstrapped } : calib ? {
+    skill: "mx-monthly-report",
+    status: "Ready",
+    tone: "complete",
+    notes: `Capture-rate calibration available (${calib.source === "brain" ? "from brand brain" : "context-confirmed"}).`
+  } : {
+    skill: "mx-monthly-report",
+    status: "Ready with caveats",
+    tone: "partial",
+    notes: "Calibration not set yet; MoM/YoY uses raw aggregates until the brain fetches it."
+  };
+  return [
+    analytical("mx-daily-health-check"),
+    analytical("mx-runaway-spend-check"),
+    analytical("mx-keyword-bid-health"),
+    monthly
+  ];
+}
+function composeHeadlineJson(s) {
+  const ctx = s.sources.context;
+  return {
+    schema_version: 1,
+    brand_slug: s.brand_slug,
+    brand_name: s.brand_name,
+    run_date: s.run_date,
+    verdict: s.verdict,
+    verdict_reason: s.verdict_reason,
+    headline_metrics: {
+      required_present: s.coverage.required_present,
+      required_total: s.coverage.required_total,
+      recommended_present: s.coverage.recommended_present,
+      recommended_total: s.coverage.recommended_total,
+      stale_count: s.coverage.stale_count,
+      open_gaps_count: s.coverage.open_gaps_count
+    },
+    context_snapshot: ctx ? {
+      primary_metric: ctx.management?.primary_metric,
+      acos_target_pct: ctx.management?.acos_target_pct,
+      tacos_target_pct: ctx.management?.tacos_target_pct,
+      attribution_window_days: ctx.management?.attribution_window_days,
+      account_count: ctx.accounts?.length ?? 0,
+      account_types: Array.from(new Set((ctx.accounts ?? []).map((a) => a.account_type)))
+    } : null,
+    artifacts: {
+      html_path: "brand-context.html",
+      review_path: "brand-context.review.json"
+    }
+  };
+}
+function composeReviewJson(s) {
+  return {
+    schema_version: 1,
+    brand_slug: s.brand_slug,
+    run_date: s.run_date,
+    verdict: s.verdict,
+    coverage: {
+      required_present: s.coverage.required_present,
+      required_total: s.coverage.required_total,
+      recommended_present: s.coverage.recommended_present,
+      recommended_total: s.coverage.recommended_total,
+      stale_count: s.coverage.stale_count,
+      open_gaps_count: s.coverage.open_gaps_count
+    },
+    buckets: s.buckets.map((b) => ({
+      title: b.title,
+      status: b.status,
+      description: b.description,
+      summary: b.summary,
+      item_count: b.details?.items.length ?? 0
+    })),
+    skill_readiness: s.skill_readiness,
+    // Per-field provenance behind the ✓ / ⊙ / ◯ markers, machine-readable for
+    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain,
+    // gap = neither). Counts let a consumer gauge confidence at a glance.
+    confidence: composeConfidenceSummary(s),
+    audit_rows: s.coverage.rows.map((r) => ({
+      path: r.label.path,
+      category: r.label.category,
+      tier: r.label.tier,
+      status: r.status,
+      value: r.display,
+      is_stale: r.is_stale
+    }))
+  };
+}
+function composeConfidenceSummary(s) {
+  const fields = {};
+  let confirmed = 0;
+  let prefilled = 0;
+  let gap = 0;
+  for (const [key, resolved] of Object.entries(s.resolved_fields)) {
+    if (resolved == null) {
+      gap++;
+      fields[key] = { level: "gap", source: null };
+    } else if (resolved.source === "context") {
+      confirmed++;
+      fields[key] = { level: "confirmed", source: "context" };
+    } else {
+      prefilled++;
+      fields[key] = { level: "prefilled", source: "brain", fetched_at: resolved.fetched_at };
+    }
+  }
+  return { confirmed, prefilled, gap, fields };
+}
+function sentenceCase3(s) {
+  if (!s) return s;
+  const spaced = s.replace(/_/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+// src/commands/brand-render-context.ts
+init_telemetry();
+var exec2 = promisify2(execCb2);
+function registerBrandRenderContextCommand(brandCmd) {
+  brandCmd.command("render-context <slug>").description(
+    "Render the cold-start Brand Context page: brand-context.html + brand-context.headline.json + brand-context.review.json. Reads context.yaml + narrative.md + brand-intelligence.yaml + corpora/. Auto-opens the HTML; --no-open to skip."
+  ).option(
+    "--date <date>",
+    "run date (YYYY-MM-DD). Defaults to today."
+  ).option("--no-open", "write the files but do not open the browser").option(
+    "--theme <theme>",
+    "initial theme (light | dark)",
+    "light"
+  ).option(
+    "--observational",
+    "mark this as Phase 1 only (Phase 2 AMA pending \u2014 verdict will be OBSERVATIONAL)",
+    false
+  ).action(
+    async (slug, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const brand = await resolveBrand(slug, root.dataDir);
+        if (!brand) {
+          return emitError3(root.json, `Brand "${slug}" not found in the registry.`);
+        }
+        const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        const result = await composeBrandContextReport({
+          brandSlug: brand.slug,
+          brandName: brand.display_name,
+          runDate,
+          theme: opts.theme,
+          observational: opts.observational,
+          dataDirOverride: root.dataDir
+        });
         await track(
           {
-            event_name: "brand.enrichment_run",
+            event_name: "brand.context_rendered",
             payload: {
               brand_slug: brand.slug,
               run_date: runDate,
-              partial: artifact.partial,
-              settlement_computed: artifact.daily_settlement_curve !== null,
-              stockout_count: artifact.stockout_candidates.length,
-              typo_cluster_count: artifact.brand_term_typo_candidates.length
+              verdict: result.verdict,
+              required_present: result.coverage.required_present,
+              required_total: result.coverage.required_total,
+              open_gaps_count: result.coverage.open_gaps_count,
+              stale_count: result.coverage.stale_count
             }
           },
           root.dataDir
@@ -72420,56 +72564,50 @@ function registerBrandEnrichCommand(brandCmd) {
             JSON.stringify(
               {
                 status: "ok",
-                enrichment_path: path2,
-                partial: artifact.partial,
-                partial_reasons: artifact.partial_reasons
+                brand_slug: brand.slug,
+                run_date: runDate,
+                verdict: result.verdict,
+                verdict_reason: result.verdict_reason,
+                html_path: result.html_path,
+                headline_path: result.headline_path,
+                review_path: result.review_path,
+                coverage: {
+                  required_present: result.coverage.required_present,
+                  required_total: result.coverage.required_total,
+                  recommended_present: result.coverage.recommended_present,
+                  recommended_total: result.coverage.recommended_total,
+                  stale_count: result.coverage.stale_count,
+                  open_gaps_count: result.coverage.open_gaps_count
+                }
               },
               null,
               2
             ) + "\n"
           );
-          return;
-        }
-        process.stdout.write(
-          `
-\u2713 Enrichment artifact written to ${path2}
-  Settlement curve: ${artifact.daily_settlement_curve ? `computed (stability: ${artifact.daily_settlement_curve.stability_score})` : "unavailable"}
-  Stockout candidates: ${artifact.stockout_candidates.length}
-  Brand-typo clusters: ${artifact.brand_term_typo_candidates.length}
-` + (artifact.partial ? `  Partial \u2014 ${artifact.partial_reasons.length} pending: ${artifact.partial_reasons.join("; ")}
+        } else {
+          process.stdout.write(
+            `
+\u2713 Rendered Brand Context for ${brand.display_name}
+  Verdict: ${result.verdict} \u2014 ${result.verdict_reason}
+  HTML:     ${result.html_path}
+  Headline: ${result.headline_path}
+  Review:   ${result.review_path}
 
-` : `
-`)
-        );
+`
+          );
+        }
+        if (opts.open) {
+          await openInBrowser2(result.html_path);
+        }
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError4(root.json, message);
+        return emitError3(root.json, message);
       }
     }
   );
 }
-async function tryReadContextForTypos(brandSlug, dataDir) {
-  try {
-    const raw = await fsReadFile(contextPath(brandSlug, dataDir), "utf-8");
-    const parsed = (0, import_yaml13.parse)(raw);
-    if (parsed === null || typeof parsed !== "object") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-function extractQueryRows(prefetch, queryId) {
-  if (prefetch === null || typeof prefetch !== "object") return [];
-  const queries = prefetch.queries;
-  if (!queries || typeof queries !== "object") return [];
-  const q = queries[queryId];
-  if (!q || typeof q !== "object") return [];
-  const rows = q.rows;
-  if (!Array.isArray(rows)) return [];
-  return rows.filter((r) => r !== null && typeof r === "object");
-}
-async function resolveBrand2(input, dataDir) {
+async function resolveBrand(input, dataDir) {
   const { index } = await readIndex(dataDir);
   const exact = index.brands.find((b) => b.slug === input);
   if (exact) return { slug: exact.slug, display_name: exact.display_name };
@@ -72486,7 +72624,19 @@ ${candidates}`
   }
   return null;
 }
-function emitError4(json2, message) {
+async function openInBrowser2(path2) {
+  try {
+    if (process.platform === "win32") {
+      await exec2(`start "" "${path2}"`);
+    } else if (process.platform === "darwin") {
+      await exec2(`open "${path2}"`);
+    } else {
+      await exec2(`xdg-open "${path2}"`);
+    }
+  } catch {
+  }
+}
+function emitError3(json2, message) {
   if (json2) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
@@ -72501,43 +72651,44 @@ function emitError4(json2, message) {
 // src/lib/enrichment/delta-merge.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile19, writeFile as writeFile14, rename as rename11, mkdir as mkdir14, chmod as chmod5 } from "node:fs/promises";
-import { dirname as dirname17 } from "node:path";
-async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
+import { readFile as readFile18, writeFile as writeFile13, rename as rename10, mkdir as mkdir13, chmod as chmod5 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
+async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
-  const enrichment = await readEnrichmentArtifact(brandSlug, runDate, dataDirOverride);
-  if (!enrichment) {
+  const loaded = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded.ok) {
     return {
-      status: "no_enrichment",
+      status: "no_brain",
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+      brain_path: loaded.path
     };
   }
-  if (!enrichment.daily_settlement_curve) {
+  const curve = loaded.brain.capture_rate_calibration?.daily_settlement_curve;
+  if (!curve) {
     return {
       status: "no_curve",
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+      brain_path: loaded.path
     };
   }
   let ctxText;
   try {
-    ctxText = await readFile19(ctxPath, "utf-8");
+    ctxText = await readFile18(ctxPath, "utf-8");
   } catch (err) {
     if (isFileNotFoundError13(err)) {
       return {
         status: "context_missing",
         context_path: ctxPath,
         fields_updated: [],
-        enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+        brain_path: loaded.path
       };
     }
     throw err;
   }
   const doc = (0, import_yaml14.parseDocument)(ctxText, { keepSourceTokens: true });
-  const fieldsUpdated = patchSettlementCurve(doc, enrichment);
+  const fieldsUpdated = patchSettlementCurve(doc, curve);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   doc.set("last_updated", today);
   fieldsUpdated.push("last_updated");
@@ -72546,12 +72697,10 @@ async function mergeEnrichmentIntoContext(brandSlug, runDate, dataDirOverride) {
     status: "ok",
     context_path: ctxPath,
     fields_updated: fieldsUpdated,
-    enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`
+    brain_path: loaded.path
   };
 }
-function patchSettlementCurve(doc, enrichment) {
-  const curve = enrichment.daily_settlement_curve;
-  if (!curve) return [];
+function patchSettlementCurve(doc, curve) {
   const updated = [];
   doc.setIn(
     ["capture_rate_calibration", "daily_settlement_curve"],
@@ -72579,14 +72728,14 @@ function patchSettlementCurve(doc, enrichment) {
   return updated;
 }
 async function writeYamlAtomic(path2, text) {
-  await mkdir14(dirname17(path2), { recursive: true });
+  await mkdir13(dirname16(path2), { recursive: true });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile14(tmpPath, text, "utf-8");
+  await writeFile13(tmpPath, text, "utf-8");
   try {
     await chmod5(tmpPath, 384);
   } catch {
   }
-  await rename11(tmpPath, path2);
+  await rename10(tmpPath, path2);
 }
 function isFileNotFoundError13(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -72596,19 +72745,18 @@ function isFileNotFoundError13(err) {
 init_telemetry();
 function registerBrandMergeDeltaCommand(brandCmd) {
   brandCmd.command("merge-delta <slug>").description(
-    "Merge the settlement curve from a Phase 1.5 enrichment artifact into the brand's context.yaml. Preserves AM-edited fields (negation, structural_events, brand_terms, posture, etc.) and comments. Idempotent."
+    "Merge the settlement curve from the brand brain into the brand's context.yaml. Preserves AM-edited fields (negation, structural_events, brand_terms, posture, etc.) and comments. Idempotent."
   ).option("--date <date>", "run date (YYYY-MM-DD). Defaults to today.").action(
     async (slug, opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
-        const brand = await resolveBrand3(slug, root.dataDir);
+        const brand = await resolveBrand2(slug, root.dataDir);
         if (!brand) {
-          return emitError5(root.json, `Brand "${slug}" not found in the registry.`);
+          return emitError4(root.json, `Brand "${slug}" not found in the registry.`);
         }
         const runDate = opts.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         const result = await mergeEnrichmentIntoContext(
           brand.slug,
-          runDate,
           root.dataDir
         );
         await track(
@@ -72629,11 +72777,11 @@ function registerBrandMergeDeltaCommand(brandCmd) {
           return;
         }
         switch (result.status) {
-          case "no_enrichment":
+          case "no_brain":
             process.stderr.write(
               `
-No enrichment artifact at ${result.enrichment_path}.
-Run \`mixshift brand enrich --brand ${brand.slug} --date ${runDate}\` first.
+No brand brain at ${result.brain_path}.
+Run \`mixshift brand brain fetch ${brand.slug}\` (or \`refresh\`) first.
 
 `
             );
@@ -72642,7 +72790,7 @@ Run \`mixshift brand enrich --brand ${brand.slug} --date ${runDate}\` first.
           case "no_curve":
             process.stderr.write(
               `
-Enrichment artifact has no settlement curve. Likely CS-28 returned no rows; check the prefetch.
+The brand brain has no settlement curve yet. Run \`mixshift brand brain refresh ${brand.slug}\` (CS-28 may have returned no rows).
 
 `
             );
@@ -72672,12 +72820,12 @@ No context.yaml for "${brand.slug}". Run /mx-brand-context first.
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError5(root.json, message);
+        return emitError4(root.json, message);
       }
     }
   );
 }
-async function resolveBrand3(input, dataDir) {
+async function resolveBrand2(input, dataDir) {
   const { index } = await readIndex(dataDir);
   const exact = index.brands.find((b) => b.slug === input);
   if (exact) return { slug: exact.slug, display_name: exact.display_name };
@@ -72694,7 +72842,7 @@ ${candidates}`
   }
   return null;
 }
-function emitError5(json2, message) {
+function emitError4(json2, message) {
   if (json2) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -73199,7 +73347,6 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
   registerBrandContextCommands(brand);
   registerBrandConfigCommand(brand);
   registerBrandRenderContextCommand(brand);
-  registerBrandEnrichCommand(brand);
   registerBrandMergeDeltaCommand(brand);
   registerBrandMigrateConfigCommand(brand);
   const key = brand.command("key").description(
@@ -73427,7 +73574,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
 
 // src/commands/auth.ts
 var import_yaml15 = __toESM(require_dist(), 1);
-import { readFile as readFile20 } from "node:fs/promises";
+import { readFile as readFile19 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -73478,10 +73625,10 @@ function createStore(rl) {
 function withHooks(rl, cb) {
   const store = createStore(rl);
   return hookStorage.run(store, () => {
-    function cycle(render) {
+    function cycle(render2) {
       store.handleChange = () => {
         store.index = 0;
-        render();
+        render2();
       };
       store.handleChange();
     }
@@ -76187,7 +76334,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile20(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile19(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -76339,7 +76486,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile20(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile19(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -76359,7 +76506,7 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile20(path2, "utf-8");
+  const raw = await readFile19(path2, "utf-8");
   let parsed;
   try {
     parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml15.parse)(raw);
@@ -76558,7 +76705,7 @@ init_zod();
 var import_yaml16 = __toESM(require_dist(), 1);
 init_plugin_root();
 init_format_error();
-import { readFile as readFile21 } from "node:fs/promises";
+import { readFile as readFile20 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -76635,7 +76782,7 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile21(path2, "utf-8");
+    raw = await readFile20(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError14(err)) {
       throw new Error(
@@ -76770,14 +76917,14 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir15, writeFile as writeFile15, rename as rename12 } from "node:fs/promises";
-import { dirname as dirname18, join as join12 } from "node:path";
+import { mkdir as mkdir14, writeFile as writeFile14, rename as rename11 } from "node:fs/promises";
+import { dirname as dirname17, join as join11 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
-  await mkdir15(runDir, { recursive: true });
-  const dataJsonPath = join12(runDir, "data.json");
-  const dataMdPath = join12(runDir, "data.md");
+  await mkdir14(runDir, { recursive: true });
+  const dataJsonPath = join11(runDir, "data.json");
+  const dataMdPath = join11(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -76805,7 +76952,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join12(
+  return join11(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -76902,10 +77049,10 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir15(dirname18(path2), { recursive: true });
+  await mkdir14(dirname17(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile15(tmpPath, content, { encoding: "utf-8" });
-  await rename12(tmpPath, path2);
+  await writeFile14(tmpPath, content, { encoding: "utf-8" });
+  await rename11(tmpPath, path2);
 }
 
 // src/lib/prefetch/runner.ts
@@ -77187,12 +77334,12 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile22 } from "node:fs/promises";
+import { readFile as readFile21 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir16, writeFile as writeFile16, rename as rename13 } from "node:fs/promises";
-import { join as join13, dirname as dirname19 } from "node:path";
+import { mkdir as mkdir15, writeFile as writeFile15, rename as rename12 } from "node:fs/promises";
+import { join as join12, dirname as dirname18 } from "node:path";
 import { createHash as createHash3, randomBytes as randomBytes2 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -77303,7 +77450,7 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir16(dirname19(path2), { recursive: true });
+  await mkdir15(dirname18(path2), { recursive: true });
   await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   await track(
     {
@@ -77331,7 +77478,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join13(
+  return join12(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -77361,8 +77508,8 @@ function hashParams(params) {
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile16(tmpPath, content, { encoding: "utf-8" });
-  await rename13(tmpPath, path2);
+  await writeFile15(tmpPath, content, { encoding: "utf-8" });
+  await rename12(tmpPath, path2);
 }
 
 // src/commands/sidecar.ts
@@ -77381,7 +77528,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile22(opts.inputFile, "utf-8");
+      const raw = await readFile21(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -77456,14 +77603,14 @@ import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
 var import_yaml17 = __toESM(require_dist(), 1);
-import { readFile as readFile23 } from "node:fs/promises";
-import { dirname as dirname20, join as join14 } from "node:path";
+import { readFile as readFile22 } from "node:fs/promises";
+import { dirname as dirname19, join as join13 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile23(path2, "utf-8");
+      const raw = await readFile22(path2, "utf-8");
       const parsed = (0, import_yaml17.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
@@ -77492,12 +77639,12 @@ function normalize(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname20(fileURLToPath5(import.meta.url));
+  const here = dirname19(fileURLToPath5(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join14(dir, "shared", "data-tables.yaml"));
-    const parent = dirname20(dir);
+    candidates.push(join13(dir, "shared", "data-tables.yaml"));
+    const parent = dirname19(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -77543,8 +77690,8 @@ async function sampleTable(opts) {
 
 // src/lib/data/export.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir17 } from "node:fs/promises";
-import { dirname as dirname21 } from "node:path";
+import { mkdir as mkdir16 } from "node:fs/promises";
+import { dirname as dirname20 } from "node:path";
 
 // src/lib/output/csv.ts
 function rowsToCsv(rows, columns) {
@@ -77652,7 +77799,7 @@ async function exportTable(opts) {
       display_sql: displaySql
     };
   }
-  await mkdir17(dirname21(opts.outPath), { recursive: true });
+  await mkdir16(dirname20(opts.outPath), { recursive: true });
   const stream = createWriteStream(opts.outPath, { encoding: "utf-8" });
   const rows = queryResult.rows;
   let rowsWritten = 0;
@@ -77694,9 +77841,9 @@ function synthFailure(opts, message) {
 // src/commands/data.ts
 init_query_runner();
 init_resolve();
-import { writeFile as writeFile17 } from "node:fs/promises";
-import { mkdir as mkdir18 } from "node:fs/promises";
-import { dirname as dirname22 } from "node:path";
+import { writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir17 } from "node:fs/promises";
+import { dirname as dirname21 } from "node:path";
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
@@ -77710,7 +77857,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableList(tables) + "\n");
       }
     } catch (err) {
-      emitError6(err, !!root.json);
+      emitError5(err, !!root.json);
     }
   });
   data.command("describe <table>").description("Show description + scoping hints for one table").action(async (table, _opts, cmd) => {
@@ -77728,7 +77875,7 @@ function registerDataCommands(program3) {
         process.stderr.write(renderTableDetail(meta3) + "\n");
       }
     } catch (err) {
-      emitError6(err, !!root.json);
+      emitError5(err, !!root.json);
     }
   });
   data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
@@ -77781,7 +77928,7 @@ function registerDataCommands(program3) {
           process.stdout.write(renderRowsAsMarkdown(result.query_result.rows) + "\n");
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -77837,7 +77984,7 @@ function registerDataCommands(program3) {
           );
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -77875,8 +78022,8 @@ function registerDataCommands(program3) {
         if (opts.out) {
           const columns = result.rows.length > 0 ? Object.keys(result.rows[0]).map((n) => ({ name: n })) : [];
           const csv = rowsToCsv(result.rows, columns);
-          await mkdir18(dirname22(opts.out), { recursive: true });
-          await writeFile17(opts.out, csv, "utf-8");
+          await mkdir17(dirname21(opts.out), { recursive: true });
+          await writeFile16(opts.out, csv, "utf-8");
         }
         if (root.json) {
           process.stdout.write(
@@ -77907,7 +78054,7 @@ function registerDataCommands(program3) {
           }
         }
       } catch (err) {
-        emitError6(err, !!root.json);
+        emitError5(err, !!root.json);
       }
     }
   );
@@ -77983,7 +78130,7 @@ function handleAccessDeniedExit(kind) {
   if (kind === "access_denied_table") return 4;
   return 1;
 }
-function emitError6(err, json2) {
+function emitError5(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     process.stdout.write(
@@ -78004,8 +78151,17 @@ function todayISO5() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
-// src/commands/feedback.ts
+// src/lib/auth/actor-email.ts
 init_load();
+init_credentials();
+async function resolveActorEmail(dataDirOverride) {
+  const profileEmail = await loadProfile(dataDirOverride).then((r) => r.profile.user?.email).catch(() => void 0);
+  if (profileEmail) return profileEmail;
+  const credentials = await loadCredentials(dataDirOverride).then((r) => r.credentials).catch(() => void 0);
+  return credentials?.datahub?.person_label ?? void 0;
+}
+
+// src/commands/feedback.ts
 init_telemetry();
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
@@ -78018,13 +78174,7 @@ function registerFeedbackCommand(program3) {
     async (message, opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
-        const { profile } = await loadProfile(root.dataDir);
-        const userEmail = profile.user?.email;
-        if (!userEmail) {
-          throw new Error(
-            "No user email on file. Run `mixshift auth setup` first so we can attach an identity to your feedback."
-          );
-        }
+        const userEmail = await resolveActorEmail(root.dataDir);
         await track(
           {
             event_name: EventName.FeedbackSubmitted,
@@ -78046,6 +78196,7 @@ function registerFeedbackCommand(program3) {
             JSON.stringify(
               {
                 status: delivered ? "ok" : "queued",
+                attributed: Boolean(userEmail),
                 flush_status: flush.status,
                 events_sent: flush.events_sent,
                 ...flush.error ? { error: flush.error } : {}
@@ -78058,7 +78209,8 @@ function registerFeedbackCommand(program3) {
           process.stderr.write(
             `
 \u2713 Feedback sent to MixShift ops. Thanks!
-`
+` + (userEmail ? "" : `  (Sent without an account identity. Run \`mixshift auth login\` so we can follow up.)
+`)
           );
         } else {
           process.stderr.write(
@@ -78094,22 +78246,22 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile24, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname23 } from "node:path";
-import { join as join15 } from "node:path";
+import { readFile as readFile23, writeFile as writeFile17, mkdir as mkdir18 } from "node:fs/promises";
+import { dirname as dirname22 } from "node:path";
+import { join as join14 } from "node:path";
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join15(resolveDataDir(dataDirOverride), "version-check.json");
+  return join14(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
-  const cachePath = versionCheckCachePath(opts.dataDirOverride);
+  const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile24(cachePath, "utf-8");
+    const raw = await readFile23(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -78130,9 +78282,9 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir19(dirname23(cachePath), { recursive: true });
-        await writeFile18(
-          cachePath,
+        await mkdir18(dirname22(cachePath2), { recursive: true });
+        await writeFile17(
+          cachePath2,
           JSON.stringify(
             {
               checked_at: new Date(now).toISOString(),
@@ -78197,16 +78349,16 @@ function renderUpdateBanner(result, format = "terminal") {
     );
     lines2.push(">");
     lines2.push(
-      "> **In Claude Code:** in your terminal, run `claude plugin marketplace update mixshift` to refresh the catalog first, then `claude plugin update mixshift-ai`."
+      "> **In Claude Code:** in your terminal, run `claude plugin marketplace update mixshift` to refresh the catalog first, then `claude plugin update mixshift-ai@mixshift` (add `--scope local` if you installed it for this project only)."
     );
     lines2.push(">");
     lines2.push(
       "> **Then load it:** start a new conversation (in Cowork, fully quit and reopen the app). A new chat in the same window is not enough: a running session keeps the plugin version it started with, so the update only takes effect in a fresh session."
     );
-    if (result.releaseUrl) {
-      lines2.push(">");
-      lines2.push(`> Release notes: ${result.releaseUrl}`);
-    }
+    lines2.push(">");
+    lines2.push(
+      "> See what changed: run `mixshift whatsnew`" + (result.releaseUrl ? ` (or view the release notes at ${result.releaseUrl})` : "") + "."
+    );
     lines2.push("");
     return lines2.join("\n");
   }
@@ -78221,16 +78373,18 @@ function renderUpdateBanner(result, format = "terminal") {
   lines.push("");
   lines.push("  In Claude Code (run both in your terminal):");
   lines.push("    claude plugin marketplace update mixshift");
-  lines.push("    claude plugin update mixshift-ai");
+  lines.push("    claude plugin update mixshift-ai@mixshift");
+  lines.push("    (installed it for this project only? add: --scope local)");
   lines.push("");
   lines.push("  Then load it:");
   lines.push("    Start a new session (in Cowork, fully quit and reopen the app).");
   lines.push("    A new chat in the same window is not enough: a running session");
   lines.push("    keeps the plugin version it started with, so the update only");
   lines.push("    takes effect in a fresh session.");
+  lines.push("");
+  lines.push("  See what changed: run  mixshift whatsnew");
   if (result.releaseUrl) {
-    lines.push("");
-    lines.push(`  Release notes: ${result.releaseUrl}`);
+    lines.push(`    (or view the release notes at ${result.releaseUrl})`);
   }
   lines.push("");
   return lines.join("\n");
@@ -78618,6 +78772,160 @@ function registerVersionCommand(program3) {
       }
     }
   );
+}
+
+// src/commands/whatsnew.ts
+init_plugin_version();
+
+// src/lib/changelog.ts
+init_resolve();
+import { readFile as readFile24, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
+import { dirname as dirname23, join as join15 } from "node:path";
+var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
+var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
+var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
+var FETCH_TIMEOUT_MS2 = 5e3;
+var CHANGELOG_RELEASES_URL = RELEASES_URL;
+function parseChangelog(md) {
+  const entries = [];
+  let current = null;
+  const flush = () => {
+    if (current) {
+      entries.push({ version: current.version, notes: current.body.join("\n").trim() });
+    }
+  };
+  for (const line of md.split(/\r?\n/)) {
+    const m = /^##\s+(.+?)\s*$/.exec(line);
+    if (m) {
+      flush();
+      current = { version: cleanVersion(m[1]), body: [] };
+    } else if (current) {
+      current.body.push(line);
+    }
+  }
+  flush();
+  return entries;
+}
+function cleanVersion(heading) {
+  return heading.trim().replace(/^\[/, "").split(/[\s\]]/)[0] ?? heading.trim();
+}
+function entriesSince(entries, version2) {
+  return entries.filter((e) => compareVersions(e.version, version2) > 0);
+}
+function whatsNewFor(entries, current) {
+  const newer = entriesSince(entries, current);
+  if (newer.length > 0) return newer;
+  const own = entries.find((e) => compareVersions(e.version, current) === 0);
+  if (own) return [own];
+  return entries.length > 0 ? [entries[0]] : [];
+}
+function cachePath(dataDirOverride) {
+  return join15(resolveDataDir(dataDirOverride), "changelog-cache.json");
+}
+async function loadChangelog(opts = {}) {
+  const path2 = cachePath(opts.dataDirOverride);
+  let cached4 = null;
+  try {
+    const raw = await readFile24(path2, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
+      cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
+    }
+  } catch {
+  }
+  const cacheAge = cached4 ? Date.now() - Date.parse(cached4.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS2;
+  if (cacheFresh && cached4) {
+    return { entries: parseChangelog(cached4.markdown), source: "cache" };
+  }
+  const fetched = await fetchChangelogMarkdown();
+  if (fetched.markdown !== null) {
+    try {
+      await mkdir19(dirname23(path2), { recursive: true });
+      await writeFile18(
+        path2,
+        JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), markdown: fetched.markdown }, null, 2) + "\n",
+        "utf-8"
+      );
+    } catch {
+    }
+    return { entries: parseChangelog(fetched.markdown), source: "network" };
+  }
+  if (cached4) {
+    return { entries: parseChangelog(cached4.markdown), source: "cache", error: fetched.error };
+  }
+  return { entries: [], source: "none", error: fetched.error };
+}
+async function fetchChangelogMarkdown() {
+  try {
+    const res = await fetch(CHANGELOG_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS2) });
+    if (!res.ok) return { markdown: null, error: `HTTP ${res.status}` };
+    return { markdown: await res.text() };
+  } catch (err) {
+    return { markdown: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// src/commands/whatsnew.ts
+function registerWhatsnewCommand(program3) {
+  program3.command("whatsnew").description(
+    "Show recent mixshift-ai release notes (from the CHANGELOG). Cache: 24h."
+  ).option(
+    "--format <type>",
+    "output format: `terminal` (default) | `chat` (markdown for Claude/Cowork)",
+    "terminal"
+  ).option("--since <version>", "show every release newer than this version (e.g. 0.5.39)").option("--all", "show the entire changelog", false).option("--force-fetch", "bypass the 24h cache and re-fetch", false).action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      const current = getPluginVersion();
+      const { entries, source, error: error51 } = await loadChangelog({
+        dataDirOverride: root.dataDir,
+        forceFetch: opts.forceFetch
+      });
+      const selected = opts.all ? entries : opts.since ? entriesSince(entries, opts.since) : whatsNewFor(entries, current);
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: entries.length ? "ok" : "unavailable",
+              current,
+              latest: entries[0]?.version ?? null,
+              source,
+              ...error51 ? { error: error51 } : {},
+              entries: selected
+            },
+            null,
+            2
+          ) + "\n"
+        );
+        return;
+      }
+      if (entries.length === 0) {
+        process.stderr.write(
+          `
+Couldn't load release notes right now${error51 ? ` (${error51})` : ""}.
+  See ${CHANGELOG_RELEASES_URL}, or try again with --force-fetch.
+`
+        );
+        return;
+      }
+      const format = opts.format === "chat" ? "chat" : "terminal";
+      process.stdout.write(render(selected, current, format) + "\n");
+    }
+  );
+}
+function render(entries, current, format) {
+  if (entries.length === 0) {
+    return format === "chat" ? `You're on **${current}**. No newer release notes.` : `You're on ${current}. No newer release notes.`;
+  }
+  if (format === "chat") {
+    const out2 = [`**What's new in mixshift-ai** (you're on ${current}):`, ""];
+    for (const e of entries) out2.push(`## ${e.version}`, "", e.notes, "");
+    return out2.join("\n").trimEnd();
+  }
+  const out = ["", `What's new in mixshift-ai (you're on ${current}):`];
+  for (const e of entries) out.push("", `-- ${e.version} --`, "", e.notes);
+  return out.join("\n");
 }
 
 // src/commands/telemetry.ts
@@ -79373,7 +79681,7 @@ function registerSkillCommands(program3) {
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError7(
+          return emitError6(
             root.json,
             `Brand "${opts.brand}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands. The resolver accepts slugs, display names, acronyms, and prefixes.`
           );
@@ -79448,7 +79756,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError7(root.json, message);
+        return emitError6(root.json, message);
       }
     }
   );
@@ -79464,7 +79772,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError7(
+          return emitError6(
             root.json,
             `Brand "${opts.brand}" not in the registry.`
           );
@@ -79531,7 +79839,7 @@ Real Amazon writes will land once the write MCP/API is wired. Same contract.
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError7(root.json, message);
+        return emitError6(root.json, message);
       }
     }
   );
@@ -79605,7 +79913,7 @@ async function runApplyDecision2(args) {
   try {
     decision = JSON.parse(args.decisionJson);
   } catch (err) {
-    return emitError7(
+    return emitError6(
       args.json,
       `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
     );
@@ -79748,13 +80056,13 @@ async function applyDryRun(args) {
     args.dataDir
   );
   const runDir = dirname25(path2);
-  const suggestions = await readJsonIfExists2(`${runDir}/suggestions.json`);
+  const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
       `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
     );
   }
-  const overrides = await readJsonIfExists2(`${runDir}/overrides.json`) ?? {
+  const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {
     rows: []
   };
   const suggestionRows = extractRows(suggestions);
@@ -79822,7 +80130,7 @@ ${candidates}`
   }
   return null;
 }
-async function readJsonIfExists2(path2) {
+async function readJsonIfExists(path2) {
   try {
     const raw = await readFile27(path2, "utf-8");
     return JSON.parse(raw);
@@ -79857,7 +80165,7 @@ function stableRowId(row) {
   }
   return null;
 }
-function emitError7(json2, message) {
+function emitError6(json2, message) {
   if (json2) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
@@ -80551,7 +80859,7 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir23, readFile as readFile29, rename as rename14, writeFile as writeFile20 } from "node:fs/promises";
+import { mkdir as mkdir23, readFile as readFile29, rename as rename13, writeFile as writeFile20 } from "node:fs/promises";
 import { dirname as dirname28 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
@@ -80570,7 +80878,7 @@ async function saveLedger(path2, handles) {
   await mkdir23(dirname28(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile20(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename14(tmp, path2);
+  await rename13(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -81116,7 +81424,7 @@ function registerOperations(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError7(err, !!root.json);
     }
   });
 }
@@ -81142,7 +81450,7 @@ function registerCall(amazon) {
     try {
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError7(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
         body = JSON.parse(await readFile31(opts.bodyFile, "utf8"));
@@ -81188,7 +81496,7 @@ function registerCall(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError7(err, !!root.json);
     }
   });
 }
@@ -81234,7 +81542,7 @@ function emitFailure2(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError8(err, json2) {
+function emitError7(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson2({ status: "error", message });
@@ -81319,7 +81627,7 @@ function registerMerchants(amazon) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81346,7 +81654,7 @@ function registerListReports(amazon) {
         }
         return;
       } catch (err) {
-        emitError9(err, !!root.json);
+        emitError8(err, !!root.json);
       }
     }
   );
@@ -81371,7 +81679,7 @@ function registerDescribeReport(amazon) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81421,7 +81729,7 @@ Next: \`mixshift amazon report poll ${result.runId}\` until ready, then \`amazon
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81464,7 +81772,7 @@ Poll again in a few seconds.
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81523,7 +81831,7 @@ function registerReportGet(report) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81681,7 +81989,7 @@ function registerReportRun(report) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -81751,7 +82059,7 @@ function renderCandidates(candidates) {
   lines.push("");
   return lines.join("\n") + "\n";
 }
-function emitError9(err, json2) {
+function emitError8(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson3({ status: "error", message });
@@ -81990,7 +82298,7 @@ function registerProfiles(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82023,7 +82331,7 @@ function registerOperations2(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82047,7 +82355,7 @@ function registerCall2(ads) {
     try {
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
         body = JSON.parse(await readFile32(opts.bodyFile, "utf8"));
@@ -82126,7 +82434,7 @@ function registerCall2(ads) {
       }
       return;
     } catch (err) {
-      emitError10(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -82172,7 +82480,7 @@ function emitFailure4(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError10(err, json2) {
+function emitError9(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson4({ status: "error", message });
@@ -83329,6 +83637,7 @@ registerDataCommands(program2);
 registerFeedbackCommand(program2);
 registerWelcomeCommand(program2);
 registerVersionCommand(program2);
+registerWhatsnewCommand(program2);
 registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 registerAmazonCommands(program2);

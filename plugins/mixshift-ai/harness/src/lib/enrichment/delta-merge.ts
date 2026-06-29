@@ -1,8 +1,11 @@
 /**
- * Delta-mode merge — patches the settlement curve from the enrichment
- * artifact into context.yaml without touching AM-edited fields.
+ * Delta-mode merge — patches the settlement curve from the Tier-2 brain
+ * (brand-brain.yaml::capture_rate_calibration.daily_settlement_curve) into
+ * context.yaml without touching AM-edited fields.
  *
- * Ported from the upstream's `merge-context-delta.py`. Narrow scope on purpose:
+ * Phase 8: re-sourced from the per-run enrichment.json artifact to the brain
+ * (the brain now computes the curve on `brand key add` / `brand brain refresh`).
+ * Narrow scope on purpose:
  *
  *   PATCHED into context.yaml::capture_rate_calibration:
  *     - daily_settlement_curve   (full block replacement — enrichment-owned)
@@ -28,21 +31,21 @@ import { readFile, writeFile, rename, mkdir, chmod } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Document, parseDocument } from 'yaml';
 import { contextPath } from '../paths/resolve.js';
-import { readEnrichmentArtifact } from './storage.js';
-import type { EnrichmentArtifact } from './types.js';
+import { loadBrain } from '../brain/read.js';
+import type { BrainCaptureRateCalibration } from '../brain/schema.js';
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export interface DeltaMergeResult {
-  status: 'ok' | 'no_enrichment' | 'no_curve' | 'context_missing';
+  status: 'ok' | 'no_brain' | 'no_curve' | 'context_missing';
   /** Path of the context.yaml that was patched (when status === 'ok'). */
   context_path: string;
   /** Fields actually updated in context.yaml. */
   fields_updated: string[];
   /** Always populated for diagnostic. */
-  enrichment_path: string;
+  brain_path: string;
 }
 
 /**
@@ -55,27 +58,28 @@ export interface DeltaMergeResult {
  */
 export async function mergeEnrichmentIntoContext(
   brandSlug: string,
-  runDate: string,
   dataDirOverride?: string,
 ): Promise<DeltaMergeResult> {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
 
-  // 1. Load enrichment artifact — null = nothing to merge
-  const enrichment = await readEnrichmentArtifact(brandSlug, runDate, dataDirOverride);
-  if (!enrichment) {
+  // 1. Load the Tier-2 brain — the settlement curve lives there now (computed
+  //    on `brand key add` / `brand brain refresh`), not a per-run artifact.
+  const loaded = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded.ok) {
     return {
-      status: 'no_enrichment',
+      status: 'no_brain',
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`,
+      brain_path: loaded.path,
     };
   }
-  if (!enrichment.daily_settlement_curve) {
+  const curve = loaded.brain.capture_rate_calibration?.daily_settlement_curve;
+  if (!curve) {
     return {
       status: 'no_curve',
       context_path: ctxPath,
       fields_updated: [],
-      enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`,
+      brain_path: loaded.path,
     };
   }
 
@@ -89,7 +93,7 @@ export async function mergeEnrichmentIntoContext(
         status: 'context_missing',
         context_path: ctxPath,
         fields_updated: [],
-        enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`,
+        brain_path: loaded.path,
       };
     }
     throw err;
@@ -97,7 +101,7 @@ export async function mergeEnrichmentIntoContext(
   const doc = parseDocument(ctxText, { keepSourceTokens: true });
 
   // 3. Patch the curve + metadata fields
-  const fieldsUpdated = patchSettlementCurve(doc, enrichment);
+  const fieldsUpdated = patchSettlementCurve(doc, curve);
 
   // 4. Bump last_updated
   const today = new Date().toISOString().slice(0, 10);
@@ -111,7 +115,7 @@ export async function mergeEnrichmentIntoContext(
     status: 'ok',
     context_path: ctxPath,
     fields_updated: fieldsUpdated,
-    enrichment_path: `runs/mx-brand-context/${runDate}/${runDate}.enrichment.json`,
+    brain_path: loaded.path,
   };
 }
 
@@ -135,10 +139,8 @@ export async function mergeEnrichmentIntoContext(
  */
 function patchSettlementCurve(
   doc: Document,
-  enrichment: EnrichmentArtifact,
+  curve: NonNullable<BrainCaptureRateCalibration['daily_settlement_curve']>,
 ): string[] {
-  const curve = enrichment.daily_settlement_curve;
-  if (!curve) return [];
   const updated: string[] = [];
 
   doc.setIn(

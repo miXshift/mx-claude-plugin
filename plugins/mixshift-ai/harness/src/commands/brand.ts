@@ -27,7 +27,6 @@ import { registerBrandContextCommands } from './brand-context.js';
 import { spawnBrainFetchDetached } from '../lib/brain/spawn.js';
 import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
-import { registerBrandEnrichCommand } from './brand-enrich.js';
 import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
 import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
 
@@ -571,13 +570,8 @@ export function registerBrandCommands(program: Command): void {
   // Replaces the upstream's brand-context-template.html / render-brand-context.py.
   registerBrandRenderContextCommand(brand);
 
-  // `mixshift brand enrich <slug>` — Phase 1.5 enrichment runner.
-  // Settlement curve + stockout windows + brand-typo clusters from CS-28-31.
-  // Writes runs/mx-brand-context/<date>/<date>.enrichment.json.
-  registerBrandEnrichCommand(brand);
-
-  // `mixshift brand merge-delta <slug>` — patches settlement curve from the
-  // enrichment artifact into context.yaml. Preserves AM-edited fields.
+  // `mixshift brand merge-delta <slug>` — patches the settlement curve from the
+  // brand brain into context.yaml. Preserves AM-edited fields.
   registerBrandMergeDeltaCommand(brand);
 
   // `mixshift brand migrate-config <slug>` — one-time context -> OCL migration

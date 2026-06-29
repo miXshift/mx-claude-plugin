@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-brand-context
 display_name: Brand Context Setup
-version: "2.5.1"
+version: "2.6.0"
 description: >
   Brand Context setup: onboards a brand by building its Tier 3 brand context directory
   for a new Amazon PPC account from scratch (formerly mx-account-cold-start).
@@ -20,83 +20,66 @@ review_required: always
 # Skills that read context.yaml declare a max-days threshold; cold-start is exempt
 # so it can refresh stale contexts without being blocked by its own staleness.
 context_freshness_max_days: null
+# v2.6.0: the Tier-2 Brand Brain (brand-brain.yaml, auto-filled on `brand key
+# add`) now supplies taxonomy (sub_brands / item_groups / top_asins),
+# campaign-structure distincts (+ objective_tag_completeness_pct, the CS-27
+# substitute), and the three enrichment analyses (capture_rate_calibration +
+# daily_settlement_curve, stockouts, brand_term_typos). The deep skill READS
+# those from the brain and no longer re-derives them, so the heuristic +
+# enrichment CS-* queries left this prefetch. Retired: CS-01 (identity — the
+# brand is bootstrapped before cold-start; the Phase 1 gate now checks the
+# registry/brain), CS-10/CS-19/CS-20 (taxonomy → brain catalog), CS-16/CS-21/
+# CS-25 (skill-level diagnostics → brain stockout / not needed), CS-27
+# (objective completeness → brain objective_tag_completeness_pct), and the
+# enrichment family CS-06/CS-07/CS-08/CS-28/CS-29/CS-30/CS-31 (→ brain
+# capture_rate_calibration / stockouts / brand_term_typos). CS-09 (VC
+# sub-brand × item-group cross + per-pair target ACOS) and CS-24 (per-campaign
+# objective_class classification) are KEPT: the brain's flat distinct sets lose
+# the cross-structure CS-09 carries and the CampaignName-pattern classification
+# CS-24 carries (the latter drives the eval's label_completeness gap text).
+# The remaining queries are the historical baselines the deep skill still pulls
+# at runtime. Catalog entries for the retired enrichment queries are KEPT —
+# the brain consumes them.
 sql_ids:
-  - CS-01
   - CS-02
   - CS-03
   - CS-04
   - CS-05
-  - CS-06
-  - CS-07
-  - CS-08
   - CS-09
-  - CS-10
   - CS-11
   - CS-12
   - CS-13
   - CS-14
   - CS-15
-  - CS-16
   - CS-17
   - CS-18
-  - CS-19
-  - CS-20
-  - CS-21
   - CS-22
   - CS-23
   - CS-24
-  - CS-25
   - CS-26
-  - CS-27
-  - CS-28   # v2.3 enrichment -- attribution settlement curve
-  - CS-29   # v2.3 enrichment -- stockout window detection
-  - CS-30   # v2.3 enrichment -- daily metrics for change-point detection
-  - CS-31   # v2.3 enrichment -- brand-name typo corpus
 pre_execution:
   enabled: true
   artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
-      parallel: [CS-01]
+      parallel: [CS-02, CS-03, CS-04, CS-05, CS-09, CS-11, CS-12, CS-13, CS-14, CS-15]
       notes: >
-        CS-01 (identity check) must confirm SellerID before any other queries proceed.
-        If CS-01 returns 0 rows the brand slug doesn't map to a real account -- stop.
+        Identity is no longer a prefetch round — the brand is bootstrapped
+        (registry + brain) before cold-start runs, and the Phase 1 hard gate
+        checks the registry/brain instead of CS-01. These are the revenue,
+        ACOS, and structure baselines: CS-02 applies to SC; CS-03 applies to VC
+        (both prefetched, skill picks whichever). CS-09/CS-11/CS-12/CS-13 apply
+        to VC only. Non-matching queries return empty rows; skill discards.
     - round: 2
-      parallel: [CS-02, CS-03, CS-04, CS-05, CS-06, CS-07, CS-08, CS-09, CS-10, CS-11, CS-12, CS-13, CS-14, CS-15]
+      parallel: [CS-17, CS-18, CS-22, CS-23, CS-24, CS-26]
       notes: >
-        CS-02 applies to SC; CS-03 applies to VC (both prefetched, skill picks whichever).
-        CS-06/CS-07 are attribution-window calibration (SC / VC respectively).
-        CS-09/CS-11/CS-12/CS-13 apply to VC only. CS-10 applies to SC only.
-        Non-matching queries return empty rows; skill discards.
-    - round: 3
-      parallel:
-        - CS-16
-        - CS-17
-        - CS-18
-        - CS-19
-        - CS-20
-        - CS-21
-        - CS-22
-        - CS-23
-        - CS-24
-        - CS-25
-        - CS-26
-        - CS-27
-        - CS-28   # v2.3 enrichment
-        - CS-29   # v2.3 enrichment
-        - CS-30   # v2.3 enrichment
-        - CS-31   # v2.3 enrichment
-      notes: >
-        CS-16 through CS-27 are independent structure and calibration queries.
-        CS-19/CS-25 apply to VC accounts only; CS-20 applies to SC accounts only.
-        CS-16 stub noted -- include for completeness.
-        CS-28/29/30/31 are v2.3 enrichment queries (batch_plan entries are plain SQL-ID
-        strings per schema; delta-mode runs filter to CS-28..31 by ID, see `mixshift brand
-        enrich`): CS-28 daily attribution settlement curve (campaign type x DOW),
-        CS-29 inventory-health historical snapshots for stockout window detection (FBA-only;
-        pre-filtered to in-trouble rows), CS-30 daily account ad metrics over trailing 365 days
-        for stockout-window impact scoring, CS-31 trailing-90-day converting search-term corpus for
-        brand-name typo detection.
+        Independent structure + calibration baselines. CS-26 applies to VC
+        accounts only. CS-24 is the per-campaign objective_class classification
+        (CampaignName tag patterns) that drives the standardized
+        label_completeness gap text; the brain's distinct_objectives +
+        objective_tag_completeness_pct do not reproduce it. Taxonomy, brand
+        terms, attribution/settlement calibration, stockout windows, and
+        brand-term typos are read from the Brand Brain, not re-pulled here.
 post_execution:
   enabled: true
   renderer: brand render-context
@@ -148,19 +131,22 @@ trigger_phrases:
   - run cold start
 upstream_skills: []
 notes: >
+  Source split (v2.6.0): the Tier-2 Brand Brain supplies brand taxonomy
+  (catalog.sub_brands / item_groups / top_asins), campaign-structure distincts
+  (+ objective_tag_completeness_pct, the CS-27 substitute), and the three
+  enrichment analyses (capture_rate_calibration incl. daily_settlement_curve,
+  stockouts, brand_term_typos). The deep skill reads those from the brain and
+  confirms/enriches them into Tier-3; the prefetch queries above are the
+  historical baselines it still pulls at runtime.
+
   CS-02 applies to SC; CS-03 applies to VC (model picks based on account_type).
-  CS-06/CS-07 are SC vs VC attribution-window calibration.
-  CS-09/CS-11/CS-12/CS-13/CS-19/CS-25 apply to VC only.
-  CS-10/CS-20 apply to SC only.
-  CS-16 references mws_inventory_history (confirmed empty-column stub 2026-04-27);
-  included for schema awareness, returns empty for all accounts today.
-  CS-28..31 are v2.3 enrichment queries (attribution curve, stockout windows,
-  change-point detection, brand typo corpus). The skill model can opt to skip
-  them on a first-cold-start run and add them in a delta-mode rerun once the
-  base context is approved.
+  CS-09/CS-11/CS-12/CS-13/CS-26 apply to VC only.
+  CS-24 is the per-campaign objective_class classification (CampaignName tag
+  patterns) that drives the standardized label_completeness gap text — the
+  brain's distinct_objectives do not reproduce it, so it stays a runtime pull.
 
   This skill writes durable artifacts under ~/.mixshift/clients/<brand-slug>/:
-  context.yaml, narrative.md, corpora/, plus a human-reviewable brand-context.md
+  context.yaml, narrative.md, corpora/, plus a human-reviewable brand-context.html
   and machine-readable headline.json + review.json. The skill model is the
   single writer of these artifacts; never edit them manually mid-run.
 

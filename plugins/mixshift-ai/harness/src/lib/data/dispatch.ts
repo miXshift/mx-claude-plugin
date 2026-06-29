@@ -52,6 +52,7 @@ export type UsedDispatch =
   | 'sql'
   | 'named'
   | 'named_local_dev'
+  | 'named_repo_fallback'
   | 'sproc'
   | 'sproc_local_dev';
 
@@ -193,7 +194,20 @@ export async function runDispatched<Row = Record<string, unknown>>(
     if (localSql !== undefined) {
       return runSqlText<Row>(id, stripSqlHeader(localSql), opts, 'named_local_dev');
     }
-    return runNamed<Row>(id, opts);
+    const named = await runNamed<Row>(id, opts);
+    // Migration bridge: a `dispatch: named` query whose server-side pack entry
+    // isn't deployed yet (`unknown_query` = plugin release ahead of the service)
+    // but which still ships a committed `.sql` contract falls back to executing
+    // that contract through /api/query. This lets a query flip to `named` and
+    // keep firing (dev + testing) until the pack deploys; once registered,
+    // runNamed succeeds and the server-side text wins. No-op for born-named
+    // queries with no committed `.sql` (entry.file unset) — the original
+    // unknown_query failure is returned unchanged.
+    if (!named.ok && named.failure.kind === 'unknown_query' && entry.file) {
+      const { sql } = await readQuerySql(id);
+      return runSqlText<Row>(id, sql, opts, 'named_repo_fallback');
+    }
+    return named;
   }
 
   if (entry.dispatch === 'sproc') {

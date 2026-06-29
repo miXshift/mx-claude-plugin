@@ -176,6 +176,10 @@ const FIELD_LABELS: Record<BrandFieldKey, string> = {
   recent_acos_30d: '30-day ACoS',
   item_groups: 'Item groups',
   hero_asins: 'Hero ASINs',
+  capture_rate_calibration: 'Capture-rate calibration',
+  daily_settlement_curve: 'Daily settlement curve',
+  stockouts: 'Stockout windows',
+  brand_term_typos: 'Brand-term typos',
 };
 
 /** Percent-style fields render with a trailing %. */
@@ -681,7 +685,7 @@ export function sectionBrandTerms(s: ReportState): string {
     return renderCard({
       title: 'Brand term dictionary',
       title_accessory: marker,
-      body: '<div class="rc-empty">No brand terms captured yet. Phase 1 CS-19/CS-20 + Phase 2 AM variants populate this.</div>',
+      body: '<div class="rc-empty">No brand terms captured yet. The Brand Brain catalog and Phase 2 AM variants populate this.</div>',
     });
   }
   return renderCard({
@@ -795,7 +799,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
   const enr = s.sources.enrichment as
     | {
         stockout_candidates?: Array<{ asin?: string; item_name?: string; days_in_window?: number }>;
-        brand_term_typo_candidates?: Array<{ canonical_match?: string; total_variants?: number }>;
+        brand_term_typo_candidates?: Array<{ canonical_match?: string; variant_count?: number }>;
       }
     | null;
   const blocks: string[] = [];
@@ -807,7 +811,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
   }
   if (enr?.brand_term_typo_candidates && enr.brand_term_typo_candidates.length > 0) {
     const items = enr.brand_term_typo_candidates.slice(0, 10).map(
-      (c) => `${c.canonical_match ?? '(unknown)'} — ${c.total_variants ?? 0} variant(s)`,
+      (c) => `${c.canonical_match ?? '(unknown)'} — ${c.variant_count ?? 0} variant(s)`,
     );
     blocks.push(renderAnomalyBlock({ title: 'Brand-term typo clusters (advisory)', items }));
   }
@@ -815,7 +819,7 @@ export function sectionDetectedAnomalies(s: ReportState): string {
     title: 'Detected anomalies (advisory)',
     body: blocks.length > 0
       ? blocks.join('\n')
-      : '<div class="rc-empty">No advisory findings. Phase 1.5 enrichment will populate stockout + brand-term-typo candidates here once enabled.</div>',
+      : '<div class="rc-empty">No advisory findings. The brand brain populates stockout + brand-term-typo candidates here as it detects them.</div>',
   });
 }
 

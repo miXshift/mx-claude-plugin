@@ -178,7 +178,7 @@ export function compareVersions(a: string, b: string): number {
  * Copy intentionally covers both Cowork (UI uninstall+reinstall + optional
  * org-managed auto-sync note) and Claude Code (refresh the marketplace catalog
  * first with `claude plugin marketplace update mixshift`, then
- * `claude plugin update mixshift-ai` — the refresh avoids a stale-catalog race
+ * `claude plugin update mixshift-ai@mixshift` — the refresh avoids a stale-catalog race
  * where the update reinstalls the same old version), and closes with the
  * critical "start a new session" step: a running session keeps the plugin
  * binary it materialized at startup, so an in-place update never takes effect
@@ -206,7 +206,8 @@ export function renderUpdateBanner(
     lines.push(
       '> **In Claude Code:** in your terminal, run ' +
         '`claude plugin marketplace update mixshift` to refresh the catalog first, ' +
-        'then `claude plugin update mixshift-ai`.',
+        'then `claude plugin update mixshift-ai@mixshift` ' +
+        '(add `--scope local` if you installed it for this project only).',
     );
     lines.push('>');
     lines.push(
@@ -215,10 +216,12 @@ export function renderUpdateBanner(
         'session keeps the plugin version it started with, so the update only ' +
         'takes effect in a fresh session.',
     );
-    if (result.releaseUrl) {
-      lines.push('>');
-      lines.push(`> Release notes: ${result.releaseUrl}`);
-    }
+    lines.push('>');
+    lines.push(
+      '> See what changed: run `mixshift whatsnew`' +
+        (result.releaseUrl ? ` (or view the release notes at ${result.releaseUrl})` : '') +
+        '.',
+    );
     lines.push('');
     return lines.join('\n');
   }
@@ -234,16 +237,18 @@ export function renderUpdateBanner(
   lines.push('');
   lines.push('  In Claude Code (run both in your terminal):');
   lines.push('    claude plugin marketplace update mixshift');
-  lines.push('    claude plugin update mixshift-ai');
+  lines.push('    claude plugin update mixshift-ai@mixshift');
+  lines.push('    (installed it for this project only? add: --scope local)');
   lines.push('');
   lines.push('  Then load it:');
   lines.push('    Start a new session (in Cowork, fully quit and reopen the app).');
   lines.push('    A new chat in the same window is not enough: a running session');
   lines.push('    keeps the plugin version it started with, so the update only');
   lines.push('    takes effect in a fresh session.');
+  lines.push('');
+  lines.push('  See what changed: run  mixshift whatsnew');
   if (result.releaseUrl) {
-    lines.push('');
-    lines.push(`  Release notes: ${result.releaseUrl}`);
+    lines.push(`    (or view the release notes at ${result.releaseUrl})`);
   }
   lines.push('');
   return lines.join('\n');

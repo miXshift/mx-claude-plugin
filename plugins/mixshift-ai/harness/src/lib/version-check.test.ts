@@ -358,7 +358,9 @@ describe('renderUpdateBanner', () => {
     // Two-step CLI path: refresh the catalog first to dodge the stale-catalog
     // race (an update without a refresh can reinstall the same old version).
     expect(banner).toContain('claude plugin marketplace update mixshift');
-    expect(banner).toContain('claude plugin update mixshift-ai');
+    expect(banner).toContain('claude plugin update mixshift-ai@mixshift');
+    expect(banner).toContain('--scope local');
+    expect(banner).toContain('mixshift whatsnew');
     // The critical "load it" step: a running session is frozen to its snapshot.
     expect(banner).toContain('Then load it');
     expect(banner).toContain('new session');
@@ -385,7 +387,9 @@ describe('renderUpdateBanner', () => {
     expect(banner).toContain('**0.5.4**');
     expect(banner).toContain('`mixshift-ai`');
     expect(banner).toContain('`claude plugin marketplace update mixshift`');
-    expect(banner).toContain('`claude plugin update mixshift-ai`');
+    expect(banner).toContain('`claude plugin update mixshift-ai@mixshift`');
+    expect(banner).toContain('--scope local');
+    expect(banner).toContain('mixshift whatsnew');
     // The critical "load it" step: a running session is frozen to its snapshot.
     expect(banner).toContain('**Then load it:**');
     expect(banner).toContain('new conversation');
