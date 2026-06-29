@@ -3,6 +3,35 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.6.0
+
+The first stable beta release. It bundles the data, brand-context, and branding
+work since 0.5.40 into the version the closed beta runs on.
+
+### Added
+
+- Large query results now come back complete. `mixshift data query` automatically
+  pages through the service's per-request row and byte limits, so you no longer have
+  to split a big pull into smaller queries by hand.
+- New "Querying from your own app" section in the auth-setup docs, for connecting
+  your own application directly to your MixShift data.
+
+### Changed
+
+- Refreshed MixShift branding: the new monogram logo and updated brand green now
+  render across generated reports and the design system.
+- Brand-context-driven skills now read your brand brain when deciding whether they
+  have enough context to run, so they no longer show a false "blocked by context"
+  when a brand brain is already in place.
+- Building brand context now draws enrichment from the brand brain directly. The
+  separate enrich step is folded into the build, so onboarding a brand takes one
+  fewer manual command.
+
+### Removed
+
+- The standalone `brand enrich` command is retired. Its work now happens
+  automatically as part of building brand context.
+
 ## 0.5.40
 
 A reliability and transparency release: feedback is never dropped, the update
