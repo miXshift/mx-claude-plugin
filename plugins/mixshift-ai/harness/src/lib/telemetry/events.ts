@@ -28,8 +28,8 @@ export interface TelemetryEventRecord {
   plugin_version: string;
   install_path: string;
   /** Which runtime/host is invoking the harness. See lib/telemetry/surface.ts.
-   *  Values: cowork | claude_code | plugin_host_unknown | cli | chatgpt |
-   *  claude_desktop | other. Evolves as new LLM hosts are added. */
+   *  Values: cowork | claude_code | plugin_host_unknown | cli | cli_headless |
+   *  chatgpt | claude_desktop | other. Evolves as new LLM hosts are added. */
   surface: string;
   os: string;
   node_version: string;
