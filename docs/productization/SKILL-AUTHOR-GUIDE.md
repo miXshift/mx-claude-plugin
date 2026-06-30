@@ -6,6 +6,21 @@ an existing one.
 
 ---
 
+## CLI invocation: always have a node fallback
+
+Skills call the bundled CLI as `mixshift <cmd>`. That works only when the plugin's `bin/` is on the session PATH, which is NOT guaranteed. Observed in the field: macOS Cowork sandboxes where `mixshift` returns `command not found` (exit 127), with the harness reachable only via its absolute entrypoint. Every skill that runs a CLI command must be able to fall back to it:
+
+```bash
+# Preferred:
+mixshift <cmd> <args>
+# Fallback when `mixshift` is not found (e.g. not on the sandbox PATH):
+node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js <cmd> <args>
+```
+
+`$CLAUDE_PLUGIN_ROOT` is set by the host to the plugin's install dir. For auth-critical and first-run skills (`mx-welcome`, `mx-auth-login`), state the fallback inline at the first CLI call so a missing PATH never strands a brand-new user. For other skills, one note near the first CLI call is enough.
+
+---
+
 ## Telemetry: the three required emits
 
 Every skill MUST emit three lifecycle telemetry events so we can

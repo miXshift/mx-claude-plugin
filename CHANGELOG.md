@@ -3,6 +3,28 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.6.1
+
+A first-run reliability fix for Cowork and Claude Code. When the host sandbox
+blocks the connection to MixShift, sign-in now fails clearly and tells you how
+to fix it, instead of dead-ending on a cryptic network error.
+
+### Changed
+
+- Sign-in failures are now actionable. If the plugin cannot reach MixShift
+  because the Cowork or Claude Code sandbox has not allowlisted its address, you
+  get a plain explanation and the exact next step (allowlist the domain, or run
+  `mixshift doctor`) rather than an opaque "network error" with no way forward.
+- The welcome flow no longer hands you a sign-in link it cannot complete. If the
+  connection is blocked, it stops and points you to the fix instead of leaving
+  you waiting on a link that never works.
+
+### Fixed
+
+- Removed sign-in guidance that told you to run `mixshift` in your own terminal.
+  The bundled command is not installed system-wide, so that produced a
+  "command not found" dead end; sign-in now keeps you on a path that works.
+
 ## 0.6.0
 
 The first stable beta release. It bundles the data, brand-context, and branding

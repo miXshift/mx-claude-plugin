@@ -78,7 +78,23 @@ export function describeFetchFailure(err: unknown, host: string): string | null 
     return `Timed out connecting to ${host}.`;
   }
 
-  return `Network error reaching ${host}: ${code || causeMessage || 'fetch failed'}.`;
+  // Unclassified transport failure: the connection never completed but the
+  // cause didn't match a code we special-case above. In Claude Cowork / Claude
+  // Code this is overwhelmingly the sandbox egress allowlist silently dropping
+  // the connection — it surfaces with assorted or empty codes (we've seen a
+  // bare `0`), which is exactly why it slipped past the branches above and used
+  // to dead-end on a useless "Network error … 0". Lead with that cause + the
+  // doctor, but stay honest about a genuine outage / offline machine.
+  const raw = code || causeMessage || '';
+  const detail = raw && raw !== '0' ? ` (${raw})` : '';
+  return (
+    `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is ` +
+    `almost always the sandbox egress allowlist: ${host} has to be allowed ` +
+    `(an org admin adds it under Organization settings > Capabilities > Code ` +
+    `execution; on standalone Claude Code add it to ~/.claude/settings.json ` +
+    `under sandbox.network.allowedDomains). Otherwise the service may be down ` +
+    `or you're offline. Run \`mixshift doctor\` for the full diagnosis.`
+  );
 }
 
 /**

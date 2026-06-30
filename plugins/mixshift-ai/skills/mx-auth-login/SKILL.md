@@ -90,7 +90,11 @@ The CLI returns JSON immediately and exits:
 }
 ```
 
-Capture `device_code` and `login_url`. The other fields don't need to be passed again — `device-poll` only needs `device_code` + `person_label`.
+Capture `device_code` and `login_url`. The other fields don't need to be passed again; `device-poll` only needs `device_code` + `person_label`.
+
+(If `mixshift` isn't found, e.g. it isn't on PATH inside this sandbox, run the same command via `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js auth device-init ...`.)
+
+**If device-init returns `{ "ok": false, "error": "<message>" }`** instead of the JSON above, the request to `mcp.mixshift.io` never completed, almost always the Cowork / Claude Code sandbox egress allowlist. Do NOT send a link or retry in a loop. Surface the message and go to **"If the sandbox is blocking sign-in"** below.
 
 **Step A2 — Send the user to the URL:**
 
@@ -112,7 +116,8 @@ Default max-wait is 30s (fits comfortably under Cowork's Bash timeout). The CLI 
 
 - `{ "state": "approved", "result": { ... } }` — success. Tokens are already saved to `~/.mixshift/auth/credentials` and post-login discovery has fired. Move to the verify step.
 - `{ "state": "pending" }` — user hasn't completed sign-in yet. Ask politely (*"Still finishing? I'll check again."*) and re-call `device-poll` with the same `device_code`. Repeat up to a few times before bailing.
-- `{ "state": "expired", "error": "<reason>" }` — device code is no longer valid (typically 10 min limit on the server side). Restart from Step A1 with a fresh `device-init`.
+- `{ "state": "expired", "error": "<reason>" }`: device code is no longer valid (typically 10 min limit on the server side). Restart from Step A1 with a fresh `device-init`.
+- `{ "ok": false, "error": "<message>" }`: the poll request itself couldn't reach `mcp.mixshift.io` (network/sandbox), not a sign-in state. Don't keep polling; go to **"If the sandbox is blocking sign-in"** below.
 
 ## Path C — Service credential (unattended runs): delegate
 
@@ -128,6 +133,20 @@ There is no shell and no local disk, so the plugin cannot store tokens for the u
 
 Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the service (auth moved to the HTTP transport layer). If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
 
+## If the sandbox is blocking sign-in (Cowork / Claude Code egress)
+
+`device-init` or `device-poll` returning `{ "ok": false, "error": "<message>" }` with a "could not reach mcp.mixshift.io" / network message means the **host sandbox's egress allowlist doesn't include `mcp.mixshift.io`**, so the request never leaves the sandbox. This is an environment or org policy setting (the user's Claude org or corporate network), not a MixShift outage, and most individual setups are unaffected. Don't loop the command, and don't tell the user to run `mixshift` in their own terminal: the bundled CLI isn't on a normal terminal's PATH, so that just yields "command not found."
+
+Lead with `doctor`, which confirms the cause and prints the exact remediation:
+
+1. **Diagnose:** run `mixshift doctor` (or `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js doctor`). It reports whether the service is reachable and, if not, the required allowlist domains.
+2. **Fix the allowlist** (one of):
+   - **Cowork (managed org):** an org admin adds `mcp.mixshift.io` under Organization settings > Capabilities > Code execution > allowed domains, then the user starts a **new** conversation.
+   - **Standalone Claude Code:** add `mcp.mixshift.io` to `~/.claude/settings.json` under `sandbox.network.allowedDomains`, then start a new session.
+3. **Or use a surface that isn't sandbox-blocked:** sign in from **claude.ai web** (Path D, paste-token), or run MixShift from a **normal Claude Code terminal** session where egress isn't restricted.
+
+Then re-run the sign-in. Emit `skill.completed --outcome failed` for the blocked attempt so the funnel reflects it.
+
 ## Verify (all paths)
 
 Confirm warehouse access works through the token:
@@ -142,7 +161,7 @@ If it returns one row: *"You're signed in — warehouse is reachable."* For Path
 
 If it fails:
 
-- `host_unreachable` → *"Couldn't reach the warehouse. Check your network and retry, or `/mx-feedback` if it keeps failing."*
+- `host_unreachable` → couldn't reach `mcp.mixshift.io`. This is usually the sandbox egress allowlist: run `mixshift doctor` and see **"If the sandbox is blocking sign-in"** above. (If `doctor` shows the service reachable, retry, or `/mx-feedback` if it persists.)
 - `access_denied_db` → *"Signed in, but your account isn't authorized for this database. Send feedback so MixShift ops can look at the grants."*
 - `insufficient_scope` (service credentials only) → *"This credential was scoped down and can't use the full data gateway. Ask your admin to issue one with all read scopes."*
 - Anything else → pass through the friendly message; offer to retry.
@@ -172,13 +191,15 @@ The token-based flow shifts the IP-whitelist burden from each user to the mx-leg
 
 ## Fallbacks
 
+In Cowork / Claude Code chat you drive Path A (device-init + device-poll) inline. Do **not** tell the user to run `mixshift ...` in a separate terminal: the bundled CLI is only on PATH *inside* the chat session, so a standalone terminal returns "command not found." The terminal suggestions below apply ONLY to users who have separately installed `mixshift` as a system command. For a sandbox or egress block, use **"If the sandbox is blocking sign-in"** above, not a terminal.
+
 If the user gets stuck mid-flow:
 
-- **Browser didn't open and no URL was printed:** *"Re-run `mixshift auth login --mode device` in your terminal to force the device-code flow. It prints a URL you can open anywhere."*
+- **`device-init` printed no `login_url` (and no network error):** just re-run Step A1. If it returns `{ "ok": false, ... }`, treat it as the sandbox block above.
 
 - **Login page errors or 404s:** *"Hit refresh once. If still broken, the service might be having a hiccup — try again in a minute, or send feedback if it keeps failing."*
 
-- **User says they signed in but no credentials landed:** *"Quick check — does `~/.mixshift/auth/credentials` exist? On Bash: `ls -la ~/.mixshift/auth/credentials`. If missing or empty, the browser callback didn't reach the local server. Re-run `mixshift auth login --mode device` to use the device-code flow instead."*
+- **User says they signed in but no credentials landed:** re-run Step A3 (`device-poll`) with the same `device_code`. In the chat flow the poll (not a browser callback) is what writes credentials. If `device-poll` returns a network error, it's the sandbox block above.
 
 - **Scheduled task aborts with "No credentials found":** the task's sandbox has no credential. Route to Path C — and check `MIXSHIFT_DATA_DIR`: the service credential must live in the data dir the scheduled task actually reads.
 

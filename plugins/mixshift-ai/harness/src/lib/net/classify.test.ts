@@ -71,13 +71,26 @@ describe('describeFetchFailure', () => {
     );
   });
 
-  it('gives a generic network message for an unrecognized transport failure', () => {
+  it('routes an unrecognized transport failure to the sandbox-aware fallback', () => {
     const cause = Object.assign(new Error('socket hang up'), {
       code: 'ECONNRESET',
     });
     const msg = describeFetchFailure(fetchFailed(cause), HOST);
-    expect(msg).toContain('Network error reaching mcp.mixshift.io');
+    expect(msg).toContain('Could not reach mcp.mixshift.io');
     expect(msg).toContain('ECONNRESET');
+    expect(msg).toContain('sandbox.network.allowedDomains');
+    expect(msg).toContain('mixshift doctor');
+  });
+
+  it('routes the Cowork bare-code-0 block to the fallback without a noisy "(0)"', () => {
+    // The real Cowork egress block has surfaced as a fetch failure carrying a
+    // bare `0` code — the ": 0." dead-end users reported. It must land on the
+    // sandbox remediation and must NOT render a meaningless "(0)" detail.
+    const cause = Object.assign(new Error('fetch failed'), { code: 0 });
+    const msg = describeFetchFailure(fetchFailed(cause), HOST);
+    expect(msg).toContain('Could not reach mcp.mixshift.io');
+    expect(msg).not.toContain('(0)');
+    expect(msg).toContain('mixshift doctor');
   });
 
   it('returns null for an application-level HTTP error (not a transport failure)', () => {

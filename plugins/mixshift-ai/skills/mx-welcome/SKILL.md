@@ -68,10 +68,12 @@ If `mixshift welcome --format chat` fails ("command not found", harness error, e
 
 This section is the most important part of the skill. If the rendered welcome shows `Current state: ✗ not signed in yet`, you MUST continue with these steps in the SAME chat turn. Don't end your reply with just the welcome text — keep going.
 
-The welcome copy already told the user: *"I'll set up a sign-in link for you right after this."* If you stop at the rendered welcome, you broke that promise. Follow through:
+The welcome copy already told the user: *"I'll set up a sign-in link for you right after this."* If you stop at the rendered welcome, you broke that promise. Follow through. The one legitimate stop is a network-blocked `device-init` (step 2), which you handle explicitly instead of stranding the user:
 
 1. **Collect their work email.** Ask once, in plain language: *"What's your work email? (Used for session attribution — the same one you use to log into MixShift is fine.)"* Skip this prompt if a stored email exists (check `~/.mixshift/auth/credentials` for `datahub.person_label` from a prior login, or `~/.mixshift/profile.yaml::user.email`).
-2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash. Capture the JSON output's `device_code` and `login_url`.
+2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash (if `mixshift` isn't found, run the same args via `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js`).
+   - **On success**, the JSON carries `device_code` and `login_url`; capture both and continue to step 3.
+   - **If it returns `{ "ok": false, "error": "<message>" }`** (a network failure, typically the Cowork / Claude Code sandbox egress allowlist not including `mcp.mixshift.io`): **stop here. Do NOT send a sign-in link you can't complete.** Surface the `error` text, have the user run `mixshift doctor` for the full diagnosis, and point them to mx-auth-login's **"If the sandbox is blocking sign-in"** section for remediation plus no-sandbox alternatives. Emit `skill.completed --outcome failed` and end. Don't loop device-init.
 3. **Prep the user + send them the link** in one chat reply:
    > *"Click this to sign in: \<login_url\>*
    > *Use your MixShift login — same email + password you use for MixShift. Tell me when you're done."*

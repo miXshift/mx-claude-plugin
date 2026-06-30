@@ -76012,7 +76012,9 @@ function describeFetchFailure(err, host) {
   if (isTimeout || isAbort) {
     return `Timed out connecting to ${host}.`;
   }
-  return `Network error reaching ${host}: ${code || causeMessage || "fetch failed"}.`;
+  const raw = code || causeMessage || "";
+  const detail = raw && raw !== "0" ? ` (${raw})` : "";
+  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist: ${host} has to be allowed (an org admin adds it under Organization settings > Capabilities > Code execution; on standalone Claude Code add it to ~/.claude/settings.json under sandbox.network.allowedDomains). Otherwise the service may be down or you're offline. Run \`mixshift doctor\` for the full diagnosis.`;
 }
 function networkErrorMessage(err, host) {
   return describeFetchFailure(err, host) ?? extractMessage(err);
