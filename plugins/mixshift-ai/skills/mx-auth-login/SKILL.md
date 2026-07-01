@@ -140,9 +140,10 @@ Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the 
 Lead with `doctor`, which confirms the cause and prints the exact remediation:
 
 1. **Diagnose:** run `mixshift doctor` (or `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js doctor`). It reports whether the service is reachable and, if not, the required allowlist domains.
-2. **Fix the allowlist** (one of):
-   - **Cowork (managed org):** an org admin adds `mcp.mixshift.io` under Organization settings > Capabilities > Code execution > allowed domains, then the user starts a **new** conversation.
-   - **Standalone Claude Code:** add `mcp.mixshift.io` to `~/.claude/settings.json` under `sandbox.network.allowedDomains`, then start a new session.
+2. **Fix the allowlist** (pick the row for your plan; add BOTH `mcp.mixshift.io` and `*.amazonaws.com`, the second for SP-API report downloads):
+   - **Cowork, personal Pro/Max:** open Settings > Capabilities (claude.ai/settings/capabilities) > "Code execution and file creation", enable "Allow network egress", add both domains under "Additional allowed domains", then start a **new** conversation. If they do not take under "Package managers only" mode, set the mode to "All domains".
+   - **Cowork, Team/Enterprise:** an org admin adds the same domains under Organization settings > Capabilities > Code execution, then a **new** conversation.
+   - **Standalone Claude Code:** add them to `~/.claude/settings.json` under `sandbox.network.allowedDomains`, then start a new session.
 3. **Or use a surface that isn't sandbox-blocked:** sign in from **claude.ai web** (Path D, paste-token), or run MixShift from a **normal Claude Code terminal** session where egress isn't restricted.
 
 Then re-run the sign-in. Emit `skill.completed --outcome failed` for the blocked attempt so the funnel reflects it.

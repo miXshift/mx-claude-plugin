@@ -76001,7 +76001,7 @@ function describeFetchFailure(err, host) {
   const isFetchFailure = topMessage === "fetch failed" || Boolean(e.cause);
   if (!isFetchFailure && !isTimeout && !isAbort) return null;
   if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
-    return `The sandbox blocked ${host}. Your environment's egress allowlist does not include it. On Claude Cowork, an org admin must add ${host} under Organization settings > Capabilities > Code execution, then start a new conversation. On standalone Claude Code, add it to ~/.claude/settings.json under sandbox.network.allowedDomains. Run \`mixshift doctor\` for the full remediation.`;
+    return `The sandbox blocked ${host}: your Claude network-egress allowlist does not include it. The fix depends on your plan (Cowork personal, Cowork Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for the exact steps and the full required-domain list.`;
   }
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
     return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
@@ -76014,7 +76014,7 @@ function describeFetchFailure(err, host) {
   }
   const raw = code || causeMessage || "";
   const detail = raw && raw !== "0" ? ` (${raw})` : "";
-  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist: ${host} has to be allowed (an org admin adds it under Organization settings > Capabilities > Code execution; on standalone Claude Code add it to ~/.claude/settings.json under sandbox.network.allowedDomains). Otherwise the service may be down or you're offline. Run \`mixshift doctor\` for the full diagnosis.`;
+  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist not including ${host}. The exact fix depends on your plan; run \`mixshift doctor\` for the steps and the full required-domain list. Otherwise the service may be down or you are offline.`;
 }
 function networkErrorMessage(err, host) {
   return describeFetchFailure(err, host) ?? extractMessage(err);
@@ -82637,7 +82637,10 @@ function buildRemediation(host, proxy) {
     inSandbox ? `${host} is not reachable from this sandbox. An egress proxy is active and ${host} is almost certainly not on its allowlist.` : `${host} is not reachable from here.`
   );
   lines.push(
-    "Claude Cowork (Team/Enterprise): an org admin must add the domains below under Organization settings > Capabilities > Code execution, then start a NEW conversation (network settings apply at session creation, so an existing chat will not pick up the change)."
+    'Claude Cowork (personal Pro/Max): open Settings > Capabilities (claude.ai/settings/capabilities) > "Code execution and file creation", enable "Allow network egress", and add the domains below under "Additional allowed domains". Then start a NEW conversation (network settings apply at session creation). If the domains do not take under "Package managers only" mode, set the mode to "All domains".'
+  );
+  lines.push(
+    "Claude Cowork (Team/Enterprise): an org admin adds the same domains under Organization settings > Capabilities > Code execution, then a NEW conversation."
   );
   lines.push(
     "Standalone Claude Code: add them in ~/.claude/settings.json under sandbox.network.allowedDomains (unless managed settings set allowManagedDomainsOnly: true)."

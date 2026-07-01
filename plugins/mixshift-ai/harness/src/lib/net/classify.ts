@@ -52,12 +52,10 @@ export function describeFetchFailure(err: unknown, host: string): string | null 
   // the top-level message.
   if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
     return (
-      `The sandbox blocked ${host}. Your environment's egress allowlist ` +
-      `does not include it. On Claude Cowork, an org admin must add ` +
-      `${host} under Organization settings > Capabilities > Code execution, ` +
-      `then start a new conversation. On standalone Claude Code, add it to ` +
-      `~/.claude/settings.json under sandbox.network.allowedDomains. ` +
-      `Run \`mixshift doctor\` for the full remediation.`
+      `The sandbox blocked ${host}: your Claude network-egress allowlist does ` +
+      `not include it. The fix depends on your plan (Cowork personal, Cowork ` +
+      `Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for ` +
+      `the exact steps and the full required-domain list.`
     );
   }
 
@@ -89,11 +87,9 @@ export function describeFetchFailure(err: unknown, host: string): string | null 
   const detail = raw && raw !== '0' ? ` (${raw})` : '';
   return (
     `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is ` +
-    `almost always the sandbox egress allowlist: ${host} has to be allowed ` +
-    `(an org admin adds it under Organization settings > Capabilities > Code ` +
-    `execution; on standalone Claude Code add it to ~/.claude/settings.json ` +
-    `under sandbox.network.allowedDomains). Otherwise the service may be down ` +
-    `or you're offline. Run \`mixshift doctor\` for the full diagnosis.`
+    `almost always the sandbox egress allowlist not including ${host}. The exact ` +
+    `fix depends on your plan; run \`mixshift doctor\` for the steps and the full ` +
+    `required-domain list. Otherwise the service may be down or you are offline.`
   );
 }
 

@@ -3,6 +3,21 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.6.2
+
+A follow-up to 0.6.1: the sign-in network-block guidance now covers personal Pro and
+Max plans, not just Team/Enterprise.
+
+### Fixed
+
+- The sign-in remediation previously described only the Team/Enterprise org-admin path,
+  which is a dead end on a personal Pro or Max plan. `mixshift doctor`, the sign-in error
+  message, and the personal-Cowork install guide now include the personal-plan fix: add
+  the required domains yourself under Settings > Capabilities > "Allow network egress" >
+  "Additional allowed domains", then start a new conversation. The guidance also flags the
+  known Cowork bug where domains added under "Package managers only" mode aren't enforced
+  (set the mode to "All domains").
+
 ## 0.6.1
 
 A first-run reliability fix for Cowork and Claude Code. When the host sandbox

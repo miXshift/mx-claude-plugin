@@ -12,15 +12,14 @@ function fetchFailed(cause: unknown): Error {
 }
 
 describe('describeFetchFailure', () => {
-  it('classifies a proxy 403 (sandbox egress allowlist) with admin remediation', () => {
+  it('classifies a proxy 403 (sandbox egress allowlist) and points at doctor', () => {
     const err = fetchFailed(
       new Error('Received HTTP code 403 from proxy after CONNECT'),
     );
     const msg = describeFetchFailure(err, HOST);
     expect(msg).not.toBeNull();
     expect(msg).toContain('blocked mcp.mixshift.io');
-    expect(msg).toContain('Code execution');
-    expect(msg).toContain('sandbox.network.allowedDomains');
+    expect(msg).toContain('depends on your plan');
     expect(msg).toContain('mixshift doctor');
   });
 
@@ -78,7 +77,7 @@ describe('describeFetchFailure', () => {
     const msg = describeFetchFailure(fetchFailed(cause), HOST);
     expect(msg).toContain('Could not reach mcp.mixshift.io');
     expect(msg).toContain('ECONNRESET');
-    expect(msg).toContain('sandbox.network.allowedDomains');
+    expect(msg).toContain('egress allowlist');
     expect(msg).toContain('mixshift doctor');
   });
 

@@ -178,10 +178,17 @@ function buildRemediation(host: string, proxy: DoctorProxyInfo): string {
       : `${host} is not reachable from here.`,
   );
   lines.push(
-    'Claude Cowork (Team/Enterprise): an org admin must add the domains ' +
-      'below under Organization settings > Capabilities > Code execution, ' +
-      'then start a NEW conversation (network settings apply at session ' +
-      'creation, so an existing chat will not pick up the change).',
+    'Claude Cowork (personal Pro/Max): open Settings > Capabilities ' +
+      '(claude.ai/settings/capabilities) > "Code execution and file creation", ' +
+      'enable "Allow network egress", and add the domains below under ' +
+      '"Additional allowed domains". Then start a NEW conversation (network ' +
+      'settings apply at session creation). If the domains do not take under ' +
+      '"Package managers only" mode, set the mode to "All domains".',
+  );
+  lines.push(
+    'Claude Cowork (Team/Enterprise): an org admin adds the same domains ' +
+      'under Organization settings > Capabilities > Code execution, then a ' +
+      'NEW conversation.',
   );
   lines.push(
     'Standalone Claude Code: add them in ~/.claude/settings.json under ' +
