@@ -28,10 +28,10 @@
 | 7. Structural Events | All skills | — |
 | 8. Spend Posture | Bid Health, Runaway Spend, Health Check | — |
 | 9. Account Actions Log | All skills | — |
-| 10. Seasonality Profile | Health Check, cold start | Bid Health |
-| 11. Revenue Baseline | Health Check, cold start | — |
+| 10. Seasonality Profile | Health Check, brand setup | Bid Health |
+| 11. Revenue Baseline | Health Check, brand setup | — |
 | 12. ST Negation Rules | Negation skills | — |
-| 12A. ASIN Negation Corpora | ASIN negation, cold start | — |
+| 12A. ASIN Negation Corpora | ASIN negation, brand setup | — |
 | 13. ASIN Identity Fit Rules | Negation skills | — |
 | 14. Delivery Config | All skills | — |
 | 15. Brain Inputs (living) | Future platform use | All skills |
@@ -47,7 +47,7 @@ ProfileID: [string — Amazon Ads API profile ID for write operations]
 SellerName in DB: [string — exact match in relevant table, e.g. "YOLO BRICK ROAD"]
 Account manager (MixShift): [name]
 Client-side contact: [name + role, if applicable]
-Cold start completed: [YYYY-MM-DD or "not completed"]
+Brand setup completed: [YYYY-MM-DD or "not completed"]
 Last context refresh: [YYYY-MM-DD]
 ```
 
@@ -202,7 +202,7 @@ Change History API status: not integrated | integrated
 
 ---
 
-## Section 10 — Seasonality Profile (REQUIRED for health check, cold start)
+## Section 10 — Seasonality Profile (REQUIRED for health check, brand setup)
 
 ```
 | Period | Shape | Driver | Interpretation rule |
@@ -219,7 +219,7 @@ Key interpretation rules:
 
 ---
 
-## Section 11 — Revenue Baseline (REQUIRED for health check, cold start)
+## Section 11 — Revenue Baseline (REQUIRED for health check, brand setup)
 
 ```
 Source: [business_reports_dpst_date | vendor_sales_manufacturing_asin]
@@ -239,9 +239,9 @@ Refresh trigger: [e.g. quarterly, or on structural break]
 
 ## Section 12 — ST Negation Rules
 
-## Section 12A — ASIN Negation Corpora (REQUIRED for cold start / ASIN negation)
+## Section 12A — ASIN Negation Corpora (REQUIRED for brand setup / ASIN negation)
 
-This section is the new cold-start training layer for Phase 2 ASIN review. It prevents the model from starting PDP judgment cold on every account.
+This section is the new brand setup training layer for Phase 2 ASIN review. It prevents the model from starting PDP judgment cold on every account.
 
 ```
 Manual targeting corpus by item group/lane:
@@ -285,9 +285,9 @@ Phrase negation conflict log (grams that cannot be phrase-negated — appear in 
 
 ---
 
-## Section 12A — ASIN Negation Corpora (REQUIRED for cold start / ASIN negation)
+## Section 12A — ASIN Negation Corpora (REQUIRED for brand setup / ASIN negation)
 
-This section is the new cold-start training layer for Phase 2 ASIN review. It prevents the model from starting PDP judgment cold on every account.
+This section is the new brand setup training layer for Phase 2 ASIN review. It prevents the model from starting PDP judgment cold on every account.
 
 ```
 Manual targeting corpus by item group/lane:

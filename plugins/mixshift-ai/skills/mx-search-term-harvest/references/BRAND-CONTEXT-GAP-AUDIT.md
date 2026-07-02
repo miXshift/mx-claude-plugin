@@ -2,13 +2,13 @@
 **Date:** 2026-04-01
 **Author:** MixShift
 **Schema reference:** BRAND-CONTEXT-SCHEMA.md
-**Purpose:** Identify which brands have gaps against the canonical schema, and which would benefit most from a cold start re-run.
+**Purpose:** Identify which brands have gaps against the canonical schema, and which would benefit most from a brand setup re-run.
 
 ---
 
 ## Summary
 
-| Brand | Schema Coverage | Cold Start Re-run Priority | Biggest Gap |
+| Brand | Schema Coverage | Brand Setup Re-run Priority | Biggest Gap |
 |---|---|---|---|
 | example brand | ~85% | Low | Objective config, actions log completeness, brain inputs |
 | example brand | ~80% | Medium | Objective config, revenue baseline needs refresh, some brain inputs |
@@ -43,7 +43,7 @@
 | Objective Configuration (§4) | Not present | P1 | example brand has multiple campaign objectives (efficiency, growth/awareness for Fahlo lines, launch state for new lines). Currently all evaluated as efficiency. Add objective overrides for Fahlo lines and Spartan in pullback. |
 | Account Actions Log | Bid magnitudes missing | P1 | Multiple entries say "specific magnitude not captured." Change History API integration is the fix, but until then the log is partially blind on bid sizes. |
 | Brain Inputs (§15) | Empty | P2 | No Discord feedback log, no call transcripts, no monthly report annotations. Will fill organically. |
-| Revenue baseline | Needs refresh | P2 | Last updated 2026-03-06. Mar + Apr 2026 data now exists. Refresh on next cold start pass. |
+| Revenue baseline | Needs refresh | P2 | Last updated 2026-03-06. Mar + Apr 2026 data now exists. Refresh on next brand setup pass. |
 | ProfileID | Not in file | P1 | Required for write layer (Amazon Ads API). Needs to be added before Epic B/C executes. |
 
 **Brand setup re-run recommendation:** Low priority — file is comprehensive. One targeted update session to add objective config and ProfileID would close the critical gaps without needing a full re-run.
@@ -78,7 +78,7 @@
 | Brain Inputs (§15) | Empty | P2 | |
 | Revenue baseline | May need refresh | P2 | Last updated 2026-03-23. Confirm whether Apr data needs to be added. |
 
-**Brand setup re-run recommendation:** Medium priority. The file has a solid foundation but is missing objective config and a formal brand terms section — both would meaningfully improve skill output quality. A targeted partial cold start (Phase 2 AM intake + Phase 0 brand terms) would close the gaps without a full Phase 1 re-run.
+**Brand setup re-run recommendation:** Medium priority. The file has a solid foundation but is missing objective config and a formal brand terms section — both would meaningfully improve skill output quality. A targeted partial brand setup (Phase 2 AM intake + Phase 0 brand terms) would close the gaps without a full Phase 1 re-run.
 
 ---
 
@@ -141,11 +141,11 @@
 | ASIN identity fit rules (§13) | Not present | P2 | No negation training set for example brand — NFC category has many wrong-context ASIN matches that would benefit from a training session. |
 | Brain inputs (§15) | Empty | P2 | |
 
-**Brand setup re-run recommendation:** Medium priority. Objective config for SB campaigns is the most impactful missing piece — it's causing false positive intervention recommendations every health check run. A targeted Phase 0 intake + objective config session would close that gap. Full cold start not needed.
+**Brand setup re-run recommendation:** Medium priority. Objective config for SB campaigns is the most impactful missing piece — it's causing false positive intervention recommendations every health check run. A targeted Phase 0 intake + objective config session would close that gap. Full brand setup not needed.
 
 ---
 
-## Cold Start Priority Queue
+## Brand Setup Priority Queue
 
 1. **example brand — HIGH** — actions log missing (P0), attribution calibration missing (P1), objective config missing (P1). Do before next production run.
 2. **example brand — MEDIUM** — objective config (P1), brand terms (P1), actions log incomplete (P1). Partial re-run.
@@ -156,7 +156,7 @@
 
 ## Standard Questions for AM Intake (gap-closing)
 
-These are the questions to ask in Phase 2 of cold start (or a targeted gap-fill session) to close the P1 gaps that DB queries can't answer:
+These are the questions to ask in Phase 2 of brand setup (or a targeted gap-fill session) to close the P1 gaps that DB queries can't answer:
 
 **Objective Configuration:**
 1. Which campaign groups are intentionally running above the ACOS target? (Growth/launch mode, not a bleed)
@@ -182,4 +182,4 @@ These are the questions to ask in Phase 2 of cold start (or a targeted gap-fill 
 
 ---
 
-*This audit should be updated after each cold start re-run. When a gap is closed, mark the field as present in the gap table.*
+*This audit should be updated after each brand setup re-run. When a gap is closed, mark the field as present in the gap table.*
