@@ -64137,10 +64137,8 @@ function normalizeRecord(rec) {
     event_name: rec.event_name,
     install_id: rec.install_id,
     email: rec.email ?? null,
-    // Omitting this line silently severed per-employee attribution for a
-    // month (track() collected person_label, this normalizer dropped it,
-    // and Discord/analytics only ever saw the shared tenant login). The
-    // events.person_label column exists since 2026-07-02.
+    // Null on pre-auth events and on queue entries written by harnesses
+    // that didn't yet send the field.
     person_label: rec.person_label ?? null,
     plugin_version: rec.plugin_version,
     install_path: rec.install_path,
