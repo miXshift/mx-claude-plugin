@@ -116,6 +116,7 @@ verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   # Primary "Brand Context" phrasings (renamed surface)
+  - set up <brand>
   - set up brand context
   - build brand context
   - build brand context for <brand>
@@ -126,7 +127,9 @@ trigger_phrases:
   - new brand
   - kick off this brand
   - kicking off a new client
-  # Deprecated cold-start aliases (kept 1-2 releases for the rename window)
+  # Legacy input aliases: users who learned the old "cold start" term must
+  # still route here. Accepted as INPUT only — never emit "cold start" in
+  # plugin output copy; the process is called "brand setup" in chat.
   - cold start
   - run cold start
 upstream_skills: []

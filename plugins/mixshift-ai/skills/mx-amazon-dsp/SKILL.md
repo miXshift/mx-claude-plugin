@@ -9,8 +9,8 @@ description: >
   discover the DSP advertiser id an advertising login can reach, build a report
   request, submit it, poll it to completion across turns, and fetch the result.
   Read-only: generating a report changes nothing advertiser-facing and needs no
-  write scope. Routes through the bundled harness CLI. Does NOT require brand
-  cold-start, only that the user has signed in (`mixshift auth login`).
+  write scope. Routes through the bundled harness CLI. Does not require
+  brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
   version: "0.1.0"
   author: "MixShift"
@@ -100,7 +100,7 @@ and metric vocabulary, separate from Sponsored Ads.
 | Ads API enabled for the tenant | Inferred from a successful `ads profiles` call | If a call returns `ads_not_configured`, the Amazon Ads credentials are not set on the service for this MixShift account. Tell the user to contact MixShift ops. |
 | An advertising login with DSP access | `accounts.query_advertiser_accounts` returns rows whose `alternateIds` carry a `dspAdvertiserId` | No DSP ids here does NOT always mean "no DSP" — the active advertiser may sit on a separate DSP seat under a different login (see Discovery). Treat empty as definitive only after checking the warehouse `dsp_campaigns_metric`. |
 
-Cold-start is **NOT required.** You only need a signed-in session.
+Brand setup is **not required.** You only need a signed-in session.
 
 ## Merchant selection (resolve the login first)
 

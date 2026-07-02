@@ -7,7 +7,7 @@ description: >
   inventory, and dimensional catalog tables — not just PPC. Read-only,
   routes through the bundled harness CLI. Use when the user wants to see
   what's in their data, sample a table, export to CSV for use in other
-  tools, or run a custom SQL query. Does NOT require brand cold-start —
+  tools, or run a custom SQL query. Does not require brand setup,
   only that the user has signed in (`mixshift auth login`) and optionally
   knows a SellerID or brand slug.
 metadata:
@@ -61,7 +61,7 @@ If the user asks "what kind of database is this" or you need to pick
 between multiple data sources, lead with "MixShift's MySQL warehouse"
 rather than guessing technology.
 
-You help the user query, sample, and export MixShift warehouse data. This is a **low-friction, read-only** skill — partners can use it without doing a full brand cold-start, as long as they've signed in (`mixshift auth login`).
+You help the user query, sample, and export MixShift warehouse data. This is a **low-friction, read-only** skill: partners can use it without doing a full brand setup, as long as they've signed in (`mixshift auth login`).
 
 ## When to use this skill
 
@@ -84,7 +84,7 @@ Trigger when the user asks any of:
 | Brand registry populated | `~/.mixshift/clients/index.yaml` exists | Auto-populated after either sign-in flow completes; if missing, run `mixshift brand discover` |
 | Knows a SellerID or brand slug | They tell you, or look up via the registry | Run `mixshift brand list` to surface the active brands |
 
-Cold-start is **NOT required.** Most mx-data-explore workflows only need a SellerID, which is in the brand registry.
+Brand setup is **not required.** Most mx-data-explore workflows only need a SellerID, which is in the brand registry.
 
 ### Brand registry (`~/.mixshift/clients/index.yaml`)
 
@@ -234,11 +234,11 @@ The harness accepts fuzzy input — display names, acronyms, prefixes, case-inse
 
 **After a successful key add: brain pre-fill runs in the background.**
 
-The `key add` output includes a line like "Brain pre-fill running in the background for: <slug>". This is the Brand Brain: the plugin pulls the brand's platform facts (ACoS target, identity, data freshness) so analytical skills have a head start before any cold-start. It usually finishes in a few seconds. Confirm the result for the user:
+The `key add` output includes a line like "Brain pre-fill running in the background for: <slug>". This is the Brand Brain: the plugin pulls the brand's platform facts (ACoS target, identity, data freshness) so analytical skills have a head start before full brand setup. It usually finishes in a few seconds. Confirm the result for the user:
 
 1. Run `mixshift brand brain status <slug> --json`.
 2. If `status_file.status` is `complete`, add one line to your summary, for example:
-   > *"Brain pre-fill finished for Forager's Pantry: pulled your ACoS target (25%) from MixShift. Analytical skills can use it right away; cold-start still unlocks the full set."*
+   > *"Brain pre-fill finished for Forager's Pantry: pulled your ACoS target (25%) from MixShift. Analytical skills can use it right away; full brand setup still unlocks the deeper set (say 'set up <brand>')."*
    If `brain.acos_target_pct` is null, say the target is not set in the MixShift platform and they can add one later via `mixshift brand config <slug>`.
 3. If still `fetching`, wait about 5 seconds and poll again, up to roughly 90 seconds total. If it has not finished by then, say it is still running in the background and they can check anytime with `mixshift brand brain status <slug>`.
 4. If `failed`, surface the error plus the retry command `mixshift brand brain refresh <slug>`. Keying succeeded regardless; never treat a brain failure as a key-add failure.

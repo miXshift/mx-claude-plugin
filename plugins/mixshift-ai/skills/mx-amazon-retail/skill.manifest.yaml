@@ -12,8 +12,8 @@ description: >
   mws_items (catalog.search_items). Covers Catalog Items, Product Fees, FBA
   Inventory, Sales metrics, Sellers, Finances, Orders, Product Pricing offer
   depth, Listings Items, Data Kiosk (GraphQL), and Vendor Orders (1P).
-  Read-only, routes through the bundled harness CLI. Does NOT require brand
-  cold-start, only that the user has signed in (`mixshift auth login`).
+  Read-only, routes through the bundled harness CLI. Does not require brand
+  setup, only that the user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service.
 # Modeled as per_account because every call targets a specific merchant

@@ -101,7 +101,7 @@ Read these sources simultaneously:
 3. **`~/.mixshift/clients/<brand-slug>/runs/mx-daily-health-check/ (most recent <date>-<run-id>.json)`** — prior run sidecar (~65 lines). If present, use for drift context and prior verdict. If absent, skip — no baseline yet.
 4. `~/.mixshift/clients/<brand-slug>/narrative.md` — for prose context only (interpretation rules, per-skill guidance). Do not extract numbers from this file.
 
-**Brand context is optional — never fail closed on it.** Run on whatever is present in the snapshot / `context.yaml`, via `mixshift brand context resolve <brand-slug> --json` — one call returns each field's `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled). The skill sharpens as context accrues but never requires cold-start. The only truly required field is `account_type` (it selects the SC vs VC data path and comes from `mixshift brand add`); if it is genuinely absent, stop and say "run `mixshift brand add <brand-slug>`". Otherwise default-and-label rather than stopping:
+**Brand context is optional — never fail closed on it.** Run on whatever is present in the snapshot / `context.yaml`, via `mixshift brand context resolve <brand-slug> --json` — one call returns each field's `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled). The skill sharpens as context accrues but never requires full brand setup. The only truly required field is `account_type` (it selects the SC vs VC data path and comes from `mixshift brand add`); if it is genuinely absent, stop and say "run `mixshift brand add <brand-slug>`". Otherwise default-and-label rather than stopping:
 - `acos_target` / `tacos_target` — resolved in Step 0.5 from the calibration card (your set value, else the brand context / Brain seed). If a target is absent there, run that metric observational (report it as-is, no vs-target flagging) labeled "no target configured". Never invent a target.
 - `min_spend_to_flag`, `hero_skus`, `quiet_paused` — resolved in Step 0.5 (defaults: $5 floor, empty protect list, hide paused). Label any value running on its default.
 - `primary_metric` missing → assume ACoS, label "(assumed; tell me if it's TACoS)".
@@ -251,8 +251,8 @@ From Batch D daily actuals:
 **VC-Specific: Adjusted ACOS (when attribution calibration exists in brand context):**
 - When brand context documents an SP capture rate calibration, compute Adj. ACOS
 
-**Selecting the capture rate (cold-start v2.3.1+):**
-- **Preferred input** — `capture_rate_calibration.daily_settlement_curve.by_campaign_type.sponsoredProducts.settled_pct_at_1day` (decimal of 100). This is the per-campaign-type signal produced by cold-start v2.3.1; for example brand this is **82.7** (0.827 as a fraction). When present and non-null, use it as `capture_rate` instead of the legacy account-blended number.
+**Selecting the capture rate (brand setup v2.3.1+):**
+- **Preferred input** — `capture_rate_calibration.daily_settlement_curve.by_campaign_type.sponsoredProducts.settled_pct_at_1day` (decimal of 100). This is the per-campaign-type signal produced by brand setup v2.3.1; for example brand this is **82.7** (0.827 as a fraction). When present and non-null, use it as `capture_rate` instead of the legacy account-blended number.
 - **Day-of-week refinement** — when the curve is present, look up `capture_rate_calibration.daily_settlement_curve.dow_offset_pts[<dow_of_t1_read>]` (e.g. `friday: 0.32` means Friday clicks settle 0.32 ACOS-pts slower than the weekly mean). Apply the offset additively to `improvement_pts_1_to_14` if you're computing the additive form (see below). Skip the DOW step if the offset map is absent or `stability_score == "low"` (the offsets aren't reliable enough to act on).
 - **Fallback chain** — if the curve is absent or its SP row is null:
   1. Use legacy `capture_rate_calibration.capture_rate_pct / 100` (account-blended single number — example brand legacy: 80.93).

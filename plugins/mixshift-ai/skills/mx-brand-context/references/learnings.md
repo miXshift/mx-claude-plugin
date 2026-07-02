@@ -1,6 +1,6 @@
-# Account Cold Start — Documented Learnings & Patterns
+# Brand Setup — Documented Learnings & Patterns
 
-Patterns discovered during completed cold start runs. Reference these during Phase 1 data interpretation.
+Patterns discovered during completed brand setup runs. Reference these during Phase 1 data interpretation.
 
 ## SC Column Naming Validation
 
@@ -107,7 +107,7 @@ If empty: record `false` — monthly reports must use raw campaignmetric aggrega
 
 ## ASIN Negation Corpora (Phase 2 acceleration)
 
-Cold start Phase 1 should pull two ASIN training corpora that directly accelerate Phase 2 (ASIN negation review) judgment quality:
+Brand setup Phase 1 should pull two ASIN training corpora that directly accelerate Phase 2 (ASIN negation review) judgment quality:
 
 1. **Manual targeting corpus by item group** — Pull all ASINs currently in CONQ/PROF manual campaigns, labeled by CampaignName and ItemGroup. These are validated positive examples. Item-group segmentation is mandatory.
 
@@ -148,7 +148,7 @@ For third-party accounts:
 
 ## Progressive Design Principle (Client-Facing Output)
 
-Cold start output that reads like a research appendix to a non-technical AM is not useful. Key translation layer rules:
+Brand setup output that reads like a research appendix to a non-technical AM is not useful. Key translation layer rules:
 
 - R², coefficients, and CI values need plain-language "so what" sentences
 - Lead with the recommendation, not the methodology
@@ -158,7 +158,7 @@ Cold start output that reads like a research appendix to a non-technical AM is n
 
 ---
 
-## Account-Specific Cold Start Notes
+## Account-Specific Brand Setup Notes
 
 ### example brand (SC, 2026-03-06)
 
@@ -174,7 +174,7 @@ Cold start output that reads like a research appendix to a non-technical AM is n
 - Ads % of Sales volatility: monthly range 48.7%–73.7% (stdev ~6.5pts) — treat derived ACOS targets as working proxy
 - Campaign item group taxonomy gap: confirm mapping with AM (e.g., Tags, Metal vs. PhoneCard, Badge)
 - Sessions anomaly: Anomalous session spikes (443K vs normal 14-19K) with CVR collapse = bot/scraper traffic — flag in brand context
-- Inventory history is mandatory: use mws_inventory_history (not mws_inventory_health) for standard cold start diagnostic
+- Inventory history is mandatory: use mws_inventory_history (not mws_inventory_health) for the standard brand setup diagnostic
 - Multi-marketplace naming: include marketplace suffix (e.g., `example-brand-us-reports` not `example-brand-reports`)
 
 ### example brand Labs (SC, 2026-03-15)
@@ -196,4 +196,4 @@ Cold start output that reads like a research appendix to a non-technical AM is n
 
 ---
 
-*Learnings compiled from 4 completed cold starts. Update this file as new patterns emerge.*
+*Learnings compiled from 4 completed brand setup runs. Update this file as new patterns emerge.*

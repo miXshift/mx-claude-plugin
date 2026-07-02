@@ -9,7 +9,7 @@ description: >
   report request (type + dimensions + metrics), submit it, poll to completion
   across turns, and fetch the JSON result. Read-only: generating a report
   mutates nothing advertiser-facing and needs no write scope. Routes through
-  the bundled harness CLI. Does NOT require brand cold-start, only that the
+  the bundled harness CLI. Does not require brand setup, only that the
   user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service. Requesting

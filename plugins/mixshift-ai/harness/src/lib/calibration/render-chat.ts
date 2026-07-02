@@ -264,7 +264,7 @@ function renderSourceHint(entry: ConfirmationFieldEntry): string | null {
     case 'stored':
       return null;
     case 'seed':
-      return `(from your cold-start notes — confirm or edit)`;
+      return `(from your brand setup notes: confirm or edit)`;
     case 'default':
       return `(default — set explicitly if this isn't right)`;
     case 'missing':

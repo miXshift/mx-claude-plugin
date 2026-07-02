@@ -11,7 +11,7 @@ description: >
   Catalog Items, Product Fees, FBA Inventory, Sales metrics, Sellers, Finances,
   Orders, Product Pricing offer depth, Listings Items, Data Kiosk (GraphQL),
   and Vendor Orders (1P). Read-only, routes through the bundled harness CLI.
-  Does NOT require brand cold-start, only that the user has signed in
+  Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
   version: "0.1.0"
@@ -185,7 +185,7 @@ them cleanly.
 | SP-API enabled for the tenant | Inferred from a successful `amazon merchants` call | If a call returns `spapi_not_configured`, live SP-API operations are not turned on for this MixShift account yet. Tell the user to contact MixShift ops. |
 | A target merchant | `mixshift amazon merchants` | Lists the seller/vendor accounts this tenant can call for. See merchant selection below. |
 
-Cold-start is **NOT required.** You only need a signed-in session. A specific
+Brand setup is **not required.** You only need a signed-in session. A specific
 merchant identity (from `amazon merchants`) is needed only when the tenant has
 more than one merchant or seller row; if there is exactly one, the service
 infers it and you can omit the merchant selectors entirely.

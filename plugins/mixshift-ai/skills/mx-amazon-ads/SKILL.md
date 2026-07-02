@@ -12,8 +12,8 @@ description: >
   negative creation, negative deletes, across Sponsored Products, Brands,
   and Display). Writes preview by default and never reach Amazon without the
   user confirming the exact change set. Read-first; write only on request.
-  Routes through the same Bearer token as the warehouse. Does NOT require
-  brand cold-start, only that the user has signed in (`mixshift auth login`).
+  Routes through the same Bearer token as the warehouse. Does not require
+  brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
   version: "0.1.0"
   author: "MixShift"
@@ -141,7 +141,7 @@ when they want the analysis that produces the change.
 | A reachable profile | `mixshift ads profiles` | Lists the advertiser-account profiles this tenant can call for. See "Profile selection." |
 | Write capability (writes only) | The credential holds `ads:write` | Signed-in user sessions hold it implicitly. Machine credentials need it issued explicitly; a write without it fails `insufficient_scope` (exit 11). |
 
-Cold-start is **NOT required.** You only need a signed-in session.
+Brand setup is **not required.** You only need a signed-in session.
 
 ## Profile selection (read this, it is the most common mistake)
 

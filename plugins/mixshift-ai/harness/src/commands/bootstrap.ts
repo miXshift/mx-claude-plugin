@@ -19,7 +19,7 @@ export function registerBootstrapCommand(program: Command): void {
       collect,
       [] as string[],
     )
-    .option('--date <yyyy-mm-dd>', 'cold-start data date', todayISO())
+    .option('--date <yyyy-mm-dd>', 'brand setup data date', todayISO())
     .action(
       (opts: {
         brand: string;

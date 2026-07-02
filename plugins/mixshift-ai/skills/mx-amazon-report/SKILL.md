@@ -10,8 +10,8 @@ description: >
   listings, FBA inventory, FBA fees, returns, settlement), Sales and Traffic,
   Brand Analytics (JSON), and Vendor Central reports (JSON), plus the SP-API
   Product Pricing batch surface (featured offer expected price, competitive
-  summary). Read-only, routes through the bundled harness CLI. Does NOT require
-  brand cold-start, only that the user has signed in (`mixshift auth login`).
+  summary). Read-only, routes through the bundled harness CLI. Does not require
+  brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
   version: "0.4.3"
   author: "MixShift"
@@ -171,7 +171,7 @@ report data; it does not interpret it for you beyond surfacing it cleanly.
 | SP-API enabled for the tenant | Inferred from a successful `amazon merchants` call | If a call returns `spapi_not_configured`, on-demand report pulls are not turned on for this MixShift account yet. Tell the user to contact MixShift ops. |
 | A target merchant | `mixshift amazon merchants` | Lists the seller/vendor accounts this tenant can pull for. See merchant selection below. |
 
-Cold-start is **NOT required.** You only need a signed-in session. A specific
+Brand setup is **not required.** You only need a signed-in session. A specific
 `amazonSellerId` (from `amazon merchants`) is needed only when the tenant has
 more than one merchant; if there is exactly one, the service infers it and you
 can omit `--seller-id` entirely.

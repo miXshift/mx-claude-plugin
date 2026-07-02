@@ -46,7 +46,7 @@
 | Revenue baseline | Needs refresh | P2 | Last updated 2026-03-06. Mar + Apr 2026 data now exists. Refresh on next cold start pass. |
 | ProfileID | Not in file | P1 | Required for write layer (Amazon Ads API). Needs to be added before Epic B/C executes. |
 
-**Cold start re-run recommendation:** Low priority — file is comprehensive. One targeted update session to add objective config and ProfileID would close the critical gaps without needing a full re-run.
+**Brand setup re-run recommendation:** Low priority — file is comprehensive. One targeted update session to add objective config and ProfileID would close the critical gaps without needing a full re-run.
 
 ---
 
@@ -78,7 +78,7 @@
 | Brain Inputs (§15) | Empty | P2 | |
 | Revenue baseline | May need refresh | P2 | Last updated 2026-03-23. Confirm whether Apr data needs to be added. |
 
-**Cold start re-run recommendation:** Medium priority. The file has a solid foundation but is missing objective config and a formal brand terms section — both would meaningfully improve skill output quality. A targeted partial cold start (Phase 2 AM intake + Phase 0 brand terms) would close the gaps without a full Phase 1 re-run.
+**Brand setup re-run recommendation:** Medium priority. The file has a solid foundation but is missing objective config and a formal brand terms section — both would meaningfully improve skill output quality. A targeted partial cold start (Phase 2 AM intake + Phase 0 brand terms) would close the gaps without a full Phase 1 re-run.
 
 ---
 
@@ -111,7 +111,7 @@
 | Drive file IDs (§14) | Unclear | P1 | Delivery config section may be incomplete — Drive IDs for individual report files not confirmed. |
 | Brain inputs (§15) | Empty | P2 | |
 
-**Cold start re-run recommendation: HIGH PRIORITY.** The actions log is missing entirely, attribution calibration is absent, and objective config doesn't exist. These three gaps together mean every skill run on example brand is operating without critical inputs. A full cold start re-run (or at minimum a targeted Phase 0 intake + Phase 1 attribution calibration + actions log initialization) is needed before the next production skill run.
+**Brand setup re-run recommendation: HIGH PRIORITY.** The actions log is missing entirely, attribution calibration is absent, and objective config doesn't exist. These three gaps together mean every skill run on example brand is operating without critical inputs. A full brand setup re-run (or at minimum a targeted Phase 0 intake + Phase 1 attribution calibration + actions log initialization) is needed before the next production skill run.
 
 ---
 
@@ -141,7 +141,7 @@
 | ASIN identity fit rules (§13) | Not present | P2 | No negation training set for example brand — NFC category has many wrong-context ASIN matches that would benefit from a training session. |
 | Brain inputs (§15) | Empty | P2 | |
 
-**Cold start re-run recommendation:** Medium priority. Objective config for SB campaigns is the most impactful missing piece — it's causing false positive intervention recommendations every health check run. A targeted Phase 0 intake + objective config session would close that gap. Full cold start not needed.
+**Brand setup re-run recommendation:** Medium priority. Objective config for SB campaigns is the most impactful missing piece — it's causing false positive intervention recommendations every health check run. A targeted Phase 0 intake + objective config session would close that gap. Full cold start not needed.
 
 ---
 

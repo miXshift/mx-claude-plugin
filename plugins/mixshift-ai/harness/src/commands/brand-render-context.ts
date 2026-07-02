@@ -34,7 +34,7 @@ export function registerBrandRenderContextCommand(brandCmd: Command): void {
   brandCmd
     .command('render-context <slug>')
     .description(
-      'Render the cold-start Brand Context page: brand-context.html + ' +
+      'Render the brand setup Brand Context page: brand-context.html + ' +
         'brand-context.headline.json + brand-context.review.json. Reads ' +
         'context.yaml + narrative.md + brand-intelligence.yaml + corpora/. ' +
         'Auto-opens the HTML; --no-open to skip.',

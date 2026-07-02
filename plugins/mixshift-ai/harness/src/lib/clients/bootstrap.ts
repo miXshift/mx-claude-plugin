@@ -66,7 +66,7 @@ export async function bootstrapBrand(
   if (validAccounts.length === 0) {
     throw new Error(
       `Cannot bootstrap "${suggestion.slug}": none of the ${suggestion.accounts.length} accounts ` +
-        `are SC or VC (DSP-only and unclassified brands aren't cold-startable yet). ` +
+        `are SC or VC (DSP-only and unclassified brands can't be set up yet). ` +
         `If the MerchantType looks wrong, fix the warehouse seller table and ` +
         `re-run \`mixshift brand discover\`.`,
     );

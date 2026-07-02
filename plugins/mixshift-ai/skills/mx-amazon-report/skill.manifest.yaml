@@ -13,8 +13,8 @@ description: >
   settlement), Sales and Traffic, Brand Analytics (JSON), and Vendor
   Central reports (JSON), plus the SP-API Product Pricing batch surface
   (featured offer expected price, competitive summary). Read-only,
-  routes through the bundled harness CLI. Does NOT require brand
-  cold-start, only that the user has signed in (`mixshift auth login`).
+  routes through the bundled harness CLI. Does not require brand
+  setup, only that the user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service.
 # Modeled as per_account because every pull targets a specific merchant
