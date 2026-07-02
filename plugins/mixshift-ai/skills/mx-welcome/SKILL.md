@@ -31,11 +31,29 @@ In the **not-signed-in** case, this skill does NOT stop at rendering — it also
 
 ## What to do (overall flow)
 
-1. **Render the welcome text** via the CLI (see "Render the welcome text" below).
-2. **Inspect the rendered output for the user's state line.** The output ends with one of:
-   - `Current state: ✗ not signed in yet` → go to step 3 (drive sign-in inline).
+1. **Run the Node.js preflight** (see "Step 0: preflight" below). Every `mixshift` command runs on Node.js; if Node is missing, nothing else in this flow can work, so check it first.
+2. **Render the welcome text** via the CLI (see "Render the welcome text" below).
+3. **Inspect the rendered output for the user's state line.** The output ends with one of:
+   - `Current state: ✗ not signed in yet` → go to step 4 (drive sign-in inline).
    - `Current state: ✓ ...` → done. Welcome content is self-contained for returning users; surface it and stop. Do not invoke any other skill.
-3. **If not signed in, drive the sign-in inline** (see "Drive the sign-in inline" below). This is mandatory — don't wait for the user to say "sign in to mixshift" or any other phrase. The welcome copy has already told them you'll set up the sign-in link next; you MUST follow through.
+4. **If not signed in, drive the sign-in inline** (see "Drive the sign-in inline" below). This is mandatory — don't wait for the user to say "sign in to mixshift" or any other phrase. The welcome copy has already told them you'll set up the sign-in link next; you MUST follow through.
+
+## Step 0: preflight (check Node.js before anything else)
+
+Before running ANY `mixshift` command (including the telemetry emits below), verify Node.js is available. Run via Bash:
+
+```bash
+node --version
+```
+
+- **If it prints v20 or newer** (for example `v22.11.0`): continue to "Render the welcome text".
+- **If the command fails, `node` is not found, or the version is below 20:** STOP. Do not attempt any `mixshift` command. The plugin's CLI has a Node shebang, so without Node every command fails before it can print a friendly error (on some hosts the tool calls just churn with no output at all). Instead:
+  1. Tell the user plainly: the MixShift plugin needs Node.js (version 20 or newer) on this machine, and it is not installed yet. This is a quick one-time install, common on machines that have never run developer tooling.
+  2. Offer to install it for them:
+     - **macOS:** check for Homebrew first (`brew --version`). If present, run `brew install node`. If not, point them at the official installer at https://nodejs.org (choose the LTS version); installing Homebrew first is a bigger detour than they need.
+     - **Windows:** run `winget install OpenJS.NodeJS.LTS`.
+  3. After the install, re-run `node --version` to confirm. A fresh install sometimes is not on PATH until a new session; if the check still fails right after a successful install, ask the user to fully restart the Claude app (or open a new session) and say "welcome" again.
+  4. Once `node --version` succeeds, continue the welcome flow from "Render the welcome text". (Skip the telemetry emits for the portion of the flow that ran before Node existed; emit from this point on as normal.)
 
 ## Render the welcome text
 
@@ -77,6 +95,8 @@ The welcome copy already told the user: *"I'll set up a sign-in link for you rig
 3. **Prep the user + send them the link** in one chat reply:
    > *"Click this to sign in: \<login_url\>*
    > *Use your MixShift login — same email + password you use for MixShift. Tell me when you're done."*
+
+   Include one heads-up with the link: after they approve, the page may say "return to your CLI". That just means come back to this chat and say "done"; there is no separate CLI step.
 4. **Poll for approval when they confirm.** When the user says they're done, run `mixshift auth device-poll <device_code> --person-label "<email>"`. On `pending` re-poll politely; on `expired` restart from step 2; on `approved` move to verification.
 5. **Verify + bottom line.** Run `mixshift data query --sql "SELECT 1"` to confirm the warehouse is reachable, then show a concise success message + 1-2 things they can try next.
 

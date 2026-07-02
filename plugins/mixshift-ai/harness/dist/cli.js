@@ -65965,6 +65965,35 @@ function renderDiscoveryTable(suggestions) {
   lines.push("  or  `mixshift brand list` once you have a portfolio set up.");
   return lines.join("\n");
 }
+function renderDiscoveryTableChat(suggestions) {
+  if (suggestions.length === 0) {
+    return "\nNo brands discovered. Check that your MySQL user has read access to the `seller` table.\n";
+  }
+  const esc2 = (s) => s.replace(/\|/g, "\\|");
+  const lines = [];
+  lines.push("| ID | Brand | Accounts | Types | Markets | Ads | Retail |");
+  lines.push("| --- | --- | ---: | --- | --- | :-: | :-: |");
+  for (const s of suggestions) {
+    lines.push(
+      "| " + [
+        esc2(s.slug),
+        esc2(s.display_name),
+        String(s.accounts.length),
+        esc2(summarizeAccountTypes(s.accounts.map((a) => a.account_type))),
+        esc2(summarizeMarketplaces(s.accounts.map((a) => a.marketplace))),
+        s.ads_active ? "\u2713" : "\u2717",
+        s.retail_active ? "\u2713" : "\u2717"
+      ].join(" | ") + " |"
+    );
+  }
+  lines.push("");
+  lines.push(`${suggestions.length} brand${suggestions.length === 1 ? "" : "s"} discovered.`);
+  lines.push("");
+  lines.push(
+    "Next: `mixshift brand add <id>` to onboard a brand, or `mixshift brand list` once you have a portfolio set up."
+  );
+  return lines.join("\n");
+}
 function summarizeAccountTypes(types) {
   const counts = countBy(types);
   const parts = [];
@@ -72962,7 +72991,11 @@ function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
   brand.command("list").description(
     "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands; use --all to see everything or --only-inactive to see just dormants."
-  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).action(
+  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).option(
+    "--format <type>",
+    "output format: `terminal` (space-aligned table, default) | `chat` (markdown pipe table for Claude/Cowork to surface verbatim in chat)",
+    "terminal"
+  ).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
@@ -73086,7 +73119,12 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
             }))
           };
         });
-        process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+        const chatFormat = opts.format === "chat";
+        if (chatFormat) {
+          process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
+        } else {
+          process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+        }
         const footerLines = [];
         footerLines.push(
           `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`
@@ -73110,7 +73148,11 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
             `No brands cold-started yet \u2014 analytical skills (mx-daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`
           );
         }
-        process.stderr.write("\n" + footerLines.join("\n") + "\n\n");
+        if (chatFormat) {
+          process.stdout.write("\n" + footerLines.join("\n") + "\n\n");
+        } else {
+          process.stderr.write("\n" + footerLines.join("\n") + "\n\n");
+        }
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -73242,6 +73284,10 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     "--include-inactive",
     "include dormant brands (no active ads or retail) in the printed table",
     false
+  ).option(
+    "--format <type>",
+    "output format: `terminal` (space-aligned table, default) | `chat` (markdown pipe table for Claude/Cowork to surface verbatim in chat)",
+    "terminal"
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
@@ -73309,7 +73355,12 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
           updated_at: null
         }))
       }));
-      process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+      const chatFormat = opts.format === "chat";
+      if (chatFormat) {
+        process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
+      } else {
+        process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+      }
       const footer = [
         `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
         `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
@@ -73319,7 +73370,11 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
           `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
         );
       }
-      process.stderr.write("\n" + footer.join("\n") + "\n\n");
+      if (chatFormat) {
+        process.stdout.write("\n" + footer.join("\n") + "\n\n");
+      } else {
+        process.stderr.write("\n" + footer.join("\n") + "\n\n");
+      }
       return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -56,7 +56,19 @@ Confirm:
 
 Should list `mixshift-ai` with the latest version.
 
-## Step 3 — Sign in
+## Step 3 — Set the permission mode (recommended)
+
+Claude Code's default permission mode ("accept edits") asks you to approve every command Claude runs. During onboarding that means a long series of approval prompts before you see any data, and "always allow" choices don't always stick between prompts.
+
+For a smoother first run:
+
+1. Find the **permission-mode selector in the lower-left of the input box** (same spot in the Claude Code terminal UI and the desktop app).
+2. Switch it to **auto-accept** for the onboarding session. You can switch back afterwards.
+3. Power users who trust the plugin can pick **bypass permissions** instead, which skips prompts entirely.
+
+**On personal (Pro/Max) plans:** some execution capabilities are gated by claude.ai settings, separate from the permission mode. If commands will not run at all, open **Settings → Capabilities** ([claude.ai/settings/capabilities](https://claude.ai/settings/capabilities)) and make sure code execution is enabled.
+
+## Step 4 — Sign in
 
 In Claude Code chat, say:
 
@@ -82,7 +94,7 @@ That's it. Tokens land at `~/.mixshift/auth/credentials` (24h access / 30d refre
 
 Full details: [`docs/auth-setup.md`](../auth-setup.md).
 
-## Step 4 — Verify
+## Step 5 — Verify
 
 ```bash
 mixshift welcome
@@ -136,6 +148,9 @@ Tokens carry over across plugin updates.
 ---
 
 ## Troubleshooting
+
+**Everything hangs or fails silently on first run.**
+The most common cause: Node.js is not installed on the machine. The plugin's bundled CLI runs on Node (version 20 or newer), and without it every `mixshift` command dies before it can print a friendly error. Check with `node --version` in a terminal. If it is missing, install it (macOS: `brew install node` if you have Homebrew, otherwise the [nodejs.org](https://nodejs.org) LTS installer; Windows: `winget install OpenJS.NodeJS.LTS`), then start a new session. If this Mac has never run a terminal tool before, you may also need Apple's Command Line Tools: run `xcode-select --install`.
 
 **"Marketplace not found" when running `/plugin marketplace add`.**
 Confirm the GitHub repo is reachable from your machine: `curl -sI https://github.com/miXshift/mx-claude-plugin/blob/main/.claude-plugin/marketplace.json` should return a 200 (or redirect). If you're behind a corporate proxy, configure `git` to use it; Claude Code uses `git` under the hood for marketplace fetches.

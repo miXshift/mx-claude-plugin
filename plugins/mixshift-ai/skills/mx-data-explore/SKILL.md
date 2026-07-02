@@ -97,11 +97,13 @@ After either sign-in flow completes (`mixshift auth login` or the legacy `mixshi
 To read the registry, surface it to the user, run:
 
 ```bash
-mixshift brand list           # active brands only (default)
-mixshift brand list --all     # include dormant
-mixshift brand list --only-inactive   # just dormants ("what do I need to activate?")
-mixshift brand list --refresh   # force a fresh discovery query
+mixshift brand list --format chat           # active brands only (default)
+mixshift brand list --all --format chat     # include dormant
+mixshift brand list --only-inactive --format chat   # just dormants ("what do I need to activate?")
+mixshift brand list --refresh --format chat   # force a fresh discovery query
 ```
+
+**Always pass `--format chat` when you will surface the table in chat**, and pass the output through verbatim as markdown, NOT inside a code block. The flag renders a markdown pipe table that survives the chat relay; the default space-aligned terminal table collapses into an unreadable blur outside a code block (Cowork especially). Do not paraphrase, condense, or restructure the table: copy it through as-is, the same pass-through rule mx-welcome uses for `mixshift welcome --format chat`. The same flag exists on `mixshift brand discover`.
 
 The registry has a 24h TTL — `brand list` refreshes silently on read if stale.
 
@@ -120,7 +122,8 @@ mixshift data export --table <name> [--seller-id <id>]
                      [--out <path>] [--max-rows <n>]
 mixshift data query --sql "<SQL>" [--out <path>]
 
-mixshift brand discover            # to find available SellerIDs / slugs
+mixshift brand discover [--format chat]   # to find available SellerIDs / slugs
+                                          # (use --format chat when surfacing in chat)
 mixshift feedback "<message>" [--category bug|feature_request|comment|other]
 ```
 
@@ -166,14 +169,15 @@ You:  Run `mixshift data list-tables`. Surface the result. Suggest
 ```
 User: "What brands do I have?" / "What accounts do I have access to?" /
       "Which brands can I work with?" / similar
-You:  Run `mixshift brand list` (default: active only, with a footer
-      noting how many dormants are hidden). Surface the output.
+You:  Run `mixshift brand list --format chat` (default: active only, with
+      a footer noting how many dormants are hidden). Surface the output
+      verbatim as markdown, not in a code block.
 
       Variants:
-        "show all my brands"     → `mixshift brand list --all`
-        "what's dormant"         → `mixshift brand list --only-inactive`
-        "refresh my brands"      → `mixshift brand list --refresh`
-        "who do I need to activate?" → `mixshift brand list --only-inactive`
+        "show all my brands"     → `mixshift brand list --all --format chat`
+        "what's dormant"         → `mixshift brand list --only-inactive --format chat`
+        "refresh my brands"      → `mixshift brand list --refresh --format chat`
+        "who do I need to activate?" → `mixshift brand list --only-inactive --format chat`
 ```
 
 **Hard rules for brand questions (these supersede default helpfulness instincts):**

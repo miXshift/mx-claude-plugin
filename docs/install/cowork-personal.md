@@ -11,12 +11,15 @@
 - A Cowork account
 - An active MixShift customer account (you can log in to mixshift.ai / your MixShift portal)
 - Cowork desktop app installed (the web app's plugin UX may be more limited)
+- `node` ≥ 20 on your machine (the plugin's bundled CLI runs on Node.js). Check with `node --version` in a terminal; if it's missing, see ["Everything hangs or fails silently on first run"](#troubleshooting) below for the quick install.
 
 You don't need org admin access for this path.
 
 ---
 
 ## Step 1 — Add the GitHub marketplace
+
+Quick concept check: the **marketplace** is the catalog; the **plugin** (`mixshift-ai`) is what you actually install from it in Step 2.
 
 In Cowork desktop:
 
@@ -35,12 +38,15 @@ Cowork pulls the marketplace manifest and registers the marketplace locally — 
 1. Open the Cowork **Directory** modal (look for "Skills / Connectors / Plugins" in Customize).
 2. Find `mixshift-ai` in the listed plugins.
 3. Click **Install**.
+4. In the same Directory modal, turn on **Sync automatically** for the `mx-claude-plugin` marketplace. It is off by default on some machines, and without it your install stays pinned to whatever version you first pulled, so you silently miss every update MixShift ships.
 
 The plugin appears in your **Personal plugins** section in the sidebar.
 
 **Tip — reopening the Directory modal later.** It's not obvious how to get back to this view after install. The path is: Customize → click **+** next to **Personal plugins** → the Directory reopens with your marketplaces and plugins listed. From there you can install other plugins, toggle **Sync automatically**, hit **Check for updates**, or **Remove** anything. You'll use this surface again whenever MixShift ships a new version (see Troubleshooting at the bottom for the workaround if the version field gets stuck).
 
 ## Step 3 — Sign in
+
+**Before you start: set the permission mode.** By default Claude asks you to approve every command it runs, which makes onboarding a slog of approval prompts (and "always allow" doesn't always stick). In the Claude app settings, switch the permission mode to **auto-accept** for this first session; power users who trust the plugin can use **bypass permissions** instead. On personal (Pro/Max) plans, if commands will not run at all, also check that code execution is enabled under claude.ai **Settings → Capabilities** ([claude.ai/settings/capabilities](https://claude.ai/settings/capabilities)).
 
 In any Cowork chat, say one of:
 
@@ -91,8 +97,14 @@ If you don't know your SellerIDs, say "discover my brands" and Claude runs `mixs
 
 ## Troubleshooting
 
-**"Add marketplace from GitHub" option is missing in Customize.**
-The exact UI label may differ between Cowork versions. Look for "+" next to **Marketplaces** or a similar add-marketplace control. If you can't find it, your Cowork build may not expose user-level marketplace adds (older builds didn't). Fall back to [Claude Code install](./claude-code.md) or ask your team admin to use the [Organization install](./cowork-organization.md) path.
+**Everything hangs or fails silently on first run.**
+The most common cause: Node.js is not installed on the machine. The plugin's bundled CLI runs on Node (version 20 or newer), and without it every `mixshift` command dies before it can print a friendly error. In Cowork this can look like tool calls churning forever with NO error message at all (Claude Code at least reports that `node` is missing). Check with `node --version` in a terminal. If it is missing, install it (macOS: `brew install node` if you have Homebrew, otherwise the [nodejs.org](https://nodejs.org) LTS installer; Windows: `winget install OpenJS.NodeJS.LTS`), then fully restart the Claude app. If this Mac has never run a terminal tool before, you may also need Apple's Command Line Tools: run `xcode-select --install` in Terminal.
+
+**"Add marketplace" / "Add plugin" menu is missing.**
+First, fully quit and restart the Claude app (macOS: Cmd+Q, not just closing the window), then look again under Customize. We've seen the menu fail to appear on multiple machines until a full restart. If it's still missing: the exact UI label may differ between Cowork versions. Look for "+" next to **Marketplaces** or a similar add-marketplace control. If you can't find it, your Cowork build may not expose user-level marketplace adds (older builds didn't). Fall back to [Claude Code install](./claude-code.md) or ask your team admin to use the [Organization install](./cowork-organization.md) path.
+
+**"Failed to add marketplace" with no error detail.**
+Retry once first: transient network hiccups produce the same blank error. If it keeps failing, check the network egress allowlist (same fix as the "fetch failed" entry below; the marketplace fetch goes through the same sandbox). Also note the URL form: the branch-pinned form (`https://github.com/miXshift/mx-claude-plugin.git#stable`) may fail in Cowork's add-marketplace UI. Use the plain repo URL (`https://github.com/miXshift/mx-claude-plugin`) there.
 
 **"command not found: mixshift" when Claude tries to run the welcome.**
 This means Cowork didn't auto-PATH the plugin's `bin/` directory. File a Cowork support request — this is the documented behavior per Cowork's plugin install docs and should be auto-handled. Workaround: ask Claude to invoke the harness via its absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.

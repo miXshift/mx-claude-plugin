@@ -100,6 +100,7 @@ To actually run a skill, tell the user the phrase that triggers it, or, if they 
 
 If the user is stuck because something is wrong:
 
+0. **If every `mixshift` command (including `mixshift doctor`) fails with a "command not found"-style error, or hangs with no output at all:** check `node --version` first. Missing Node.js is the most common cause on machines that have never run a terminal tool; the plugin's CLI needs Node 20 or newer, and without it no `mixshift` command can even print an error. Help the user install it (macOS: `brew install node` if Homebrew exists, otherwise the nodejs.org LTS installer; Windows: `winget install OpenJS.NodeJS.LTS`), then retry.
 1. Run the diagnostic and read it back in plain language:
    ```bash
    mixshift doctor
