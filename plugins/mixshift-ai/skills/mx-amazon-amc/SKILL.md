@@ -9,8 +9,8 @@ description: >
   available data sources (tables), help author dialect-correct AMC SQL, submit
   a workflow execution, poll it to completion across turns, and fetch the
   results. Read-only: running a query mutates nothing advertiser-facing and
-  needs no write scope. Routes through the bundled harness CLI. Does NOT
-  require brand cold-start, only that the user has signed in
+  needs no write scope. Routes through the bundled harness CLI. Does not
+  require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
   version: "0.1.0"
@@ -101,7 +101,7 @@ data and not a packaged report.
 | Ads API enabled for the tenant | Inferred from a successful `ads profiles` call | If a call returns `ads_not_configured`, the Amazon Ads credentials are not set on the service for this MixShift account. Tell the user to contact MixShift ops. |
 | An advertising login with AMC access | `mixshift ads call amc.list_accounts ...` returns rows | No AMC accounts means this login cannot reach an AMC instance. See the discovery chain below; an empty result is normal for tenants without AMC. |
 
-Cold-start is **NOT required.** You only need a signed-in session.
+Brand setup is **not required.** You only need a signed-in session.
 
 ## Merchant selection (resolve the row first)
 

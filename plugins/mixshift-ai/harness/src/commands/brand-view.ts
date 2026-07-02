@@ -227,7 +227,7 @@ export async function renderBrandView(
 
   // ----- Build and write HTML -----
   const subtitle = row.cold_started_at
-    ? `Cold-started ${formatDate(row.cold_started_at)} · ${row.accounts.length} account(s)`
+    ? `Set up ${formatDate(row.cold_started_at)} · ${row.accounts.length} account(s)`
     : `${row.accounts.length} account(s)`;
 
   const html = await renderPage({
@@ -259,8 +259,8 @@ function renderPillsRow(opts: {
   else pills.push(renderPill('Ads inactive', 'ghost'));
   if (opts.retailActive) pills.push(renderPill('Retail', 'default'));
   else pills.push(renderPill('Retail inactive', 'ghost'));
-  if (opts.coldStarted) pills.push(renderPill('Cold-started', 'green'));
-  else pills.push(renderPill('Not cold-started', 'amber'));
+  if (opts.coldStarted) pills.push(renderPill('Brand context ready', 'green'));
+  else pills.push(renderPill('Setup pending', 'amber'));
   return `<div style="display: flex; gap: 8px; flex-wrap: wrap;">${pills.join('')}</div>`;
 }
 

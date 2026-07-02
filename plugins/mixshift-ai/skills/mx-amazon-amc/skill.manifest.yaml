@@ -9,7 +9,7 @@ description: >
   data sources, author dialect-correct AMC SQL, submit a workflow execution,
   poll it to completion across turns, and fetch the CSV results. Read-only:
   running a query mutates nothing advertiser-facing and needs no write scope.
-  Routes through the bundled harness CLI. Does NOT require brand cold-start,
+  Routes through the bundled harness CLI. Does not require brand setup,
   only that the user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service. Submitting

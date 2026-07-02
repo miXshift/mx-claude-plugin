@@ -1,4 +1,4 @@
-# Account Cold Start - Kickoff Script
+# Brand Setup - Kickoff Script
 
 This is the AM-facing intake script. Read it, or the relevant excerpt, at the start of Phase 0 before DB queries or context fetches. The goal is alignment: the AM understands what you will ask up front, what you will figure out autonomously, and what you will come back to them about.
 

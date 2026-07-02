@@ -236,10 +236,10 @@ export function registerBrandCommands(program: Command): void {
           // Footer with counts + dormancy / key hints + marker legend
           const footerLines: string[] = [];
           footerLines.push(
-            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started, ${keyBrandSlugs.size} key).`,
+            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key).`,
           );
           if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
-            footerLines.push('Markers: ⭐ = key brand, ✓ = cold-started');
+            footerLines.push('Markers: ⭐ = key brand, ✓ = set up (brand context ready)');
           }
           footerLines.push(`Discovered: ${index.discovered_at}`);
           if (mode === 'active' && counts.dormant > 0) {
@@ -254,7 +254,7 @@ export function registerBrandCommands(program: Command): void {
           }
           if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
             footerLines.push(
-              `No brands cold-started yet — analytical skills (mx-daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`,
+              `No brands set up yet: analytical skills (mx-daily-health-check, monthly-report, etc.) are locked. Set up a key brand to unlock them: "set up <brand>" in chat.`,
             );
           }
           if (chatFormat) {
@@ -412,7 +412,7 @@ export function registerBrandCommands(program: Command): void {
 
   brand
     .command('refresh <slug>')
-    .description('Re-run cold-start for an existing brand (structure change)')
+    .description('Re-run brand setup for an existing brand (structure change)')
     .action((slug: string) => {
       notYetImplemented('brand refresh', { slug });
     });
@@ -542,7 +542,7 @@ export function registerBrandCommands(program: Command): void {
         }
 
         const footer = [
-          `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
+          `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up).`,
           `Persisted to ${index.brands.length === 0 ? '(empty)' : '~/.mixshift/clients/index.yaml'}.`,
         ];
         if (!opts.includeInactive && counts.dormant > 0) {
@@ -851,7 +851,7 @@ export function registerBrandCommands(program: Command): void {
           );
         } else {
           lines.push(
-            `  ⭐ ${k.registry_entry.display_name} (slug: ${k.slug})${k.registry_entry.cold_started ? '  — cold-started ✓' : ''}`,
+            `  ⭐ ${k.registry_entry.display_name} (slug: ${k.slug})${k.registry_entry.cold_started ? '  (set up ✓)' : ''}`,
           );
         }
       }

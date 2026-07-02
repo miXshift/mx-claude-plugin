@@ -183,7 +183,7 @@ function renderWelcome(args: {
     lines.push('');
     lines.push('    • Onboard a brand for the analytical skills (mx-daily-health-check, etc.):');
     lines.push('        In chat:    "onboard <brand-slug>" — Claude bootstraps the brand');
-    lines.push('                    then say "run account cold start for <brand-slug>"');
+    lines.push('                    then say "set up <brand-slug>"');
     lines.push('                    to walk through AM intake.');
     lines.push('        Terminal:   mixshift brand add <slug>');
     lines.push('');
@@ -336,7 +336,7 @@ function renderWelcomeChat(args: {
           : '';
       const keyClause =
         brandCounts.key > 0
-          ? ` **${brandCounts.key}** marked as key${brandCounts.key_cold_started > 0 ? `, ${brandCounts.key_cold_started} cold-started` : ''}.`
+          ? ` **${brandCounts.key}** marked as key${brandCounts.key_cold_started > 0 ? `, ${brandCounts.key_cold_started} set up` : ''}.`
           : '';
       lines.push(
         `You have access to **${brandCounts.active} active brand(s)**${dormantSuffix}.${keyClause}`,
@@ -378,31 +378,31 @@ function renderWelcomeChat(args: {
       lines.push("Or, if you'd rather just look at data: say *\"explore my data\"*.");
       lines.push('');
     } else if (state === 'B') {
-      // The key step: explain cold-start in user-centric terms + nudge
+      // The key step: explain brand setup in user-centric terms + nudge
       // to do the first one.
       const targetBrand =
         brandCounts?.first_key_uncold_display_name ?? brandCounts?.first_key_display_name ?? 'your top key brand';
       lines.push(
-        '### Next step: cold-start your first brand',
+        '### Next step: set up your first brand',
       );
       lines.push('');
       lines.push(
-        '**Cold-start** teaches the plugin about your brand — catalog, marketplaces, target ACOS, recent launches and events. After ~3–5 minutes of mostly-automated setup (plus a few intake questions from me), every analytical skill — daily health check, runaway-spend, monthly report — already knows your brand and doesn\'t need re-explaining each time you run it.',
+        '**Brand setup** teaches the plugin about your brand: catalog, marketplaces, target ACOS, recent launches and events. After ~3-5 minutes of mostly-automated setup (plus a few intake questions from me), every analytical skill (daily health check, runaway-spend, monthly report) already knows your brand and doesn\'t need re-explaining each time you run it.',
       );
       lines.push('');
       lines.push(
-        `Until you cold-start at least one brand, the analytical skills are locked. You can still explore data via *"explore my data"*. **Want to start with ${targetBrand}?** Just say *"cold start ${targetBrand}"*.`,
+        `Until you set up at least one brand, the analytical skills are locked. You can still explore data via *"explore my data"*. **Want to start with ${targetBrand}?** Just say *"set up ${targetBrand}"*.`,
       );
       lines.push('');
       lines.push(
-        `Other options while you decide: *"explore my data"* lets you sample tables and export CSVs without any brand setup. (Portfolio-quick-scan needs at least one brand cold-started first — it produces a green/yellow/red verdict per brand by aggregating per-brand health checks.)`,
+        `Other options while you decide: *"explore my data"* lets you sample tables and export CSVs without any brand setup. (Portfolio-quick-scan needs at least one brand set up first; it produces a green/yellow/red verdict per brand by aggregating per-brand health checks.)`,
       );
       lines.push('');
     } else if (state === 'C') {
-      // At least one key brand is cold-started. Surface the unlocked
-      // skills, naming the cold-started brand. If there are still
-      // un-cold-started keys, mention that too.
-      const coldStartedKey = brandCounts?.first_key_display_name ?? 'your cold-started brand';
+      // At least one key brand is set up (cold_started flag in the
+      // registry). Surface the unlocked skills, naming that brand. If
+      // there are still keys awaiting setup, mention that too.
+      const coldStartedKey = brandCounts?.first_key_display_name ?? 'your first set-up brand';
       const uncoldKey = brandCounts?.first_key_uncold_display_name;
       lines.push(
         `**${coldStartedKey}** is ready for analytical skills. A few things to try:`,
@@ -423,13 +423,13 @@ function renderWelcomeChat(args: {
       lines.push('');
       if (uncoldKey) {
         lines.push(
-          `When you're ready to unlock the same surface on the rest of your key brands, just say *"cold start ${uncoldKey}"* (or any of the others).`,
+          `When you're ready to unlock the same surface on the rest of your key brands, just say *"set up ${uncoldKey}"* (or any of the others).`,
         );
         lines.push('');
       }
     } else {
       // State D — fully onboarded. Tight navigation.
-      lines.push('All your key brands are cold-started and ready. Common moves:');
+      lines.push('All your key brands are set up and ready. Common moves:');
       lines.push('');
       lines.push('- *"run portfolio quick scan"* — multi-brand daily triage');
       lines.push('- *"run daily health check on \\<brand\\>"* — single-brand exception review');

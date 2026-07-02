@@ -189,15 +189,15 @@ Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keyw
 
 Every write is preview-gated. The harness sends the change to MixShift's service as a **dry run** first: the service validates it, snapshots the current state, logs an audit row, and returns a preview of the exact change set without touching Amazon. Claude shows you that preview and waits. Only when you explicitly confirm does it re-issue the call with `--commit`, the only thing that mutates your account. A declined preview sends nothing. Each committed change carries an audit id so it can be traced and reversed.
 
-### What's cold-start and why do I need it?
+### What's brand setup and why do I need it?
 
-**Cold-start teaches the plugin about your brand.** It's a one-time setup (~3–5 minutes per brand) that runs structured queries against your warehouse + walks you through a short intake — your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (mx-daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it.
+**Brand setup teaches the plugin about your brand.** It's a one-time setup (~3-5 minutes per brand) that runs structured queries against your warehouse and walks you through a short intake: your catalog, marketplaces, target ACOS, recent launches and structural events. After it's done, every analytical skill (mx-daily-health-check, runaway-spend, monthly report, etc.) already knows your brand and doesn't need re-explaining when you run it. The result is the brand's **brand context**, the artifact those skills read.
 
-**Without cold-start**, the analytical skills are locked. You can still use `mx-data-explore` to query and export anything, but skills like *"run daily health check on Ridgepak"* won't have the context to be useful — they need to know what "normal" looks like for your brand.
+**Without brand setup**, the analytical skills are locked. You can still use `mx-data-explore` to query and export anything, but skills like *"run daily health check on Ridgepak"* won't have the context to be useful: they need to know what "normal" looks like for your brand.
 
-**To run it:** in chat, say *"cold start Ridgepak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/` — preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, cold-start state stays).
+**To run it:** in chat, say *"set up Ridgepak"* (or any key brand). Claude orchestrates the harness's data-fetch step, then asks the intake questions inline. Output lives in `~/.mixshift/clients/<slug>/`, preserved across plugin updates and across transient access lapses (if a marketplace temporarily goes inactive, the setup state stays). If you learned this process under its old internal name, "cold start", that phrase still works in chat.
 
-**You don't have to cold-start every brand.** Most users start with their top 1–2 brands, see the analytical skill output, then decide whether to cold-start more. The `mixshift brand list` output shows ✓ next to cold-started brands so you can see at a glance what's ready.
+**You don't have to set up every brand.** Most users start with their top 1-2 brands, see the analytical skill output, then decide whether to set up more. The `mixshift brand list` output shows ✓ next to brands that are set up so you can see at a glance what's ready.
 
 ### Can I run a custom SQL query?
 

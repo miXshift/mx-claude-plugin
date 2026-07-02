@@ -185,7 +185,7 @@ export function registerAuthCommands(program: Command): void {
             if (!root.json) {
               process.stdout.write(
                 `\nBrand registry populated at ~/.mixshift/clients/index.yaml:\n` +
-                  `  - ${counts.active} active brand(s), ${counts.dormant} dormant, ${counts.cold_started} cold-started\n` +
+                  `  - ${counts.active} active brand(s), ${counts.dormant} dormant, ${counts.cold_started} set up\n` +
                   (counts.active === 0
                     ? `\nNo active brands found. This means you have not yet activated\n` +
                       `data in MixShift for your brands. Head to the Account Manager view:\n` +

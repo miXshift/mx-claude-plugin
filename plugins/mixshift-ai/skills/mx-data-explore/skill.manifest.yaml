@@ -4,7 +4,7 @@ display_name: Explore + Export Your Warehouse Data
 version: "0.1.1"
 description: >
   Conversational data exploration and CSV export over the MixShift
-  warehouse. Read-only. Does not require brand cold-start -- only auth
+  warehouse. Read-only. Does not require brand setup -- only auth
   setup and (optionally) brand discovery to find SellerIDs.
 
 # Tier 1 = informational, read-only. No durable production artifacts.

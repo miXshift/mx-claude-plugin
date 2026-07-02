@@ -63,10 +63,10 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
 
 **Delta sequence:** Phase 1 (refresh the brain: `mixshift brand brain refresh`, plus delta baselines) → Phase 1.5 (read the refreshed enrichment from the brain) → `mixshift brand merge-delta` (patches the brain's settlement curve into context.yaml, AM-edited fields untouched) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
-**Where Tier-3 truth comes from (v2.6.0):** the Tier-2 Brand Brain (`~/.mixshift/clients/<brand-slug>/brand-brain.yaml`, auto-filled when the brand was keyed via `brand key add`) is the source for brand taxonomy (sub-brands, item groups, top ASINs), campaign-structure shape (distinct objectives / item groups / brands, objective-tag completeness), and the three enrichment analyses (attribution capture-rate calibration incl. the daily settlement curve, stockout windows, brand-term typo clusters). The deep cold-start reads those from the brain and CONFIRMS/ENRICHES them into Tier 3; it does not re-derive them. The remaining historical baselines (revenue, ACOS history, budget utilization, objective classification) are still pulled at runtime via `mixshift prefetch`.
+**Where Tier-3 truth comes from (v2.6.0):** the Tier-2 Brand Brain (`~/.mixshift/clients/<brand-slug>/brand-brain.yaml`, auto-filled when the brand was keyed via `brand key add`) is the source for brand taxonomy (sub-brands, item groups, top ASINs), campaign-structure shape (distinct objectives / item groups / brands, objective-tag completeness), and the three enrichment analyses (attribution capture-rate calibration incl. the daily settlement curve, stockout windows, brand-term typo clusters). The deep brand setup build reads those from the brain and CONFIRMS/ENRICHES them into Tier 3; it does not re-derive them. The remaining historical baselines (revenue, ACOS history, budget utilization, objective classification) are still pulled at runtime via `mixshift prefetch`.
 
 **Modes:**
-- `--mode fresh` (default): full cold-start build. Bootstraps a minimal context shell, LOADS the brain for taxonomy + enrichment, runs the historical-baseline queries through prefetch, emits typed YAML + narrative.md + corpora/, renders, validates, then reports the Bottom Line.
+- `--mode fresh` (default): full brand setup build. Bootstraps a minimal context shell, LOADS the brain for taxonomy + enrichment, runs the historical-baseline queries through prefetch, emits typed YAML + narrative.md + corpora/, renders, validates, then reports the Bottom Line.
 - `--mode delta` (v2.3+): re-run on an existing account to refresh enrichment fields without overwriting AM-edited context. Refreshes the brain (`mixshift brand brain refresh`), then patches the brain's refreshed `capture_rate_calibration.daily_settlement_curve` into context.yaml via `mixshift brand merge-delta`, re-renders. AM-curated fields (negation, structural_events, brand_terms, posture, etc.) are never touched.
 
 ---
@@ -76,7 +76,7 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
 These rules supersede any other instruction. Violating them produces inconsistent output across runs.
 
 - **Do NOT read the `references/` folder during execution.** It contains cross-brand architecture notes, Amazon API references, and legacy prose-style brand .md files for human reference only — they are not skill inputs and will produce inconsistent output if mixed into synthesis. Brand context comes from `context.yaml`, `narrative.md`, optional source-backed `brand-intelligence.yaml`, and renderer-produced compact sidecars.
-- **DO read `kickoff.md` at the start of Phase 0** (in the same skill directory). It's the AM-facing intake script — the human-readable companion to this procedure manual. Walking the AM through it is the first concrete step of any cold-start run.
+- **DO read `kickoff.md` at the start of Phase 0** (in the same skill directory). It's the AM-facing intake script — the human-readable companion to this procedure manual. Walking the AM through it is the first concrete step of any brand setup run.
 - **Do NOT read SQL library files or run ad hoc SQL.** The only approved data paths are the Tier-2 Brand Brain (read via `mixshift brand context resolve` / `mixshift brand brain status`, or the generated `brand-brain.yaml`) for taxonomy + enrichment, and `mixshift prefetch` for the historical baselines. Both write/produce their results before the model consumes them; never hand-author SQL.
 - **Do NOT write or edit `brand-context.html`, `brand-context.headline.json`, `brand-context.review.json`, or the run sidecar manually.** The renderer (Phase 3b) is the single writer of these artifacts.
 - **Do NOT echo HTML, full audit tables, or full data tables in your output.** The HTML is the deliverable; your model output is a Bottom Line + `file://` link to the HTML.
@@ -214,7 +214,7 @@ Before Phase 2, update the bootstrap shell into a draft context with the Phase 1
 
 This draft is still not final. Its purpose is to carry the brain-sourced taxonomy + calibration forward so Phase 2 can confirm them and so the renderer has a populated draft. The brand-term typo clusters and stockout windows are ALREADY detected in the brain (`brand_term_typos`, `stockouts`); Phase 2 confirms which advisory findings should be promoted into durable typed fields.
 
-> Note: the brain computes brand-term typos against whatever Tier-3 `brand_terms` existed at brain-fetch time. On a true first cold-start the brain may have had no `brand_terms` yet, so `brand_term_typos` can be empty/omitted. If so, refresh the brain after this draft's `brand_terms` are written (`mixshift brand brain refresh <brand-slug>`) to populate typo clusters for Phase 2 review.
+> Note: the brain computes brand-term typos against whatever Tier-3 `brand_terms` existed at brain-fetch time. On a brand's true first setup run the brain may have had no `brand_terms` yet, so `brand_term_typos` can be empty/omitted. If so, refresh the brain after this draft's `brand_terms` are written (`mixshift brand brain refresh <brand-slug>`) to populate typo clusters for Phase 2 review.
 
 ---
 
@@ -226,7 +226,7 @@ The three advisory analyses are computed by the Brand Brain (the same `lib/enric
 2. **Stockout candidates** (brain `stockouts`): contiguous FBA out-of-stock windows with impacted ad-sales per window. **Limitation:** ASIN suppression-for-profitability events (Amazon de-ranks an ASIN despite inventory) are not detectable from inventory history; those still require AM input as `structural_events[]`.
 3. **Brand-name typo clusters** (brain `brand_term_typos`): converting search terms within Levenshtein 1-2 of any canonical brand term, not already in variants, **clustered** by `(canonical_match, root_token)` so the AM gets one decision per cluster. Plural-only matches and competitor-brand collisions are filtered out before clustering (competitor prefixes come from `negation.competitor_brands`).
 
-These are ADVISORY: surface them for AM confirmation in Phase 2; they are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants[]`. If the brain shows them empty/omitted on a first cold-start (no `brand_terms` existed when the brain last fetched), refresh the brain after Phase 1a writes the draft `brand_terms` (`mixshift brand brain refresh <brand-slug>`).
+These are ADVISORY: surface them for AM confirmation in Phase 2; they are **not** auto-promoted to typed `structural_events[]` or `brand_terms.variants[]`. If the brain shows them empty/omitted on a first setup run (no `brand_terms` existed when the brain last fetched), refresh the brain after Phase 1a writes the draft `brand_terms` (`mixshift brand brain refresh <brand-slug>`).
 
 **Delta mode:** refresh the brain, then patch the settlement curve into `context.yaml` (preserving comments + AM-edited fields):
 
@@ -245,7 +245,7 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 
 **Hard gate:** Phase 2 is not optional in fresh mode. After Phase 1 and the web/social scrub, synthesize the smallest sufficient numbered question set from unresolved AM decisions, data anomalies needing business context, and review gaps. Ask those questions immediately and wait for answers before finalizing Phase 3a.
 
-**Draft exception:** If the operator explicitly asks for a preview before answering Phase 2, you may render a draft brand-context.md. Label it as draft / observational, include the file link, then continue directly into the numbered Phase 2 questions. Do not stop as if the cold start is complete.
+**Draft exception:** If the operator explicitly asks for a preview before answering Phase 2, you may render a draft brand-context.md. Label it as draft / observational, include the file link, then continue directly into the numbered Phase 2 questions. Do not stop as if the brand setup is complete.
 
 **Question construction rules:**
 - Ask numbered questions, not passive "Tell AI" prompts.
@@ -324,12 +324,12 @@ Ask the AM **once** during Phase 2:
 
 2. Write `~/.mixshift/clients/<brand-slug>/reporting-style.yaml`. Schema: `shared/clients/_schema/reporting-style.schema.yaml`. Set `source.type: cold_start_inference`, `source.reference_artifact:` to the relative path of the uploaded reference (if you stored it under `~/.mixshift/clients/<brand-slug>/`).
 
-3. Surface a short summary in the cold-start Bottom Line: "Reporting style captured from reference report: N sections, MoM/YoY style = <split|unified>, forecast presentation = <variant>, voice notes recorded." The AM can refine later by editing the file.
+3. Surface a short summary in the brand setup Bottom Line: "Reporting style captured from reference report: N sections, MoM/YoY style = <split|unified>, forecast presentation = <variant>, voice notes recorded." The AM can refine later by editing the file.
 
 **When no reference is provided:**
 
 1. Do NOT write `reporting-style.yaml`. The absence of the file is the signal — mx-monthly-report uses canonical defaults.
-2. Note in the cold-start Bottom Line: "No reference report provided; monthly reports will use canonical defaults. To customize later, add `~/.mixshift/clients/<brand-slug>/reporting-style.yaml`."
+2. Note in the brand setup Bottom Line: "No reference report provided; monthly reports will use canonical defaults. To customize later, add `~/.mixshift/clients/<brand-slug>/reporting-style.yaml`."
 
 **Why this is high-leverage:** For brands with established reporting conventions, this single intake step is what makes the first monthly run look like the AM's prior reports rather than a generic template. Without it, the AM has to manually point the skill at the prior report every month (the pre-2.5 pattern) or accept canonical defaults.
 
@@ -405,7 +405,7 @@ For interpretation that doesn't fit a typed field. Use these canonical H2 headin
 
 ### brand-intelligence.yaml (source-backed wow layer)
 
-Create this file for every fresh cold start unless web access is unavailable or the AM explicitly skips public research. Required shape:
+Create this file for every fresh brand setup unless web access is unavailable or the AM explicitly skips public research. Required shape:
 - `sources{}` with official site, Amazon storefront if present, review/app/social/press/competitor sources as applicable.
 - `hero_narrative` for the human-facing "What I Know About This Brand" lead paragraph.
 - `proof_points[]` with `title`, `status` (`strong|partial|identified_no_counts|needs_capture`), `summary`, `evidence[]`.
@@ -474,7 +474,7 @@ If the run still has unresolved Phase 2 decisions, true context issues that requ
 1. Emit a Draft Bottom Line: audit summary (`required_present`/`required_total`, `recommended_present`/`recommended_total`, stale count), true missing-context bucket count, runtime input count, and verdict.
 2. Append a `file://` link to the draft `brand-context.html` for the operator's review.
 3. Ask the numbered Phase 2 questions immediately in the same response.
-4. Stop only to wait for the operator's answers. Do not present the cold start as complete.
+4. Stop only to wait for the operator's answers. Do not present the brand setup as complete.
 
 If the verdict is GREEN, or the only remaining items are runtime-only uploads / explicitly accepted nice-to-have gaps:
 1. Read **only** `brand-context.headline.json` (do not read the HTML).
@@ -498,7 +498,7 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 
 ---
 
-## Cold Start Patterns (apply during synthesis)
+## Brand Setup Patterns (apply during synthesis)
 
 - SC column naming conventions and validation
 - Item group extraction from campaign names (approximate — validate manually)
@@ -513,7 +513,7 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 
 ---
 
-## Next Steps After Cold Start
+## Next Steps After Brand Setup
 
 1. The operator reviews `brand-context.html` (link from the Bottom Line). Missing-context buckets show what still needs brand input; runtime-input cards show artifacts supplied manually when downstream skills run.
 2. After approval, downstream skills can run: Daily Health Check → Runaway Spend Check → Keyword Bid Health → Monthly Performance Report → others.
