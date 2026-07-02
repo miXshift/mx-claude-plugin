@@ -130,11 +130,14 @@ async function postBatch(
  * adding a new lifted field to `TelemetryEventRecord` is an obvious diff
  * here too — keeps the contract surface visible.
  */
-function normalizeRecord(rec: TelemetryEventRecord): Record<string, unknown> {
+export function normalizeRecord(rec: TelemetryEventRecord): Record<string, unknown> {
   return {
     event_name: rec.event_name,
     install_id: rec.install_id,
     email: rec.email ?? null,
+    // Null on pre-auth events and on queue entries written by harnesses
+    // that didn't yet send the field.
+    person_label: rec.person_label ?? null,
     plugin_version: rec.plugin_version,
     install_path: rec.install_path,
     // Surface added in 0.5.1 — older queue.jsonl entries that pre-date the

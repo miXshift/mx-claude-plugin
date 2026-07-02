@@ -12,6 +12,7 @@ import {
 } from './consent.js';
 import { enqueueEvent, readQueue, clearQueue, queueSizeBytes } from './queue.js';
 import { track } from './index.js';
+import { normalizeRecord } from './client.js';
 import type { TelemetryEventRecord } from './events.js';
 
 // Helper to create a temp data dir per test (so we don't pollute real
@@ -204,6 +205,27 @@ describe('queue', () => {
 
   it('queueSizeBytes returns 0 when the file does not exist', async () => {
     expect(await queueSizeBytes(dataDir)).toBe(0);
+  });
+});
+
+describe('normalizeRecord', () => {
+  it('keeps person_label on the wire record (regression: it was dropped, severing per-employee attribution)', () => {
+    const out = normalizeRecord(
+      makeRecord({ person_label: 'todd.vanderstelt@mixshift.io' }),
+    );
+    expect(out.person_label).toBe('todd.vanderstelt@mixshift.io');
+  });
+
+  it('coerces missing optional fields to explicit null so batch key sets match (PGRST102)', () => {
+    const out = normalizeRecord(makeRecord());
+    expect(out.person_label).toBeNull();
+    expect(out.email).toBeNull();
+    expect(out.skill_id).toBeNull();
+    // Every event in a batch must serialize with the same key set.
+    const withFields = normalizeRecord(
+      makeRecord({ person_label: 'a@b.c', skill_id: 's', email: 'e@f.g' }),
+    );
+    expect(Object.keys(out).sort()).toEqual(Object.keys(withFields).sort());
   });
 });
 
