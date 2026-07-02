@@ -104,6 +104,8 @@ Capture `device_code` and `login_url`. The other fields don't need to be passed 
 
 Don't paste the device code separately — the URL encodes it. The user just signs in on the page.
 
+Include one heads-up with the link: after they approve, the page may say "return to your CLI". That just means come back to this chat and say "done"; there is no separate CLI step.
+
 **Step A3 — Poll for approval when the user returns:**
 
 When the user confirms they signed in (says "done", "ready", etc.), run:
@@ -195,6 +197,8 @@ The token-based flow shifts the IP-whitelist burden from each user to the mx-leg
 In Cowork / Claude Code chat you drive Path A (device-init + device-poll) inline. Do **not** tell the user to run `mixshift ...` in a separate terminal: the bundled CLI is only on PATH *inside* the chat session, so a standalone terminal returns "command not found." The terminal suggestions below apply ONLY to users who have separately installed `mixshift` as a system command. For a sandbox or egress block, use **"If the sandbox is blocking sign-in"** above, not a terminal.
 
 If the user gets stuck mid-flow:
+
+- **Every `mixshift` command fails with a "command not found"-style error, or hangs with no output at all:** check `node --version` first. Missing Node.js is the most common cause on machines that have never run a terminal tool; the plugin's CLI needs Node 20 or newer, and without it no `mixshift` command can even print an error. Help the user install it (macOS: `brew install node` if Homebrew exists, otherwise the nodejs.org LTS installer; Windows: `winget install OpenJS.NodeJS.LTS`), then retry.
 
 - **`device-init` printed no `login_url` (and no network error):** just re-run Step A1. If it returns `{ "ok": false, ... }`, treat it as the sandbox block above.
 

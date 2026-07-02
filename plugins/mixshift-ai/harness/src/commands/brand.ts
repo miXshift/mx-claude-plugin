@@ -4,7 +4,10 @@ import { validateBrandContext } from '../lib/context/load.js';
 import { renderValidationResult } from './_render-validation.js';
 import { discoverSellers } from '../lib/discovery/seller-query.js';
 import { groupIntoBrands } from '../lib/discovery/brand-grouping.js';
-import { renderDiscoveryTable } from './_render-discovery.js';
+import {
+  renderDiscoveryTable,
+  renderDiscoveryTableChat,
+} from './_render-discovery.js';
 import { bootstrapBrand } from '../lib/clients/bootstrap.js';
 import {
   readIndex,
@@ -51,6 +54,12 @@ export function registerBrandCommands(program: Command): void {
     .option('--only-inactive', 'show ONLY dormant brands', false)
     .option('--key', 'show ONLY brands marked as key in your profile', false)
     .option('--refresh', 'force a fresh discovery query before listing', false)
+    .option(
+      '--format <type>',
+      'output format: `terminal` (space-aligned table, default) | `chat` ' +
+        '(markdown pipe table for Claude/Cowork to surface verbatim in chat)',
+      'terminal',
+    )
     .action(
       async (
         opts: {
@@ -58,6 +67,7 @@ export function registerBrandCommands(program: Command): void {
           onlyInactive: boolean;
           key: boolean;
           refresh: boolean;
+          format?: string;
         },
         cmd: Command,
       ) => {
@@ -213,7 +223,15 @@ export function registerBrandCommands(program: Command): void {
               })),
             };
           });
-          process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+          const chatFormat = opts.format === 'chat';
+          if (chatFormat) {
+            // Chat output goes to stdout (matches `welcome --format chat`):
+            // it's informational markdown for Claude to relay verbatim, not
+            // an error/status stream.
+            process.stdout.write(renderDiscoveryTableChat(renderable) + '\n');
+          } else {
+            process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+          }
 
           // Footer with counts + dormancy / key hints + marker legend
           const footerLines: string[] = [];
@@ -239,7 +257,11 @@ export function registerBrandCommands(program: Command): void {
               `No brands cold-started yet — analytical skills (mx-daily-health-check, monthly-report, etc.) are locked. Cold-start a key brand to unlock them: "cold start <brand>" in chat.`,
             );
           }
-          process.stderr.write('\n' + footerLines.join('\n') + '\n\n');
+          if (chatFormat) {
+            process.stdout.write('\n' + footerLines.join('\n') + '\n\n');
+          } else {
+            process.stderr.write('\n' + footerLines.join('\n') + '\n\n');
+          }
           return;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -422,7 +444,13 @@ export function registerBrandCommands(program: Command): void {
       'include dormant brands (no active ads or retail) in the printed table',
       false,
     )
-    .action(async (opts: { includeInactive: boolean }, cmd: Command) => {
+    .option(
+      '--format <type>',
+      'output format: `terminal` (space-aligned table, default) | `chat` ' +
+        '(markdown pipe table for Claude/Cowork to surface verbatim in chat)',
+      'terminal',
+    )
+    .action(async (opts: { includeInactive: boolean; format?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       try {
         const { index } = await runDiscoveryAndPersist({
@@ -506,7 +534,12 @@ export function registerBrandCommands(program: Command): void {
             updated_at: null,
           })),
         }));
-        process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+        const chatFormat = opts.format === 'chat';
+        if (chatFormat) {
+          process.stdout.write(renderDiscoveryTableChat(renderable) + '\n');
+        } else {
+          process.stderr.write(renderDiscoveryTable(renderable) + '\n');
+        }
 
         const footer = [
           `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} cold-started).`,
@@ -517,7 +550,11 @@ export function registerBrandCommands(program: Command): void {
             `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`,
           );
         }
-        process.stderr.write('\n' + footer.join('\n') + '\n\n');
+        if (chatFormat) {
+          process.stdout.write('\n' + footer.join('\n') + '\n\n');
+        } else {
+          process.stderr.write('\n' + footer.join('\n') + '\n\n');
+        }
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

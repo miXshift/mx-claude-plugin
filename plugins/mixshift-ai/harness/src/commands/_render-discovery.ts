@@ -60,6 +60,50 @@ export function renderDiscoveryTable(suggestions: BrandSuggestion[]): string {
   return lines.join('\n');
 }
 
+/**
+ * Chat-format sibling of renderDiscoveryTable: same data, rendered as a
+ * GitHub-flavored markdown pipe table plus plain-prose footer lines.
+ *
+ * Space-aligned plain text collapses into an unreadable blur when Claude
+ * relays it in chat outside a code block (Cowork especially). Markdown
+ * pipe tables survive that relay, so `brand list --format chat` and
+ * `brand discover --format chat` use this renderer and the skills
+ * surface the output verbatim as markdown.
+ */
+export function renderDiscoveryTableChat(suggestions: BrandSuggestion[]): string {
+  if (suggestions.length === 0) {
+    return '\nNo brands discovered. Check that your MySQL user has read access to the `seller` table.\n';
+  }
+
+  const esc = (s: string) => s.replace(/\|/g, '\\|');
+
+  const lines: string[] = [];
+  lines.push('| ID | Brand | Accounts | Types | Markets | Ads | Retail |');
+  lines.push('| --- | --- | ---: | --- | --- | :-: | :-: |');
+  for (const s of suggestions) {
+    lines.push(
+      '| ' +
+        [
+          esc(s.slug),
+          esc(s.display_name),
+          String(s.accounts.length),
+          esc(summarizeAccountTypes(s.accounts.map((a) => a.account_type))),
+          esc(summarizeMarketplaces(s.accounts.map((a) => a.marketplace))),
+          s.ads_active ? '✓' : '✗',
+          s.retail_active ? '✓' : '✗',
+        ].join(' | ') +
+        ' |',
+    );
+  }
+  lines.push('');
+  lines.push(`${suggestions.length} brand${suggestions.length === 1 ? '' : 's'} discovered.`);
+  lines.push('');
+  lines.push(
+    'Next: `mixshift brand add <id>` to onboard a brand, or `mixshift brand list` once you have a portfolio set up.',
+  );
+  return lines.join('\n');
+}
+
 function summarizeAccountTypes(types: ('SC' | 'VC' | 'DSP' | 'unknown')[]): string {
   const counts = countBy(types);
   const parts: string[] = [];
