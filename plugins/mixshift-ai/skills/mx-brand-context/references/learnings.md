@@ -92,6 +92,34 @@ Attribution window by account type:
 - SC Sponsored Brands = 1-day vs 14-day
 - VC Sponsored Products = 1-day vs 14-day
 
+## FBM/FBA Fulfillment-Channel Artifact
+
+- In the warehouse inventory tables, `FulfillmentChannel` is the SP-API
+  region (`AMAZON_NA` / `AMAZON_EU` / `AMAZON_FE`, plus an occasional
+  `Amazon` or blank bucket carrying real FBA quantity), PLUS a `DEFAULT`
+  bucket meaning merchant-fulfilled (FBM/MFN): FBA quantity is empty on
+  those rows by design, and MFN quantity lives in `mws_items` instead
+  (`ItemQuantityAvailable`).
+- The literal value `'AFN'` matches zero rows in either inventory table. It
+  is dead (old MWS schema) and will silently empty out any query or filter
+  that uses it.
+- When this comes up during a brand setup run (an inventory query returns
+  nothing, or FBA quantity looks blank for a batch of ASINs), it is this
+  known artifact, not a data gap. Explain it to the AM/operator rather than
+  logging it as missing context.
+
+## Activations Without Inventory
+
+- A brand can show live advertising activity (impressions/clicks/spend) on
+  an ASIN with no matching inventory rows for the same window. This is not
+  data corruption or a broken join.
+- Common causes: the listing is FBM (inventory isn't tracked in the FBA
+  inventory tables at all), a stockout hasn't rolled through the inventory
+  snapshot yet, or a variant/child ASIN's inventory rolls up under a
+  different parent record.
+- Cross-reference against Phase 0 stockout context before treating it as
+  anything other than a normal, explainable pattern.
+
 ## VC Monthly Metric Coverage Check
 
 Before surfacing account-level monthly reports:

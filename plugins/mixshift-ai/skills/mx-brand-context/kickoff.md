@@ -51,7 +51,13 @@ Ask in order. "I don't know" is a valid answer. Note it and move on.
 
 ## Step 3 - What I'll figure out on my own
 
-Tell the AM you do not need them for this part.
+Tell the AM you do not need them for this part. Also set expectations on
+timing before you start: the background data fetch (web/social scrub plus
+the historical baseline queries) commonly takes several minutes. Say so up
+front, and narrate progress as it runs rather than going quiet, for example
+"Still pulling the 24-month revenue baseline, this can take a few minutes"
+followed later by a completion note. Going quiet for several minutes reads
+as broken even when the fetch is working normally.
 
 **Web & social scrub**
 

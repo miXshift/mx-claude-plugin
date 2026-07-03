@@ -354,6 +354,36 @@ run for minutes, which blows past the chat Bash ceiling. Use it when you know
 you are in a terminal session (not Cowork, not claude.ai). In chat, always use
 start / poll / get separately.
 
+## Set duration expectations before you start (do this every time)
+
+Report generation is genuinely slow on Amazon's side, and users who aren't
+warned read the wait as the plugin being broken. Before calling `report
+start`, tell the user plainly that this is not instant: report generation
+commonly takes several minutes, and for some report types longer. Do not let
+the first sign of duration be silence.
+
+**Brand Analytics search-terms reports are a special case.** Amazon throttles
+`GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT` heavily per account. When you pull
+this report type, say so up front: this one is slow even by report-pull
+standards, you expect to see `429`/`throttled` responses while polling, and
+that is Amazon rate-limiting, not a failure. The right behavior on a
+`throttled` response is to back off and keep polling patiently, not to treat
+it as an error or stop.
+
+**Never suggest canceling a pull just because it is slow.** This is an
+established team rule: slowness alone is not a reason to stop. The only
+legitimate reason to stop polling a run is a real terminal outcome:
+`failure_kind: report_fatal` (Amazon returned FATAL/CANCELLED) or another
+genuine error surfaced by the harness. `IN_QUEUE`, `IN_PROGRESS`, and
+`throttled` are all normal mid-flight states; keep going.
+
+**Give periodic progress updates while polling**, especially across a string
+of turns: restate what you're waiting on, how long it's been, and the last
+status you saw (e.g. "Still waiting on the search-terms report, about 4
+minutes in, Amazon returned a rate-limit on the last check so I'm backing off
+and trying again"). Silence during a multi-minute wait is what reads as
+broken, not the wait itself.
+
 ## Product Pricing pulls (FOEP and Competitive Summary)
 
 Shipped in harness 0.5.18 as a sibling of `amazon report`, sharing its Bearer
@@ -549,15 +579,22 @@ You:  1. Resolve merchant (must have Brand Registry; if Amazon rejects with
          the Brand Analytics entitlement).
       2. describe-report GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT to confirm
          the reportPeriod option and window rule.
-      3. Start with the option:
+      3. Before starting, tell the user this report type is heavily
+         throttled by Amazon per account: it can take several minutes, and
+         429/throttled responses while polling are expected and normal, not
+         an error.
+      4. Start with the option:
          mixshift amazon report start --seller-id <id> \
            --type GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT \
            --option reportPeriod=WEEK \
            --start 2026-05-25 --end 2026-05-31 --json
-      4. Poll, then get with --out (this one is JSON; use a .json file).
+      5. Poll, then get with --out (this one is JSON; use a .json file).
          The Search Terms report has NO server-side filter, so the whole
          marketplace term set comes back and it can be very large. Always
-         pull it with --out (it streams to disk at any size).
+         pull it with --out (it streams to disk at any size). Keep polling
+         patiently through any `throttled` responses and give the user a
+         progress update every turn or two; only a real `report_fatal`
+         warrants stopping.
 ```
 
 **Filtering to a set of products (use Search Catalog Performance, not Search
@@ -663,7 +700,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `reauth_required` | 5 | This merchant's SP-API grant lapsed. Re-connect the account in the MixShift app, then retry. |
 | `spapi_not_configured` | 6 | SP-API pulls are not enabled for this MixShift account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The `--seller-id` matched no merchant. Re-run `amazon merchants` and pick a listed `amazonSellerId`. |
-| `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry (a `retry_after_ms` may be present). |
+| `throttled` | 8 | Amazon is rate-limiting. This is NORMAL, especially on Brand Analytics search-terms pulls, not a failure: wait and keep polling patiently with backoff (a `retry_after_ms` may be present). Never suggest canceling the pull because of a `throttled` response; it is not a reason to stop. |
 | `report_fatal` | 9 | Amazon returned FATAL / CANCELLED. Usually the report type does not apply to this merchant, or the window is invalid. Check `describe-report` and try a valid window. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
@@ -818,6 +855,13 @@ These supersede other instructions:
 - **Do not pre-filter restricted reports.** Pull the default form; relay
   Amazon's reactive `restricted_report` rejection and offer the non-PII variant
   or an alternative. Do not retry the restricted variant unchanged.
+- **Never suggest canceling a pull just because it is slow.** Report
+  generation commonly takes several minutes, and `throttled` (429) responses
+  are normal, especially on Brand Analytics search-terms pulls, which Amazon
+  throttles heavily per account. Set that expectation before you start, then
+  keep polling patiently with backoff and give periodic progress updates.
+  Only a real `report_fatal` (FATAL/CANCELLED) or other genuine error
+  warrants stopping.
 - **Never expose internal slugs in user-facing text.** Refer to brands by their
   display name. Resolve identifiers silently when calling the harness.
 - **Do not fabricate report data.** If a pull fails or returns nothing, say so.
