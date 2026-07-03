@@ -308,17 +308,17 @@ SUMs. Pick exactly one row per ASIN: latest `dtUpdatedOn`, tie-broken on
 `ID`, e.g.:
 
 ```sql
-SELECT b.ASIN, SUM(b.OrderedRevenueAmount) AS revenue, mi.Brand, mi.ItemName
+SELECT b.ChildAsin, SUM(b.Amount) AS revenue, mi.Brand, mi.ItemName
 FROM business_reports_dpst_sku b
 JOIN mws_items mi ON mi.ID = (
   SELECT m2.ID
   FROM mws_items m2
-  WHERE m2.SellerID = <N> AND m2.ASIN = b.ASIN
+  WHERE m2.SellerID = <N> AND m2.ASIN = b.ChildAsin
   ORDER BY m2.dtUpdatedOn DESC, m2.ID DESC
   LIMIT 1
 )
 WHERE b.SellerID = <N>
-GROUP BY b.ASIN, mi.Brand, mi.ItemName
+GROUP BY b.ChildAsin, mi.Brand, mi.ItemName
 ```
 
 If an ASIN has no `mws_items` row at all (common for Brand Analytics catalog
