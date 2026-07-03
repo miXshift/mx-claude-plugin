@@ -184,7 +184,10 @@ const BRAND_FIELD_REGISTRY = {
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: 'management.primary_metric' },
   attribution_window_days: { contextPath: 'management.attribution_window_days' },
-  tacos_target_pct: { contextPath: 'management.tacos_target_pct' },
+  // Canonical field. lib/context/load.ts normalizes the deprecated
+  // management.tacos_target_pct alias onto this path before any consumer
+  // (including this registry) ever sees the parsed context, so
+  // management.tacos_target_pct never resolves here post-load.
   tacos_goal_pct: { contextPath: 'management.tacos_goal_pct' },
   posture_stance: { contextPath: 'posture.stance' },
   posture_multiplier: { contextPath: 'posture.multiplier' },

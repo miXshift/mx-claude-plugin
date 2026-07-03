@@ -56,16 +56,21 @@ shapes:
 
   management:
     required: [primary_metric, acos_target_pct, attribution_window_days]
-    optional: [tacos_target_pct, tacos_goal_pct, tacos_in_bottom_line,
+    optional: [tacos_goal_pct, tacos_target_pct, tacos_in_bottom_line,
                implied_tacos_pct, tacos_reference_line]
     enums:
       primary_metric: [ACOS, TACOS]
     note: |
-      TACOS-primary accounts must define either tacos_target_pct or
-      tacos_goal_pct, and should set tacos_in_bottom_line explicitly. ACOS target
-      remains the bid-math proxy; TACOS is the managed account-level goal.
-      implied_tacos_pct and tacos_reference_line are legacy/ACOS-primary helper
-      fields and must not be required for TACOS-primary accounts.
+      tacos_goal_pct is the canonical field for a TACOS-primary account's
+      managed account-level goal. tacos_target_pct is a DEPRECATED ALIAS kept
+      for backward compatibility with existing context.yaml files — the
+      loader normalizes tacos_target_pct onto tacos_goal_pct on read, so new
+      files should set tacos_goal_pct only. TACOS-primary accounts must
+      define one of the two, and should set tacos_in_bottom_line explicitly.
+      ACOS target remains the bid-math proxy; TACOS is the managed
+      account-level goal. implied_tacos_pct and tacos_reference_line are
+      legacy/ACOS-primary helper fields and must not be required for
+      TACOS-primary accounts.
 
   capture_rate_calibration:
     required: [enabled, capture_rate_pct, fresh_day_acos_improvement_pts,

@@ -46,7 +46,8 @@ sources:
 # management
 #   Account-level operational targets. ACOS target drives bid math.
 #   primary_metric ∈ {ACOS, TACOS} — selects the headline metric for reports.
-#   TACOS-primary accounts must populate tacos_target_pct or tacos_goal_pct.
+#   TACOS-primary accounts must populate tacos_goal_pct (canonical; the
+#   deprecated tacos_target_pct alias is still accepted for back-compat).
 management:
   primary_metric: ACOS
   acos_target_pct: 20.0

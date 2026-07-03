@@ -123,7 +123,7 @@ calibration:
         fine. Defaults to your brand's TACoS target from context.yaml.
       type: percent
       range: { min: 0.01, max: 1.0 }
-      seed_from: context.management.tacos_target_pct
+      seed_from: context.management.tacos_goal_pct
       required: false
 
     - id: min_spend_to_flag

@@ -54,8 +54,14 @@ const managementSchema = z.object({
   primary_metric: z.enum(['ACOS', 'TACOS']),
   acos_target_pct: z.number().positive(),
   attribution_window_days: z.number().int().positive(),
-  tacos_target_pct: z.number().positive().optional(),
+  // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: z.number().positive().optional(),
+  // DEPRECATED ALIAS for tacos_goal_pct, kept only so existing customer
+  // context.yaml files keep validating. normalizeLegacyTacosFields() (called
+  // from lib/context/load.ts before this schema runs) maps this onto
+  // tacos_goal_pct on read, so by the time a context reaches skill code only
+  // tacos_goal_pct is populated. Do not write new fields against this key.
+  tacos_target_pct: z.number().positive().optional(),
   tacos_in_bottom_line: z.boolean().optional(),
   implied_tacos_pct: z.number().positive().optional(),
   tacos_reference_line: z.string().optional(),
@@ -184,24 +190,68 @@ export const contextSchema = z
     detected_anomalies: z.unknown().optional(),
     skill_config: skillConfigSchema.optional(),
   })
-  // TACOS-primary accounts must define a TACOS target/goal (per the YAML
-  // schema's management note). Enforce as a refinement.
+  // TACOS-primary accounts must define a TACOS goal (per the YAML schema's
+  // management note). Enforce as a refinement. tacos_target_pct is the
+  // deprecated alias; normalizeLegacyTacosFields() maps it onto
+  // tacos_goal_pct before this schema runs, but the OR-check is kept here
+  // too so the refinement stays correct if this schema is ever invoked
+  // directly against un-normalized input (e.g. from a future caller).
   .refine(
     (ctx) => {
       if (ctx.management.primary_metric !== 'TACOS') return true;
       return (
-        ctx.management.tacos_target_pct !== undefined ||
-        ctx.management.tacos_goal_pct !== undefined
+        ctx.management.tacos_goal_pct !== undefined ||
+        ctx.management.tacos_target_pct !== undefined
       );
     },
     {
       message:
-        'TACOS-primary accounts must define management.tacos_target_pct or management.tacos_goal_pct',
+        'TACOS-primary accounts must define management.tacos_goal_pct (or the deprecated alias management.tacos_target_pct)',
       path: ['management'],
     },
   );
 
 export type BrandContext = z.infer<typeof contextSchema>;
+
+/**
+ * Normalize the deprecated `management.tacos_target_pct` alias onto the
+ * canonical `management.tacos_goal_pct` field.
+ *
+ * Existing customer context.yaml files may still use tacos_target_pct (the
+ * pre-consolidation field name). Rather than force a migration, the loader
+ * calls this on the raw parsed YAML before Zod validation, so:
+ *   - callers downstream of load.ts only ever see tacos_goal_pct populated
+ *   - tacos_target_pct stays accepted for parsing/back-compat, but never
+ *     becomes the field skills branch on
+ *
+ * If both fields are present, tacos_goal_pct (canonical) wins and
+ * tacos_target_pct is dropped rather than overwritten. Mutates nothing —
+ * returns a new object (or the same reference when there's nothing to do).
+ */
+export function normalizeLegacyTacosFields(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return raw;
+  }
+  const obj = raw as Record<string, unknown>;
+  const management = obj.management;
+  if (
+    management === null ||
+    typeof management !== 'object' ||
+    Array.isArray(management)
+  ) {
+    return raw;
+  }
+  const mgmt = management as Record<string, unknown>;
+  if (mgmt.tacos_target_pct === undefined) return raw;
+
+  const normalizedMgmt = { ...mgmt };
+  if (normalizedMgmt.tacos_goal_pct === undefined) {
+    normalizedMgmt.tacos_goal_pct = normalizedMgmt.tacos_target_pct;
+  }
+  delete normalizedMgmt.tacos_target_pct;
+
+  return { ...obj, management: normalizedMgmt };
+}
 
 /**
  * The required top-level field names — used by the drift test to assert

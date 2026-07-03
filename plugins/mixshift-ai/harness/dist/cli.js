@@ -65678,8 +65678,14 @@ var managementSchema = external_exports.object({
   primary_metric: external_exports.enum(["ACOS", "TACOS"]),
   acos_target_pct: external_exports.number().positive(),
   attribution_window_days: external_exports.number().int().positive(),
-  tacos_target_pct: external_exports.number().positive().optional(),
+  // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: external_exports.number().positive().optional(),
+  // DEPRECATED ALIAS for tacos_goal_pct, kept only so existing customer
+  // context.yaml files keep validating. normalizeLegacyTacosFields() (called
+  // from lib/context/load.ts before this schema runs) maps this onto
+  // tacos_goal_pct on read, so by the time a context reaches skill code only
+  // tacos_goal_pct is populated. Do not write new fields against this key.
+  tacos_target_pct: external_exports.number().positive().optional(),
   tacos_in_bottom_line: external_exports.boolean().optional(),
   implied_tacos_pct: external_exports.number().positive().optional(),
   tacos_reference_line: external_exports.string().optional()
@@ -65787,13 +65793,31 @@ var contextSchema = external_exports.object({
 }).refine(
   (ctx) => {
     if (ctx.management.primary_metric !== "TACOS") return true;
-    return ctx.management.tacos_target_pct !== void 0 || ctx.management.tacos_goal_pct !== void 0;
+    return ctx.management.tacos_goal_pct !== void 0 || ctx.management.tacos_target_pct !== void 0;
   },
   {
-    message: "TACOS-primary accounts must define management.tacos_target_pct or management.tacos_goal_pct",
+    message: "TACOS-primary accounts must define management.tacos_goal_pct (or the deprecated alias management.tacos_target_pct)",
     path: ["management"]
   }
 );
+function normalizeLegacyTacosFields(raw) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+  const obj = raw;
+  const management = obj.management;
+  if (management === null || typeof management !== "object" || Array.isArray(management)) {
+    return raw;
+  }
+  const mgmt = management;
+  if (mgmt.tacos_target_pct === void 0) return raw;
+  const normalizedMgmt = { ...mgmt };
+  if (normalizedMgmt.tacos_goal_pct === void 0) {
+    normalizedMgmt.tacos_goal_pct = normalizedMgmt.tacos_target_pct;
+  }
+  delete normalizedMgmt.tacos_target_pct;
+  return { ...obj, management: normalizedMgmt };
+}
 
 // src/lib/context/load.ts
 async function validateBrandContext(brandSlug, dataDirOverride) {
@@ -65827,6 +65851,7 @@ async function validateBrandContext(brandSlug, dataDirOverride) {
       errors: [`Malformed YAML: ${message}`]
     };
   }
+  parsed = normalizeLegacyTacosFields(parsed);
   const result = contextSchema.safeParse(parsed);
   if (!result.success) {
     const errors = result.error.issues.map((i) => {
@@ -67978,7 +68003,7 @@ function buildScorecards(args) {
     args.framing
   );
   const totalMetric = frameMetric(
-    ctx?.management?.tacos_target_pct,
+    ctx?.management?.tacos_goal_pct,
     "total",
     args.framing
   );
@@ -68013,8 +68038,8 @@ function renderContextBody(ctx, framing) {
       const ad = frameMetric(m.acos_target_pct, "ad", framing);
       items.push(`${ad.label}: <strong>${ad.value}</strong>`);
     }
-    if (m.tacos_target_pct !== void 0) {
-      const total = frameMetric(m.tacos_target_pct, "total", framing);
+    if (m.tacos_goal_pct !== void 0) {
+      const total = frameMetric(m.tacos_goal_pct, "total", framing);
       items.push(`${total.label}: <strong>${total.value}</strong>`);
     }
     if (m.attribution_window_days !== void 0)
@@ -69708,7 +69733,10 @@ var BRAND_FIELD_REGISTRY = {
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: "management.primary_metric" },
   attribution_window_days: { contextPath: "management.attribution_window_days" },
-  tacos_target_pct: { contextPath: "management.tacos_target_pct" },
+  // Canonical field. lib/context/load.ts normalizes the deprecated
+  // management.tacos_target_pct alias onto this path before any consumer
+  // (including this registry) ever sees the parsed context, so
+  // management.tacos_target_pct never resolves here post-load.
   tacos_goal_pct: { contextPath: "management.tacos_goal_pct" },
   posture_stance: { contextPath: "posture.stance" },
   posture_multiplier: { contextPath: "posture.multiplier" },
@@ -70851,12 +70879,15 @@ var BRAND_CONTEXT_MANIFEST = [
     }
   },
   {
-    context_path: "management.tacos_target_pct",
+    // Canonical field (management.tacos_goal_pct). The deprecated alias
+    // management.tacos_target_pct is still accepted on read (normalized by
+    // lib/context/load.ts) but this editor always writes the canonical path.
+    context_path: "management.tacos_goal_pct",
     field: {
-      id: "tacos_target_pct",
-      label: "TACoS target",
-      prompt: "TACoS target for {brand_name}?",
-      help: "Total Advertising Cost of Sales target \u2014 ad spend over TOTAL ordered revenue. Catches over-investment in ads even when ACoS looks clean. Leave empty for ACoS-primary brands that don't track a separate TACoS target.",
+      id: "tacos_goal_pct",
+      label: "TACoS goal",
+      prompt: "TACoS goal for {brand_name}?",
+      help: "Total Advertising Cost of Sales goal: ad spend over TOTAL ordered revenue. Catches over-investment in ads even when ACoS looks clean. Leave empty for ACoS-primary brands that don't track a separate TACoS goal.",
       type: "percent",
       range: { min: 0.01, max: 1 },
       required: false,
@@ -70894,12 +70925,16 @@ var BRAND_CONTEXT_MANIFEST = [
     }
   },
   {
+    // Distinct from management.tacos_goal_pct above (the flagging
+    // threshold): this is the forward-looking sales-planning goal under
+    // `goals`, consumed by mx-monthly-report. Different context_path,
+    // different id so it doesn't collide with the management field above.
     context_path: "goals.tacos_goal_pct",
     field: {
-      id: "tacos_goal_pct",
-      label: "TACoS goal",
+      id: "goals_tacos_goal_pct",
+      label: "TACoS goal (forward-looking)",
       prompt: "TACoS goal (forward-looking) for {brand_name}?",
-      help: "Aspirational TACoS \u2014 distinct from `tacos_target_pct` above which is the threshold for flagging. Use this when the brand's running higher than ideal and you want monthly reports to track the gap between current and target.",
+      help: "Aspirational TACoS, distinct from the management TACoS goal above, which is the threshold for flagging. Use this when the brand's running higher than ideal and you want monthly reports to track the gap between current and target.",
       type: "percent",
       range: { min: 0.01, max: 1 },
       required: false,
@@ -71727,10 +71762,6 @@ function markerFor(s, key) {
   const resolved = s.resolved_fields[key];
   return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
 }
-function maxConfidence(a, b) {
-  const rank = { confirmed: 2, prefilled: 1, gap: 0 };
-  return rank[a] >= rank[b] ? a : b;
-}
 function shortDate(v) {
   return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
 }
@@ -71751,7 +71782,6 @@ var FIELD_LABELS = {
   marketplace: "Marketplace",
   primary_metric: "Primary metric",
   attribution_window_days: "Attribution window (days)",
-  tacos_target_pct: "TACoS target",
   tacos_goal_pct: "TACoS goal",
   posture_stance: "Posture stance",
   posture_multiplier: "Bid-cut intensity",
@@ -71774,7 +71804,6 @@ var FIELD_LABELS = {
 };
 var PCT_FIELDS = /* @__PURE__ */ new Set([
   "acos_target_pct",
-  "tacos_target_pct",
   "tacos_goal_pct",
   "recent_acos_30d"
 ]);
@@ -71944,9 +71973,9 @@ function sectionAccountSnapshot(s) {
   const accounts = ctx?.accounts ?? [];
   const m = ctx?.management ?? {};
   const isTacosPrimary = m.primary_metric === "TACOS";
-  const primaryLabel = isTacosPrimary ? "TACoS target" : "ACoS target";
-  const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
-  const primaryTargetLevel = isTacosPrimary ? maxConfidence(fieldConfidence(s, "tacos_target_pct"), fieldConfidence(s, "tacos_goal_pct")) : fieldConfidence(s, "acos_target_pct");
+  const primaryLabel = isTacosPrimary ? "TACoS goal" : "ACoS target";
+  const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
+  const primaryTargetLevel = isTacosPrimary ? fieldConfidence(s, "tacos_goal_pct") : fieldConfidence(s, "acos_target_pct");
   const scorecards = renderScorecardRow([
     { label: "Accounts", value: formatInt(accounts.length) },
     {
@@ -71986,7 +72015,7 @@ function sectionAccountSnapshot(s) {
       role: a.role ?? "primary"
     }))
   );
-  const targetSetHint = primaryTargetLevel === "gap" ? renderSetHint({ field: isTacosPrimary ? "tacos_target_pct" : "acos_target_pct", brand: s.brand_slug }) : "";
+  const targetSetHint = primaryTargetLevel === "gap" ? renderSetHint({ field: isTacosPrimary ? "tacos_goal_pct" : "acos_target_pct", brand: s.brand_slug }) : "";
   const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
   <span>${markerFor(s, "primary_metric")} Primary metric: ${escapeHtml(String(m.primary_metric ?? "not set yet"))}</span>
   <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetSetHint}</span>
@@ -72470,7 +72499,7 @@ function composeHeadlineJson(s) {
     context_snapshot: ctx ? {
       primary_metric: ctx.management?.primary_metric,
       acos_target_pct: ctx.management?.acos_target_pct,
-      tacos_target_pct: ctx.management?.tacos_target_pct,
+      tacos_goal_pct: ctx.management?.tacos_goal_pct,
       attribution_window_days: ctx.management?.attribution_window_days,
       account_count: ctx.accounts?.length ?? 0,
       account_types: Array.from(new Set((ctx.accounts ?? []).map((a) => a.account_type)))
