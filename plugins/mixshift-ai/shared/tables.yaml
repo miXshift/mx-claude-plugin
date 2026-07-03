@@ -912,6 +912,13 @@ tables:
       SC-specific. mws_items.Brand is AM-set (no CustomBrand in this table).
       SellerName is denormalized and can be stale across rows for the same
       SellerID -- use seller.MerchantAlias as the canonical brand display.
+      One row per SKU, not per ASIN -- a single ASIN commonly has many rows.
+      When joining ASIN to ItemName/Brand/title, select the row with
+      MAX(dtUpdatedOn) per ASIN (windowed ROW_NUMBER or correlated subquery);
+      a naive ASIN join can pick an arbitrary, stale row. Also only holds
+      LISTED SKUs -- some ASINs (e.g. from Brand Analytics catalog reports)
+      are legitimately absent; for those, live titles come from
+      mx-amazon-retail's Catalog Items lookup.
   vendor_items:
     columns:
       - { name: ID, type: "int" }
