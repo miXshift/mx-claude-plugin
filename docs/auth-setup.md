@@ -10,6 +10,8 @@ The interactive flow is **the same for all four install paths** (Cowork personal
 
 Building your own application against the warehouse instead of using the plugin? See [Querying from your own app](#querying-from-your-own-app-direct-api) for the direct HTTP path: mint a token, then post SQL.
 
+Using a different AI client? See [Connecting other AI clients](#connecting-other-ai-clients-cursor-codex) for Cursor and Codex setup against the same MCP server.
+
 ---
 
 ## What sign-in does
@@ -343,6 +345,58 @@ Two helper endpoints let your app introspect the warehouse, both using the same 
 - **Timeout.** `queryTimeoutMs` sets the statement timeout (MySQL `MAX_EXECUTION_TIME`). It defaults to `60000` (60s) and accepts `1000` to `120000` (1s to 120s); values outside that range are rejected.
 - **Result size.** One response is capped at 50,000 rows (`too_many_rows`) and 10 MB serialized (`response_too_large`). The call fails rather than returning a partial slice, so paginate large extracts with `LIMIT`/`OFFSET` or chunk by date or seller.
 - **Stability.** This is raw SQL against the warehouse schema, so your queries couple to that schema. We keep it stable, but if you would rather have a versioned contract than raw SQL, ask us about the named-query surface.
+
+---
+
+## Connecting other AI clients (Cursor, Codex)
+
+The same MCP server the Claude plugin talks to is available to any MCP client that speaks the streamable HTTP transport. The endpoint is:
+
+```
+https://mcp.mixshift.io/mcp
+```
+
+You authenticate with a bearer token. Two ways to get one:
+
+- **Personal use:** open `https://mcp.mixshift.io/login?mode=direct` in a browser, sign in with your MixShift account, and copy the access token it shows. Access tokens last 24 hours; when one expires, mint a new one the same way.
+- **Long-lived or shared setups:** ask your tenant admin for a service credential (see [Service credentials](#service-credentials-unattended-runs)), then mint tokens from it with the `client_credentials` grant as shown in [Querying from your own app](#querying-from-your-own-app-direct-api). Service-minted tokens last about 1 hour, so this path fits tooling that can re-mint, not a paste-once config.
+
+### Cursor
+
+Add the server to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global), with the token in an environment variable:
+
+```json
+{
+  "mcpServers": {
+    "mixshift": {
+      "url": "https://mcp.mixshift.io/mcp",
+      "headers": { "Authorization": "Bearer ${env:MIXSHIFT_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Set `MIXSHIFT_MCP_TOKEN` in the environment Cursor starts from, then toggle the server on under Settings, MCP. Note that Cursor caps the agent at roughly 40 tools across all enabled MCP servers combined; disable tools you do not use if you run several servers.
+
+### Codex (CLI and IDE extension)
+
+Add the server to `~/.codex/config.toml` (the CLI and the IDE extension share this file):
+
+```toml
+[mcp_servers.mixshift]
+url = "https://mcp.mixshift.io/mcp"
+bearer_token_env_var = "MIXSHIFT_MCP_TOKEN"
+```
+
+Set `MIXSHIFT_MCP_TOKEN` in your shell environment. Codex defaults to a 10 second startup timeout and a 60 second per-tool timeout; both are overridable per server (`startup_timeout_sec`, `tool_timeout_sec`) if you run long report pulls. Codex cloud tasks have no MCP configuration surface, so this covers the CLI and IDE only.
+
+### ChatGPT
+
+ChatGPT connectors authenticate with OAuth rather than a pasted token, which requires a MixShift-side client registration. If you want to use the warehouse from ChatGPT, contact MixShift and we will set it up with you.
+
+### Claude clients
+
+Nothing changes. claude.ai custom connectors, Claude Desktop, and the plugin keep working exactly as before; the plugin remains the richest way to use MixShift from Claude because it also ships the skill workflows, not just the raw tools.
 
 ---
 
