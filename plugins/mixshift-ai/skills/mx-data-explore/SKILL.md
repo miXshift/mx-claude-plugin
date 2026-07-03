@@ -298,6 +298,33 @@ You:  business_reports_dpst_sku + mws_items join (SC) or
       the "Business Reports by SKU with Labels" sample query.
 ```
 
+**Join hygiene: `mws_items` holds one row per SKU, not per ASIN.** A single
+ASIN commonly has many SKU rows (different conditions, fulfillment channels,
+or historical listings), so a naive `JOIN mws_items ON ASIN` can pick an
+arbitrary, stale row for the title/Brand/ItemName columns. Worse, batch
+refreshes stamp many rows with the same `dtUpdatedOn`, so even an equality
+join on `MAX(dtUpdatedOn)` can return several rows per ASIN and inflate
+SUMs. Pick exactly one row per ASIN: latest `dtUpdatedOn`, tie-broken on
+`ID`, e.g.:
+
+```sql
+SELECT b.ChildAsin, SUM(b.Amount) AS revenue, mi.Brand, mi.ItemName
+FROM business_reports_dpst_sku b
+JOIN mws_items mi ON mi.ID = (
+  SELECT m2.ID
+  FROM mws_items m2
+  WHERE m2.SellerID = <N> AND m2.ASIN = b.ChildAsin
+  ORDER BY m2.dtUpdatedOn DESC, m2.ID DESC
+  LIMIT 1
+)
+WHERE b.SellerID = <N>
+GROUP BY b.ChildAsin, mi.Brand, mi.ItemName
+```
+
+If an ASIN has no `mws_items` row at all (common for Brand Analytics catalog
+ASINs, which are not necessarily listed), that is expected, not a bug: see
+mx-amazon-retail's Catalog Items lookup for a live title source in that case.
+
 ### Pattern 4 — Custom query
 ```
 User: "Total spend by campaign type last 30 days for Ridgepak"
