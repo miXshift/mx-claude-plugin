@@ -88,16 +88,19 @@ export const BRAND_CONTEXT_MANIFEST: BrandContextEntry[] = [
     },
   },
   {
-    context_path: 'management.tacos_target_pct',
+    // Canonical field (management.tacos_goal_pct). The deprecated alias
+    // management.tacos_target_pct is still accepted on read (normalized by
+    // lib/context/load.ts) but this editor always writes the canonical path.
+    context_path: 'management.tacos_goal_pct',
     field: {
-      id: 'tacos_target_pct',
-      label: 'TACoS target',
-      prompt: 'TACoS target for {brand_name}?',
+      id: 'tacos_goal_pct',
+      label: 'TACoS goal',
+      prompt: 'TACoS goal for {brand_name}?',
       help:
-        'Total Advertising Cost of Sales target — ad spend over TOTAL ' +
+        'Total Advertising Cost of Sales goal: ad spend over TOTAL ' +
         'ordered revenue. Catches over-investment in ads even when ACoS ' +
         'looks clean. Leave empty for ACoS-primary brands that don\'t ' +
-        'track a separate TACoS target.',
+        'track a separate TACoS goal.',
       type: 'percent',
       range: { min: 0.01, max: 1.0 },
       required: false,
@@ -142,16 +145,20 @@ export const BRAND_CONTEXT_MANIFEST: BrandContextEntry[] = [
     },
   },
   {
+    // Distinct from management.tacos_goal_pct above (the flagging
+    // threshold): this is the forward-looking sales-planning goal under
+    // `goals`, consumed by mx-monthly-report. Different context_path,
+    // different id so it doesn't collide with the management field above.
     context_path: 'goals.tacos_goal_pct',
     field: {
-      id: 'tacos_goal_pct',
-      label: 'TACoS goal',
+      id: 'goals_tacos_goal_pct',
+      label: 'TACoS goal (forward-looking)',
       prompt: 'TACoS goal (forward-looking) for {brand_name}?',
       help:
-        'Aspirational TACoS — distinct from `tacos_target_pct` above which ' +
-        "is the threshold for flagging. Use this when the brand's running " +
-        'higher than ideal and you want monthly reports to track the gap ' +
-        'between current and target.',
+        'Aspirational TACoS, distinct from the management TACoS goal ' +
+        'above, which is the threshold for flagging. Use this when the ' +
+        "brand's running higher than ideal and you want monthly reports " +
+        'to track the gap between current and target.',
       type: 'percent',
       range: { min: 0.01, max: 1.0 },
       required: false,

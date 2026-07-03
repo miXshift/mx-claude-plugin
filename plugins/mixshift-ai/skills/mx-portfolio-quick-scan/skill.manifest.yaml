@@ -51,4 +51,5 @@ notes: >
   the sidecar before reading it back here.
   Per-account sidecars belong to the per-account mx-daily-health-check skill, not here.
   TACOS-primary accounts do not require a legacy tacos_reference_line; use
-  management.tacos_target_pct/tacos_goal_pct from the per-account context.
+  management.tacos_goal_pct (canonical; the deprecated management.tacos_target_pct
+  alias still normalizes onto it) from the per-account context.

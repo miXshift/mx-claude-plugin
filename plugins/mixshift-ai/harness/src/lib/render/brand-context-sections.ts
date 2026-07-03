@@ -109,12 +109,6 @@ function markerFor(s: ReportState, key: BrandFieldKey): string {
   return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
 }
 
-/** The stronger of two confidences (confirmed > pre-filled > gap). */
-function maxConfidence(a: Confidence, b: Confidence): Confidence {
-  const rank: Record<Confidence, number> = { confirmed: 2, prefilled: 1, gap: 0 };
-  return rank[a] >= rank[b] ? a : b;
-}
-
 /** Trim an ISO timestamp to YYYY-MM-DD for compact display. */
 function shortDate(v: string): string {
   return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
@@ -160,7 +154,6 @@ const FIELD_LABELS: Record<BrandFieldKey, string> = {
   marketplace: 'Marketplace',
   primary_metric: 'Primary metric',
   attribution_window_days: 'Attribution window (days)',
-  tacos_target_pct: 'TACoS target',
   tacos_goal_pct: 'TACoS goal',
   posture_stance: 'Posture stance',
   posture_multiplier: 'Bid-cut intensity',
@@ -185,7 +178,6 @@ const FIELD_LABELS: Record<BrandFieldKey, string> = {
 /** Percent-style fields render with a trailing %. */
 const PCT_FIELDS = new Set<BrandFieldKey>([
   'acos_target_pct',
-  'tacos_target_pct',
   'tacos_goal_pct',
   'recent_acos_30d',
 ]);
@@ -460,7 +452,6 @@ export function sectionAccountSnapshot(s: ReportState): string {
         management?: {
           primary_metric?: string;
           acos_target_pct?: number;
-          tacos_target_pct?: number;
           tacos_goal_pct?: number;
           attribution_window_days?: number;
         };
@@ -471,16 +462,18 @@ export function sectionAccountSnapshot(s: ReportState): string {
   const m = ctx?.management ?? {};
 
   // TACOS-primary leads with TACOS goal. ACOS proxy only on ACOS-primary.
+  // tacos_goal_pct is the canonical field; the deprecated tacos_target_pct
+  // alias is normalized onto it by lib/context/load.ts before this renderer
+  // ever sees the context, so only tacos_goal_pct needs to be read here.
   const isTacosPrimary = m.primary_metric === 'TACOS';
-  const primaryLabel = isTacosPrimary ? 'TACoS target' : 'ACoS target';
+  const primaryLabel = isTacosPrimary ? 'TACoS goal' : 'ACoS target';
   const primaryValue = isTacosPrimary
-    ? formatWholePct(m.tacos_target_pct ?? m.tacos_goal_pct, 0)
+    ? formatWholePct(m.tacos_goal_pct, 0)
     : formatWholePct(m.acos_target_pct, 0);
   // The primary-target scorecard tracks the metric that actually leads:
-  // tacos_target_pct (with tacos_goal_pct as the documented fallback) on
-  // TACOS-primary accounts, acos_target_pct otherwise.
+  // tacos_goal_pct on TACOS-primary accounts, acos_target_pct otherwise.
   const primaryTargetLevel: Confidence = isTacosPrimary
-    ? maxConfidence(fieldConfidence(s, 'tacos_target_pct'), fieldConfidence(s, 'tacos_goal_pct'))
+    ? fieldConfidence(s, 'tacos_goal_pct')
     : fieldConfidence(s, 'acos_target_pct');
 
   // Scorecard labels are plain text (renderScorecard escapes them). Each
@@ -536,7 +529,7 @@ export function sectionAccountSnapshot(s: ReportState): string {
   // under the title (the scorecards themselves stay plain text).
   const targetSetHint =
     primaryTargetLevel === 'gap'
-      ? renderSetHint({ field: isTacosPrimary ? 'tacos_target_pct' : 'acos_target_pct', brand: s.brand_slug })
+      ? renderSetHint({ field: isTacosPrimary ? 'tacos_goal_pct' : 'acos_target_pct', brand: s.brand_slug })
       : '';
   const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
   <span>${markerFor(s, 'primary_metric')} Primary metric: ${escapeHtml(String(m.primary_metric ?? 'not set yet'))}</span>

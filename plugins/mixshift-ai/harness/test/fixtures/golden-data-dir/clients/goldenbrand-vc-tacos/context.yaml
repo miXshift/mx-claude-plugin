@@ -35,8 +35,12 @@ sources:
   ops_units_field: ShippedUnits
   ops_date_field: DateTime
 
-# management — TACOS-primary. tacos_target_pct is REQUIRED here per the
-# schema refinement (TACOS-primary accounts must define a TACOS target/goal).
+# management — TACOS-primary. A TACOS goal is REQUIRED here per the schema
+# refinement (TACOS-primary accounts must define management.tacos_goal_pct
+# or the deprecated management.tacos_target_pct alias). This fixture
+# intentionally uses the deprecated alias so the golden-fixture + renderer
+# test suites exercise the loader's back-compat normalization on real
+# on-disk YAML, not just synthetic objects.
 management:
   primary_metric: TACOS
   acos_target_pct: 18.0

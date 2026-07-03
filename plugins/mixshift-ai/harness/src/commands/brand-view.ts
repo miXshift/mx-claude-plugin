@@ -275,7 +275,7 @@ function buildScorecards(args: {
   const ctx = args.context as null | {
     management?: {
       acos_target_pct?: number;
-      tacos_target_pct?: number;
+      tacos_goal_pct?: number;
       primary_metric?: string;
     };
   };
@@ -295,7 +295,7 @@ function buildScorecards(args: {
     args.framing,
   );
   const totalMetric = frameMetric(
-    ctx?.management?.tacos_target_pct,
+    ctx?.management?.tacos_goal_pct,
     'total',
     args.framing,
   );
@@ -324,7 +324,7 @@ function renderContextBody(ctx: unknown, framing: 'acos' | 'roas'): string {
       primary_metric?: string;
       acos_target_pct?: number;
       attribution_window_days?: number;
-      tacos_target_pct?: number;
+      tacos_goal_pct?: number;
     };
     accounts?: Array<{
       seller_name: string;
@@ -351,8 +351,8 @@ function renderContextBody(ctx: unknown, framing: 'acos' | 'roas'): string {
       const ad = frameMetric(m.acos_target_pct, 'ad', framing);
       items.push(`${ad.label}: <strong>${ad.value}</strong>`);
     }
-    if (m.tacos_target_pct !== undefined) {
-      const total = frameMetric(m.tacos_target_pct, 'total', framing);
+    if (m.tacos_goal_pct !== undefined) {
+      const total = frameMetric(m.tacos_goal_pct, 'total', framing);
       items.push(`${total.label}: <strong>${total.value}</strong>`);
     }
     if (m.attribution_window_days !== undefined)

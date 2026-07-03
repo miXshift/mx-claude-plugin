@@ -129,18 +129,21 @@ describe('brand-context render — provenance correctness', () => {
     expect(f.recent_spend_30d.level).toBe('prefilled');
     expect(f.hero_asins.level).toBe('prefilled');
     expect(typeof f.recent_spend_30d.fetched_at).toBe('string');
-    // ACOS-primary fixture has no tacos target → gap.
-    expect(f.tacos_target_pct.level).toBe('gap');
+    // ACOS-primary fixture has no tacos goal → gap.
+    expect(f.tacos_goal_pct.level).toBe('gap');
     // Counts are internally consistent.
     const { confirmed, prefilled, gap } = review.confidence;
     expect(confirmed + prefilled + gap).toBe(BRAND_FIELD_KEYS.length);
     expect(prefilled).toBe(5); // the 5 brain-only registry fields
   });
 
-  it('vc-tacos: tacos target is confirmed (TACOS-primary)', async () => {
+  it('vc-tacos: tacos goal is confirmed (TACOS-primary, via the legacy tacos_target_pct alias)', async () => {
     const { review } = await compose('goldenbrand-vc-tacos', 'Northgrove Coffee Roasters');
     const f = review.confidence.fields;
-    expect(f.tacos_target_pct.level).toBe('confirmed');
+    // This fixture's context.yaml still sets management.tacos_target_pct
+    // (the deprecated alias) — proves the loader's normalization makes it
+    // resolve as confirmed under the canonical tacos_goal_pct key.
+    expect(f.tacos_goal_pct.level).toBe('confirmed');
     expect(f.primary_metric.level).toBe('confirmed');
     expect(f.monthly_budget.level).toBe('prefilled');
   });
@@ -294,8 +297,10 @@ describe('brand-context render — set hints on gaps', () => {
   it('sc-acos: a gap field exposes a paste-ready set snippet', async () => {
     const { html } = await compose('goldenbrand-sc-acos', 'Tidewell Hydration');
     expect(html).toContain('rc-set-hint');
-    // The tacos gap snippet is keyed to the field + brand.
-    expect(html).toContain('set tacos_target_pct for goldenbrand-sc-acos');
+    // The tacos gap snippet is keyed to the field + brand (canonical field
+    // name — the hint always points at tacos_goal_pct, never the deprecated
+    // tacos_target_pct alias).
+    expect(html).toContain('set tacos_goal_pct for goldenbrand-sc-acos');
   });
 });
 

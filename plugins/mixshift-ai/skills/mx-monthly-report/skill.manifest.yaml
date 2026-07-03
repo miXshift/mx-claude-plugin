@@ -72,7 +72,8 @@ notes: >
   without MoM comparison data.
   LIB-PT-01 fires only when structural_events includes an active price_test.
   TACOS-primary accounts do not require implied/reference TACOS fields; use
-  management.tacos_target_pct/tacos_goal_pct when present and treat forecast/bridge
+  management.tacos_goal_pct (canonical; the deprecated management.tacos_target_pct
+  alias still normalizes onto it) when present and treat forecast/bridge
   artifacts as runtime inputs until DB-integrated.
 
 # OCL — Objective Level Configuration (the confirm-on-run knobs).

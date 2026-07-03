@@ -10,7 +10,11 @@ import { readFile } from 'node:fs/promises';
 import { parse as parseYaml } from 'yaml';
 import { contextPath } from '../paths/resolve.js';
 import { formatZodError } from '../profile/format-error.js';
-import { contextSchema, type BrandContext } from './schema.js';
+import {
+  contextSchema,
+  normalizeLegacyTacosFields,
+  type BrandContext,
+} from './schema.js';
 
 export interface LoadResult {
   context: BrandContext;
@@ -72,6 +76,13 @@ export async function validateBrandContext(
       errors: [`Malformed YAML: ${message}`],
     };
   }
+
+  // Normalize the deprecated management.tacos_target_pct alias onto the
+  // canonical management.tacos_goal_pct BEFORE validation, so every caller
+  // downstream of this loader only ever sees tacos_goal_pct populated.
+  // Legacy customer context.yaml files that still use tacos_target_pct keep
+  // loading unchanged.
+  parsed = normalizeLegacyTacosFields(parsed);
 
   const result = contextSchema.safeParse(parsed);
   if (!result.success) {

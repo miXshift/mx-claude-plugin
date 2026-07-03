@@ -79,7 +79,7 @@ describe('prepareBrandConfigEdit', () => {
       brandName: 'Summit Labs',
       dataDirOverride: testDir,
     });
-    const tacos = payload.fields.find((f) => f.field.id === 'tacos_target_pct')!;
+    const tacos = payload.fields.find((f) => f.field.id === 'tacos_goal_pct')!;
     expect(tacos.stored_value).toBeUndefined();
     expect(tacos.source).toBe('missing');
     expect(payload.blocking.has_missing_required).toBe(false); // optional
@@ -170,7 +170,7 @@ describe('applyBrandConfigEdit — edit action', () => {
       payload,
       {
         action: 'edit',
-        edits: { acos_target_pct: '32', tacos_target_pct: '18' },
+        edits: { acos_target_pct: '32', tacos_goal_pct: '18' },
       },
       { dataDirOverride: testDir },
     );
@@ -179,9 +179,11 @@ describe('applyBrandConfigEdit — edit action', () => {
     expect(result.changed_field_count).toBe(2);
 
     // Verify on-disk — stored WHOLE (the context.yaml convention), not [0,1].
+    // Edits always write the canonical field, never the deprecated alias.
     const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
     expect(raw).toMatch(/acos_target_pct: 32\b/);
-    expect(raw).toMatch(/tacos_target_pct: 18\b/);
+    expect(raw).toMatch(/tacos_goal_pct: 18\b/);
+    expect(raw).not.toMatch(/tacos_target_pct/);
   });
 
   it('preserves untouched fields (accounts, sources)', async () => {

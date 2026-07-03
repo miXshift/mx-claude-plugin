@@ -368,7 +368,7 @@ function computeSkillReadiness(
 
 function composeHeadlineJson(s: ReportState): Record<string, unknown> {
   const ctx = s.sources.context as
-    | { management?: { primary_metric?: string; acos_target_pct?: number; tacos_target_pct?: number; attribution_window_days?: number }; accounts?: Array<{ seller_id: number; account_type: string }> }
+    | { management?: { primary_metric?: string; acos_target_pct?: number; tacos_goal_pct?: number; attribution_window_days?: number }; accounts?: Array<{ seller_id: number; account_type: string }> }
     | null;
   return {
     schema_version: 1,
@@ -389,7 +389,7 @@ function composeHeadlineJson(s: ReportState): Record<string, unknown> {
       ? {
           primary_metric: ctx.management?.primary_metric,
           acos_target_pct: ctx.management?.acos_target_pct,
-          tacos_target_pct: ctx.management?.tacos_target_pct,
+          tacos_goal_pct: ctx.management?.tacos_goal_pct,
           attribution_window_days: ctx.management?.attribution_window_days,
           account_count: ctx.accounts?.length ?? 0,
           account_types: Array.from(new Set((ctx.accounts ?? []).map((a) => a.account_type))),
