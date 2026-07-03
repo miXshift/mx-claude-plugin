@@ -1,6 +1,6 @@
 {
   "name": "mixshift-ai",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "MixShift AI skills for Amazon advertising and retail operations. The MixShift warehouse is a MySQL database (legacy schema: dashamazon) covering Sponsored Ads (SP/SB/SD), DSP, Seller Central + Vendor Central ops revenue, orders, inventory, and dimensional catalog. Ships: mx-data-explore (ad-hoc querying + CSV export), live Amazon API skills (SP-API reports, retail lookups, AMC and DSP analytics, and Amazon Ads reads plus audited preview-gated writes), PPC optimization skills (daily health checks, bid management, search term negation, harvest, monthly reporting), onboarding commands (welcome, brand discover/add), brand-context management (brand setup, render-context, config, enrich, merge-delta), and per-skill OCL (Objective Level Configuration) confirm-on-run flow. Warehouse access is read-only; Amazon Ads writes preview first and require explicit confirmation. Routed through the bundled harness; credentials saved locally at ~/.mixshift/auth/credentials.",
   "author": {
     "name": "MixShift"

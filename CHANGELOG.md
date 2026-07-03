@@ -3,6 +3,38 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.6.3
+
+First-run fixes learned from the first live onboarding calls, clearer setup
+language, and a sign-in attribution fix.
+
+### Added
+
+- Setup now checks for Node.js before running anything else. On a machine
+  without Node, plugin commands previously stalled with no error; the welcome
+  flow now spots the gap and walks you through installing Node 20 or newer for
+  your platform.
+- The Claude Code install guide gains a permission-mode step, so your first
+  session is not interrupted by a wall of approval prompts.
+- Brand discovery results now render as a proper table in chat. The brand list
+  stays readable in Cowork instead of collapsing into unaligned text.
+
+### Changed
+
+- Setup and onboarding copy now says "brand setup" and "brand context"
+  throughout. (Some earlier screens called this a "cold start".)
+- The Cowork install guide is more resilient: clearer marketplace steps, new
+  troubleshooting entries for a missing plugin menu and add-marketplace
+  failures, and a note that the sign-in approval page may say "return to your
+  CLI" (that just means: come back to the chat and say you are done).
+
+### Fixed
+
+- Usage diagnostics now correctly record the work email you provide at
+  sign-in. Previously only the shared account login was recorded, so support
+  could not tell which teammate hit a problem. (This was always part of the
+  disclosed diagnostics; see the privacy doc.)
+
 ## 0.6.2
 
 A follow-up to 0.6.1: the sign-in network-block guidance now covers personal Pro and
