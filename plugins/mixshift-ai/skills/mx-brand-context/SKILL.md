@@ -189,21 +189,22 @@ The brain is the SOURCE for taxonomy + enrichment. The ceremony confirms those i
 
 **HARD GATE (brand bootstrapped?)** Before anything else, confirm the brand exists in the registry with at least one account (it was bootstrapped via `mixshift brand add` / discovered, and ideally keyed so the brain fetched). Check `mixshift brand context resolve <brand-slug> --json` (or `mixshift brand list`): if the brand is unknown or has no accounts, **STOP IMMEDIATELY** and tell the operator to run `mixshift brand add <brand-slug>` first. Do not proceed with a partial dataset. (If the registry has the brand but `brand brain status` shows the brain never fetched, continue: the baselines still run, but note that taxonomy/enrichment will be sparse until `mixshift brand brain fetch <brand-slug>` completes.)
 
-**1b. Load the historical baselines.** Before running prefetch, tell the
-operator/AM up front that this background data fetch can take several
-minutes (it runs two rounds of queries across up to 24 months of history)
-and that you will narrate progress rather than go quiet. Then run the
-harness's prefetch command, which executes the baseline SQL declared in
-`skill.manifest.yaml`:
+**1b. Load the historical baselines.** The prefetch is a single blocking
+command that commonly takes several minutes (it runs two rounds of queries
+across up to 24 months of history), and you cannot post updates while a
+command is executing. So set the expectation BEFORE you start: tell the
+operator/AM there will be a quiet stretch of a few minutes and that you
+will report back the moment it finishes. Then run the harness's prefetch
+command, which executes the baseline SQL declared in `skill.manifest.yaml`:
 
 ```bash
 mixshift prefetch --brand <brand-slug> --skill mx-brand-context --date <YYYY-MM-DD>
 ```
 
-While it runs, give periodic progress updates rather than waiting in
-silence until it completes (for example, note when Round 1 finishes and
-Round 2 starts). Silence during a multi-minute fetch reads as broken even
-when the pull is working normally.
+When the command returns, confirm completion right away and summarize what
+came back (which rounds ran, any queries that returned nothing) rather than
+moving on silently; if it fails partway, say which round or query failed.
+A multi-minute wait only reads as broken when it arrives unannounced.
 
 The runner executes the baseline queries in two rounds (see manifest `batch_plan`):
 - **Round 1:** `CS-02..CS-15` covering revenue baselines, ACOS history, VC sub-brand/item-group structure + ASP, brand-vs-nonbrand split, spend trend.
