@@ -119,6 +119,25 @@ Minimum shell fields:
 
 If SellerID or account type is unknown, pause before prefetch and ask the AM. Do not invent those fields. If `context.yaml` already exists, do not overwrite — continue with the existing context.
 
+### Picking the brand when the tenant has many (top N + "show all")
+
+If the operator asks to set up brand context without naming a specific
+brand, resolve it via `mixshift brand list` (or `mixshift brand key list` if
+the tenant curates a key-brands subset, see `mx-data-explore`). When the
+tenant has a large registry (roughly 60+ brands), do NOT dump the full list
+into chat. Instead:
+
+1. Present the top N (10-15 is a reasonable default) ranked by recent
+   revenue or ad spend, whichever the registry surfaces more readily.
+2. End the list with an explicit offer to show the rest: *"Those are your
+   top 12 brands by spend. Want to see the full list of all 64, or is one of
+   these the one you meant?"*
+3. If the operator names a brand not in the shown subset, resolve it the
+   normal fuzzy way rather than insisting they pick from the top N.
+
+This keeps the common case (the brand they mean is usually a top brand)
+fast, while the full list stays one request away.
+
 ---
 
 ## Phase 0.5 — Web & Social Scrub
@@ -170,11 +189,22 @@ The brain is the SOURCE for taxonomy + enrichment. The ceremony confirms those i
 
 **HARD GATE (brand bootstrapped?)** Before anything else, confirm the brand exists in the registry with at least one account (it was bootstrapped via `mixshift brand add` / discovered, and ideally keyed so the brain fetched). Check `mixshift brand context resolve <brand-slug> --json` (or `mixshift brand list`): if the brand is unknown or has no accounts, **STOP IMMEDIATELY** and tell the operator to run `mixshift brand add <brand-slug>` first. Do not proceed with a partial dataset. (If the registry has the brand but `brand brain status` shows the brain never fetched, continue: the baselines still run, but note that taxonomy/enrichment will be sparse until `mixshift brand brain fetch <brand-slug>` completes.)
 
-**1b. Load the historical baselines.** Run the harness's prefetch command, which executes the baseline SQL declared in `skill.manifest.yaml`:
+**1b. Load the historical baselines.** The prefetch is a single blocking
+command that commonly takes several minutes (it runs two rounds of queries
+across up to 24 months of history), and you cannot post updates while a
+command is executing. So set the expectation BEFORE you start: tell the
+operator/AM there will be a quiet stretch of a few minutes and that you
+will report back the moment it finishes. Then run the harness's prefetch
+command, which executes the baseline SQL declared in `skill.manifest.yaml`:
 
 ```bash
 mixshift prefetch --brand <brand-slug> --skill mx-brand-context --date <YYYY-MM-DD>
 ```
+
+When the command returns, confirm completion right away and summarize what
+came back (which rounds ran, any queries that returned nothing) rather than
+moving on silently; if it fails partway, say which round or query failed.
+A multi-minute wait only reads as broken when it arrives unannounced.
 
 The runner executes the baseline queries in two rounds (see manifest `batch_plan`):
 - **Round 1:** `CS-02..CS-15` covering revenue baselines, ACOS history, VC sub-brand/item-group structure + ASP, brand-vs-nonbrand split, spend trend.
@@ -495,6 +525,28 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 - **Management history matters.** If the account changed management or strategy mid-period, treat trend signals as unreliable until sufficient post-transition data accumulates.
 - **Settlement application (VC accounts):** Use weighted formula for MTD ACOS; do not apply full improvement_pts uniformly. The weighting comes from the brain's `capture_rate_calibration` (settlement curve + improvement points).
 - **VC monthly metric coverage:** Verify `sellermonthmetric` is populated. If empty, monthly reports must use raw `campaignmetric` aggregates.
+- **FBM/FBA fulfillment-channel artifact (explain, don't alarm):** in the
+  warehouse inventory tables, `FulfillmentChannel` values are the SP-API
+  region (`AMAZON_NA` / `AMAZON_EU` / `AMAZON_FE`, plus an occasional
+  `Amazon` or blank bucket that carries real FBA quantity) PLUS a `DEFAULT`
+  bucket that means merchant-fulfilled (FBM/MFN): FBA quantity is empty for
+  those rows by design, and MFN quantity lives in `mws_items` instead. The
+  literal value `'AFN'` matches no rows; it is dead from the old MWS schema
+  and will silently return an empty result if anything filters on it. If a
+  query or a user's own filter comes back empty because it looked for
+  `'AFN'`, or FBA quantity looks blank on `DEFAULT` rows, this is a known
+  warehouse artifact, not missing or corrupted data. Explain it in those
+  terms rather than flagging it as a data-quality gap.
+- **Activations without inventory (explain, don't alarm):** a brand can show
+  live advertising activity (impressions, clicks, spend) on an ASIN with no
+  matching inventory rows for the same window. This is not data corruption
+  or a broken join. Common causes include FBM listings (inventory tracked
+  outside the FBA inventory tables), a stockout that hasn't rolled through
+  the inventory snapshot yet, or a variant/child ASIN whose inventory rolls
+  up under a different parent record. Treat a spend-without-inventory finding
+  as a normal pattern to note (and cross-reference against Phase 0 stockout
+  context per the interpretation rule above), not as evidence something is
+  broken.
 
 ---
 

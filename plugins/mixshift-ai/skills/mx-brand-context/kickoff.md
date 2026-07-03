@@ -51,7 +51,16 @@ Ask in order. "I don't know" is a valid answer. Note it and move on.
 
 ## Step 3 - What I'll figure out on my own
 
-Tell the AM you do not need them for this part.
+Tell the AM you do not need them for this part. Also set expectations on
+timing before you start: the background data fetch (web/social scrub plus
+the historical baseline queries) commonly takes several minutes, and the
+baseline prefetch is one blocking command you cannot narrate mid-run. Say
+so up front, for example "The next step pulls up to 24 months of history
+and takes a few minutes; I'll report back as soon as it finishes." Give
+updates between steps where the work is split across separate lookups (the
+web/social scrub is), and confirm completion as soon as the prefetch
+returns. An unannounced multi-minute silence reads as broken even when the
+fetch is working normally.
 
 **Web & social scrub**
 
