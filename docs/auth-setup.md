@@ -392,13 +392,13 @@ Set `MIXSHIFT_MCP_TOKEN` in your shell environment. Codex defaults to a 10 secon
 
 ### ChatGPT
 
-ChatGPT connectors authenticate with OAuth rather than a pasted token, and the MixShift server supports ChatGPT's automatic registration, so setup is one URL and a sign-in:
+ChatGPT apps (the section formerly called connectors) authenticate with OAuth rather than a pasted token, and the MixShift server supports ChatGPT's automatic registration, so setup is one URL and a sign-in:
 
-1. In ChatGPT, open Settings, then Connectors. Under Advanced, enable Developer mode (available on Pro, Plus, Business, Enterprise, and Education plans; on workspace plans an admin has to allow custom connectors first).
-2. Create a new connector and enter the server URL `https://mcp.mixshift.io/mcp` with authentication set to OAuth.
+1. In ChatGPT on the web, open Settings, then Apps. Under Advanced settings, enable Developer mode (available on Pro, Plus, Business, Enterprise, and Education plans; on workspace plans an owner has to allow custom apps first under Permissions and Roles).
+2. Back in Apps, click Create app. Enter the server URL `https://mcp.mixshift.io/mcp` with authentication set to OAuth.
 3. ChatGPT opens the MixShift sign-in page. Sign in with your MixShift account and approve. Done.
 
-Notes: ChatGPT limits each tool call to roughly 45 to 60 seconds, so very long report pulls can time out; ask for smaller windows if that happens. Custom connectors work in regular chats via developer mode; deep research mode uses a different connector shape and is not supported.
+Notes: ChatGPT limits each tool call to roughly 45 to 60 seconds, so very long report pulls can time out; ask for smaller windows if that happens. Custom apps work in regular chats via developer mode; deep research mode uses a different app shape and is not supported.
 
 ### Claude clients
 
