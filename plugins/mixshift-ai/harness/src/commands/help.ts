@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadCredentials } from '../lib/auth/credentials.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { NO_ACCOUNT_CHAT } from '../lib/onboarding.js';
 
 interface RootOptions {
   json?: boolean;
@@ -262,6 +263,8 @@ function renderHelpChat(args: {
     L.push(
       'You are not signed in yet. Start by saying **"sign me in"**, then anything below works.',
     );
+    L.push('');
+    L.push(NO_ACCOUNT_CHAT);
   }
   L.push('');
 

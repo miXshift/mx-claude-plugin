@@ -29,6 +29,7 @@ import { loadCredentials, getValidAccessToken } from '../lib/auth/credentials.js
 import type { Credentials } from '../lib/auth/schema.js';
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
+import { REGISTRATION_URL } from '../lib/onboarding.js';
 import {
   checkNamedPackCompat,
   type NamedPackResult,
@@ -315,6 +316,9 @@ function renderFull(r: DoctorFullReport): string {
   out.push('Auth:');
   if (!r.auth.signedIn) {
     out.push('  not signed in. Run `mixshift auth login`.');
+    out.push(
+      `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`,
+    );
   } else if (r.auth.kind === 'interactive') {
     out.push(
       `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? '?'}`,

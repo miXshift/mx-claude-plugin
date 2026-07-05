@@ -74192,6 +74192,15 @@ Wrote ${result.wrote_skills.length} skill block(s): ${result.wrote_skills.join("
   });
 }
 
+// src/lib/onboarding.ts
+var REGISTRATION_URL = "https://www.mydashapplications.com/auth/registration";
+var GETTING_STARTED_URL = "https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift";
+var DATA_TIMING_URL = "https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift";
+var NO_ACCOUNT_CHAT = "**No MixShift account yet?** Create one at " + REGISTRATION_URL + ", then connect your Amazon accounts and activate ads + retail data (walkthrough: " + GETTING_STARTED_URL + "). Most accounts are fully populated within 24-48 hours of activation; large catalogs can take longer (" + DATA_TIMING_URL + "). MixShift emails you when your data is ready; come back and sign in then.";
+var NO_ACCOUNT_TERMINAL = "No MixShift account yet? Create one first, then connect your Amazon\naccounts and activate ads + retail data:\n  " + REGISTRATION_URL + "\nWalkthrough:\n  " + GETTING_STARTED_URL + "\nMost accounts are fully populated within 24-48 hours of activation\n(large catalogs can take longer). MixShift emails you when your data\nis ready; come back and sign in then.\n";
+var DATA_TIMING_CHAT = "After activation, most accounts are fully populated within 24-48 hours; large catalogs can take longer (" + DATA_TIMING_URL + "). MixShift emails you when your data is ready to work with.";
+var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated within 24-48 hours\n(large catalogs can take longer). MixShift emails you when your data\nis ready. Details:\n  " + DATA_TIMING_URL + "\n";
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
@@ -74260,7 +74269,7 @@ function registerBrandCommands(program3) {
         }
         if (mode === "active" && counts.active === 0 && counts.total === 0) {
           process.stdout.write(
-            "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n"
+            "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
           );
           return;
         }
@@ -74276,7 +74285,7 @@ on any of your seller accounts yet. Head to the Account Manager view:
 Onboarding help doc:
   https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift
 
-`
+` + DATA_TIMING_TERMINAL + "\n"
           );
           return;
         }
@@ -74534,7 +74543,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
       }
       if (counts.active === 0 && counts.total === 0) {
         process.stdout.write(
-          "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n"
+          "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
         );
         return;
       }
@@ -77447,7 +77456,8 @@ data in MixShift for your brands. Head to the Account Manager view:
 
 Onboarding help doc:
   https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift
-` : counts.active > 5 ? `
+
+` + DATA_TIMING_TERMINAL : counts.active > 5 ? `
 With ${counts.active} active brand(s), you probably focus on a smaller set day-to-day.
 Mark them as "key" so portfolio skills default to those instead of all ${counts.active}:
   mixshift brand key add <name-or-slug>   (accepts display names, acronyms, slugs)
@@ -79847,6 +79857,10 @@ function renderWelcome(args) {
   lines.push("  you use to log into MixShift). Your credentials stay in your");
   lines.push("  browser; the plugin only holds a token after.");
   lines.push("");
+  for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split("\n")) {
+    lines.push(l ? `  ${l}` : l);
+  }
+  lines.push("");
   lines.push("  In Claude Code / Cowork (recommended):");
   lines.push("    I'll get you a sign-in link in a moment \u2014 no need to say anything.");
   lines.push("");
@@ -79893,6 +79907,8 @@ function renderWelcomeChat(args) {
       lines.push("This means you haven't activated data in MixShift for your brands. Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager");
       lines.push("");
       lines.push("Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift");
+      lines.push("");
+      lines.push(DATA_TIMING_CHAT);
       lines.push("");
       return lines.join("\n");
     }
@@ -80008,6 +80024,8 @@ function renderWelcomeChat(args) {
   lines.push(
     "Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account (the same email + password you use to log into MixShift). Your credentials stay in your browser; the plugin only holds a token after."
   );
+  lines.push("");
+  lines.push(NO_ACCOUNT_CHAT);
   lines.push("");
   lines.push("I'll set up a sign-in link for you right after this. (Or run `mixshift auth login` in a terminal yourself.)");
   lines.push("");
@@ -84682,6 +84700,9 @@ function renderFull(r) {
   out.push("Auth:");
   if (!r.auth.signedIn) {
     out.push("  not signed in. Run `mixshift auth login`.");
+    out.push(
+      `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`
+    );
   } else if (r.auth.kind === "interactive") {
     out.push(
       `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? "?"}`
@@ -84960,6 +84981,8 @@ function renderHelpChat(args) {
     L.push(
       'You are not signed in yet. Start by saying **"sign me in"**, then anything below works.'
     );
+    L.push("");
+    L.push(NO_ACCOUNT_CHAT);
   }
   L.push("");
   for (const group of CATALOG) {
