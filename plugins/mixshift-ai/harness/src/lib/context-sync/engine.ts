@@ -36,6 +36,7 @@ import {
 } from './local.js';
 import {
   loadState,
+  resolveLedgerIdentity,
   saveState,
   type ContextSyncDocState,
   type ContextSyncState,
@@ -83,6 +84,12 @@ export interface EngineOptions {
    * the engine fetches the manifest itself.
    */
   manifest?: WireManifestBrand[];
+  /**
+   * Ledger identity override (tests). Defaults to resolveLedgerIdentity()
+   * over the stored credentials; explicit null = "no identity available"
+   * (identity checks are skipped).
+   */
+  identity?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +190,11 @@ async function buildDocPairs(
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
 
   const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
-  const state = await loadState(brandSlug, options.dataDirOverride);
+  const identity =
+    options.identity !== undefined
+      ? options.identity
+      : await resolveLedgerIdentity(options.dataDirOverride);
+  const state = await loadState(brandSlug, options.dataDirOverride, identity);
 
   const localByKey = new Map<DocKey, LocalDoc>(localDocs.map((d) => [d.key, d]));
   const manifestByKey = new Map<DocKey, WireManifestDoc>();
@@ -490,6 +501,11 @@ async function pullOneDoc(
  * ledger entry. `baseRevision` undefined = unconditional create-or-conflict
  * (the local-only / migrate path). When `force` is set, a revision conflict
  * is retried exactly once against the conflict envelope's server revision.
+ *
+ * `force` may ONLY be set for docs whose computed verdict was 'diverged' or
+ * 'server-deleted' (the states --force exists to resolve). A 'local-ahead'
+ * doc that 409s mid-flight — the server moved after the manifest snapshot —
+ * must surface as a conflict even under --force, never be steamrolled.
  */
 async function pushOneDoc(
   brandSlug: string,
@@ -650,7 +666,9 @@ export async function push(
         // local-ahead pushes against the last-synced revision so the server
         // can detect a concurrent move; local-only omits base_revision (the
         // server creates, or reports a conflict when someone else created
-        // different content first).
+        // different content first). NEVER force-retried: --force scopes to
+        // diverged/server-deleted docs, so a 409 here (server moved after
+        // the manifest snapshot) surfaces as a conflict.
         const baseRevision =
           pair.verdict === 'local-ahead' ? pair.state?.server_revision : undefined;
         const { report, stateEntry } = await pushOneDoc(
@@ -658,7 +676,7 @@ export async function push(
           pair,
           client,
           baseRevision,
-          options.force ?? false,
+          false,
         );
         reports.push(report);
         if (stateEntry) {
@@ -820,11 +838,15 @@ export async function migrate(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const brands = options.brands ?? (await listLocalBrands(options.dataDirOverride));
+  const identity =
+    options.identity !== undefined
+      ? options.identity
+      : await resolveLedgerIdentity(options.dataDirOverride);
 
   const summaries: MigrateBrandSummary[] = [];
   for (const brandSlug of brands) {
     const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
-    const state = await loadState(brandSlug, options.dataDirOverride);
+    const state = await loadState(brandSlug, options.dataDirOverride, identity);
     const reports: DocActionReport[] = [];
     let stateChanged = false;
 

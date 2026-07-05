@@ -245,7 +245,7 @@ describe('computeStatus verdict matrix', () => {
     await saveState(
       brand,
       {
-        schema: 1,
+        schema: 2,
         docs: {
           context: stateEntry(1, VALID_CONTEXT_YAML),
           narrative: stateEntry(1, 'original\n'),
@@ -316,7 +316,7 @@ describe('pull', () => {
     server.set(brand, 'corpus/tone.md', 'Friendly.\n', { revision: 1 });
     await saveState(
       brand,
-      { schema: 1, docs: { brain: stateEntry(1, 'facts: []\n') } },
+      { schema: 2, docs: { brain: stateEntry(1, 'facts: []\n') } },
       testDir,
     );
 
@@ -344,7 +344,7 @@ describe('pull', () => {
     server.set(brand, 'context', SCHEMA_VIOLATING_CONTEXT_YAML, { revision: 2 });
     await saveState(
       brand,
-      { schema: 1, docs: { context: stateEntry(1, VALID_CONTEXT_YAML) } },
+      { schema: 2, docs: { context: stateEntry(1, VALID_CONTEXT_YAML) } },
       testDir,
     );
 
@@ -382,7 +382,7 @@ describe('pull', () => {
     server.set(brand, 'narrative', 'server edit\n', { revision: 2 });
     await saveState(
       brand,
-      { schema: 1, docs: { narrative: stateEntry(1, 'original\n') } },
+      { schema: 2, docs: { narrative: stateEntry(1, 'original\n') } },
       testDir,
     );
 
@@ -400,7 +400,7 @@ describe('pull', () => {
     server.set(brand, 'narrative', 'server edit\n', { revision: 2 });
     await saveState(
       brand,
-      { schema: 1, docs: { narrative: stateEntry(1, 'original\n') } },
+      { schema: 2, docs: { narrative: stateEntry(1, 'original\n') } },
       testDir,
     );
 
@@ -430,7 +430,7 @@ describe('push', () => {
     server.set(brand, 'narrative', 'original\n', { revision: 1 });
     await saveState(
       brand,
-      { schema: 1, docs: { narrative: stateEntry(1, 'original\n') } },
+      { schema: 2, docs: { narrative: stateEntry(1, 'original\n') } },
       testDir,
     );
 
@@ -485,7 +485,7 @@ describe('push', () => {
     ];
     await saveState(
       brand,
-      { schema: 1, docs: { narrative: stateEntry(3, 'original\n') } },
+      { schema: 2, docs: { narrative: stateEntry(3, 'original\n') } },
       testDir,
     );
 
@@ -514,7 +514,7 @@ describe('push', () => {
     server.set(brand, 'config', 'skills: {theirs: 2}\n', { revision: 2 });
     await saveState(
       brand,
-      { schema: 1, docs: { config: stateEntry(1, 'skills: {}\n') } },
+      { schema: 2, docs: { config: stateEntry(1, 'skills: {}\n') } },
       testDir,
     );
 
@@ -561,7 +561,7 @@ describe('sync', () => {
     await saveState(
       brand,
       {
-        schema: 1,
+        schema: 2,
         docs: {
           brain: stateEntry(1, 'facts: []\n'),
           narrative: stateEntry(1, 'original\n'),

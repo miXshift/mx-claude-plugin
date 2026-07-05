@@ -21,7 +21,7 @@ afterEach(async () => {
 
 function sampleState(): ContextSyncState {
   return {
-    schema: 1,
+    schema: 2,
     docs: {
       context: {
         server_revision: 4,

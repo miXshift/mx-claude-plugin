@@ -17,7 +17,7 @@ import {
   type BrandActionResult,
   type EngineOptions,
 } from '../lib/context-sync/engine.js';
-import { listLocalBrands } from '../lib/context-sync/local.js';
+import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
 import type { DocActionReport, WireManifestBrand } from '../lib/context-sync/types.js';
 import { track, EventName, type EventNameValue } from '../lib/telemetry/index.js';
 
@@ -169,6 +169,16 @@ export function registerContextCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const t0 = Date.now();
       try {
+        // Migrate seeds the org store FROM local brand dirs, so an explicit
+        // --brand must exist locally — a typo is an error, not a no-op.
+        if (opts.brand && !(await brandDirExists(opts.brand, root.dataDir))) {
+          emitError(
+            `brand '${opts.brand}' has no local directory under ` +
+              '~/.mixshift/clients/ — migrate seeds the org store from local brand dirs',
+            root,
+          );
+          return;
+        }
         const brands = opts.brand
           ? [opts.brand]
           : await listLocalBrands(root.dataDir);
@@ -258,6 +268,16 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
     const root = cmd.optsWithGlobals<RootOptions>();
     const t0 = Date.now();
     try {
+      // --force overwrites diverged docs wholesale; unscoped it would sweep
+      // EVERY local brand in one command. Require an explicit blast radius.
+      if (spec.hasForce && opts.force && !opts.brand) {
+        emitError(
+          `--force requires --brand <slug>: forced ${spec.name} resolution is ` +
+            'scoped to one brand at a time.',
+          root,
+        );
+        return;
+      }
       const setup = await resolveBrandsAndManifest(opts.brand, root);
       if (!setup) return;
       const { brands, engineOptions } = setup;
@@ -356,6 +376,22 @@ async function resolveBrandsAndManifest(
   if (!manifest.ok) {
     emitError(manifest.friendly, root);
     return null;
+  }
+
+  // A --brand slug that exists neither locally nor in the manifest is a
+  // typo, not an empty brand — error out instead of printing "(no syncable
+  // docs)" and exiting 0.
+  if (brandOpt) {
+    const knownLocally = await brandDirExists(brandOpt, root.dataDir);
+    const knownOnServer = manifest.brands.some((b) => b.brand_slug === brandOpt);
+    if (!knownLocally && !knownOnServer) {
+      emitError(
+        `brand '${brandOpt}' not found locally or in the org store — check the ` +
+          'slug (run `mixshift context status` for the known brands)',
+        root,
+      );
+      return null;
+    }
   }
 
   const engineOptions: EngineOptions = {

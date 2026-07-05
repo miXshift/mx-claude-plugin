@@ -6,6 +6,13 @@
  * last successful sync. The engine compares against it to distinguish
  * "locally edited" from "server moved" (see engine.ts verdict matrix).
  *
+ * The ledger is TENANT-BOUND: revisions are small integers scoped to one
+ * server-side store, so a ledger recorded against org A compared to org B's
+ * manifest can coincide revision-for-revision and silently misclassify
+ * either side. `identity` records the server+tenant the entries belong to;
+ * on a mismatch the ledger is treated as empty (docs degrade to untracked —
+ * hash-identity self-heal or diverged, fail safe).
+ *
  * Mirrors the pricing-handles ledger pattern: BEST-EFFORT throughout.
  * State loss degrades a future status to 'diverged' at worst — it must
  * never fail a sync. loadState returns a safe default on missing/corrupt
@@ -14,6 +21,7 @@
 
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { loadCredentials } from '../auth/credentials.js';
 import { contextSyncStatePath } from '../paths/resolve.js';
 
 export interface ContextSyncDocState {
@@ -26,21 +34,62 @@ export interface ContextSyncDocState {
 }
 
 export interface ContextSyncState {
-  schema: 1;
+  schema: 2;
+  /**
+   * Server + tenant identity the entries were recorded against (see
+   * resolveLedgerIdentity). Absent on schema-1 files written before the
+   * field existed — those are trusted as-is and adopt the current identity
+   * on the next save.
+   */
+  identity?: string;
   docs: Record<string, ContextSyncDocState>;
 }
 
-export function emptyState(): ContextSyncState {
-  return { schema: 1, docs: {} };
+export function emptyState(identity?: string | null): ContextSyncState {
+  return { schema: 2, ...(identity ? { identity } : {}), docs: {} };
+}
+
+/**
+ * Resolve the server+tenant identity the ledger is bound to, WITHOUT a
+ * network call: `<api_base>#<user_id>` from the stored datahub credentials
+ * (interactive sign-ins), else `<api_base>#<client_id>` from the service
+ * block (unattended installs) — the same precedence the sync client uses
+ * for api_base. Returns null when no credentials exist or the file is
+ * unreadable; identity checks are skipped in that case (the sync client
+ * fails with its own friendly error long before a verdict matters).
+ */
+export async function resolveLedgerIdentity(
+  dataDirOverride?: string,
+): Promise<string | null> {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    if (credentials?.datahub) {
+      return `${credentials.datahub.api_base}#${credentials.datahub.user_id}`;
+    }
+    if (credentials?.service) {
+      return `${credentials.service.api_base}#${credentials.service.client_id}`;
+    }
+    return null;
+  } catch {
+    // Malformed credentials are the auth layer's problem, not the ledger's.
+    return null;
+  }
 }
 
 /**
  * Load the ledger for one brand. Missing file, unreadable file, malformed
  * JSON, or a wrong shape all return the empty default — never throws.
+ *
+ * `currentIdentity` (from resolveLedgerIdentity) binds the read: when the
+ * stored identity differs, the ledger belongs to another server/tenant and
+ * is treated as EMPTY for verdict purposes; the identity is overwritten on
+ * the next save. A ledger without a stored identity (schema-1 era) or a
+ * null/undefined currentIdentity skips the check.
  */
 export async function loadState(
   brandSlug: string,
   dataDirOverride?: string,
+  currentIdentity?: string | null,
 ): Promise<ContextSyncState> {
   try {
     const raw = await readFile(contextSyncStatePath(brandSlug, dataDirOverride), 'utf8');
@@ -48,11 +97,22 @@ export async function loadState(
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
-      (parsed as ContextSyncState).schema !== 1 ||
+      ((parsed as { schema?: unknown }).schema !== 1 &&
+        (parsed as { schema?: unknown }).schema !== 2) ||
       typeof (parsed as ContextSyncState).docs !== 'object' ||
       (parsed as ContextSyncState).docs === null
     ) {
-      return emptyState();
+      return emptyState(currentIdentity);
+    }
+    const storedIdentity = (parsed as { identity?: unknown }).identity;
+    if (
+      typeof storedIdentity === 'string' &&
+      typeof currentIdentity === 'string' &&
+      storedIdentity !== currentIdentity
+    ) {
+      // Different server/tenant: org A's revisions say nothing about org
+      // B's manifest. Fail safe — verdicts run as if untracked.
+      return emptyState(currentIdentity);
     }
     const docs: Record<string, ContextSyncDocState> = {};
     for (const [key, value] of Object.entries((parsed as ContextSyncState).docs)) {
@@ -70,9 +130,11 @@ export async function loadState(
         };
       }
     }
-    return { schema: 1, docs };
+    const identity =
+      currentIdentity ?? (typeof storedIdentity === 'string' ? storedIdentity : undefined);
+    return { schema: 2, ...(identity ? { identity } : {}), docs };
   } catch {
-    return emptyState();
+    return emptyState(currentIdentity);
   }
 }
 
