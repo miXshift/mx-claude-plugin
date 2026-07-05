@@ -21,8 +21,8 @@
  * (commands/context.ts) does all formatting.
  */
 
-import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { contextSchema, normalizeLegacyTacosFields } from '../context/schema.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
@@ -376,11 +376,24 @@ function reportFor(pair: DocPair, action: DocActionReport['action'], detail?: st
   };
 }
 
+/**
+ * Atomic write: tmp file + rename in the target directory. The tmp BASENAME
+ * is dot-prefixed so corpora enumeration can never pick a half-written file
+ * up (a bare `<name>.tmp.<pid>.<ts>` leftover would be treated as a corpus
+ * doc and PUSHED ORG-WIDE on the next push); on any failure the tmp is
+ * best-effort unlinked before the error propagates.
+ */
 async function writeFileAtomic(path: string, content: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile(tmpPath, content, 'utf8');
-  await rename(tmpPath, path);
+  const dir = dirname(path);
+  await mkdir(dir, { recursive: true });
+  const tmpPath = join(dir, `.${basename(path)}.tmp.${process.pid}.${Date.now()}`);
+  try {
+    await writeFile(tmpPath, content, 'utf8');
+    await rename(tmpPath, path);
+  } catch (err) {
+    await unlink(tmpPath).catch(() => {});
+    throw err;
+  }
 }
 
 /**
@@ -424,8 +437,13 @@ async function pullOneDoc(
     };
   }
 
-  const path = localPathForKey(brandSlug, pair.key, dataDirOverride);
-  await writeFileAtomic(path, doc.content);
+  try {
+    const path = localPathForKey(brandSlug, pair.key, dataDirOverride);
+    await writeFileAtomic(path, doc.content);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { report: reportFor(pair, 'error', `local write failed: ${message}`) };
+  }
   return {
     report: reportFor(pair, 'pulled', `rev ${doc.revision}`),
     stateEntry: {

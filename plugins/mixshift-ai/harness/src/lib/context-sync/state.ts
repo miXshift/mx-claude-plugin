@@ -12,7 +12,7 @@
  * files; saveState swallows write errors. Neither throws outward.
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { contextSyncStatePath } from '../paths/resolve.js';
 
@@ -79,7 +79,9 @@ export async function loadState(
 /**
  * Persist the ledger atomically (tmp + rename). Best-effort: a failed save
  * is swallowed — the worst outcome is a stale ledger, which the verdict
- * matrix degrades to 'diverged', never data loss.
+ * matrix degrades to 'diverged', never data loss. A failed rename unlinks
+ * the tmp file so nothing litters the brand dir (the state basename is
+ * dot-prefixed, so the tmp never enters doc enumeration either way).
  */
 export async function saveState(
   brandSlug: string,
@@ -90,8 +92,13 @@ export async function saveState(
     const path = contextSyncStatePath(brandSlug, dataDirOverride);
     await mkdir(dirname(path), { recursive: true });
     const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}`;
-    await writeFile(tmpPath, JSON.stringify(state, null, 2) + '\n', 'utf8');
-    await rename(tmpPath, path);
+    try {
+      await writeFile(tmpPath, JSON.stringify(state, null, 2) + '\n', 'utf8');
+      await rename(tmpPath, path);
+    } catch (err) {
+      await unlink(tmpPath).catch(() => {});
+      throw err;
+    }
   } catch {
     // Advisory ledger — never worth failing the sync over.
   }
