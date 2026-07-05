@@ -125,7 +125,7 @@ Each teammate runs sign-in once on their own machine; tokens land at their own `
 
 **No** (on the recommended token-based path). The MixShift auth service runs from a single static egress IP that's pre-whitelisted on the warehouse. Your IP is irrelevant — you can sign in from any network: office, home, coffee shop, mobile hotspot, anywhere.
 
-(The legacy raw-MySQL path still has a per-user IP whitelist requirement. See [`docs/auth-setup.md`](./auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup) if you're explicitly on that path.)
+(The old raw-MySQL path that required per-user IP whitelisting has been retired. No whitelisting is needed on any current path.)
 
 ### What if my session expires?
 

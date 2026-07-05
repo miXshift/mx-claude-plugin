@@ -76,7 +76,7 @@ Now you should see the "you are already set up" view with four actions:
 
 - Discover your brands
 - Explore + export your data
-- Onboard a brand for analytical skills (pre-beta — not generally enabled yet)
+- Set up a brand for the analytical skills (these roll out in waves)
 - Re-run sign-in (if you need to switch accounts)
 
 Then try a skill. For your warehouse data:
