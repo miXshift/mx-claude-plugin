@@ -173,6 +173,25 @@ export function enrichmentPath(
   );
 }
 
+/**
+ * Per-brand corpus documents directory. Every regular file directly in this
+ * directory is an org-shared corpus doc (doc_type 'corpus') for context sync;
+ * see lib/context-sync/local.ts for the enumeration contract.
+ */
+export function corporaDir(brandSlug: string, dataDirOverride?: string): string {
+  return join(brandDir(brandSlug, dataDirOverride), 'corpora');
+}
+
+/**
+ * Per-brand context-sync state ledger (see lib/context-sync/state.ts).
+ * Records the last-synced server revision + content hash per doc so
+ * `mixshift context status|pull|push|sync` can tell local edits from
+ * server-side moves. Local-only — never synced itself.
+ */
+export function contextSyncStatePath(brandSlug: string, dataDirOverride?: string): string {
+  return join(brandDir(brandSlug, dataDirOverride), '.context-sync-state.json');
+}
+
 export function indexPath(dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), 'index.yaml');
 }

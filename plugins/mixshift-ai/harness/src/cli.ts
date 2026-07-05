@@ -74,6 +74,7 @@ import { registerAdsCommands } from './commands/ads.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerHelpCommand } from './commands/help.js';
 import { registerShareSkillCommand } from './commands/share-skill.js';
+import { registerContextCommands } from './commands/context.js';
 import {
   hasAcknowledgedConsent,
   markConsentAcknowledged,
@@ -128,6 +129,7 @@ registerAdsCommands(program);
 registerDoctorCommand(program);
 registerHelpCommand(program);
 registerShareSkillCommand(program);
+registerContextCommands(program);
 
 // First-run cross-cutting telemetry chore: show the consent notice once
 // per install. Idempotent on subsequent runs. Skipped silently when

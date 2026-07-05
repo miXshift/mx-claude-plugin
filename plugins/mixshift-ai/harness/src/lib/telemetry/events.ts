@@ -183,6 +183,14 @@ export const EventName = {
   AdsOperationsListed: 'ads.operations_listed',
   AdsCalled: 'ads.called',
 
+  // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
+  // Privacy: payloads carry brand slugs, per-action doc counts, force flag,
+  // duration + outcome — never doc content or file paths.
+  ContextPullCompleted: 'context_sync.pull_completed',
+  ContextPushCompleted: 'context_sync.push_completed',
+  ContextSyncCompleted: 'context_sync.sync_completed',
+  ContextMigrateCompleted: 'context_sync.migrate_completed',
+
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 } as const;
