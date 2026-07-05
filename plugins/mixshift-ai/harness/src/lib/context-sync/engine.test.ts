@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { computeStatus, migrate, pull, push, sync } from './engine.js';
 import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
 import { loadState, saveState, type ContextSyncState } from './state.js';
-import { brandDir } from '../paths/resolve.js';
+import { brandDir, corporaDir } from '../paths/resolve.js';
 import type {
   DocKey,
   DocType,
@@ -537,6 +537,52 @@ describe('push', () => {
     const state = await loadState(brand, testDir);
     expect(state.docs.config!.server_revision).toBe(3);
   });
+
+  it('--force never steamrolls a local-ahead doc that 409s mid-flight (M4)', async () => {
+    // Same stale-manifest race as the conflict test above, but WITH --force:
+    // the computed verdict is 'local-ahead' (per the manifest snapshot the
+    // server had not moved), so the mid-flight 409 must surface as a
+    // conflict — force-retry is reserved for diverged/server-deleted docs.
+    const brand = 'acme';
+    const server = new FakeServer();
+    await writeBrandFile(brand, 'narrative.md', 'my edit\n');
+    server.set(brand, 'narrative', 'jane edit\n', { revision: 4, actor: 'jane@example.com' });
+    const staleManifest: WireManifestBrand[] = [
+      {
+        brand_slug: brand,
+        docs: [
+          {
+            doc_type: 'narrative',
+            revision: 3,
+            content_hash: hashContent('original\n'),
+            sensitivity: 'internal',
+            updated_at: '2026-07-01T00:00:00.000Z',
+            updated_by_actor: 'jane@example.com',
+          },
+        ],
+      },
+    ];
+    await saveState(
+      brand,
+      { schema: 2, docs: { narrative: stateEntry(3, 'original\n') } },
+      testDir,
+    );
+
+    const result = await push(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+      manifest: staleManifest,
+      force: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports[0]!.action).toBe('conflict');
+    // Jane's edit survives; ledger untouched.
+    expect(server.get(brand, 'narrative')!.content).toBe('jane edit\n');
+    expect(server.get(brand, 'narrative')!.revision).toBe(4);
+    const state = await loadState(brand, testDir);
+    expect(state.docs.narrative!.server_revision).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -712,5 +758,372 @@ describe('migrate', () => {
     expect(subset.brands.map((b) => b.brand)).toEqual(['beta']);
     // alpha's newer local edit was NOT pushed by the subset run.
     expect(server.get('alpha', 'narrative')!.content).toBe('a\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unsafe corpus names from the manifest (C1 — path traversal)
+// ---------------------------------------------------------------------------
+
+describe('unsafe corpus names from the manifest', () => {
+  it('errors on the evil doc, syncs the good one, and writes nothing outside corpora/', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    // Unique traversal target so a stale leftover from another run can't
+    // false-negative the "nothing escaped" assertion below.
+    const evil = `../../../../mxtest-evil-${process.pid}-${Date.now()}.txt`;
+    server.set(brand, `corpus/${evil}`, 'pwned\n');
+    server.set(brand, 'corpus/tone.md', 'Friendly.\n');
+    await mkdir(brandDir(brand, testDir), { recursive: true });
+
+    const result = await pull(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const actions = new Map(result.reports.map((r) => [r.key, r.action]));
+    expect(actions.get('corpus/tone.md')).toBe('pulled');
+    expect(actions.get(`corpus/${evil}`)).toBe('error');
+    const evilReport = result.reports.find((r) => r.key === `corpus/${evil}`)!;
+    expect(evilReport.detail).toMatch(/unsafe corpus name/);
+
+    // The good doc landed inside corpora/ and is the ONLY thing there.
+    expect(await readBrandFile(brand, 'corpora/tone.md')).toBe('Friendly.\n');
+    expect(await readdir(corporaDir(brand, testDir))).toEqual(['tone.md']);
+    // The traversal target (outside the data dir) was never created.
+    const escaped = resolve(corporaDir(brand, testDir), evil);
+    await expect(readFile(escaped, 'utf8')).rejects.toThrow();
+    // And the evil key never entered the ledger.
+    const state = await loadState(brand, testDir);
+    expect(Object.keys(state.docs)).toEqual(['corpus/tone.md']);
+  });
+
+  it('refuses separators, ADS streams, and dot-names on pull and sync alike', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'corpus/a/b.md', 'sep\n');
+    server.set(brand, 'corpus/a\\b.md', 'backslash\n');
+    server.set(brand, 'corpus/note.md:stream', 'ads\n');
+    server.set(brand, 'corpus/.hidden', 'dot\n');
+    await mkdir(brandDir(brand, testDir), { recursive: true });
+
+    for (const run of [pull, sync]) {
+      const result = await run(brand, { client: server.client(), dataDirOverride: testDir });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.reports).toHaveLength(4);
+      expect(result.reports.every((r) => r.action === 'error')).toBe(true);
+    }
+    // Nothing was written at all — corpora/ was never even created.
+    await expect(readdir(corporaDir(brand, testDir))).rejects.toThrow();
+  });
+
+  it('skips unknown doc types from the manifest instead of aborting the brand', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'narrative', 'new\n', { revision: 2 });
+    await writeBrandFile(brand, 'narrative.md', 'old\n');
+    await saveState(
+      brand,
+      { schema: 2, docs: { narrative: stateEntry(1, 'old\n') } },
+      testDir,
+    );
+    const manifest = server.manifest();
+    manifest[0]!.docs.push({
+      doc_type: 'hologram' as DocType, // a future server-side type
+      revision: 1,
+      content_hash: 'x'.repeat(64),
+      sensitivity: 'internal',
+      updated_at: '2026-07-03T00:00:00.000Z',
+      updated_by_actor: 'jane@example.com',
+    });
+
+    const result = await pull(brand, {
+      client: server.client(),
+      manifest,
+      dataDirOverride: testDir,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const skipped = result.reports.find((r) => r.action === 'skipped')!;
+    expect(skipped.detail).toMatch(/unknown doc_type 'hologram'/);
+    // The known doc still synced — the brand loop was not aborted.
+    const narrative = result.reports.find((r) => r.key === 'narrative')!;
+    expect(narrative.action).toBe('pulled');
+    expect(await readBrandFile(brand, 'narrative.md')).toBe('new\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Atomic write hygiene (M1)
+// ---------------------------------------------------------------------------
+
+describe('atomic write hygiene', () => {
+  it('reports a per-doc error and leaves no tmp litter when the local write fails', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'corpus/blocked.md', 'content\n');
+    // Local target is a DIRECTORY → the final rename must fail.
+    await mkdir(join(brandDir(brand, testDir), 'corpora', 'blocked.md'), { recursive: true });
+
+    const result = await pull(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const report = result.reports.find((r) => r.key === 'corpus/blocked.md')!;
+    expect(report.action).toBe('error');
+    expect(report.detail).toMatch(/local write failed/);
+
+    // No tmp file left behind — a bare leftover would be enumerated as a
+    // corpus doc and pushed org-wide on the next push.
+    const entries = await readdir(corporaDir(brand, testDir));
+    expect(entries.filter((e) => e.includes('.tmp.'))).toEqual([]);
+    // Ledger untouched for the failed doc.
+    const state = await loadState(brand, testDir);
+    expect(state.docs['corpus/blocked.md']).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// server-deleted (M2)
+// ---------------------------------------------------------------------------
+
+describe('server-deleted', () => {
+  const brand = 'acme';
+
+  /** narrative was synced once (ledger proves it was on the server) but is
+   *  gone from the manifest; tone.md keeps the brand present server-side. */
+  async function seedDeleted(server: FakeServer): Promise<void> {
+    server.set(brand, 'corpus/tone.md', 'Friendly.\n');
+    await writeBrandFile(brand, 'corpora/tone.md', 'Friendly.\n');
+    await writeBrandFile(brand, 'narrative.md', 'kept\n');
+    await saveState(
+      brand,
+      {
+        schema: 2,
+        docs: {
+          narrative: stateEntry(2, 'kept\n'),
+          'corpus/tone.md': stateEntry(1, 'Friendly.\n'),
+        },
+      },
+      testDir,
+    );
+  }
+
+  it('classifies local+ledger+no-manifest as server-deleted (not local-only)', async () => {
+    const server = new FakeServer();
+    await seedDeleted(server);
+    const result = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const verdicts = new Map(result.docs.map((d) => [d.key, d.verdict]));
+    expect(verdicts.get('narrative')).toBe('server-deleted');
+    expect(verdicts.get('corpus/tone.md')).toBe('in-sync');
+  });
+
+  it('plain sync and push do NOT resurrect the doc; pull leaves the local file alone', async () => {
+    const server = new FakeServer();
+    await seedDeleted(server);
+
+    const synced = await sync(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) return;
+    const syncReport = synced.reports.find((r) => r.key === 'narrative')!;
+    expect(syncReport.action).toBe('skipped');
+    expect(syncReport.detail).toMatch(/delete the local file/);
+    expect(syncReport.detail).toMatch(/push --brand acme --force/);
+    expect(server.get(brand, 'narrative')).toBeUndefined();
+
+    const pushed = await push(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(pushed.ok).toBe(true);
+    if (!pushed.ok) return;
+    expect(pushed.reports.find((r) => r.key === 'narrative')!.action).toBe('skipped');
+    expect(server.get(brand, 'narrative')).toBeUndefined();
+
+    const pulled = await pull(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(pulled.ok).toBe(true);
+    if (!pulled.ok) return;
+    expect(pulled.reports.find((r) => r.key === 'narrative')!.action).toBe('skipped');
+    expect(await readBrandFile(brand, 'narrative.md')).toBe('kept\n');
+  });
+
+  it('push --force recreates the doc and rewrites the ledger', async () => {
+    const server = new FakeServer();
+    await seedDeleted(server);
+
+    const result = await push(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+      force: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports.find((r) => r.key === 'narrative')!.action).toBe('created');
+    expect(server.get(brand, 'narrative')!.content).toBe('kept\n');
+    const state = await loadState(brand, testDir);
+    expect(state.docs.narrative!.server_revision).toBe(1);
+    expect(state.docs.narrative!.last_synced_hash).toBe(hashContent('kept\n'));
+  });
+
+  it('drops a stale ledger entry once the doc is gone from both sides', async () => {
+    const server = new FakeServer();
+    server.set(brand, 'corpus/tone.md', 'Friendly.\n');
+    await writeBrandFile(brand, 'corpora/tone.md', 'Friendly.\n');
+    await saveState(
+      brand,
+      {
+        schema: 2,
+        docs: {
+          'corpus/gone.md': stateEntry(3, 'bye\n'), // no local file, no manifest entry
+          'corpus/tone.md': stateEntry(1, 'Friendly.\n'),
+        },
+      },
+      testDir,
+    );
+
+    const result = await sync(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports.some((r) => r.key === 'corpus/gone.md')).toBe(false);
+
+    const state = await loadState(brand, testDir);
+    expect(state.docs['corpus/gone.md']).toBeUndefined();
+    expect(state.docs['corpus/tone.md']).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case/unicode collision guard (M3)
+// ---------------------------------------------------------------------------
+
+describe('case collision guard', () => {
+  it('refuses to act when a manifest key and a local key differ only by case', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'corpus/Tone.md', 'SERVER\n');
+    await writeBrandFile(brand, 'corpora/tone.md', 'local unsynced\n');
+
+    const pulled = await pull(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(pulled.ok).toBe(true);
+    if (!pulled.ok) return;
+    expect(pulled.reports).toHaveLength(2);
+    expect(pulled.reports.every((r) => r.action === 'error')).toBe(true);
+    expect(pulled.reports[0]!.detail).toMatch(/collision/);
+    expect(pulled.reports[0]!.detail).toContain('corpus/Tone.md');
+    expect(pulled.reports[0]!.detail).toContain('corpus/tone.md');
+    // The unsynced local edit survives — on a case-insensitive filesystem a
+    // 'server-only' pull of Tone.md would have silently clobbered it.
+    expect(await readBrandFile(brand, 'corpora/tone.md')).toBe('local unsynced\n');
+
+    const pushed = await push(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(pushed.ok).toBe(true);
+    if (!pushed.ok) return;
+    expect(pushed.reports.every((r) => r.action === 'error')).toBe(true);
+    expect(server.get(brand, 'corpus/Tone.md')!.content).toBe('SERVER\n');
+    expect(server.get(brand, 'corpus/tone.md')).toBeUndefined();
+
+    const synced = await sync(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(synced.ok).toBe(true);
+    if (!synced.ok) return;
+    expect(synced.reports.every((r) => r.action === 'error')).toBe(true);
+  });
+
+  it('refuses two colliding manifest keys and writes neither', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'corpus/FAQ.md', 'upper\n');
+    server.set(brand, 'corpus/faq.md', 'lower\n');
+    await mkdir(brandDir(brand, testDir), { recursive: true });
+
+    const result = await pull(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports).toHaveLength(2);
+    expect(result.reports.every((r) => r.action === 'error')).toBe(true);
+    await expect(readdir(corporaDir(brand, testDir))).rejects.toThrow();
+  });
+
+  it('leaves identical-case keys untouched by the guard', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    server.set(brand, 'corpus/tone.md', 'same\n');
+    await writeBrandFile(brand, 'corpora/tone.md', 'same\n');
+
+    const result = await sync(brand, { client: server.client(), dataDirOverride: testDir });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports[0]!.action).toBe('up-to-date');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant-bound ledger (M5)
+// ---------------------------------------------------------------------------
+
+describe('tenant-bound ledger', () => {
+  const ID_A = 'https://mcp.mixshift.io#42';
+  const ID_B = 'https://other.example.com#7';
+
+  it('computes verdicts as untracked when the ledger belongs to another identity', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    await writeBrandFile(brand, 'narrative.md', 'original\n');
+    server.set(brand, 'narrative', 'server edit\n', { revision: 2 });
+    await saveState(
+      brand,
+      { schema: 2, identity: ID_A, docs: { narrative: stateEntry(1, 'original\n') } },
+      testDir,
+    );
+
+    // Matching identity: the ledger applies → server-ahead.
+    const match = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+      identity: ID_A,
+    });
+    expect(match.ok).toBe(true);
+    if (!match.ok) return;
+    expect(match.docs[0]!.verdict).toBe('server-ahead');
+
+    // Different tenant: org A's revisions say nothing about org B's
+    // manifest → untracked + differing content = diverged (fail safe,
+    // needs an explicit --force instead of a silent overwrite).
+    const mismatch = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+      identity: ID_B,
+    });
+    expect(mismatch.ok).toBe(true);
+    if (!mismatch.ok) return;
+    expect(mismatch.docs[0]!.verdict).toBe('diverged');
+  });
+
+  it('self-heals identical content across a tenant switch and rebinds the ledger', async () => {
+    const brand = 'acme';
+    const server = new FakeServer();
+    await writeBrandFile(brand, 'narrative.md', 'same\n');
+    server.set(brand, 'narrative', 'same\n', { revision: 7 });
+    // Old-tenant ledger with a now-meaningless revision.
+    await saveState(
+      brand,
+      { schema: 2, identity: ID_A, docs: { narrative: stateEntry(3, 'other\n') } },
+      testDir,
+    );
+
+    const result = await sync(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+      identity: ID_B,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports[0]!.action).toBe('up-to-date');
+
+    const state = await loadState(brand, testDir);
+    expect(state.identity).toBe(ID_B);
+    expect(state.docs.narrative!.server_revision).toBe(7);
+    expect(state.docs.narrative!.last_synced_hash).toBe(hashContent('same\n'));
   });
 });

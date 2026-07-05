@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   corpusKey,
   hashContent,
+  isSafeCorpusName,
   listLocalBrands,
   localPathForKey,
   readLocalDocs,
@@ -56,6 +57,39 @@ async function seedBrand(slug: string): Promise<void> {
   await mkdir(join(dir, 'corpora', 'nested'), { recursive: true });
   await writeFile(join(dir, 'corpora', 'nested', 'deep.md'), 'no\n', 'utf8');
 }
+
+describe('isSafeCorpusName', () => {
+  it('accepts ordinary portable filenames', () => {
+    for (const name of [
+      'tone.md',
+      'competitors.csv',
+      'a',
+      'A-b_c.1.MD',
+      'x'.repeat(128),
+      'v1.2.3-notes.txt',
+    ]) {
+      expect(isSafeCorpusName(name), name).toBe(true);
+    }
+  });
+
+  it('rejects traversal, separators, streams, dot-names, and oversized names', () => {
+    for (const name of [
+      '../x', // traversal
+      '..', // bare traversal
+      'a/b', // path separator
+      'a\\b', // Windows path separator
+      'a:b', // NTFS alternate data stream
+      '.hidden', // dot-file (local-only namespace)
+      '', // empty
+      'x'.repeat(129), // over length cap
+      'a b.md', // space (outside the server sanitizer set)
+      'café.md', // non-ASCII (outside the server sanitizer set)
+      'a..b', // '..' substring
+    ]) {
+      expect(isSafeCorpusName(name), JSON.stringify(name)).toBe(false);
+    }
+  });
+});
 
 describe('hashContent', () => {
   it('is sha256 hex lowercase over utf8 bytes (the wire algorithm)', () => {
@@ -129,6 +163,17 @@ describe('readLocalDocs', () => {
     expect(await readLocalDocs('ghost', testDir)).toEqual([]);
   });
 
+  it('skips leftover atomic-write tmp files (dot-prefixed) in corpora/', async () => {
+    // A crashed pull may leave `.<name>.tmp.<pid>.<ts>` behind; it must
+    // never be enumerated (a non-dot leftover would be PUSHED org-wide).
+    const dir = brandDir('acme', testDir);
+    await mkdir(join(dir, 'corpora'), { recursive: true });
+    await writeFile(join(dir, 'corpora', 'foo.csv'), 'a,b\n', 'utf8');
+    await writeFile(join(dir, 'corpora', '.foo.csv.tmp.123.456'), 'partial', 'utf8');
+    const docs = await readLocalDocs('acme', testDir);
+    expect(docs.map((d) => d.key)).toEqual(['corpus/foo.csv']);
+  });
+
   it('reads content verbatim (no YAML re-serialization)', async () => {
     const dir = brandDir('verbatim', testDir);
     await mkdir(dir, { recursive: true });
@@ -152,5 +197,11 @@ describe('localPathForKey', () => {
     expect(localPathForKey('acme', corpusKey('faq.md'), testDir)).toBe(
       join(corporaDir('acme', testDir), 'faq.md'),
     );
+  });
+
+  it('throws on unsafe corpus keys instead of resolving outside corpora/ (last-ditch traversal defense)', () => {
+    for (const name of ['../x', '..\\..\\evil', 'a:b', '.hidden', '']) {
+      expect(() => localPathForKey('acme', corpusKey(name), testDir)).toThrow(/unsafe corpus name/);
+    }
   });
 });
