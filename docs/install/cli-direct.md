@@ -92,7 +92,7 @@ mixshift auth login \
   --client-id mx-claude-plugin-dev
 ```
 
-**Legacy raw-MySQL path (still supported):** If you need direct MySQL credentials (e.g. for tooling outside the plugin, or you're maintaining an existing CI pipeline), the original `mixshift auth setup` flow continues to work — interactive prompts in your own terminal, or `--from-file` + `--password-file` for scripted use. See [`docs/auth-setup.md`](../auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup) for the details.
+The retired `mixshift auth setup` raw-MySQL flow is no longer supported; `auth login` (or an admin-issued service credential) is the only path for new setups.
 
 Full reference: [`docs/auth-setup.md`](../auth-setup.md).
 
@@ -142,7 +142,7 @@ mixshift ads call <operation> --profile-id <id> --body-file changes.json --commi
 # Send feedback / report bugs / request table access
 mixshift feedback "your message" --category bug
 
-# (Pre-beta) run an analytical-skill prefetch + sidecar write
+# Run an analytical-skill prefetch + sidecar write (needs brand context set up)
 mixshift prefetch --brand <slug> --skill <skill-id>
 mixshift sidecar write --input-file <path>
 ```
@@ -205,7 +205,7 @@ During the beta, the harness sends anonymized usage events to MixShift (skills i
 
 ## What's next
 
-- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in + the legacy raw-MySQL path
+- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in and service credentials
 - [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions
 - [Repo README](../../README.md) — high-level architecture + license + contributing

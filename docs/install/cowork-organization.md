@@ -51,7 +51,7 @@ Sign-in is per-user but trivial. Each person at your org:
 
 That's it. The plugin stores a short-lived token at `~/.mixshift/auth/credentials` on each person's machine. No shared credentials to distribute, no password files, no IP whitelist coordination.
 
-**Compared to the legacy path:** the old `mixshift auth setup` flow required the admin to fetch shared MySQL credentials from MixShift's portal, distribute them via a secrets manager, and have each user run a `--from-file` + `--password-file` command. That pattern is still supported in the harness (see [`auth-setup.md`](../auth-setup.md#legacy-raw-mysql-path-mixshift-auth-setup)) but no longer the recommended path — token-based sign-in is faster for end users and removes the credential-distribution overhead.
+**Compared to the legacy path:** the old `mixshift auth setup` flow required the admin to fetch shared MySQL credentials from MixShift's portal, distribute them via a secrets manager, coordinate per-user IP whitelists, and have each user run a `--from-file` + `--password-file` command. That flow has been retired; token-based sign-in removed that overhead entirely.
 
 ---
 
@@ -125,7 +125,7 @@ During the beta, the plugin sends anonymized usage events to MixShift so we can 
 
 ## What's next
 
-- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in + the legacy raw-MySQL path
+- [Authentication deep dive](../auth-setup.md) — full reference for token-based sign-in and service credentials
 - [Privacy & telemetry](../privacy.md) — what's collected during beta, how to opt out
 - [FAQ](../faq.md) — common questions, including multi-user / team scenarios
 - [Cowork personal install](./cowork-personal.md) — what your team would do if you weren't using the org marketplace

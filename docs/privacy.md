@@ -22,7 +22,7 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Sign-in started / completed / failed (with the failure class, not the credentials or tokens)
 - Token refresh failures (when the auth service rejects a refresh attempt — used to spot stale-session friction)
 - Brand discovery / brand add events
-- (Legacy raw-MySQL path only): IP whitelist request submitted
+- (Retired legacy raw-MySQL path only): IP whitelist request submitted
 
 **Usage events:**
 - Skills invoked (which skill, when, duration, outcome)
@@ -68,7 +68,7 @@ This is not a marketing data play. We don't sell it, don't share it with third p
 
 - **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering.
 - **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Data stays inside MixShift infrastructure.
-- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table — a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
+- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the retired legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table — a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
 
 ## Retention
 
@@ -100,7 +100,7 @@ When you've opted out, the harness still writes events to its local queue file (
 
 When the plugin exits beta, we'll move from "collection is on by default" to "opt-in only" — meaning a customer affirmatively chooses to share usage data. The privacy disclosure here will be updated at that time.
 
-Beta status is published in the plugin's `version` field. Today the plugin is pre-beta (releases in the `0.5.x` line); the production-grade release will be tagged at `1.0.0`.
+Beta status is published in the plugin's `version` field. Today the plugin is in beta (releases in the `0.6.x` line); the production-grade release will be tagged at `1.0.0`.
 
 ## Questions
 

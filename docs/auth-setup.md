@@ -1,10 +1,11 @@
 # Authentication
 
-This doc covers signing in to the MixShift warehouse from the plugin. Three paths:
+This doc covers signing in to the MixShift warehouse from the plugin. Two paths:
 
 1. **Token-based browser sign-in** (`mixshift auth login`) — the recommended path for humans. No raw database credentials, no IP whitelist setup.
 2. **Service credentials** (`mixshift auth service-setup`) — for unattended runs: scheduled Cowork tasks, cloud automations, CI. No browser, no human at run time. See [Service credentials](#service-credentials-unattended-runs).
-3. **Legacy raw-MySQL** (`mixshift auth setup`) — backward compatibility only, documented at the bottom.
+
+The previously documented raw-MySQL setup is retired; see [the note at the bottom](#legacy-raw-mysql-path-mixshift-auth-setup).
 
 The interactive flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
 
@@ -185,7 +186,7 @@ The new sign-in overwrites the `datahub` block in `~/.mixshift/auth/credentials`
 After sign-in, the plugin auto-runs a test query and displays your brand count. To verify manually:
 
 ```bash
-mixshift data run-query "SELECT NOW() AS db_time, USER() AS db_user"
+mixshift data query --sql "SELECT NOW() AS db_time, USER() AS db_user"
 ```
 
 Or in chat: *"show me one row from any table"*.
@@ -279,7 +280,7 @@ Admins rotate without downtime: rotate at `/admin` (both old and new secrets wor
 
 ## Querying from your own app (direct API)
 
-If you run your own application (a scheduled job, a sync pipeline, a BI backend) and want to read your warehouse without the plugin, call the API directly. The plugin is only a client of this same HTTP surface: anything `mixshift data run-query` does, your app can do with two requests. Mint a token, then post SQL.
+If you run your own application (a scheduled job, a sync pipeline, a BI backend) and want to read your warehouse without the plugin, call the API directly. The plugin is only a client of this same HTTP surface: anything `mixshift data query` does, your app can do with two requests. Mint a token, then post SQL.
 
 This path reads **your own tenant database**. A service credential resolves server-side to your dedicated warehouse, which uses the standard MixShift schema, so your queries only ever see your own data. The database user behind the endpoint is **read-only**, so writes are rejected at the database itself.
 
@@ -402,68 +403,17 @@ Notes: ChatGPT limits each tool call to roughly 45 to 60 seconds, so very long r
 
 ### Claude clients
 
-Nothing changes. claude.ai custom connectors, Claude Desktop, and the plugin keep working exactly as before; the plugin remains the richest way to use MixShift from Claude because it also ships the skill workflows, not just the raw tools.
+Two ways to use MixShift from Claude:
+
+**The plugin (recommended).** Installs into Cowork or Claude Code and ships all the MixShift skill workflows plus the raw tools, so it is the richest way to use MixShift from Claude. Sign-in is `mixshift auth login`, the flow at the top of this doc. Pick your install path: [Cowork personal](./install/cowork-personal.md), [Cowork organization](./install/cowork-organization.md), [Claude Code](./install/claude-code.md), or [CLI direct](./install/cli-direct.md).
+
+**claude.ai custom connectors and Claude Desktop.** Add a custom connector with the server URL `https://mcp.mixshift.io/mcp`. Authentication is OAuth and registration is automatic: sign in with your MixShift account when prompted. No token pasting needed (unlike Cursor and Codex).
 
 ---
 
 ## Legacy raw-MySQL path (`mixshift auth setup`)
 
-The legacy path uses raw MySQL credentials retrieved from a MixShift portal page, with a per-user IP whitelist on the warehouse. It's still in the harness for backward compatibility and continues to work — but new installs should use `auth login`. The legacy flow is appropriate when:
-
-- You need direct MySQL connection details for tooling outside the plugin (e.g. MySQL Workbench, a custom BI tool).
-- Your environment can't reach `mcp.mixshift.io` for some reason.
-- You're explicitly maintaining a CI pipeline that already has the raw-MySQL setup wired.
-
-For everything else, use `auth login`.
-
-### How the legacy path works
-
-Same end state — credentials at `~/.mixshift/auth/credentials` — but with different contents (a `mysql` block instead of a `datahub` block), and a per-user IP whitelist step.
-
-Run in a terminal:
-
-```bash
-mixshift auth setup
-```
-
-Interactive TTY prompts walk you through:
-- **Email** (for telemetry + IP whitelist requests)
-- **HostName, Username, Port, Schema, Password** — fetched from `https://www.mydashapplications.com/database-admin` after entering the shared "master password" prompted there.
-
-If your IP isn't whitelisted yet, pass `--request-whitelist` to auto-fire a webhook to MixShift ops, who'll grant access manually (typically within a few hours).
-
-For non-interactive / scripted use, see `mixshift auth setup --from-file <yaml> --password-file <path>` — same mechanism the (now-retired) chat-orchestrated path used. The legacy CLI command remains available; the chat surface no longer drives it.
-
-### Pre-bundling credentials for a team (legacy path)
-
-For team-wide deployments of the legacy path (multi-user agency / org with shared MySQL creds), the admin can pre-bundle:
-
-1. Save credentials to `mixshift-creds.yaml`:
-
-   ```yaml
-   email: REPLACE@WITH-YOUR-EMAIL   # each user sets their own
-   mysql:
-     host: db.mydashapplications.studio
-     port: 3306
-     user: yourmixshiftuser
-     database: yourmixshiftschema
-     password: ""
-   ```
-
-2. Save the password to `mixshift-password.txt` (just the password, no quotes / labels).
-3. Share both via your team's secrets manager.
-4. Each user downloads, edits `mixshift-creds.yaml` to set their own `email:`, and runs:
-
-   ```bash
-   mixshift auth setup \
-     --from-file ~/Downloads/mixshift-creds.yaml \
-     --password-file ~/Downloads/mixshift-password.txt \
-     --request-whitelist
-   ```
-
-Each user still goes through their own IP whitelist if their public IP isn't yet on the allowlist.
-
-This pattern is unnecessary for the recommended `auth login` flow — each user just runs `mixshift auth login` and signs in with their MixShift account.
+The raw-MySQL path (credentials fetched from the MixShift portal, a per-user IP whitelist, `--from-file`/`--password-file` setup) is retired and no longer supported for new setups. All authentication now goes through the token flow (`mixshift auth login`) or [service credentials](#service-credentials-unattended-runs). The `mixshift auth setup` command remains in the CLI only for backward compatibility with existing installations. If you need direct MySQL access for tooling outside the plugin, contact your MixShift account team.
 
 ---
 
