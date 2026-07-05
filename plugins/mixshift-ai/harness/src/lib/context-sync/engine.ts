@@ -97,6 +97,13 @@ interface DocPair {
   manifestDoc?: WireManifestDoc;
   state?: ContextSyncDocState;
   verdict: DocVerdict;
+  /**
+   * Set when this key folds (NFC + lowercase) onto at least one OTHER key:
+   * on case-insensitive filesystems the group is one physical file, so no
+   * read/write action may run for any member. Holds every raw key in the
+   * group for the error message.
+   */
+  collision?: DocKey[];
 }
 
 /** The doc_types this plugin knows how to map to local files. A newer
@@ -232,6 +239,19 @@ async function buildDocPairs(
     compareKeys,
   );
 
+  // Case/unicode collision guard: distinct keys that fold (NFC + lowercase)
+  // to the same string are one physical file on case-insensitive filesystems
+  // (Windows, default macOS) — e.g. manifest 'corpus/Tone.md' vs local
+  // 'corpus/tone.md' would let a 'server-only' pull overwrite unsynced local
+  // edits without --force. Mark every member of such a group.
+  const byFoldedKey = new Map<string, DocKey[]>();
+  for (const key of keys) {
+    const folded = key.normalize('NFC').toLowerCase();
+    const group = byFoldedKey.get(folded);
+    if (group) group.push(key);
+    else byFoldedKey.set(folded, [key]);
+  }
+
   const pairs: DocPair[] = [];
   for (const key of keys) {
     const local = localByKey.get(key);
@@ -241,6 +261,7 @@ async function buildDocPairs(
     if (verdict === null) continue;
     const docType: DocType = local?.docType ?? manifestDoc!.doc_type;
     const corpusName = local?.corpusName ?? manifestDoc?.corpus_name;
+    const collisionGroup = byFoldedKey.get(key.normalize('NFC').toLowerCase())!;
     pairs.push({
       key,
       docType,
@@ -249,6 +270,7 @@ async function buildDocPairs(
       ...(manifestDoc ? { manifestDoc } : {}),
       ...(docState ? { state: docState } : {}),
       verdict,
+      ...(collisionGroup.length > 1 ? { collision: collisionGroup } : {}),
     });
   }
   return { ok: true, pairs, issues, state, stateDirty };
@@ -363,6 +385,15 @@ function serverDeletedDetail(brandSlug: string): string {
   return (
     'deleted from the org store — delete the local file to accept the deletion, ' +
     `or recreate it with \`mixshift context push --brand ${brandSlug} --force\``
+  );
+}
+
+function collisionReport(pair: DocPair): DocActionReport {
+  return reportFor(
+    pair,
+    'error',
+    `case/unicode collision: ${(pair.collision ?? []).join(', ')} resolve to the same ` +
+      'file on case-insensitive filesystems — resolve server-side or rename locally; not synced',
   );
 }
 
@@ -530,6 +561,10 @@ export async function pull(
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
     switch (pair.verdict) {
       case 'server-ahead':
       case 'server-only': {
@@ -605,6 +640,10 @@ export async function push(
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
     switch (pair.verdict) {
       case 'local-ahead':
       case 'local-only': {
@@ -712,6 +751,10 @@ export async function sync(
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
     let outcome: { report: DocActionReport; stateEntry?: ContextSyncDocState } | null = null;
     switch (pair.verdict) {
       case 'server-ahead':
