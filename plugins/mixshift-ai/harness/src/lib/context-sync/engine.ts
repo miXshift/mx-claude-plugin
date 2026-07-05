@@ -116,7 +116,11 @@ function verdictFor(
   state: ContextSyncDocState | undefined,
 ): DocVerdict | null {
   if (!local && !manifestDoc) return null; // absent everywhere → not reported
-  if (local && !manifestDoc) return 'local-only';
+  // A ledger entry is proof the doc WAS on the server: local + state with no
+  // manifest entry means someone deleted it org-side — 'server-deleted', so
+  // push/sync never silently resurrect it. Without state it's a plain
+  // never-uploaded 'local-only'.
+  if (local && !manifestDoc) return state ? 'server-deleted' : 'local-only';
   if (!local && manifestDoc) return 'server-only';
   // Both exist from here on.
   if (local!.hash === manifestDoc!.content_hash) return 'in-sync';
@@ -151,6 +155,9 @@ type PairsResult =
        *  to their reports. */
       issues: DocActionReport[];
       state: ContextSyncState;
+      /** True when housekeeping mutated the ledger (stale entries dropped)
+       *  and the next saveState should persist even if no action ran. */
+      stateDirty: boolean;
     }
   | { ok: false; message: string };
 
@@ -210,6 +217,17 @@ async function buildDocPairs(
     manifestByKey.set(d.doc_type, d);
   }
 
+  // Housekeeping: a ledger entry whose doc is gone from BOTH sides is stale
+  // (e.g. a server-side deletion the user accepted by deleting the local
+  // file). Drop it so it can't produce a spurious 'server-deleted' later.
+  let stateDirty = false;
+  for (const key of Object.keys(state.docs)) {
+    if (!localByKey.has(key as DocKey) && !manifestByKey.has(key as DocKey)) {
+      delete state.docs[key];
+      stateDirty = true;
+    }
+  }
+
   const keys = [...new Set<DocKey>([...localByKey.keys(), ...manifestByKey.keys()])].sort(
     compareKeys,
   );
@@ -233,7 +251,7 @@ async function buildDocPairs(
       verdict,
     });
   }
-  return { ok: true, pairs, issues, state };
+  return { ok: true, pairs, issues, state, stateDirty };
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +356,13 @@ function conflictInstructions(brandSlug: string): string {
   return (
     `resolve with \`mixshift context pull --brand ${brandSlug} --force\` (take the ` +
     `server version) or \`mixshift context push --brand ${brandSlug} --force\` (overwrite it)`
+  );
+}
+
+function serverDeletedDetail(brandSlug: string): string {
+  return (
+    'deleted from the org store — delete the local file to accept the deletion, ' +
+    `or recreate it with \`mixshift context push --brand ${brandSlug} --force\``
   );
 }
 
@@ -484,7 +509,7 @@ export async function pull(
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
   const reports: DocActionReport[] = [...built.issues];
-  let stateChanged = false;
+  let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
     switch (pair.verdict) {
@@ -527,6 +552,11 @@ export async function pull(
         if (adoptInSyncState(pair, built.state)) stateChanged = true;
         reports.push(reportFor(pair, 'up-to-date'));
         break;
+      case 'server-deleted':
+        // There is no server copy to pull; deleting the local file is the
+        // user's call. Never destructive, even under --force.
+        reports.push(reportFor(pair, 'skipped', serverDeletedDetail(brandSlug)));
+        break;
       case 'local-ahead':
       case 'local-only':
         reports.push(
@@ -554,7 +584,7 @@ export async function push(
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
   const reports: DocActionReport[] = [...built.issues];
-  let stateChanged = false;
+  let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
     switch (pair.verdict) {
@@ -577,6 +607,27 @@ export async function push(
         if (stateEntry) {
           built.state.docs[pair.key] = stateEntry;
           stateChanged = true;
+        }
+        break;
+      }
+      case 'server-deleted': {
+        if (options.force) {
+          // Deliberate recreate: PUT without base_revision; the force-retry
+          // covers a racing re-create on the server side.
+          const { report, stateEntry } = await pushOneDoc(
+            brandSlug,
+            pair,
+            client,
+            undefined,
+            true,
+          );
+          reports.push(report);
+          if (stateEntry) {
+            built.state.docs[pair.key] = stateEntry;
+            stateChanged = true;
+          }
+        } else {
+          reports.push(reportFor(pair, 'skipped', serverDeletedDetail(brandSlug)));
         }
         break;
       }
@@ -640,7 +691,7 @@ export async function sync(
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
   const reports: DocActionReport[] = [...built.issues];
-  let stateChanged = false;
+  let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
     let outcome: { report: DocActionReport; stateEntry?: ContextSyncDocState } | null = null;
@@ -658,6 +709,11 @@ export async function sync(
           pair.verdict === 'local-ahead' ? pair.state?.server_revision : undefined,
           false,
         );
+        break;
+      case 'server-deleted':
+        // A deliberate org-side deletion must never be resurrected by a
+        // plain sync — surface the resolution options instead.
+        reports.push(reportFor(pair, 'skipped', serverDeletedDetail(brandSlug)));
         break;
       case 'diverged':
         reports.push(

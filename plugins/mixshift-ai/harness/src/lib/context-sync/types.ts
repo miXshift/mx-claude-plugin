@@ -134,13 +134,19 @@ export type PutDocResult =
 /**
  * Per-doc comparison verdict:
  *
- *   in-sync      — local content matches the server head (or neither moved)
- *   local-ahead  — local edited since last sync; server unchanged
- *   server-ahead — server moved since last sync; local unchanged
- *   diverged     — both moved (or untracked and contents differ) — needs
- *                  an explicit --force pull/push to resolve
- *   local-only   — file exists locally, no server copy
- *   server-only  — server has the doc, no local file
+ *   in-sync        — local content matches the server head (or neither moved)
+ *   local-ahead    — local edited since last sync; server unchanged
+ *   server-ahead   — server moved since last sync; local unchanged
+ *   diverged       — both moved (or untracked and contents differ) — needs
+ *                    an explicit --force pull/push to resolve
+ *   local-only     — file exists locally, never seen on the server
+ *   server-only    — server has the doc, no local file
+ *   server-deleted — file exists locally AND the ledger proves it was on
+ *                    the server, but the manifest no longer lists it:
+ *                    someone deleted it org-side. push/sync SKIP it so a
+ *                    deliberate deletion is never silently resurrected —
+ *                    delete the local file to accept the deletion, or
+ *                    `push --brand <slug> --force` to recreate it.
  */
 export type DocVerdict =
   | 'in-sync'
@@ -148,7 +154,8 @@ export type DocVerdict =
   | 'server-ahead'
   | 'diverged'
   | 'local-only'
-  | 'server-only';
+  | 'server-only'
+  | 'server-deleted';
 
 /**
  * Per-doc outcome of one pull/push/sync/migrate action:

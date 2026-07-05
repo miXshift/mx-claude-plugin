@@ -63,6 +63,10 @@ export function registerContextCommands(program: Command): void {
           (n, r) => n + r.docs.filter((d) => d.verdict === 'diverged').length,
           0,
         );
+        const serverDeleted = results.reduce(
+          (n, r) => n + r.docs.filter((d) => d.verdict === 'server-deleted').length,
+          0,
+        );
 
         if (root.json) {
           process.stdout.write(
@@ -86,7 +90,7 @@ export function registerContextCommands(program: Command): void {
               [
                 r.brand.padEnd(20),
                 d.key.padEnd(24),
-                d.verdict.padEnd(13),
+                d.verdict.padEnd(14),
                 (d.locallyModified ? 'modified' : '-').padEnd(9),
                 `rev ${d.serverRevision ?? '-'} (synced ${d.syncedRevision ?? '-'})`,
               ].join('  '),
@@ -101,6 +105,13 @@ export function registerContextCommands(program: Command): void {
           lines.push(
             `${conflicts} conflict(s): resolve with \`mixshift context pull --brand <slug> --force\` ` +
               '(take the server version) or `mixshift context push --brand <slug> --force` (overwrite it).',
+          );
+          lines.push('');
+        }
+        if (serverDeleted > 0) {
+          lines.push(
+            `${serverDeleted} doc(s) deleted from the org store: delete the local file to accept ` +
+              'the deletion, or recreate it with `mixshift context push --brand <slug> --force`.',
           );
           lines.push('');
         }
