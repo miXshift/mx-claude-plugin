@@ -19,7 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   brandDir,
   clientsDir,
@@ -124,6 +124,29 @@ export function corpusKey(corpusName: string): DocKey {
 }
 
 /**
+ * SECURITY guard for corpus filenames that cross a trust boundary. Manifest
+ * entries arrive server-controlled, and a corpus name becomes a local path
+ * under corpora/ on pull — a hostile or corrupt name like `../../evil` (path
+ * traversal) or `note.md:stream` (NTFS alternate data stream) must never
+ * reach a filesystem call. Aligned with the server-side sanitizer: short,
+ * single-segment, portable-character names only.
+ *
+ * Applied twice, defense in depth: when mapping manifest docs to keys
+ * (engine.ts buildDocPairs) and again immediately before any local write of
+ * a corpus doc (engine.ts pullOneDoc + localPathForKey below).
+ */
+export function isSafeCorpusName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    name.length <= 128 &&
+    /^[A-Za-z0-9._-]+$/.test(name) &&
+    !name.includes('..') &&
+    !name.startsWith('.') &&
+    basename(name) === name
+  );
+}
+
+/**
  * Resolve the local file path a doc key maps to (used by pull when writing
  * a doc that doesn't exist locally yet). Verifies the brand-dir mapping in
  * one place so engine.ts can't drift from readLocalDocs.
@@ -144,6 +167,14 @@ export function localPathForKey(
       return brandConfigPath(brandSlug, dataDirOverride);
     default: {
       const corpusName = key.slice('corpus/'.length);
+      // Last-ditch traversal defense: the engine filters unsafe manifest
+      // names before they ever become keys, so hitting this means a caller
+      // bug — refuse loudly rather than resolve a path outside corpora/.
+      if (!isSafeCorpusName(corpusName)) {
+        throw new Error(
+          `unsafe corpus name ${JSON.stringify(corpusName)} — refusing to resolve a local path`,
+        );
+      }
       return join(corporaDir(brandSlug, dataDirOverride), corpusName);
     }
   }

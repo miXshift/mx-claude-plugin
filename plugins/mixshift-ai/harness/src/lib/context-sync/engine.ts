@@ -29,6 +29,7 @@ import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import {
   corpusKey,
   hashContent,
+  isSafeCorpusName,
   listLocalBrands,
   localPathForKey,
   readLocalDocs,
@@ -98,13 +99,16 @@ interface DocPair {
   verdict: DocVerdict;
 }
 
-function keyForManifestDoc(d: WireManifestDoc): DocKey | null {
-  if (d.doc_type === 'corpus') {
-    // A corpus manifest entry without a name is malformed — skip defensively.
-    return d.corpus_name ? corpusKey(d.corpus_name) : null;
-  }
-  return d.doc_type;
-}
+/** The doc_types this plugin knows how to map to local files. A newer
+ *  server may publish more; those are reported as skipped, never keyed
+ *  (an unknown type must not fall through to a filesystem path). */
+const KNOWN_DOC_TYPES: ReadonlySet<string> = new Set([
+  'context',
+  'narrative',
+  'brain',
+  'config',
+  'corpus',
+]);
 
 function verdictFor(
   local: LocalDoc | undefined,
@@ -138,7 +142,16 @@ function compareKeys(a: DocKey, b: DocKey): number {
 }
 
 type PairsResult =
-  | { ok: true; pairs: DocPair[]; state: ContextSyncState }
+  | {
+      ok: true;
+      pairs: DocPair[];
+      /** Per-doc problems found while MAPPING the manifest (unsafe corpus
+       *  names → 'error', unknown doc types → 'skipped'). Never keyed, so
+       *  they can't reach a filesystem path; pull/push/sync prepend them
+       *  to their reports. */
+      issues: DocActionReport[];
+      state: ContextSyncState;
+    }
   | { ok: false; message: string };
 
 async function buildDocPairs(
@@ -160,9 +173,41 @@ async function buildDocPairs(
 
   const localByKey = new Map<DocKey, LocalDoc>(localDocs.map((d) => [d.key, d]));
   const manifestByKey = new Map<DocKey, WireManifestDoc>();
+  const issues: DocActionReport[] = [];
   for (const d of manifestBrand?.docs ?? []) {
-    const key = keyForManifestDoc(d);
-    if (key !== null) manifestByKey.set(key, d);
+    if (!KNOWN_DOC_TYPES.has(d.doc_type)) {
+      // Forward compat: report and move on — the old fallthrough turned an
+      // unknown type into a write to the corpora DIRECTORY path.
+      issues.push({
+        key: d.doc_type as DocKey,
+        docType: d.doc_type,
+        action: 'skipped',
+        detail: `unknown doc_type '${String(d.doc_type)}' in the org manifest — update the plugin to sync it`,
+      });
+      continue;
+    }
+    if (d.doc_type === 'corpus') {
+      // A corpus manifest entry without a name is malformed — skip defensively.
+      if (d.corpus_name === undefined) continue;
+      // SECURITY: the manifest is server-controlled and a corpus name
+      // becomes a local path under corpora/ on pull. An unsafe name
+      // ('../../evil', 'a:b' NTFS stream, ...) must never become a key.
+      if (!isSafeCorpusName(d.corpus_name)) {
+        issues.push({
+          key: corpusKey(d.corpus_name),
+          docType: 'corpus',
+          corpusName: d.corpus_name,
+          action: 'error',
+          detail:
+            `unsafe corpus name ${JSON.stringify(d.corpus_name)} in the org manifest — ` +
+            'refusing to sync it; rename it server-side',
+        });
+        continue;
+      }
+      manifestByKey.set(corpusKey(d.corpus_name), d);
+      continue;
+    }
+    manifestByKey.set(d.doc_type, d);
   }
 
   const keys = [...new Set<DocKey>([...localByKey.keys(), ...manifestByKey.keys()])].sort(
@@ -188,7 +233,7 @@ async function buildDocPairs(
       verdict,
     });
   }
-  return { ok: true, pairs, state };
+  return { ok: true, pairs, issues, state };
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +386,19 @@ async function pullOneDoc(
     };
   }
 
+  // SECURITY re-check immediately before the local write (defense in depth
+  // with the manifest-mapping filter): a corpus name resolves to a path
+  // under corpora/, so an unsafe one must never reach the filesystem.
+  if (pair.docType === 'corpus' && !isSafeCorpusName(pair.corpusName ?? '')) {
+    return {
+      report: reportFor(
+        pair,
+        'error',
+        `unsafe corpus name ${JSON.stringify(pair.corpusName ?? '')} — refusing to write it locally`,
+      ),
+    };
+  }
+
   const path = localPathForKey(brandSlug, pair.key, dataDirOverride);
   await writeFileAtomic(path, doc.content);
   return {
@@ -425,7 +483,7 @@ export async function pull(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [];
+  const reports: DocActionReport[] = [...built.issues];
   let stateChanged = false;
 
   for (const pair of built.pairs) {
@@ -495,7 +553,7 @@ export async function push(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [];
+  const reports: DocActionReport[] = [...built.issues];
   let stateChanged = false;
 
   for (const pair of built.pairs) {
@@ -581,7 +639,7 @@ export async function sync(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [];
+  const reports: DocActionReport[] = [...built.issues];
   let stateChanged = false;
 
   for (const pair of built.pairs) {
