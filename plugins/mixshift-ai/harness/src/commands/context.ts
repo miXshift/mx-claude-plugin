@@ -18,7 +18,7 @@ import {
   type EngineOptions,
 } from '../lib/context-sync/engine.js';
 import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
-import type { DocActionReport, WireManifestBrand } from '../lib/context-sync/types.js';
+import type { DocActionReport, DocStatusReport, WireManifestBrand } from '../lib/context-sync/types.js';
 import { track, EventName, type EventNameValue } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -49,7 +49,7 @@ export function registerContextCommands(program: Command): void {
         if (!setup) return;
         const { brands, engineOptions } = setup;
 
-        const results = [];
+        const results: Array<{ ok: true; brand: string; docs: DocStatusReport[] }> = [];
         for (const brand of brands) {
           const r = await computeStatus(brand, engineOptions);
           if (!r.ok) {
