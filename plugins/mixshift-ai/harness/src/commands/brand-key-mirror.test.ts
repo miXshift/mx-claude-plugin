@@ -190,6 +190,19 @@ describe('brand key add → assignment mirror', () => {
     expect(assignments).toEqual([{ op: 'add', brand_slug: 'acme', role: 'key' }]);
   });
 
+  it('online mirror: prints a success confirmation line (NIT-1)', async () => {
+    // Sam's 2026-07-06 E2E: the mirror worked but the CLI said nothing, so
+    // the user could not tell it reached the org store. A successful mirror
+    // must print a confirmation.
+    const { client } = assignmentClient(true);
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runBrand('key', 'add', 'acme', '--data-dir', tmpDataDir);
+
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(stderrChunks.join('')).toContain('mirrored to the org store');
+  });
+
   it('offline mirror: local add still succeeds, exit 0, one-line note printed', async () => {
     const { client, assignments } = assignmentClient(false);
     vi.mocked(createContextSyncClient).mockReturnValue(client);

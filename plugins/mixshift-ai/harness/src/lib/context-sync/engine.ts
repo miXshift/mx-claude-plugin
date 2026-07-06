@@ -141,12 +141,21 @@ function verdictFor(
   if (local!.hash === manifestDoc!.content_hash) return 'in-sync';
   if (!state) return 'diverged'; // untracked + contents differ: unattributable
   const locallyModified = local!.hash !== state.last_synced_hash;
-  const serverMoved = manifestDoc!.revision !== state.server_revision;
+  // "Server moved" means the server head's CONTENT differs from what we last
+  // synced — compare content hashes, NOT revision numbers. A revision can
+  // advance without a net content change (an add-then-revert round-trip, a
+  // no-op re-save, another person's edit that lands the same bytes), and a
+  // bare revision comparison would then flag a false 'diverged' on the next
+  // local edit and push the user toward --force. This is the same content
+  // test the in-sync branch above uses; keeping both on content keeps the two
+  // paths in agreement. (adoptInSyncState fast-forwards the stale revision
+  // pointer on the next pull/push/sync.)
+  const serverMoved = manifestDoc!.content_hash !== state.last_synced_hash;
   if (locallyModified && serverMoved) return 'diverged';
   if (locallyModified) return 'local-ahead';
   if (serverMoved) return 'server-ahead';
-  // Ledger says neither side moved, yet hashes differ — inconsistent state
-  // (e.g. hand-edited ledger). Fail safe: require an explicit resolution.
+  // Unreachable via content comparison (all three hashes would be equal ->
+  // caught by the in-sync branch), but kept as a defensive fail-safe.
   return 'diverged';
 }
 
