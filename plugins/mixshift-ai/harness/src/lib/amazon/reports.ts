@@ -332,6 +332,54 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
   }
 }
 
+/** Cap for the exponential backoff FALLBACK (used only when the service does
+ *  not report a retry-after). A server-reported retryAfterMs is honored in full
+ *  (bounded by the run deadline), since Amazon told us exactly how long to wait. */
+export const THROTTLE_BACKOFF_CAP_MS = 30_000;
+
+/** Floor for the effective poll interval used by the backoff. Guards a
+ *  degenerate/zero/NaN `--interval-ms` (and a very small one) so a 429 still
+ *  yields a real wait instead of a 0ms "give up" or a hammer-the-limit retry. */
+export const THROTTLE_BACKOFF_FLOOR_MS = 1_000;
+
+/**
+ * How long (ms) to wait before the next poll after Amazon rate-limits us
+ * (429 -> `throttled`). `report run` polls in a loop; a single 429 is transient
+ * (the poll was rate-limited, not the pull), so instead of failing the whole run
+ * we back off and re-poll. This computes the wait:
+ *   - honor the service-reported `retryAfterMs` when present (Amazon told us);
+ *     a missing/zero/negative/NaN retryAfterMs is treated as absent;
+ *   - otherwise exponential backoff off the (floored) interval, capped, so a
+ *     sustained rate-limit spaces polls out instead of hammering the limit;
+ *   - floor the effective interval at THROTTLE_BACKOFF_FLOOR_MS, and never wait
+ *     past the run deadline. Returns 0 ONLY once the deadline has passed, which
+ *     the caller uses as the "stop now" sentinel — so a positive `remaining`
+ *     always yields a positive wait.
+ *
+ * `streak` is the count of consecutive throttled polls (1 on the first). Pure
+ * and deterministic (caller passes `now`) so it is unit-testable.
+ */
+export function throttleBackoffMs(
+  retryAfterMs: number | undefined,
+  intervalMs: number,
+  streak: number,
+  now: number,
+  deadline: number,
+): number {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  // Sanitize the interval (0/NaN/negative -> floor) so the wait is always real.
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
+  const base =
+    retryAfterMs && retryAfterMs > 0
+      ? retryAfterMs
+      : Math.min(
+          eff * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
+          THROTTLE_BACKOFF_CAP_MS,
+        );
+  return Math.min(Math.max(base, eff), remaining);
+}
+
 /** List merchants the signed-in tenant can pull reports for. */
 export async function listMerchants(
   opts: ReportClientOptions = {},

@@ -33,6 +33,10 @@ export interface TelemetryEventRecord {
   surface: string;
   os: string;
   node_version: string;
+  /** Self-reported CLI/runtime UA string. The events table has always had a
+   *  user_agent column; the client began populating it in the beta-richness
+   *  pass (feedback #10). Absent on queue entries written before that. */
+  user_agent?: string;
   ts: string; // ISO timestamp set client-side at queue time
   payload: Record<string, unknown>;
   // Lifted fields for queryability:
@@ -154,6 +158,13 @@ export const EventName = {
   ReportPolled: 'report.polled',
   ReportRetrieved: 'report.retrieved',
   ReportFailed: 'report.failed',
+  // Emitted at most ONCE per `report run` when Amazon rate-limited one or more
+  // status polls but the run kept going (backoff-and-retry) rather than failing.
+  // Split out from report.failed so a throttle absorbed mid-poll is not counted
+  // as a failed pull (a single slow pull used to log many report.failed rows,
+  // which skewed the error-aggregate triage). payload: {report_type,
+  // throttled_polls, via}. Internal diagnostic only — not in the Discord fanout.
+  ReportPollThrottled: 'report.poll_throttled',
 
   // Service-credential setup (`mixshift auth service-setup`). Fired after
   // the service block is persisted so a fresh data dir's synthetic

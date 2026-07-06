@@ -160,7 +160,16 @@ function registerCall(amazon: Command): void {
           });
           return emitFailure(result, !!root.json);
         }
-        await trackSpApi(EventName.AmazonSpApiCalled, 'ok', startedAt, root.dataDir, { operation });
+        // Beta richness (feedback #10): stamp the resolved merchant/marketplace
+        // identifiers so SP-API usage can be sliced by seller/marketplace, not
+        // just operation. Mirrors the JSON output below; never the payload
+        // (Amazon's response body carries seller-level data).
+        await trackSpApi(EventName.AmazonSpApiCalled, 'ok', startedAt, root.dataDir, {
+          operation,
+          ...(result.amazonSellerId ? { amazon_seller_id: result.amazonSellerId } : {}),
+          ...(result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {}),
+          ...(result.marketplaceId ? { marketplace_id: result.marketplaceId } : {}),
+        });
         if (root.json) {
           writeJson({
             status: 'ok',

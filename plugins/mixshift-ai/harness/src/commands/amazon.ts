@@ -42,6 +42,7 @@ import {
   streamReportDocumentToFile,
   isReportFailure,
   exitCodeForKind,
+  throttleBackoffMs,
   type ReportFailure,
   type MerchantView,
   type StartReportInput,
@@ -119,7 +120,23 @@ function registerMerchants(amazon: Command): void {
             event_name: EventName.AmazonMerchantsListed,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { count: result.merchants.length },
+            payload: {
+              count: result.merchants.length,
+              // Beta richness (feedback #10): bounded projection of merchant
+              // identifiers so reviews can see WHICH seller/marketplace rows a
+              // tenant can pull for (and their cron/auth posture), not just a
+              // count. Id/flag fields only, never a full merchant object;
+              // capped at 25 with a truncated flag.
+              sample: result.merchants.slice(0, 25).map((m) => ({
+                amazon_seller_id: m.amazonSellerId,
+                ...(m.legacySellerId != null ? { legacy_seller_id: m.legacySellerId } : {}),
+                ...(m.marketplaceId != null ? { marketplace_id: m.marketplaceId } : {}),
+                ...(m.countryCode != null ? { country_code: m.countryCode } : {}),
+                authorized: m.authorized,
+                ...(typeof m.cronActive === 'boolean' ? { cron_active: m.cronActive } : {}),
+              })),
+              truncated: result.merchants.length > 25,
+            },
           },
           root.dataDir,
         );
@@ -263,7 +280,19 @@ function registerReportStart(report: Command): void {
             event_name: EventName.ReportStarted,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { report_type: reportType, status: result.status },
+            // Beta richness (feedback #10): stamp the run handle plus the
+            // merchant/marketplace selectors the caller pulled for, so a
+            // report.started can be traced to a seller/window — not just a
+            // report type. run_id from the result; seller/marketplace from the
+            // in-scope request (input). Never document bytes.
+            payload: {
+              report_type: reportType,
+              status: result.status,
+              run_id: result.runId,
+              ...(input.amazonSellerId !== undefined ? { amazon_seller_id: input.amazonSellerId } : {}),
+              ...(input.legacySellerId !== undefined ? { legacy_seller_id: input.legacySellerId } : {}),
+              ...(input.marketplace !== undefined ? { marketplace: input.marketplace } : {}),
+            },
           },
           root.dataDir,
         );
@@ -307,7 +336,15 @@ function registerReportPoll(report: Command): void {
             event_name: EventName.ReportPolled,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { ready: result.ready, status: result.status },
+            // Beta richness (feedback #10): carry the run handle (the poll
+            // target) and Amazon's reportId once assigned, so a poll ties back
+            // to a specific run. Mirrors the JSON output below.
+            payload: {
+              ready: result.ready,
+              status: result.status,
+              run_id: runId,
+              ...(result.reportId !== undefined ? { report_id: result.reportId } : {}),
+            },
           },
           root.dataDir,
         );
@@ -505,24 +542,80 @@ function registerReportRun(report: Command): void {
         );
         const runId = started.runId;
 
-        // 2. poll until ready or timeout
+        // 2. poll until ready or timeout. A 429 (throttled) is transient —
+        // Amazon rate-limited this poll, not the pull — so back off (honoring
+        // any server retry-after) and keep polling to the deadline instead of
+        // failing the whole run on the first one. Only a non-throttled failure
+        // is terminal in the loop; a run that stays throttled to the deadline
+        // surfaces at the finalPoll below as ONE report.failed, not one per poll.
         const deadline = startedAt + opts.maxWaitMs;
         let polls = 0;
+        let throttledPolls = 0;
+        let throttleStreak = 0;
         let lastStatus = started.status ?? 'UNKNOWN';
+        let pollFailure: ReportFailure | undefined;
+        // Capture the last successful poll so the post-loop step can reuse it
+        // instead of firing a redundant Amazon poll on the ready path.
+        let lastPoll: Awaited<ReturnType<typeof pollReport>> | undefined;
         while (Date.now() < deadline) {
           const poll = await pollReport(runId, clientOpts);
           if (isReportFailure(poll)) {
-            await trackFailure(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
-            return emitFailure(poll, !!root.json);
+            if (poll.kind !== 'throttled') {
+              pollFailure = poll;
+              break;
+            }
+            throttledPolls += 1;
+            throttleStreak += 1;
+            const backoff = throttleBackoffMs(
+              poll.retryAfterMs,
+              opts.intervalMs,
+              throttleStreak,
+              Date.now(),
+              deadline,
+            );
+            if (backoff <= 0) break; // out of time; fall through to the timeout path
+            if (!root.json) {
+              process.stderr.write(
+                `  ... rate-limited by Amazon; backing off ${(backoff / 1000).toFixed(1)}s ` +
+                  `(throttle ${throttledPolls})\n`,
+              );
+            }
+            await sleep(backoff);
+            continue;
           }
+          throttleStreak = 0;
           polls += 1;
           lastStatus = poll.status;
+          lastPoll = poll;
           if (poll.ready) break;
           if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
           await sleep(opts.intervalMs);
         }
 
-        const finalPoll = await pollReport(runId, clientOpts);
+        // One deduped summary when throttling happened at all, so the
+        // error-aggregate sweep sees "throttled but handled" as its own signal
+        // rather than as inflated report.failed rows.
+        if (throttledPolls > 0) {
+          await track(
+            {
+              event_name: EventName.ReportPollThrottled,
+              outcome: 'ok',
+              duration_ms: Date.now() - startedAt,
+              payload: { report_type: reportType, throttled_polls: throttledPolls, via: 'run' },
+            },
+            root.dataDir,
+          );
+        }
+
+        // A non-throttled poll failure is terminal.
+        if (pollFailure) {
+          await trackFailure(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
+          return emitFailure(pollFailure, !!root.json);
+        }
+
+        // Reuse the ready poll from the loop; only re-poll if we never got a
+        // non-failure poll (e.g. throttled until the deadline).
+        const finalPoll = lastPoll ?? (await pollReport(runId, clientOpts));
         if (isReportFailure(finalPoll)) {
           await trackFailure(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
           return emitFailure(finalPoll, !!root.json);
@@ -533,7 +626,7 @@ function registerReportRun(report: Command): void {
               event_name: EventName.ReportPolled,
               outcome: 'timeout',
               duration_ms: Date.now() - startedAt,
-              payload: { report_type: reportType, status: lastStatus, polls, via: 'run' },
+              payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: 'run' },
             },
             root.dataDir,
           );
@@ -649,6 +742,13 @@ async function trackFailure(
         kind: failure.kind,
         ...(reportType ? { report_type: reportType } : {}),
         ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
+        // Beta richness (feedback #10): seller/report context the service
+        // attached to the failure, so a report.failed can be tied to the
+        // merchant + Amazon report it was for (present kind-dependently:
+        // amazonSellerId on reauth_required, reportId/status on report_fatal).
+        ...(failure.amazonSellerId !== undefined ? { amazon_seller_id: failure.amazonSellerId } : {}),
+        ...(failure.reportId !== undefined ? { report_id: failure.reportId } : {}),
+        ...(failure.status !== undefined ? { report_status: failure.status } : {}),
       },
     },
     dataDir,

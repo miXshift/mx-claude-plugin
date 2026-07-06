@@ -63717,7 +63717,8 @@ async function doMintServiceToken(service, dataDirOverride) {
       `/oauth/token returned HTTP ${res.status}: ${body.slice(0, 500)}`
     );
   }
-  const json2 = await res.json();
+  const rawJson = await res.json();
+  const json2 = rawJson && typeof rawJson === "object" ? rawJson : {};
   if (!json2.access_token) {
     throw new Error("/oauth/token returned no access_token.");
   }
@@ -63726,7 +63727,10 @@ async function doMintServiceToken(service, dataDirOverride) {
     {
       access_token: json2.access_token,
       expires_at: new Date(Date.now() + expiresInSec * 1e3).toISOString(),
-      client_id: service.client_id
+      client_id: service.client_id,
+      // Persist the attribution echo (feedback #10) when present so telemetry
+      // can self-attribute this automation without a network call.
+      ...json2.attribution ? { attribution: json2.attribution } : {}
     },
     dataDirOverride
   );
@@ -64154,6 +64158,9 @@ function normalizeRecord(rec) {
     surface: rec.surface ?? null,
     os: rec.os,
     node_version: rec.node_version,
+    // user_agent column has always existed; populated since the beta-richness
+    // pass (feedback #10). Older queued entries coerce to null.
+    user_agent: rec.user_agent ?? null,
     ts: rec.ts,
     payload: rec.payload ?? {},
     skill_id: rec.skill_id ?? null,
@@ -64253,6 +64260,13 @@ var init_events = __esm({
       ReportPolled: "report.polled",
       ReportRetrieved: "report.retrieved",
       ReportFailed: "report.failed",
+      // Emitted at most ONCE per `report run` when Amazon rate-limited one or more
+      // status polls but the run kept going (backoff-and-retry) rather than failing.
+      // Split out from report.failed so a throttle absorbed mid-poll is not counted
+      // as a failed pull (a single slow pull used to log many report.failed rows,
+      // which skewed the error-aggregate triage). payload: {report_type,
+      // throttled_polls, via}. Internal diagnostic only — not in the Discord fanout.
+      ReportPollThrottled: "report.poll_throttled",
       // Service-credential setup (`mixshift auth service-setup`). Fired after
       // the service block is persisted so a fresh data dir's synthetic
       // plugin.installed event attributes to the svc: label instead of landing
@@ -64416,6 +64430,79 @@ var init_surface = __esm({
   }
 });
 
+// src/lib/telemetry/service-attribution-cache.ts
+import { readFile as readFile7 } from "node:fs/promises";
+async function readServiceAttributionCache(clientId, dataDirOverride) {
+  try {
+    const raw = await readFile7(serviceTokenCachePath(dataDirOverride), "utf-8");
+    const parsedRaw = JSON.parse(raw);
+    if (!parsedRaw || typeof parsedRaw !== "object") return {};
+    const parsed = parsedRaw;
+    const a = parsed.attribution;
+    if (!a || typeof a !== "object") return {};
+    if (clientId && parsed.client_id && parsed.client_id !== clientId) return {};
+    return {
+      owner_user_id: typeof a.owner_user_id === "string" ? a.owner_user_id : void 0,
+      minted_by: typeof a.minted_by === "string" ? a.minted_by : void 0,
+      purpose: typeof a.purpose === "string" ? a.purpose : void 0,
+      scopes: Array.isArray(a.scopes) ? a.scopes.filter((s) => typeof s === "string") : void 0,
+      client_ip: typeof a.client_ip === "string" ? a.client_ip : void 0
+    };
+  } catch {
+    return {};
+  }
+}
+var init_service_attribution_cache = __esm({
+  "src/lib/telemetry/service-attribution-cache.ts"() {
+    "use strict";
+    init_credentials();
+  }
+});
+
+// src/lib/telemetry/attribution.ts
+async function resolveAttribution(dataDirOverride) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const datahub = credentials?.datahub;
+    const service = credentials?.service;
+    if (datahub) {
+      return {
+        personLabel: datahub.person_label,
+        // A human session present => not automation, even if a service block
+        // also exists on this data dir (preserves prior semantics).
+        automation: false,
+        actor: { kind: "human", user_id: datahub.user_id }
+      };
+    }
+    if (service) {
+      const enriched = await readServiceAttributionCache(
+        service.client_id,
+        dataDirOverride
+      );
+      return {
+        personLabel: service.label ?? service.client_id,
+        automation: true,
+        actor: {
+          kind: "service",
+          svc_label: service.label,
+          svc_client_id: service.client_id,
+          ...enriched
+        }
+      };
+    }
+    return { personLabel: void 0, automation: false, actor: { kind: "anonymous" } };
+  } catch {
+    return { personLabel: void 0, automation: false, actor: { kind: "anonymous" } };
+  }
+}
+var init_attribution = __esm({
+  "src/lib/telemetry/attribution.ts"() {
+    "use strict";
+    init_credentials();
+    init_service_attribution_cache();
+  }
+});
+
 // src/lib/telemetry/index.ts
 import { platform, release } from "node:os";
 async function track(input, dataDirOverride) {
@@ -64430,9 +64517,11 @@ async function track(input, dataDirOverride) {
     const os = detectOs();
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const userEmail = profile.user?.email;
-    const attribution = await readAttributionBestEffort(dataDirOverride);
+    const attribution = await resolveAttribution(dataDirOverride);
     const datahubPersonLabel = attribution.personLabel;
     const automationPayload = attribution.automation ? { automation: true } : {};
+    const actorPayload = { actor: attribution.actor };
+    const userAgent = buildUserAgent(pluginVersion, surface, os);
     if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
       const synthetic = {
         event_name: EventName.PluginInstalled,
@@ -64444,10 +64533,11 @@ async function track(input, dataDirOverride) {
         surface,
         os,
         node_version: process.version,
+        user_agent: userAgent,
         ts: nowIso,
         // Marker so analytics can distinguish "synthetic on first-track"
         // from a hypothetical future direct track(PluginInstalled) call.
-        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload }
+        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload, ...actorPayload }
       };
       await enqueueEvent(synthetic, dataDirOverride);
     }
@@ -64461,8 +64551,9 @@ async function track(input, dataDirOverride) {
       surface,
       os,
       node_version: process.version,
+      user_agent: userAgent,
       ts: nowIso,
-      payload: { ...input.payload ?? {}, ...automationPayload },
+      payload: { ...input.payload ?? {}, ...automationPayload, ...actorPayload },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -64505,18 +64596,8 @@ function readSurfaceFlag() {
   if (eq) return eq.slice("--surface=".length);
   return void 0;
 }
-async function readAttributionBestEffort(dataDirOverride) {
-  try {
-    const { credentials } = await loadCredentials(dataDirOverride);
-    const human = credentials?.datahub?.person_label;
-    const service = credentials?.service;
-    return {
-      personLabel: human ?? service?.label ?? service?.client_id,
-      automation: Boolean(service) && !human
-    };
-  } catch {
-    return { personLabel: void 0, automation: false };
-  }
+function buildUserAgent(pluginVersion, surface, os) {
+  return `mixshift-cli/${pluginVersion} (node ${process.version}; ${os}; surface=${surface})`;
 }
 var init_telemetry = __esm({
   "src/lib/telemetry/index.ts"() {
@@ -64527,9 +64608,9 @@ var init_telemetry = __esm({
     init_client();
     init_events();
     init_load();
-    init_credentials();
     init_plugin_version();
     init_surface();
+    init_attribution();
     init_consent();
     init_identity();
     init_events();
@@ -65382,7 +65463,7 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir22, readFile as readFile27 } from "node:fs/promises";
+import { appendFile as appendFile2, mkdir as mkdir22, readFile as readFile28 } from "node:fs/promises";
 import { join as join18, dirname as dirname26 } from "node:path";
 function flushLogPath(dataDirOverride) {
   return join18(telemetryDir(dataDirOverride), LOG_FILENAME);
@@ -65401,7 +65482,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile27(path2, "utf-8");
+    const raw = await readFile28(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -66244,7 +66325,7 @@ function isFileNotFoundError7(err) {
 var import_yaml7 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir5, readFile as readFile7, rename as rename4, writeFile as writeFile5, chmod as chmod2 } from "node:fs/promises";
+import { mkdir as mkdir5, readFile as readFile8, rename as rename4, writeFile as writeFile5, chmod as chmod2 } from "node:fs/promises";
 import { dirname as dirname7 } from "node:path";
 
 // src/lib/clients/index-schema.ts
@@ -66301,7 +66382,7 @@ async function readIndex(dataDirOverride) {
   const path2 = indexPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile7(path2, "utf-8");
+    raw = await readFile8(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError8(err)) {
       return { index: emptyIndex(), source: "empty", path: path2 };
@@ -66649,7 +66730,7 @@ async function clearKeyBrands(dataDirOverride) {
 init_credentials();
 var TEXT_DOC_TIMEOUT_MS = 3e4;
 var CORPUS_TIMEOUT_MS = 12e4;
-var ASSIGNMENT_TIMEOUT_MS = 1e4;
+var ASSIGNMENT_TIMEOUT_MS = 2e3;
 var UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
 var ContextSyncNetworkError = class extends Error {
   constructor(msg2) {
@@ -66871,7 +66952,7 @@ function mirrorStatusNote(outcomes) {
 // src/lib/context-sync/local.ts
 init_resolve();
 import { createHash } from "node:crypto";
-import { readdir, readFile as readFile8 } from "node:fs/promises";
+import { readdir, readFile as readFile9 } from "node:fs/promises";
 import { basename, join as join7 } from "node:path";
 function hashContent(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -66910,7 +66991,7 @@ async function readLocalDocs(brandSlug, dataDirOverride) {
   const corpusNames = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
   for (const name of corpusNames) {
     const path2 = join7(dir, name);
-    const content = await readFile8(path2, "utf8");
+    const content = await readFile9(path2, "utf8");
     docs.push({
       key: corpusKey(name),
       docType: "corpus",
@@ -66962,7 +67043,7 @@ async function brandDirExists(brandSlug, dataDirOverride) {
 }
 async function readFileIfPresent(path2) {
   try {
-    return await readFile8(path2, "utf8");
+    return await readFile9(path2, "utf8");
   } catch (err) {
     if (isFileNotFoundError9(err)) return null;
     throw err;
@@ -66985,7 +67066,7 @@ import { promisify } from "node:util";
 var import_yaml8 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir6, readFile as readFile9, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink as unlink2 } from "node:fs/promises";
+import { mkdir as mkdir6, readFile as readFile10, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink as unlink2 } from "node:fs/promises";
 import { dirname as dirname8 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
@@ -66993,7 +67074,7 @@ async function readBrandConfig(brandSlug, dataDirOverride) {
   const path2 = brandConfigPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile9(path2, "utf-8");
+    raw = await readFile10(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError10(err)) {
       return { config: {}, source: "empty", path: path2 };
@@ -67188,7 +67269,7 @@ function isFileNotFoundError10(err) {
 init_resolve();
 
 // src/lib/render/design-system.ts
-import { readFile as readFile10 } from "node:fs/promises";
+import { readFile as readFile11 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
 import { dirname as dirname9, join as join8, parse as parse3 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
@@ -67212,7 +67293,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile10(join8(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile11(join8(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -67220,7 +67301,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile10(join8(designSystemDir(), filename), "utf-8");
+  const raw = await readFile11(join8(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -68601,15 +68682,15 @@ async function openInBrowser(path2) {
 }
 
 // src/commands/brand-brain.ts
-import { readFile as readFile17 } from "node:fs/promises";
+import { readFile as readFile18 } from "node:fs/promises";
 
 // src/lib/brain/fetch.ts
 var import_yaml12 = __toESM(require_dist(), 1);
-import { writeFile as writeFile11, readFile as readFile15, mkdir as mkdir11, rename as rename9 } from "node:fs/promises";
+import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename9 } from "node:fs/promises";
 import { dirname as dirname14 } from "node:path";
 
 // src/lib/data/dispatch.ts
-import { readFile as readFile12, access as access2 } from "node:fs/promises";
+import { readFile as readFile13, access as access2 } from "node:fs/promises";
 import { join as join9 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
@@ -68617,7 +68698,7 @@ init_zod();
 init_plugin_root();
 var import_yaml9 = __toESM(require_dist(), 1);
 init_format_error();
-import { readFile as readFile11 } from "node:fs/promises";
+import { readFile as readFile12 } from "node:fs/promises";
 var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -68661,7 +68742,7 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile11(path2, "utf-8");
+    raw = await readFile12(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -68700,7 +68781,7 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile11(path2, "utf-8");
+    raw = await readFile12(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -68845,7 +68926,7 @@ async function readLocalSql(dir, fileName) {
   } catch {
     return void 0;
   }
-  return readFile12(path2, "utf-8");
+  return readFile13(path2, "utf-8");
 }
 function buildCallSql(sprocName) {
   return `CALL ${sprocName}(?, ?)`;
@@ -70026,7 +70107,7 @@ function toIso2(v) {
 
 // src/lib/brain/read.ts
 var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile14, writeFile as writeFile10, mkdir as mkdir10, rename as rename8 } from "node:fs/promises";
+import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename8 } from "node:fs/promises";
 import { dirname as dirname13 } from "node:path";
 init_resolve();
 init_format_error();
@@ -70041,7 +70122,7 @@ import { basename as basename2, dirname as dirname12, join as join10 } from "nod
 init_credentials();
 init_resolve();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir8, readFile as readFile13, rename as rename6, unlink as unlink3, writeFile as writeFile8 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile14, rename as rename6, unlink as unlink3, writeFile as writeFile8 } from "node:fs/promises";
 import { dirname as dirname11 } from "node:path";
 function emptyState(identity) {
   return { schema: 2, ...identity ? { identity } : {}, docs: {} };
@@ -70062,7 +70143,7 @@ async function resolveLedgerIdentity(dataDirOverride) {
 }
 async function loadState(brandSlug, dataDirOverride, currentIdentity) {
   try {
-    const raw = await readFile13(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
+    const raw = await readFile14(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || parsed.schema !== 1 && parsed.schema !== 2 || typeof parsed.docs !== "object" || parsed.docs === null) {
       return emptyState(currentIdentity);
@@ -70759,7 +70840,7 @@ async function loadBrain(brandSlug, dataDirOverride) {
   const path2 = brainPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile14(path2, "utf-8");
+    raw = await readFile15(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError12(err)) {
       return {
@@ -71207,7 +71288,7 @@ async function writeBrainStatus(status, dataDirOverride) {
 }
 async function readBrandTermsInput(slug, dataDirOverride) {
   try {
-    const raw = await readFile15(contextPath(slug, dataDirOverride), "utf-8");
+    const raw = await readFile16(contextPath(slug, dataDirOverride), "utf-8");
     const parsed = (0, import_yaml12.parse)(raw);
     if (!parsed || typeof parsed !== "object" || !parsed.brand_terms) {
       return void 0;
@@ -71233,7 +71314,7 @@ init_zod();
 // src/lib/brain/discoveries.ts
 init_zod();
 init_resolve();
-import { readFile as readFile16, writeFile as writeFile12, mkdir as mkdir12, rename as rename10, unlink as unlink5 } from "node:fs/promises";
+import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename10, unlink as unlink5 } from "node:fs/promises";
 import { dirname as dirname15 } from "node:path";
 var contextFieldProposalSchema = external_exports.object({
   field: external_exports.string().min(1),
@@ -71258,7 +71339,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   let doc;
   try {
-    const raw = await readFile16(path2, "utf-8");
+    const raw = await readFile17(path2, "utf-8");
     doc = discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     doc = {
@@ -71301,7 +71382,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
 async function readPendingDiscoveries(brandSlug, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile16(path2, "utf-8");
+    const raw = await readFile17(path2, "utf-8");
     return discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     return null;
@@ -71491,7 +71572,7 @@ Brand brain status for ${slug}:`];
 }
 async function readStatusFile(slug, dataDirOverride) {
   try {
-    const raw = await readFile17(brainStatusPath(slug, dataDirOverride), "utf-8");
+    const raw = await readFile18(brainStatusPath(slug, dataDirOverride), "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -71666,7 +71747,7 @@ function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
 // src/lib/context-editor/flow.ts
 var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
-import { mkdir as mkdir13, readFile as readFile18, rename as rename11, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
+import { mkdir as mkdir13, readFile as readFile19, rename as rename11, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
 import { dirname as dirname16 } from "node:path";
 
 // src/lib/calibration/manifest-schema.ts
@@ -72152,7 +72233,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
   let rawText;
   try {
-    rawText = await readFile18(path2, "utf-8");
+    rawText = await readFile19(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError13(err)) {
       return {
@@ -72246,7 +72327,7 @@ function deepEqual(a, b) {
 async function tryReadContextObject(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile18(path2, "utf-8");
+    const raw = await readFile19(path2, "utf-8");
     const parsed = (0, import_yaml13.parse)(raw);
     if (parsed === null || parsed === void 0) return {};
     if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
@@ -72532,7 +72613,7 @@ import { join as join12 } from "node:path";
 // src/lib/render/brand-context-report.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile19, readdir as readdir3, stat as stat3 } from "node:fs/promises";
+import { readFile as readFile20, readdir as readdir3, stat as stat3 } from "node:fs/promises";
 import { dirname as dirname17, join as join11 } from "node:path";
 async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -72772,7 +72853,7 @@ async function loadAuditLabels() {
       "audit-labels.yaml"
     );
     if (existsSync3(candidate)) {
-      const raw = await readFile19(candidate, "utf-8");
+      const raw = await readFile20(candidate, "utf-8");
       const parsed = (0, import_yaml14.parse)(raw);
       return parsed.fields ?? [];
     }
@@ -72783,7 +72864,7 @@ async function loadAuditLabels() {
 }
 async function readYamlIfExists(path2) {
   try {
-    const raw = await readFile19(path2, "utf-8");
+    const raw = await readFile20(path2, "utf-8");
     return (0, import_yaml14.parse)(raw);
   } catch {
     return null;
@@ -72791,7 +72872,7 @@ async function readYamlIfExists(path2) {
 }
 async function readTextIfExists(path2) {
   try {
-    return await readFile19(path2, "utf-8");
+    return await readFile20(path2, "utf-8");
   } catch {
     return null;
   }
@@ -72805,7 +72886,7 @@ async function summarizeCorpora(dirPath) {
       try {
         const s = await stat3(join11(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile19(join11(dirPath, f), "utf-8");
+        const raw = await readFile20(join11(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -73787,7 +73868,7 @@ function emitError3(json2, message) {
 // src/lib/enrichment/delta-merge.ts
 var import_yaml15 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile20, writeFile as writeFile15, rename as rename12, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
+import { readFile as readFile21, writeFile as writeFile15, rename as rename12, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
 import { dirname as dirname18 } from "node:path";
 async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -73811,7 +73892,7 @@ async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   }
   let ctxText;
   try {
-    ctxText = await readFile20(ctxPath, "utf-8");
+    ctxText = await readFile21(ctxPath, "utf-8");
   } catch (err) {
     if (isFileNotFoundError14(err)) {
       return {
@@ -74797,7 +74878,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
 
 // src/commands/auth.ts
 var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile21 } from "node:fs/promises";
+import { readFile as readFile22 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -77559,7 +77640,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile21(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile22(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -77711,7 +77792,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile21(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile22(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -77731,7 +77812,7 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile21(path2, "utf-8");
+  const raw = await readFile22(path2, "utf-8");
   let parsed;
   try {
     parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml16.parse)(raw);
@@ -77930,7 +78011,7 @@ init_zod();
 var import_yaml17 = __toESM(require_dist(), 1);
 init_plugin_root();
 init_format_error();
-import { readFile as readFile22 } from "node:fs/promises";
+import { readFile as readFile23 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -78007,7 +78088,7 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile22(path2, "utf-8");
+    raw = await readFile23(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError15(err)) {
       throw new Error(
@@ -78559,7 +78640,7 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile23 } from "node:fs/promises";
+import { readFile as readFile24 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
@@ -78753,7 +78834,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile23(opts.inputFile, "utf-8");
+      const raw = await readFile24(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -78828,14 +78909,14 @@ import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
 var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile24 } from "node:fs/promises";
+import { readFile as readFile25 } from "node:fs/promises";
 import { dirname as dirname21, join as join15 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile24(path2, "utf-8");
+      const raw = await readFile25(path2, "utf-8");
       const parsed = (0, import_yaml18.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
@@ -79471,7 +79552,7 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile25, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
+import { readFile as readFile26, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
 import { dirname as dirname24 } from "node:path";
 import { join as join16 } from "node:path";
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
@@ -79486,7 +79567,7 @@ async function checkForUpdate(opts = {}) {
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile25(cachePath2, "utf-8");
+    const raw = await readFile26(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -80004,7 +80085,7 @@ init_plugin_version();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile26, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
+import { readFile as readFile27, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
 import { dirname as dirname25, join as join17 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
@@ -80051,7 +80132,7 @@ async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile26(path2, "utf-8");
+    const raw = await readFile27(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
       cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
@@ -80458,7 +80539,7 @@ Context:
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml19 = __toESM(require_dist(), 1);
-import { readFile as readFile28 } from "node:fs/promises";
+import { readFile as readFile29 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -80717,7 +80798,7 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile28(path2, "utf-8");
+    const raw = await readFile29(path2, "utf-8");
     return (0, import_yaml19.parse)(raw);
   } catch {
     return null;
@@ -80877,7 +80958,7 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir23, readFile as readFile29, writeFile as writeFile21 } from "node:fs/promises";
+import { mkdir as mkdir23, readFile as readFile30, writeFile as writeFile21 } from "node:fs/promises";
 import { dirname as dirname27 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
@@ -81357,7 +81438,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile29(path2, "utf-8");
+    const raw = await readFile30(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -81449,6 +81530,18 @@ function exitCodeForKind(kind) {
     default:
       return 1;
   }
+}
+var THROTTLE_BACKOFF_CAP_MS = 3e4;
+var THROTTLE_BACKOFF_FLOOR_MS = 1e3;
+function throttleBackoffMs(retryAfterMs, intervalMs, streak, now, deadline) {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
+  const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.min(
+    eff * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
+    THROTTLE_BACKOFF_CAP_MS
+  );
+  return Math.min(Math.max(base, eff), remaining);
 }
 async function listMerchants(opts = {}) {
   const r = await amazonRequest(
@@ -81919,14 +82012,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile30 } from "node:fs/promises";
+import { readFile as readFile31 } from "node:fs/promises";
 import { dirname as dirname29, join as join19 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile30(path2, "utf-8");
+      const raw = await readFile31(path2, "utf-8");
       const parsed = (0, import_yaml20.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
@@ -81991,7 +82084,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile32 } from "node:fs/promises";
+import { readFile as readFile33 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -82084,12 +82177,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir25, readFile as readFile31, rename as rename15, writeFile as writeFile22 } from "node:fs/promises";
+import { mkdir as mkdir25, readFile as readFile32, rename as rename15, writeFile as writeFile22 } from "node:fs/promises";
 import { dirname as dirname30 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile31(path2, "utf8");
+    const raw = await readFile32(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -82191,7 +82284,13 @@ function registerFoepCommand(pricing) {
               mode: "async",
               items_count: skus.length,
               run_id: result2.runId,
-              legacy_seller_id: opts.legacySellerId
+              legacy_seller_id: opts.legacySellerId,
+              // Beta richness (feedback #10): initial run status from the
+              // result plus the merchant/marketplace selectors the caller
+              // passed, so a pricing.started ties to a seller/marketplace.
+              ...result2.status !== void 0 ? { status: result2.status } : {},
+              ...opts.amazonSellerId !== void 0 ? { amazon_seller_id: opts.amazonSellerId } : {},
+              ...opts.marketplace !== void 0 ? { marketplace: opts.marketplace } : {}
             }
           },
           root.dataDir
@@ -82231,7 +82330,11 @@ Handle saved to pricing-runs.json; any later call can list it: mixshift amazon p
             items_succeeded: result.itemsSucceeded,
             items_failed: result.itemsFailed,
             run_id: result.runId,
-            legacy_seller_id: opts.legacySellerId
+            legacy_seller_id: opts.legacySellerId,
+            // Beta richness (feedback #10): total + completed counts for
+            // schema parity with the get-run-result retrieved event.
+            items_total: result.itemsTotal,
+            items_completed: result.itemsCompleted
           }
         },
         root.dataDir
@@ -82303,7 +82406,13 @@ function registerCompetitiveSummaryCommand(pricing) {
               mode: "async",
               items_count: asins.length,
               run_id: result2.runId,
-              legacy_seller_id: opts.legacySellerId
+              legacy_seller_id: opts.legacySellerId,
+              // Beta richness (feedback #10): initial run status from the
+              // result plus the merchant/marketplace selectors the caller
+              // passed, so a pricing.started ties to a seller/marketplace.
+              ...result2.status !== void 0 ? { status: result2.status } : {},
+              ...opts.amazonSellerId !== void 0 ? { amazon_seller_id: opts.amazonSellerId } : {},
+              ...opts.marketplace !== void 0 ? { marketplace: opts.marketplace } : {}
             }
           },
           root.dataDir
@@ -82354,7 +82463,11 @@ Handle saved to pricing-runs.json; any later call can list it: mixshift amazon p
             items_succeeded: result.itemsSucceeded,
             items_failed: result.itemsFailed,
             run_id: result.runId,
-            legacy_seller_id: opts.legacySellerId
+            legacy_seller_id: opts.legacySellerId,
+            // Beta richness (feedback #10): total + completed counts for
+            // schema parity with the get-run-result retrieved event.
+            items_total: result.itemsTotal,
+            items_completed: result.itemsCompleted
           }
         },
         root.dataDir
@@ -82381,7 +82494,14 @@ function registerPollRunCommand(pricing) {
             outcome: "failed",
             duration_ms: Date.now() - startedAt,
             error_class: result.kind,
-            payload: { operation: "poll_run", run_id: runId }
+            payload: {
+              operation: "poll_run",
+              run_id: runId,
+              // Beta richness (feedback #10): typed failure kind + HTTP
+              // status so a pricing.failed is diagnosable without the log.
+              failure_kind: result.kind,
+              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+            }
           },
           root.dataDir
         );
@@ -82395,7 +82515,13 @@ function registerPollRunCommand(pricing) {
           payload: {
             run_id: runId,
             status: result.status,
-            items_completed: result.itemsCompleted
+            items_completed: result.itemsCompleted,
+            // Beta richness (feedback #10): full progress counters (totals +
+            // succeeded/failed split) so a poll shows how far along a run is,
+            // not just completed. All are plain counts on the run status.
+            items_total: result.itemsTotal,
+            items_succeeded: result.itemsSucceeded,
+            items_failed: result.itemsFailed
           }
         },
         root.dataDir
@@ -82422,7 +82548,14 @@ function registerGetRunResultCommand(pricing) {
             outcome: "failed",
             duration_ms: Date.now() - startedAt,
             error_class: result.kind,
-            payload: { operation: "get_run_result", run_id: runId }
+            payload: {
+              operation: "get_run_result",
+              run_id: runId,
+              // Beta richness (feedback #10): typed failure kind + HTTP
+              // status so a pricing.failed is diagnosable without the log.
+              failure_kind: result.kind,
+              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+            }
           },
           root.dataDir
         );
@@ -82437,7 +82570,12 @@ function registerGetRunResultCommand(pricing) {
             run_id: runId,
             status: result.status,
             items_succeeded: result.itemsSucceeded,
-            items_failed: result.itemsFailed
+            items_failed: result.itemsFailed,
+            // Beta richness (feedback #10): total + completed counts so a
+            // retrieve records the full run shape, not just the succeeded/
+            // failed split. Plain counts on the run result.
+            items_total: result.itemsTotal,
+            items_completed: result.itemsCompleted
           }
         },
         root.dataDir
@@ -82494,7 +82632,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile32(file2, "utf8");
+    const text = await readFile33(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -82530,7 +82668,10 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
         operation,
         mode,
         items_count: itemsCount,
-        failure_kind: result.kind
+        failure_kind: result.kind,
+        // Beta richness (feedback #10): HTTP status alongside the typed kind so
+        // a pricing.failed is diagnosable without the log.
+        ...result.httpStatus ? { http_status: result.httpStatus } : {}
       }
     },
     dataDir
@@ -82563,7 +82704,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile33 } from "node:fs/promises";
+import { readFile as readFile34 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -82678,7 +82819,7 @@ function registerCall(amazon) {
         return emitError7(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile33(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile34(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -82700,7 +82841,12 @@ function registerCall(amazon) {
         });
         return emitFailure2(result, !!root.json);
       }
-      await trackSpApi(EventName.AmazonSpApiCalled, "ok", startedAt, root.dataDir, { operation });
+      await trackSpApi(EventName.AmazonSpApiCalled, "ok", startedAt, root.dataDir, {
+        operation,
+        ...result.amazonSellerId ? { amazon_seller_id: result.amazonSellerId } : {},
+        ...result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {},
+        ...result.marketplaceId ? { marketplace_id: result.marketplaceId } : {}
+      });
       if (root.json) {
         writeJson2({
           status: "ok",
@@ -82837,7 +82983,23 @@ function registerMerchants(amazon) {
           event_name: EventName.AmazonMerchantsListed,
           outcome: "ok",
           duration_ms: Date.now() - startedAt,
-          payload: { count: result.merchants.length }
+          payload: {
+            count: result.merchants.length,
+            // Beta richness (feedback #10): bounded projection of merchant
+            // identifiers so reviews can see WHICH seller/marketplace rows a
+            // tenant can pull for (and their cron/auth posture), not just a
+            // count. Id/flag fields only, never a full merchant object;
+            // capped at 25 with a truncated flag.
+            sample: result.merchants.slice(0, 25).map((m) => ({
+              amazon_seller_id: m.amazonSellerId,
+              ...m.legacySellerId != null ? { legacy_seller_id: m.legacySellerId } : {},
+              ...m.marketplaceId != null ? { marketplace_id: m.marketplaceId } : {},
+              ...m.countryCode != null ? { country_code: m.countryCode } : {},
+              authorized: m.authorized,
+              ...typeof m.cronActive === "boolean" ? { cron_active: m.cronActive } : {}
+            })),
+            truncated: result.merchants.length > 25
+          }
         },
         root.dataDir
       );
@@ -82935,7 +83097,19 @@ function registerReportStart(report) {
           event_name: EventName.ReportStarted,
           outcome: "ok",
           duration_ms: Date.now() - startedAt,
-          payload: { report_type: reportType, status: result.status }
+          // Beta richness (feedback #10): stamp the run handle plus the
+          // merchant/marketplace selectors the caller pulled for, so a
+          // report.started can be traced to a seller/window — not just a
+          // report type. run_id from the result; seller/marketplace from the
+          // in-scope request (input). Never document bytes.
+          payload: {
+            report_type: reportType,
+            status: result.status,
+            run_id: result.runId,
+            ...input.amazonSellerId !== void 0 ? { amazon_seller_id: input.amazonSellerId } : {},
+            ...input.legacySellerId !== void 0 ? { legacy_seller_id: input.legacySellerId } : {},
+            ...input.marketplace !== void 0 ? { marketplace: input.marketplace } : {}
+          }
         },
         root.dataDir
       );
@@ -82973,7 +83147,15 @@ function registerReportPoll(report) {
           event_name: EventName.ReportPolled,
           outcome: "ok",
           duration_ms: Date.now() - startedAt,
-          payload: { ready: result.ready, status: result.status }
+          // Beta richness (feedback #10): carry the run handle (the poll
+          // target) and Amazon's reportId once assigned, so a poll ties back
+          // to a specific run. Mirrors the JSON output below.
+          payload: {
+            ready: result.ready,
+            status: result.status,
+            run_id: runId,
+            ...result.reportId !== void 0 ? { report_id: result.reportId } : {}
+          }
         },
         root.dataDir
       );
@@ -83126,21 +83308,62 @@ function registerReportRun(report) {
       const runId = started.runId;
       const deadline = startedAt + opts.maxWaitMs;
       let polls = 0;
+      let throttledPolls = 0;
+      let throttleStreak = 0;
       let lastStatus = started.status ?? "UNKNOWN";
+      let pollFailure;
+      let lastPoll;
       while (Date.now() < deadline) {
         const poll = await pollReport(runId, clientOpts);
         if (isReportFailure(poll)) {
-          await trackFailure2(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
-          return emitFailure3(poll, !!root.json);
+          if (poll.kind !== "throttled") {
+            pollFailure = poll;
+            break;
+          }
+          throttledPolls += 1;
+          throttleStreak += 1;
+          const backoff = throttleBackoffMs(
+            poll.retryAfterMs,
+            opts.intervalMs,
+            throttleStreak,
+            Date.now(),
+            deadline
+          );
+          if (backoff <= 0) break;
+          if (!root.json) {
+            process.stderr.write(
+              `  ... rate-limited by Amazon; backing off ${(backoff / 1e3).toFixed(1)}s (throttle ${throttledPolls})
+`
+            );
+          }
+          await sleep(backoff);
+          continue;
         }
+        throttleStreak = 0;
         polls += 1;
         lastStatus = poll.status;
+        lastPoll = poll;
         if (poll.ready) break;
         if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})
 `);
         await sleep(opts.intervalMs);
       }
-      const finalPoll = await pollReport(runId, clientOpts);
+      if (throttledPolls > 0) {
+        await track(
+          {
+            event_name: EventName.ReportPollThrottled,
+            outcome: "ok",
+            duration_ms: Date.now() - startedAt,
+            payload: { report_type: reportType, throttled_polls: throttledPolls, via: "run" }
+          },
+          root.dataDir
+        );
+      }
+      if (pollFailure) {
+        await trackFailure2(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
+        return emitFailure3(pollFailure, !!root.json);
+      }
+      const finalPoll = lastPoll ?? await pollReport(runId, clientOpts);
       if (isReportFailure(finalPoll)) {
         await trackFailure2(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
         return emitFailure3(finalPoll, !!root.json);
@@ -83151,7 +83374,7 @@ function registerReportRun(report) {
             event_name: EventName.ReportPolled,
             outcome: "timeout",
             duration_ms: Date.now() - startedAt,
-            payload: { report_type: reportType, status: lastStatus, polls, via: "run" }
+            payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: "run" }
           },
           root.dataDir
         );
@@ -83240,7 +83463,14 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType)
       payload: {
         kind: failure.kind,
         ...reportType ? { report_type: reportType } : {},
-        ...failure.httpStatus ? { http_status: failure.httpStatus } : {}
+        ...failure.httpStatus ? { http_status: failure.httpStatus } : {},
+        // Beta richness (feedback #10): seller/report context the service
+        // attached to the failure, so a report.failed can be tied to the
+        // merchant + Amazon report it was for (present kind-dependently:
+        // amazonSellerId on reauth_required, reportId/status on report_fatal).
+        ...failure.amazonSellerId !== void 0 ? { amazon_seller_id: failure.amazonSellerId } : {},
+        ...failure.reportId !== void 0 ? { report_id: failure.reportId } : {},
+        ...failure.status !== void 0 ? { report_status: failure.status } : {}
       }
     },
     dataDir
@@ -83418,7 +83648,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile34 } from "node:fs/promises";
+import { readFile as readFile35 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -83793,7 +84023,19 @@ function registerProfiles(ads) {
         return emitFailure4(result, !!root.json);
       }
       await trackAds(EventName.AdsProfilesListed, "ok", startedAt, root.dataDir, {
-        count: result.profiles.length
+        count: result.profiles.length,
+        // Beta richness (feedback #10): bounded projection of profile
+        // identifiers so reviews can see WHICH advertiser accounts a tenant
+        // can call for, not just how many. Id/name fields only, never a full
+        // profile object; capped at 25 with a truncated flag.
+        sample: result.profiles.slice(0, 25).map((p) => ({
+          profile_id: p.profileId,
+          legacy_seller_id: p.legacySellerId,
+          ...p.amazonSellerId != null ? { amazon_seller_id: p.amazonSellerId } : {},
+          ...p.marketplaceId != null ? { marketplace_id: p.marketplaceId } : {},
+          ...p.countryCode != null ? { country_code: p.countryCode } : {}
+        })),
+        truncated: result.profiles.length > 25
       });
       if (root.json) {
         writeJson4({ status: "ok", count: result.profiles.length, profiles: result.profiles });
@@ -83877,7 +84119,7 @@ function registerCall2(ads) {
         return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile34(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile35(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -83907,7 +84149,12 @@ function registerCall2(ads) {
       }
       await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, {
         operation,
-        ...typeof result.dryRun === "boolean" ? { dry_run: result.dryRun } : {}
+        ...typeof result.dryRun === "boolean" ? { dry_run: result.dryRun } : {},
+        ...result.profileId !== void 0 ? { profile_id: result.profileId } : {},
+        ...result.legacySellerId !== void 0 ? { legacy_seller_id: result.legacySellerId } : {},
+        ...result.marketplaceId !== void 0 ? { marketplace_id: result.marketplaceId } : {},
+        ...typeof result.itemsCount === "number" ? { items_count: result.itemsCount } : {},
+        ...result.auditId ? { audit_id: result.auditId } : {}
       });
       if (root.json) {
         writeJson4({
@@ -85849,6 +86096,50 @@ function emitError11(message, root) {
 init_telemetry();
 init_load();
 init_save();
+
+// src/lib/telemetry/redact.ts
+var REDACTED = "<redacted>";
+var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer)$/i;
+function looksLikeSecretToken(s) {
+  if (/^[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}$/.test(s)) return true;
+  if (/^(sk|pk|rk)_[A-Za-z0-9_-]{12,}$/.test(s)) return true;
+  if (/^SVC-[A-Z0-9]{2,}(-[A-Z0-9]{2,})*$/.test(s)) return true;
+  return false;
+}
+function flagName(arg) {
+  return arg.replace(/^-+/, "");
+}
+function redactArgs(argv) {
+  const out = [];
+  let redactNextValue = false;
+  for (const arg of argv) {
+    if (redactNextValue) {
+      redactNextValue = false;
+      if (!(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
+        out.push(REDACTED);
+        continue;
+      }
+    }
+    if (arg.startsWith("--") && arg.includes("=")) {
+      const eq = arg.indexOf("=");
+      const name = flagName(arg.slice(0, eq));
+      out.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
+      continue;
+    }
+    if (arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg)) {
+      out.push(arg);
+      if (SECRET_FLAG.test(flagName(arg))) redactNextValue = true;
+      continue;
+    }
+    out.push(looksLikeSecretToken(arg) ? REDACTED : arg);
+  }
+  return out;
+}
+function isNumericLike(arg) {
+  return /^-\d/.test(arg);
+}
+
+// src/cli.ts
 await loadDotenvIfPresent();
 installProxyDispatcherIfConfigured();
 var program2 = new Command();
@@ -85916,7 +86207,8 @@ async function trackLifecycleEvents() {
       event_name: EventName.CliCommandRun,
       payload: {
         cmd: process.argv[2] ?? "(none)",
-        subcmd: process.argv[3] ?? "(none)"
+        subcmd: process.argv[3] ?? "(none)",
+        args: redactArgs(process.argv.slice(2))
       }
     });
   } catch {
@@ -85936,7 +86228,7 @@ async function showFirstRunNoticeIfNeeded() {
 }
 function printFirstRunNotice() {
   process.stderr.write(
-    "\n\u2501\u2501 MixShift plugin \u2014 beta usage tracking \u2501\u2501\nDuring the beta, this plugin sends anonymized usage events to MixShift\n(which skills run, query timings, onboarding funnel \u2014 not query results,\nnot credentials, not chat content). This lets us iterate on the plugin.\n\nFull disclosure + opt-out:\n  https://github.com/miXshift/mx-claude-plugin/blob/main/docs/privacy.md\n\nOpt out anytime:  mixshift telemetry opt-out\nCheck status:     mixshift telemetry status\nBy continuing, you agree to this collection.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
+    "\n\u2501\u2501 MixShift plugin: beta usage tracking \u2501\u2501\nDuring the beta, this plugin sends usage events to MixShift so we can\nimprove it: which skills and commands run (including command arguments,\nwith secrets redacted), query timings, the accounts actions were for, and\nthe onboarding funnel. Not collected: your query results, your password\nor tokens, or your chat with Claude.\n\nFull disclosure + opt-out:\n  https://github.com/miXshift/mx-claude-plugin/blob/main/docs/privacy.md\n\nOpt out anytime:  mixshift telemetry opt-out\nCheck status:     mixshift telemetry status\nBy continuing, you agree to this collection.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
   );
 }
 try {
@@ -85949,7 +86241,7 @@ try {
     event_name: EventName.PluginCrashed,
     outcome: "failed",
     error_class: "unhandled_exception",
-    payload: { message, argv: process.argv.slice(2) }
+    payload: { message, argv: redactArgs(process.argv.slice(2)) }
   });
   process.exitCode = 1;
 } finally {

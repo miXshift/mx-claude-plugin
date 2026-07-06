@@ -10,3 +10,11 @@
 # server-side Supabase->Discord fan-out (no webhook URL ships in the
 # plugin anymore).
 876aa7ad385d644f4d1b380d4478bf70587c5586:plugins/mixshift-amazon-ppc/.mixshift-defaults.yaml:discord-webhook-url:20
+
+# False positives: dummy secret-shaped fixtures in the telemetry arg-redaction
+# unit test. These strings exist ONLY to prove redactArgs() masks stripe-token
+# and generic-api-key shaped values; they are not real credentials and never
+# reach the wire. Introduced by feat/telemetry-beta-richness (#10) at 7c3214b;
+# the full-history scan flags that commit. No secret to rotate.
+7c3214b939854b66ba1f3055887d6199758dac23:plugins/mixshift-ai/harness/src/lib/telemetry/redact.test.ts:stripe-access-token:51
+7c3214b939854b66ba1f3055887d6199758dac23:plugins/mixshift-ai/harness/src/lib/telemetry/redact.test.ts:generic-api-key:36

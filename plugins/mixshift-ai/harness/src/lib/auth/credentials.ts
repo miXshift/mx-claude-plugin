@@ -385,6 +385,18 @@ interface ServiceTokenCache {
   access_token: string;
   expires_at: string; // ISO-8601
   client_id: string;
+  /** Attribution echoed by /oauth/token (feedback #10), persisted next to the
+   *  cached token so telemetry can stamp the owning tenant + minted-by +
+   *  purpose + egress IP onto service-credential events at emit time — even
+   *  offline on later invocations, and even if the registry row is later
+   *  deleted. Optional: absent when talking to a pre-#10 auth server. */
+  attribution?: {
+    owner_user_id?: string;
+    minted_by?: string | null;
+    purpose?: string;
+    scopes?: string[];
+    client_ip?: string;
+  };
 }
 
 async function getServiceAccessToken(
@@ -457,7 +469,14 @@ async function doMintServiceToken(
     );
   }
 
-  const json = (await res.json()) as { access_token?: string; expires_in?: number };
+  const rawJson: unknown = await res.json();
+  // A non-object body (null / primitive) must not TypeError on property
+  // access; fall through to the clean "no access_token" error below.
+  const json = (rawJson && typeof rawJson === 'object' ? rawJson : {}) as {
+    access_token?: string;
+    expires_in?: number;
+    attribution?: ServiceTokenCache['attribution'];
+  };
   if (!json.access_token) {
     throw new Error('/oauth/token returned no access_token.');
   }
@@ -467,6 +486,9 @@ async function doMintServiceToken(
       access_token: json.access_token,
       expires_at: new Date(Date.now() + expiresInSec * 1000).toISOString(),
       client_id: service.client_id,
+      // Persist the attribution echo (feedback #10) when present so telemetry
+      // can self-attribute this automation without a network call.
+      ...(json.attribution ? { attribution: json.attribution } : {}),
     },
     dataDirOverride,
   );

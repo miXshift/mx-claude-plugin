@@ -3,6 +3,53 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.7.0
+
+Shared brand context across your team, clearer beta telemetry, and steadier
+Amazon report pulls.
+
+### Added
+
+- **Shared brand context across your team.** Your brand context now lives in a
+  MixShift org store, so everyone who works a brand builds on the same verified
+  knowledge instead of a separate private copy. Before a skill reads a brand,
+  the plugin quietly pulls any updates a teammate published, so you are always
+  working from the current picture. Your local files under `~/.mixshift/` stay
+  in place as a fast cache, and nothing about how the skills read context
+  changes.
+- New `mixshift context` commands (`status`, `pull`, `push`, `sync`,
+  `migrate`) show what is in sync, publish your context to the org store, and
+  pull teammates' updates. If you set up brand context before this release, run
+  `mixshift context migrate` once to publish it so your team can build on it.
+- A new brand timeline (`mixshift timeline list` and `add`) records what
+  happened to a brand over time: context edits, Amazon Ads changes, and notes
+  you add, each attributed to the person or automation that made it, in one
+  shared history.
+- Marking a brand as "key" now shares that with your org, so teammates can see
+  which brands each person focuses on.
+
+### Changed
+
+- **Slow or rate-limited Amazon report pulls are steadier.** When Amazon
+  returns a rate-limit response in the middle of a report run, the plugin now
+  backs off and retries automatically instead of surfacing it as a failure, so
+  a busy-Amazon moment no longer ends the pull.
+- **Beta telemetry is clearer, and records more during the beta.** Usage events
+  are now attributed to your MixShift account and the specific person or service
+  credential that ran them (during the beta this is intentionally not anonymous,
+  so we can understand real usage and improve it). The command lines you run are
+  captured to see how the plugin is used, with credential-shaped values stripped
+  before anything is stored. We still do not collect query results, your tokens,
+  your brand context file contents, or your chat with Claude. The full
+  disclosure and opt-out are in [`docs/privacy.md`](./docs/privacy.md), and the
+  first-run notice now says this plainly.
+
+### Fixed
+
+- A key-brand change in `--json` mode no longer waits on the org-store sync
+  before returning its result on a slow or unreachable network. The sync is now
+  bounded, so scripted callers get their output promptly either way.
+
 ## 0.6.4
 
 Connect more AI clients, clearer waits on slow Amazon pulls, and a tidied-up
