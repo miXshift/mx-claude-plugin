@@ -37,11 +37,50 @@ describe('redactArgs', () => {
     expect(redactArgs(['auth', '--client-secret=zzz'])).toEqual(['auth', '--client-secret=<redacted>']);
   });
 
-  it('redacts the positional setup code after `service-setup`', () => {
-    expect(redactArgs(['auth', 'service-setup', 'ABCD-1234-EFGH'])).toEqual([
+  it('redacts a setup-code-shaped positional anywhere (SVC-XXXX defense-in-depth)', () => {
+    expect(redactArgs(['auth', 'service-setup', 'SVC-1234-5678'])).toEqual([
       'auth',
       'service-setup',
       '<redacted>',
+    ]);
+  });
+
+  it('redacts the setup code in the real --setup-code flag form (red-team #10 CRITICAL regression)', () => {
+    // `mixshift auth service-setup --setup-code SVC-XXXX` is the PRIMARY path.
+    // The `service-setup` positional trigger must NOT consume the `--setup-code`
+    // flag token and leak the actual code as the trailing positional.
+    expect(redactArgs(['auth', 'service-setup', '--setup-code', 'SVC-1234-5678'])).toEqual([
+      'auth',
+      'service-setup',
+      '--setup-code',
+      '<redacted>',
+    ]);
+    expect(redactArgs(['auth', 'service-setup', '--setup-code=SVC-1234-5678'])).toEqual([
+      'auth',
+      'service-setup',
+      '--setup-code=<redacted>',
+    ]);
+  });
+
+  it('preserves non-secret service-setup args (public client id + secret FILE path)', () => {
+    // --client-secret-file is a PATH (the secret lives on disk, never in argv)
+    // and --client-id is the public svc_ id; neither is a secret to redact.
+    expect(
+      redactArgs([
+        'auth',
+        'service-setup',
+        '--client-id',
+        'svc_abcdefgh',
+        '--client-secret-file',
+        '/etc/mx/secret.txt',
+      ]),
+    ).toEqual([
+      'auth',
+      'service-setup',
+      '--client-id',
+      'svc_abcdefgh',
+      '--client-secret-file',
+      '/etc/mx/secret.txt',
     ]);
   });
 
