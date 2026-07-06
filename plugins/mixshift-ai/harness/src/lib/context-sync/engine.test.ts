@@ -302,6 +302,80 @@ describe('computeStatus verdict matrix', () => {
     expect(verdicts.get('narrative')).toBe('in-sync');
     expect(verdicts.get('config')).toBe('diverged');
   });
+
+  // BUG-1 (Sam's 2026-07-06 E2E): a stale ledger revision must NOT turn a
+  // clean local edit into a false 'diverged'. The server head content equals
+  // what we last synced (an add-then-revert round-trip advanced the revision
+  // 3 -> 5 without a net content change); an edit on top of that is plainly
+  // 'local-ahead'. Pre-fix this compared revision numbers (5 != 3) and
+  // reported 'diverged' + a --force prompt.
+  it('reports local-ahead (not diverged) when the server revision advanced but content is unchanged', async () => {
+    const brand = 'popl-like';
+    const server = new FakeServer();
+    // Local edited on top of the synced baseline.
+    await writeBrandFile(brand, 'narrative.md', 'original\nedit by sam\n');
+    // Server head content == the last-synced content, but revision has moved on.
+    server.set(brand, 'narrative', 'original\n', { revision: 5 });
+    await saveState(
+      brand,
+      { schema: 2, docs: { narrative: stateEntry(3, 'original\n') } },
+      testDir,
+    );
+
+    const result = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const narrative = result.docs.find((d) => d.key === 'narrative')!;
+    expect(narrative.verdict).toBe('local-ahead');
+    expect(narrative.locallyModified).toBe(true);
+    // The revision gap is still surfaced (5 vs synced 3) — display only.
+    expect(narrative.serverRevision).toBe(5);
+    expect(narrative.syncedRevision).toBe(3);
+  });
+
+  // Companion: same stale-revision baseline, but the local file is untouched
+  // (Sam's Step 1 case). Must stay 'in-sync' — content matches head.
+  it('stays in-sync when the server revision advanced but content matches an unedited local file', async () => {
+    const brand = 'popl-like-2';
+    const server = new FakeServer();
+    await writeBrandFile(brand, 'narrative.md', 'original\n');
+    server.set(brand, 'narrative', 'original\n', { revision: 5 });
+    await saveState(
+      brand,
+      { schema: 2, docs: { narrative: stateEntry(3, 'original\n') } },
+      testDir,
+    );
+    const result = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.docs.find((d) => d.key === 'narrative')!.verdict).toBe('in-sync');
+  });
+
+  // Guard against over-correction: a genuine two-sided change is still diverged.
+  it('still reports diverged when BOTH sides changed content', async () => {
+    const brand = 'real-diverge';
+    const server = new FakeServer();
+    await writeBrandFile(brand, 'narrative.md', 'local change\n');
+    server.set(brand, 'narrative', 'server change\n', { revision: 5 });
+    await saveState(
+      brand,
+      { schema: 2, docs: { narrative: stateEntry(3, 'original\n') } },
+      testDir,
+    );
+    const result = await computeStatus(brand, {
+      client: server.client(),
+      dataDirOverride: testDir,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.docs.find((d) => d.key === 'narrative')!.verdict).toBe('diverged');
+  });
 });
 
 // ---------------------------------------------------------------------------
