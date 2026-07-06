@@ -14,6 +14,7 @@ import {
   exitCodeForKind,
   throttleBackoffMs,
   THROTTLE_BACKOFF_CAP_MS,
+  THROTTLE_BACKOFF_FLOOR_MS,
   type ReportClientOptions,
   type ReportFailureKind,
 } from './reports.js';
@@ -762,6 +763,49 @@ describe('throttleBackoffMs', () => {
   it('returns 0 once the deadline has passed so the caller stops', () => {
     expect(throttleBackoffMs(5000, INTERVAL, 1, DEADLINE, DEADLINE)).toBe(0);
     expect(throttleBackoffMs(5000, INTERVAL, 1, DEADLINE + 1, DEADLINE)).toBe(0);
+  });
+});
+
+// Adversarial / degenerate inputs — hardening surfaced by the red-team pass:
+// a 0ms interval must not make the helper return 0 (which the caller reads as
+// "give up"), and NaN/negative inputs must not leak through as NaN.
+describe('throttleBackoffMs — adversarial / degenerate inputs', () => {
+  const DEADLINE = 300_000;
+
+  it('floors a zero interval so a 429 still backs off instead of giving up', () => {
+    expect(throttleBackoffMs(undefined, 0, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+    // exponential still applies, off the floored interval
+    expect(throttleBackoffMs(undefined, 0, 3, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS * 4);
+  });
+
+  it('treats NaN / negative retry-after as absent (falls back to interval backoff)', () => {
+    expect(throttleBackoffMs(Number.NaN, 5000, 1, 0, DEADLINE)).toBe(5000);
+    expect(throttleBackoffMs(-1000, 5000, 1, 0, DEADLINE)).toBe(5000);
+  });
+
+  it('handles a NaN / negative interval via the floor', () => {
+    expect(throttleBackoffMs(undefined, Number.NaN, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+    expect(throttleBackoffMs(undefined, -5000, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+  });
+
+  it('clamps a streak of 0 or negative to the first backoff step', () => {
+    expect(throttleBackoffMs(undefined, 5000, 0, 0, DEADLINE)).toBe(5000);
+    expect(throttleBackoffMs(undefined, 5000, -3, 0, DEADLINE)).toBe(5000);
+  });
+
+  it('honors a huge retry-after only up to the remaining time (no deadline overrun)', () => {
+    expect(throttleBackoffMs(999_999, 5000, 1, 0, DEADLINE)).toBe(DEADLINE);
+  });
+
+  it('always returns a finite positive wait while time remains', () => {
+    for (const ra of [undefined, 0, -1, Number.NaN, 250, 999_999]) {
+      for (const streak of [0, 1, 5, 50]) {
+        const v = throttleBackoffMs(ra, 0, streak, 0, DEADLINE);
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBeGreaterThan(0);
+        expect(v).toBeLessThanOrEqual(DEADLINE);
+      }
+    }
   });
 });
 

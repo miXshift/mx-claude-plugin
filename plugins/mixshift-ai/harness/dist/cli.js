@@ -81458,14 +81458,16 @@ function exitCodeForKind(kind) {
   }
 }
 var THROTTLE_BACKOFF_CAP_MS = 3e4;
+var THROTTLE_BACKOFF_FLOOR_MS = 1e3;
 function throttleBackoffMs(retryAfterMs, intervalMs, streak, now, deadline) {
   const remaining = deadline - now;
   if (remaining <= 0) return 0;
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
   const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.min(
-    intervalMs * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
+    eff * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
     THROTTLE_BACKOFF_CAP_MS
   );
-  return Math.min(Math.max(base, intervalMs), remaining);
+  return Math.min(Math.max(base, eff), remaining);
 }
 async function listMerchants(opts = {}) {
   const r = await amazonRequest(
