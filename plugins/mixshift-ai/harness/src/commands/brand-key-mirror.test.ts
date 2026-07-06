@@ -25,6 +25,7 @@ import {
   type AssignmentInput,
   type ContextSyncClient,
 } from '../lib/context-sync/client.js';
+import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 
 vi.mock('../lib/context-sync/client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/context-sync/client.js')>();
@@ -176,14 +177,17 @@ describe('brand key add → assignment mirror', () => {
     expect(process.exitCode ?? 0).toBe(0);
   });
 
-  it('does not mirror an already-key no-op', async () => {
+  it('mirrors an already-key no-op too, so re-running the command re-mirrors', async () => {
+    // This is what makes the offline failure note truthful: after a failed
+    // mirror, re-running `brand key add <slug>` (now an already_key no-op
+    // locally) still fires the idempotent PUT.
     const { client, assignments } = assignmentClient(true);
     vi.mocked(createContextSyncClient).mockReturnValue(client);
 
     await runBrand('key', 'add', 'acme', '--data-dir', tmpDataDir);
     assignments.length = 0;
     await runBrand('key', 'add', 'acme', '--data-dir', tmpDataDir);
-    expect(assignments).toEqual([]);
+    expect(assignments).toEqual([{ op: 'add', brand_slug: 'acme', role: 'key' }]);
   });
 
   it('offline mirror: local add still succeeds, exit 0, one-line note printed', async () => {
@@ -195,7 +199,50 @@ describe('brand key add → assignment mirror', () => {
     expect(assignments).toHaveLength(1);
     expect(process.exitCode ?? 0).toBe(0);
     expect(await keyListInProfile()).toEqual(['acme']);
-    expect(stderrChunks.join('')).toContain('not mirrored to the org store');
+    const stderr = stderrChunks.join('');
+    expect(stderr).toContain('could not be mirrored to the org store');
+    expect(stderr).toContain('mixshift brand key add acme');
+  });
+
+  it('prints the local success BEFORE the mirror runs (blackholed host cannot withhold it)', async () => {
+    let successVisibleAtMirrorTime = false;
+    const client: ContextSyncClient = {
+      fetchManifest: async () => ({ ok: true, brands: [] }),
+      fetchDoc: async () => ({ ok: false, kind: 'not_found', message: 'nf', friendly: 'nf' }),
+      putDoc: async () => ({ ok: true, status: 'created', revision: 1 }),
+      putAssignment: async () => {
+        successVisibleAtMirrorTime = stderrChunks
+          .join('')
+          .includes('added to key brands');
+        return { ok: true };
+      },
+    };
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+    await runBrand('key', 'add', 'acme', '--data-dir', tmpDataDir);
+    expect(successVisibleAtMirrorTime).toBe(true);
+  });
+
+  it('mirrors multiple slugs concurrently (one shared timeout, not N)', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const assignments: AssignmentInput[] = [];
+    const client: ContextSyncClient = {
+      fetchManifest: async () => ({ ok: true, brands: [] }),
+      fetchDoc: async () => ({ ok: false, kind: 'not_found', message: 'nf', friendly: 'nf' }),
+      putDoc: async () => ({ ok: true, status: 'created', revision: 1 }),
+      putAssignment: async (input) => {
+        assignments.push(input);
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 20));
+        inFlight -= 1;
+        return { ok: true };
+      },
+    };
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+    await runBrand('key', 'add', 'acme', 'zenco', '--data-dir', tmpDataDir);
+    expect(assignments).toHaveLength(2);
+    expect(maxInFlight).toBe(2);
   });
 });
 
@@ -216,11 +263,26 @@ describe('brand key remove → assignment mirror', () => {
     expect(process.exitCode ?? 0).toBe(0);
   });
 
-  it('does not mirror a not-key no-op', async () => {
+  it('mirrors a not-key no-op too (idempotent removal = the re-mirror lever)', async () => {
     const { client, assignments } = assignmentClient(true);
     vi.mocked(createContextSyncClient).mockReturnValue(client);
     await runBrand('key', 'remove', 'acme', '--data-dir', tmpDataDir);
-    expect(assignments).toEqual([]);
+    expect(assignments).toEqual([{ op: 'remove', brand_slug: 'acme', role: 'key' }]);
+  });
+
+  it('the raw-input fallback guard rejects everything the profile schema would too', () => {
+    // The remove flow's stale-entry path falls back to the user's raw
+    // input as the slug. In practice profile.yaml's schema
+    // (^[a-z][a-z0-9-]*$) means only real slugs can be IN the key list,
+    // so the isSafeBrandSlug guard in brand.ts is belt-and-braces — pin
+    // that it rejects display names and path-ish input, and accepts every
+    // schema-legal slug.
+    for (const bad of ['Not A Slug!!', '../evil', 'a/b', 'a b', '', '..']) {
+      expect(isSafeBrandSlug(bad), `should reject ${JSON.stringify(bad)}`).toBe(false);
+    }
+    for (const good of ['acme', 'zenco-2', 'a']) {
+      expect(isSafeBrandSlug(good), `should accept ${JSON.stringify(good)}`).toBe(true);
+    }
   });
 });
 

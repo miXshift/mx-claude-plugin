@@ -42,4 +42,12 @@ describe('parseSince', () => {
       expect(r.ok, `input '${bad}' should be rejected`).toBe(false);
     }
   });
+
+  it('a huge N is a parse error, never a RangeError throw', () => {
+    for (const huge of ['99999999999d', '999999999999999h', '99999999999w']) {
+      const r = parseSince(huge, NOW);
+      expect(r.ok, `input '${huge}' should be rejected`).toBe(false);
+      if (!r.ok) expect(r.message).toContain('too large');
+    }
+  });
 });

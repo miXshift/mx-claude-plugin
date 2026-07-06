@@ -10,7 +10,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { CommanderError } from 'commander';
 
-import { registerTimelineCommands, familyForKind, formatEventLine } from './timeline.js';
+import {
+  registerTimelineCommands,
+  familyForKind,
+  formatEventLine,
+  MAX_NOTE_CHARS,
+} from './timeline.js';
 import { createTimelineClient, type TimelineClient } from '../lib/timeline/client.js';
 import type {
   PostTimelineEventInput,
@@ -142,6 +147,38 @@ describe('timeline add', () => {
       expect(state.posts).toHaveLength(0);
     },
   );
+
+  it('rejects a --note beyond the 32KB cap before any network call', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'comment',
+      '--note',
+      'x'.repeat(MAX_NOTE_CHARS + 1),
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--note is too long');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('accepts a note exactly at the cap', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'comment',
+      '--note',
+      'x'.repeat(MAX_NOTE_CHARS),
+    );
+    expect(state.posts).toHaveLength(1);
+  });
 
   it('posts a structural stake with note + target and derives the family', async () => {
     const { client, state } = fakeClient([]);

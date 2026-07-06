@@ -7,6 +7,7 @@ import {
   emitAdsCommitEvent,
   extractEntityIds,
   resolveBrandSlugForSeller,
+  ADS_EMIT_TIMEOUT_MS,
   ENTITY_IDS_CAP,
 } from './ads-emit.js';
 import type { TimelineClient } from './client.js';
@@ -226,6 +227,29 @@ describe('emitAdsCommitEvent', () => {
       { dataDirOverride: testDir, client, env: {} },
     );
     expect(result).toEqual({ posted: false, reason: 'error', detail: 'boom' });
+  });
+
+  it('a HUNG POST (e.g. token refresh outside the fetch timeout) is bounded by the deadline race', async () => {
+    await writeRegistry([{ slug: 'acme', sellerIds: [574] }]);
+    const client: TimelineClient = {
+      listEvents: async () => ({ ok: true, events: [] }),
+      postEvent: () => new Promise(() => {}), // never settles
+    };
+    const t0 = Date.now();
+    const result = await emitAdsCommitEvent(
+      { operation: 'sp.update_keywords', legacySellerId: 574 },
+      { dataDirOverride: testDir, client, env: {}, timeoutMs: 50 },
+    );
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(result).toEqual({
+      posted: false,
+      reason: 'post_failed',
+      detail: 'timed out after 50ms',
+    });
+  });
+
+  it('pins the default emission budget', () => {
+    expect(ADS_EMIT_TIMEOUT_MS).toBe(2_000);
   });
 });
 

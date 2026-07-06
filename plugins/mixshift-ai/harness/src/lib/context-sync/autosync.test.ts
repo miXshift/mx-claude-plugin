@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stringify as stringifyYaml } from 'yaml';
 import {
   maybeAutoSync,
   AUTOSYNC_ENV,
+  AUTOSYNC_BUDGET_MS,
   AUTOSYNC_THROTTLE_MS,
 } from './autosync.js';
 import type { ContextSyncClient } from './client.js';
@@ -27,12 +28,18 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   await rm(testDir, { recursive: true, force: true });
 });
 
 /** Fake env WITHOUT VITEST so the test-runner guard doesn't short-circuit
  *  (autosync tests opt back in explicitly; see autosync.ts). */
 const LIVE_ENV: NodeJS.ProcessEnv = {};
+
+/** Autosync serves EXISTING local brands only; most tests need the dir. */
+async function makeBrandDir(slug: string): Promise<void> {
+  await mkdir(brandDir(slug, testDir), { recursive: true });
+}
 
 interface FakeClientState {
   manifestCalls: number;
@@ -103,7 +110,7 @@ function manifestBrand(
 async function writeLedger(
   brand: string,
   docs: ContextSyncState['docs'],
-  lastAutosyncAt?: string,
+  extras: { lastAutosyncAt?: string; identity?: string } = {},
 ): Promise<void> {
   const path = contextSyncStatePath(brand, testDir);
   await mkdir(dirname(path), { recursive: true });
@@ -111,7 +118,10 @@ async function writeLedger(
     path,
     JSON.stringify({
       schema: 2,
-      ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+      ...(extras.identity !== undefined ? { identity: extras.identity } : {}),
+      ...(extras.lastAutosyncAt !== undefined
+        ? { last_autosync_at: extras.lastAutosyncAt }
+        : {}),
       docs,
     }),
     'utf8',
@@ -124,14 +134,42 @@ async function readLedger(brand: string): Promise<ContextSyncState> {
   ) as ContextSyncState;
 }
 
+async function writeCredentials(opts: { expired?: boolean } = {}): Promise<void> {
+  const path = credentialsPath(testDir);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    JSON.stringify({
+      schema_version: 2,
+      created_at: '2026-07-01T00:00:00.000Z',
+      datahub: {
+        api_base: 'https://mcp.example.test',
+        access_token: 'test-token',
+        refresh_token: 'refresh-token',
+        expires_at: opts.expired
+          ? '2020-01-01T00:00:00.000Z'
+          : '2099-01-01T00:00:00.000Z',
+        refresh_expires_at: '2099-01-01T00:00:00.000Z',
+        user_id: 'u1',
+        email: 'ops@example.com',
+        person_label: 'sam@example.com',
+        device_label: 'test-device',
+        client_id: 'mx-claude-plugin',
+      },
+    }),
+    'utf8',
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Kill switch
+// Kill switch + guards
 // ---------------------------------------------------------------------------
 
 describe('kill switch', () => {
   it.each(['off', 'OFF', '0', 'false'])(
     `returns disabled and touches nothing when ${AUTOSYNC_ENV}=%s`,
     async (value) => {
+      await makeBrandDir('acme');
       const { client, state } = countingClient([], {});
       const result = await maybeAutoSync('acme', {
         dataDirOverride: testDir,
@@ -146,6 +184,7 @@ describe('kill switch', () => {
   );
 
   it('is disabled by default under the test runner (VITEST guard)', async () => {
+    await makeBrandDir('acme');
     const { client, state } = countingClient([], {});
     // No env passed → options.env undefined → process.env.VITEST applies.
     const result = await maybeAutoSync('acme', { dataDirOverride: testDir, client });
@@ -155,11 +194,115 @@ describe('kill switch', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Read-path safety: slugs + existence (a read stays a read)
+// ---------------------------------------------------------------------------
+
+describe('read-path safety', () => {
+  it.each(['../evil', 'a/b', 'a\\b', '..', 'x..y', 'C:evil', 'spaced slug', ''])(
+    'unsafe slug %j: skipped with the filesystem untouched',
+    async (slug) => {
+      const { client, state } = countingClient([], {});
+      const result = await maybeAutoSync(slug, {
+        dataDirOverride: testDir,
+        client,
+        env: LIVE_ENV,
+      });
+      expect(result).toEqual({
+        ran: false,
+        reason: 'skipped',
+        detail: 'not a valid brand slug',
+      });
+      expect(state.manifestCalls).toBe(0);
+      // Nothing was created anywhere under the data dir: the listing is
+      // exactly what beforeEach made (empty), so no clients/ tree, no
+      // dot-ledger, and nothing that could have escaped upward either.
+      expect(await readdir(testDir)).toEqual([]);
+    },
+  );
+
+  it('unknown-but-safe slug (typo): skipped, no phantom brand dir created', async () => {
+    const { client, state } = countingClient([], {});
+    const result = await maybeAutoSync('tpyo', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(state.manifestCalls).toBe(0);
+    expect(await readdir(testDir)).toEqual([]);
+  });
+
+  it('skips the network when the throttle stamp cannot be persisted', async () => {
+    await makeBrandDir('acme');
+    // Make the state PATH a directory so saveState's rename must fail.
+    await mkdir(contextSyncStatePath('acme', testDir), { recursive: true });
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(state.manifestCalls).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant-identity rebind stays an explicit-sync behavior
+// ---------------------------------------------------------------------------
+
+describe('identity rebind protection', () => {
+  const DOCS: ContextSyncState['docs'] = {
+    narrative: {
+      server_revision: 3,
+      last_synced_hash: 'a'.repeat(64),
+      last_synced_at: '2026-07-01T00:00:00.000Z',
+    },
+  };
+
+  it('foreign-tenant ledger with tracked docs: skipped, disk untouched', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', DOCS, { identity: 'https://mcp.example.test#orgA' });
+    const before = await readFile(contextSyncStatePath('acme', testDir), 'utf8');
+
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#orgB',
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(state.manifestCalls).toBe(0);
+    // The passive read persisted NOTHING: no doc wipe, no stamp.
+    expect(await readFile(contextSyncStatePath('acme', testDir), 'utf8')).toBe(before);
+  });
+
+  it('foreign identity but EMPTY ledger: harmless, proceeds and rebinds', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', {}, { identity: 'https://mcp.example.test#orgA' });
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#orgB',
+    });
+    expect(result.ran).toBe(true);
+    expect((await readLedger('acme')).identity).toBe('https://mcp.example.test#orgB');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Throttle
 // ---------------------------------------------------------------------------
 
 describe('throttle', () => {
   it('runs at most once per window; the second call is a no-op', async () => {
+    await makeBrandDir('acme');
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
     const first = await maybeAutoSync('acme', {
       dataDirOverride: testDir,
@@ -179,6 +322,7 @@ describe('throttle', () => {
   });
 
   it('persists the window in the ledger and reopens after 15 minutes', async () => {
+    await makeBrandDir('acme');
     const t0 = new Date('2026-07-05T12:00:00.000Z');
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
 
@@ -216,6 +360,7 @@ describe('throttle', () => {
   });
 
   it('a FAILED attempt also stamps the window (offline machines are not hammered)', async () => {
+    await makeBrandDir('acme');
     const failingClient: ContextSyncClient = {
       fetchManifest: async () => ({
         ok: false,
@@ -232,6 +377,7 @@ describe('throttle', () => {
       client: failingClient,
       env: LIVE_ENV,
     });
+    // pull() surfaces the manifest failure's friendly copy as its message.
     expect(first).toEqual({ ran: false, reason: 'failed', detail: 'unreachable' });
 
     const second = await maybeAutoSync('acme', {
@@ -243,6 +389,7 @@ describe('throttle', () => {
   });
 
   it('--force bypasses the throttle but still restamps', async () => {
+    await makeBrandDir('acme');
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
     await maybeAutoSync('acme', { dataDirOverride: testDir, client, env: LIVE_ENV });
     const forced = await maybeAutoSync('acme', {
@@ -256,6 +403,8 @@ describe('throttle', () => {
   });
 
   it('throttles per brand, not globally', async () => {
+    await makeBrandDir('acme');
+    await makeBrandDir('zen');
     const { client, state } = countingClient(
       [manifestBrand('acme', []), manifestBrand('zen', [])],
       {},
@@ -341,32 +490,13 @@ describe('pull safety', () => {
 // ---------------------------------------------------------------------------
 
 describe('budget and failure isolation', () => {
-  async function writeCredentials(): Promise<void> {
-    const path = credentialsPath(testDir);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(
-      path,
-      JSON.stringify({
-        schema_version: 2,
-        created_at: '2026-07-01T00:00:00.000Z',
-        datahub: {
-          api_base: 'https://mcp.example.test',
-          access_token: 'test-token',
-          refresh_token: 'refresh-token',
-          expires_at: '2099-01-01T00:00:00.000Z',
-          refresh_expires_at: '2099-01-01T00:00:00.000Z',
-          user_id: 'u1',
-          email: 'ops@example.com',
-          person_label: 'sam@example.com',
-          device_label: 'test-device',
-          client_id: 'mx-claude-plugin',
-        },
-      }),
-      'utf8',
-    );
-  }
+  it('pins the default budget so a regression cannot silently widen it', () => {
+    expect(AUTOSYNC_BUDGET_MS).toBe(2_000);
+    expect(AUTOSYNC_THROTTLE_MS).toBe(15 * 60 * 1_000);
+  });
 
   it('a hung request is aborted by the budget and reported as a quiet failure', async () => {
+    await makeBrandDir('acme');
     await writeCredentials();
     // fetchImpl that never resolves until its signal aborts.
     const hangingFetch = ((_input: unknown, init?: RequestInit) =>
@@ -386,7 +516,68 @@ describe('budget and failure isolation', () => {
     if (!result.ran) expect(result.reason).toBe('failed');
   });
 
+  it('a hung TOKEN REFRESH (global fetch, outside the client) is bounded by the deadline race', async () => {
+    await makeBrandDir('acme');
+    // Expired access token → getValidAccessToken refreshes through the
+    // GLOBAL fetch (with its own 30s timeout) before any client fetch —
+    // outside the fetchImpl budget, so only the deadline race covers it.
+    await writeCredentials({ expired: true });
+    const hangingGlobalFetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    vi.stubGlobal('fetch', hangingGlobalFetch);
+
+    const t0 = Date.now();
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      budgetMs: 100,
+    });
+    const elapsed = Date.now() - t0;
+    expect(result).toEqual({
+      ran: false,
+      reason: 'failed',
+      detail: 'timed out after 100ms',
+    });
+    expect(elapsed).toBeLessThan(2_000); // nowhere near the 30s refresh timeout
+  });
+
+  it('a client whose fetchManifest THROWS (async) is swallowed by the catch-all', async () => {
+    await makeBrandDir('acme');
+    const throwingClient: ContextSyncClient = {
+      fetchManifest: async () => {
+        throw new Error('async boom');
+      },
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: true }),
+    };
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: throwingClient,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({ ran: false, reason: 'failed', detail: 'async boom' });
+  });
+
+  it('a client whose fetchManifest THROWS (sync) is swallowed by the catch-all', async () => {
+    await makeBrandDir('acme');
+    const throwingClient = {
+      fetchManifest: () => {
+        throw new Error('sync boom');
+      },
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: true }),
+    } as unknown as ContextSyncClient;
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: throwingClient,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({ ran: false, reason: 'failed', detail: 'sync boom' });
+  });
+
   it('no credentials → quiet failure, never a throw', async () => {
+    await makeBrandDir('acme');
     const result = await maybeAutoSync('acme', {
       dataDirOverride: testDir,
       env: LIVE_ENV,
@@ -398,44 +589,53 @@ describe('budget and failure isolation', () => {
       expect(result.detail).toMatch(/credentials|auth/i);
     }
   });
+});
 
-  it('offline: resolveBrandFields (the real seam) still serves the local read', async () => {
-    // Opt the hook back in: clear the VITEST guard for this test only.
-    vi.stubEnv('VITEST', '');
+// ---------------------------------------------------------------------------
+// resolveBrandFields integration (the real seam)
+// ---------------------------------------------------------------------------
+
+describe('resolveBrandFields integration', () => {
+  const VALID_CONTEXT = {
+    schema_version: 1,
+    brand_slug: 'foragers-pantry',
+    brand_name: "Forager's Pantry",
+    last_updated: '2026-06-10',
+    accounts: [
+      {
+        seller_id: 574,
+        seller_name: 'Aspen Outdoor Provisions',
+        account_type: 'SC',
+        status: 'active',
+        role: 'primary',
+        marketplace: 'Amazon.com',
+      },
+    ],
+    sources: {
+      ad_metrics: 'campaignmetric',
+      ops_revenue: 'business_reports_dpst_date',
+      ops_revenue_field: 'SalesAmount',
+      ops_units_field: 'UnitsOrdered',
+      ops_date_field: 'DateTime',
+    },
+    management: {
+      primary_metric: 'ACOS',
+      acos_target_pct: 22,
+      attribution_window_days: 14,
+    },
+  };
+
+  async function writeBrand(): Promise<string> {
     const dir = brandDir('foragers-pantry', testDir);
     await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, 'context.yaml'),
-      stringifyYaml({
-        schema_version: 1,
-        brand_slug: 'foragers-pantry',
-        brand_name: "Forager's Pantry",
-        last_updated: '2026-06-10',
-        accounts: [
-          {
-            seller_id: 574,
-            seller_name: 'Aspen Outdoor Provisions',
-            account_type: 'SC',
-            status: 'active',
-            role: 'primary',
-            marketplace: 'Amazon.com',
-          },
-        ],
-        sources: {
-          ad_metrics: 'campaignmetric',
-          ops_revenue: 'business_reports_dpst_date',
-          ops_revenue_field: 'SalesAmount',
-          ops_units_field: 'UnitsOrdered',
-          ops_date_field: 'DateTime',
-        },
-        management: {
-          primary_metric: 'ACOS',
-          acos_target_pct: 22,
-          attribution_window_days: 14,
-        },
-      }),
-      'utf-8',
-    );
+    await writeFile(join(dir, 'context.yaml'), stringifyYaml(VALID_CONTEXT), 'utf-8');
+    return dir;
+  }
+
+  it('offline: the local read is served unaffected', async () => {
+    // Opt the hook back in: clear the VITEST guard for this test only.
+    vi.stubEnv('VITEST', '');
+    const dir = await writeBrand();
 
     // No credentials in testDir → the hook's sync attempt fails quietly;
     // the local read below must be entirely unaffected.
@@ -444,5 +644,29 @@ describe('budget and failure isolation', () => {
     expect(
       await readFile(join(dir, 'context.yaml'), 'utf-8'),
     ).toContain('acos_target_pct: 22');
+  });
+
+  it('a hung token refresh cannot hold the read past the default budget', async () => {
+    vi.stubEnv('VITEST', '');
+    await writeBrand();
+    await writeCredentials({ expired: true });
+    const hangingGlobalFetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    vi.stubGlobal('fetch', hangingGlobalFetch);
+
+    // This exercises the DEFAULT budget end to end: if a regression drops
+    // the deadline race, this test hangs into the suite timeout.
+    const t0 = Date.now();
+    const fields = await resolveBrandFields('foragers-pantry', testDir);
+    const elapsed = Date.now() - t0;
+    expect(fields.acos_target_pct).toMatchObject({ value: 22, source: 'context' });
+    expect(elapsed).toBeLessThan(AUTOSYNC_BUDGET_MS + 3_000);
+  });
+
+  it('a typo slug read leaves the clients tree untouched (no phantom dirs)', async () => {
+    vi.stubEnv('VITEST', '');
+    await writeBrand();
+    await resolveBrandFields('tpyo-brand', testDir);
+    const clients = await readdir(join(testDir, 'clients'));
+    expect(clients).toEqual(['foragers-pantry']);
   });
 });

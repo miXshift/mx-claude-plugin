@@ -44,8 +44,8 @@ function sampleState(): ContextSyncState {
 }
 
 describe('loadState / saveState round trip', () => {
-  it('round-trips a state object', async () => {
-    await saveState('acme', sampleState(), testDir);
+  it('round-trips a state object and reports the save as persisted', async () => {
+    expect(await saveState('acme', sampleState(), testDir)).toBe(true);
     const loaded = await loadState('acme', testDir);
     expect(loaded).toEqual(sampleState());
   });
@@ -103,21 +103,21 @@ describe('saveState atomicity + safety', () => {
     expect(entries.filter((e) => e.includes('.tmp.'))).toEqual([]);
   });
 
-  it('never throws outward, even when the target path is unwritable', async () => {
+  it('never throws outward, and reports the failure, when the target path is unwritable', async () => {
     // Make <brandDir> a FILE so mkdir/rename under it must fail.
     await mkdir(join(testDir, 'clients'), { recursive: true });
     await writeFile(join(testDir, 'clients', 'blocked'), 'not a dir', 'utf8');
-    await expect(saveState('blocked', sampleState(), testDir)).resolves.toBeUndefined();
+    await expect(saveState('blocked', sampleState(), testDir)).resolves.toBe(false);
     // And the corresponding load falls back to the default.
     expect(await loadState('blocked', testDir)).toEqual(emptyState());
   });
 
-  it('cleans up the tmp file when the final rename fails', async () => {
+  it('cleans up the tmp file, and reports the failure, when the final rename fails', async () => {
     // Make the state PATH a directory: mkdir(brandDir) and the tmp write
     // succeed, the rename onto a directory fails.
     const path = contextSyncStatePath('acme', testDir);
     await mkdir(path, { recursive: true });
-    await expect(saveState('acme', sampleState(), testDir)).resolves.toBeUndefined();
+    await expect(saveState('acme', sampleState(), testDir)).resolves.toBe(false);
     const entries = await readdir(dirname(path));
     expect(entries.filter((e) => e.includes('.tmp.'))).toEqual([]);
   });

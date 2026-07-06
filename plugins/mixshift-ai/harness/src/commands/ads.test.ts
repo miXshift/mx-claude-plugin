@@ -173,4 +173,18 @@ describe('ads call --commit → timeline emission', () => {
     expect(emitAdsCommitEvent).toHaveBeenCalledTimes(1);
     expect(process.exitCode ?? 0).toBe(0);
   });
+
+  it.each([
+    'has spaces',
+    'semi;colon',
+    'a'.repeat(129),
+    'sneaky/../path',
+    'ünï',
+  ])('rejects malformed --proposal-id %j before calling the service', async (bad) => {
+    vi.mocked(adsCall).mockResolvedValue(COMMIT_RESULT);
+    await runAds('call', 'sp.update_keywords', '--commit', '--proposal-id', bad);
+    expect(process.exitCode).toBe(1);
+    expect(adsCall).not.toHaveBeenCalled();
+    expect(emitAdsCommitEvent).not.toHaveBeenCalled();
+  });
 });
