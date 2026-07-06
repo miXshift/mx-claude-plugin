@@ -42,6 +42,7 @@ import {
   streamReportDocumentToFile,
   isReportFailure,
   exitCodeForKind,
+  throttleBackoffMs,
   type ReportFailure,
   type MerchantView,
   type StartReportInput,
@@ -541,21 +542,71 @@ function registerReportRun(report: Command): void {
         );
         const runId = started.runId;
 
-        // 2. poll until ready or timeout
+        // 2. poll until ready or timeout. A 429 (throttled) is transient —
+        // Amazon rate-limited this poll, not the pull — so back off (honoring
+        // any server retry-after) and keep polling to the deadline instead of
+        // failing the whole run on the first one. Only a non-throttled failure
+        // is terminal in the loop; a run that stays throttled to the deadline
+        // surfaces at the finalPoll below as ONE report.failed, not one per poll.
         const deadline = startedAt + opts.maxWaitMs;
         let polls = 0;
+        let throttledPolls = 0;
+        let throttleStreak = 0;
         let lastStatus = started.status ?? 'UNKNOWN';
+        let pollFailure: ReportFailure | undefined;
         while (Date.now() < deadline) {
           const poll = await pollReport(runId, clientOpts);
           if (isReportFailure(poll)) {
-            await trackFailure(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
-            return emitFailure(poll, !!root.json);
+            if (poll.kind !== 'throttled') {
+              pollFailure = poll;
+              break;
+            }
+            throttledPolls += 1;
+            throttleStreak += 1;
+            const backoff = throttleBackoffMs(
+              poll.retryAfterMs,
+              opts.intervalMs,
+              throttleStreak,
+              Date.now(),
+              deadline,
+            );
+            if (backoff <= 0) break; // out of time; fall through to the timeout path
+            if (!root.json) {
+              process.stderr.write(
+                `  ... rate-limited by Amazon; backing off ${(backoff / 1000).toFixed(1)}s ` +
+                  `(throttle ${throttledPolls})\n`,
+              );
+            }
+            await sleep(backoff);
+            continue;
           }
+          throttleStreak = 0;
           polls += 1;
           lastStatus = poll.status;
           if (poll.ready) break;
           if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
           await sleep(opts.intervalMs);
+        }
+
+        // One deduped summary when throttling happened at all, so the
+        // error-aggregate sweep sees "throttled but handled" as its own signal
+        // rather than as inflated report.failed rows.
+        if (throttledPolls > 0) {
+          await track(
+            {
+              event_name: EventName.ReportPollThrottled,
+              outcome: 'ok',
+              duration_ms: Date.now() - startedAt,
+              payload: { report_type: reportType, throttled_polls: throttledPolls, via: 'run' },
+            },
+            root.dataDir,
+          );
+        }
+
+        // A non-throttled poll failure is terminal.
+        if (pollFailure) {
+          await trackFailure(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
+          return emitFailure(pollFailure, !!root.json);
         }
 
         const finalPoll = await pollReport(runId, clientOpts);
@@ -569,7 +620,7 @@ function registerReportRun(report: Command): void {
               event_name: EventName.ReportPolled,
               outcome: 'timeout',
               duration_ms: Date.now() - startedAt,
-              payload: { report_type: reportType, status: lastStatus, polls, via: 'run' },
+              payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: 'run' },
             },
             root.dataDir,
           );

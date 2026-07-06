@@ -64259,6 +64259,13 @@ var init_events = __esm({
       ReportPolled: "report.polled",
       ReportRetrieved: "report.retrieved",
       ReportFailed: "report.failed",
+      // Emitted at most ONCE per `report run` when Amazon rate-limited one or more
+      // status polls but the run kept going (backoff-and-retry) rather than failing.
+      // Split out from report.failed so a throttle absorbed mid-poll is not counted
+      // as a failed pull (a single slow pull used to log many report.failed rows,
+      // which skewed the error-aggregate triage). payload: {report_type,
+      // throttled_polls, via}. Internal diagnostic only — not in the Discord fanout.
+      ReportPollThrottled: "report.poll_throttled",
       // Service-credential setup (`mixshift auth service-setup`). Fired after
       // the service block is persisted so a fresh data dir's synthetic
       // plugin.installed event attributes to the svc: label instead of landing
@@ -81521,6 +81528,18 @@ function exitCodeForKind(kind) {
       return 1;
   }
 }
+var THROTTLE_BACKOFF_CAP_MS = 3e4;
+var THROTTLE_BACKOFF_FLOOR_MS = 1e3;
+function throttleBackoffMs(retryAfterMs, intervalMs, streak, now, deadline) {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
+  const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.min(
+    eff * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
+    THROTTLE_BACKOFF_CAP_MS
+  );
+  return Math.min(Math.max(base, eff), remaining);
+}
 async function listMerchants(opts = {}) {
   const r = await amazonRequest(
     { method: "GET", path: "/api/amazon/merchants" },
@@ -83286,19 +83305,58 @@ function registerReportRun(report) {
       const runId = started.runId;
       const deadline = startedAt + opts.maxWaitMs;
       let polls = 0;
+      let throttledPolls = 0;
+      let throttleStreak = 0;
       let lastStatus = started.status ?? "UNKNOWN";
+      let pollFailure;
       while (Date.now() < deadline) {
         const poll = await pollReport(runId, clientOpts);
         if (isReportFailure(poll)) {
-          await trackFailure2(EventName.ReportFailed, poll, startedAt, root.dataDir, reportType);
-          return emitFailure3(poll, !!root.json);
+          if (poll.kind !== "throttled") {
+            pollFailure = poll;
+            break;
+          }
+          throttledPolls += 1;
+          throttleStreak += 1;
+          const backoff = throttleBackoffMs(
+            poll.retryAfterMs,
+            opts.intervalMs,
+            throttleStreak,
+            Date.now(),
+            deadline
+          );
+          if (backoff <= 0) break;
+          if (!root.json) {
+            process.stderr.write(
+              `  ... rate-limited by Amazon; backing off ${(backoff / 1e3).toFixed(1)}s (throttle ${throttledPolls})
+`
+            );
+          }
+          await sleep(backoff);
+          continue;
         }
+        throttleStreak = 0;
         polls += 1;
         lastStatus = poll.status;
         if (poll.ready) break;
         if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})
 `);
         await sleep(opts.intervalMs);
+      }
+      if (throttledPolls > 0) {
+        await track(
+          {
+            event_name: EventName.ReportPollThrottled,
+            outcome: "ok",
+            duration_ms: Date.now() - startedAt,
+            payload: { report_type: reportType, throttled_polls: throttledPolls, via: "run" }
+          },
+          root.dataDir
+        );
+      }
+      if (pollFailure) {
+        await trackFailure2(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
+        return emitFailure3(pollFailure, !!root.json);
       }
       const finalPoll = await pollReport(runId, clientOpts);
       if (isReportFailure(finalPoll)) {
@@ -83311,7 +83369,7 @@ function registerReportRun(report) {
             event_name: EventName.ReportPolled,
             outcome: "timeout",
             duration_ms: Date.now() - startedAt,
-            payload: { report_type: reportType, status: lastStatus, polls, via: "run" }
+            payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: "run" }
           },
           root.dataDir
         );
