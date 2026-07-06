@@ -11,7 +11,7 @@ description: >
   only that the user has signed in (`mixshift auth login`) and optionally
   knows a SellerID or brand slug.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - explore my data
@@ -79,16 +79,16 @@ Trigger when the user asks any of:
 
 | State | How to check | What to do if missing |
 |---|---|---|
-| Auth set up | `~/.mixshift/auth/credentials` exists | Direct user to run `mixshift auth login` (recommended, token-based) or `mixshift auth setup` (legacy raw-MySQL path) |
-| Service reachable | Inferred from successful query | Token-based path: no per-user IP whitelist needed; the auth service holds the single static egress IP. Legacy mysql path only: if queries hang/timeout, run `mixshift auth setup --request-whitelist`. |
-| Brand registry populated | `~/.mixshift/clients/index.yaml` exists | Auto-populated after either sign-in flow completes; if missing, run `mixshift brand discover` |
+| Auth set up | `~/.mixshift/auth/credentials` exists | Direct user to run `mixshift auth login` (token-based; the only supported sign-in path). Unattended runs use a service credential (mx-auth-service-setup). |
+| Service reachable | Inferred from successful query | No per-user IP whitelist is needed; the auth service holds the single static egress IP. If queries hang or time out, run `mixshift doctor` to diagnose. |
+| Brand registry populated | `~/.mixshift/clients/index.yaml` exists | Auto-populated after sign-in completes; if missing, run `mixshift brand discover` |
 | Knows a SellerID or brand slug | They tell you, or look up via the registry | Run `mixshift brand list` to surface the active brands |
 
 Brand setup is **not required.** Most mx-data-explore workflows only need a SellerID, which is in the brand registry.
 
 ### Brand registry (`~/.mixshift/clients/index.yaml`)
 
-After either sign-in flow completes (`mixshift auth login` or the legacy `mixshift auth setup`), the harness auto-runs discovery and persists every brand the user has warehouse access to into `~/.mixshift/clients/index.yaml`. **Use this file as the canonical source for brand → SellerID lookups** — don't re-run `mixshift brand discover` unless:
+After sign-in completes (`mixshift auth login`), the harness auto-runs discovery and persists every brand the user has warehouse access to into `~/.mixshift/clients/index.yaml`. **Use this file as the canonical source for brand → SellerID lookups** — don't re-run `mixshift brand discover` unless:
 
 - The user explicitly asks to refresh ("refresh my brands", "check for new accounts"), OR
 - The registry is missing (`mixshift brand list` outputs the "no brand registry yet" warning), OR

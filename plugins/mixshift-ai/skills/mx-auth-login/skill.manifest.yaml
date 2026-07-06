@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-login
 display_name: MixShift Auth Login
-version: "0.2.0"
+version: "0.2.1"
 description: >
   Authenticate against the MixShift warehouse via the mx-legacy-auth
   service (token-based). Routes by scenario: interactive sign-in
@@ -13,9 +13,9 @@ description: >
   web where no shell exists. Collects a self-attested work email
   (person_label) for per-employee session attribution on interactive
   paths; service credentials attribute via their admin-chosen svc:
-  label. Replaces the legacy chat-driven raw-MySQL flow; the CLI
-  `mixshift auth setup` command remains for users who need the legacy
-  path.
+  label. Replaces the retired legacy chat-driven raw-MySQL flow; the
+  CLI `mixshift auth setup` command exists only for backward
+  compatibility and should not be recommended.
 
 # Account-agnostic but lives in the per-account skill family for
 # discovery (parity with auth-setup).

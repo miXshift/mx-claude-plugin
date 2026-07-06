@@ -13,7 +13,7 @@ description: >
   setup problem, that is mx-help; this skill is for reporting and venting, not
   troubleshooting.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - send feedback
@@ -88,7 +88,7 @@ You can also invoke this skill **mid-session** if the user expresses frustration
 
 ## Prerequisites
 
-- The user must have signed in (`mixshift auth login` for the token flow, or the legacy `mixshift auth setup` CLI) so we have an email to attach to the feedback. If they're not signed in, surface that and offer to walk them through the mx-auth-login skill first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
+- The user must have signed in (`mixshift auth login`) so we have an email to attach to the feedback. If they're not signed in, surface that and offer to walk them through the mx-auth-login skill first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
 
 ## Flow
 
@@ -175,7 +175,7 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 - **Don't editorialize the message.** Pass through the user's wording. You can suggest a clearer phrasing, but ultimately the user's words are the user's words.
 - **Don't bundle multiple feedback items into one submission.** If the user has three different bugs, send three separate `mixshift feedback` invocations. Each routes / gets triaged / closed independently.
 - **Don't use this for table-access requests.** That has a dedicated flow: the mx-data-explore skill's error-handling path uses `mixshift feedback ... --category feature_request` with specific framing.
-- **IP whitelist isn't a thing anymore in the token flow** (0.5.3+). If a user mentions an IP issue, point them at `mixshift auth login` — the auth service holds the single static egress IP server-side, so per-user whitelisting doesn't apply. Only if they're explicitly on the legacy `mixshift auth setup` raw-MySQL path does IP whitelist matter; that path is CLI-only and rare.
+- **IP whitelist isn't a thing anymore** (0.5.3+). If a user mentions an IP issue, point them at `mixshift auth login`; the auth service holds the single static egress IP server-side, so per-user whitelisting doesn't apply. The legacy `mixshift auth setup` raw-MySQL path that used per-user whitelisting is retired.
 
 ## Output template
 
