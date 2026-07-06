@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: feedback
 display_name: Send Feedback to MixShift
-version: "0.1.1"
+version: "0.1.2"
 description: >
   Entry point for sending feedback to MixShift, and for catching complaints or
   frustration about the plugin even when the user does not say "feedback" (e.g.
@@ -58,7 +58,6 @@ notes: >
   Lives at risk_tier 1 -- informational only, no DB calls, no durable artifacts
   on the customer machine. Submits to MixShift's Discord ops channel (real-time
   alert) and Supabase events table (for analyzable feedback firehose).
-  Requires the user to be signed in first (via `mixshift auth login` or the
-  legacy `mixshift auth setup` CLI) so we have an email to attach to the
-  feedback. If they're not signed in, surface that gap and redirect to the
-  mx-auth-login skill.
+  Requires the user to be signed in first (via `mixshift auth login`) so we
+  have an email to attach to the feedback. If they're not signed in, surface
+  that gap and redirect to the mx-auth-login skill.

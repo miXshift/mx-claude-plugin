@@ -8,11 +8,11 @@ description: >
   runs like scheduled Cowork tasks and CI, and a paste-token direct
   mode for claude.ai web where no shell exists. Collects a
   self-attested work email (person_label) for per-employee session
-  attribution on the interactive paths. Replaces the legacy raw-MySQL
-  chat flow; the CLI `mixshift auth setup` command is still available
-  for users who need the legacy path.
+  attribution on the interactive paths. Replaces the retired legacy
+  raw-MySQL path; the CLI `mixshift auth setup` command exists only
+  for backward compatibility and should not be recommended.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: "MixShift"
 trigger_phrases:
   - sign in to mixshift
@@ -210,7 +210,7 @@ If the user gets stuck mid-flow:
 
 - **Service credential 401 invalid_client:** revoked or rotated. Admin checks /admin; re-run `service-setup` with the current secret. (Path C failure section has the full phrasing.)
 
-- **User needs the legacy raw-MySQL path (rare):** *"The CLI command `mixshift auth setup` still works if you need the legacy raw-MySQL path with per-user IP whitelist. Run it directly in your terminal. For everyone else, `auth login` is recommended."*
+- **User asks about the legacy raw-MySQL path (`mixshift auth setup`):** that path is retired, and per-user IP whitelisting is gone with it. The command remains in the CLI only for backward compatibility; do not recommend it. Say: *"The old `auth setup` raw-MySQL path has been retired. `mixshift auth login` is the supported way to sign in, and unattended runs use a service credential (the mx-auth-service-setup flow)."*
 
 - **User already logged in and wants to switch accounts:** Just re-run the flow. The new login overwrites the old session.
 

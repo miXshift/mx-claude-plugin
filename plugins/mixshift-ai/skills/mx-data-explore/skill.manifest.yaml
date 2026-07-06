@@ -1,11 +1,12 @@
 schema_version: 1
 skill_id: mx-data-explore
 display_name: Explore + Export Your Warehouse Data
-version: "0.1.1"
+version: "0.1.2"
 description: >
   Conversational data exploration and CSV export over the MixShift
-  warehouse. Read-only. Does not require brand setup -- only auth
-  setup and (optionally) brand discovery to find SellerIDs.
+  warehouse. Read-only. Does not require brand setup -- only sign-in
+  (`mixshift auth login`) and (optionally) brand discovery to find
+  SellerIDs.
 
 # Tier 1 = informational, read-only. No durable production artifacts.
 # Modeled as per_account because the user is exploring data for an account
@@ -48,17 +49,16 @@ trigger_phrases:
   - what brands do I have access to
 notes: >
   Lowest-friction entry point in the plugin. Partners who haven't onboarded
-  specific brands can still use it as long as their MySQL credentials work
-  and they know (or can discover) a SellerID.
+  specific brands can still use it as long as they have signed in
+  (`mixshift auth login`) and know (or can discover) a SellerID.
 
   Access errors on specific tables (ER_TABLEACCESS_DENIED_ERROR) classify
   as exit code 4 and surface a "send access request to MixShift ops" prompt
   via the feedback webhook.
 
   Required state (not modeled in schema fields):
-    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login` if not,
-      or the legacy `mixshift auth setup` for the raw-MySQL path)
-    - ~/.mixshift/profile.yaml with user.email (created by either sign-in flow)
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login` if not)
+    - ~/.mixshift/profile.yaml with user.email (created at sign-in)
   Optional state:
     - ~/.mixshift/clients/<slug>/context.yaml -- when the user references a brand
       by slug rather than SellerID.
