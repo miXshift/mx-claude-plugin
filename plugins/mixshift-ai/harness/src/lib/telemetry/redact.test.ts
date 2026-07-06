@@ -32,6 +32,29 @@ describe('redactArgs', () => {
     }
   });
 
+  it('does not leak a following flag’s value when a secret flag has no value (review CRITICAL)', () => {
+    // `--token` here has no value (empty/optional, or a typo). It must NOT
+    // swallow `--password` as its value, or `--password`’s real value
+    // (`hunter2`) slips through unredacted into telemetry.
+    expect(redactArgs(['--token', '--password', 'hunter2'])).toEqual([
+      '--token',
+      '--password',
+      '<redacted>',
+    ]);
+    // Secret flag followed by a NON-secret flag: that flag + its value are
+    // preserved (a bare secret flag with no value redacts nothing).
+    expect(redactArgs(['--secret', '--client-id', 'svc_public_123'])).toEqual([
+      '--secret',
+      '--client-id',
+      'svc_public_123',
+    ]);
+    // Secret flag followed by a secret --flag=value form.
+    expect(redactArgs(['--token', '--password=hunter2'])).toEqual([
+      '--token',
+      '--password=<redacted>',
+    ]);
+  });
+
   it('redacts the value of a --flag=value secret', () => {
     expect(redactArgs(['--secret=abc123def456'])).toEqual(['--secret=<redacted>']);
     expect(redactArgs(['auth', '--client-secret=zzz'])).toEqual(['auth', '--client-secret=<redacted>']);

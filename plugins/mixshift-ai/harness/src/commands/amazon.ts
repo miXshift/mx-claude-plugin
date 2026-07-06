@@ -554,6 +554,9 @@ function registerReportRun(report: Command): void {
         let throttleStreak = 0;
         let lastStatus = started.status ?? 'UNKNOWN';
         let pollFailure: ReportFailure | undefined;
+        // Capture the last successful poll so the post-loop step can reuse it
+        // instead of firing a redundant Amazon poll on the ready path.
+        let lastPoll: Awaited<ReturnType<typeof pollReport>> | undefined;
         while (Date.now() < deadline) {
           const poll = await pollReport(runId, clientOpts);
           if (isReportFailure(poll)) {
@@ -583,6 +586,7 @@ function registerReportRun(report: Command): void {
           throttleStreak = 0;
           polls += 1;
           lastStatus = poll.status;
+          lastPoll = poll;
           if (poll.ready) break;
           if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
           await sleep(opts.intervalMs);
@@ -609,7 +613,9 @@ function registerReportRun(report: Command): void {
           return emitFailure(pollFailure, !!root.json);
         }
 
-        const finalPoll = await pollReport(runId, clientOpts);
+        // Reuse the ready poll from the loop; only re-poll if we never got a
+        // non-failure poll (e.g. throttled until the deadline).
+        const finalPoll = lastPoll ?? (await pollReport(runId, clientOpts));
         if (isReportFailure(finalPoll)) {
           await trackFailure(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
           return emitFailure(finalPoll, !!root.json);

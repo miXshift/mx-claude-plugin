@@ -38,7 +38,10 @@ export async function readServiceAttributionCache(
 ): Promise<ServiceAttribution> {
   try {
     const raw = await readFile(serviceTokenCachePath(dataDirOverride), 'utf-8');
-    const parsed = JSON.parse(raw) as {
+    const parsedRaw: unknown = JSON.parse(raw);
+    // JSON.parse can yield null or a primitive; guard before property access.
+    if (!parsedRaw || typeof parsedRaw !== 'object') return {};
+    const parsed = parsedRaw as {
       client_id?: string;
       attribution?: ServiceAttribution;
     };

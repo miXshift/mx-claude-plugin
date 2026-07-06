@@ -63717,7 +63717,8 @@ async function doMintServiceToken(service, dataDirOverride) {
       `/oauth/token returned HTTP ${res.status}: ${body.slice(0, 500)}`
     );
   }
-  const json2 = await res.json();
+  const rawJson = await res.json();
+  const json2 = rawJson && typeof rawJson === "object" ? rawJson : {};
   if (!json2.access_token) {
     throw new Error("/oauth/token returned no access_token.");
   }
@@ -64434,7 +64435,9 @@ import { readFile as readFile7 } from "node:fs/promises";
 async function readServiceAttributionCache(clientId, dataDirOverride) {
   try {
     const raw = await readFile7(serviceTokenCachePath(dataDirOverride), "utf-8");
-    const parsed = JSON.parse(raw);
+    const parsedRaw = JSON.parse(raw);
+    if (!parsedRaw || typeof parsedRaw !== "object") return {};
+    const parsed = parsedRaw;
     const a = parsed.attribution;
     if (!a || typeof a !== "object") return {};
     if (clientId && parsed.client_id && parsed.client_id !== clientId) return {};
@@ -83309,6 +83312,7 @@ function registerReportRun(report) {
       let throttleStreak = 0;
       let lastStatus = started.status ?? "UNKNOWN";
       let pollFailure;
+      let lastPoll;
       while (Date.now() < deadline) {
         const poll = await pollReport(runId, clientOpts);
         if (isReportFailure(poll)) {
@@ -83338,6 +83342,7 @@ function registerReportRun(report) {
         throttleStreak = 0;
         polls += 1;
         lastStatus = poll.status;
+        lastPoll = poll;
         if (poll.ready) break;
         if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})
 `);
@@ -83358,7 +83363,7 @@ function registerReportRun(report) {
         await trackFailure2(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
         return emitFailure3(pollFailure, !!root.json);
       }
-      const finalPoll = await pollReport(runId, clientOpts);
+      const finalPoll = lastPoll ?? await pollReport(runId, clientOpts);
       if (isReportFailure(finalPoll)) {
         await trackFailure2(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
         return emitFailure3(finalPoll, !!root.json);
@@ -86109,9 +86114,11 @@ function redactArgs(argv) {
   let redactNextValue = false;
   for (const arg of argv) {
     if (redactNextValue) {
-      out.push(REDACTED);
       redactNextValue = false;
-      continue;
+      if (!(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
+        out.push(REDACTED);
+        continue;
+      }
     }
     if (arg.startsWith("--") && arg.includes("=")) {
       const eq = arg.indexOf("=");

@@ -75,9 +75,17 @@ export function redactArgs(argv: readonly string[]): string[] {
 
   for (const arg of argv) {
     if (redactNextValue) {
-      out.push(REDACTED);
       redactNextValue = false;
-      continue;
+      // Only consume this token as the secret flag's value if it is NOT itself
+      // a flag. A secret flag immediately followed by another flag (the first
+      // had an empty/optional value, or a typo) must NOT swallow that flag —
+      // doing so left the SECOND flag's real value unredacted, e.g.
+      // `--token --password hunter2` leaked `hunter2`. Fall through to normal
+      // flag handling below so a following secret flag re-arms.
+      if (!(arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg))) {
+        out.push(REDACTED);
+        continue;
+      }
     }
 
     // `--flag=value`

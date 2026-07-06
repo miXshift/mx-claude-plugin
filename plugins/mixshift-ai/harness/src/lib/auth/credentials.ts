@@ -469,7 +469,10 @@ async function doMintServiceToken(
     );
   }
 
-  const json = (await res.json()) as {
+  const rawJson: unknown = await res.json();
+  // A non-object body (null / primitive) must not TypeError on property
+  // access; fall through to the clean "no access_token" error below.
+  const json = (rawJson && typeof rawJson === 'object' ? rawJson : {}) as {
     access_token?: string;
     expires_in?: number;
     attribution?: ServiceTokenCache['attribution'];
