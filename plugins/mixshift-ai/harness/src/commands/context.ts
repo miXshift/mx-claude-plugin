@@ -159,7 +159,7 @@ export function registerContextCommands(program: Command): void {
         'machine-friendly post-run form for skill flows (the preflight ' +
         'auto-sync is pull-only; pushing local changes stays an explicit ' +
         'opt-in via this command): silent unless something was pulled, ' +
-        'pushed, created, conflicted, or errored — and conflicts still ' +
+        'pushed, created, conflicted, or errored. Conflicts still ' +
         'exit 0 (only per-doc errors are non-zero).',
     hasForce: false,
     hasQuiet: true,
@@ -398,15 +398,15 @@ function registerAutosyncSubcommand(context: Command): void {
   context
     .command('autosync <brand>')
     .description(
-      'Run the throttled preflight auto-sync for one brand — the same code ' +
-        'path skills trigger implicitly when they read brand context. ' +
+      'Run the throttled preflight auto-sync for one brand (the same code ' +
+        'path skills trigger implicitly when they read brand context). ' +
         'Pull-only and conservative: fetches conflict-free server-side ' +
         `changes within a ~2s budget, at most once per brand per ` +
         `${AUTOSYNC_THROTTLE_MS / 60_000} minutes (--force bypasses the ` +
-        `throttle). Diverged docs are never touched and nothing is pushed — ` +
-        'push local changes explicitly with `mixshift context sync ' +
-        '[--quiet]`. Disable the implicit hook entirely with ' +
-        `${AUTOSYNC_ENV}=off.`,
+        `throttle). Serves brands that already exist locally; diverged docs ` +
+        'are never touched and nothing is pushed. Push local changes ' +
+        'explicitly with `mixshift context sync [--quiet]`. Disable the ' +
+        `implicit hook entirely with ${AUTOSYNC_ENV}=off.`,
     )
     .option('--force', 'bypass the per-brand throttle window', false)
     .action(async (brand: string, opts: { force?: boolean }, cmd: Command) => {
@@ -461,7 +461,9 @@ function registerAutosyncSubcommand(context: Command): void {
                     status: 'ok',
                     ran: false,
                     reason: result.reason,
-                    ...(result.reason === 'failed' ? { detail: result.detail } : {}),
+                    ...(result.reason === 'failed' || result.reason === 'skipped'
+                      ? { detail: result.detail }
+                      : {}),
                   },
               null,
               2,
@@ -472,10 +474,10 @@ function registerAutosyncSubcommand(context: Command): void {
 
         if (!result.ran) {
           let detail: string;
-          if (result.reason === 'failed') {
+          if (result.reason === 'failed' || result.reason === 'skipped') {
             detail = result.detail;
           } else if (result.reason === 'throttled') {
-            detail = `attempted within the last ${AUTOSYNC_THROTTLE_MS / 60_000} minutes — re-run with --force`;
+            detail = `attempted within the last ${AUTOSYNC_THROTTLE_MS / 60_000} minutes; re-run with --force`;
           } else {
             detail = `disabled via ${AUTOSYNC_ENV}`;
           }

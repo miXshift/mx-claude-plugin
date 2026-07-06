@@ -147,6 +147,23 @@ export function isSafeCorpusName(name: string): boolean {
 }
 
 /**
+ * SECURITY guard for brand slugs that reach a filesystem path or a wire
+ * body from a caller-supplied string (autosync's read-path hook, the
+ * key-mirror's raw-input fallback). brandDir() joins the slug verbatim, so
+ * a slug containing separators or '..' would resolve OUTSIDE clients/.
+ * Mirrors isSafeCorpusName: short, single-segment, portable characters,
+ * leading alphanumeric. Registry-generated slugs (^[a-z][a-z0-9-]*$) are a
+ * strict subset.
+ */
+export function isSafeBrandSlug(slug: string): boolean {
+  return (
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) &&
+    !slug.includes('..') &&
+    basename(slug) === slug
+  );
+}
+
+/**
  * Resolve the local file path a doc key maps to (used by pull when writing
  * a doc that doesn't exist locally yet). Verifies the brand-dir mapping in
  * one place so engine.ts can't drift from readLocalDocs.

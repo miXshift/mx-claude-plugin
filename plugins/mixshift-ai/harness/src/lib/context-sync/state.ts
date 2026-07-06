@@ -19,6 +19,7 @@
  * files; saveState swallows write errors. Neither throws outward.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { loadCredentials } from '../auth/credentials.js';
@@ -165,24 +166,36 @@ export async function loadState(
  * matrix degrades to 'diverged', never data loss. A failed rename unlinks
  * the tmp file so nothing litters the brand dir (the state basename is
  * dot-prefixed, so the tmp never enters doc enumeration either way).
+ *
+ * The tmp suffix carries a random component: pid + timestamp alone collide
+ * when two saves in the same process land in the same millisecond, and an
+ * interleaved write/rename could then put mixed bytes in place.
+ *
+ * Returns true when the ledger actually reached disk. Callers that GATE on
+ * persistence branch on it (autosync must skip its network attempt when
+ * the throttle stamp could not be recorded — otherwise a read-only brand
+ * dir would stall every skill step for the full budget with zero signal);
+ * sync-flow callers ignore it.
  */
 export async function saveState(
   brandSlug: string,
   state: ContextSyncState,
   dataDirOverride?: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const path = contextSyncStatePath(brandSlug, dataDirOverride);
     await mkdir(dirname(path), { recursive: true });
-    const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}`;
+    const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
     try {
       await writeFile(tmpPath, JSON.stringify(state, null, 2) + '\n', 'utf8');
       await rename(tmpPath, path);
+      return true;
     } catch (err) {
       await unlink(tmpPath).catch(() => {});
       throw err;
     }
   } catch {
     // Advisory ledger — never worth failing the sync over.
+    return false;
   }
 }
