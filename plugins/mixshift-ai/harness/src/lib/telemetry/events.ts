@@ -33,6 +33,10 @@ export interface TelemetryEventRecord {
   surface: string;
   os: string;
   node_version: string;
+  /** Self-reported CLI/runtime UA string. The events table has always had a
+   *  user_agent column; the client began populating it in the beta-richness
+   *  pass (feedback #10). Absent on queue entries written before that. */
+  user_agent?: string;
   ts: string; // ISO timestamp set client-side at queue time
   payload: Record<string, unknown>;
   // Lifted fields for queryability:

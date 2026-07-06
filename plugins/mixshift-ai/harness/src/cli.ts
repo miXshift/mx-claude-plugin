@@ -86,6 +86,7 @@ import {
 } from './lib/telemetry/index.js';
 import { loadProfile } from './lib/profile/load.js';
 import { saveProfile } from './lib/profile/save.js';
+import { redactArgs } from './lib/telemetry/redact.js';
 
 const program = new Command();
 
@@ -202,11 +203,13 @@ async function trackLifecycleEvents(): Promise<void> {
       }
     }
 
-    // cli.command_run — every invocation. We log the command + subcommand
-    // names ONLY, not the full argv. argv can contain SQL fragments,
-    // file paths, or other values that would leak query content — the
-    // privacy guarantee in `docs/privacy.md` explicitly excludes "query
-    // results, credentials, chat content."
+    // cli.command_run — every invocation. During beta we capture the FULL
+    // argument vector (feedback #10) so reviews can see WHAT users actually
+    // run, not just the command name. argv can contain secrets (a
+    // `auth service-setup` code, a --client-secret, a token), so it is passed
+    // through redactArgs() first: business args (SQL, ids, table names, brand
+    // slugs) are preserved; credential material becomes <redacted>. The beta
+    // disclosure in docs/privacy.md is updated to match this breadth.
     //
     // This is the FIRST track() call in any harness invocation that
     // matters for plugin.installed semantics — if install_id was
@@ -217,6 +220,7 @@ async function trackLifecycleEvents(): Promise<void> {
       payload: {
         cmd: process.argv[2] ?? '(none)',
         subcmd: process.argv[3] ?? '(none)',
+        args: redactArgs(process.argv.slice(2)),
       },
     });
   } catch {
@@ -276,7 +280,7 @@ try {
     event_name: EventName.PluginCrashed,
     outcome: 'failed',
     error_class: 'unhandled_exception',
-    payload: { message, argv: process.argv.slice(2) },
+    payload: { message, argv: redactArgs(process.argv.slice(2)) },
   });
   process.exitCode = 1;
 } finally {

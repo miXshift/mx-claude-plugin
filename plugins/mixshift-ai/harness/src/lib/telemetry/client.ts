@@ -146,6 +146,9 @@ export function normalizeRecord(rec: TelemetryEventRecord): Record<string, unkno
     surface: rec.surface ?? null,
     os: rec.os,
     node_version: rec.node_version,
+    // user_agent column has always existed; populated since the beta-richness
+    // pass (feedback #10). Older queued entries coerce to null.
+    user_agent: rec.user_agent ?? null,
     ts: rec.ts,
     payload: rec.payload ?? {},
     skill_id: rec.skill_id ?? null,

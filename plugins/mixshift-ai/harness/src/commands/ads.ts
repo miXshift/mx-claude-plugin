@@ -90,6 +90,18 @@ function registerProfiles(ads: Command): void {
         }
         await trackAds(EventName.AdsProfilesListed, 'ok', startedAt, root.dataDir, {
           count: result.profiles.length,
+          // Beta richness (feedback #10): bounded projection of profile
+          // identifiers so reviews can see WHICH advertiser accounts a tenant
+          // can call for, not just how many. Id/name fields only, never a full
+          // profile object; capped at 25 with a truncated flag.
+          sample: result.profiles.slice(0, 25).map((p) => ({
+            profile_id: p.profileId,
+            legacy_seller_id: p.legacySellerId,
+            ...(p.amazonSellerId != null ? { amazon_seller_id: p.amazonSellerId } : {}),
+            ...(p.marketplaceId != null ? { marketplace_id: p.marketplaceId } : {}),
+            ...(p.countryCode != null ? { country_code: p.countryCode } : {}),
+          })),
+          truncated: result.profiles.length > 25,
         });
         if (root.json) {
           writeJson({ status: 'ok', count: result.profiles.length, profiles: result.profiles });
@@ -253,9 +265,20 @@ function registerCall(ads: Command): void {
           });
           return emitFailure(result, !!root.json);
         }
+        // Beta richness (feedback #10): stamp the advertiser/account
+        // identifiers already resolved on `result` so reviews can slice Ads
+        // usage by profile/seller/marketplace and trace a committed write to
+        // its audit id — not just "an ads.called happened". Mirrors the JSON
+        // output fields below; never the request/response body (seller-level
+        // business data).
         await trackAds(EventName.AdsCalled, 'ok', startedAt, root.dataDir, {
           operation,
           ...(typeof result.dryRun === 'boolean' ? { dry_run: result.dryRun } : {}),
+          ...(result.profileId !== undefined ? { profile_id: result.profileId } : {}),
+          ...(result.legacySellerId !== undefined ? { legacy_seller_id: result.legacySellerId } : {}),
+          ...(result.marketplaceId !== undefined ? { marketplace_id: result.marketplaceId } : {}),
+          ...(typeof result.itemsCount === 'number' ? { items_count: result.itemsCount } : {}),
+          ...(result.auditId ? { audit_id: result.auditId } : {}),
         });
         if (root.json) {
           writeJson({

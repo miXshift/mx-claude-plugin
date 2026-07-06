@@ -130,6 +130,12 @@ function registerFoepCommand(pricing: Command): void {
                 items_count: skus.length,
                 run_id: result.runId,
                 legacy_seller_id: opts.legacySellerId,
+                // Beta richness (feedback #10): initial run status from the
+                // result plus the merchant/marketplace selectors the caller
+                // passed, so a pricing.started ties to a seller/marketplace.
+                ...(result.status !== undefined ? { status: result.status } : {}),
+                ...(opts.amazonSellerId !== undefined ? { amazon_seller_id: opts.amazonSellerId } : {}),
+                ...(opts.marketplace !== undefined ? { marketplace: opts.marketplace } : {}),
               },
             },
             root.dataDir,
@@ -166,6 +172,10 @@ function registerFoepCommand(pricing: Command): void {
               items_failed: result.itemsFailed,
               run_id: result.runId,
               legacy_seller_id: opts.legacySellerId,
+              // Beta richness (feedback #10): total + completed counts for
+              // schema parity with the get-run-result retrieved event.
+              items_total: result.itemsTotal,
+              items_completed: result.itemsCompleted,
             },
           },
           root.dataDir,
@@ -264,6 +274,12 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
                 items_count: asins.length,
                 run_id: result.runId,
                 legacy_seller_id: opts.legacySellerId,
+                // Beta richness (feedback #10): initial run status from the
+                // result plus the merchant/marketplace selectors the caller
+                // passed, so a pricing.started ties to a seller/marketplace.
+                ...(result.status !== undefined ? { status: result.status } : {}),
+                ...(opts.amazonSellerId !== undefined ? { amazon_seller_id: opts.amazonSellerId } : {}),
+                ...(opts.marketplace !== undefined ? { marketplace: opts.marketplace } : {}),
               },
             },
             root.dataDir,
@@ -310,6 +326,10 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
               items_failed: result.itemsFailed,
               run_id: result.runId,
               legacy_seller_id: opts.legacySellerId,
+              // Beta richness (feedback #10): total + completed counts for
+              // schema parity with the get-run-result retrieved event.
+              items_total: result.itemsTotal,
+              items_completed: result.itemsCompleted,
             },
           },
           root.dataDir,
@@ -354,7 +374,14 @@ function registerPollRunCommand(pricing: Command): void {
               outcome: 'failed',
               duration_ms: Date.now() - startedAt,
               error_class: result.kind,
-              payload: { operation: 'poll_run', run_id: runId },
+              payload: {
+                operation: 'poll_run',
+                run_id: runId,
+                // Beta richness (feedback #10): typed failure kind + HTTP
+                // status so a pricing.failed is diagnosable without the log.
+                failure_kind: result.kind,
+                ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+              },
             },
             root.dataDir,
           );
@@ -369,6 +396,12 @@ function registerPollRunCommand(pricing: Command): void {
               run_id: runId,
               status: result.status,
               items_completed: result.itemsCompleted,
+              // Beta richness (feedback #10): full progress counters (totals +
+              // succeeded/failed split) so a poll shows how far along a run is,
+              // not just completed. All are plain counts on the run status.
+              items_total: result.itemsTotal,
+              items_succeeded: result.itemsSucceeded,
+              items_failed: result.itemsFailed,
             },
           },
           root.dataDir,
@@ -399,7 +432,14 @@ function registerGetRunResultCommand(pricing: Command): void {
               outcome: 'failed',
               duration_ms: Date.now() - startedAt,
               error_class: result.kind,
-              payload: { operation: 'get_run_result', run_id: runId },
+              payload: {
+                operation: 'get_run_result',
+                run_id: runId,
+                // Beta richness (feedback #10): typed failure kind + HTTP
+                // status so a pricing.failed is diagnosable without the log.
+                failure_kind: result.kind,
+                ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+              },
             },
             root.dataDir,
           );
@@ -415,6 +455,11 @@ function registerGetRunResultCommand(pricing: Command): void {
               status: result.status,
               items_succeeded: result.itemsSucceeded,
               items_failed: result.itemsFailed,
+              // Beta richness (feedback #10): total + completed counts so a
+              // retrieve records the full run shape, not just the succeeded/
+              // failed split. Plain counts on the run result.
+              items_total: result.itemsTotal,
+              items_completed: result.itemsCompleted,
             },
           },
           root.dataDir,
@@ -539,6 +584,9 @@ async function trackFailure(
         mode,
         items_count: itemsCount,
         failure_kind: result.kind,
+        // Beta richness (feedback #10): HTTP status alongside the typed kind so
+        // a pricing.failed is diagnosable without the log.
+        ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
       },
     },
     dataDir,

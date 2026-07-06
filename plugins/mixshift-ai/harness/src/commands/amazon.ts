@@ -119,7 +119,23 @@ function registerMerchants(amazon: Command): void {
             event_name: EventName.AmazonMerchantsListed,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { count: result.merchants.length },
+            payload: {
+              count: result.merchants.length,
+              // Beta richness (feedback #10): bounded projection of merchant
+              // identifiers so reviews can see WHICH seller/marketplace rows a
+              // tenant can pull for (and their cron/auth posture), not just a
+              // count. Id/flag fields only, never a full merchant object;
+              // capped at 25 with a truncated flag.
+              sample: result.merchants.slice(0, 25).map((m) => ({
+                amazon_seller_id: m.amazonSellerId,
+                ...(m.legacySellerId != null ? { legacy_seller_id: m.legacySellerId } : {}),
+                ...(m.marketplaceId != null ? { marketplace_id: m.marketplaceId } : {}),
+                ...(m.countryCode != null ? { country_code: m.countryCode } : {}),
+                authorized: m.authorized,
+                ...(typeof m.cronActive === 'boolean' ? { cron_active: m.cronActive } : {}),
+              })),
+              truncated: result.merchants.length > 25,
+            },
           },
           root.dataDir,
         );
@@ -263,7 +279,19 @@ function registerReportStart(report: Command): void {
             event_name: EventName.ReportStarted,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { report_type: reportType, status: result.status },
+            // Beta richness (feedback #10): stamp the run handle plus the
+            // merchant/marketplace selectors the caller pulled for, so a
+            // report.started can be traced to a seller/window — not just a
+            // report type. run_id from the result; seller/marketplace from the
+            // in-scope request (input). Never document bytes.
+            payload: {
+              report_type: reportType,
+              status: result.status,
+              run_id: result.runId,
+              ...(input.amazonSellerId !== undefined ? { amazon_seller_id: input.amazonSellerId } : {}),
+              ...(input.legacySellerId !== undefined ? { legacy_seller_id: input.legacySellerId } : {}),
+              ...(input.marketplace !== undefined ? { marketplace: input.marketplace } : {}),
+            },
           },
           root.dataDir,
         );
@@ -307,7 +335,15 @@ function registerReportPoll(report: Command): void {
             event_name: EventName.ReportPolled,
             outcome: 'ok',
             duration_ms: Date.now() - startedAt,
-            payload: { ready: result.ready, status: result.status },
+            // Beta richness (feedback #10): carry the run handle (the poll
+            // target) and Amazon's reportId once assigned, so a poll ties back
+            // to a specific run. Mirrors the JSON output below.
+            payload: {
+              ready: result.ready,
+              status: result.status,
+              run_id: runId,
+              ...(result.reportId !== undefined ? { report_id: result.reportId } : {}),
+            },
           },
           root.dataDir,
         );
@@ -649,6 +685,13 @@ async function trackFailure(
         kind: failure.kind,
         ...(reportType ? { report_type: reportType } : {}),
         ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
+        // Beta richness (feedback #10): seller/report context the service
+        // attached to the failure, so a report.failed can be tied to the
+        // merchant + Amazon report it was for (present kind-dependently:
+        // amazonSellerId on reauth_required, reportId/status on report_fatal).
+        ...(failure.amazonSellerId !== undefined ? { amazon_seller_id: failure.amazonSellerId } : {}),
+        ...(failure.reportId !== undefined ? { report_id: failure.reportId } : {}),
+        ...(failure.status !== undefined ? { report_status: failure.status } : {}),
       },
     },
     dataDir,

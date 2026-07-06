@@ -27,9 +27,9 @@ import { enqueueEvent } from './queue.js';
 import { flushQueue, type FlushResult } from './client.js';
 import { EventName, type TrackInput, type TelemetryEventRecord } from './events.js';
 import { loadProfile } from '../profile/load.js';
-import { loadCredentials } from '../auth/credentials.js';
 import { getPluginVersion } from '../plugin-version.js';
 import { detectSurface } from './surface.js';
+import { resolveAttribution } from './attribution.js';
 
 /**
  * Track an event. Best-effort:
@@ -55,16 +55,21 @@ export async function track(
     const os = detectOs();
     const nowIso = new Date().toISOString();
     const userEmail = profile.user?.email;
-    // Auto-resolve attribution from on-disk credentials when the caller
-    // didn't pass one. Best-effort — pre-auth events / corrupted creds files
-    // fall through silently. Human installs attribute via
-    // datahub.person_label; automation installs (service block) attribute
-    // via the svc: label AND get an `automation: true` payload marker so
-    // the Discord fan-out and analytics can tell machine traffic from
-    // anonymous humans.
-    const attribution = await readAttributionBestEffort(dataDirOverride);
+    // Auto-resolve attribution from on-disk credentials (+ the service
+    // attribution cache) when the caller didn't pass one. Best-effort —
+    // pre-auth events / corrupted creds files fall through silently. Human
+    // installs attribute via datahub.person_label; automation installs
+    // (service block) attribute via the svc: label AND get an `automation:
+    // true` payload marker so the Discord fan-out and analytics can tell
+    // machine traffic from anonymous humans. Every event also carries a
+    // structured `actor` object (see lib/telemetry/attribution.ts) so reviews
+    // can name WHO the actor is — including service credentials, which
+    // previously carried no owner/org/purpose (feedback #10).
+    const attribution = await resolveAttribution(dataDirOverride);
     const datahubPersonLabel = attribution.personLabel;
     const automationPayload = attribution.automation ? { automation: true } : {};
+    const actorPayload = { actor: attribution.actor };
+    const userAgent = buildUserAgent(pluginVersion, surface, os);
 
     // If this is the first time install_id has been created on this
     // machine, enqueue a synthetic plugin.installed event ALONGSIDE the
@@ -88,10 +93,11 @@ export async function track(
         surface,
         os,
         node_version: process.version,
+        user_agent: userAgent,
         ts: nowIso,
         // Marker so analytics can distinguish "synthetic on first-track"
         // from a hypothetical future direct track(PluginInstalled) call.
-        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload },
+        payload: { synthetic: true, triggered_by: input.event_name, ...automationPayload, ...actorPayload },
       };
       await enqueueEvent(synthetic, dataDirOverride);
     }
@@ -106,8 +112,9 @@ export async function track(
       surface,
       os,
       node_version: process.version,
+      user_agent: userAgent,
       ts: nowIso,
-      payload: { ...(input.payload ?? {}), ...automationPayload },
+      payload: { ...(input.payload ?? {}), ...automationPayload, ...actorPayload },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -184,34 +191,15 @@ function readSurfaceFlag(): string | undefined {
 }
 
 /**
- * Best-effort lookup of the datahub `person_label` (per-employee actor)
- * from the credentials file. Returns undefined when:
- *   - no credentials file yet
- *   - credentials file is malformed
- *   - no datahub block present (pre-auth or legacy mysql-only install)
- *
- * Never throws. Wraps the file I/O so a missing or broken credentials
- * file can't take down telemetry.
+ * Build the `user_agent` string stamped on every event. The events table has
+ * had a `user_agent` column since inception but the client never populated it;
+ * during beta we self-report a CLI/runtime identifier so machine vs. human and
+ * runtime/version cohorts are sliceable without decoding the JWT. Kept distinct
+ * from `os`/`surface` (their own columns) but folds them in for a single
+ * human-readable UA line.
  */
-async function readAttributionBestEffort(
-  dataDirOverride?: string,
-): Promise<{ personLabel: string | undefined; automation: boolean }> {
-  try {
-    const { credentials } = await loadCredentials(dataDirOverride);
-    const human = credentials?.datahub?.person_label;
-    const service = credentials?.service;
-    // Service installs attribute events to the credential's svc: label (or
-    // its client_id when the label was omitted) so automation traffic is
-    // identifiable in telemetry. A human session on the same dir wins for
-    // the person label, but the automation marker still reflects that a
-    // service credential is configured here.
-    return {
-      personLabel: human ?? service?.label ?? service?.client_id,
-      automation: Boolean(service) && !human,
-    };
-  } catch {
-    return { personLabel: undefined, automation: false };
-  }
+function buildUserAgent(pluginVersion: string, surface: string, os: string): string {
+  return `mixshift-cli/${pluginVersion} (node ${process.version}; ${os}; surface=${surface})`;
 }
 
 // Re-exports
