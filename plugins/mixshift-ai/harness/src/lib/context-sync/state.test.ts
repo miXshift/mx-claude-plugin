@@ -170,6 +170,51 @@ describe('ledger identity binding', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Autosync stamp (last_autosync_at)
+// ---------------------------------------------------------------------------
+
+describe('last_autosync_at (autosync throttle stamp)', () => {
+  const STAMP = '2026-07-05T12:00:00.000Z';
+
+  it('round-trips through save/load', async () => {
+    await saveState('acme', { ...sampleState(), last_autosync_at: STAMP }, testDir);
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_at).toBe(STAMP);
+    expect(loaded.docs).toEqual(sampleState().docs);
+  });
+
+  it('is absent on files written before the field existed', async () => {
+    await saveState('acme', sampleState(), testDir);
+    expect((await loadState('acme', testDir)).last_autosync_at).toBeUndefined();
+  });
+
+  it('tolerates a non-string stamp by dropping it', async () => {
+    const path = contextSyncStatePath('acme', testDir);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({ schema: 2, last_autosync_at: 12345, docs: sampleState().docs }),
+      'utf8',
+    );
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_at).toBeUndefined();
+    expect(loaded.docs).toEqual(sampleState().docs);
+  });
+
+  it('survives an identity rebind (docs drop, stamp stays)', async () => {
+    await saveState(
+      'acme',
+      { ...sampleState(), identity: ID_A, last_autosync_at: STAMP },
+      testDir,
+    );
+    const loaded = await loadState('acme', testDir, ID_B);
+    expect(loaded.docs).toEqual({});
+    expect(loaded.identity).toBe(ID_B);
+    expect(loaded.last_autosync_at).toBe(STAMP);
+  });
+});
+
 describe('resolveLedgerIdentity', () => {
   async function writeCreds(blocks: Record<string, unknown>): Promise<void> {
     const path = credentialsPath(testDir);
