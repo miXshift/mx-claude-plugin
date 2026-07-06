@@ -89,16 +89,23 @@ export async function mirrorKeyAssignments(
   );
 }
 
-/** One-line stderr note for human output when any mirror failed. Empty
- *  string when everything mirrored. */
-export function mirrorFailureNote(outcomes: MirrorOutcome[]): string {
+/** One-line stderr note for human output reporting the mirror result:
+ *  a success confirmation when everything reached the org store, or a
+ *  friendly fallback naming the re-run command when some did not. Empty
+ *  string only when there was nothing to mirror. */
+export function mirrorStatusNote(outcomes: MirrorOutcome[]): string {
+  if (outcomes.length === 0) return '';
   const failed = outcomes.filter((o) => !o.mirrored);
-  if (failed.length === 0) return '';
+  if (failed.length === 0) {
+    return '  ✓ Key brands mirrored to the org store.\n';
+  }
+  const mirrored = outcomes.length - failed.length;
   const detail = failed[0]?.detail ?? 'unreachable';
   const commands = [...new Set(failed.map((o) => `mixshift brand key ${o.op} ${o.brand_slug}`))];
+  const lead = mirrored > 0 ? `  ✓ ${mirrored} mirrored to the org store. ` : '  ';
   return (
-    `  note: ${failed.length} key-brand change(s) could not be mirrored to ` +
-    `the org store (${detail}). Your local list is updated. To mirror when ` +
+    `${lead}note: ${failed.length} key-brand change(s) could not be mirrored ` +
+    `to the org store (${detail}). Your local list is updated. To mirror when ` +
     `back online, re-run: ${commands.join('; ')}\n`
   );
 }

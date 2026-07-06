@@ -25,7 +25,7 @@ import {
 } from '../lib/clients/key-brands.js';
 import {
   mirrorKeyAssignments,
-  mirrorFailureNote,
+  mirrorStatusNote,
   type MirrorOutcome,
 } from '../lib/context-sync/assignments.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
@@ -765,7 +765,7 @@ export function registerBrandCommands(program: Command): void {
         addMirrorSlugs,
         root.dataDir,
       );
-      const mirrorNote = mirrorFailureNote(mirror);
+      const mirrorNote = mirrorStatusNote(mirror);
       if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
@@ -868,7 +868,7 @@ export function registerBrandCommands(program: Command): void {
         ...(await mirrorKeyAssignments('remove', removeMirrorSlugs, root.dataDir)),
         ...invalidMirrors,
       ];
-      const mirrorNote = mirrorFailureNote(mirror);
+      const mirrorNote = mirrorStatusNote(mirror);
       if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
@@ -968,7 +968,7 @@ export function registerBrandCommands(program: Command): void {
         result.removed_slugs,
         root.dataDir,
       );
-      const mirrorNote = mirrorFailureNote(mirror);
+      const mirrorNote = mirrorStatusNote(mirror);
       if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
