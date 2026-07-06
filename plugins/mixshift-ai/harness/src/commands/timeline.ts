@@ -39,7 +39,7 @@ export function registerTimelineCommands(program: Command): void {
     .command('timeline')
     .description(
       'The brand timeline: one append-only event stream per brand across ' +
-        'every surface — context revisions, committed Ads changes, ' +
+        'every surface: context revisions, committed Ads changes, ' +
         'structural stakes (price change, stockout, Prime Day), and comments.',
     );
 
@@ -164,7 +164,7 @@ function registerList(timeline: Command): void {
         if ('next_cursor' in result && result.next_cursor !== undefined) {
           lines.push('');
           lines.push(
-            `More events available — re-run with --all to follow pagination (cap ${LIST_ALL_CAP}).`,
+            `More events available; re-run with --all to follow pagination (cap ${LIST_ALL_CAP}).`,
           );
         }
         process.stdout.write(lines.join('\n') + '\n');
@@ -179,6 +179,10 @@ function registerList(timeline: Command): void {
 // ---------------------------------------------------------------------------
 // timeline add
 // ---------------------------------------------------------------------------
+
+/** Client-side note cap, aligned with the service's 32KB payload limit
+ *  (the note is the payload's dominant field by construction here). */
+export const MAX_NOTE_CHARS = 32_768;
 
 interface AddCliOptions {
   brand: string;
@@ -213,7 +217,19 @@ function registerAdd(timeline: Command): void {
           emitError(
             `--kind must be 'comment' or 'structural.<what>' (got '${opts.kind}'). ` +
               "knowledge.* events are emitted by the context service and action.* " +
-              'events by instrumented write paths — neither can be added by hand.',
+              'events by instrumented write paths; neither can be added by hand.',
+            root,
+          );
+          return;
+        }
+        // Client-side cap matching the service's 32KB payload limit, so an
+        // oversized note fails fast with a clear message instead of a
+        // too_large bounce after the request.
+        if (opts.note !== undefined && opts.note.length > MAX_NOTE_CHARS) {
+          emitError(
+            `--note is too long (${opts.note.length} characters; the cap is ` +
+              `${MAX_NOTE_CHARS}). Trim it, or store the full text as a corpus ` +
+              'doc and reference it with --target.',
             root,
           );
           return;

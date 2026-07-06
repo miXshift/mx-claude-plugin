@@ -204,6 +204,21 @@ function registerCall(ads: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
       try {
+        // Cap before anything reaches a wire body: the proposal id lands
+        // verbatim on a timeline event, so free-form input is rejected up
+        // front rather than bounced by the service later.
+        if (
+          opts.proposalId !== undefined &&
+          !/^[A-Za-z0-9_-]{1,128}$/.test(opts.proposalId)
+        ) {
+          return emitError(
+            new Error(
+              '--proposal-id must be 1-128 characters of A-Z, a-z, 0-9, ' +
+                'underscore, or hyphen (use the audit id printed by the dry run).',
+            ),
+            !!root.json,
+          );
+        }
         let body: unknown;
         if (opts.bodyFile && opts.body) {
           return emitError(new Error('Pass --body-file or --body, not both.'), !!root.json);

@@ -33,7 +33,17 @@ export function parseSince(input: string, now: Date = new Date()): ParseSinceRes
     if (!Number.isFinite(n) || n <= 0) {
       return { ok: false, message: `invalid relative --since '${input}'` };
     }
-    return { ok: true, iso: new Date(now.getTime() - n * UNIT_MS[unit]!).toISOString() };
+    // ECMAScript time values are only valid within +/-8.64e15 ms of the
+    // epoch; beyond that Date#toISOString throws RangeError. A huge N
+    // (e.g. '99999999999d') must come back as a parse error, not a throw.
+    const t = now.getTime() - n * UNIT_MS[unit]!;
+    if (!Number.isFinite(t) || Math.abs(t) > 8.64e15) {
+      return {
+        ok: false,
+        message: `--since '${input}' is too large to be a real time window`,
+      };
+    }
+    return { ok: true, iso: new Date(t).toISOString() };
   }
 
   const parsed = new Date(trimmed);
@@ -41,7 +51,7 @@ export function parseSince(input: string, now: Date = new Date()): ParseSinceRes
     return {
       ok: false,
       message:
-        `invalid --since '${input}' — pass an ISO timestamp (2026-07-01, ` +
+        `invalid --since '${input}': pass an ISO timestamp (2026-07-01, ` +
         `2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`,
     };
   }

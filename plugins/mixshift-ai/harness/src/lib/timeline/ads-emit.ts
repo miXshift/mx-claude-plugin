@@ -26,6 +26,7 @@
 
 import { readIndex } from '../clients/index.js';
 import { createTimelineClient, type TimelineClient } from './client.js';
+import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { PostTimelineEventInput } from './types.js';
 
 /** The POST must never make a committed change feel slow. */
@@ -109,14 +110,30 @@ export async function emitAdsCommitEvent(
       ...(env.MIXSHIFT_MODEL_ID ? { model_id: env.MIXSHIFT_MODEL_ID } : {}),
     };
 
-    const result = await client.postEvent(event, {
-      timeoutMs: options.timeoutMs ?? ADS_EMIT_TIMEOUT_MS,
-    });
-    if (!result.ok) {
-      debugLog(env, `ads-emit: post failed (${result.kind}): ${result.message}`);
-      return { posted: false, reason: 'post_failed', detail: result.friendly };
+    // The per-request timeoutMs passed to postEvent only bounds the FETCH;
+    // authedRequest first awaits getValidAccessToken, and a token
+    // refresh/mint rides the GLOBAL fetch with its own 30s timeout — so a
+    // stale token against a blackholed host could otherwise hold the
+    // (already applied!) commit's exit for ~30s+. Racing the whole POST
+    // against the same wall-clock budget keeps the ads command snappy no
+    // matter where the hang is. On deadline the detached POST is left to
+    // finish on its own: postEvent never rejects by contract, and a late
+    // success simply means the timeline converged after all.
+    const timeoutMs = options.timeoutMs ?? ADS_EMIT_TIMEOUT_MS;
+    const raced = await raceDeadline(client.postEvent(event, { timeoutMs }), timeoutMs);
+    if (raced === DEADLINE) {
+      debugLog(env, `ads-emit: post exceeded the ${timeoutMs}ms budget; detached`);
+      return {
+        posted: false,
+        reason: 'post_failed',
+        detail: `timed out after ${timeoutMs}ms`,
+      };
     }
-    return { posted: true, id: result.id, brand_slug: brandSlug };
+    if (!raced.ok) {
+      debugLog(env, `ads-emit: post failed (${raced.kind}): ${raced.message}`);
+      return { posted: false, reason: 'post_failed', detail: raced.friendly };
+    }
+    return { posted: true, id: raced.id, brand_slug: brandSlug };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     debugLog(env, `ads-emit: swallowed error: ${message}`);
