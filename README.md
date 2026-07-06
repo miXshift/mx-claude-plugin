@@ -40,6 +40,8 @@ Pick the row that matches your situation:
 
 All four paths land at the same place: a working `mixshift` CLI on your machine, plus the plugin's skills available to Claude. After install, every path goes through the same browser-based sign-in flow — kicked off automatically by the `welcome` skill on first chat.
 
+Using a non-Claude AI client? You can also point Cursor or Codex at the MixShift server, or set up a ChatGPT app, with the same sign-in. See [Connecting other AI clients](./docs/auth-setup.md#connecting-other-ai-clients-cursor-codex) in the auth setup guide.
+
 ## Quickstart (Cowork — Personal install)
 
 The most common path:

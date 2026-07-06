@@ -3,6 +3,37 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.6.4
+
+Connect more AI clients, clearer waits on slow Amazon pulls, and a tidied-up
+TACOS goal field.
+
+### Added
+
+- You can now connect other AI clients to MixShift with the same sign-in. The
+  setup guide covers pointing Cursor and Codex at the MixShift server and
+  setting up a ChatGPT app, alongside the existing Claude clients.
+
+### Changed
+
+- Slow Amazon pulls now tell you what to expect. Before a report or a brand
+  setup data pull that takes a few minutes, the plugin says so up front and
+  reports back when it finishes, instead of going quiet. Rate-limit responses
+  on Brand Analytics search-terms reports are now called out as normal and
+  expected, so a slow pull is not mistaken for a broken one and is never
+  canceled just for being slow.
+- The account-level TACOS goal is now a single field named "TACoS goal"
+  (`tacos_goal_pct`). Brand context files that used the older name
+  (`tacos_target_pct`) keep working unchanged; nothing needs to be re-entered.
+- Branded sales reporting is more accurate: product titles and brands now come
+  from the most recent catalog row per product. The brand setup guide also
+  explains common warehouse data quirks (merchant-fulfilled inventory, and
+  advertising activity on a product with no current inventory rows) so they are
+  read as expected patterns rather than errors.
+- The setup docs no longer feature the legacy raw-MySQL sign-in path. Browser
+  sign-in and service credentials are the supported ways to connect; the legacy
+  command still exists for anyone who was relying on it.
+
 ## 0.6.3
 
 First-run fixes learned from the first live onboarding calls, clearer setup
