@@ -332,6 +332,44 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
   }
 }
 
+/** Cap for the exponential backoff FALLBACK (used only when the service does
+ *  not report a retry-after). A server-reported retryAfterMs is honored in full
+ *  (bounded by the run deadline), since Amazon told us exactly how long to wait. */
+export const THROTTLE_BACKOFF_CAP_MS = 30_000;
+
+/**
+ * How long (ms) to wait before the next poll after Amazon rate-limits us
+ * (429 -> `throttled`). `report run` polls in a loop; a single 429 is transient
+ * (the poll was rate-limited, not the pull), so instead of failing the whole run
+ * we back off and re-poll. This computes the wait:
+ *   - honor the service-reported `retryAfterMs` when present (Amazon told us);
+ *   - otherwise exponential backoff off the base interval, capped, so a
+ *     sustained rate-limit spaces polls out instead of hammering the limit;
+ *   - floor at `intervalMs`, and never wait past the run deadline (returns the
+ *     time remaining, or 0 once the deadline has passed so the caller can stop).
+ *
+ * `streak` is the count of consecutive throttled polls (1 on the first). Pure
+ * and deterministic (caller passes `now`) so it is unit-testable.
+ */
+export function throttleBackoffMs(
+  retryAfterMs: number | undefined,
+  intervalMs: number,
+  streak: number,
+  now: number,
+  deadline: number,
+): number {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  const base =
+    retryAfterMs && retryAfterMs > 0
+      ? retryAfterMs
+      : Math.min(
+          intervalMs * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
+          THROTTLE_BACKOFF_CAP_MS,
+        );
+  return Math.min(Math.max(base, intervalMs), remaining);
+}
+
 /** List merchants the signed-in tenant can pull reports for. */
 export async function listMerchants(
   opts: ReportClientOptions = {},

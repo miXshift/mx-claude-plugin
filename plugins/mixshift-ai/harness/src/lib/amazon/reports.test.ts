@@ -12,6 +12,8 @@ import {
   getReportDocumentMeta,
   streamReportDocumentToFile,
   exitCodeForKind,
+  throttleBackoffMs,
+  THROTTLE_BACKOFF_CAP_MS,
   type ReportClientOptions,
   type ReportFailureKind,
 } from './reports.js';
@@ -714,6 +716,52 @@ describe('exitCodeForKind', () => {
     for (const [kind, code] of Object.entries(documented)) {
       expect(exitCodeForKind(kind as ReportFailureKind)).toBe(code);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// throttleBackoffMs — the poll-loop backoff after a 429, so a `report run`
+// rides out a transient Amazon rate-limit instead of failing on the first one
+// ---------------------------------------------------------------------------
+
+describe('throttleBackoffMs', () => {
+  const INTERVAL = 5000;
+  const DEADLINE = 300_000; // `now` is passed explicitly; 0..DEADLINE is the window
+
+  it('honors a server retry-after in full (bounded only by the deadline)', () => {
+    expect(throttleBackoffMs(12_000, INTERVAL, 1, 0, DEADLINE)).toBe(12_000);
+    // Larger than the exponential cap, but still honored — Amazon told us.
+    expect(throttleBackoffMs(60_000, INTERVAL, 1, 0, DEADLINE)).toBe(60_000);
+  });
+
+  it('floors a small retry-after at the base interval', () => {
+    expect(throttleBackoffMs(1000, INTERVAL, 1, 0, DEADLINE)).toBe(INTERVAL);
+  });
+
+  it('falls back to exponential backoff off the interval when no retry-after', () => {
+    expect(throttleBackoffMs(undefined, INTERVAL, 1, 0, DEADLINE)).toBe(5000);
+    expect(throttleBackoffMs(undefined, INTERVAL, 2, 0, DEADLINE)).toBe(10_000);
+    expect(throttleBackoffMs(undefined, INTERVAL, 3, 0, DEADLINE)).toBe(20_000);
+  });
+
+  it('caps the exponential fallback at THROTTLE_BACKOFF_CAP_MS', () => {
+    // Streak 4 would be 40s off a 5s interval; capped to 30s.
+    expect(throttleBackoffMs(undefined, INTERVAL, 4, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_CAP_MS);
+    expect(throttleBackoffMs(undefined, INTERVAL, 50, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_CAP_MS);
+  });
+
+  it('treats a retry-after of 0/undefined as absent', () => {
+    expect(throttleBackoffMs(0, INTERVAL, 1, 0, DEADLINE)).toBe(5000);
+  });
+
+  it('never waits past the deadline', () => {
+    // Retry-after wants 12s but only 4s remain.
+    expect(throttleBackoffMs(12_000, INTERVAL, 1, 296_000, DEADLINE)).toBe(4000);
+  });
+
+  it('returns 0 once the deadline has passed so the caller stops', () => {
+    expect(throttleBackoffMs(5000, INTERVAL, 1, DEADLINE, DEADLINE)).toBe(0);
+    expect(throttleBackoffMs(5000, INTERVAL, 1, DEADLINE + 1, DEADLINE)).toBe(0);
   });
 });
 
