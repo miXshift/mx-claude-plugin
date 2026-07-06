@@ -102,9 +102,11 @@ export function mirrorStatusNote(outcomes: MirrorOutcome[]): string {
   const mirrored = outcomes.length - failed.length;
   const detail = failed[0]?.detail ?? 'unreachable';
   const commands = [...new Set(failed.map((o) => `mixshift brand key ${o.op} ${o.brand_slug}`))];
-  const lead = mirrored > 0 ? `  ✓ ${mirrored} mirrored to the org store. ` : '  ';
+  // "Note:" (capitalized) when it follows a success sentence; bare "note:" when
+  // it leads.
+  const lead = mirrored > 0 ? `  ✓ ${mirrored} mirrored to the org store. Note: ` : '  note: ';
   return (
-    `${lead}note: ${failed.length} key-brand change(s) could not be mirrored ` +
+    `${lead}${failed.length} key-brand change(s) could not be mirrored ` +
     `to the org store (${detail}). Your local list is updated. To mirror when ` +
     `back online, re-run: ${commands.join('; ')}\n`
   );
