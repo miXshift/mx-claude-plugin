@@ -17,6 +17,11 @@ import {
   type BrandActionResult,
   type EngineOptions,
 } from '../lib/context-sync/engine.js';
+import {
+  maybeAutoSync,
+  AUTOSYNC_ENV,
+  AUTOSYNC_THROTTLE_MS,
+} from '../lib/context-sync/autosync.js';
 import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
 import type { DocActionReport, DocStatusReport, WireManifestBrand } from '../lib/context-sync/types.js';
 import { track, EventName, type EventNameValue } from '../lib/telemetry/index.js';
@@ -150,11 +155,19 @@ export function registerContextCommands(program: Command): void {
     description:
       'Two-way non-destructive sync: pull every non-conflicting server ' +
         'change, push every non-conflicting local change, and list diverged ' +
-        'docs as conflicts. Never merges content.',
+        'docs as conflicts. Never merges content. --quiet is the ' +
+        'machine-friendly post-run form for skill flows (the preflight ' +
+        'auto-sync is pull-only; pushing local changes stays an explicit ' +
+        'opt-in via this command): silent unless something was pulled, ' +
+        'pushed, created, conflicted, or errored — and conflicts still ' +
+        'exit 0 (only per-doc errors are non-zero).',
     hasForce: false,
+    hasQuiet: true,
     run: (brand, opts) => sync(brand, opts),
     eventName: EventName.ContextSyncCompleted,
   });
+
+  registerAutosyncSubcommand(context);
 
   context
     .command('migrate')
@@ -249,12 +262,24 @@ interface ActionSpec {
   name: 'pull' | 'push' | 'sync';
   description: string;
   hasForce: boolean;
+  /** sync only: --quiet suppresses human output when nothing happened. */
+  hasQuiet?: boolean;
   run: (
     brand: string,
     opts: EngineOptions & { force?: boolean },
   ) => Promise<BrandActionResult>;
   eventName: EventNameValue;
 }
+
+/** The report actions --quiet considers "something happened": content moved
+ *  or needs attention. up-to-date/noop/skipped are standing conditions. */
+const QUIET_NOISY_ACTIONS: ReadonlySet<DocActionReport['action']> = new Set([
+  'pushed',
+  'pulled',
+  'created',
+  'conflict',
+  'error',
+]);
 
 function registerActionSubcommand(context: Command, spec: ActionSpec): void {
   const sub = context
@@ -264,7 +289,15 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
   if (spec.hasForce) {
     sub.option('--force', 'resolve diverged docs in this direction', false);
   }
-  sub.action(async (opts: { brand?: string; force?: boolean }, cmd: Command) => {
+  if (spec.hasQuiet) {
+    sub.option(
+      '--quiet',
+      'machine-friendly: print nothing unless a doc was pulled/pushed/' +
+        'created, conflicted, or errored (--json output is unaffected)',
+      false,
+    );
+  }
+  sub.action(async (opts: { brand?: string; force?: boolean; quiet?: boolean }, cmd: Command) => {
     const root = cmd.optsWithGlobals<RootOptions>();
     const t0 = Date.now();
     try {
@@ -325,7 +358,13 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
             2,
           ) + '\n',
         );
-      } else {
+      } else if (
+        !(
+          spec.hasQuiet &&
+          opts.quiet &&
+          !allReports.some((r) => QUIET_NOISY_ACTIONS.has(r.action))
+        )
+      ) {
         const lines: string[] = [];
         for (const r of results) {
           if (r.reports.length === 0) {
@@ -349,6 +388,113 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
       return;
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// autosync — manual/testing entry to the preflight hook
+// ---------------------------------------------------------------------------
+
+function registerAutosyncSubcommand(context: Command): void {
+  context
+    .command('autosync <brand>')
+    .description(
+      'Run the throttled preflight auto-sync for one brand — the same code ' +
+        'path skills trigger implicitly when they read brand context. ' +
+        'Pull-only and conservative: fetches conflict-free server-side ' +
+        `changes within a ~2s budget, at most once per brand per ` +
+        `${AUTOSYNC_THROTTLE_MS / 60_000} minutes (--force bypasses the ` +
+        `throttle). Diverged docs are never touched and nothing is pushed — ` +
+        'push local changes explicitly with `mixshift context sync ' +
+        '[--quiet]`. Disable the implicit hook entirely with ' +
+        `${AUTOSYNC_ENV}=off.`,
+    )
+    .option('--force', 'bypass the per-brand throttle window', false)
+    .action(async (brand: string, opts: { force?: boolean }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const t0 = Date.now();
+      try {
+        const result = await maybeAutoSync(brand, {
+          dataDirOverride: root.dataDir,
+          force: opts.force ?? false,
+        });
+
+        await track(
+          {
+            event_name: EventName.ContextAutosyncCompleted,
+            outcome: result.ran
+              ? result.errors > 0
+                ? 'failed'
+                : 'ok'
+              : result.reason === 'failed'
+                ? 'failed'
+                : 'skipped',
+            duration_ms: Date.now() - t0,
+            payload: {
+              brand,
+              force: opts.force ?? false,
+              ran: result.ran,
+              ...(result.ran
+                ? {
+                    pulled: result.pulled,
+                    conflicts: result.conflicts,
+                    errors: result.errors,
+                  }
+                : { reason: result.reason }),
+            },
+          },
+          root.dataDir,
+        );
+
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              result.ran
+                ? {
+                    status: 'ok',
+                    ran: true,
+                    pulled: result.pulled,
+                    conflicts: result.conflicts,
+                    errors: result.errors,
+                    reports: result.reports,
+                  }
+                : {
+                    status: 'ok',
+                    ran: false,
+                    reason: result.reason,
+                    ...(result.reason === 'failed' ? { detail: result.detail } : {}),
+                  },
+              null,
+              2,
+            ) + '\n',
+          );
+          return;
+        }
+
+        if (!result.ran) {
+          let detail: string;
+          if (result.reason === 'failed') {
+            detail = result.detail;
+          } else if (result.reason === 'throttled') {
+            detail = `attempted within the last ${AUTOSYNC_THROTTLE_MS / 60_000} minutes — re-run with --force`;
+          } else {
+            detail = `disabled via ${AUTOSYNC_ENV}`;
+          }
+          process.stdout.write(`autosync skipped (${result.reason}): ${detail}\n`);
+          return;
+        }
+        const lines = result.reports.map((r) => formatReportLine(brand, r));
+        lines.push('');
+        lines.push(
+          `Autosync: ${result.pulled} pulled, ${result.conflicts} conflict(s) left ` +
+            `untouched, ${result.errors} error(s).`,
+        );
+        process.stdout.write(lines.join('\n') + '\n');
+        return;
+      } catch (err) {
+        emitError(err instanceof Error ? err.message : String(err), root);
+        return;
+      }
+    });
 }
 
 // ---------------------------------------------------------------------------

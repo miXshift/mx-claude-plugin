@@ -42,6 +42,14 @@ export interface ContextSyncState {
    * on the next save.
    */
   identity?: string;
+  /**
+   * ISO-8601 timestamp of the last preflight auto-sync ATTEMPT for this
+   * brand (see autosync.ts). Schema-tolerant like `identity`: absent on
+   * files written before the field existed, and preserved across identity
+   * rebinds — the throttle limits attempts per brand per window regardless
+   * of tenant, so a stale stamp only ever means FEWER attempts.
+   */
+  last_autosync_at?: string;
   docs: Record<string, ContextSyncDocState>;
 }
 
@@ -104,6 +112,9 @@ export async function loadState(
     ) {
       return emptyState(currentIdentity);
     }
+    const storedAutosyncAt = (parsed as { last_autosync_at?: unknown }).last_autosync_at;
+    const lastAutosyncAt =
+      typeof storedAutosyncAt === 'string' ? storedAutosyncAt : undefined;
     const storedIdentity = (parsed as { identity?: unknown }).identity;
     if (
       typeof storedIdentity === 'string' &&
@@ -111,8 +122,13 @@ export async function loadState(
       storedIdentity !== currentIdentity
     ) {
       // Different server/tenant: org A's revisions say nothing about org
-      // B's manifest. Fail safe — verdicts run as if untracked.
-      return emptyState(currentIdentity);
+      // B's manifest. Fail safe — verdicts run as if untracked. The
+      // autosync stamp survives the rebind (attempt limiting is not
+      // tenant-bound; see the field doc above).
+      return {
+        ...emptyState(currentIdentity),
+        ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+      };
     }
     const docs: Record<string, ContextSyncDocState> = {};
     for (const [key, value] of Object.entries((parsed as ContextSyncState).docs)) {
@@ -132,7 +148,12 @@ export async function loadState(
     }
     const identity =
       currentIdentity ?? (typeof storedIdentity === 'string' ? storedIdentity : undefined);
-    return { schema: 2, ...(identity ? { identity } : {}), docs };
+    return {
+      schema: 2,
+      ...(identity ? { identity } : {}),
+      ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+      docs,
+    };
   } catch {
     return emptyState(currentIdentity);
   }

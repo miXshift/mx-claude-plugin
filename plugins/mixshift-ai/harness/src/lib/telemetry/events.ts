@@ -190,6 +190,16 @@ export const EventName = {
   ContextPushCompleted: 'context_sync.push_completed',
   ContextSyncCompleted: 'context_sync.sync_completed',
   ContextMigrateCompleted: 'context_sync.migrate_completed',
+  // Manual `mixshift context autosync <brand>` runs only — the implicit
+  // preflight hook inside resolveBrandFields stays silent by design (it
+  // fires on every skill step; telemetry there would be noise).
+  ContextAutosyncCompleted: 'context_sync.autosync_completed',
+
+  // Brand timeline (lib/timeline/ + `mixshift timeline`). Privacy: payloads
+  // carry filters, counts, kinds + duration/outcome — never event contents
+  // (timeline events are the customer's business record, not telemetry).
+  TimelineListed: 'timeline.listed',
+  TimelineEventAdded: 'timeline.event_added',
 
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',

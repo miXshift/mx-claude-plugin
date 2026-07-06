@@ -18,6 +18,7 @@ import { brandBrainSchema, type BrandBrain } from './schema.js';
 import { brainPath } from '../paths/resolve.js';
 import { validateBrandContext } from '../context/load.js';
 import { formatZodError } from '../profile/format-error.js';
+import { maybeAutoSync } from '../context-sync/autosync.js';
 
 export type LoadBrainResult =
   | { ok: true; brain: BrandBrain; path: string }
@@ -291,6 +292,17 @@ export async function resolveBrandFields(
   brandSlug: string,
   dataDirOverride?: string,
 ): Promise<Record<BrandFieldKey, ResolvedField<unknown> | null>> {
+  // Preflight pull-if-stale (P2 auto-sync). This is THE seam: every skill
+  // enters brand context through resolveBrandFields (Step-0 `brand context
+  // resolve`, the OCL confirm flow, the context-page composer), so hooking
+  // here freshens the local cache org-wide without touching the dozens of
+  // other validateBrandContext callers (validate/migrate flows must never
+  // mutate local files mid-read). Contract: throttled to one attempt per
+  // brand per 15 min, ~2s worst-case budget, pull-only on conflict-free
+  // docs, and ANY failure is a silent no-op — the local read below always
+  // proceeds unchanged. Kill switch: MIXSHIFT_CONTEXT_AUTOSYNC=off.
+  await maybeAutoSync(brandSlug, { dataDirOverride });
+
   const ctx = await validateBrandContext(brandSlug, dataDirOverride);
   const brain = await loadBrain(brandSlug, dataDirOverride);
   const out = {} as Record<BrandFieldKey, ResolvedField<unknown> | null>;
