@@ -200,18 +200,19 @@ export async function removeKeyBrand(
 }
 
 /**
- * Empty the key list. Returns the count of slugs that were removed.
+ * Empty the key list. Returns the count AND the slugs that were removed
+ * (the command layer mirrors each removal to the org assignment table).
  */
 export async function clearKeyBrands(
   dataDirOverride?: string,
-): Promise<{ removed_count: number }> {
+): Promise<{ removed_count: number; removed_slugs: string[] }> {
   const { profile, source } = await loadProfile(dataDirOverride);
   const existing = profile.brands?.key ?? [];
-  if (existing.length === 0) return { removed_count: 0 };
+  if (existing.length === 0) return { removed_count: 0, removed_slugs: [] };
 
   const next: Profile =
     source === 'file' ? { ...profile } : defaultProfile();
   next.brands = { ...(next.brands ?? { key: [] }), key: [] };
   await saveProfile(next, dataDirOverride);
-  return { removed_count: existing.length };
+  return { removed_count: existing.length, removed_slugs: existing };
 }

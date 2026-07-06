@@ -23,6 +23,11 @@ import {
   removeKeyBrand,
   clearKeyBrands,
 } from '../lib/clients/key-brands.js';
+import {
+  mirrorKeyAssignments,
+  mirrorFailureNote,
+  type MirrorOutcome,
+} from '../lib/context-sync/assignments.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandBrainCommands } from './brand-brain.js';
@@ -657,6 +662,16 @@ export function registerBrandCommands(program: Command): void {
           ...spawnBrainFetchDetached(r.brand!.slug, root.dataDir),
         }));
 
+      // Best-effort mirror to the org store's person→brand assignment
+      // table (P1 endpoint; recorded, not enforced). The LOCAL list is
+      // already saved above — an offline mirror never fails the command,
+      // it just prints a note.
+      const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+        'add',
+        results.filter((r) => r.status === 'added').map((r) => r.brand!.slug),
+        root.dataDir,
+      );
+
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
@@ -675,6 +690,7 @@ export function registerBrandCommands(program: Command): void {
               })),
               key_brands: results[results.length - 1]?.key_brands ?? [],
               brain_fetch: brainSpawns,
+              org_mirror: mirror,
             },
             null,
             2,
@@ -729,6 +745,8 @@ export function registerBrandCommands(program: Command): void {
         );
       }
       lines.push('');
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) lines.push(mirrorNote);
       process.stderr.write(lines.join('\n'));
       process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
       return;
@@ -747,6 +765,17 @@ export function registerBrandCommands(program: Command): void {
         results.push({ ...r, input });
       }
 
+      // Best-effort org-store mirror (see `key add`). The stale-entry
+      // cleanup path removes by raw slug without a registry entry, so the
+      // slug falls back to the trimmed input there.
+      const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+        'remove',
+        results
+          .filter((r) => r.status === 'removed')
+          .map((r) => r.brand?.slug ?? r.input.trim()),
+        root.dataDir,
+      );
+
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
@@ -764,6 +793,7 @@ export function registerBrandCommands(program: Command): void {
                 normalized_input: r.normalized_input,
               })),
               key_brands: results[results.length - 1]?.key_brands ?? [],
+              org_mirror: mirror,
             },
             null,
             2,
@@ -797,6 +827,8 @@ export function registerBrandCommands(program: Command): void {
       }
       const finalList = results[results.length - 1]?.key_brands ?? [];
       lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}\n`);
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) lines.push(mirrorNote);
       process.stderr.write(lines.join('\n'));
       return;
     });
@@ -866,10 +898,20 @@ export function registerBrandCommands(program: Command): void {
     .action(async (_opts, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const result = await clearKeyBrands(root.dataDir);
+      // Best-effort org-store mirror: clear = one 'remove' per slug.
+      const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+        'remove',
+        result.removed_slugs,
+        root.dataDir,
+      );
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
-            { status: 'ok', removed_count: result.removed_count },
+            {
+              status: 'ok',
+              removed_count: result.removed_count,
+              org_mirror: mirror,
+            },
             null,
             2,
           ) + '\n',
@@ -879,6 +921,8 @@ export function registerBrandCommands(program: Command): void {
       process.stdout.write(
         `\n✓ Cleared ${result.removed_count} key brand(s).\n\n`,
       );
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
 }
