@@ -199,6 +199,7 @@ class FakeServer {
         existing.updated_by_actor = 'me@example.com';
         return { ok: true, status: 'updated', revision: existing.revision };
       },
+      putAssignment: async () => ({ ok: true }),
     };
   }
 }

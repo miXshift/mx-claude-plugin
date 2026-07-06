@@ -21,6 +21,7 @@
  * (commands/context.ts) does all formatting.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -423,12 +424,20 @@ function reportFor(pair: DocPair, action: DocActionReport['action'], detail?: st
  * is dot-prefixed so corpora enumeration can never pick a half-written file
  * up (a bare `<name>.tmp.<pid>.<ts>` leftover would be treated as a corpus
  * doc and PUSHED ORG-WIDE on the next push); on any failure the tmp is
- * best-effort unlinked before the error propagates.
+ * best-effort unlinked before the error propagates. The suffix carries a
+ * random component: pid + timestamp alone collide when two same-process
+ * pulls of one doc land in the same millisecond (e.g. an autosync racing
+ * an explicit pull), and interleaved writes to a SHARED tmp path could
+ * rename mixed bytes into place — which a later push would then propagate
+ * org-wide.
  */
 async function writeFileAtomic(path: string, content: string): Promise<void> {
   const dir = dirname(path);
   await mkdir(dir, { recursive: true });
-  const tmpPath = join(dir, `.${basename(path)}.tmp.${process.pid}.${Date.now()}`);
+  const tmpPath = join(
+    dir,
+    `.${basename(path)}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`,
+  );
   try {
     await writeFile(tmpPath, content, 'utf8');
     await rename(tmpPath, path);

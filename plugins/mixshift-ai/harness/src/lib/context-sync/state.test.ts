@@ -44,8 +44,8 @@ function sampleState(): ContextSyncState {
 }
 
 describe('loadState / saveState round trip', () => {
-  it('round-trips a state object', async () => {
-    await saveState('acme', sampleState(), testDir);
+  it('round-trips a state object and reports the save as persisted', async () => {
+    expect(await saveState('acme', sampleState(), testDir)).toBe(true);
     const loaded = await loadState('acme', testDir);
     expect(loaded).toEqual(sampleState());
   });
@@ -103,21 +103,21 @@ describe('saveState atomicity + safety', () => {
     expect(entries.filter((e) => e.includes('.tmp.'))).toEqual([]);
   });
 
-  it('never throws outward, even when the target path is unwritable', async () => {
+  it('never throws outward, and reports the failure, when the target path is unwritable', async () => {
     // Make <brandDir> a FILE so mkdir/rename under it must fail.
     await mkdir(join(testDir, 'clients'), { recursive: true });
     await writeFile(join(testDir, 'clients', 'blocked'), 'not a dir', 'utf8');
-    await expect(saveState('blocked', sampleState(), testDir)).resolves.toBeUndefined();
+    await expect(saveState('blocked', sampleState(), testDir)).resolves.toBe(false);
     // And the corresponding load falls back to the default.
     expect(await loadState('blocked', testDir)).toEqual(emptyState());
   });
 
-  it('cleans up the tmp file when the final rename fails', async () => {
+  it('cleans up the tmp file, and reports the failure, when the final rename fails', async () => {
     // Make the state PATH a directory: mkdir(brandDir) and the tmp write
     // succeed, the rename onto a directory fails.
     const path = contextSyncStatePath('acme', testDir);
     await mkdir(path, { recursive: true });
-    await expect(saveState('acme', sampleState(), testDir)).resolves.toBeUndefined();
+    await expect(saveState('acme', sampleState(), testDir)).resolves.toBe(false);
     const entries = await readdir(dirname(path));
     expect(entries.filter((e) => e.includes('.tmp.'))).toEqual([]);
   });
@@ -167,6 +167,51 @@ describe('ledger identity binding', () => {
     await saveState('acme', { ...sampleState(), identity: ID_A }, testDir);
     expect((await loadState('acme', testDir)).docs).toEqual(sampleState().docs);
     expect((await loadState('acme', testDir, null)).docs).toEqual(sampleState().docs);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Autosync stamp (last_autosync_at)
+// ---------------------------------------------------------------------------
+
+describe('last_autosync_at (autosync throttle stamp)', () => {
+  const STAMP = '2026-07-05T12:00:00.000Z';
+
+  it('round-trips through save/load', async () => {
+    await saveState('acme', { ...sampleState(), last_autosync_at: STAMP }, testDir);
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_at).toBe(STAMP);
+    expect(loaded.docs).toEqual(sampleState().docs);
+  });
+
+  it('is absent on files written before the field existed', async () => {
+    await saveState('acme', sampleState(), testDir);
+    expect((await loadState('acme', testDir)).last_autosync_at).toBeUndefined();
+  });
+
+  it('tolerates a non-string stamp by dropping it', async () => {
+    const path = contextSyncStatePath('acme', testDir);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({ schema: 2, last_autosync_at: 12345, docs: sampleState().docs }),
+      'utf8',
+    );
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_at).toBeUndefined();
+    expect(loaded.docs).toEqual(sampleState().docs);
+  });
+
+  it('survives an identity rebind (docs drop, stamp stays)', async () => {
+    await saveState(
+      'acme',
+      { ...sampleState(), identity: ID_A, last_autosync_at: STAMP },
+      testDir,
+    );
+    const loaded = await loadState('acme', testDir, ID_B);
+    expect(loaded.docs).toEqual({});
+    expect(loaded.identity).toBe(ID_B);
+    expect(loaded.last_autosync_at).toBe(STAMP);
   });
 });
 

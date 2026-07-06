@@ -19,6 +19,10 @@
  *     | 409 { ok:false, kind:'revision_conflict', friendly, server:{...} }
  *     | 403 { ok:false, kind:'insufficient_scope', friendly }
  *     | 400 { ok:false, kind:'bad_params'|'too_large', friendly }
+ *   PUT /api/context/assignments  { op:'add'|'remove', brand_slug, role }
+ *     → 200 { ok:true }   (actor defaults server-side to the caller)
+ *     | 403 { ok:false, kind:'insufficient_scope', friendly }
+ *     | 400 { ok:false, kind:'bad_params', friendly }
  */
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
@@ -39,6 +43,9 @@ import type {
 export const TEXT_DOC_TIMEOUT_MS = 30_000;
 /** Corpus docs can be up to 10MB; give the transfer real room. */
 export const CORPUS_TIMEOUT_MS = 120_000;
+/** Assignment mirroring is best-effort inside interactive commands — a
+ *  hung host must not stall `brand key add` for the full doc budget. */
+export const ASSIGNMENT_TIMEOUT_MS = 10_000;
 
 const UNREACHABLE_FRIENDLY =
   'The MixShift auth service is unreachable. Check your network ' +
@@ -51,6 +58,17 @@ class ContextSyncNetworkError extends Error {
   }
 }
 
+/** Body for PUT /api/context/assignments (the P1 person→brand assignment
+ *  table; recorded, not enforced). `role: 'key'` mirrors the local
+ *  key-brand list; the acting person defaults server-side to the caller. */
+export interface AssignmentInput {
+  op: 'add' | 'remove';
+  brand_slug: string;
+  role: 'key';
+}
+
+export type PutAssignmentResult = { ok: true } | ContextSyncFailure;
+
 export interface ContextSyncClient {
   fetchManifest(): Promise<FetchManifestResult>;
   fetchDoc(
@@ -59,6 +77,7 @@ export interface ContextSyncClient {
     corpusName?: string,
   ): Promise<FetchDocResult>;
   putDoc(input: PutDocInput): Promise<PutDocResult>;
+  putAssignment(input: AssignmentInput): Promise<PutAssignmentResult>;
 }
 
 export interface ContextSyncClientOptions {
@@ -183,6 +202,22 @@ export function createContextSyncClient(
         ) {
           return { ok: true, status: json.status, revision: json.revision };
         }
+        return failureFromEnvelope(json, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
+
+    async putAssignment(input: AssignmentInput): Promise<PutAssignmentResult> {
+      try {
+        const res = await authedRequest(
+          'PUT',
+          '/api/context/assignments',
+          input,
+          ASSIGNMENT_TIMEOUT_MS,
+        );
+        const json = await parseEnvelope(res);
+        if (json.ok === true) return { ok: true };
         return failureFromEnvelope(json, res.status);
       } catch (err) {
         return failureFromException(err);

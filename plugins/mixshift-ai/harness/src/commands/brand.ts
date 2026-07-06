@@ -23,6 +23,12 @@ import {
   removeKeyBrand,
   clearKeyBrands,
 } from '../lib/clients/key-brands.js';
+import {
+  mirrorKeyAssignments,
+  mirrorFailureNote,
+  type MirrorOutcome,
+} from '../lib/context-sync/assignments.js';
+import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerBrandViewCommand } from './brand-view.js';
 import { registerBrandBrainCommands } from './brand-brain.js';
@@ -657,7 +663,27 @@ export function registerBrandCommands(program: Command): void {
           ...spawnBrainFetchDetached(r.brand!.slug, root.dataDir),
         }));
 
+      // Best-effort mirror to the org store's person→brand assignment
+      // table (P1 endpoint; recorded, not enforced). The LOCAL list is
+      // already saved above — an offline mirror never fails the command,
+      // it just prints a note. already_key mirrors too (idempotent), so
+      // re-running the same command after an offline failure genuinely
+      // re-mirrors. In human mode the mirror runs AFTER the success output
+      // (see below) so a blackholed host can't withhold it.
+      const addMirrorSlugs = [
+        ...new Set(
+          results
+            .filter((r) => r.status === 'added' || r.status === 'already_key')
+            .map((r) => r.brand!.slug),
+        ),
+      ];
+
       if (root.json) {
+        const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+          'add',
+          addMirrorSlugs,
+          root.dataDir,
+        );
         process.stdout.write(
           JSON.stringify(
             {
@@ -675,6 +701,7 @@ export function registerBrandCommands(program: Command): void {
               })),
               key_brands: results[results.length - 1]?.key_brands ?? [],
               brain_fetch: brainSpawns,
+              org_mirror: mirror,
             },
             null,
             2,
@@ -729,8 +756,17 @@ export function registerBrandCommands(program: Command): void {
         );
       }
       lines.push('');
+      // Local success prints FIRST; the (bounded, concurrent) mirror runs
+      // after so an unreachable org store never withholds the result.
       process.stderr.write(lines.join('\n'));
       process.exitCode = anyAmbiguousOrMissing ? 4 : 0;
+      const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+        'add',
+        addMirrorSlugs,
+        root.dataDir,
+      );
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
 
@@ -747,7 +783,34 @@ export function registerBrandCommands(program: Command): void {
         results.push({ ...r, input });
       }
 
+      // Best-effort org-store mirror (see `key add`). not_key mirrors too
+      // (idempotent removal), so re-running the command after an offline
+      // failure genuinely re-mirrors. The stale-entry cleanup path removes
+      // by raw slug without a registry entry, so the slug falls back to
+      // the trimmed input there — GUARDED: raw user input (a display name,
+      // a path-ish string) must never be PUT as a brand_slug.
+      const removeMirrorSlugs: string[] = [];
+      const invalidMirrors: MirrorOutcome[] = [];
+      for (const r of results) {
+        if (r.status !== 'removed' && r.status !== 'not_key') continue;
+        const slug = r.brand?.slug ?? r.input.trim();
+        if (!isSafeBrandSlug(slug)) {
+          invalidMirrors.push({
+            op: 'remove',
+            brand_slug: slug,
+            mirrored: false,
+            detail: 'input is not a brand slug; not mirrored',
+          });
+          continue;
+        }
+        if (!removeMirrorSlugs.includes(slug)) removeMirrorSlugs.push(slug);
+      }
+
       if (root.json) {
+        const mirror: MirrorOutcome[] = [
+          ...(await mirrorKeyAssignments('remove', removeMirrorSlugs, root.dataDir)),
+          ...invalidMirrors,
+        ];
         process.stdout.write(
           JSON.stringify(
             {
@@ -764,6 +827,7 @@ export function registerBrandCommands(program: Command): void {
                 normalized_input: r.normalized_input,
               })),
               key_brands: results[results.length - 1]?.key_brands ?? [],
+              org_mirror: mirror,
             },
             null,
             2,
@@ -797,7 +861,15 @@ export function registerBrandCommands(program: Command): void {
       }
       const finalList = results[results.length - 1]?.key_brands ?? [];
       lines.push(`\n  Key brands (${finalList.length}): ${finalList.join(', ') || '(none)'}\n`);
+      // Local success prints FIRST; the (bounded, concurrent) mirror runs
+      // after so an unreachable org store never withholds the result.
       process.stderr.write(lines.join('\n'));
+      const mirror: MirrorOutcome[] = [
+        ...(await mirrorKeyAssignments('remove', removeMirrorSlugs, root.dataDir)),
+        ...invalidMirrors,
+      ];
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
 
@@ -866,10 +938,22 @@ export function registerBrandCommands(program: Command): void {
     .action(async (_opts, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const result = await clearKeyBrands(root.dataDir);
+      // Best-effort org-store mirror: clear = one 'remove' per slug,
+      // concurrent + deadline-bounded. In human mode the local success
+      // prints FIRST so an unreachable org store never withholds it.
       if (root.json) {
+        const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+          'remove',
+          result.removed_slugs,
+          root.dataDir,
+        );
         process.stdout.write(
           JSON.stringify(
-            { status: 'ok', removed_count: result.removed_count },
+            {
+              status: 'ok',
+              removed_count: result.removed_count,
+              org_mirror: mirror,
+            },
             null,
             2,
           ) + '\n',
@@ -879,6 +963,13 @@ export function registerBrandCommands(program: Command): void {
       process.stdout.write(
         `\n✓ Cleared ${result.removed_count} key brand(s).\n\n`,
       );
+      const mirror: MirrorOutcome[] = await mirrorKeyAssignments(
+        'remove',
+        result.removed_slugs,
+        root.dataDir,
+      );
+      const mirrorNote = mirrorFailureNote(mirror);
+      if (mirrorNote) process.stderr.write(mirrorNote);
       return;
     });
 }

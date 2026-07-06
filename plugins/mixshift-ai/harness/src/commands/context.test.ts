@@ -48,6 +48,7 @@ function fakeClient(brands: WireManifestBrand[]): ContextSyncClient {
       friendly: 'No such doc.',
     }),
     putDoc: async () => ({ ok: true, status: 'created', revision: 1 }),
+    putAssignment: async () => ({ ok: true }),
   };
 }
 
@@ -127,6 +128,136 @@ describe('--force blast radius', () => {
 // ---------------------------------------------------------------------------
 // Unknown --brand is an error, not a no-op (m3)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// sync --quiet (P2 machine-friendly post-run form)
+// ---------------------------------------------------------------------------
+
+describe('sync --quiet', () => {
+  let stdoutChunks: string[];
+
+  beforeEach(() => {
+    stdoutChunks = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+  });
+
+  it('prints nothing when nothing happened', async () => {
+    await runContext('sync', '--brand', 'acme', '--quiet', '--data-dir', tmpDataDir);
+    expect(stdoutChunks.join('')).toBe('');
+    expect(stderrText()).toBe('');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('still prints when a doc moved (server-only pull)', async () => {
+    const content = 'server narrative\n';
+    const hash = (await import('../lib/context-sync/local.js')).hashContent(content);
+    const client: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: true,
+        brands: [
+          {
+            brand_slug: 'acme',
+            docs: [
+              {
+                doc_type: 'narrative',
+                revision: 1,
+                content_hash: hash,
+                sensitivity: 'internal',
+                updated_at: '2026-07-04T00:00:00.000Z',
+                updated_by_actor: 'jane@example.com',
+              },
+            ],
+          },
+        ],
+      }),
+      fetchDoc: async () => ({
+        ok: true,
+        doc: {
+          brand_slug: 'acme',
+          doc_type: 'narrative',
+          revision: 1,
+          content_hash: hash,
+          content,
+          sensitivity: 'internal',
+          updated_at: '2026-07-04T00:00:00.000Z',
+          updated_by_actor: 'jane@example.com',
+        },
+      }),
+      putDoc: async () => ({ ok: true, status: 'created', revision: 1 }),
+      putAssignment: async () => ({ ok: true }),
+    };
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runContext('sync', '--brand', 'acme', '--quiet', '--data-dir', tmpDataDir);
+    const out = stdoutChunks.join('');
+    expect(out).toContain('pulled');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('conflicts print but still exit 0 (machine flows keep going)', async () => {
+    // Local file + no ledger + differing server content = diverged.
+    const { writeFile: wf } = await import('node:fs/promises');
+    await wf(join(tmpDataDir, 'clients', 'acme', 'narrative.md'), 'local\n', 'utf8');
+    const serverContent = 'server\n';
+    const hash = (await import('../lib/context-sync/local.js')).hashContent(serverContent);
+    const client: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: true,
+        brands: [
+          {
+            brand_slug: 'acme',
+            docs: [
+              {
+                doc_type: 'narrative',
+                revision: 3,
+                content_hash: hash,
+                sensitivity: 'internal',
+                updated_at: '2026-07-04T00:00:00.000Z',
+                updated_by_actor: 'jane@example.com',
+              },
+            ],
+          },
+        ],
+      }),
+      fetchDoc: async () => {
+        throw new Error('diverged docs must not be fetched by sync');
+      },
+      putDoc: async () => {
+        throw new Error('diverged docs must not be pushed by sync');
+      },
+      putAssignment: async () => ({ ok: true }),
+    };
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runContext('sync', '--brand', 'acme', '--quiet', '--data-dir', tmpDataDir);
+    expect(stdoutChunks.join('')).toContain('conflict');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// autosync command wiring
+// ---------------------------------------------------------------------------
+
+describe('autosync command', () => {
+  it('is registered and reports the disabled no-op under the test runner', async () => {
+    let stdout = '';
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdout += String(chunk);
+      return true;
+    });
+    // maybeAutoSync's VITEST guard yields the quiet 'disabled' path here —
+    // this pins the command wiring (arg parsing, JSON envelope) without
+    // any network.
+    await runContext('autosync', 'acme', '--json', '--data-dir', tmpDataDir);
+    const parsed = JSON.parse(stdout) as { status: string; ran: boolean; reason?: string };
+    expect(parsed).toEqual({ status: 'ok', ran: false, reason: 'disabled' });
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+});
 
 describe('unknown --brand', () => {
   it('errors when the slug exists neither locally nor in the manifest', async () => {

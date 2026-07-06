@@ -46,6 +46,7 @@ import {
   exitCodeForKind,
   type ReportFailure,
 } from '../lib/amazon/reports.js';
+import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -158,6 +159,7 @@ interface CallCliOptions {
   body?: string;
   contentType?: string;
   commit?: boolean;
+  proposalId?: string;
 }
 
 function registerCall(ads: Command): void {
@@ -190,10 +192,33 @@ function registerCall(ads: Command): void {
       'WRITE operations: actually apply the change set (default is a dry-run ' +
         'preview that mutates nothing). Use only after explicit user confirmation.',
     )
+    .option(
+      '--proposal-id <id>',
+      'WRITE operations, with --commit: the dry-run audit id (printed by the ' +
+        'preview) so the brand-timeline event links preview → commit. When ' +
+        'omitted, the commit audit id is used. Set MIXSHIFT_SKILL_ID / ' +
+        'MIXSHIFT_MODEL_ID env vars to attribute the change to the driving ' +
+        'skill/model.',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
       try {
+        // Cap before anything reaches a wire body: the proposal id lands
+        // verbatim on a timeline event, so free-form input is rejected up
+        // front rather than bounced by the service later.
+        if (
+          opts.proposalId !== undefined &&
+          !/^[A-Za-z0-9_-]{1,128}$/.test(opts.proposalId)
+        ) {
+          return emitError(
+            new Error(
+              '--proposal-id must be 1-128 characters of A-Z, a-z, 0-9, ' +
+                'underscore, or hyphen (use the audit id printed by the dry run).',
+            ),
+            !!root.json,
+          );
+        }
         let body: unknown;
         if (opts.bodyFile && opts.body) {
           return emitError(new Error('Pass --body-file or --body, not both.'), !!root.json);
@@ -247,11 +272,14 @@ function registerCall(ads: Command): void {
             ...(result.payload !== undefined ? { payload: result.payload } : {}),
           });
         } else if (result.dryRun === true) {
+          const commitHint = result.auditId
+            ? `--commit --proposal-id ${result.auditId}`
+            : '--commit';
           process.stderr.write(
             `\n✓ DRY RUN ${result.operation} (profile ${result.profileId}): ` +
               `${result.itemsCount ?? '?'} item(s) validated, nothing applied.\n` +
               (result.auditId ? `  audit: ${result.auditId}\n` : '') +
-              `  Re-run with --commit AFTER the user confirms this change set.\n\n`,
+              `  Re-run with ${commitHint} AFTER the user confirms this change set.\n\n`,
           );
           process.stdout.write(
             JSON.stringify({ preview: result.preview, beforeState: result.beforeState }, null, 2) + '\n',
@@ -266,6 +294,39 @@ function registerCall(ads: Command): void {
         } else {
           process.stderr.write(`\n✓ ${result.operation} (profile ${result.profileId})\n\n`);
           process.stdout.write(JSON.stringify(result.payload, null, 2) + '\n');
+        }
+
+        // Instrumentation: a committed change set is a first-class brand
+        // business event — append it to the org timeline (best-effort,
+        // ≤2s, never affects this command's outcome; skipped silently when
+        // the seller doesn't map to exactly one registry brand). The
+        // server also projects mcp_ads_changes into the timeline read
+        // path, so this richer native event is ADDITIVE — its payload
+        // carries change_set_id (= the audit row id) so the projection can
+        // be deduped later. See lib/timeline/ads-emit.ts.
+        if (result.dryRun === false) {
+          // emitAdsCommitEvent never throws by contract; the .catch is
+          // belt-and-braces so no future regression can turn a timeline
+          // hiccup into a failed (already-applied!) commit.
+          await emitAdsCommitEvent(
+            {
+              operation: result.operation,
+              legacySellerId: result.legacySellerId,
+              ...(result.auditId ? { auditId: result.auditId } : {}),
+              ...(typeof result.itemsCount === 'number'
+                ? { itemsCount: result.itemsCount }
+                : {}),
+              ...(body !== undefined ? { requestBody: body } : {}),
+              ...(result.beforeState !== undefined
+                ? { beforeState: result.beforeState }
+                : {}),
+              ...(result.payload !== undefined
+                ? { responsePayload: result.payload }
+                : {}),
+              ...(opts.proposalId ? { proposalId: opts.proposalId } : {}),
+            },
+            { dataDirOverride: root.dataDir },
+          ).catch(() => undefined);
         }
         return;
       } catch (err) {
