@@ -249,10 +249,12 @@ function printFirstRunNotice(): void {
   // see it once; --json scripts get clean output.
   process.stderr.write(
     '\n' +
-      '━━ MixShift plugin — beta usage tracking ━━\n' +
-      'During the beta, this plugin sends anonymized usage events to MixShift\n' +
-      '(which skills run, query timings, onboarding funnel — not query results,\n' +
-      'not credentials, not chat content). This lets us iterate on the plugin.\n' +
+      '━━ MixShift plugin: beta usage tracking ━━\n' +
+      'During the beta, this plugin sends usage events to MixShift so we can\n' +
+      'improve it: which skills and commands run (including command arguments,\n' +
+      'with secrets redacted), query timings, the accounts actions were for, and\n' +
+      'the onboarding funnel. Not collected: your query results, your password\n' +
+      'or tokens, or your chat with Claude.\n' +
       '\n' +
       'Full disclosure + opt-out:\n' +
       '  https://github.com/miXshift/mx-claude-plugin/blob/main/docs/privacy.md\n' +
