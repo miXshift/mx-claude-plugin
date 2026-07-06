@@ -44,8 +44,11 @@ export const TEXT_DOC_TIMEOUT_MS = 30_000;
 /** Corpus docs can be up to 10MB; give the transfer real room. */
 export const CORPUS_TIMEOUT_MS = 120_000;
 /** Assignment mirroring is best-effort inside interactive commands — a
- *  hung host must not stall `brand key add` for the full doc budget. */
-export const ASSIGNMENT_TIMEOUT_MS = 10_000;
+ *  hung host must not stall `brand key add`. Matched to the other
+ *  best-effort side-channels (autosync + ads-emit both 2s): in `--json`
+ *  mode the mirror is awaited before the JSON is written, so this bounds the
+ *  worst-case stdout stall on a reachable-but-hanging host to ~2s, not 10s. */
+export const ASSIGNMENT_TIMEOUT_MS = 2_000;
 
 const UNREACHABLE_FRIENDLY =
   'The MixShift auth service is unreachable. Check your network ' +
