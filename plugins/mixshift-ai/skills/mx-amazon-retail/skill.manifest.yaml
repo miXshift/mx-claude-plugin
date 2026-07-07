@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-retail
 display_name: Amazon Retail Lookups (live SP-API)
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. The retail-operations analogue of mx-amazon-report:
@@ -11,8 +11,9 @@ description: >
   title/brand/sales-rank source for ASINs missing from the warehouse's
   mws_items (catalog.search_items). Covers Catalog Items, Product Fees, FBA
   Inventory, Sales metrics, Sellers, Finances, Orders, Product Pricing offer
-  depth, Listings Items, Data Kiosk (GraphQL), and Vendor Orders (1P).
-  Read-only, routes through the bundled harness CLI. Does not require brand
+  depth, Listings Items, Data Kiosk (GraphQL), Vendor Orders (1P), and Amazon
+  Warehousing & Distribution (AWD). Read-only, routes through the bundled
+  harness CLI. Does not require brand
   setup, only that the user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service.
@@ -70,8 +71,12 @@ trigger_phrases:
   - vendor purchase orders
   - call an sp-api operation
   - what sp-api operations can I call
+  - awd inventory
+  - amazon warehousing and distribution
+  - awd stock levels
+  - inbound shipments to awd
 notes: >
-  Live SP-API call surface: 24 cataloged read operations across 12 families,
+  Live SP-API call surface: 27 cataloged read operations across 13 families,
   reached via `mixshift amazon operations` (discovery) and
   `mixshift amazon call <operation>` (execute). Each call is a single fast
   request/response (no start/poll/get split), so chat hosts need no special

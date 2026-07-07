@@ -543,11 +543,16 @@ SB and SD writes exist in the catalog, but with **lower wire-shape
 confidence** than SP. Two reasons:
 
 - **Mixed eras and body shapes.** SB campaigns and ad groups are v4
-  object-wrapped batches (vnd media types), but SB keywords and negatives and
-  the **whole SD surface** take **raw JSON ARRAY** bodies with plain JSON, and
-  SB and SD enums are **lowercase** (`exact`, `negativePhrase`, `daily`,
-  `asinSameAs`) where SP uses uppercase. The catalog notes say which per
-  operation; read them and match exactly.
+  object-wrapped batches (vnd media types), while SB keywords and negatives and
+  the **whole SD surface** take **raw JSON ARRAY** bodies. Those array-body
+  requests are sent as plain `application/json`, but the two families differ on
+  the response: **SB keyword/negative** writes reply with a versioned SB media
+  type (the catalog pins `Accept: application/vnd.sbkeywordresponse.v3+json`;
+  sending a plain `application/json` Accept fails with "No match for accept
+  header"), whereas **SD** is genuinely plain JSON end to end. Both use
+  **lowercase** enums (`exact`, `negativePhrase`, `daily`, `asinSameAs`) where
+  SP uses uppercase. The catalog handles the media types; read the per-operation
+  notes and match the body shape and enums exactly.
 - **SB v4 creates especially** often need brand assets and a precise payload;
   expect per-item validation errors until the body matches the SB v4 spec.
 
