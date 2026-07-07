@@ -178,7 +178,7 @@ Refresh token expired (>30d) or was revoked. Run `mixshift auth login` (or "sign
 
 ## A note on telemetry
 
-During the beta, the plugin sends anonymized usage events to MixShift so we can iterate. You'll see a one-time notice the first time you run `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md).
+During the beta, the plugin sends usage events to MixShift so we can iterate. During the beta these are attributed to your MixShift account and the person or service credential that ran them (not anonymous), with secret-shaped values stripped from captured command lines. You'll see a one-time notice the first time you run `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md).
 
 ## What's next
 

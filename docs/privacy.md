@@ -111,7 +111,7 @@ When you've opted out, the harness still writes events to its local queue file (
 
 When the plugin exits beta, we'll move from "collection is on by default" to "opt-in only", meaning a customer affirmatively chooses to share usage data. The privacy disclosure here will be updated at that time.
 
-Beta status is published in the plugin's `version` field. Today the plugin is in beta (releases in the `0.6.x` line); the production-grade release will be tagged at `1.0.0`.
+Beta status is published in the plugin's `version` field. Today the plugin is in beta (releases in the `0.7.x` line); the production-grade release will be tagged at `1.0.0`.
 
 ## Questions
 

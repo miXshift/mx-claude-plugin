@@ -107,7 +107,7 @@ To inspect / change later:
 - *"remove Kiwa from key brands"* / `mixshift brand key remove kiwa`
 - *"clear my key brands"* / `mixshift brand key clear`
 
-Key brands live in `~/.mixshift/profile.yaml::brands.key`. The list is yours alone — no syncing across machines (per-machine state, like everything else the plugin tracks). When you re-auth on a different machine, you set your key brands again there.
+Key brands live in `~/.mixshift/profile.yaml::brands.key` as a local cache. As of 0.7.0, marking a brand as key also mirrors to your MixShift org store, so teammates can see which brands each person focuses on. Each person keeps their own key list (it is per-person, not one shared org-wide list).
 
 ### Does my teammate see the same data as me?
 
@@ -141,7 +141,7 @@ Your **MixShift password** is entered on the sign-in page in your browser. It ne
 
 Your **tokens** (access + refresh) live on your local machine at `~/.mixshift/auth/credentials` with `0600` permissions. They're sent only as Bearer credentials to `https://mcp.mixshift.io/api/query` and the auth-refresh endpoints when needed — nowhere else.
 
-`mixshift feedback` sends whatever message you ask it to send. The telemetry firehose (during beta) sends anonymized usage events ([details](./privacy.md)).
+`mixshift feedback` sends whatever message you ask it to send. The telemetry firehose (during beta) sends usage events attributed to your account and the actor that ran them (not anonymous), with secret-shaped values stripped from captured command lines ([details](./privacy.md)).
 
 ---
 
