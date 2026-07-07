@@ -82,19 +82,31 @@ describe('detectSurface', () => {
     expect(detectSurface()).toBe('claude_code');
   });
 
-  // The 2026-06-16 fix: Cowork embeds the CC engine, so CLAUDECODE=1 is set in
-  // Cowork too. Detection must still resolve `cowork` via the payload-path
-  // marker, and must run before the Claude Code detector.
-  it('detects Cowork by payload-path marker even when CLAUDECODE=1', () => {
+  // 2026-07-07 correction (supersedes the 2026-06-16 note): the
+  // `local-agent-mode-sessions` marker is the Claude DESKTOP app's payload
+  // substrate, NOT Cowork. A desktop session (marker in the plugin root +
+  // CLAUDECODE=1 + claude-desktop entrypoint) resolves `claude_desktop`.
+  it('detects the Claude desktop app (local-agent-mode-sessions marker) as claude_desktop', () => {
     process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'claude-desktop';
     process.env.CLAUDE_PLUGIN_ROOT =
       'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/abc/def/rpm/plugin_x/.claude-plugin';
-    expect(detectSurface()).toBe('cowork');
+    expect(detectSurface()).toBe('claude_desktop');
   });
 
-  it('detects Cowork from the payload marker on argv[1]', () => {
+  it('detects the desktop app from the payload marker on argv[1] even if the entrypoint env is stripped', () => {
+    // No CLAUDE_CODE_ENTRYPOINT (a subprocess dropped it); the marker still identifies the desktop app.
     process.argv[1] =
       'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/s/p/rpm/plugin_x/harness/dist/cli.js';
+    expect(detectSurface()).toBe('claude_desktop');
+  });
+
+  // Real cloud Cowork (verified `mixshift telemetry surface` dump 2026-07-07):
+  // linux, NO env signals at all, payload under /sessions/<id>/mnt/.remote-plugins/.
+  // Must resolve `cowork` — previously fell through to cli_headless and was dropped.
+  it('detects cloud Cowork from the /sessions/.remote-plugins payload path with no env', () => {
+    process.argv[1] =
+      '/sessions/stoic-exciting-gates/mnt/.remote-plugins/plugin_x/harness/dist/cli.js';
     expect(detectSurface()).toBe('cowork');
   });
 
@@ -163,13 +175,23 @@ describe('probeSurface', () => {
     expect(p.env.CLAUDECODE).toBe('1');
   });
 
-  it('reports decidedBy=cowork with the marker found on argv[1]', () => {
+  it('reports decidedBy=cowork with the cloud-Cowork marker found on argv[1]', () => {
     process.argv[1] =
-      'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/s/p/rpm/plugin_x/harness/dist/cli.js';
+      '/sessions/stoic-exciting-gates/mnt/.remote-plugins/plugin_x/harness/dist/cli.js';
     const p = probeSurface();
     expect(p.result).toBe('cowork');
     expect(p.decidedBy).toBe('cowork');
     expect(p.coworkMarkerPresent).toBe(true);
+    expect(p.desktopMarkerPresent).toBe(false);
+  });
+
+  it('reports the desktop-app marker and resolves claude_desktop', () => {
+    process.argv[1] =
+      'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/s/p/rpm/plugin_x/harness/dist/cli.js';
+    const p = probeSurface();
+    expect(p.result).toBe('claude_desktop');
+    expect(p.desktopMarkerPresent).toBe(true);
+    expect(p.coworkMarkerPresent).toBe(false);
   });
 
   it('reports decidedBy=flag and echoes the flag value', () => {

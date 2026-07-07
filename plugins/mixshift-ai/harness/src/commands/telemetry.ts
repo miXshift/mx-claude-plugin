@@ -185,6 +185,8 @@ export function registerTelemetryCommands(program: Command): void {
           `${envLines}\n\n` +
           `Cowork payload marker ("${probe.coworkMarker}"): ` +
           `${probe.coworkMarkerPresent ? 'FOUND' : 'NOT FOUND'}\n` +
+          `Claude-desktop payload marker ("${probe.desktopMarker}"): ` +
+          `${probe.desktopMarkerPresent ? 'FOUND' : 'NOT FOUND'}\n` +
           '  runtime paths checked:\n' +
           `${pathLines}\n\n` +
           'Context:\n' +
