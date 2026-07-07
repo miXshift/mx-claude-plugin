@@ -9,7 +9,7 @@
 
 A Claude plugin for MixShift customers — Amazon advertising + retail data exploration and analytical workflows, built by [MixShift](https://mixshift.ai).
 
-**Status:** Beta (0.6.x). Everything that needs only sign-in is usable today: warehouse query and export (`mx-data-explore`), on-demand Amazon SP-API reports, live retail lookups, AMC and DSP analytics, and Amazon Ads management (including audited writes). The analytical PPC tier (daily health checks, bid management, search-term workflows) needs a one-time brand-context build per brand and is rolling out in waves as each skill is validated.
+**Status:** Beta (0.7.x). Everything that needs only sign-in is usable today: warehouse query and export (`mx-data-explore`), on-demand Amazon SP-API reports, live retail lookups, AMC and DSP analytics, and Amazon Ads management (including audited writes). The analytical PPC tier (daily health checks, bid management, search-term workflows) needs a one-time brand-context build per brand and is rolling out in waves as each skill is validated.
 
 ---
 

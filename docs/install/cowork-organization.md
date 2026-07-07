@@ -121,7 +121,7 @@ To confirm the fix end-to-end, have a teammate run `mixshift doctor` in a new co
 
 ## A note on telemetry
 
-During the beta, the plugin sends anonymized usage events to MixShift so we can iterate. Each user sees a one-time notice on first run of `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). If your org has data-residency or compliance requirements that prevent telemetry submission, run `mixshift telemetry opt-out` on each user's machine after they install — or bake `MIXSHIFT_TELEMETRY=0` into your org's shell profile.
+During the beta, the plugin sends usage events to MixShift so we can iterate. These events are attributed to each user's MixShift account and the person or service credential that ran them (not anonymous), with secret-shaped values stripped from captured command lines. Each user sees a one-time notice on first run of `mixshift welcome`; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). If your org has data-residency or compliance requirements that prevent telemetry submission, run `mixshift telemetry opt-out` on each user's machine after they install, or bake `MIXSHIFT_TELEMETRY=0` into your org's shell profile.
 
 ## What's next
 
