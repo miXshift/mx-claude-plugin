@@ -201,7 +201,7 @@ The two environments where this applies:
 
 ## A note on telemetry
 
-During the beta, the harness sends usage events to MixShift (skills invoked, query timings, command lines and outcomes, never query results or credentials). During the beta these are attributed to your MixShift account and actor rather than anonymized, with secret-shaped values stripped from captured command lines first. The first time you run any `mixshift` command, you'll see a short FYI notice in stderr; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). For CI / scripted use where you want zero telemetry, set `MIXSHIFT_TELEMETRY=0` in your environment.
+During the beta, the harness sends usage events to MixShift (skills invoked, query timings, command lines and outcomes, never query results or credentials). These events are attributed to your MixShift account and actor rather than anonymized, with secret-shaped values stripped from captured command lines first. The first time you run any `mixshift` command, you'll see a short FYI notice in stderr; full disclosure + opt-out in [Privacy & telemetry](../privacy.md). For CI / scripted use where you want zero telemetry, set `MIXSHIFT_TELEMETRY=0` in your environment.
 
 ## What's next
 

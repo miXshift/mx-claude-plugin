@@ -144,7 +144,7 @@ The required domains are `mcp.mixshift.io` (everything depends on it) and `*.ama
 
 ## A note on telemetry
 
-During the beta, the plugin sends usage events to MixShift so we can iterate on it. During the beta these are attributed to your MixShift account and the person or service credential that ran them (not anonymous), with secret-shaped values stripped from captured command lines. The welcome screen prints a one-time notice the first time you run it; full details + opt-out in [Privacy & telemetry](../privacy.md).
+During the beta, the plugin sends usage events to MixShift so we can iterate on it. These events are attributed to your MixShift account and the person or service credential that ran them (not anonymous), with secret-shaped values stripped from captured command lines. The welcome screen prints a one-time notice the first time you run it; full details + opt-out in [Privacy & telemetry](../privacy.md).
 
 ## What's next
 
