@@ -10,11 +10,12 @@ description: >
   that are missing from the warehouse's mws_items (catalog.search_items). Covers
   Catalog Items, Product Fees, FBA Inventory, Sales metrics, Sellers, Finances,
   Orders, Product Pricing offer depth, Listings Items, Data Kiosk (GraphQL),
-  and Vendor Orders (1P). Read-only, routes through the bundled harness CLI.
+  Vendor Orders (1P), and Amazon Warehousing & Distribution (AWD). Read-only,
+  routes through the bundled harness CLI.
   Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -43,6 +44,10 @@ trigger_phrases:
   - vendor purchase orders
   - call an sp-api operation
   - what sp-api operations can I call
+  - awd inventory
+  - amazon warehousing and distribution
+  - awd stock levels
+  - inbound shipments to awd
 ---
 
 # Amazon Retail Lookups (live SP-API)
@@ -57,7 +62,7 @@ When characterizing this capability to the user, use these facts:
   request and response: you ask a question (titles for these ASINs, stock for
   these SKUs, metrics for this window) and get Amazon's answer back inline. It
   is a first-class, user-driven capability.
-- **The catalog:** 24 cataloged operations across 12 families. Discover them
+- **The catalog:** 27 cataloged operations across 13 families. Discover them
   with `mixshift amazon operations` and read each operation's `notes` before
   calling: the notes carry the required params, the casing gotchas (several v0
   operations use PascalCase query params), the caps, and the body shapes. Treat
@@ -311,7 +316,7 @@ mixshift amazon call <operation>
   where `payload` is **Amazon's response body, verbatim**. In human output the
   payload is pretty-printed to stdout and a one-line confirmation to stderr.
 
-## The 24 operations: a family tour
+## The 27 operations: a family tour
 
 Run `amazon operations` for the live catalog; this is the map plus the
 per-family gotchas that bite. Every operation is read-only.
@@ -539,15 +544,45 @@ Gotchas:
   `includeDetails`, `sortOrder`, `purchaseOrderState` (New, Acknowledged,
   Closed).
 
+### Amazon Warehousing & Distribution (AWD, 2024-05-09) - upstream bulk stock
+
+- `awd.list_inventory` - real-time AWD inventory per SKU inside AWD centers.
+- `awd.list_inbound_shipments` - inbound shipments to AWD, filterable by status and time.
+- `awd.get_inbound_shipment` - full detail for one shipment (`--path shipmentId=`).
+
+Gotchas:
+
+- **AWD is Amazon's upstream bulk-storage program that replenishes FBA, NOT the
+  same as FBA inventory (`fba_inventory` above).** Use this only for stock sitting
+  in AWD distribution centers and the inbound shipments flowing into them.
+- **US marketplace only, 3P sellers only, and ONLY sellers ENROLLED in AWD return
+  data.** For a seller not enrolled, the call succeeds (HTTP 200) with an empty set
+  (`{inventory:[]}` / `{shipments:[]}`) - that is the normal not-enrolled shape,
+  NOT an error. Say "no AWD data / not enrolled"; never invent rows.
+- **Account-scoped: no marketplace param.** The NA-region token carries identity
+  (like `sellers` / `finances`), so you do not pass a marketplace; pin the US row
+  with `--legacy-seller-id`.
+- **Requires the "Amazon Warehousing and Distribution" role AND a per-seller
+  re-authorization performed after the role was added.** A seller not yet re-authed
+  for the role fails with `reauth_required` - have them re-connect in the MixShift
+  app, then retry.
+- `list_inventory` query (all optional): `sku`, `details`, `sortOrder`,
+  `maxResults`, `nextToken`. `list_inbound_shipments` query (all optional):
+  `sortBy`, `sortOrder`, `shipmentStatus`, `updatedAfter` / `updatedBefore`
+  (ISO 8601), `maxResults`, `nextToken`. A few enum values (`details`,
+  `shipmentStatus`, `skuQuantities`) are not yet pinned - read the live `notes`
+  and verify against the actual response.
+
 ## Workflow patterns
 
 ### Pattern 0 - User does not know what is callable
 ```
 User: "What live SP-API operations can I call?"
-You:  Run `mixshift amazon operations`. It lists 24 operations grouped by
+You:  Run `mixshift amazon operations`. It lists 27 operations grouped by
       family (Catalog Items, Product Fees, FBA Inventory, Sales, Sellers,
       Finances, Orders, Product Pricing, Listings Items, Data Kiosk, Vendor
-      Orders). Surface the families that fit what the user does. Filter to one
+      Orders, Amazon Warehousing & Distribution). Surface the families that fit
+      what the user does. Filter to one
       with `--family "<name>"`. Read the operation `notes` before calling any.
 ```
 

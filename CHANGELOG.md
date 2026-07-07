@@ -3,6 +3,24 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.7.1
+
+Live Amazon Warehousing & Distribution (AWD) inventory and inbound shipments,
+plus a small Amazon Ads documentation correction.
+
+### Added
+
+- **Amazon Warehousing & Distribution (AWD) lookups.** `mx-amazon-retail` can now
+  read your AWD inventory and inbound shipments straight from Amazon: current
+  stock per SKU in AWD distribution centers, and the inbound shipments flowing
+  into them. Available for US sellers enrolled in AWD; just ask for "AWD
+  inventory" or "inbound shipments to AWD."
+
+### Fixed
+
+- **Corrected the Sponsored Brands vs Sponsored Display media-type note** in
+  `mx-amazon-ads` so the creative media-type guidance reads accurately.
+
 ## 0.7.0
 
 Shared brand context across your team, clearer beta telemetry, and steadier
