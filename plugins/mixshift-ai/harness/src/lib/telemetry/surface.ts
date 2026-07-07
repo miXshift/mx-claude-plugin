@@ -36,10 +36,12 @@
  * dashboard filter). Corrected here:
  *   - `local-agent-mode-sessions` (or CLAUDE_CODE_ENTRYPOINT=claude-desktop) →
  *     `claude_desktop` (detectClaudeCode).
- *   - `/sessions/.../.remote-plugins/` → `cowork` (detectCowork). INTERIM: the
- *     /sessions cloud substrate may be shared by other remote hosts, so this
- *     can over-claim. The durable fix is upstream — Cowork should set a
- *     COWORK_* env var (checked first, before any path heuristic).
+ *   - `/sessions/.../.remote-plugins/` → `cowork` (detectCowork), but ONLY when no
+ *     Claude Code engine signal (CLAUDECODE etc.) is present: remote/cloud Claude Code
+ *     shares the same /sessions substrate yet sets CLAUDECODE=1, so it stays
+ *     `claude_code`. The path match is ANCHORED (needs a `/sessions/` segment AND a
+ *     `.remote-plugins` path segment), not a bare substring. Durable fix is upstream —
+ *     Cowork should set a COWORK_* env var (checked first, before any path heuristic).
  *
  * --------------------------------------------------------------------------
  * Detection precedence
@@ -94,6 +96,7 @@ export interface SurfaceProbe {
     | 'flag'
     | 'cowork'
     | 'claude_code'
+    | 'claude_desktop'
     | 'plugin_host_unknown'
     | 'fallback';
   /** Raw env signals the detectors read. `undefined` = variable not set. */
@@ -170,7 +173,7 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
   };
   const paths = runtimePaths();
   const lowerPaths = paths.map((p) => p.toLowerCase());
-  const coworkMarkerPresent = lowerPaths.some((p) => p.includes(COWORK_CLOUD_MARKER));
+  const coworkMarkerPresent = isCloudCoworkPath();
   const desktopMarkerPresent = lowerPaths.some((p) => p.includes(CLAUDE_DESKTOP_MARKER));
   const ci = isCiEnv();
   const tty = hasInteractiveTty();
@@ -196,10 +199,11 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
   if (flagValue && isKnownSurface(flagValue)) {
     return { ...base, result: flagValue as Surface, decidedBy: 'flag' };
   }
-  // 3. Env-based detection (try each detector in order)
+  // 3. Env-based detection (try each detector in order). decidedBy reports the
+  // RESOLVED surface (detectClaudeCode can resolve claude_desktop, not just claude_code).
   for (const d of detectors) {
     const result = d.detect();
-    if (result !== null) return { ...base, result, decidedBy: d.name };
+    if (result !== null) return { ...base, result, decidedBy: result };
   }
   // 4. Fallback (no host signal). Split interactive human terminal use (`cli`)
   // from headless contexts — CI, test rigs, piped automation, or a host session
@@ -216,16 +220,12 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
 // Detectors — each returns a Surface or null
 // ---------------------------------------------------------------------------
 
-type Detector = () => Surface | null;
+/** Surfaces a detector can positively resolve. The fallback (`cli`/`cli_headless`) and
+ *  the reserved `chatgpt`/`other` are never produced by a detector, so `decidedBy` can
+ *  faithfully mirror a detector result. */
+type DetectorSurface = 'cowork' | 'claude_code' | 'claude_desktop' | 'plugin_host_unknown';
 
-/**
- * Cloud Cowork runs its plugin payload from `/sessions/<id>/mnt/.remote-plugins/…`
- * — verified via a real Cowork `mixshift telemetry surface` dump 2026-07-07. This
- * is the Cowork discriminator now. INTERIM: the `/sessions` cloud substrate MAY be
- * shared by other remote hosts, so it can over-claim; the durable signal is a
- * first-class COWORK_* env var (checked first, below).
- */
-const COWORK_CLOUD_MARKER = '.remote-plugins';
+type Detector = () => DetectorSurface | null;
 
 /**
  * The Claude *desktop* app materializes plugins under
@@ -235,17 +235,56 @@ const COWORK_CLOUD_MARKER = '.remote-plugins';
  */
 const CLAUDE_DESKTOP_MARKER = 'local-agent-mode-sessions';
 
+/** Human-readable description of the cloud-Cowork path shape — for the probe display
+ *  only; the actual match is the anchored {@link isCloudCoworkPath}. */
+const COWORK_CLOUD_MARKER = '/sessions/…/.remote-plugins/ (anchored)';
+
+/**
+ * Whether a runtime path looks like the cloud-Cowork payload
+ * (`/sessions/<id>/mnt/.remote-plugins/…`, verified via a real Cowork
+ * `mixshift telemetry surface` dump 2026-07-07). ANCHORED on purpose: a path must
+ * contain BOTH the `/sessions/` cloud-session segment AND a `.remote-plugins` PATH
+ * SEGMENT — not a bare `.remote-plugins` substring — so a local dir that merely
+ * contains those characters (e.g. `foo.remote-plugins-old`, `my.remote-plugins.txt`)
+ * cannot false-match. INTERIM: the `/sessions` cloud substrate is shared with
+ * remote/cloud Claude Code, which is why detectCowork gates this on the ABSENCE of a
+ * Claude Code engine signal. The durable signal is a first-class COWORK_* env var.
+ */
+function isCloudCoworkPath(): boolean {
+  return runtimePaths().some((p) => {
+    const s = p.toLowerCase().replace(/\\/g, '/');
+    return s.includes('/sessions/') && /(^|\/)\.remote-plugins(\/|$)/.test(s);
+  });
+}
+
+/**
+ * True when the process carries ANY Claude Code engine signal. Real cloud Cowork
+ * carries NONE (no CLAUDECODE, no entrypoint), so this is how we keep remote/cloud
+ * Claude Code — which sets CLAUDECODE=1 and shares the `/sessions/.remote-plugins`
+ * substrate — OUT of the Cowork bucket.
+ */
+function hasClaudeCodeEngineEnv(): boolean {
+  return (
+    process.env.CLAUDECODE === '1' ||
+    process.env.CLAUDE_CODE === '1' ||
+    Boolean(process.env.CLAUDE_CODE_ENTRYPOINT) ||
+    Boolean(process.env.CLAUDE_CODE_VERSION)
+  );
+}
+
 /**
  * Cowork. Detected by an explicit COWORK_* env var (forward-compatible; not set by
- * Cowork today) OR the cloud payload-path marker `/sessions/.../.remote-plugins/`.
- * Real (cloud) Cowork sets no env at all, so the path marker is the only working
- * signal until Cowork exposes a COWORK_* var. Runs before detectClaudeCode.
+ * Cowork today), else by the anchored cloud payload path — but ONLY when no Claude
+ * Code engine signal is present, so a CLAUDECODE-bearing remote/cloud Claude Code
+ * session on the shared /sessions substrate is NOT mislabeled `cowork`. Runs before
+ * detectClaudeCode (an explicit COWORK_* must win); the path rule cannot mis-fire on
+ * Claude Code because of the engine-env gate.
  */
-function detectCowork(): Surface | null {
+function detectCowork(): DetectorSurface | null {
   if (process.env.COWORK === '1') return 'cowork';
   if (process.env.COWORK_VERSION) return 'cowork';
   if (process.env.COWORK_PLUGIN_HOST) return 'cowork';
-  if (runtimePaths().some((p) => p.toLowerCase().includes(COWORK_CLOUD_MARKER))) {
+  if (!hasClaudeCodeEngineEnv() && isCloudCoworkPath()) {
     return 'cowork';
   }
   return null;
@@ -280,7 +319,7 @@ function runtimePaths(): string[] {
  * generic CLAUDECODE branch so a desktop session never collapses to `claude_code`.
  * Cloud Cowork carries none of these (and is caught earlier by detectCowork).
  */
-function detectClaudeCode(): Surface | null {
+function detectClaudeCode(): DetectorSurface | null {
   if (process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop') return 'claude_desktop';
   if (runtimePaths().some((p) => p.toLowerCase().includes(CLAUDE_DESKTOP_MARKER))) {
     return 'claude_desktop';
@@ -302,7 +341,7 @@ function detectClaudeCode(): Surface | null {
  * When this fires, the next session's detection should be improved by adding
  * signals to detectClaudeCode/detectCowork above.
  */
-function detectPluginHostUnknown(): Surface | null {
+function detectPluginHostUnknown(): DetectorSurface | null {
   if (process.env.CLAUDE_PLUGIN_ROOT) return 'plugin_host_unknown';
   return null;
 }
@@ -345,14 +384,17 @@ function hasInteractiveTty(): boolean {
 }
 
 /**
- * Ordered detector chain. Each entry's `name` is reported as `decidedBy` in
- * the surface probe when that detector fires. Order matters — see header.
+ * Ordered detector chain; first non-null wins. The probe's `decidedBy` reports the
+ * RESOLVED surface (not the entry `name`), so detectClaudeCode resolving `claude_desktop`
+ * reads as `decidedBy: claude_desktop`. Order matters — see header.
  */
 const detectors: ReadonlyArray<{
   name: 'cowork' | 'claude_code' | 'plugin_host_unknown';
   detect: Detector;
 }> = [
-  // MUST be first — Cowork also sets CLAUDECODE (embeds the CC engine).
+  // Cowork first so an explicit COWORK_* env wins; its cloud-path rule is gated on the
+  // ABSENCE of a Claude Code engine signal, so remote/cloud Claude Code (CLAUDECODE=1 on
+  // the same /sessions substrate) falls through to detectClaudeCode instead of cowork.
   { name: 'cowork', detect: detectCowork },
   { name: 'claude_code', detect: detectClaudeCode },
   { name: 'plugin_host_unknown', detect: detectPluginHostUnknown },

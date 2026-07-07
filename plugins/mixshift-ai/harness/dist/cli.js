@@ -64332,7 +64332,7 @@ function probeSurface(flagValue) {
   };
   const paths = runtimePaths();
   const lowerPaths = paths.map((p) => p.toLowerCase());
-  const coworkMarkerPresent = lowerPaths.some((p) => p.includes(COWORK_CLOUD_MARKER));
+  const coworkMarkerPresent = isCloudCoworkPath();
   const desktopMarkerPresent = lowerPaths.some((p) => p.includes(CLAUDE_DESKTOP_MARKER));
   const ci = isCiEnv();
   const tty = hasInteractiveTty();
@@ -64356,7 +64356,7 @@ function probeSurface(flagValue) {
   }
   for (const d of detectors) {
     const result = d.detect();
-    if (result !== null) return { ...base, result, decidedBy: d.name };
+    if (result !== null) return { ...base, result, decidedBy: result };
   }
   return {
     ...base,
@@ -64364,11 +64364,20 @@ function probeSurface(flagValue) {
     decidedBy: "fallback"
   };
 }
+function isCloudCoworkPath() {
+  return runtimePaths().some((p) => {
+    const s = p.toLowerCase().replace(/\\/g, "/");
+    return s.includes("/sessions/") && /(^|\/)\.remote-plugins(\/|$)/.test(s);
+  });
+}
+function hasClaudeCodeEngineEnv() {
+  return process.env.CLAUDECODE === "1" || process.env.CLAUDE_CODE === "1" || Boolean(process.env.CLAUDE_CODE_ENTRYPOINT) || Boolean(process.env.CLAUDE_CODE_VERSION);
+}
 function detectCowork() {
   if (process.env.COWORK === "1") return "cowork";
   if (process.env.COWORK_VERSION) return "cowork";
   if (process.env.COWORK_PLUGIN_HOST) return "cowork";
-  if (runtimePaths().some((p) => p.toLowerCase().includes(COWORK_CLOUD_MARKER))) {
+  if (!hasClaudeCodeEngineEnv() && isCloudCoworkPath()) {
     return "cowork";
   }
   return null;
@@ -64411,15 +64420,17 @@ function hasInteractiveTty() {
 function isKnownSurface(s) {
   return KNOWN_SURFACES.has(s);
 }
-var ENV_VAR_OVERRIDE, COWORK_CLOUD_MARKER, CLAUDE_DESKTOP_MARKER, detectors, KNOWN_SURFACES;
+var ENV_VAR_OVERRIDE, CLAUDE_DESKTOP_MARKER, COWORK_CLOUD_MARKER, detectors, KNOWN_SURFACES;
 var init_surface = __esm({
   "src/lib/telemetry/surface.ts"() {
     "use strict";
     ENV_VAR_OVERRIDE = "MIXSHIFT_SURFACE";
-    COWORK_CLOUD_MARKER = ".remote-plugins";
     CLAUDE_DESKTOP_MARKER = "local-agent-mode-sessions";
+    COWORK_CLOUD_MARKER = "/sessions/\u2026/.remote-plugins/ (anchored)";
     detectors = [
-      // MUST be first — Cowork also sets CLAUDECODE (embeds the CC engine).
+      // Cowork first so an explicit COWORK_* env wins; its cloud-path rule is gated on the
+      // ABSENCE of a Claude Code engine signal, so remote/cloud Claude Code (CLAUDECODE=1 on
+      // the same /sessions substrate) falls through to detectClaudeCode instead of cowork.
       { name: "cowork", detect: detectCowork },
       { name: "claude_code", detect: detectClaudeCode },
       { name: "plugin_host_unknown", detect: detectPluginHostUnknown }

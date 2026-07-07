@@ -110,6 +110,24 @@ describe('detectSurface', () => {
     expect(detectSurface()).toBe('cowork');
   });
 
+  // Regression guard (red-team blocker 2026-07-07): remote/cloud Claude Code (web +
+  // scheduled cloud agents) shares the SAME /sessions/.remote-plugins substrate as cloud
+  // Cowork, but it sets CLAUDECODE=1. The engine signal must win — it stays 'claude_code'
+  // and is NOT swept into 'cowork' by the shared path marker.
+  it('classifies remote/cloud Claude Code (CLAUDECODE=1 under /sessions/.remote-plugins) as claude_code, not cowork', () => {
+    process.env.CLAUDECODE = '1';
+    process.argv[1] = '/sessions/abc/mnt/.remote-plugins/plugin_x/harness/dist/cli.js';
+    expect(detectSurface()).toBe('claude_code');
+  });
+
+  // The cloud-Cowork match is anchored (needs a '/sessions/' segment AND a
+  // '.remote-plugins' path segment), so a local path that merely contains the
+  // substring is NOT mislabeled 'cowork'.
+  it('does not mislabel a local path that merely contains ".remote-plugins" as cowork', () => {
+    process.argv[1] = '/home/dev/projects/foo.remote-plugins-old/tool/cli.js';
+    expect(detectSurface()).toBe('cli_headless'); // headless baseline, no host signal
+  });
+
   it('detects Cowork from an explicit COWORK env var', () => {
     process.env.COWORK = '1';
     expect(detectSurface()).toBe('cowork');
@@ -190,6 +208,7 @@ describe('probeSurface', () => {
       'C:/Users/u/AppData/Roaming/Claude/local-agent-mode-sessions/s/p/rpm/plugin_x/harness/dist/cli.js';
     const p = probeSurface();
     expect(p.result).toBe('claude_desktop');
+    expect(p.decidedBy).toBe('claude_desktop'); // decidedBy reports the resolved surface, not the detector name
     expect(p.desktopMarkerPresent).toBe(true);
     expect(p.coworkMarkerPresent).toBe(false);
   });
