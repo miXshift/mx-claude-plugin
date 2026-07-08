@@ -50,6 +50,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 - [ ] Release commit titled `release: X.Y.Z <summary>`
 - [ ] Annotated tag `mixshift-ai--vX.Y.Z`
 - [ ] Branch + tag pushed to origin together
+- [ ] **Announce the release to the releases Discord** — `node plugins/mixshift-ai/harness/scripts/announce-release.mjs --version X.Y.Z` (one `release.published` per version bump; reads that version's `CHANGELOG.md` entry). Announcements must stay in sync with releases, so reconcile first: compare `SELECT payload->>'version' FROM events WHERE event_name='release.published'` (Supabase `izurufltfnwxsljvtksy`) against the `CHANGELOG.md` `## X.Y.Z` headings, and catch up any gap with one announcement per missing version. Announcements started at 0.6.3; do not retro-announce earlier versions.
 - [ ] Post-release Cowork desktop sanity check
 
 ### Pre-flight build
