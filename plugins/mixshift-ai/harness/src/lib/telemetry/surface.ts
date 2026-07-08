@@ -201,8 +201,8 @@ export function probeSurface(flagValue?: string | undefined): SurfaceProbe {
   }
   // 3. Env-based detection (try each detector in order). decidedBy reports the
   // RESOLVED surface (detectClaudeCode can resolve claude_desktop, not just claude_code).
-  for (const d of detectors) {
-    const result = d.detect();
+  for (const detect of detectors) {
+    const result = detect();
     if (result !== null) return { ...base, result, decidedBy: result };
   }
   // 4. Fallback (no host signal). Split interactive human terminal use (`cli`)
@@ -385,19 +385,16 @@ function hasInteractiveTty(): boolean {
 
 /**
  * Ordered detector chain; first non-null wins. The probe's `decidedBy` reports the
- * RESOLVED surface (not the entry `name`), so detectClaudeCode resolving `claude_desktop`
- * reads as `decidedBy: claude_desktop`. Order matters — see header.
+ * RESOLVED surface, so detectClaudeCode resolving `claude_desktop` reads as
+ * `decidedBy: claude_desktop`. Order matters — see header.
  */
-const detectors: ReadonlyArray<{
-  name: 'cowork' | 'claude_code' | 'plugin_host_unknown';
-  detect: Detector;
-}> = [
+const detectors: ReadonlyArray<Detector> = [
   // Cowork first so an explicit COWORK_* env wins; its cloud-path rule is gated on the
   // ABSENCE of a Claude Code engine signal, so remote/cloud Claude Code (CLAUDECODE=1 on
   // the same /sessions substrate) falls through to detectClaudeCode instead of cowork.
-  { name: 'cowork', detect: detectCowork },
-  { name: 'claude_code', detect: detectClaudeCode },
-  { name: 'plugin_host_unknown', detect: detectPluginHostUnknown },
+  detectCowork,
+  detectClaudeCode,
+  detectPluginHostUnknown,
 ];
 
 // ---------------------------------------------------------------------------

@@ -64354,8 +64354,8 @@ function probeSurface(flagValue) {
   if (flagValue && isKnownSurface(flagValue)) {
     return { ...base, result: flagValue, decidedBy: "flag" };
   }
-  for (const d of detectors) {
-    const result = d.detect();
+  for (const detect of detectors) {
+    const result = detect();
     if (result !== null) return { ...base, result, decidedBy: result };
   }
   return {
@@ -64431,9 +64431,9 @@ var init_surface = __esm({
       // Cowork first so an explicit COWORK_* env wins; its cloud-path rule is gated on the
       // ABSENCE of a Claude Code engine signal, so remote/cloud Claude Code (CLAUDECODE=1 on
       // the same /sessions substrate) falls through to detectClaudeCode instead of cowork.
-      { name: "cowork", detect: detectCowork },
-      { name: "claude_code", detect: detectClaudeCode },
-      { name: "plugin_host_unknown", detect: detectPluginHostUnknown }
+      detectCowork,
+      detectClaudeCode,
+      detectPluginHostUnknown
     ];
     KNOWN_SURFACES = /* @__PURE__ */ new Set([
       "cowork",
