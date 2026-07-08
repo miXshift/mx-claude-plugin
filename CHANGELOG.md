@@ -3,6 +3,16 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.7.2
+
+Internal telemetry accuracy only; no changes to any feature, command, or workflow.
+
+### Fixed
+
+- The plugin now records which Claude surface a session runs in (desktop app,
+  Cowork, or terminal) accurately. This affects MixShift's own usage telemetry
+  only and is invisible to your workflows.
+
 ## 0.7.1
 
 Live Amazon Warehousing & Distribution (AWD) inventory and inbound shipments,
