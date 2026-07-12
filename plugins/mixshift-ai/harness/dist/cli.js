@@ -66346,6 +66346,23 @@ init_format_error();
 import { mkdir as mkdir5, readFile as readFile8, rename as rename4, writeFile as writeFile5, chmod as chmod2 } from "node:fs/promises";
 import { dirname as dirname7 } from "node:path";
 
+// src/lib/errors.ts
+var UserFacingError = class extends Error {
+  /** Stable, low-cardinality classifier surfaced as telemetry `error_class`. */
+  errorClass;
+  constructor(message, errorClass) {
+    super(message);
+    this.name = "UserFacingError";
+    this.errorClass = errorClass;
+  }
+};
+var RegistryInvalidError = class extends UserFacingError {
+  constructor(message) {
+    super(message, "registry_invalid");
+    this.name = "RegistryInvalidError";
+  }
+};
+
 // src/lib/clients/index-schema.ts
 init_zod();
 var indexAccountSchema = external_exports.object({
@@ -66412,14 +66429,14 @@ async function readIndex(dataDirOverride) {
     parsed = (0, import_yaml7.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
+    throw new RegistryInvalidError(
       `Brand registry at ${path2} is malformed YAML: ${message}
 Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
     );
   }
   const result = clientsIndexSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(
+    throw new RegistryInvalidError(
       formatZodError(result.error, `Brand registry at ${path2} is invalid`) + `
 Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
     );
@@ -78784,25 +78801,46 @@ async function writeSidecar(input) {
     run_id: runId,
     dataDirOverride: input.dataDirOverride
   });
-  await mkdir17(dirname20(path2), { recursive: true });
-  await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
-  await track(
-    {
-      event_name: EventName.SidecarWritten,
-      skill_id: input.skill,
-      outcome: input.verdict === "RED" ? "failed" : input.verdict === "OBSERVATIONAL" ? "deferred" : "ok",
-      payload: {
-        brand_slug: input.brand_slug,
-        data_date: input.data_date,
-        run_id: runId,
-        verdict: input.verdict,
-        run_kind: input.run_kind,
-        skill_version: input.skill_version,
-        sql_call_count: sqlCalls.length
-      }
-    },
-    input.dataDirOverride
-  );
+  const eventPayload = {
+    brand_slug: input.brand_slug,
+    data_date: input.data_date,
+    run_id: runId,
+    verdict: input.verdict,
+    run_kind: input.run_kind,
+    skill_version: input.skill_version,
+    sql_call_count: sqlCalls.length
+  };
+  try {
+    await mkdir17(dirname20(path2), { recursive: true });
+    await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
+  } catch (err) {
+    try {
+      await track(
+        {
+          event_name: EventName.SidecarWritten,
+          skill_id: input.skill,
+          outcome: "failed",
+          error_class: "sidecar_write_failed",
+          payload: eventPayload
+        },
+        input.dataDirOverride
+      );
+    } catch {
+    }
+    throw err;
+  }
+  try {
+    await track(
+      {
+        event_name: EventName.SidecarWritten,
+        skill_id: input.skill,
+        outcome: "ok",
+        payload: eventPayload
+      },
+      input.dataDirOverride
+    );
+  } catch {
+  }
   return {
     sidecar_path: path2,
     run_id: runId,
@@ -86279,11 +86317,16 @@ try {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}
 `);
+  const isUserFacing = err instanceof UserFacingError;
   await track({
     event_name: EventName.PluginCrashed,
     outcome: "failed",
-    error_class: "unhandled_exception",
-    payload: { message, argv: redactArgs(process.argv.slice(2)) }
+    error_class: isUserFacing ? err.errorClass : "unhandled_exception",
+    payload: {
+      message,
+      argv: redactArgs(process.argv.slice(2)),
+      ...isUserFacing ? { user_facing: true } : {}
+    }
   });
   process.exitCode = 1;
 } finally {

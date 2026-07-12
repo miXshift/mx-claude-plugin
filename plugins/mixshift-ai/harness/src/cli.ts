@@ -76,6 +76,7 @@ import { registerHelpCommand } from './commands/help.js';
 import { registerShareSkillCommand } from './commands/share-skill.js';
 import { registerContextCommands } from './commands/context.js';
 import { registerTimelineCommands } from './commands/timeline.js';
+import { UserFacingError } from './lib/errors.js';
 import {
   hasAcknowledgedConsent,
   markConsentAcknowledged,
@@ -274,6 +275,12 @@ try {
 } catch (err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`error: ${message}\n`);
+  // A UserFacingError is an expected, recoverable condition (a bad/legacy file,
+  // a missing prerequisite) — not a plugin bug. Its message is already clean +
+  // actionable, so we print it as-is above, and here we tag the telemetry with
+  // its specific error_class plus user_facing:true so it lands in its own
+  // bucket in the error-aggregate sweep instead of inflating real crashes.
+  const isUserFacing = err instanceof UserFacingError;
   // Best-effort: fire a crash event so we see this in telemetry. We
   // await `track()` (not `void track(...)`) so the event is on disk
   // before the `finally` block flushes — otherwise the queue write
@@ -281,8 +288,12 @@ try {
   await track({
     event_name: EventName.PluginCrashed,
     outcome: 'failed',
-    error_class: 'unhandled_exception',
-    payload: { message, argv: redactArgs(process.argv.slice(2)) },
+    error_class: isUserFacing ? err.errorClass : 'unhandled_exception',
+    payload: {
+      message,
+      argv: redactArgs(process.argv.slice(2)),
+      ...(isUserFacing ? { user_facing: true } : {}),
+    },
   });
   process.exitCode = 1;
 } finally {

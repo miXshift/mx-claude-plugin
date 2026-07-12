@@ -19,9 +19,48 @@
  *     without going through this wrapper.
  */
 
+import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(here, '..', 'harness', 'dist', 'cli.js');
+const metaPath = join(here, '..', 'harness', 'dist', 'build-meta.json');
+
+// Bundle-integrity preflight. The Cowork plugin sync has been observed to
+// truncate dist/cli.js mid-download; when that happens the dynamic import below
+// throws a raw SyntaxError with a stack, and because EVERY command (including
+// `feedback` and `doctor`) routes through this one shim, the whole CLI is dead
+// with an unactionable message. So before importing, compare the on-disk size
+// against build-meta.json's `output_bytes` (written by build.mjs right after it
+// emits the bundle) and, on a short file, print a self-service re-sync message
+// instead of letting the parse crash.
+//
+// Only a SHORTER-than-expected file is treated as corruption. A LONGER file is
+// expected and benign: on platforms where git applied autocrlf, the checked-out
+// bundle has CRLF line endings and is larger than the LF byte count build.mjs
+// recorded. Truncation only ever shrinks the file, so `actual < expected` is
+// the corruption signal and CRLF expansion (`actual > expected`) passes
+// silently. Do NOT tighten this to `!==` — that false-positives on every
+// Windows install. This block reads only fs/path/url (never the possibly-corrupt
+// bundle) and, if build-meta is missing or unreadable, skips the check and falls
+// through to the import rather than blocking a valid bundle.
+try {
+  const expected = JSON.parse(readFileSync(metaPath, 'utf8')).output_bytes;
+  const actual = statSync(cliPath).size;
+  if (Number.isFinite(expected) && actual < expected) {
+    process.stderr.write(
+      `mixshift: bundle integrity check failed. dist/cli.js is ${actual} bytes but ` +
+        `should be at least ${expected}; the plugin file was likely truncated during sync.\n` +
+        `Fix: re-sync the plugin (in Cowork, uninstall and reinstall "mixshift-ai" from ` +
+        `the plugin directory, then start a new conversation). If it persists, run ` +
+        `\`mixshift doctor\` from a clean install or report it at mixshift.ai.\n`,
+    );
+    process.exit(1);
+  }
+} catch {
+  // build-meta.json absent/unreadable/malformed — skip the check, let the import
+  // proceed. A genuinely broken bundle still fails loudly at import time as before.
+}
+
 await import(pathToFileURL(cliPath).href);
