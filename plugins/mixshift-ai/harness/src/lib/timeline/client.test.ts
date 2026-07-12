@@ -233,6 +233,89 @@ describe('postEvent', () => {
 });
 
 // ---------------------------------------------------------------------------
+// corroborateEvent
+// ---------------------------------------------------------------------------
+
+describe('corroborateEvent', () => {
+  it('POSTs to the corroborate path, sends the input, and parses event + corroboration_id', async () => {
+    const event = sampleEvent({
+      id: 'evt_7',
+      category: 'launch',
+      status: 'corroborated',
+      end_ts: '2026-07-20T00:00:00.000Z',
+    });
+    const { fetchImpl, calls } = makeFetch(() =>
+      jsonResponse(200, { ok: true, event, corroboration_id: 'corr_9' }),
+    );
+    const client = createTimelineClient({ dataDirOverride: testDir, fetchImpl });
+
+    const input = {
+      status: 'corroborated' as const,
+      end_ts: '2026-07-20T00:00:00.000Z',
+      note: 'second anomaly confirms',
+      evidence: { metric: 'units' },
+    };
+    const result = await client.corroborateEvent('evt_7', input);
+    expect(result).toEqual({ ok: true, event, corroboration_id: 'corr_9' });
+
+    expect(calls[0]!.url).toBe(`${API_BASE}/api/timeline/event/evt_7/corroborate`);
+    expect(calls[0]!.init?.method).toBe('POST');
+    expect(
+      (calls[0]!.init?.headers as Record<string, string>)['Content-Type'],
+    ).toBe('application/json');
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual(input);
+  });
+
+  it('url-encodes the event id in the path', async () => {
+    const { fetchImpl, calls } = makeFetch(() =>
+      jsonResponse(200, { ok: true, event: sampleEvent(), corroboration_id: 'c1' }),
+    );
+    const client = createTimelineClient({ dataDirOverride: testDir, fetchImpl });
+    await client.corroborateEvent('a/b', { status: 'disputed' });
+    expect(calls[0]!.url).toBe(`${API_BASE}/api/timeline/event/a%2Fb/corroborate`);
+  });
+
+  it('maps the not_found / bad_params / insufficient_scope envelopes', async () => {
+    const cases: Array<[number, string]> = [
+      [404, 'not_found'],
+      [400, 'bad_params'],
+      [403, 'insufficient_scope'],
+    ];
+    for (const [status, kind] of cases) {
+      const { fetchImpl } = makeFetch(() =>
+        jsonResponse(status, { ok: false, kind, friendly: `err: ${kind}` }),
+      );
+      const client = createTimelineClient({ dataDirOverride: testDir, fetchImpl });
+      const result = await client.corroborateEvent('evt_1', { status: 'corroborated' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe(kind);
+        expect(result.friendly).toBe(`err: ${kind}`);
+      }
+    }
+  });
+
+  it('treats a 200 missing corroboration_id as an unrecognized envelope', async () => {
+    const { fetchImpl } = makeFetch(() =>
+      jsonResponse(200, { ok: true, event: sampleEvent() }),
+    );
+    const client = createTimelineClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.corroborateEvent('evt_1', { status: 'corroborated' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('classifies a thrown fetch error as host_unreachable', async () => {
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    const client = createTimelineClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.corroborateEvent('evt_1', { status: 'corroborated' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.kind).toBe('host_unreachable');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // listAllEvents (cursor following)
 // ---------------------------------------------------------------------------
 
@@ -254,6 +337,12 @@ function pagedClient(pages: WireTimelineEvent[][]): {
       };
     },
     postEvent: async () => ({ ok: true, id: 'x' }),
+    corroborateEvent: async () => ({
+      ok: false,
+      kind: 'unknown',
+      message: 'unused',
+      friendly: 'unused',
+    }),
   };
   return { client, cursorsSeen };
 }
@@ -304,6 +393,12 @@ describe('listAllEvents', () => {
         };
       },
       postEvent: async () => ({ ok: true, id: 'x' }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const result = await listAllEvents(client, {});
     expect(result.ok).toBe(false);
@@ -313,6 +408,12 @@ describe('listAllEvents', () => {
     const client: TimelineClient = {
       listEvents: async () => ({ ok: true, events: [], next_cursor: 'again' }),
       postEvent: async () => ({ ok: true, id: 'x' }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const result = await listAllEvents(client, {});
     expect(result.ok).toBe(true);

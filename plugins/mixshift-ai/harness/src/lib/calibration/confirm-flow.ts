@@ -70,6 +70,7 @@ import {
   brandFieldKeyForContextPath,
 } from '../brain/read.js';
 import { appendCaptureDiscoveries } from '../brain/discoveries.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -392,6 +393,10 @@ export async function applyConfirmation(
       // best-effort: a discovery-write failure never fails the save
     });
   }
+
+  // Auto-publish the saved skill config block to the org store (best-effort,
+  // bounded, non-throwing — the local save above is the durable result).
+  await pushAfterWrite(payload.brand_slug, { dataDirOverride: opts.dataDirOverride });
 
   return {
     status: 'ok',

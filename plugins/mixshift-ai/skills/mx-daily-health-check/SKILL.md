@@ -310,6 +310,26 @@ If a structural event explains a breach, keep the status flag but label it expli
 
 **Hero-SKU protection:** Any item in `hero_skus` (from Step 0.5; default empty) is excluded from RED/YELLOW recommendations to reduce bids or pause. It can still surface informationally with its metrics — protection downgrades the recommendation, it does not hide the row. With an empty list, standard rules apply to every SKU.
 
+**Propose a stake for a manager-known cause (ask, never auto-write).** When an anomaly has a plausible cause an account manager would recognize (a promo that ran, a stockout, a price test, a creative refresh) but no structural event on record explains it, offer to record it on the brand timeline. Never write one silently; this is a labeled hypothesis, consistent with the Causal Integrity rules below, not an asserted cause.
+
+- First check whether an OPEN stake already covers the window. If the anomaly matches one, corroborate it instead of adding a duplicate:
+
+  ```bash
+  mixshift timeline corroborate <event-id> --status corroborated --note "<what today's data shows>"
+  ```
+  `--status` is one of `unverified` | `corroborated` | `disputed` | `no_effect`; add `--end <ISO>` to close a range that has since cleared, or `--evidence '<json-object>'` to attach a metric snapshot. At least one of `--status` / `--end` / `--evidence` is required.
+
+- If nothing on record explains it, propose (do not run until the user confirms) a SUGGESTED stake:
+
+  ```bash
+  mixshift timeline add --brand <brand-slug> \
+    --kind structural.<what> --category <best-fit> \
+    --source suggested \
+    --interpretation "<the proposed cause>" \
+    --ts <anomaly-date-ISO> [--end <ISO>] [--affects marketplace:US]
+  ```
+  `--source suggested` marks it as a proposal from analysis, not an owner-declared fact, so the manager can later corroborate or dispute it. `--category` is the typed enum (`promotional_window`, `stockout`, `price_test`, `launch`, `content_change`, `strategy_change`, `media_spike`, `platform_external`, and the recurring/`brand_migration`/`portfolio_decision` variants). `--interpretation` is required.
+
 ### Step 8: Compute Summary Table
 
 Build the core summary table with these columns:
@@ -446,6 +466,7 @@ Before delivering output:
 - [ ] Prior run format anchored (section count, narrative length, column format, naming consistency)
 - [ ] Prior day trend comparisons use fresh DB queries on settled dates, not prior run HTML captures
 - [ ] Data lag check completed (campaign vs. keyword spend difference noted)
+- [ ] Anomaly with a manager-known cause: proposed a suggested stake or corroborated the matching open stake (Step 7); never auto-wrote one
 
 ### Step 13: Deliver Output
 

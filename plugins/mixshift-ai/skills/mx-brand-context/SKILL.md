@@ -568,7 +568,8 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 ## Next Steps After Brand Setup
 
 1. The operator reviews `brand-context.html` (link from the Bottom Line). Missing-context buckets show what still needs brand input; runtime-input cards show artifacts supplied manually when downstream skills run.
-2. After approval, downstream skills can run: Daily Health Check → Runaway Spend Check → Keyword Bid Health → Monthly Performance Report → others.
+2. Share it with your team: run `mixshift context push --brand <brand-slug>` once to publish this brand context to your MixShift org store so teammates work from the same brand setup instead of rebuilding it, after which your later edits keep the shared copy fresh automatically. (This is the build then share then auto-enrich path; until you publish, the brand context lives only on this machine.)
+3. After approval, downstream skills can run: Daily Health Check → Runaway Spend Check → Keyword Bid Health → Monthly Performance Report → others.
 
 ---
 

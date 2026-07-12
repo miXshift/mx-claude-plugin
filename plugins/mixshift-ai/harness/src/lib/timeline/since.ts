@@ -1,11 +1,15 @@
 /**
- * `--since` parsing for `mixshift timeline list`.
+ * Relative/ISO time-window parsing for `mixshift timeline list` (`--since`
+ * and `--until`).
  *
  * Accepts either an ISO-8601 timestamp/date ('2026-07-01',
  * '2026-07-01T12:00:00Z') passed through verbatim semantics, or a simple
  * relative form: `<N>h` (hours), `<N>d` (days), `<N>w` (weeks) resolved
  * against the current clock. Anything else is a parse error the command
  * layer surfaces to the user.
+ *
+ * `flag` only labels the error messages (defaults to '--since'); the parse
+ * rules are identical for both edges, so `--until` reuses this verbatim.
  */
 
 export type ParseSinceResult =
@@ -20,10 +24,14 @@ const UNIT_MS: Record<string, number> = {
   w: 7 * 24 * 60 * 60 * 1000,
 };
 
-export function parseSince(input: string, now: Date = new Date()): ParseSinceResult {
+export function parseSince(
+  input: string,
+  now: Date = new Date(),
+  flag: string = '--since',
+): ParseSinceResult {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return { ok: false, message: '--since must not be empty' };
+    return { ok: false, message: `${flag} must not be empty` };
   }
 
   const rel = RELATIVE_RE.exec(trimmed);
@@ -31,7 +39,7 @@ export function parseSince(input: string, now: Date = new Date()): ParseSinceRes
     const n = Number(rel[1]);
     const unit = rel[2]!.toLowerCase();
     if (!Number.isFinite(n) || n <= 0) {
-      return { ok: false, message: `invalid relative --since '${input}'` };
+      return { ok: false, message: `invalid relative ${flag} '${input}'` };
     }
     // ECMAScript time values are only valid within +/-8.64e15 ms of the
     // epoch; beyond that Date#toISOString throws RangeError. A huge N
@@ -40,7 +48,7 @@ export function parseSince(input: string, now: Date = new Date()): ParseSinceRes
     if (!Number.isFinite(t) || Math.abs(t) > 8.64e15) {
       return {
         ok: false,
-        message: `--since '${input}' is too large to be a real time window`,
+        message: `${flag} '${input}' is too large to be a real time window`,
       };
     }
     return { ok: true, iso: new Date(t).toISOString() };
@@ -51,7 +59,7 @@ export function parseSince(input: string, now: Date = new Date()): ParseSinceRes
     return {
       ok: false,
       message:
-        `invalid --since '${input}': pass an ISO timestamp (2026-07-01, ` +
+        `invalid ${flag} '${input}': pass an ISO timestamp (2026-07-01, ` +
         `2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`,
     };
   }

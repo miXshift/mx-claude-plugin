@@ -41,6 +41,7 @@ import { dirname } from 'node:path';
 import { stringify as stringifyYaml, parse as parseYaml } from 'yaml';
 import { contextPath } from '../paths/resolve.js';
 import { setNested } from '../utils/set-nested.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 import {
   type CalibrationField,
   parseFieldInput,
@@ -321,6 +322,9 @@ export async function applyBrandConfigEdit(
     };
   }
   await writeContextFile(path, ctxObj);
+  // Auto-publish the edited context.yaml to the org store (best-effort,
+  // bounded, non-throwing — the local write above is the durable result).
+  await pushAfterWrite(payload.brand_slug, { dataDirOverride: opts.dataDirOverride });
   return {
     status: 'ok',
     updated_context: ctxObj,

@@ -72,6 +72,14 @@ export function registerContextCommands(program: Command): void {
           (n, r) => n + r.docs.filter((d) => d.verdict === 'server-deleted').length,
           0,
         );
+        // 'local-only' = a doc that exists here but was never seen on the
+        // server: local work not yet accruing to the team. Distinct from
+        // 'local-ahead' (already shared, just edited since) — that one IS in
+        // the org store and pushes on the next sync, so it is not "unshared".
+        const unshared = results.reduce(
+          (n, r) => n + r.docs.filter((d) => d.verdict === 'local-only').length,
+          0,
+        );
 
         if (root.json) {
           process.stdout.write(
@@ -80,6 +88,7 @@ export function registerContextCommands(program: Command): void {
                 status: 'ok',
                 brands: results.map((r) => ({ brand: r.brand, docs: r.docs })),
                 conflicts,
+                unshared,
               },
               null,
               2,
@@ -119,6 +128,19 @@ export function registerContextCommands(program: Command): void {
               'the deletion, or recreate it with `mixshift context push --brand <slug> --force`.',
           );
           lines.push('');
+        }
+        // Unshared work gets a per-brand CTA (the push command is brand-scoped,
+        // so name the slug) so "am I accruing to the team?" is answerable at a
+        // glance and the commit path is always in reach.
+        for (const r of results) {
+          const localOnly = r.docs.filter((d) => d.verdict === 'local-only').length;
+          if (localOnly > 0) {
+            lines.push(
+              `${localOnly} doc(s) not yet shared with your team: run ` +
+                `\`mixshift context push --brand ${r.brand}\` to commit them.`,
+            );
+            lines.push('');
+          }
         }
         process.stdout.write(lines.join('\n') + '\n');
         return;

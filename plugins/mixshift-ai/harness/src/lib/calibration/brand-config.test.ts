@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   readBrandConfig,
@@ -11,6 +11,18 @@ import {
   validateAgainstManifest,
 } from './brand-config.js';
 import type { CalibrationManifest } from './manifest-schema.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
+import { contextSyncStatePath, credentialsPath } from '../paths/resolve.js';
+
+// Wrap the auto-publish hook in a spy that still delegates to the REAL
+// implementation, so the seam test can assert the call AND exercise the real
+// (env-injected, participant-gated, non-throwing) behavior. Every other test
+// in this file runs under the default VITEST guard, so their pushAfterWrite
+// calls stay a disabled no-op.
+vi.mock('../context-sync/push-after-write.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../context-sync/push-after-write.js')>();
+  return { ...actual, pushAfterWrite: vi.fn(actual.pushAfterWrite) };
+});
 
 const sampleManifest: CalibrationManifest = {
   schema_version: 1,
@@ -262,5 +274,94 @@ describe('validateAgainstManifest', () => {
     );
     expect(r.ok).toBe(false);
     expect(r.issues.some((i) => i.field === 'hero_skus')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-publish seam wiring (resetSkillConfig → pushAfterWrite)
+// ---------------------------------------------------------------------------
+
+describe('resetSkillConfig auto-publish seam (env-injected, participant-gated)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.mocked(pushAfterWrite).mockClear();
+  });
+
+  async function writeCredentials(): Promise<void> {
+    const path = credentialsPath(testDir);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({
+        schema_version: 2,
+        created_at: '2026-07-01T00:00:00.000Z',
+        datahub: {
+          api_base: 'https://mcp.example.test',
+          access_token: 'test-token',
+          refresh_token: 'refresh-token',
+          expires_at: '2099-01-01T00:00:00.000Z',
+          refresh_expires_at: '2099-01-01T00:00:00.000Z',
+          user_id: 'u1',
+          email: 'ops@example.com',
+          person_label: 'sam@example.com',
+          device_label: 'test-device',
+          client_id: 'mx-claude-plugin',
+        },
+      }),
+      'utf8',
+    );
+  }
+
+  /** A ledger with a tracked doc → 'summit' clears the participant gate. */
+  async function writeLedgerWithDoc(): Promise<void> {
+    const path = contextSyncStatePath('summit', testDir);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({
+        schema: 2,
+        docs: {
+          config: {
+            server_revision: 1,
+            last_synced_hash: 'a'.repeat(64),
+            last_synced_at: '2026-07-01T00:00:00.000Z',
+          },
+        },
+      }),
+      'utf8',
+    );
+  }
+
+  it('calls pushAfterWrite with the brand slug and swallows a failed publish (the reset still succeeds)', async () => {
+    // Seed two blocks while the VITEST guard is still active — those publishes
+    // are disabled no-ops, so they don't muddy the assertion below.
+    await saveSkillConfig('summit', 'skill-a', { a: 1 }, testDir);
+    await saveSkillConfig('summit', 'skill-b', { b: 2 }, testDir);
+    vi.mocked(pushAfterWrite).mockClear();
+
+    // Now bypass the guard so the REAL hook runs for the reset.
+    vi.stubEnv('VITEST', '');
+    await writeCredentials(); // the client can resolve api_base + a valid token
+    await writeLedgerWithDoc(); // participant gate: brand is in the org store
+    // A hard network failure → pushAfterWrite returns {failed}; the seam must
+    // NOT throw and the local reset must remain durable.
+    vi.stubGlobal(
+      'fetch',
+      (async () => {
+        throw new TypeError('fetch failed');
+      }) as typeof fetch,
+    );
+
+    const result = await resetSkillConfig('summit', 'skill-a', testDir);
+
+    expect(result.existed).toBe(true);
+    expect(vi.mocked(pushAfterWrite)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(pushAfterWrite)).toHaveBeenCalledWith('summit', {
+      dataDirOverride: testDir,
+    });
+    // The local reset is durable regardless of the failed publish.
+    const { config } = await readBrandConfig('summit', testDir);
+    expect(config).toEqual({ 'skill-b': { b: 2 } });
   });
 });

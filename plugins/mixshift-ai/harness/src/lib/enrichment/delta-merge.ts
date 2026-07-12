@@ -32,6 +32,7 @@ import { dirname } from 'node:path';
 import { Document, parseDocument } from 'yaml';
 import { contextPath } from '../paths/resolve.js';
 import { loadBrain } from '../brain/read.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 import type { BrainCaptureRateCalibration } from '../brain/schema.js';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +111,10 @@ export async function mergeEnrichmentIntoContext(
 
   // 5. Atomic write
   await writeYamlAtomic(ctxPath, doc.toString({ indent: 2, lineWidth: 0 }));
+
+  // Auto-publish the patched context.yaml to the org store (best-effort,
+  // bounded, non-throwing — the local write above is the durable result).
+  await pushAfterWrite(brandSlug, { dataDirOverride });
 
   return {
     status: 'ok',

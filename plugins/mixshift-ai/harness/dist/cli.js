@@ -64307,6 +64307,7 @@ var init_events = __esm({
       // (timeline events are the customer's business record, not telemetry).
       TimelineListed: "timeline.listed",
       TimelineEventAdded: "timeline.event_added",
+      TimelineEventCorroborated: "timeline.event_corroborated",
       // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
       WarmStartServed: "warm_start.served"
     };
@@ -66169,11 +66170,1033 @@ function countBy(arr) {
 }
 
 // src/lib/clients/bootstrap.ts
-var import_yaml6 = __toESM(require_dist(), 1);
-import { mkdir as mkdir4, rename as rename3, writeFile as writeFile4, access } from "node:fs/promises";
-import { dirname as dirname6 } from "node:path";
+var import_yaml7 = __toESM(require_dist(), 1);
+import { mkdir as mkdir6, rename as rename5, writeFile as writeFile6, access } from "node:fs/promises";
+import { dirname as dirname8 } from "node:path";
 init_format_error();
 init_resolve();
+
+// src/lib/context-sync/engine.ts
+var import_yaml6 = __toESM(require_dist(), 1);
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { mkdir as mkdir5, rename as rename4, unlink as unlink3, writeFile as writeFile5 } from "node:fs/promises";
+import { basename as basename2, dirname as dirname7, join as join8 } from "node:path";
+
+// src/lib/context-sync/client.ts
+init_credentials();
+var TEXT_DOC_TIMEOUT_MS = 3e4;
+var CORPUS_TIMEOUT_MS = 12e4;
+var ASSIGNMENT_TIMEOUT_MS = 2e3;
+var UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
+var ContextSyncNetworkError = class extends Error {
+  constructor(msg2) {
+    super(msg2);
+    this.name = "ContextSyncNetworkError";
+  }
+};
+function createContextSyncClient(options = {}) {
+  const { dataDirOverride } = options;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  async function authedRequest(method, path2, body, timeoutMs) {
+    const apiBase = await resolveApiBase(dataDirOverride);
+    const doFetch = async (bearer) => {
+      try {
+        return await fetchImpl(`${apiBase}${path2}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            ...body !== void 0 ? { "Content-Type": "application/json" } : {}
+          },
+          ...body !== void 0 ? { body: JSON.stringify(body) } : {},
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ContextSyncNetworkError(message);
+      }
+    };
+    let token = await getValidAccessToken(dataDirOverride);
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      token = await getValidAccessToken(dataDirOverride, true);
+      res = await doFetch(token);
+      if (res.status === 401) {
+        throw new Error(
+          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
+        );
+      }
+    }
+    return res;
+  }
+  return {
+    async fetchManifest() {
+      try {
+        const res = await authedRequest(
+          "GET",
+          "/api/context/manifest",
+          void 0,
+          TEXT_DOC_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope(res);
+        if (json2.ok === true && Array.isArray(json2.brands)) {
+          return { ok: true, brands: json2.brands };
+        }
+        return failureFromEnvelope(json2, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
+    async fetchDoc(brandSlug, docType, corpusName) {
+      try {
+        const params = new URLSearchParams({ brand: brandSlug, type: docType });
+        if (corpusName !== void 0) params.set("name", corpusName);
+        const timeoutMs = docType === "corpus" ? CORPUS_TIMEOUT_MS : TEXT_DOC_TIMEOUT_MS;
+        const res = await authedRequest(
+          "GET",
+          `/api/context/doc?${params.toString()}`,
+          void 0,
+          timeoutMs
+        );
+        const json2 = await parseEnvelope(res);
+        if (json2.ok === true && typeof json2.doc === "object" && json2.doc !== null) {
+          return { ok: true, doc: json2.doc };
+        }
+        return failureFromEnvelope(json2, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
+    async putDoc(input) {
+      try {
+        const timeoutMs = input.doc_type === "corpus" ? CORPUS_TIMEOUT_MS : TEXT_DOC_TIMEOUT_MS;
+        const res = await authedRequest("PUT", "/api/context/doc", input, timeoutMs);
+        const json2 = await parseEnvelope(res);
+        if (json2.ok === true && (json2.status === "created" || json2.status === "updated" || json2.status === "noop") && typeof json2.revision === "number") {
+          return { ok: true, status: json2.status, revision: json2.revision };
+        }
+        return failureFromEnvelope(json2, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
+    async putAssignment(input) {
+      try {
+        const res = await authedRequest(
+          "PUT",
+          "/api/context/assignments",
+          input,
+          ASSIGNMENT_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope(res);
+        if (json2.ok === true) return { ok: true };
+        return failureFromEnvelope(json2, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    }
+  };
+}
+async function resolveApiBase(dataDirOverride) {
+  const { credentials } = await loadCredentials(dataDirOverride);
+  const apiBase = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+  if (!apiBase) {
+    throw new Error(
+      "No credentials found. Run `mixshift auth login` to sign in, or `mixshift auth service-setup` to configure a service credential for unattended runs."
+    );
+  }
+  return apiBase;
+}
+async function parseEnvelope(res) {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+var KNOWN_FAILURE_KINDS = /* @__PURE__ */ new Set([
+  "not_found",
+  "revision_conflict",
+  "insufficient_scope",
+  "bad_params",
+  "too_large"
+]);
+function failureFromEnvelope(json2, httpStatus) {
+  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS.has(json2.kind) ? json2.kind : "unknown";
+  const friendly = json2.friendly ?? json2.message ?? `Context service returned HTTP ${httpStatus}.`;
+  return {
+    ok: false,
+    kind,
+    message: json2.message ?? friendly,
+    friendly,
+    ...kind === "revision_conflict" && json2.server ? { server: json2.server } : {}
+  };
+}
+function failureFromException(err) {
+  if (err instanceof ContextSyncNetworkError) {
+    return {
+      ok: false,
+      kind: "host_unreachable",
+      message: err.message,
+      friendly: UNREACHABLE_FRIENDLY
+    };
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return { ok: false, kind: "unknown", message, friendly: message };
+}
+
+// src/lib/context-sync/local.ts
+init_resolve();
+import { createHash } from "node:crypto";
+import { readdir, readFile as readFile8 } from "node:fs/promises";
+import { basename, join as join7 } from "node:path";
+function hashContent(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+async function listLocalBrands(dataDirOverride) {
+  try {
+    const entries = await readdir(clientsDir(dataDirOverride), { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  } catch (err) {
+    if (isFileNotFoundError7(err)) return [];
+    throw err;
+  }
+}
+var TEXT_DOCS = [
+  { docType: "context", pathFor: contextPath },
+  { docType: "narrative", pathFor: narrativePath },
+  { docType: "brain", pathFor: brainPath },
+  { docType: "config", pathFor: brandConfigPath }
+];
+async function readLocalDocs(brandSlug, dataDirOverride) {
+  const docs = [];
+  for (const { docType, pathFor } of TEXT_DOCS) {
+    const path2 = pathFor(brandSlug, dataDirOverride);
+    const content = await readFileIfPresent(path2);
+    if (content === null) continue;
+    docs.push({ key: docType, docType, path: path2, content, hash: hashContent(content) });
+  }
+  const dir = corporaDir(brandSlug, dataDirOverride);
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (isFileNotFoundError7(err)) return docs;
+    throw err;
+  }
+  const corpusNames = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
+  for (const name of corpusNames) {
+    const path2 = join7(dir, name);
+    const content = await readFile8(path2, "utf8");
+    docs.push({
+      key: corpusKey(name),
+      docType: "corpus",
+      corpusName: name,
+      path: path2,
+      content,
+      hash: hashContent(content)
+    });
+  }
+  return docs;
+}
+function corpusKey(corpusName) {
+  return `corpus/${corpusName}`;
+}
+function isSafeCorpusName(name) {
+  return name.length > 0 && name.length <= 128 && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes("..") && !name.startsWith(".") && basename(name) === name;
+}
+function isSafeBrandSlug(slug) {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) && !slug.includes("..") && basename(slug) === slug;
+}
+function localPathForKey(brandSlug, key, dataDirOverride) {
+  switch (key) {
+    case "context":
+      return contextPath(brandSlug, dataDirOverride);
+    case "narrative":
+      return narrativePath(brandSlug, dataDirOverride);
+    case "brain":
+      return brainPath(brandSlug, dataDirOverride);
+    case "config":
+      return brandConfigPath(brandSlug, dataDirOverride);
+    default: {
+      const corpusName = key.slice("corpus/".length);
+      if (!isSafeCorpusName(corpusName)) {
+        throw new Error(
+          `unsafe corpus name ${JSON.stringify(corpusName)} \u2014 refusing to resolve a local path`
+        );
+      }
+      return join7(corporaDir(brandSlug, dataDirOverride), corpusName);
+    }
+  }
+}
+async function brandDirExists(brandSlug, dataDirOverride) {
+  try {
+    await readdir(brandDir(brandSlug, dataDirOverride));
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readFileIfPresent(path2) {
+  try {
+    return await readFile8(path2, "utf8");
+  } catch (err) {
+    if (isFileNotFoundError7(err)) return null;
+    throw err;
+  }
+}
+function isFileNotFoundError7(err) {
+  return typeof err === "object" && err !== null && "code" in err && (err.code === "ENOENT" || err.code === "ENOTDIR");
+}
+
+// src/lib/context-sync/state.ts
+init_credentials();
+init_resolve();
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir4, readFile as readFile9, rename as rename3, unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname6 } from "node:path";
+function emptyState(identity) {
+  return { schema: 2, ...identity ? { identity } : {}, docs: {} };
+}
+async function resolveLedgerIdentity(dataDirOverride) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    if (credentials?.datahub) {
+      return `${credentials.datahub.api_base}#${credentials.datahub.user_id}`;
+    }
+    if (credentials?.service) {
+      return `${credentials.service.api_base}#${credentials.service.client_id}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+async function loadState(brandSlug, dataDirOverride, currentIdentity) {
+  try {
+    const raw = await readFile9(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || parsed.schema !== 1 && parsed.schema !== 2 || typeof parsed.docs !== "object" || parsed.docs === null) {
+      return emptyState(currentIdentity);
+    }
+    const storedAutosyncAt = parsed.last_autosync_at;
+    const lastAutosyncAt = typeof storedAutosyncAt === "string" ? storedAutosyncAt : void 0;
+    const storedIdentity = parsed.identity;
+    if (typeof storedIdentity === "string" && typeof currentIdentity === "string" && storedIdentity !== currentIdentity) {
+      return {
+        ...emptyState(currentIdentity),
+        ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {}
+      };
+    }
+    const docs = {};
+    for (const [key, value] of Object.entries(parsed.docs)) {
+      if (typeof value === "object" && value !== null && typeof value.server_revision === "number" && typeof value.last_synced_hash === "string" && typeof value.last_synced_at === "string") {
+        docs[key] = {
+          server_revision: value.server_revision,
+          last_synced_hash: value.last_synced_hash,
+          last_synced_at: value.last_synced_at
+        };
+      }
+    }
+    const identity = currentIdentity ?? (typeof storedIdentity === "string" ? storedIdentity : void 0);
+    return {
+      schema: 2,
+      ...identity ? { identity } : {},
+      ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {},
+      docs
+    };
+  } catch {
+    return emptyState(currentIdentity);
+  }
+}
+async function saveState(brandSlug, state, dataDirOverride) {
+  try {
+    const path2 = contextSyncStatePath(brandSlug, dataDirOverride);
+    await mkdir4(dirname6(path2), { recursive: true });
+    const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
+    try {
+      await writeFile4(tmpPath, JSON.stringify(state, null, 2) + "\n", "utf8");
+      await rename3(tmpPath, path2);
+      return true;
+    } catch (err) {
+      await unlink2(tmpPath).catch(() => {
+      });
+      throw err;
+    }
+  } catch {
+    return false;
+  }
+}
+
+// src/lib/context-sync/engine.ts
+var KNOWN_DOC_TYPES = /* @__PURE__ */ new Set([
+  "context",
+  "narrative",
+  "brain",
+  "config",
+  "corpus"
+]);
+function verdictFor(local, manifestDoc, state) {
+  if (!local && !manifestDoc) return null;
+  if (local && !manifestDoc) return state ? "server-deleted" : "local-only";
+  if (!local && manifestDoc) return "server-only";
+  if (local.hash === manifestDoc.content_hash) return "in-sync";
+  if (!state) return "diverged";
+  const locallyModified = local.hash !== state.last_synced_hash;
+  const serverMoved = manifestDoc.content_hash !== state.last_synced_hash;
+  if (locallyModified && serverMoved) return "diverged";
+  if (locallyModified) return "local-ahead";
+  if (serverMoved) return "server-ahead";
+  return "diverged";
+}
+var KEY_ORDER = { context: 0, narrative: 1, brain: 2, config: 3 };
+function compareKeys(a, b) {
+  const ra = KEY_ORDER[a] ?? 4;
+  const rb = KEY_ORDER[b] ?? 4;
+  if (ra !== rb) return ra - rb;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+async function buildDocPairs(brandSlug, options) {
+  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
+  let manifestBrands = options.manifest;
+  if (!manifestBrands) {
+    const manifest = await client.fetchManifest();
+    if (!manifest.ok) return { ok: false, message: manifest.friendly };
+    manifestBrands = manifest.brands;
+  }
+  const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
+  const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
+  const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
+  const state = await loadState(brandSlug, options.dataDirOverride, identity);
+  const localByKey = new Map(localDocs.map((d) => [d.key, d]));
+  const manifestByKey = /* @__PURE__ */ new Map();
+  const issues = [];
+  for (const d of manifestBrand?.docs ?? []) {
+    if (!KNOWN_DOC_TYPES.has(d.doc_type)) {
+      issues.push({
+        key: d.doc_type,
+        docType: d.doc_type,
+        action: "skipped",
+        detail: `unknown doc_type '${String(d.doc_type)}' in the org manifest \u2014 update the plugin to sync it`
+      });
+      continue;
+    }
+    if (d.doc_type === "corpus") {
+      if (d.corpus_name === void 0) continue;
+      if (!isSafeCorpusName(d.corpus_name)) {
+        issues.push({
+          key: corpusKey(d.corpus_name),
+          docType: "corpus",
+          corpusName: d.corpus_name,
+          action: "error",
+          detail: `unsafe corpus name ${JSON.stringify(d.corpus_name)} in the org manifest \u2014 refusing to sync it; rename it server-side`
+        });
+        continue;
+      }
+      manifestByKey.set(corpusKey(d.corpus_name), d);
+      continue;
+    }
+    manifestByKey.set(d.doc_type, d);
+  }
+  let stateDirty = false;
+  for (const key of Object.keys(state.docs)) {
+    if (!localByKey.has(key) && !manifestByKey.has(key)) {
+      delete state.docs[key];
+      stateDirty = true;
+    }
+  }
+  const keys = [.../* @__PURE__ */ new Set([...localByKey.keys(), ...manifestByKey.keys()])].sort(
+    compareKeys
+  );
+  const byFoldedKey = /* @__PURE__ */ new Map();
+  for (const key of keys) {
+    const folded = key.normalize("NFC").toLowerCase();
+    const group = byFoldedKey.get(folded);
+    if (group) group.push(key);
+    else byFoldedKey.set(folded, [key]);
+  }
+  const pairs = [];
+  for (const key of keys) {
+    const local = localByKey.get(key);
+    const manifestDoc = manifestByKey.get(key);
+    const docState = state.docs[key];
+    const verdict = verdictFor(local, manifestDoc, docState);
+    if (verdict === null) continue;
+    const docType = local?.docType ?? manifestDoc.doc_type;
+    const corpusName = local?.corpusName ?? manifestDoc?.corpus_name;
+    const collisionGroup = byFoldedKey.get(key.normalize("NFC").toLowerCase());
+    pairs.push({
+      key,
+      docType,
+      ...corpusName !== void 0 ? { corpusName } : {},
+      ...local ? { local } : {},
+      ...manifestDoc ? { manifestDoc } : {},
+      ...docState ? { state: docState } : {},
+      verdict,
+      ...collisionGroup.length > 1 ? { collision: collisionGroup } : {}
+    });
+  }
+  return { ok: true, pairs, issues, state, stateDirty };
+}
+async function computeStatus(brandSlug, options = {}) {
+  const built = await buildDocPairs(brandSlug, options);
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  const docs = built.pairs.map((p) => ({
+    key: p.key,
+    docType: p.docType,
+    ...p.corpusName !== void 0 ? { corpusName: p.corpusName } : {},
+    verdict: p.verdict,
+    locallyModified: Boolean(
+      p.local && (!p.state || p.local.hash !== p.state.last_synced_hash)
+    ),
+    serverRevision: p.manifestDoc?.revision ?? null,
+    syncedRevision: p.state?.server_revision ?? null,
+    ...p.manifestDoc ? {
+      serverUpdatedAt: p.manifestDoc.updated_at,
+      serverUpdatedBy: p.manifestDoc.updated_by_actor
+    } : {}
+  }));
+  return { ok: true, brand: brandSlug, docs };
+}
+function validateDocContent(docType, content) {
+  if (docType === "narrative" || docType === "corpus") return { ok: true };
+  let parsed;
+  try {
+    parsed = (0, import_yaml6.parse)(content);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, detail: `malformed YAML: ${message}` };
+  }
+  if (docType !== "context") return { ok: true };
+  const result = contextSchema.safeParse(normalizeLegacyTacosFields(parsed));
+  if (!result.success) {
+    const issues = result.error.issues.slice(0, 3).map((i) => `${i.path.length > 0 ? i.path.join(".") : "(root)"}: ${i.message}`).join("; ");
+    const more = result.error.issues.length > 3 ? "; ..." : "";
+    return { ok: false, detail: `schema violation: ${issues}${more}` };
+  }
+  return { ok: true };
+}
+function adoptInSyncState(pair, state) {
+  if (!pair.local || !pair.manifestDoc) return false;
+  const cur = state.docs[pair.key];
+  if (cur && cur.server_revision === pair.manifestDoc.revision && cur.last_synced_hash === pair.local.hash) {
+    return false;
+  }
+  state.docs[pair.key] = {
+    server_revision: pair.manifestDoc.revision,
+    last_synced_hash: pair.local.hash,
+    last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  return true;
+}
+function conflictInstructions(brandSlug) {
+  return `resolve with \`mixshift context pull --brand ${brandSlug} --force\` (take the server version) or \`mixshift context push --brand ${brandSlug} --force\` (overwrite it)`;
+}
+function serverDeletedDetail(brandSlug) {
+  return `deleted from the org store \u2014 delete the local file to accept the deletion, or recreate it with \`mixshift context push --brand ${brandSlug} --force\``;
+}
+function collisionReport(pair) {
+  return reportFor(
+    pair,
+    "error",
+    `case/unicode collision: ${(pair.collision ?? []).join(", ")} resolve to the same file on case-insensitive filesystems \u2014 resolve server-side or rename locally; not synced`
+  );
+}
+function reportFor(pair, action, detail) {
+  return {
+    key: pair.key,
+    docType: pair.docType,
+    ...pair.corpusName !== void 0 ? { corpusName: pair.corpusName } : {},
+    action,
+    ...detail !== void 0 ? { detail } : {}
+  };
+}
+async function writeFileAtomic(path2, content) {
+  const dir = dirname7(path2);
+  await mkdir5(dir, { recursive: true });
+  const tmpPath = join8(
+    dir,
+    `.${basename2(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
+  );
+  try {
+    await writeFile5(tmpPath, content, "utf8");
+    await rename4(tmpPath, path2);
+  } catch (err) {
+    await unlink3(tmpPath).catch(() => {
+    });
+    throw err;
+  }
+}
+async function pullOneDoc(brandSlug, pair, client, dataDirOverride) {
+  const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
+  if (!fetched.ok) {
+    return { report: reportFor(pair, "error", `fetch failed: ${fetched.friendly}`) };
+  }
+  const { doc } = fetched;
+  const valid = validateDocContent(pair.docType, doc.content);
+  if (!valid.ok) {
+    return {
+      report: reportFor(
+        pair,
+        "error",
+        `server copy is invalid (${valid.detail}) \u2014 local file untouched`
+      )
+    };
+  }
+  if (pair.docType === "corpus" && !isSafeCorpusName(pair.corpusName ?? "")) {
+    return {
+      report: reportFor(
+        pair,
+        "error",
+        `unsafe corpus name ${JSON.stringify(pair.corpusName ?? "")} \u2014 refusing to write it locally`
+      )
+    };
+  }
+  try {
+    const path2 = localPathForKey(brandSlug, pair.key, dataDirOverride);
+    await writeFileAtomic(path2, doc.content);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { report: reportFor(pair, "error", `local write failed: ${message}`) };
+  }
+  return {
+    report: reportFor(pair, "pulled", `rev ${doc.revision}`),
+    stateEntry: {
+      server_revision: doc.revision,
+      last_synced_hash: hashContent(doc.content),
+      last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
+  const local = pair.local;
+  const put = (base) => client.putDoc({
+    brand_slug: brandSlug,
+    doc_type: pair.docType,
+    ...pair.corpusName !== void 0 ? { corpus_name: pair.corpusName } : {},
+    content: local.content,
+    ...base !== void 0 ? { base_revision: base } : {}
+  });
+  let result = await put(baseRevision);
+  if (!result.ok && result.kind === "revision_conflict" && force && result.server) {
+    result = await put(result.server.revision);
+  }
+  if (result.ok) {
+    const stateEntry = {
+      server_revision: result.revision,
+      last_synced_hash: local.hash,
+      last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (result.status === "created") {
+      return { report: reportFor(pair, "created", `rev ${result.revision}`), stateEntry };
+    }
+    if (result.status === "updated") {
+      return { report: reportFor(pair, "pushed", `rev ${result.revision}`), stateEntry };
+    }
+    return {
+      report: reportFor(pair, "noop", `server already current (rev ${result.revision})`),
+      stateEntry
+    };
+  }
+  if (result.kind === "revision_conflict") {
+    const who = result.server ? `server changed by ${result.server.updated_by_actor} at ${result.server.updated_at}; ` : "";
+    return {
+      report: reportFor(pair, "conflict", `${who}${conflictInstructions(brandSlug)}`)
+    };
+  }
+  return { report: reportFor(pair, "error", `push failed: ${result.friendly}`) };
+}
+async function pull(brandSlug, options = {}) {
+  const built = await buildDocPairs(brandSlug, options);
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
+  const reports = [...built.issues];
+  let stateChanged = built.stateDirty;
+  for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
+    switch (pair.verdict) {
+      case "server-ahead":
+      case "server-only": {
+        const { report, stateEntry } = await pullOneDoc(
+          brandSlug,
+          pair,
+          client,
+          options.dataDirOverride
+        );
+        reports.push(report);
+        if (stateEntry) {
+          built.state.docs[pair.key] = stateEntry;
+          stateChanged = true;
+        }
+        break;
+      }
+      case "diverged": {
+        if (options.force) {
+          const { report, stateEntry } = await pullOneDoc(
+            brandSlug,
+            pair,
+            client,
+            options.dataDirOverride
+          );
+          reports.push(report);
+          if (stateEntry) {
+            built.state.docs[pair.key] = stateEntry;
+            stateChanged = true;
+          }
+        } else {
+          reports.push(
+            reportFor(pair, "conflict", `diverged \u2014 ${conflictInstructions(brandSlug)}`)
+          );
+        }
+        break;
+      }
+      case "in-sync":
+        if (adoptInSyncState(pair, built.state)) stateChanged = true;
+        reports.push(reportFor(pair, "up-to-date"));
+        break;
+      case "server-deleted":
+        reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
+        break;
+      case "local-ahead":
+      case "local-only":
+        reports.push(
+          reportFor(
+            pair,
+            "skipped",
+            `local changes \u2014 push them with \`mixshift context push --brand ${brandSlug}\``
+          )
+        );
+        break;
+    }
+  }
+  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
+  return { ok: true, brand: brandSlug, reports };
+}
+async function push(brandSlug, options = {}) {
+  const built = await buildDocPairs(brandSlug, options);
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
+  const reports = [...built.issues];
+  let stateChanged = built.stateDirty;
+  for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
+    switch (pair.verdict) {
+      case "local-ahead":
+      case "local-only": {
+        const baseRevision = pair.verdict === "local-ahead" ? pair.state?.server_revision : void 0;
+        const { report, stateEntry } = await pushOneDoc(
+          brandSlug,
+          pair,
+          client,
+          baseRevision,
+          false
+        );
+        reports.push(report);
+        if (stateEntry) {
+          built.state.docs[pair.key] = stateEntry;
+          stateChanged = true;
+        }
+        break;
+      }
+      case "server-deleted": {
+        if (options.force) {
+          const { report, stateEntry } = await pushOneDoc(
+            brandSlug,
+            pair,
+            client,
+            void 0,
+            true
+          );
+          reports.push(report);
+          if (stateEntry) {
+            built.state.docs[pair.key] = stateEntry;
+            stateChanged = true;
+          }
+        } else {
+          reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
+        }
+        break;
+      }
+      case "diverged": {
+        if (options.force) {
+          const { report, stateEntry } = await pushOneDoc(
+            brandSlug,
+            pair,
+            client,
+            pair.manifestDoc?.revision,
+            true
+          );
+          reports.push(report);
+          if (stateEntry) {
+            built.state.docs[pair.key] = stateEntry;
+            stateChanged = true;
+          }
+        } else {
+          const who = pair.manifestDoc ? `server changed by ${pair.manifestDoc.updated_by_actor} at ${pair.manifestDoc.updated_at}; ` : "";
+          reports.push(
+            reportFor(pair, "conflict", `diverged \u2014 ${who}${conflictInstructions(brandSlug)}`)
+          );
+        }
+        break;
+      }
+      case "in-sync":
+        if (adoptInSyncState(pair, built.state)) stateChanged = true;
+        reports.push(reportFor(pair, "up-to-date"));
+        break;
+      case "server-ahead":
+      case "server-only":
+        reports.push(
+          reportFor(
+            pair,
+            "skipped",
+            `server is ahead \u2014 fetch with \`mixshift context pull --brand ${brandSlug}\``
+          )
+        );
+        break;
+    }
+  }
+  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
+  return { ok: true, brand: brandSlug, reports };
+}
+async function sync(brandSlug, options = {}) {
+  const built = await buildDocPairs(brandSlug, options);
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
+  const reports = [...built.issues];
+  let stateChanged = built.stateDirty;
+  for (const pair of built.pairs) {
+    if (pair.collision) {
+      reports.push(collisionReport(pair));
+      continue;
+    }
+    let outcome = null;
+    switch (pair.verdict) {
+      case "server-ahead":
+      case "server-only":
+        outcome = await pullOneDoc(brandSlug, pair, client, options.dataDirOverride);
+        break;
+      case "local-ahead":
+      case "local-only":
+        outcome = await pushOneDoc(
+          brandSlug,
+          pair,
+          client,
+          pair.verdict === "local-ahead" ? pair.state?.server_revision : void 0,
+          false
+        );
+        break;
+      case "server-deleted":
+        reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
+        break;
+      case "diverged":
+        reports.push(
+          reportFor(pair, "conflict", `diverged \u2014 ${conflictInstructions(brandSlug)}`)
+        );
+        break;
+      case "in-sync":
+        if (adoptInSyncState(pair, built.state)) stateChanged = true;
+        reports.push(reportFor(pair, "up-to-date"));
+        break;
+    }
+    if (outcome) {
+      reports.push(outcome.report);
+      if (outcome.stateEntry) {
+        built.state.docs[pair.key] = outcome.stateEntry;
+        stateChanged = true;
+      }
+    }
+  }
+  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
+  return { ok: true, brand: brandSlug, reports };
+}
+async function migrate(options = {}) {
+  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
+  const brands = options.brands ?? await listLocalBrands(options.dataDirOverride);
+  const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
+  const summaries = [];
+  for (const brandSlug of brands) {
+    const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
+    const state = await loadState(brandSlug, options.dataDirOverride, identity);
+    const reports = [];
+    let stateChanged = false;
+    for (const local of localDocs) {
+      const pair = {
+        key: local.key,
+        docType: local.docType,
+        ...local.corpusName !== void 0 ? { corpusName: local.corpusName } : {},
+        local,
+        verdict: "local-only"
+      };
+      const valid = validateDocContent(local.docType, local.content);
+      if (!valid.ok) {
+        reports.push(
+          reportFor(
+            pair,
+            "skipped",
+            `local file is invalid (${valid.detail}) \u2014 fix it and re-run migrate`
+          )
+        );
+        continue;
+      }
+      const { report, stateEntry } = await pushOneDoc(
+        brandSlug,
+        pair,
+        client,
+        state.docs[local.key]?.server_revision,
+        false
+      );
+      reports.push(report);
+      if (stateEntry) {
+        state.docs[local.key] = stateEntry;
+        stateChanged = true;
+      }
+    }
+    if (stateChanged) await saveState(brandSlug, state, options.dataDirOverride);
+    summaries.push({ brand: brandSlug, reports });
+  }
+  return { ok: true, brands: summaries };
+}
+
+// src/lib/utils/deadline.ts
+var DEADLINE = Symbol("deadline");
+async function raceDeadline(op, ms) {
+  let timer;
+  try {
+    return await Promise.race([
+      op,
+      new Promise((resolve3) => {
+        timer = setTimeout(() => resolve3(DEADLINE), ms);
+        timer.unref?.();
+      })
+    ]);
+  } finally {
+    if (timer !== void 0) clearTimeout(timer);
+  }
+}
+
+// src/lib/context-sync/push-after-write.ts
+var PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
+var PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
+async function pushAfterWrite(brandSlug, options = {}) {
+  const env = options.env ?? process.env;
+  const result = await computePushResult(brandSlug, options, env);
+  emitNotice(brandSlug, result, options.notify ?? true);
+  return result;
+}
+async function computePushResult(brandSlug, options, env) {
+  try {
+    const flag = (env[PUSH_AFTER_WRITE_ENV] ?? "").toLowerCase();
+    if (flag === "off" || flag === "0" || flag === "false") {
+      return { published: false, reason: "disabled" };
+    }
+    if (options.env === void 0 && process.env.VITEST) {
+      debugLog(env, `push-after-write(${brandSlug}): disabled under test runner (VITEST set)`);
+      return { published: false, reason: "disabled" };
+    }
+    if (!isSafeBrandSlug(brandSlug)) {
+      debugLog(env, `push-after-write: unsafe brand slug ${JSON.stringify(brandSlug)}; skipped`);
+      return { published: false, reason: "skipped", detail: "not a valid brand slug" };
+    }
+    if (!await brandDirExists(brandSlug, options.dataDirOverride)) {
+      return {
+        published: false,
+        reason: "skipped",
+        detail: "no local brand directory"
+      };
+    }
+    const state = await loadState(brandSlug, options.dataDirOverride);
+    if (Object.keys(state.docs).length === 0) {
+      return {
+        published: false,
+        reason: "skipped",
+        detail: "brand not yet in the org store; publish it explicitly first (context push / context migrate)"
+      };
+    }
+    const controller = new AbortController();
+    const budgetMs = options.budgetMs ?? PUSH_AFTER_WRITE_BUDGET_MS;
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = (input, init) => baseFetch(input, { ...init, signal: controller.signal });
+      const client = options.client ?? createContextSyncClient({
+        dataDirOverride: options.dataDirOverride,
+        fetchImpl: budgetedFetch
+      });
+      const pushPromise = push(brandSlug, {
+        client,
+        ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {}
+        // NEVER force: diverged docs stay conflicts by design.
+      });
+      pushPromise.catch((err) => {
+        debugLog(
+          env,
+          `push-after-write(${brandSlug}): abandoned push rejected: ${err instanceof Error ? err.message : String(err)}`
+        );
+      });
+      const raced = await raceDeadline(pushPromise, budgetMs);
+      if (raced === DEADLINE) {
+        controller.abort();
+        debugLog(env, `push-after-write(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        return { published: false, reason: "failed", detail: `timed out after ${budgetMs}ms` };
+      }
+      if (!raced.ok) {
+        debugLog(env, `push-after-write(${brandSlug}): ${raced.message}`);
+        return { published: false, reason: "failed", detail: raced.message };
+      }
+      const pushed = raced.reports.filter((r) => r.action === "pushed").length;
+      const created = raced.reports.filter((r) => r.action === "created").length;
+      const conflicts = raced.reports.filter((r) => r.action === "conflict").length;
+      const errors = raced.reports.filter((r) => r.action === "error").length;
+      return { published: true, pushed, created, conflicts, errors, reports: raced.reports };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog(env, `push-after-write(${brandSlug}): swallowed error: ${message}`);
+    return { published: false, reason: "failed", detail: message };
+  }
+}
+function debugLog(env, message) {
+  if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
+`);
+}
+var noticedBrands = /* @__PURE__ */ new Set();
+function emitNotice(brandSlug, result, notify) {
+  if (!notify) return;
+  const line = noticeLineFor(brandSlug, result);
+  if (line === null) return;
+  if (noticedBrands.has(brandSlug)) return;
+  noticedBrands.add(brandSlug);
+  process.stderr.write(line + "\n");
+}
+function noticeLineFor(brandSlug, result) {
+  if (result.published) {
+    const shared = result.pushed + result.created;
+    if (shared <= 0) return null;
+    return `\u2713 Shared ${brandSlug} to your team's brand context (${shared} doc(s)).`;
+  }
+  switch (result.reason) {
+    case "disabled":
+      return null;
+    // kill switch: intentional-off, say nothing
+    case "skipped":
+      if (result.detail.includes("not yet in the org store")) {
+        return `Saved locally. ${brandSlug} is not shared with your team yet. Run \`mixshift context push --brand ${brandSlug}\` to commit it.`;
+      }
+      return null;
+    case "failed":
+      return `Could not sync ${brandSlug} to your team just now; your work is saved locally. Retry with \`mixshift context push --brand ${brandSlug}\`.`;
+  }
+}
+
+// src/lib/clients/bootstrap.ts
 async function bootstrapBrand(suggestion, options = {}) {
   const dir = brandDir(suggestion.slug, options.dataDirOverride);
   const ctxPath = contextPath(suggestion.slug, options.dataDirOverride);
@@ -66194,7 +67217,7 @@ async function bootstrapBrand(suggestion, options = {}) {
 Either pick a different slug, delete the existing directory, or pass --force to overwrite.`
       );
     } catch (err) {
-      if (!isFileNotFoundError7(err)) throw err;
+      if (!isFileNotFoundError8(err)) throw err;
     }
   }
   const context = buildContext(suggestion, validAccounts, options.asOfDate);
@@ -66205,13 +67228,14 @@ Either pick a different slug, delete the existing directory, or pass --force to 
 ` + formatZodError(parsed.error)
     );
   }
-  await mkdir4(dir, { recursive: true });
-  await mkdir4(`${dir}/corpora`, { recursive: true });
-  const yaml = (0, import_yaml6.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
+  await mkdir6(dir, { recursive: true });
+  await mkdir6(`${dir}/corpora`, { recursive: true });
+  const yaml = (0, import_yaml7.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
   await writeAtomic(ctxPath, yaml);
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
   await writeAtomic(readmePath, readmeTemplate(suggestion));
+  await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
   return {
     brand_dir: dir,
     context_path: ctxPath,
@@ -66327,24 +67351,24 @@ Generated by \`mixshift brand add ${suggestion.slug}\`.
 `;
 }
 async function writeAtomic(path2, content) {
-  await mkdir4(dirname6(path2), { recursive: true });
+  await mkdir6(dirname8(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile4(tmpPath, content, { encoding: "utf-8" });
-  await rename3(tmpPath, path2);
+  await writeFile6(tmpPath, content, { encoding: "utf-8" });
+  await rename5(tmpPath, path2);
 }
 function todayISO() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
-function isFileNotFoundError7(err) {
+function isFileNotFoundError8(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 
 // src/lib/clients/index.ts
-var import_yaml7 = __toESM(require_dist(), 1);
+var import_yaml8 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir5, readFile as readFile8, rename as rename4, writeFile as writeFile5, chmod as chmod2 } from "node:fs/promises";
-import { dirname as dirname7 } from "node:path";
+import { mkdir as mkdir7, readFile as readFile10, rename as rename6, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
+import { dirname as dirname9 } from "node:path";
 
 // src/lib/errors.ts
 var UserFacingError = class extends Error {
@@ -66417,16 +67441,16 @@ async function readIndex(dataDirOverride) {
   const path2 = indexPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile8(path2, "utf-8");
+    raw = await readFile10(path2, "utf-8");
   } catch (err) {
-    if (isFileNotFoundError8(err)) {
+    if (isFileNotFoundError9(err)) {
       return { index: emptyIndex(), source: "empty", path: path2 };
     }
     throw err;
   }
   let parsed;
   try {
-    parsed = (0, import_yaml7.parse)(raw);
+    parsed = (0, import_yaml8.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new RegistryInvalidError(
@@ -66446,12 +67470,12 @@ Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
 async function saveIndex(index, dataDirOverride) {
   const validated = clientsIndexSchema.parse(index);
   const path2 = indexPath(dataDirOverride);
-  await mkdir5(dirname7(path2), { recursive: true, mode: 448 });
-  const yaml = (0, import_yaml7.stringify)(validated, { lineWidth: 0 });
+  await mkdir7(dirname9(path2), { recursive: true, mode: 448 });
+  const yaml = (0, import_yaml8.stringify)(validated, { lineWidth: 0 });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile5(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
+  await writeFile7(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
   await chmod2(tmpPath, 384);
-  await rename4(tmpPath, path2);
+  await rename6(tmpPath, path2);
   return { path: path2 };
 }
 function buildIndexFromBrands(brands, prev) {
@@ -66524,7 +67548,7 @@ async function markBrandColdStarted(slug, dataDirOverride) {
   await saveIndex(index, dataDirOverride);
   return { updated: true, path: path2 };
 }
-function isFileNotFoundError8(err) {
+function isFileNotFoundError9(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
 async function runDiscoveryAndPersist(args) {
@@ -66761,185 +67785,6 @@ async function clearKeyBrands(dataDirOverride) {
   return { removed_count: existing.length, removed_slugs: existing };
 }
 
-// src/lib/context-sync/client.ts
-init_credentials();
-var TEXT_DOC_TIMEOUT_MS = 3e4;
-var CORPUS_TIMEOUT_MS = 12e4;
-var ASSIGNMENT_TIMEOUT_MS = 2e3;
-var UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
-var ContextSyncNetworkError = class extends Error {
-  constructor(msg2) {
-    super(msg2);
-    this.name = "ContextSyncNetworkError";
-  }
-};
-function createContextSyncClient(options = {}) {
-  const { dataDirOverride } = options;
-  const fetchImpl = options.fetchImpl ?? fetch;
-  async function authedRequest(method, path2, body, timeoutMs) {
-    const apiBase = await resolveApiBase(dataDirOverride);
-    const doFetch = async (bearer) => {
-      try {
-        return await fetchImpl(`${apiBase}${path2}`, {
-          method,
-          headers: {
-            Authorization: `Bearer ${bearer}`,
-            ...body !== void 0 ? { "Content-Type": "application/json" } : {}
-          },
-          ...body !== void 0 ? { body: JSON.stringify(body) } : {},
-          signal: AbortSignal.timeout(timeoutMs)
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new ContextSyncNetworkError(message);
-      }
-    };
-    let token = await getValidAccessToken(dataDirOverride);
-    let res = await doFetch(token);
-    if (res.status === 401) {
-      token = await getValidAccessToken(dataDirOverride, true);
-      res = await doFetch(token);
-      if (res.status === 401) {
-        throw new Error(
-          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
-        );
-      }
-    }
-    return res;
-  }
-  return {
-    async fetchManifest() {
-      try {
-        const res = await authedRequest(
-          "GET",
-          "/api/context/manifest",
-          void 0,
-          TEXT_DOC_TIMEOUT_MS
-        );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && Array.isArray(json2.brands)) {
-          return { ok: true, brands: json2.brands };
-        }
-        return failureFromEnvelope(json2, res.status);
-      } catch (err) {
-        return failureFromException(err);
-      }
-    },
-    async fetchDoc(brandSlug, docType, corpusName) {
-      try {
-        const params = new URLSearchParams({ brand: brandSlug, type: docType });
-        if (corpusName !== void 0) params.set("name", corpusName);
-        const timeoutMs = docType === "corpus" ? CORPUS_TIMEOUT_MS : TEXT_DOC_TIMEOUT_MS;
-        const res = await authedRequest(
-          "GET",
-          `/api/context/doc?${params.toString()}`,
-          void 0,
-          timeoutMs
-        );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && typeof json2.doc === "object" && json2.doc !== null) {
-          return { ok: true, doc: json2.doc };
-        }
-        return failureFromEnvelope(json2, res.status);
-      } catch (err) {
-        return failureFromException(err);
-      }
-    },
-    async putDoc(input) {
-      try {
-        const timeoutMs = input.doc_type === "corpus" ? CORPUS_TIMEOUT_MS : TEXT_DOC_TIMEOUT_MS;
-        const res = await authedRequest("PUT", "/api/context/doc", input, timeoutMs);
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && (json2.status === "created" || json2.status === "updated" || json2.status === "noop") && typeof json2.revision === "number") {
-          return { ok: true, status: json2.status, revision: json2.revision };
-        }
-        return failureFromEnvelope(json2, res.status);
-      } catch (err) {
-        return failureFromException(err);
-      }
-    },
-    async putAssignment(input) {
-      try {
-        const res = await authedRequest(
-          "PUT",
-          "/api/context/assignments",
-          input,
-          ASSIGNMENT_TIMEOUT_MS
-        );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true) return { ok: true };
-        return failureFromEnvelope(json2, res.status);
-      } catch (err) {
-        return failureFromException(err);
-      }
-    }
-  };
-}
-async function resolveApiBase(dataDirOverride) {
-  const { credentials } = await loadCredentials(dataDirOverride);
-  const apiBase = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-  if (!apiBase) {
-    throw new Error(
-      "No credentials found. Run `mixshift auth login` to sign in, or `mixshift auth service-setup` to configure a service credential for unattended runs."
-    );
-  }
-  return apiBase;
-}
-async function parseEnvelope(res) {
-  try {
-    return await res.json();
-  } catch {
-    return {};
-  }
-}
-var KNOWN_FAILURE_KINDS = /* @__PURE__ */ new Set([
-  "not_found",
-  "revision_conflict",
-  "insufficient_scope",
-  "bad_params",
-  "too_large"
-]);
-function failureFromEnvelope(json2, httpStatus) {
-  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS.has(json2.kind) ? json2.kind : "unknown";
-  const friendly = json2.friendly ?? json2.message ?? `Context service returned HTTP ${httpStatus}.`;
-  return {
-    ok: false,
-    kind,
-    message: json2.message ?? friendly,
-    friendly,
-    ...kind === "revision_conflict" && json2.server ? { server: json2.server } : {}
-  };
-}
-function failureFromException(err) {
-  if (err instanceof ContextSyncNetworkError) {
-    return {
-      ok: false,
-      kind: "host_unreachable",
-      message: err.message,
-      friendly: UNREACHABLE_FRIENDLY
-    };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return { ok: false, kind: "unknown", message, friendly: message };
-}
-
-// src/lib/utils/deadline.ts
-var DEADLINE = Symbol("deadline");
-async function raceDeadline(op, ms) {
-  let timer;
-  try {
-    return await Promise.race([
-      op,
-      new Promise((resolve3) => {
-        timer = setTimeout(() => resolve3(DEADLINE), ms);
-        timer.unref?.();
-      })
-    ]);
-  } finally {
-    if (timer !== void 0) clearTimeout(timer);
-  }
-}
-
 // src/lib/context-sync/assignments.ts
 async function mirrorKeyAssignment(op, brandSlug, dataDirOverride, client, timeoutMs = ASSIGNMENT_TIMEOUT_MS) {
   try {
@@ -66984,132 +67829,28 @@ function mirrorStatusNote(outcomes) {
 `;
 }
 
-// src/lib/context-sync/local.ts
-init_resolve();
-import { createHash } from "node:crypto";
-import { readdir, readFile as readFile9 } from "node:fs/promises";
-import { basename, join as join7 } from "node:path";
-function hashContent(content) {
-  return createHash("sha256").update(content, "utf8").digest("hex");
-}
-async function listLocalBrands(dataDirOverride) {
-  try {
-    const entries = await readdir(clientsDir(dataDirOverride), { withFileTypes: true });
-    return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
-  } catch (err) {
-    if (isFileNotFoundError9(err)) return [];
-    throw err;
-  }
-}
-var TEXT_DOCS = [
-  { docType: "context", pathFor: contextPath },
-  { docType: "narrative", pathFor: narrativePath },
-  { docType: "brain", pathFor: brainPath },
-  { docType: "config", pathFor: brandConfigPath }
-];
-async function readLocalDocs(brandSlug, dataDirOverride) {
-  const docs = [];
-  for (const { docType, pathFor } of TEXT_DOCS) {
-    const path2 = pathFor(brandSlug, dataDirOverride);
-    const content = await readFileIfPresent(path2);
-    if (content === null) continue;
-    docs.push({ key: docType, docType, path: path2, content, hash: hashContent(content) });
-  }
-  const dir = corporaDir(brandSlug, dataDirOverride);
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    if (isFileNotFoundError9(err)) return docs;
-    throw err;
-  }
-  const corpusNames = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
-  for (const name of corpusNames) {
-    const path2 = join7(dir, name);
-    const content = await readFile9(path2, "utf8");
-    docs.push({
-      key: corpusKey(name),
-      docType: "corpus",
-      corpusName: name,
-      path: path2,
-      content,
-      hash: hashContent(content)
-    });
-  }
-  return docs;
-}
-function corpusKey(corpusName) {
-  return `corpus/${corpusName}`;
-}
-function isSafeCorpusName(name) {
-  return name.length > 0 && name.length <= 128 && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes("..") && !name.startsWith(".") && basename(name) === name;
-}
-function isSafeBrandSlug(slug) {
-  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) && !slug.includes("..") && basename(slug) === slug;
-}
-function localPathForKey(brandSlug, key, dataDirOverride) {
-  switch (key) {
-    case "context":
-      return contextPath(brandSlug, dataDirOverride);
-    case "narrative":
-      return narrativePath(brandSlug, dataDirOverride);
-    case "brain":
-      return brainPath(brandSlug, dataDirOverride);
-    case "config":
-      return brandConfigPath(brandSlug, dataDirOverride);
-    default: {
-      const corpusName = key.slice("corpus/".length);
-      if (!isSafeCorpusName(corpusName)) {
-        throw new Error(
-          `unsafe corpus name ${JSON.stringify(corpusName)} \u2014 refusing to resolve a local path`
-        );
-      }
-      return join7(corporaDir(brandSlug, dataDirOverride), corpusName);
-    }
-  }
-}
-async function brandDirExists(brandSlug, dataDirOverride) {
-  try {
-    await readdir(brandDir(brandSlug, dataDirOverride));
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function readFileIfPresent(path2) {
-  try {
-    return await readFile9(path2, "utf8");
-  } catch (err) {
-    if (isFileNotFoundError9(err)) return null;
-    throw err;
-  }
-}
-function isFileNotFoundError9(err) {
-  return typeof err === "object" && err !== null && "code" in err && (err.code === "ENOENT" || err.code === "ENOTDIR");
-}
-
 // src/commands/brand.ts
 init_telemetry();
 
 // src/commands/brand-view.ts
-import { readdir as readdir2, stat as stat2, writeFile as writeFile7, mkdir as mkdir7 } from "node:fs/promises";
-import { dirname as dirname10 } from "node:path";
+import { readdir as readdir2, stat as stat2, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
+import { dirname as dirname12 } from "node:path";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 
 // src/lib/calibration/brand-config.ts
-var import_yaml8 = __toESM(require_dist(), 1);
+var import_yaml9 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir6, readFile as readFile10, rename as rename5, writeFile as writeFile6, chmod as chmod3, unlink as unlink2 } from "node:fs/promises";
-import { dirname as dirname8 } from "node:path";
+import { mkdir as mkdir8, readFile as readFile11, rename as rename7, writeFile as writeFile8, chmod as chmod3, unlink as unlink4 } from "node:fs/promises";
+import { dirname as dirname10 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
 async function readBrandConfig(brandSlug, dataDirOverride) {
   const path2 = brandConfigPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile10(path2, "utf-8");
+    raw = await readFile11(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError10(err)) {
       return { config: {}, source: "empty", path: path2 };
@@ -67118,7 +67859,7 @@ async function readBrandConfig(brandSlug, dataDirOverride) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml8.parse)(raw);
+    parsed = (0, import_yaml9.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -67199,12 +67940,13 @@ async function resetSkillConfig(brandSlug, skillId, dataDirOverride) {
   delete next[skillId];
   if (Object.keys(next).length === 0) {
     try {
-      await unlink2(path2);
+      await unlink4(path2);
     } catch {
     }
-    return { existed: true, path: path2 };
+  } else {
+    await writeBrandConfigFile(path2, next);
   }
-  await writeBrandConfigFile(path2, next);
+  await pushAfterWrite(brandSlug, { dataDirOverride });
   return { existed: true, path: path2 };
 }
 function composeSkillBlock(manifestValues, preservedExtras) {
@@ -67282,19 +68024,19 @@ function checkType(field, value) {
   }
 }
 async function writeBrandConfigFile(path2, config2) {
-  await mkdir6(dirname8(path2), { recursive: true });
-  const yamlText = (0, import_yaml8.stringify)(config2, {
+  await mkdir8(dirname10(path2), { recursive: true });
+  const yamlText = (0, import_yaml9.stringify)(config2, {
     indent: 2,
     lineWidth: 0
     // never wrap — keeps user-readable values intact
   });
   const tmpPath = `${path2}.${process.pid}.tmp`;
-  await writeFile6(tmpPath, yamlText, "utf-8");
+  await writeFile8(tmpPath, yamlText, "utf-8");
   try {
     await chmod3(tmpPath, 384);
   } catch {
   }
-  await rename5(tmpPath, path2);
+  await rename7(tmpPath, path2);
 }
 function isFileNotFoundError10(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -67304,23 +68046,23 @@ function isFileNotFoundError10(err) {
 init_resolve();
 
 // src/lib/render/design-system.ts
-import { readFile as readFile11 } from "node:fs/promises";
+import { readFile as readFile12 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname9, join as join8, parse as parse3 } from "node:path";
+import { dirname as dirname11, join as join9, parse as parse3 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 function designSystemDir() {
   if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
     return process.env.MIXSHIFT_DESIGN_SYSTEM_DIR;
   }
-  let dir = dirname9(fileURLToPath4(import.meta.url));
+  let dir = dirname11(fileURLToPath4(import.meta.url));
   const root = parse3(dir).root;
   for (let i = 0; i < 8; i++) {
-    const candidate = join8(dir, "assets", "design-system");
-    if (existsSync2(join8(candidate, "colors_and_type.css"))) {
+    const candidate = join9(dir, "assets", "design-system");
+    if (existsSync2(join9(candidate, "colors_and_type.css"))) {
       return candidate;
     }
     if (dir === root) break;
-    dir = dirname9(dir);
+    dir = dirname11(dir);
   }
   throw new Error(
     "Could not locate harness/assets/design-system/. The renderer walks up from the running CLI file looking for assets/design-system/colors_and_type.css. Set MIXSHIFT_DESIGN_SYSTEM_DIR if your install puts the assets elsewhere."
@@ -67328,7 +68070,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile11(join8(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile12(join9(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -67336,7 +68078,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile11(join8(designSystemDir(), filename), "utf-8");
+  const raw = await readFile12(join9(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -68443,8 +69185,8 @@ ${candidates}`
     body: blocks.join("\n\n")
   });
   const outPath = `${brandDir(args.slug, args.dataDir)}/view.html`;
-  await mkdir7(dirname10(outPath), { recursive: true });
-  await writeFile7(outPath, html, "utf-8");
+  await mkdir9(dirname12(outPath), { recursive: true });
+  await writeFile9(outPath, html, "utf-8");
   return { path: outPath };
 }
 function renderPillsRow(opts) {
@@ -68725,15 +69467,15 @@ import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, ren
 import { dirname as dirname14 } from "node:path";
 
 // src/lib/data/dispatch.ts
-import { readFile as readFile13, access as access2 } from "node:fs/promises";
-import { join as join9 } from "node:path";
+import { readFile as readFile14, access as access2 } from "node:fs/promises";
+import { join as join10 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
 init_plugin_root();
-var import_yaml9 = __toESM(require_dist(), 1);
+var import_yaml10 = __toESM(require_dist(), 1);
 init_format_error();
-import { readFile as readFile12 } from "node:fs/promises";
+import { readFile as readFile13 } from "node:fs/promises";
 var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -68777,7 +69519,7 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile12(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -68786,7 +69528,7 @@ async function loadCatalog() {
     }
     throw err;
   }
-  const parsed = (0, import_yaml9.parse)(raw);
+  const parsed = (0, import_yaml10.parse)(raw);
   const result = catalogSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -68816,7 +69558,7 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile12(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -68955,13 +69697,13 @@ async function resolveLocalNamedSql(catalogId, sprocName, env = process.env) {
 }
 async function readLocalSql(dir, fileName) {
   if (!dir) return void 0;
-  const path2 = join9(dir, fileName);
+  const path2 = join10(dir, fileName);
   try {
     await access2(path2);
   } catch {
     return void 0;
   }
-  return readFile13(path2, "utf-8");
+  return readFile14(path2, "utf-8");
 }
 function buildCallSql(sprocName) {
   return `CALL ${sprocName}(?, ?)`;
@@ -70147,626 +70889,6 @@ import { dirname as dirname13 } from "node:path";
 init_resolve();
 init_format_error();
 
-// src/lib/context-sync/engine.ts
-var import_yaml10 = __toESM(require_dist(), 1);
-import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir9, rename as rename7, unlink as unlink4, writeFile as writeFile9 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname12, join as join10 } from "node:path";
-
-// src/lib/context-sync/state.ts
-init_credentials();
-init_resolve();
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir8, readFile as readFile14, rename as rename6, unlink as unlink3, writeFile as writeFile8 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
-function emptyState(identity) {
-  return { schema: 2, ...identity ? { identity } : {}, docs: {} };
-}
-async function resolveLedgerIdentity(dataDirOverride) {
-  try {
-    const { credentials } = await loadCredentials(dataDirOverride);
-    if (credentials?.datahub) {
-      return `${credentials.datahub.api_base}#${credentials.datahub.user_id}`;
-    }
-    if (credentials?.service) {
-      return `${credentials.service.api_base}#${credentials.service.client_id}`;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-async function loadState(brandSlug, dataDirOverride, currentIdentity) {
-  try {
-    const raw = await readFile14(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || parsed.schema !== 1 && parsed.schema !== 2 || typeof parsed.docs !== "object" || parsed.docs === null) {
-      return emptyState(currentIdentity);
-    }
-    const storedAutosyncAt = parsed.last_autosync_at;
-    const lastAutosyncAt = typeof storedAutosyncAt === "string" ? storedAutosyncAt : void 0;
-    const storedIdentity = parsed.identity;
-    if (typeof storedIdentity === "string" && typeof currentIdentity === "string" && storedIdentity !== currentIdentity) {
-      return {
-        ...emptyState(currentIdentity),
-        ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {}
-      };
-    }
-    const docs = {};
-    for (const [key, value] of Object.entries(parsed.docs)) {
-      if (typeof value === "object" && value !== null && typeof value.server_revision === "number" && typeof value.last_synced_hash === "string" && typeof value.last_synced_at === "string") {
-        docs[key] = {
-          server_revision: value.server_revision,
-          last_synced_hash: value.last_synced_hash,
-          last_synced_at: value.last_synced_at
-        };
-      }
-    }
-    const identity = currentIdentity ?? (typeof storedIdentity === "string" ? storedIdentity : void 0);
-    return {
-      schema: 2,
-      ...identity ? { identity } : {},
-      ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {},
-      docs
-    };
-  } catch {
-    return emptyState(currentIdentity);
-  }
-}
-async function saveState(brandSlug, state, dataDirOverride) {
-  try {
-    const path2 = contextSyncStatePath(brandSlug, dataDirOverride);
-    await mkdir8(dirname11(path2), { recursive: true });
-    const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
-    try {
-      await writeFile8(tmpPath, JSON.stringify(state, null, 2) + "\n", "utf8");
-      await rename6(tmpPath, path2);
-      return true;
-    } catch (err) {
-      await unlink3(tmpPath).catch(() => {
-      });
-      throw err;
-    }
-  } catch {
-    return false;
-  }
-}
-
-// src/lib/context-sync/engine.ts
-var KNOWN_DOC_TYPES = /* @__PURE__ */ new Set([
-  "context",
-  "narrative",
-  "brain",
-  "config",
-  "corpus"
-]);
-function verdictFor(local, manifestDoc, state) {
-  if (!local && !manifestDoc) return null;
-  if (local && !manifestDoc) return state ? "server-deleted" : "local-only";
-  if (!local && manifestDoc) return "server-only";
-  if (local.hash === manifestDoc.content_hash) return "in-sync";
-  if (!state) return "diverged";
-  const locallyModified = local.hash !== state.last_synced_hash;
-  const serverMoved = manifestDoc.content_hash !== state.last_synced_hash;
-  if (locallyModified && serverMoved) return "diverged";
-  if (locallyModified) return "local-ahead";
-  if (serverMoved) return "server-ahead";
-  return "diverged";
-}
-var KEY_ORDER = { context: 0, narrative: 1, brain: 2, config: 3 };
-function compareKeys(a, b) {
-  const ra = KEY_ORDER[a] ?? 4;
-  const rb = KEY_ORDER[b] ?? 4;
-  if (ra !== rb) return ra - rb;
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-async function buildDocPairs(brandSlug, options) {
-  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
-  let manifestBrands = options.manifest;
-  if (!manifestBrands) {
-    const manifest = await client.fetchManifest();
-    if (!manifest.ok) return { ok: false, message: manifest.friendly };
-    manifestBrands = manifest.brands;
-  }
-  const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
-  const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
-  const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
-  const state = await loadState(brandSlug, options.dataDirOverride, identity);
-  const localByKey = new Map(localDocs.map((d) => [d.key, d]));
-  const manifestByKey = /* @__PURE__ */ new Map();
-  const issues = [];
-  for (const d of manifestBrand?.docs ?? []) {
-    if (!KNOWN_DOC_TYPES.has(d.doc_type)) {
-      issues.push({
-        key: d.doc_type,
-        docType: d.doc_type,
-        action: "skipped",
-        detail: `unknown doc_type '${String(d.doc_type)}' in the org manifest \u2014 update the plugin to sync it`
-      });
-      continue;
-    }
-    if (d.doc_type === "corpus") {
-      if (d.corpus_name === void 0) continue;
-      if (!isSafeCorpusName(d.corpus_name)) {
-        issues.push({
-          key: corpusKey(d.corpus_name),
-          docType: "corpus",
-          corpusName: d.corpus_name,
-          action: "error",
-          detail: `unsafe corpus name ${JSON.stringify(d.corpus_name)} in the org manifest \u2014 refusing to sync it; rename it server-side`
-        });
-        continue;
-      }
-      manifestByKey.set(corpusKey(d.corpus_name), d);
-      continue;
-    }
-    manifestByKey.set(d.doc_type, d);
-  }
-  let stateDirty = false;
-  for (const key of Object.keys(state.docs)) {
-    if (!localByKey.has(key) && !manifestByKey.has(key)) {
-      delete state.docs[key];
-      stateDirty = true;
-    }
-  }
-  const keys = [.../* @__PURE__ */ new Set([...localByKey.keys(), ...manifestByKey.keys()])].sort(
-    compareKeys
-  );
-  const byFoldedKey = /* @__PURE__ */ new Map();
-  for (const key of keys) {
-    const folded = key.normalize("NFC").toLowerCase();
-    const group = byFoldedKey.get(folded);
-    if (group) group.push(key);
-    else byFoldedKey.set(folded, [key]);
-  }
-  const pairs = [];
-  for (const key of keys) {
-    const local = localByKey.get(key);
-    const manifestDoc = manifestByKey.get(key);
-    const docState = state.docs[key];
-    const verdict = verdictFor(local, manifestDoc, docState);
-    if (verdict === null) continue;
-    const docType = local?.docType ?? manifestDoc.doc_type;
-    const corpusName = local?.corpusName ?? manifestDoc?.corpus_name;
-    const collisionGroup = byFoldedKey.get(key.normalize("NFC").toLowerCase());
-    pairs.push({
-      key,
-      docType,
-      ...corpusName !== void 0 ? { corpusName } : {},
-      ...local ? { local } : {},
-      ...manifestDoc ? { manifestDoc } : {},
-      ...docState ? { state: docState } : {},
-      verdict,
-      ...collisionGroup.length > 1 ? { collision: collisionGroup } : {}
-    });
-  }
-  return { ok: true, pairs, issues, state, stateDirty };
-}
-async function computeStatus(brandSlug, options = {}) {
-  const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
-  const docs = built.pairs.map((p) => ({
-    key: p.key,
-    docType: p.docType,
-    ...p.corpusName !== void 0 ? { corpusName: p.corpusName } : {},
-    verdict: p.verdict,
-    locallyModified: Boolean(
-      p.local && (!p.state || p.local.hash !== p.state.last_synced_hash)
-    ),
-    serverRevision: p.manifestDoc?.revision ?? null,
-    syncedRevision: p.state?.server_revision ?? null,
-    ...p.manifestDoc ? {
-      serverUpdatedAt: p.manifestDoc.updated_at,
-      serverUpdatedBy: p.manifestDoc.updated_by_actor
-    } : {}
-  }));
-  return { ok: true, brand: brandSlug, docs };
-}
-function validateDocContent(docType, content) {
-  if (docType === "narrative" || docType === "corpus") return { ok: true };
-  let parsed;
-  try {
-    parsed = (0, import_yaml10.parse)(content);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, detail: `malformed YAML: ${message}` };
-  }
-  if (docType !== "context") return { ok: true };
-  const result = contextSchema.safeParse(normalizeLegacyTacosFields(parsed));
-  if (!result.success) {
-    const issues = result.error.issues.slice(0, 3).map((i) => `${i.path.length > 0 ? i.path.join(".") : "(root)"}: ${i.message}`).join("; ");
-    const more = result.error.issues.length > 3 ? "; ..." : "";
-    return { ok: false, detail: `schema violation: ${issues}${more}` };
-  }
-  return { ok: true };
-}
-function adoptInSyncState(pair, state) {
-  if (!pair.local || !pair.manifestDoc) return false;
-  const cur = state.docs[pair.key];
-  if (cur && cur.server_revision === pair.manifestDoc.revision && cur.last_synced_hash === pair.local.hash) {
-    return false;
-  }
-  state.docs[pair.key] = {
-    server_revision: pair.manifestDoc.revision,
-    last_synced_hash: pair.local.hash,
-    last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  return true;
-}
-function conflictInstructions(brandSlug) {
-  return `resolve with \`mixshift context pull --brand ${brandSlug} --force\` (take the server version) or \`mixshift context push --brand ${brandSlug} --force\` (overwrite it)`;
-}
-function serverDeletedDetail(brandSlug) {
-  return `deleted from the org store \u2014 delete the local file to accept the deletion, or recreate it with \`mixshift context push --brand ${brandSlug} --force\``;
-}
-function collisionReport(pair) {
-  return reportFor(
-    pair,
-    "error",
-    `case/unicode collision: ${(pair.collision ?? []).join(", ")} resolve to the same file on case-insensitive filesystems \u2014 resolve server-side or rename locally; not synced`
-  );
-}
-function reportFor(pair, action, detail) {
-  return {
-    key: pair.key,
-    docType: pair.docType,
-    ...pair.corpusName !== void 0 ? { corpusName: pair.corpusName } : {},
-    action,
-    ...detail !== void 0 ? { detail } : {}
-  };
-}
-async function writeFileAtomic(path2, content) {
-  const dir = dirname12(path2);
-  await mkdir9(dir, { recursive: true });
-  const tmpPath = join10(
-    dir,
-    `.${basename2(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
-  );
-  try {
-    await writeFile9(tmpPath, content, "utf8");
-    await rename7(tmpPath, path2);
-  } catch (err) {
-    await unlink4(tmpPath).catch(() => {
-    });
-    throw err;
-  }
-}
-async function pullOneDoc(brandSlug, pair, client, dataDirOverride) {
-  const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
-  if (!fetched.ok) {
-    return { report: reportFor(pair, "error", `fetch failed: ${fetched.friendly}`) };
-  }
-  const { doc } = fetched;
-  const valid = validateDocContent(pair.docType, doc.content);
-  if (!valid.ok) {
-    return {
-      report: reportFor(
-        pair,
-        "error",
-        `server copy is invalid (${valid.detail}) \u2014 local file untouched`
-      )
-    };
-  }
-  if (pair.docType === "corpus" && !isSafeCorpusName(pair.corpusName ?? "")) {
-    return {
-      report: reportFor(
-        pair,
-        "error",
-        `unsafe corpus name ${JSON.stringify(pair.corpusName ?? "")} \u2014 refusing to write it locally`
-      )
-    };
-  }
-  try {
-    const path2 = localPathForKey(brandSlug, pair.key, dataDirOverride);
-    await writeFileAtomic(path2, doc.content);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { report: reportFor(pair, "error", `local write failed: ${message}`) };
-  }
-  return {
-    report: reportFor(pair, "pulled", `rev ${doc.revision}`),
-    stateEntry: {
-      server_revision: doc.revision,
-      last_synced_hash: hashContent(doc.content),
-      last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  };
-}
-async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
-  const local = pair.local;
-  const put = (base) => client.putDoc({
-    brand_slug: brandSlug,
-    doc_type: pair.docType,
-    ...pair.corpusName !== void 0 ? { corpus_name: pair.corpusName } : {},
-    content: local.content,
-    ...base !== void 0 ? { base_revision: base } : {}
-  });
-  let result = await put(baseRevision);
-  if (!result.ok && result.kind === "revision_conflict" && force && result.server) {
-    result = await put(result.server.revision);
-  }
-  if (result.ok) {
-    const stateEntry = {
-      server_revision: result.revision,
-      last_synced_hash: local.hash,
-      last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    if (result.status === "created") {
-      return { report: reportFor(pair, "created", `rev ${result.revision}`), stateEntry };
-    }
-    if (result.status === "updated") {
-      return { report: reportFor(pair, "pushed", `rev ${result.revision}`), stateEntry };
-    }
-    return {
-      report: reportFor(pair, "noop", `server already current (rev ${result.revision})`),
-      stateEntry
-    };
-  }
-  if (result.kind === "revision_conflict") {
-    const who = result.server ? `server changed by ${result.server.updated_by_actor} at ${result.server.updated_at}; ` : "";
-    return {
-      report: reportFor(pair, "conflict", `${who}${conflictInstructions(brandSlug)}`)
-    };
-  }
-  return { report: reportFor(pair, "error", `push failed: ${result.friendly}`) };
-}
-async function pull(brandSlug, options = {}) {
-  const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
-  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
-  const reports = [...built.issues];
-  let stateChanged = built.stateDirty;
-  for (const pair of built.pairs) {
-    if (pair.collision) {
-      reports.push(collisionReport(pair));
-      continue;
-    }
-    switch (pair.verdict) {
-      case "server-ahead":
-      case "server-only": {
-        const { report, stateEntry } = await pullOneDoc(
-          brandSlug,
-          pair,
-          client,
-          options.dataDirOverride
-        );
-        reports.push(report);
-        if (stateEntry) {
-          built.state.docs[pair.key] = stateEntry;
-          stateChanged = true;
-        }
-        break;
-      }
-      case "diverged": {
-        if (options.force) {
-          const { report, stateEntry } = await pullOneDoc(
-            brandSlug,
-            pair,
-            client,
-            options.dataDirOverride
-          );
-          reports.push(report);
-          if (stateEntry) {
-            built.state.docs[pair.key] = stateEntry;
-            stateChanged = true;
-          }
-        } else {
-          reports.push(
-            reportFor(pair, "conflict", `diverged \u2014 ${conflictInstructions(brandSlug)}`)
-          );
-        }
-        break;
-      }
-      case "in-sync":
-        if (adoptInSyncState(pair, built.state)) stateChanged = true;
-        reports.push(reportFor(pair, "up-to-date"));
-        break;
-      case "server-deleted":
-        reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
-        break;
-      case "local-ahead":
-      case "local-only":
-        reports.push(
-          reportFor(
-            pair,
-            "skipped",
-            `local changes \u2014 push them with \`mixshift context push --brand ${brandSlug}\``
-          )
-        );
-        break;
-    }
-  }
-  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
-  return { ok: true, brand: brandSlug, reports };
-}
-async function push(brandSlug, options = {}) {
-  const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
-  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
-  const reports = [...built.issues];
-  let stateChanged = built.stateDirty;
-  for (const pair of built.pairs) {
-    if (pair.collision) {
-      reports.push(collisionReport(pair));
-      continue;
-    }
-    switch (pair.verdict) {
-      case "local-ahead":
-      case "local-only": {
-        const baseRevision = pair.verdict === "local-ahead" ? pair.state?.server_revision : void 0;
-        const { report, stateEntry } = await pushOneDoc(
-          brandSlug,
-          pair,
-          client,
-          baseRevision,
-          false
-        );
-        reports.push(report);
-        if (stateEntry) {
-          built.state.docs[pair.key] = stateEntry;
-          stateChanged = true;
-        }
-        break;
-      }
-      case "server-deleted": {
-        if (options.force) {
-          const { report, stateEntry } = await pushOneDoc(
-            brandSlug,
-            pair,
-            client,
-            void 0,
-            true
-          );
-          reports.push(report);
-          if (stateEntry) {
-            built.state.docs[pair.key] = stateEntry;
-            stateChanged = true;
-          }
-        } else {
-          reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
-        }
-        break;
-      }
-      case "diverged": {
-        if (options.force) {
-          const { report, stateEntry } = await pushOneDoc(
-            brandSlug,
-            pair,
-            client,
-            pair.manifestDoc?.revision,
-            true
-          );
-          reports.push(report);
-          if (stateEntry) {
-            built.state.docs[pair.key] = stateEntry;
-            stateChanged = true;
-          }
-        } else {
-          const who = pair.manifestDoc ? `server changed by ${pair.manifestDoc.updated_by_actor} at ${pair.manifestDoc.updated_at}; ` : "";
-          reports.push(
-            reportFor(pair, "conflict", `diverged \u2014 ${who}${conflictInstructions(brandSlug)}`)
-          );
-        }
-        break;
-      }
-      case "in-sync":
-        if (adoptInSyncState(pair, built.state)) stateChanged = true;
-        reports.push(reportFor(pair, "up-to-date"));
-        break;
-      case "server-ahead":
-      case "server-only":
-        reports.push(
-          reportFor(
-            pair,
-            "skipped",
-            `server is ahead \u2014 fetch with \`mixshift context pull --brand ${brandSlug}\``
-          )
-        );
-        break;
-    }
-  }
-  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
-  return { ok: true, brand: brandSlug, reports };
-}
-async function sync(brandSlug, options = {}) {
-  const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
-  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
-  const reports = [...built.issues];
-  let stateChanged = built.stateDirty;
-  for (const pair of built.pairs) {
-    if (pair.collision) {
-      reports.push(collisionReport(pair));
-      continue;
-    }
-    let outcome = null;
-    switch (pair.verdict) {
-      case "server-ahead":
-      case "server-only":
-        outcome = await pullOneDoc(brandSlug, pair, client, options.dataDirOverride);
-        break;
-      case "local-ahead":
-      case "local-only":
-        outcome = await pushOneDoc(
-          brandSlug,
-          pair,
-          client,
-          pair.verdict === "local-ahead" ? pair.state?.server_revision : void 0,
-          false
-        );
-        break;
-      case "server-deleted":
-        reports.push(reportFor(pair, "skipped", serverDeletedDetail(brandSlug)));
-        break;
-      case "diverged":
-        reports.push(
-          reportFor(pair, "conflict", `diverged \u2014 ${conflictInstructions(brandSlug)}`)
-        );
-        break;
-      case "in-sync":
-        if (adoptInSyncState(pair, built.state)) stateChanged = true;
-        reports.push(reportFor(pair, "up-to-date"));
-        break;
-    }
-    if (outcome) {
-      reports.push(outcome.report);
-      if (outcome.stateEntry) {
-        built.state.docs[pair.key] = outcome.stateEntry;
-        stateChanged = true;
-      }
-    }
-  }
-  if (stateChanged) await saveState(brandSlug, built.state, options.dataDirOverride);
-  return { ok: true, brand: brandSlug, reports };
-}
-async function migrate(options = {}) {
-  const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
-  const brands = options.brands ?? await listLocalBrands(options.dataDirOverride);
-  const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
-  const summaries = [];
-  for (const brandSlug of brands) {
-    const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
-    const state = await loadState(brandSlug, options.dataDirOverride, identity);
-    const reports = [];
-    let stateChanged = false;
-    for (const local of localDocs) {
-      const pair = {
-        key: local.key,
-        docType: local.docType,
-        ...local.corpusName !== void 0 ? { corpusName: local.corpusName } : {},
-        local,
-        verdict: "local-only"
-      };
-      const valid = validateDocContent(local.docType, local.content);
-      if (!valid.ok) {
-        reports.push(
-          reportFor(
-            pair,
-            "skipped",
-            `local file is invalid (${valid.detail}) \u2014 fix it and re-run migrate`
-          )
-        );
-        continue;
-      }
-      const { report, stateEntry } = await pushOneDoc(
-        brandSlug,
-        pair,
-        client,
-        state.docs[local.key]?.server_revision,
-        false
-      );
-      reports.push(report);
-      if (stateEntry) {
-        state.docs[local.key] = stateEntry;
-        stateChanged = true;
-      }
-    }
-    if (stateChanged) await saveState(brandSlug, state, options.dataDirOverride);
-    summaries.push({ brand: brandSlug, reports });
-  }
-  return { ok: true, brands: summaries };
-}
-
 // src/lib/context-sync/autosync.ts
 var AUTOSYNC_BUDGET_MS = 2e3;
 var AUTOSYNC_THROTTLE_MS = 15 * 60 * 1e3;
@@ -70779,11 +70901,11 @@ async function maybeAutoSync(brandSlug, options = {}) {
       return { ran: false, reason: "disabled" };
     }
     if (options.env === void 0 && process.env.VITEST) {
-      debugLog(env, `autosync(${brandSlug}): disabled under test runner (VITEST set)`);
+      debugLog2(env, `autosync(${brandSlug}): disabled under test runner (VITEST set)`);
       return { ran: false, reason: "disabled" };
     }
     if (!isSafeBrandSlug(brandSlug)) {
-      debugLog(env, `autosync: unsafe brand slug ${JSON.stringify(brandSlug)}; skipped`);
+      debugLog2(env, `autosync: unsafe brand slug ${JSON.stringify(brandSlug)}; skipped`);
       return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
     }
     if (!await brandDirExists(brandSlug, options.dataDirOverride)) {
@@ -70798,7 +70920,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
     const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
     const state = await loadState(brandSlug, options.dataDirOverride);
     if (typeof identity === "string" && typeof state.identity === "string" && state.identity !== identity && Object.keys(state.docs).length > 0) {
-      debugLog(env, `autosync(${brandSlug}): ledger bound to another tenant; skipped`);
+      debugLog2(env, `autosync(${brandSlug}): ledger bound to another tenant; skipped`);
       return {
         ran: false,
         reason: "skipped",
@@ -70817,7 +70939,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
     state.last_autosync_at = now.toISOString();
     const stamped = await saveState(brandSlug, state, options.dataDirOverride);
     if (!stamped) {
-      debugLog(env, `autosync(${brandSlug}): throttle stamp not persistable; skipped`);
+      debugLog2(env, `autosync(${brandSlug}): throttle stamp not persistable; skipped`);
       return {
         ran: false,
         reason: "skipped",
@@ -70845,11 +70967,11 @@ async function maybeAutoSync(brandSlug, options = {}) {
       );
       if (raced === DEADLINE) {
         controller.abort();
-        debugLog(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        debugLog2(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
         return { ran: false, reason: "failed", detail: `timed out after ${budgetMs}ms` };
       }
       if (!raced.ok) {
-        debugLog(env, `autosync(${brandSlug}): ${raced.message}`);
+        debugLog2(env, `autosync(${brandSlug}): ${raced.message}`);
         return { ran: false, reason: "failed", detail: raced.message };
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
@@ -70861,11 +70983,11 @@ async function maybeAutoSync(brandSlug, options = {}) {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    debugLog(env, `autosync(${brandSlug}): swallowed error: ${message}`);
+    debugLog2(env, `autosync(${brandSlug}): swallowed error: ${message}`);
     return { ran: false, reason: "failed", detail: message };
   }
 }
-function debugLog(env, message) {
+function debugLog2(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
 }
@@ -71242,6 +71364,7 @@ async function fetchBrandBrain(opts) {
     brandTermsInput
   });
   const { path: path2 } = await saveBrain(brain, dataDirOverride);
+  await pushAfterWrite(slug, { dataDirOverride });
   const summary = {
     row_count: sellerOut.rows.length,
     acos_target_pct: brain.seller?.acos_target_pct ?? null,
@@ -71470,6 +71593,7 @@ async function recordObservations(brandSlug, observations, dataDirOverride) {
   }
   const next = applyObservations(loaded.brain, observations);
   const { path: path2 } = await saveBrain(next, dataDirOverride);
+  await pushAfterWrite(brandSlug, { dataDirOverride });
   return { ok: true, path: path2, applied: observations.length };
 }
 async function drainPendingDiscoveries(brandSlug, dataDirOverride) {
@@ -72306,6 +72430,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
     };
   }
   await writeContextFile(path2, ctxObj);
+  await pushAfterWrite(payload.brand_slug, { dataDirOverride: opts.dataDirOverride });
   return {
     status: "ok",
     updated_context: ctxObj,
@@ -73945,6 +74070,7 @@ async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   doc.set("last_updated", today);
   fieldsUpdated.push("last_updated");
   await writeYamlAtomic(ctxPath, doc.toString({ indent: 2, lineWidth: 0 }));
+  await pushAfterWrite(brandSlug, { dataDirOverride });
   return {
     status: "ok",
     context_path: ctxPath,
@@ -74169,6 +74295,9 @@ async function migrateBrandConfig(brandSlug, dataDirOverride) {
     const merged = { ...existingBlock, ...additions };
     await saveSkillConfig(brandSlug, skillId, merged, dataDirOverride);
     wrote_skills.push(skillId);
+  }
+  if (wrote_skills.length > 0) {
+    await pushAfterWrite(brandSlug, { dataDirOverride });
   }
   return { brand_slug: brandSlug, moved, skipped, wrote_skills };
 }
@@ -80778,6 +80907,7 @@ async function applyConfirmation(payload, decision, opts) {
     ).catch(() => {
     });
   }
+  await pushAfterWrite(payload.brand_slug, { dataDirOverride: opts.dataDirOverride });
   return {
     status: "ok",
     effective_config: toConsumableConfig(payload.fields, effective),
@@ -83881,6 +84011,27 @@ function createTimelineClient(options = {}) {
       } catch (err) {
         return failureFromException2(err);
       }
+    },
+    async corroborateEvent(eventId, input, opts = {}) {
+      try {
+        const res = await authedRequest(
+          "POST",
+          `/api/timeline/event/${encodeURIComponent(eventId)}/corroborate`,
+          input,
+          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope2(res);
+        if (json2.ok === true && typeof json2.event === "object" && json2.event !== null && typeof json2.corroboration_id === "string") {
+          return {
+            ok: true,
+            event: json2.event,
+            corroboration_id: json2.corroboration_id
+          };
+        }
+        return failureFromEnvelope2(json2, res.status);
+      } catch (err) {
+        return failureFromException2(err);
+      }
     }
   };
 }
@@ -83958,7 +84109,7 @@ async function emitAdsCommitEvent(input, options = {}) {
       options.dataDirOverride
     );
     if (brandSlug === null) {
-      debugLog2(env, `ads-emit: no unique brand for seller ${input.legacySellerId}; skipped`);
+      debugLog3(env, `ads-emit: no unique brand for seller ${input.legacySellerId}; skipped`);
       return { posted: false, reason: "no_brand" };
     }
     const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
@@ -83978,7 +84129,7 @@ async function emitAdsCommitEvent(input, options = {}) {
     const timeoutMs = options.timeoutMs ?? ADS_EMIT_TIMEOUT_MS;
     const raced = await raceDeadline(client.postEvent(event, { timeoutMs }), timeoutMs);
     if (raced === DEADLINE) {
-      debugLog2(env, `ads-emit: post exceeded the ${timeoutMs}ms budget; detached`);
+      debugLog3(env, `ads-emit: post exceeded the ${timeoutMs}ms budget; detached`);
       return {
         posted: false,
         reason: "post_failed",
@@ -83986,13 +84137,13 @@ async function emitAdsCommitEvent(input, options = {}) {
       };
     }
     if (!raced.ok) {
-      debugLog2(env, `ads-emit: post failed (${raced.kind}): ${raced.message}`);
+      debugLog3(env, `ads-emit: post failed (${raced.kind}): ${raced.message}`);
       return { posted: false, reason: "post_failed", detail: raced.friendly };
     }
     return { posted: true, id: raced.id, brand_slug: brandSlug };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    debugLog2(env, `ads-emit: swallowed error: ${message}`);
+    debugLog3(env, `ads-emit: swallowed error: ${message}`);
     return { posted: false, reason: "error", detail: message };
   }
 }
@@ -84070,7 +84221,7 @@ function truncatedJson(value, maxChars) {
   }
   return json2.length > maxChars ? `${json2.slice(0, maxChars)}\u2026` : json2;
 }
-function debugLog2(env, message) {
+function debugLog3(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
 }
@@ -85504,13 +85655,18 @@ function registerContextCommands(program3) {
         (n, r) => n + r.docs.filter((d) => d.verdict === "server-deleted").length,
         0
       );
+      const unshared = results.reduce(
+        (n, r) => n + r.docs.filter((d) => d.verdict === "local-only").length,
+        0
+      );
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
             {
               status: "ok",
               brands: results.map((r) => ({ brand: r.brand, docs: r.docs })),
-              conflicts
+              conflicts,
+              unshared
             },
             null,
             2
@@ -85547,6 +85703,15 @@ function registerContextCommands(program3) {
           `${serverDeleted} doc(s) deleted from the org store: delete the local file to accept the deletion, or recreate it with \`mixshift context push --brand <slug> --force\`.`
         );
         lines.push("");
+      }
+      for (const r of results) {
+        const localOnly = r.docs.filter((d) => d.verdict === "local-only").length;
+        if (localOnly > 0) {
+          lines.push(
+            `${localOnly} doc(s) not yet shared with your team: run \`mixshift context push --brand ${r.brand}\` to commit them.`
+          );
+          lines.push("");
+        }
       }
       process.stdout.write(lines.join("\n") + "\n");
       return;
@@ -85905,23 +86070,23 @@ var UNIT_MS = {
   d: 24 * 60 * 60 * 1e3,
   w: 7 * 24 * 60 * 60 * 1e3
 };
-function parseSince(input, now = /* @__PURE__ */ new Date()) {
+function parseSince(input, now = /* @__PURE__ */ new Date(), flag = "--since") {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return { ok: false, message: "--since must not be empty" };
+    return { ok: false, message: `${flag} must not be empty` };
   }
   const rel = RELATIVE_RE.exec(trimmed);
   if (rel) {
     const n = Number(rel[1]);
     const unit = rel[2].toLowerCase();
     if (!Number.isFinite(n) || n <= 0) {
-      return { ok: false, message: `invalid relative --since '${input}'` };
+      return { ok: false, message: `invalid relative ${flag} '${input}'` };
     }
     const t = now.getTime() - n * UNIT_MS[unit];
     if (!Number.isFinite(t) || Math.abs(t) > 864e13) {
       return {
         ok: false,
-        message: `--since '${input}' is too large to be a real time window`
+        message: `${flag} '${input}' is too large to be a real time window`
       };
     }
     return { ok: true, iso: new Date(t).toISOString() };
@@ -85930,11 +86095,34 @@ function parseSince(input, now = /* @__PURE__ */ new Date()) {
   if (Number.isNaN(parsed.getTime())) {
     return {
       ok: false,
-      message: `invalid --since '${input}': pass an ISO timestamp (2026-07-01, 2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`
+      message: `invalid ${flag} '${input}': pass an ISO timestamp (2026-07-01, 2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`
     };
   }
   return { ok: true, iso: parsed.toISOString() };
 }
+
+// src/lib/timeline/types.ts
+var STAKE_CATEGORIES = [
+  "brand_migration",
+  "media_spike",
+  "media_spike_recurring",
+  "portfolio_decision",
+  "promotional_window",
+  "promotional_window_recurring",
+  "stockout",
+  "price_test",
+  "launch",
+  "content_change",
+  "strategy_change",
+  "platform_external"
+];
+var STAKE_SOURCES = ["declared", "system", "suggested"];
+var STAKE_STATUSES = [
+  "unverified",
+  "corroborated",
+  "disputed",
+  "no_effect"
+];
 
 // src/commands/timeline.ts
 init_telemetry();
@@ -85944,18 +86132,29 @@ function registerTimelineCommands(program3) {
   );
   registerList(timeline);
   registerAdd(timeline);
+  registerCorroborate(timeline);
 }
 function registerList(timeline) {
   timeline.command("list").description(
-    "List timeline events, newest-first per the server ordering. One line per event: ts, family.kind, actor, brand, payload digest."
+    "List timeline events, newest-first per the server ordering. One line per event: ts, family.kind, actor, brand, payload digest. Stakes show [category] status and their range; corroborations show their target."
   ).option("--brand <slug>", "limit to one brand").option("--family <f>", "event family: 'knowledge' | 'action' | 'structural' | 'comment'").option("--kind <k>", "exact kind, e.g. 'action.ads_change_committed'").option(
     "--since <when>",
-    "ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w"
+    "ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w (lower bound)"
+  ).option(
+    "--until <when>",
+    "ISO timestamp (2026-07-08) or relative: 24h, 7d, 2w (upper bound)"
   ).option("--limit <n>", "max events per page (server default applies when omitted)").option(
     "--all",
     `follow pagination to exhaustion (capped at ${LIST_ALL_CAP} events)`,
     false
-  ).action(async (opts, cmd) => {
+  ).option("--stakes", "restrict to stakes (structural events carrying a category)", false).option("--category <enum>", "filter to one stake category").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested'").option(
+    "--status <status>",
+    "verification axis: 'unverified' | 'corroborated' | 'disputed' | 'no_effect'"
+  ).option("--affects <ref>", "match stakes whose affects contains this ref (e.g. 'marketplace:US')").option(
+    "--overlap",
+    "treat --since/--until as an interval overlap against the stake range, not a point window",
+    false
+  ).option("--include-future", "include scheduled stakes dated beyond now+24h", false).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -85971,6 +86170,14 @@ function registerList(timeline) {
         }
         query.since = since.iso;
       }
+      if (opts.until) {
+        const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
+        if (!until.ok) {
+          emitError11(until.message, root);
+          return;
+        }
+        query.until = until.iso;
+      }
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
         if (!Number.isInteger(n) || n <= 0) {
@@ -85979,6 +86186,13 @@ function registerList(timeline) {
         }
         query.limit = n;
       }
+      if (opts.stakes) query.stakes = true;
+      if (opts.category) query.category = opts.category;
+      if (opts.source) query.source = opts.source;
+      if (opts.status) query.status = opts.status;
+      if (opts.affects) query.affects = opts.affects;
+      if (opts.overlap) query.overlap = true;
+      if (opts.includeFuture) query.include_future = true;
       const client = createTimelineClient({ dataDirOverride: root.dataDir });
       const result = opts.all ? await listAllEvents(client, query) : await client.listEvents(query);
       if (!result.ok) {
@@ -86042,13 +86256,15 @@ function registerList(timeline) {
   });
 }
 var MAX_NOTE_CHARS = 32768;
+var MAX_INTERPRETATION_CHARS = 4e3;
+var MAX_EVIDENCE_CHARS = 4096;
 function registerAdd(timeline) {
   timeline.command("add").description(
-    "Append a human annotation to a brand timeline: a structural.* stake in the ground (e.g. structural.price_change, structural.stockout) or a 'comment'. --note lands in payload.note; --target attaches the annotation to a specific fact/event/run. The acting person and surface are derived from your session automatically."
+    "Append a human annotation to a brand timeline: a structural.* stake in the ground (e.g. structural.price_change, structural.stockout) or a 'comment'. Pass --category to record it as a typed stake (requires --interpretation). --note lands in payload.note; --target attaches the annotation to a specific fact/event/run. The acting person and surface are derived from your session automatically."
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -86067,12 +86283,90 @@ function registerAdd(timeline) {
         );
         return;
       }
+      const isStake = opts.category !== void 0;
+      if (isStake) {
+        if (!STAKE_CATEGORIES.includes(opts.category)) {
+          emitError11(
+            `--category must be one of: ${STAKE_CATEGORIES.join(", ")} (got '${opts.category}').`,
+            root
+          );
+          return;
+        }
+        if (family !== "structural") {
+          emitError11(
+            `a --category stake requires a 'structural.<what>' --kind (got '${opts.kind}').`,
+            root
+          );
+          return;
+        }
+        if (opts.interpretation === void 0 || opts.interpretation.length === 0) {
+          emitError11(
+            "--interpretation is required when --category is given (a stake records what the org read into the event).",
+            root
+          );
+          return;
+        }
+        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS) {
+          emitError11(
+            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS}).`,
+            root
+          );
+          return;
+        }
+        if (opts.source !== void 0 && !STAKE_SOURCES.includes(opts.source)) {
+          emitError11(
+            `--source must be one of: ${STAKE_SOURCES.join(", ")} (got '${opts.source}').`,
+            root
+          );
+          return;
+        }
+      } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
+        emitError11(
+          "--end / --affects / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
+          root
+        );
+        return;
+      }
+      let intensity;
+      if (opts.intensity !== void 0) {
+        intensity = Number(opts.intensity);
+        if (!Number.isFinite(intensity)) {
+          emitError11(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
+          return;
+        }
+      }
+      for (const [flag, value] of [
+        ["--ts", opts.ts],
+        ["--end", opts.end]
+      ]) {
+        if (value !== void 0 && Number.isNaN(Date.parse(value))) {
+          emitError11(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
+          return;
+        }
+      }
+      let evidence;
+      if (opts.evidence !== void 0) {
+        const parsed = parseEvidence(opts.evidence);
+        if (!parsed.ok) {
+          emitError11(parsed.message, root);
+          return;
+        }
+        evidence = parsed.value;
+      }
       const input = {
         brand_slug: opts.brand,
         family,
         kind: opts.kind,
         ...opts.note !== void 0 ? { payload: { note: opts.note } } : {},
-        ...opts.target !== void 0 ? { target_ref: opts.target } : {}
+        ...opts.target !== void 0 ? { target_ref: opts.target } : {},
+        ...opts.ts !== void 0 ? { ts: opts.ts } : {},
+        ...isStake ? { category: opts.category } : {},
+        ...isStake ? { interpretation: opts.interpretation } : {},
+        ...opts.end !== void 0 ? { end_ts: opts.end } : {},
+        ...opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {},
+        ...intensity !== void 0 ? { intensity } : {},
+        ...opts.source !== void 0 ? { source: opts.source } : {},
+        ...evidence !== void 0 ? { evidence } : {}
       };
       const client = createTimelineClient({ dataDirOverride: root.dataDir });
       const result = await client.postEvent(input);
@@ -86087,7 +86381,17 @@ function registerAdd(timeline) {
             family,
             kind: opts.kind,
             has_note: opts.note !== void 0,
-            has_target: opts.target !== void 0
+            has_target: opts.target !== void 0,
+            is_stake: isStake,
+            ...isStake ? {
+              category: opts.category,
+              ...opts.source !== void 0 ? { source: opts.source } : {},
+              has_end: opts.end !== void 0,
+              affects_count: opts.affects?.length ?? 0,
+              has_evidence: evidence !== void 0,
+              has_intensity: intensity !== void 0,
+              has_ts: opts.ts !== void 0
+            } : {}
           }
         },
         root.dataDir
@@ -86104,6 +86408,12 @@ function registerAdd(timeline) {
             2
           ) + "\n"
         );
+      } else if (isStake) {
+        const rangeText = opts.end ? `range ${opts.ts ?? "now"} \u2192 ${opts.end}` : opts.ts ? `point at ${opts.ts}` : "point event";
+        process.stdout.write(
+          `\u2713 Recorded ${opts.category} stake for ${opts.brand} (${rangeText}, unverified). Event ${result.id}. Corroborate it later with \`mixshift timeline corroborate ${result.id}\`.
+`
+        );
       } else {
         process.stdout.write(
           `\u2713 Added ${opts.kind} to ${opts.brand}'s timeline (event ${result.id}).
@@ -86117,6 +86427,131 @@ function registerAdd(timeline) {
     }
   });
 }
+var MAX_CORROBORATE_NOTE_CHARS = 2e3;
+function registerCorroborate(timeline) {
+  timeline.command("corroborate <event-id>").description(
+    "Corroborate an existing stake: move its verification status, close its range, or attach evidence. Appends a corroboration to the stake and refreshes its status/end. At least one of --status / --end / --evidence is required (a --note alone is not a corroboration)."
+  ).option(
+    "--status <status>",
+    "'unverified' | 'corroborated' | 'disputed' | 'no_effect'"
+  ).option("--end <iso>", "close the stake range at this timestamp (>= the stake ts)").option("--note <text>", "a human note recorded on the corroboration").option("--evidence <json>", "this corroboration's evidence as a JSON object string").action(async (eventId, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const t0 = Date.now();
+    try {
+      if (opts.status === void 0 && opts.end === void 0 && opts.evidence === void 0) {
+        emitError11(
+          "a corroboration needs at least one of --status, --end, or --evidence (a --note alone is not a corroboration).",
+          root
+        );
+        return;
+      }
+      if (opts.status !== void 0 && !STAKE_STATUSES.includes(opts.status)) {
+        emitError11(
+          `--status must be one of: ${STAKE_STATUSES.join(", ")} (got '${opts.status}').`,
+          root
+        );
+        return;
+      }
+      if (opts.end !== void 0 && Number.isNaN(Date.parse(opts.end))) {
+        emitError11(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
+        return;
+      }
+      if (opts.note !== void 0 && opts.note.length > MAX_CORROBORATE_NOTE_CHARS) {
+        emitError11(
+          `--note is too long (${opts.note.length} characters; the cap is ${MAX_CORROBORATE_NOTE_CHARS}).`,
+          root
+        );
+        return;
+      }
+      let evidence;
+      if (opts.evidence !== void 0) {
+        const parsed = parseEvidence(opts.evidence);
+        if (!parsed.ok) {
+          emitError11(parsed.message, root);
+          return;
+        }
+        evidence = parsed.value;
+      }
+      const input = {
+        ...opts.status !== void 0 ? { status: opts.status } : {},
+        ...opts.end !== void 0 ? { end_ts: opts.end } : {},
+        ...opts.note !== void 0 ? { note: opts.note } : {},
+        ...evidence !== void 0 ? { evidence } : {}
+      };
+      const client = createTimelineClient({ dataDirOverride: root.dataDir });
+      const result = await client.corroborateEvent(eventId, input);
+      await track(
+        {
+          event_name: EventName.TimelineEventCorroborated,
+          outcome: result.ok ? "ok" : "failed",
+          duration_ms: Date.now() - t0,
+          ...result.ok ? {} : { error_class: result.kind },
+          payload: {
+            has_status: opts.status !== void 0,
+            ...opts.status !== void 0 ? { status: opts.status } : {},
+            has_end: opts.end !== void 0,
+            has_note: opts.note !== void 0,
+            has_evidence: evidence !== void 0
+          }
+        },
+        root.dataDir
+      );
+      if (!result.ok) {
+        emitError11(result.friendly, root);
+        return;
+      }
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: "ok",
+              corroboration_id: result.corroboration_id,
+              event: result.event
+            },
+            null,
+            2
+          ) + "\n"
+        );
+      } else {
+        const ev = result.event;
+        const closes = typeof ev.end_ts === "string" && ev.end_ts.length > 0 ? `, range closes ${ev.end_ts}` : "";
+        process.stdout.write(
+          `\u2713 Corroborated ${eventId}: status now ${ev.status ?? "unchanged"}${closes}. Corroboration ${result.corroboration_id}.
+`
+        );
+      }
+      return;
+    } catch (err) {
+      emitError11(err instanceof Error ? err.message : String(err), root);
+      return;
+    }
+  });
+}
+function collect2(value, prev) {
+  return [...prev, value];
+}
+function parseEvidence(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      ok: false,
+      message: `--evidence must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, message: `--evidence must be a JSON object (e.g. '{"metric":"acos"}').` };
+  }
+  const serialized = JSON.stringify(parsed);
+  if (serialized.length > MAX_EVIDENCE_CHARS) {
+    return {
+      ok: false,
+      message: `--evidence is too large (${serialized.length} characters serialized; the cap is ${MAX_EVIDENCE_CHARS}).`
+    };
+  }
+  return { ok: true, value: parsed };
+}
 function familyForKind(kind) {
   if (kind === "comment") return "comment";
   if (/^structural\.[a-z0-9_.-]+$/i.test(kind)) return "structural";
@@ -86128,8 +86563,32 @@ function formatEventLine(e) {
     e.kind.padEnd(32),
     e.actor.padEnd(24),
     e.brand_slug.padEnd(20),
-    summarizePayload(e)
+    summarizeEvent(e)
   ].join("  ").trimEnd();
+}
+function summarizeEvent(e) {
+  if (e.kind === "structural.corroboration") return summarizeCorroboration(e);
+  if (e.category !== void 0) return summarizeStake(e);
+  return summarizePayload(e);
+}
+function summarizeStake(e) {
+  const parts = [`[${e.category}]${e.status ? ` ${e.status}` : ""}`];
+  if (isNonEmpty(e.end_ts)) parts.push(`${e.ts} \u2192 ${e.end_ts}`);
+  if (isNonEmpty(e.interpretation)) parts.push(truncate(e.interpretation, 60));
+  if (Array.isArray(e.affects) && e.affects.length > 0) {
+    parts.push(`affects\xD7${e.affects.length}`);
+  }
+  const evidenceKeys = e.evidence && typeof e.evidence === "object" ? Object.keys(e.evidence).length : 0;
+  if (evidenceKeys > 0) parts.push(`evidence(${evidenceKeys})`);
+  return parts.join("  ");
+}
+function summarizeCorroboration(e) {
+  const parts = ["corroborates"];
+  if (isNonEmpty(e.target_ref)) parts.push(e.target_ref);
+  const p = e.payload ?? {};
+  if (typeof p.status === "string" && p.status.length > 0) parts.push(p.status);
+  if (typeof p.note === "string" && p.note.length > 0) parts.push(truncate(p.note, 60));
+  return parts.join("  ");
 }
 function summarizePayload(e) {
   const p = e.payload ?? {};
@@ -86152,13 +86611,27 @@ function summarizePayload(e) {
   const summary = parts.join("  ");
   return summary.length > 100 ? `${summary.slice(0, 99)}\u2026` : summary;
 }
+function isNonEmpty(v) {
+  return typeof v === "string" && v.length > 0;
+}
+function truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
+}
 function filtersPayload(query, all) {
   return {
     ...query.brand !== void 0 ? { brand: query.brand } : {},
     ...query.family !== void 0 ? { family: query.family } : {},
     ...query.kind !== void 0 ? { kind: query.kind } : {},
     ...query.since !== void 0 ? { since: query.since } : {},
+    ...query.until !== void 0 ? { until: query.until } : {},
     ...query.limit !== void 0 ? { limit: query.limit } : {},
+    ...query.stakes !== void 0 ? { stakes: query.stakes } : {},
+    ...query.category !== void 0 ? { category: query.category } : {},
+    ...query.source !== void 0 ? { source: query.source } : {},
+    ...query.status !== void 0 ? { status: query.status } : {},
+    ...query.affects !== void 0 ? { affects: query.affects } : {},
+    ...query.overlap !== void 0 ? { overlap: query.overlap } : {},
+    ...query.include_future !== void 0 ? { include_future: query.include_future } : {},
     all
   };
 }

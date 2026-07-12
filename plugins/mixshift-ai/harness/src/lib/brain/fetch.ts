@@ -34,6 +34,7 @@ import {
 import { loadBrain, saveBrain } from './read.js';
 import type { BrandBrain } from './schema.js';
 import type { BrandTermsBlock } from '../enrichment/brand-typos.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 /** Seller-source TTL: re-fetches inside this window are no-ops unless
  *  forced. 30 days per internal/BACKGROUND-DISCOVERY.md. */
@@ -520,6 +521,11 @@ export async function fetchBrandBrain(
     brandTermsInput,
   });
   const { path } = await saveBrain(brain, dataDirOverride);
+
+  // Auto-publish the freshly-saved brain to the org store, detached from the
+  // fetch's return summary (best-effort, bounded, non-throwing — the local
+  // saveBrain above is the durable result).
+  await pushAfterWrite(slug, { dataDirOverride });
 
   const summary: BrainFetchSummary = {
     row_count: sellerOut.rows.length,

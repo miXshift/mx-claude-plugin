@@ -10,6 +10,8 @@
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import type {
+  CorroborateEventInput,
+  CorroborateEventResult,
   ListTimelineResult,
   PostTimelineEventInput,
   PostTimelineEventResult,
@@ -44,6 +46,11 @@ export interface TimelineClient {
     input: PostTimelineEventInput,
     opts?: { timeoutMs?: number },
   ): Promise<PostTimelineEventResult>;
+  corroborateEvent(
+    eventId: string,
+    input: CorroborateEventInput,
+    opts?: { timeoutMs?: number },
+  ): Promise<CorroborateEventResult>;
 }
 
 export interface TimelineClientOptions {
@@ -162,6 +169,37 @@ export function createTimelineClient(
         return failureFromException(err);
       }
     },
+
+    async corroborateEvent(
+      eventId: string,
+      input: CorroborateEventInput,
+      opts: { timeoutMs?: number } = {},
+    ): Promise<CorroborateEventResult> {
+      try {
+        const res = await authedRequest(
+          'POST',
+          `/api/timeline/event/${encodeURIComponent(eventId)}/corroborate`,
+          input,
+          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS,
+        );
+        const json = await parseEnvelope(res);
+        if (
+          json.ok === true &&
+          typeof json.event === 'object' &&
+          json.event !== null &&
+          typeof json.corroboration_id === 'string'
+        ) {
+          return {
+            ok: true,
+            event: json.event as WireTimelineEvent,
+            corroboration_id: json.corroboration_id,
+          };
+        }
+        return failureFromEnvelope(json, res.status);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
   };
 }
 
@@ -222,6 +260,8 @@ interface WireEnvelope {
   events?: unknown;
   next_cursor?: unknown;
   id?: unknown;
+  event?: unknown;
+  corroboration_id?: unknown;
 }
 
 async function parseEnvelope(res: Response): Promise<WireEnvelope> {

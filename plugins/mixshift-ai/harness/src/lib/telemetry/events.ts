@@ -211,6 +211,7 @@ export const EventName = {
   // (timeline events are the customer's business record, not telemetry).
   TimelineListed: 'timeline.listed',
   TimelineEventAdded: 'timeline.event_added',
+  TimelineEventCorroborated: 'timeline.event_corroborated',
 
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',

@@ -223,6 +223,35 @@ Follow the structure and voice rules in `report-template.md` exactly.
 
 ---
 
+## Step 4.5: Capture the Story Behind an Unexplained Swing
+
+When the draft surfaces a MoM or YoY swing the data alone does not explain (a spend or ACOS jump, an OPS gap versus forecast, a launch-shaped ramp), do not invent a cause (Anti-Fabrication rule 11). Ask the brand owner directly, one plain question per swing that names the metric and window: "What happened here?"
+
+If they name a real cause (a promotion or Prime Day, a stockout, a PR or press moment, a price test, a content or strategy change), record it as a DECLARED stake on the brand timeline so the next report already knows the story and does not have to re-ask:
+
+```bash
+mixshift timeline add --brand <brand-slug> \
+  --kind structural.<what> \
+  --category <best-fit> \
+  --source declared \
+  --interpretation "<the cause, in the owner's words>" \
+  --ts <window-start-ISO> [--end <window-end-ISO>] \
+  [--affects marketplace:US] [--affects asin:B0XXXXXXXX]
+```
+
+- `--category` is the typed enum; pick the closest fit: `promotional_window` (a promo or Prime Day), `stockout`, `price_test`, `launch`, `content_change`, `strategy_change`, `media_spike` (a PR or press moment), `platform_external`. Full set: `brand_migration`, `media_spike`, `media_spike_recurring`, `portfolio_decision`, `promotional_window`, `promotional_window_recurring`, `stockout`, `price_test`, `launch`, `content_change`, `strategy_change`, `platform_external`.
+- `--kind` is `structural.<what>` (free-form, e.g. `structural.promo`, `structural.stockout`); `--category` carries the typed meaning.
+- `--source declared` marks it as owner-asserted, not a model guess. `--interpretation` is required and holds what the swing meant.
+- `--ts` is the window start; add `--end` for a ranged event (a multi-day promo, a stockout that has since cleared). `--affects` is repeatable and scopes the stake to a marketplace or ASIN when the owner names one.
+
+The command prints the new event id and reports the stake as `unverified`; that is expected on create.
+
+Then cite the stake in the narrative where the swing appears: name the cause and attribute it to the owner, hedged per rule 12 (e.g. "the April OPS lift is consistent with the brand-confirmed Easter promotion, April 8 to 14"). This in-context capture is what separates an annotation layer the team keeps using from one it abandons: the answer becomes a durable record every future report reads.
+
+If the owner does not know or does not answer, do not write a stake and do not assert a cause; describe the pattern and move on per rule 11. This step never blocks delivery.
+
+---
+
 ## Step 5 — Pre-Publication Review Gate (MANDATORY)
 
 ### Pass 1: Substantiation Review
@@ -282,6 +311,7 @@ After report is published, append to the brand's monthly_report_outs section:
 - [ ] Language review passed (no squishy language)
 - [ ] Forecast beat/miss included where available
 - [ ] Efficiency framing used the resolved `acos_target` (Step 1.5); if absent, framed observational (ACoS as-is, not vs a target)
+- [ ] Unexplained MoM/YoY swings: owner asked, any named cause recorded as a declared stake (Step 4.5) and cited in the narrative
 
 ---
 
