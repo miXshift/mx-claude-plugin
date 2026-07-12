@@ -3,6 +3,51 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.0
+
+Event stakes on the brand timeline, and automatic publishing of brand context
+edits for brands you have shared with your team.
+
+### Added
+
+- **Event stakes on the brand timeline.** Record the events that move a brand's
+  numbers (promotions, stockouts, media spikes, price tests, launches, content
+  and strategy changes) as first-class stakes. `mixshift timeline add` now takes
+  a typed `--category`, a required `--interpretation` (what the event means for
+  the brand), an optional date range (`--ts` and `--end`, backdated or scheduled
+  ahead), scope refs (`--affects`), a magnitude (`--intensity`), a `--source`,
+  and an initial `--evidence` object.
+- **Corroboration.** `mixshift timeline corroborate <event-id>` attaches
+  evidence to a stake and moves its status (unverified, corroborated, disputed,
+  no effect) as the data comes in. Every corroboration is recorded as its own
+  attributed timeline event, so the history of what the data showed is
+  preserved alongside what the team declared.
+- **Stake-aware timeline browsing.** `mixshift timeline list` gains `--stakes`,
+  `--category`, `--status`, `--source`, `--affects`, `--overlap` for interval
+  questions like "what was live that week", plus `--until` and
+  `--include-future` for scheduled stakes.
+- **Reports capture the story.** The monthly report skill now asks "what
+  happened here?" when it finds an unexplained swing and, with your
+  confirmation, records the answer as a stake it can cite. The daily health
+  check can propose a suggested stake for an anomaly, or corroborate an
+  existing one when the anomaly matches a known event.
+- **Automatic publishing for shared brands.** Once a brand has been published
+  to your team's org store, later brand-context edits publish back
+  automatically after each write. The publish is quick, best-effort, and never
+  overwrites a teammate's divergent copy; a one-line notice confirms each
+  share. Brands you have not shared stay local until you run
+  `mixshift context push`, and `mixshift context status` now points out
+  unshared work.
+
+### Changed
+
+- Brand setup guidance now ends with an explicit first share
+  (`mixshift context push`), and the welcome flow and FAQ point earlier
+  adopters at the one-time `mixshift context migrate`.
+- `brand key` commands respond faster when the org store is slow to reach
+  (the mirror step is now bounded at two seconds, matching the other
+  background sync paths).
+
 ## 0.7.2
 
 Internal telemetry accuracy only; no changes to any feature, command, or workflow.
