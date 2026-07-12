@@ -25,7 +25,7 @@ vi.mock('./engine.js', async (importOriginal) => {
 
 let testDir: string;
 let stderrChunks: string[];
-let stderrSpy: ReturnType<typeof vi.spyOn>;
+let stderrSpy: { mockRestore: () => void };
 
 /** Fake env WITHOUT VITEST so the test-runner guard doesn't short-circuit
  *  (push-after-write opts back in explicitly; see push-after-write.ts). */
