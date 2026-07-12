@@ -67104,6 +67104,14 @@ async function pushAfterWrite(brandSlug, options = {}) {
         detail: "no local brand directory"
       };
     }
+    const state = await loadState(brandSlug, options.dataDirOverride);
+    if (Object.keys(state.docs).length === 0) {
+      return {
+        published: false,
+        reason: "skipped",
+        detail: "brand not yet in the org store; publish it explicitly first (context push / context migrate)"
+      };
+    }
     const controller = new AbortController();
     const budgetMs = options.budgetMs ?? PUSH_AFTER_WRITE_BUDGET_MS;
     const abortTimer = setTimeout(() => controller.abort(), budgetMs);
@@ -85950,23 +85958,23 @@ var UNIT_MS = {
   d: 24 * 60 * 60 * 1e3,
   w: 7 * 24 * 60 * 60 * 1e3
 };
-function parseSince(input, now = /* @__PURE__ */ new Date()) {
+function parseSince(input, now = /* @__PURE__ */ new Date(), flag = "--since") {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return { ok: false, message: "--since must not be empty" };
+    return { ok: false, message: `${flag} must not be empty` };
   }
   const rel = RELATIVE_RE.exec(trimmed);
   if (rel) {
     const n = Number(rel[1]);
     const unit = rel[2].toLowerCase();
     if (!Number.isFinite(n) || n <= 0) {
-      return { ok: false, message: `invalid relative --since '${input}'` };
+      return { ok: false, message: `invalid relative ${flag} '${input}'` };
     }
     const t = now.getTime() - n * UNIT_MS[unit];
     if (!Number.isFinite(t) || Math.abs(t) > 864e13) {
       return {
         ok: false,
-        message: `--since '${input}' is too large to be a real time window`
+        message: `${flag} '${input}' is too large to be a real time window`
       };
     }
     return { ok: true, iso: new Date(t).toISOString() };
@@ -85975,7 +85983,7 @@ function parseSince(input, now = /* @__PURE__ */ new Date()) {
   if (Number.isNaN(parsed.getTime())) {
     return {
       ok: false,
-      message: `invalid --since '${input}': pass an ISO timestamp (2026-07-01, 2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`
+      message: `invalid ${flag} '${input}': pass an ISO timestamp (2026-07-01, 2026-07-01T12:00:00Z) or a relative form (24h, 7d, 2w)`
     };
   }
   return { ok: true, iso: parsed.toISOString() };
@@ -86019,7 +86027,10 @@ function registerList(timeline) {
     "List timeline events, newest-first per the server ordering. One line per event: ts, family.kind, actor, brand, payload digest. Stakes show [category] status and their range; corroborations show their target."
   ).option("--brand <slug>", "limit to one brand").option("--family <f>", "event family: 'knowledge' | 'action' | 'structural' | 'comment'").option("--kind <k>", "exact kind, e.g. 'action.ads_change_committed'").option(
     "--since <when>",
-    "ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w"
+    "ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w (lower bound)"
+  ).option(
+    "--until <when>",
+    "ISO timestamp (2026-07-08) or relative: 24h, 7d, 2w (upper bound)"
   ).option("--limit <n>", "max events per page (server default applies when omitted)").option(
     "--all",
     `follow pagination to exhaustion (capped at ${LIST_ALL_CAP} events)`,
@@ -86046,6 +86057,14 @@ function registerList(timeline) {
           return;
         }
         query.since = since.iso;
+      }
+      if (opts.until) {
+        const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
+        if (!until.ok) {
+          emitError11(until.message, root);
+          return;
+        }
+        query.until = until.iso;
       }
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
@@ -86412,10 +86431,11 @@ function parseEvidence(raw) {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { ok: false, message: `--evidence must be a JSON object (e.g. '{"metric":"acos"}').` };
   }
-  if (raw.length > MAX_EVIDENCE_CHARS) {
+  const serialized = JSON.stringify(parsed);
+  if (serialized.length > MAX_EVIDENCE_CHARS) {
     return {
       ok: false,
-      message: `--evidence is too large (${raw.length} characters; the cap is ${MAX_EVIDENCE_CHARS}).`
+      message: `--evidence is too large (${serialized.length} characters serialized; the cap is ${MAX_EVIDENCE_CHARS}).`
     };
   }
   return { ok: true, value: parsed };
@@ -86491,6 +86511,7 @@ function filtersPayload(query, all) {
     ...query.family !== void 0 ? { family: query.family } : {},
     ...query.kind !== void 0 ? { kind: query.kind } : {},
     ...query.since !== void 0 ? { since: query.since } : {},
+    ...query.until !== void 0 ? { until: query.until } : {},
     ...query.limit !== void 0 ? { limit: query.limit } : {},
     ...query.stakes !== void 0 ? { stakes: query.stakes } : {},
     ...query.category !== void 0 ? { category: query.category } : {},
