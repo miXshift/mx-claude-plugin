@@ -262,6 +262,10 @@ mixshift --data-dir ~/.mixshift-customer-a data list-tables
 
 In chat, this doesn't help (Claude doesn't know which workspace to pick) — for chat-based workflows, swap sessions when you switch customers.
 
+### I set up brands before Org Brain. How do I share that context with my team?
+
+Publish your existing local brand context to the shared org store once with `mixshift context migrate`. It seeds the org store from the brand directories already on your machine (`~/.mixshift/clients/<slug>/`), so teammates work from the same brand setup instead of each rebuilding it. You only run it for brands that predate Org Brain; it is a one-time seed.
+
 ---
 
 ## Troubleshooting

@@ -118,6 +118,10 @@ The `mixshift welcome` command writes to stderr (so it shows up correctly in ter
 
 If the command fails with "command not found" or similar, fall back to a brief one-line message: *"Looks like the plugin's bin path isn't registered. Try restarting Claude Code, or run `node ${CLAUDE_PLUGIN_ROOT}/harness/dist/cli.js welcome` as a fallback."*
 
+## One-time note for users from before Org Brain
+
+If a returning user set up brands locally before Org Brain shipped, that brand context may live only on this machine. Mention once (skip it for brand-new users, and do not belabor it) that they can publish that local brand context to the shared org store so teammates work from the same brand setup, with a single `mixshift context migrate`. It seeds the org store from the local brand dirs one time; no need to repeat it.
+
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
 At the START of this skill, run:
