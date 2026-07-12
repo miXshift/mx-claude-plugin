@@ -79341,6 +79341,80 @@ function synthFailure(opts, message) {
 
 // src/commands/data.ts
 init_query_runner();
+
+// src/lib/data/asin-titles.ts
+init_query_runner();
+var MAX_ASINS = 1e3;
+function normalizeAsins(asins) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const raw of asins) {
+    const a = String(raw ?? "").trim().toUpperCase();
+    if (!a || seen.has(a)) continue;
+    seen.add(a);
+    out.push(a);
+  }
+  return out;
+}
+async function resolveAsinTitles(opts) {
+  const t0 = Date.now();
+  const asins = normalizeAsins(opts.asins);
+  if (asins.length === 0) {
+    return { ok: true, titles: [], missing: [], durationMs: Date.now() - t0 };
+  }
+  if (asins.length > MAX_ASINS) {
+    const message = `Too many ASINs (${asins.length}); the limit is ${MAX_ASINS} per call.`;
+    return {
+      ok: false,
+      message,
+      friendly: `${message} Batch your ASINs into groups of ${MAX_ASINS} or fewer.`,
+      durationMs: Date.now() - t0
+    };
+  }
+  const placeholders = asins.map(() => "?").join(", ");
+  const sql = `
+    SELECT m.ASIN AS asin, m.ItemName AS title, m.Brand AS brand
+    FROM mws_items m
+    JOIN (
+      SELECT ASIN, MAX(ID) AS pick_id
+      FROM mws_items
+      WHERE SellerID = ?
+        AND ASIN IN (${placeholders})
+        AND (ASIN, dtUpdatedOn) IN (
+          SELECT ASIN, MAX(dtUpdatedOn)
+          FROM mws_items
+          WHERE SellerID = ?
+            AND ASIN IN (${placeholders})
+          GROUP BY ASIN
+        )
+      GROUP BY ASIN
+    ) pick ON m.ID = pick.pick_id`;
+  const params = [opts.sellerId, ...asins, opts.sellerId, ...asins];
+  const result = await runQuery(
+    sql,
+    params,
+    { dataDirOverride: opts.dataDirOverride }
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      message: result.message,
+      friendly: result.friendly,
+      durationMs: Date.now() - t0
+    };
+  }
+  const titles = result.rows.map((r) => ({
+    asin: String(r.asin).toUpperCase(),
+    title: r.title ?? null,
+    brand: r.brand ?? null,
+    source: "mws_items"
+  }));
+  const found = new Set(titles.map((t) => t.asin));
+  const missing = asins.filter((a) => !found.has(a));
+  return { ok: true, titles, missing, durationMs: Date.now() - t0 };
+}
+
+// src/commands/data.ts
 init_resolve();
 import { writeFile as writeFile18 } from "node:fs/promises";
 import { mkdir as mkdir19 } from "node:fs/promises";
@@ -79551,6 +79625,70 @@ function registerDataCommands(program3) {
           } else {
             process.stdout.write(
               renderRowsAsMarkdown(result.rows) + "\n"
+            );
+          }
+        }
+      } catch (err) {
+        emitError5(err, !!root.json);
+      }
+    }
+  );
+  data.command("asin-titles").description(
+    'Resolve ASINs to product Title + Brand from the Seller Central catalog. ASINs not listed in mws_items come back under "missing" \u2014 resolve those live via mx-amazon-retail `catalog.search_items`.'
+  ).requiredOption("--seller-id <id>", "seller to resolve against", parseInt10).requiredOption("--asins <list>", "comma-separated ASINs (e.g. B0ABC,B0XYZ)").action(
+    async (opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      try {
+        const asins = opts.asins.split(",");
+        const result = await resolveAsinTitles({
+          sellerId: opts.sellerId,
+          asins,
+          dataDirOverride: root.dataDir
+        });
+        if (!result.ok) {
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify({ status: "error", message: result.friendly }, null, 2) + "\n"
+            );
+          } else {
+            process.stderr.write(`
+\u2717 ${result.friendly}
+`);
+          }
+          process.exitCode = 1;
+          return;
+        }
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                seller_id: opts.sellerId,
+                titles: result.titles,
+                missing: result.missing,
+                duration_ms: result.durationMs
+              },
+              null,
+              2
+            ) + "\n"
+          );
+        } else {
+          process.stderr.write(
+            `
+\u2713 ${result.titles.length} resolved` + (result.missing.length ? `, ${result.missing.length} not in catalog` : "") + ` (${result.durationMs}ms)
+
+`
+          );
+          process.stdout.write(
+            renderRowsAsMarkdown(
+              result.titles
+            ) + "\n"
+          );
+          if (result.missing.length) {
+            process.stderr.write(
+              `
+Not in mws_items (resolve live via mx-amazon-retail catalog.search_items):
+  ` + result.missing.join(", ") + "\n"
             );
           }
         }

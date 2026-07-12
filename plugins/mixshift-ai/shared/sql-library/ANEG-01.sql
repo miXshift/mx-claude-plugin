@@ -19,6 +19,7 @@ SELECT
     AmazonTargetID,
     targetingText                                  AS AsinTarget,
     CampaignID,
+    CampaignName,
     ROUND(SUM(CASE WHEN DateTime >= :window_start AND DateTime <= :window_end
                    THEN Cost ELSE 0 END), 2)     AS WindowSpend,
     ROUND(SUM(CASE WHEN DateTime >= :window_start AND DateTime <= :window_end
@@ -29,7 +30,7 @@ SELECT
 FROM targetexpressionsmetric
 WHERE SellerID = :seller_id
   AND targetingText LIKE 'asin=%'
-GROUP BY AmazonTargetID, targetingText, CampaignID
+GROUP BY AmazonTargetID, targetingText, CampaignID, CampaignName
 HAVING WindowSpend > 0
    AND LifetimeOrders < :lifetime_orders_threshold
 ORDER BY WindowSpend DESC;

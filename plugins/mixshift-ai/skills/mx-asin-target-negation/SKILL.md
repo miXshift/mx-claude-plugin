@@ -1,6 +1,6 @@
 ---
 name: mx-asin-target-negation
-version: 1.8.0
+version: 1.8.1
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Pulls ASIN-triggered rows for a configurable
@@ -26,6 +26,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.8.1
+    change: "Names, not IDs: ANEG-01 now returns CampaignName (added to SELECT + GROUP BY) so the report's Campaign column shows the name, not the numeric CampaignID; the report renders ASIN targets as `PDP Title (ASIN)` and points to `mixshift data asin-titles` for any missing titles. Keeps the raw ASIN visible for the apply step."
   - version: 1.8.0
     change: "Added a live conflict check to the Applying ASIN negations flow: before the dry run, read existing negative targets via sp.list_negative_targets and sp.list_campaign_negative_targets (campaignIdFilter bodies), match the ASIN inside each clause's expression array per location, drop duplicates, and report the skipped count with the preview. Frontmatter version realigned with the manifest (prior 1.5.0 was stale against manifest 1.7.0)."
   - version: 1.5.0
@@ -345,6 +347,15 @@ Recommended columns:
 - Recommendation
 - Reason
 
+**Names, not IDs.** The Campaign column must show `CampaignName` (ANEG-01
+returns it) — never the bare numeric `CampaignID`. Show the Target ASIN as
+`PDP Title (ASIN)` so a reader can tell what the ASIN is without looking it up;
+the PDP Title already comes from the Phase 2 PDP inspection, and for any ASIN
+you still lack a title for, resolve it with
+`mixshift data asin-titles --seller-id <N> --asins <list> --json` (falls back to
+mx-amazon-retail `catalog.search_items` for ASINs not in the catalog). Keep the
+raw ASIN visible — the apply step negates by ASIN, so the id must stay in the row.
+
 ---
 
 ## Recommendation Rule
@@ -398,7 +409,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/aneg-sidecar-input.json
 {
   "skill": "mx-asin-target-negation",
-  "skill_version": "1.8.0",
+  "skill_version": "1.8.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",
