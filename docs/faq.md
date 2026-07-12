@@ -67,6 +67,12 @@ Say "welcome" or "sign in to mixshift" in chat (Cowork or Claude Code). The plug
 
 From a terminal: `mixshift auth login --person-label you@yourcompany.com`.
 
+### I don't have a MixShift account. How do I get one?
+
+The plugin needs an existing MixShift customer account; registration happens on the web platform, not in the plugin. Create your account at `https://www.mydashapplications.com/auth/registration`, then connect your Amazon accounts and activate ads + retail data in the Account Manager ([getting started guide](https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift)).
+
+After activation, most accounts are fully populated within 24-48 hours; large catalogs can take longer ([data timing details](https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift)). MixShift emails you when your data is ready to work with. Once that email lands, come back and say "welcome" in chat.
+
 Full details: [`docs/auth-setup.md`](./auth-setup.md).
 
 ### What credentials do I use to sign in?
@@ -84,6 +90,8 @@ By default the listing hides **dormant** brands — those with no active ads acc
 - *"why don't I see brand X?"* — Claude looks up X in the registry, shows you whether ads + SP-API are flagged active and what to do if not
 
 If you expected a brand to appear and it's not even in the dormant list, it likely hasn't been activated in MixShift yet. Head to the Account Manager view to begin: `https://dash.mydashapplications.com/account-manager`. Onboarding help doc: `https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift`.
+
+Just activated? Give it time: most accounts are fully populated within 24-48 hours of activation, large catalogs can take longer ([data timing details](https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift)). MixShift emails you when your data is ready.
 
 The registry refreshes automatically every 24 hours when you run a chat command, or on demand via `mixshift brand discover` / `mixshift brand list --refresh`.
 

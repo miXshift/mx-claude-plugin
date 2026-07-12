@@ -18,6 +18,7 @@ import { dirname } from 'node:path';
 import { stringify as stringifyYaml, parse as parseYaml } from 'yaml';
 import { indexPath } from '../paths/resolve.js';
 import { formatZodError } from '../profile/format-error.js';
+import { RegistryInvalidError } from '../errors.js';
 import {
   clientsIndexSchema,
   emptyIndex,
@@ -62,7 +63,7 @@ export async function readIndex(
     parsed = parseYaml(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
+    throw new RegistryInvalidError(
       `Brand registry at ${path} is malformed YAML: ${message}\n` +
         `Hint: delete the file and run \`mixshift brand discover\` to recreate it.`,
     );
@@ -70,7 +71,7 @@ export async function readIndex(
 
   const result = clientsIndexSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(
+    throw new RegistryInvalidError(
       formatZodError(result.error, `Brand registry at ${path} is invalid`) +
         `\nHint: delete the file and run \`mixshift brand discover\` to recreate it.`,
     );

@@ -48,6 +48,40 @@ edits for brands you have shared with your team.
   (the mirror step is now bounded at two seconds, matching the other
   background sync paths).
 
+## 0.7.4
+
+Sturdier behavior when something goes wrong: clearer messages, no more crashes on a couple of edge cases, and more accurate run history.
+
+### Fixed
+
+- **A broken brand list no longer crashes a command.** If your local brand
+  registry file ends up malformed or in an older format, commands like
+  `brand key add` now stop with a clear message telling you to run
+  `mixshift brand discover` to rebuild it, instead of failing with a raw error.
+- **A bad plugin download now tells you how to fix it.** If the plugin's program
+  file gets cut short during a sync (which previously broke every command,
+  including help and feedback), the CLI now detects it and prints a short
+  re-sync instruction instead of an unreadable crash.
+- **More accurate run history.** A skill run that lands on a RED verdict is a
+  successful run, and is now recorded that way. Previously some completed runs
+  were logged as if the save had failed, and genuine save failures are now
+  reported clearly.
+
+## 0.7.3
+
+A clear starting point for people who do not have a MixShift account yet.
+
+### Added
+
+- **New-user registration handoff.** When someone brand new tries to sign in or
+  set up the plugin without a MixShift account, the plugin now points them to the
+  right first step instead of failing quietly: create an account, connect your
+  Amazon accounts, and activate ads and retail data, with a link to the getting
+  started guide. It also sets expectations up front that most accounts finish
+  populating within 24 to 48 hours of activation (large catalogs can take longer),
+  so the data-backed skills become useful once the first pulls land. The sign-in,
+  consent, admin, and developer pages carry the same pointer.
+
 ## 0.7.2
 
 Internal telemetry accuracy only; no changes to any feature, command, or workflow.

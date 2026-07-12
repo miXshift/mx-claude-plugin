@@ -10,7 +10,7 @@ description: >
   Do NOT use for first-run setup or sign-in (that is mx-welcome), or for actually
   sending feedback (that is mx-feedback); this hub points to those.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - help
@@ -108,6 +108,7 @@ If the user is stuck because something is wrong:
    It reports the running version (and whether it is stale), sign-in state, warehouse connectivity, query-pack compatibility, and telemetry, each with the fix.
 2. Map the common cases:
    - Not signed in: offer **mx-welcome** or **mx-auth-login** ("say 'sign me in'").
+   - No MixShift account at all (brand-new user): the plugin needs an existing MixShift login; registration happens on the web platform. Point them to https://www.mydashapplications.com/auth/registration plus the getting-started guide (https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift), and set the expectation that after activating ads + retail data, most accounts are fully populated within 24-48 hours (large catalogs can take longer; MixShift emails them when data is ready).
    - Out of date: surface the doctor's "how to update" line.
    - Service unreachable: surface the doctor's allowlist and proxy remediation.
 3. **If it turns out to be a real bug** (not a setup issue), offer to file it via **mx-feedback**: *"Want me to send this to the MixShift team as a bug? Takes a second."* Do not send anything without the user's yes.

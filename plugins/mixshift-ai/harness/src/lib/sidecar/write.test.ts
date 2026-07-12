@@ -169,4 +169,42 @@ describe('writeSidecar', () => {
     expect(written.run_kind).toBe('portfolio');
     expect(written.context_snapshot.portfolio_account_count).toBe(12);
   });
+
+  it('emits skill.sidecar_written with outcome "ok" on a RED verdict (verdict != write outcome)', async () => {
+    // Regression guard for the telemetry mislabel: a RED health check is a
+    // successful run, so the sidecar-write event must report outcome "ok".
+    // Previously outcome was derived from the verdict, so every RED run logged
+    // as "failed" with a null error_class and polluted the reliability sweep.
+    await writeSidecar({
+      skill: 'mx-keyword-bid-health',
+      skill_version: '0.3.0',
+      brand_slug: 'redbrand',
+      run_kind: 'per_account',
+      data_date: '2026-04-24',
+      run_id: 'aabbcc',
+      context_snapshot: {
+        account_type: 'SC',
+        seller_id: 222,
+        primary_metric: 'ACOS',
+        acos_target_pct: 25,
+        attribution_window_days: 14,
+      },
+      sql_calls: [{ id: 'KBH-01', params: { seller_id: 222 } }],
+      headline_metrics: { high_acos_count: 9 },
+      verdict: 'RED',
+      artifacts: { report_html_path: '/tmp/r.md' },
+      dataDirOverride: dataDir,
+    });
+
+    const queue = await readFile(join(dataDir, 'telemetry', 'queue.jsonl'), 'utf-8');
+    const events = queue
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l))
+      .filter((e) => e.event_name === 'skill.sidecar_written');
+    expect(events).toHaveLength(1);
+    expect(events[0].outcome).toBe('ok');
+    expect(events[0].payload.verdict).toBe('RED');
+    expect(events[0].error_class ?? null).toBeNull();
+  });
 });

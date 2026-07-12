@@ -76,13 +76,31 @@ describe('readIndex / saveIndex roundtrip', () => {
     expect(index.brands[0]!.is_dormant).toBe(false);
   });
 
-  it('throws a clear error on malformed YAML', async () => {
+  it('throws RegistryInvalidError on malformed YAML', async () => {
     // Write garbage to the index path directly
     const { writeFile } = await import('node:fs/promises');
     const { indexPath } = await import('../paths/resolve.js');
+    const { RegistryInvalidError } = await import('../errors.js');
     await mkdir(join(testDir, 'clients'), { recursive: true });
     await writeFile(indexPath(testDir), 'not: valid: yaml:::', 'utf-8');
-    await expect(readIndex(testDir)).rejects.toThrow(/malformed YAML|invalid/);
+    await expect(readIndex(testDir)).rejects.toBeInstanceOf(RegistryInvalidError);
+    await expect(readIndex(testDir)).rejects.toThrow(/malformed YAML/);
+  });
+
+  it('throws RegistryInvalidError (not a raw crash) on a legacy/partial schema', async () => {
+    // Valid YAML that fails the current schema — e.g. a file written by a
+    // plugin version that predates schema_version 1. This is the #15 case:
+    // `brand key add` used to hard-crash (unhandled_exception) here; it must
+    // now surface a typed, actionable error the command layer can present.
+    const { writeFile } = await import('node:fs/promises');
+    const { indexPath } = await import('../paths/resolve.js');
+    const { RegistryInvalidError } = await import('../errors.js');
+    await mkdir(join(testDir, 'clients'), { recursive: true });
+    await writeFile(indexPath(testDir), 'schema_version: 0\nbrands: []\n', 'utf-8');
+    await expect(readIndex(testDir)).rejects.toBeInstanceOf(RegistryInvalidError);
+    await expect(readIndex(testDir)).rejects.toThrow(/brand discover/);
+    const err = await readIndex(testDir).catch((e) => e);
+    expect(err.errorClass).toBe('registry_invalid');
   });
 });
 

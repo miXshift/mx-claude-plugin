@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-login
 display_name: MixShift Auth Login
-version: "0.2.1"
+version: "0.2.2"
 description: >
   Authenticate against the MixShift warehouse via the mx-legacy-auth
   service (token-based). Routes by scenario: interactive sign-in
