@@ -292,3 +292,54 @@ describe('unknown --brand', () => {
     expect(stderrText()).toContain("brand 'tpyo' has no local directory");
   });
 });
+
+// ---------------------------------------------------------------------------
+// status: unshared (local-only) work gets a call-to-action + a --json count
+// ---------------------------------------------------------------------------
+
+describe('status unshared CTA', () => {
+  let stdoutChunks: string[];
+
+  beforeEach(() => {
+    stdoutChunks = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+  });
+
+  /** A local file with no matching manifest doc + no ledger = 'local-only'
+   *  (the default acme manifest has zero docs). */
+  async function writeLocalOnlyDoc(): Promise<void> {
+    const { writeFile: wf } = await import('node:fs/promises');
+    await wf(join(tmpDataDir, 'clients', 'acme', 'narrative.md'), 'local only\n', 'utf8');
+  }
+
+  it('renders the "not yet shared ... context push" CTA for a local-only doc', async () => {
+    await writeLocalOnlyDoc();
+
+    await runContext('status', '--brand', 'acme', '--data-dir', tmpDataDir);
+
+    const out = stdoutChunks.join('');
+    expect(out).toContain('1 doc(s) not yet shared with your team');
+    expect(out).toContain('mixshift context push --brand acme');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('includes an unshared count alongside conflicts in --json', async () => {
+    await writeLocalOnlyDoc();
+
+    await runContext('status', '--brand', 'acme', '--json', '--data-dir', tmpDataDir);
+
+    const parsed = JSON.parse(stdoutChunks.join('')) as { unshared: number; conflicts: number };
+    expect(parsed.unshared).toBe(1);
+    expect(parsed.conflicts).toBe(0);
+  });
+
+  it('no CTA and unshared:0 when nothing is local-only', async () => {
+    await runContext('status', '--brand', 'acme', '--json', '--data-dir', tmpDataDir);
+
+    const parsed = JSON.parse(stdoutChunks.join('')) as { unshared: number };
+    expect(parsed.unshared).toBe(0);
+  });
+});
