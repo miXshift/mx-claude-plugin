@@ -6,6 +6,7 @@ import {
   pushAfterWrite,
   PUSH_AFTER_WRITE_ENV,
   PUSH_AFTER_WRITE_BUDGET_MS,
+  __resetPushAfterWriteNotices,
 } from './push-after-write.js';
 import { push } from './engine.js';
 import type { DocActionReport } from './types.js';
@@ -23,6 +24,8 @@ vi.mock('./engine.js', async (importOriginal) => {
 });
 
 let testDir: string;
+let stderrChunks: string[];
+let stderrSpy: ReturnType<typeof vi.spyOn>;
 
 /** Fake env WITHOUT VITEST so the test-runner guard doesn't short-circuit
  *  (push-after-write opts back in explicitly; see push-after-write.ts). */
@@ -39,6 +42,18 @@ const SAMPLE_DOCS: ContextSyncState['docs'] = {
 };
 
 beforeEach(async () => {
+  // The notice dedup is a module-level Set that outlives one test; clear it so
+  // each case starts with a clean slate (and dedup can be asserted directly).
+  __resetPushAfterWriteNotices();
+  stderrChunks = [];
+  // Capture the user-facing notice (and keep it out of the real suite output).
+  // No test sets MIXSHIFT_DEBUG, so nothing else writes here.
+  stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown): boolean => {
+      stderrChunks.push(String(chunk));
+      return true;
+    });
   testDir = join(
     tmpdir(),
     `mxtest-pushafterwrite-${process.pid}-${Date.now()}-${Math.random()}`,
@@ -47,11 +62,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  stderrSpy.mockRestore();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.mocked(push).mockReset();
   await rm(testDir, { recursive: true, force: true });
 });
+
+const stderrText = (): string => stderrChunks.join('');
 
 /** Auto-publish serves EXISTING local brands only; most tests need the dir. */
 async function makeBrandDir(slug: string): Promise<void> {
@@ -368,5 +386,130 @@ describe('success shape', () => {
       errors: 1,
       reports,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// User-facing notice (STDERR) — "staged + visible": confirm a share, nudge an
+// unshared brand toward `context push`, or note a transient failure. Never
+// STDOUT; deduped per brand; suppressible; silent for no-news outcomes.
+// ---------------------------------------------------------------------------
+
+describe('user-facing notice (stderr)', () => {
+  /** A push that actually moved a doc (one pushed + one created = 2 shared). */
+  function stubSharedPush(): void {
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [
+        { key: 'context', docType: 'context', action: 'pushed', detail: 'rev 2' },
+        { key: 'narrative', docType: 'narrative', action: 'created', detail: 'rev 1' },
+      ],
+    });
+  }
+
+  it('published with docs shared: prints the "Shared ... to your team" confirmation', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    stubSharedPush();
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(stderrText()).toBe(`✓ Shared acme to your team's brand context (2 doc(s)).\n`);
+  });
+
+  it('participant-gate skip (brand not yet shared): prints the "context push" nudge', async () => {
+    await makeBrandDir('newbie'); // brand dir but no ledger → participant gate skip
+
+    await pushAfterWrite('newbie', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(stderrText()).toBe(
+      'Saved locally. newbie is not shared with your team yet. ' +
+        'Run `mixshift context push --brand newbie` to commit it.\n',
+    );
+  });
+
+  it('failed push: prints the "could not sync, saved locally" line', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: false,
+      brand: 'acme',
+      message: 'the auth service is unreachable',
+    });
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(stderrText()).toBe(
+      'Could not sync acme to your team just now; your work is saved locally. ' +
+        'Retry with `mixshift context push --brand acme`.\n',
+    );
+  });
+
+  it('disabled (kill switch): silent', async () => {
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: { [PUSH_AFTER_WRITE_ENV]: 'off' },
+    });
+    expect(result).toEqual({ published: false, reason: 'disabled' });
+    expect(stderrText()).toBe('');
+  });
+
+  it('unsafe slug: silent (nothing the user did wrong to hear about)', async () => {
+    await pushAfterWrite('../x', { dataDirOverride: testDir, env: LIVE_ENV });
+    expect(stderrText()).toBe('');
+  });
+
+  it('missing brand directory: silent', async () => {
+    await pushAfterWrite('ghost', { dataDirOverride: testDir, env: LIVE_ENV });
+    expect(stderrText()).toBe('');
+  });
+
+  it('published but nothing changed (all noop): silent — no news', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [{ key: 'context', docType: 'context', action: 'noop' }],
+    });
+
+    const result = await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(result.published).toBe(true);
+    expect(stderrText()).toBe('');
+  });
+
+  it('deduped per brand per process: two shares of one brand print one line', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    stubSharedPush();
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(stderrChunks.filter((c) => c.includes('✓ Shared acme')).length).toBe(1);
+
+    // Dedup is per BRAND: a different brand still prints its own line.
+    await makeBrandDir('other');
+    await writeLedger('other', SAMPLE_DOCS);
+    await pushAfterWrite('other', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(stderrText()).toContain('✓ Shared other');
+  });
+
+  it('notify:false suppresses the notice even on a real share', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    stubSharedPush();
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      notify: false,
+    });
+
+    expect(result.published).toBe(true);
+    expect(stderrText()).toBe('');
   });
 });

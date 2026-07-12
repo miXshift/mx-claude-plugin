@@ -72,6 +72,13 @@ export interface PushAfterWriteOptions {
   fetchImpl?: typeof fetch;
   budgetMs?: number;
   env?: NodeJS.ProcessEnv;
+  /**
+   * User-facing STDERR notice (see emitNotice). On by default; pass false to
+   * suppress it (e.g. a caller that renders its own summary). The notice is
+   * ALSO silent whenever the whole hook short-circuits to a no-op (disabled /
+   * unsafe / missing-dir / nothing-changed).
+   */
+  notify?: boolean;
 }
 
 export type PushAfterWriteResult =
@@ -90,15 +97,31 @@ export type PushAfterWriteResult =
 
 /**
  * Publish a brand's locally-ahead context docs to the org store, best-effort.
- * Safe to call from any write path: never throws, never prints (MIXSHIFT_DEBUG
- * stderr lines at most), and the worst outcome of any failure is "the write is
- * durable locally and will publish on the next explicit sync".
+ * Safe to call from any write path: never throws, and the worst outcome of any
+ * failure is "the write is durable locally and will publish on the next
+ * explicit sync". Emits ONE concise user-facing line to STDERR (opt out with
+ * `notify: false`) confirming the share, nudging an unshared brand toward
+ * `context push`, or noting a transient sync failure; STDOUT/--json stay clean.
  */
 export async function pushAfterWrite(
   brandSlug: string,
   options: PushAfterWriteOptions = {},
 ): Promise<PushAfterWriteResult> {
   const env = options.env ?? process.env;
+  const result = await computePushResult(brandSlug, options, env);
+  // SINGLE emit point: all 7 write seams await pushAfterWrite, so emitting the
+  // user-facing notice HERE (and never from the seams) means one place owns
+  // the copy and the per-brand dedup. See emitNotice for why STDERR + why a
+  // print is right here (unlike the silent autosync preflight).
+  emitNotice(brandSlug, result, options.notify ?? true);
+  return result;
+}
+
+async function computePushResult(
+  brandSlug: string,
+  options: PushAfterWriteOptions,
+  env: NodeJS.ProcessEnv,
+): Promise<PushAfterWriteResult> {
   try {
     const flag = (env[PUSH_AFTER_WRITE_ENV] ?? '').toLowerCase();
     if (flag === 'off' || flag === '0' || flag === 'false') {
@@ -221,4 +244,84 @@ export async function pushAfterWrite(
 
 function debugLog(env: NodeJS.ProcessEnv, message: string): void {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// User-facing notice
+// ---------------------------------------------------------------------------
+
+/** Brands we have already shown a notice for THIS process — the per-brand
+ *  dedup so a command that writes one brand several times prints one line. */
+const noticedBrands = new Set<string>();
+
+/** Test-only: forget every emitted-notice memo so each case starts clean.
+ *  (Mirrors __resetDotenvCache / __resetPluginVersionCache house style.) */
+export function __resetPushAfterWriteNotices(): void {
+  noticedBrands.clear();
+}
+
+/**
+ * Emit the auto-publish outcome as ONE user-facing line to STDERR.
+ *
+ * WHY STDERR (and why a print belongs here at all): this is NOT the silent
+ * autosync PREFLIGHT (a best-effort PULL before a read, where any chatter is
+ * noise). This fires immediately AFTER the user's explicit WRITE, and the one
+ * thing a user wants to know then is "did my work reach the team?" — a
+ * one-line confirmation or nudge is expected and wanted. Writing to STDERR
+ * (never STDOUT) is the load-bearing guarantee: --json and every other
+ * structured STDOUT consumer stay byte-for-byte clean; the notice shares the
+ * stderr channel with the MIXSHIFT_DEBUG debugLog lines but is a distinct,
+ * on-by-default (opt-out via `notify`) surface, not gated on MIXSHIFT_DEBUG.
+ *
+ * Deduped per brand per process. Silent for the intentional-off / no-news
+ * outcomes (disabled kill switch, unsafe slug, missing dir, published-but-
+ * nothing-changed) — see noticeLineFor. Silent in the test suite too: the
+ * VITEST guard turns the whole hook into a 'disabled' no-op unless a test
+ * opts back in with an explicit `env` (as this module's own tests do).
+ */
+function emitNotice(
+  brandSlug: string,
+  result: PushAfterWriteResult,
+  notify: boolean,
+): void {
+  if (!notify) return;
+  const line = noticeLineFor(brandSlug, result);
+  if (line === null) return; // intentional-off or no news: stay silent
+  if (noticedBrands.has(brandSlug)) return; // one line per brand per process
+  noticedBrands.add(brandSlug);
+  process.stderr.write(line + '\n');
+}
+
+/** Map an auto-publish result to its user-facing line, or null when the
+ *  outcome warrants no notice. Copy rules: no em dashes, "brand context" not
+ *  "cold start". */
+function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string | null {
+  if (result.published) {
+    const shared = result.pushed + result.created;
+    // Published but nothing actually moved (all noop / conflict / server-side):
+    // no news to report.
+    if (shared <= 0) return null;
+    return `✓ Shared ${brandSlug} to your team's brand context (${shared} doc(s)).`;
+  }
+  switch (result.reason) {
+    case 'disabled':
+      return null; // kill switch: intentional-off, say nothing
+    case 'skipped':
+      // Only the PARTICIPANT-GATE skip (brand not yet in the org store) earns a
+      // nudge — that is the "(a) I thought this was accruing to the team" +
+      // "(b) I don't know how to commit it" case the notice exists for. The
+      // other 'skipped' details (unsafe slug, no local dir) are silent no-ops.
+      if (result.detail.includes('not yet in the org store')) {
+        return (
+          `Saved locally. ${brandSlug} is not shared with your team yet. ` +
+          `Run \`mixshift context push --brand ${brandSlug}\` to commit it.`
+        );
+      }
+      return null;
+    case 'failed':
+      return (
+        `Could not sync ${brandSlug} to your team just now; your work is saved locally. ` +
+        `Retry with \`mixshift context push --brand ${brandSlug}\`.`
+      );
+  }
 }
