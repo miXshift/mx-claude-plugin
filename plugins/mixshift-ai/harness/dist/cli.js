@@ -79348,6 +79348,7 @@ var MAX_ASINS = 1e3;
 function normalizeAsins(asins) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
+  if (!Array.isArray(asins)) return out;
   for (const raw of asins) {
     const a = String(raw ?? "").trim().toUpperCase();
     if (!a || seen.has(a)) continue;
@@ -79358,7 +79359,7 @@ function normalizeAsins(asins) {
 }
 async function resolveAsinTitles(opts) {
   const t0 = Date.now();
-  const asins = normalizeAsins(opts.asins);
+  const asins = normalizeAsins(opts?.asins);
   if (asins.length === 0) {
     return { ok: true, titles: [], missing: [], durationMs: Date.now() - t0 };
   }
@@ -79366,6 +79367,7 @@ async function resolveAsinTitles(opts) {
     const message = `Too many ASINs (${asins.length}); the limit is ${MAX_ASINS} per call.`;
     return {
       ok: false,
+      kind: "unknown",
       message,
       friendly: `${message} Batch your ASINs into groups of ${MAX_ASINS} or fewer.`,
       durationMs: Date.now() - t0
@@ -79376,18 +79378,18 @@ async function resolveAsinTitles(opts) {
     SELECT m.ASIN AS asin, m.ItemName AS title, m.Brand AS brand
     FROM mws_items m
     JOIN (
-      SELECT ASIN, MAX(ID) AS pick_id
-      FROM mws_items
-      WHERE SellerID = ?
-        AND ASIN IN (${placeholders})
-        AND (ASIN, dtUpdatedOn) IN (
-          SELECT ASIN, MAX(dtUpdatedOn)
-          FROM mws_items
-          WHERE SellerID = ?
-            AND ASIN IN (${placeholders})
-          GROUP BY ASIN
-        )
-      GROUP BY ASIN
+      SELECT t.ASIN, MAX(t.ID) AS pick_id
+      FROM mws_items t
+      JOIN (
+        SELECT ASIN, MAX(dtUpdatedOn) AS max_dt
+        FROM mws_items
+        WHERE SellerID = ?
+          AND ASIN IN (${placeholders})
+        GROUP BY ASIN
+      ) mx ON mx.ASIN = t.ASIN AND mx.max_dt = t.dtUpdatedOn
+      WHERE t.SellerID = ?
+        AND t.ASIN IN (${placeholders})
+      GROUP BY t.ASIN
     ) pick ON m.ID = pick.pick_id`;
   const params = [opts.sellerId, ...asins, opts.sellerId, ...asins];
   const result = await runQuery(
@@ -79398,6 +79400,8 @@ async function resolveAsinTitles(opts) {
   if (!result.ok) {
     return {
       ok: false,
+      kind: result.kind,
+      table_name: result.table_name,
       message: result.message,
       friendly: result.friendly,
       durationMs: Date.now() - t0
@@ -79634,7 +79638,7 @@ function registerDataCommands(program3) {
     }
   );
   data.command("asin-titles").description(
-    'Resolve ASINs to product Title + Brand from the Seller Central catalog. ASINs not listed in mws_items come back under "missing" \u2014 resolve those live via mx-amazon-retail `catalog.search_items`.'
+    'Resolve ASINs to product Title + Brand from the Seller Central catalog. ASINs not listed in mws_items come back under "missing"; resolve those live via mx-amazon-retail catalog.search_items.'
   ).requiredOption("--seller-id <id>", "seller to resolve against", parseInt10).requiredOption("--asins <list>", "comma-separated ASINs (e.g. B0ABC,B0XYZ)").action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
@@ -79648,14 +79652,23 @@ function registerDataCommands(program3) {
         if (!result.ok) {
           if (root.json) {
             process.stdout.write(
-              JSON.stringify({ status: "error", message: result.friendly }, null, 2) + "\n"
+              JSON.stringify(
+                {
+                  status: "error",
+                  failure_kind: result.kind,
+                  table_name: result.table_name,
+                  message: result.friendly
+                },
+                null,
+                2
+              ) + "\n"
             );
           } else {
             process.stderr.write(`
 \u2717 ${result.friendly}
 `);
           }
-          process.exitCode = 1;
+          process.exitCode = handleAccessDeniedExit(result.kind);
           return;
         }
         if (root.json) {

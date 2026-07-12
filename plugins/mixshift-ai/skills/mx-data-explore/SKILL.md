@@ -350,8 +350,9 @@ You:  Run `mixshift data query --sql "SELECT CampaignType,
 unreadable on their own. Whenever your query selects a `*ID`, co-select its
 `*Name` in the same query and present the human-readable name — every ads
 metric table carries the name next to the id (`campaignmetric.CampaignName`,
-`adgroupmetric.AdGroupName`, `targetexpressionsmetric.CampaignName/targetingText`,
-`portfolio.PortfolioName`, etc.), so it is a free extra column, not a join. In
+`keywordtargetingmetric.AdGroupName/KeywordText`,
+`targetexpressionsmetric.CampaignName/targetingText`, `portfolio.PortfolioName`,
+etc.), so it is a free extra column, not a join. In
 output, show `Name (id)` rather than the bare id — keep the id visible because a
 downstream write step (a bid or budget edit) still needs it, but lead with the
 name. For ASIN rows, show the product title: `Title (ASIN)` (resolve via the

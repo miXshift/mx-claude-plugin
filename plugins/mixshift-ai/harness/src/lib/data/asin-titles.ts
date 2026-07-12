@@ -19,7 +19,7 @@
  * (Catalog Items API). Absent titles are NEVER an error here.
  */
 
-import { runQuery } from './query-runner.js';
+import { runQuery, type DataQueryFailureKind } from './query-runner.js';
 
 export interface AsinTitle {
   asin: string;
@@ -46,6 +46,11 @@ export type ResolveAsinTitlesResult =
     }
   | {
       ok: false;
+      /** Preserved from the underlying query failure so the caller can route
+       *  exit codes (e.g. access_denied -> exit 4) the same way the other data
+       *  subcommands do. Guard failures (over-cap) use 'unknown'. */
+      kind: DataQueryFailureKind;
+      table_name?: string;
       message: string;
       friendly: string;
       durationMs: number;
@@ -63,6 +68,7 @@ const MAX_ASINS = 1000;
 export function normalizeAsins(asins: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
+  if (!Array.isArray(asins)) return out;
   for (const raw of asins) {
     const a = String(raw ?? '').trim().toUpperCase();
     if (!a || seen.has(a)) continue;
@@ -76,7 +82,7 @@ export async function resolveAsinTitles(
   opts: ResolveAsinTitlesOptions,
 ): Promise<ResolveAsinTitlesResult> {
   const t0 = Date.now();
-  const asins = normalizeAsins(opts.asins);
+  const asins = normalizeAsins(opts?.asins);
 
   if (asins.length === 0) {
     return { ok: true, titles: [], missing: [], durationMs: Date.now() - t0 };
@@ -85,32 +91,39 @@ export async function resolveAsinTitles(
     const message = `Too many ASINs (${asins.length}); the limit is ${MAX_ASINS} per call.`;
     return {
       ok: false,
+      kind: 'unknown',
       message,
       friendly: `${message} Batch your ASINs into groups of ${MAX_ASINS} or fewer.`,
       durationMs: Date.now() - t0,
     };
   }
 
-  // One placeholder per ASIN, used twice (outer filter + inner max-timestamp
-  // subquery). No window functions — the warehouse SQL library avoids them, and
-  // the subquery form works across MySQL versions.
+  // One placeholder per ASIN, used twice: once in the inner "latest timestamp
+  // per ASIN" derived table, once in the middle "max ID at that timestamp"
+  // scan. No window functions — the warehouse SQL library avoids them, and the
+  // derived-table form works across MySQL versions.
+  //
+  // Pick exactly one row per ASIN via an explicit JOIN to a derived max-
+  // timestamp table (NOT a `(ASIN, dtUpdatedOn) IN (SELECT ...)` row-constructor
+  // subquery — MySQL often can't optimize those and falls back to a dependent
+  // subquery / full scan; the JOIN lets it use a (SellerID, ASIN, ...) index).
   const placeholders = asins.map(() => '?').join(', ');
   const sql = `
     SELECT m.ASIN AS asin, m.ItemName AS title, m.Brand AS brand
     FROM mws_items m
     JOIN (
-      SELECT ASIN, MAX(ID) AS pick_id
-      FROM mws_items
-      WHERE SellerID = ?
-        AND ASIN IN (${placeholders})
-        AND (ASIN, dtUpdatedOn) IN (
-          SELECT ASIN, MAX(dtUpdatedOn)
-          FROM mws_items
-          WHERE SellerID = ?
-            AND ASIN IN (${placeholders})
-          GROUP BY ASIN
-        )
-      GROUP BY ASIN
+      SELECT t.ASIN, MAX(t.ID) AS pick_id
+      FROM mws_items t
+      JOIN (
+        SELECT ASIN, MAX(dtUpdatedOn) AS max_dt
+        FROM mws_items
+        WHERE SellerID = ?
+          AND ASIN IN (${placeholders})
+        GROUP BY ASIN
+      ) mx ON mx.ASIN = t.ASIN AND mx.max_dt = t.dtUpdatedOn
+      WHERE t.SellerID = ?
+        AND t.ASIN IN (${placeholders})
+      GROUP BY t.ASIN
     ) pick ON m.ID = pick.pick_id`;
 
   const params: unknown[] = [opts.sellerId, ...asins, opts.sellerId, ...asins];
@@ -124,6 +137,8 @@ export async function resolveAsinTitles(
   if (!result.ok) {
     return {
       ok: false,
+      kind: result.kind,
+      table_name: result.table_name,
       message: result.message,
       friendly: result.friendly,
       durationMs: Date.now() - t0,

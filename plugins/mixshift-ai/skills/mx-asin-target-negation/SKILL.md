@@ -27,7 +27,7 @@ standalone: true
 handoff_optional: true
 changelog:
   - version: 1.8.1
-    change: "Names, not IDs: ANEG-01 now returns CampaignName (added to SELECT + GROUP BY) so the report's Campaign column shows the name, not the numeric CampaignID; the report renders ASIN targets as `PDP Title (ASIN)` and points to `mixshift data asin-titles` for any missing titles. Keeps the raw ASIN visible for the apply step."
+    change: "Names, not IDs: ANEG-01 now returns CampaignName as MAX(CampaignName) (a display column, grain unchanged at target/campaign) so the report's Campaign column shows the name, not the numeric CampaignID. CampaignName is denormalized + rename-variable, so it is aggregated, NOT added to GROUP BY (that would split a target's LifetimeOrders across name snapshots and defeat the negation gate). The report renders ASIN targets as `PDP Title (ASIN)` and points to `mixshift data asin-titles` for any missing titles; the raw ASIN stays visible for the apply step."
   - version: 1.8.0
     change: "Added a live conflict check to the Applying ASIN negations flow: before the dry run, read existing negative targets via sp.list_negative_targets and sp.list_campaign_negative_targets (campaignIdFilter bodies), match the ASIN inside each clause's expression array per location, drop duplicates, and report the skipped count with the preview. Frontmatter version realigned with the manifest (prior 1.5.0 was stale against manifest 1.7.0)."
   - version: 1.5.0

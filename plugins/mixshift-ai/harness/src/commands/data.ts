@@ -301,8 +301,8 @@ export function registerDataCommands(program: Command): void {
     .command('asin-titles')
     .description(
       'Resolve ASINs to product Title + Brand from the Seller Central catalog. ' +
-        'ASINs not listed in mws_items come back under "missing" — resolve those ' +
-        'live via mx-amazon-retail `catalog.search_items`.',
+        'ASINs not listed in mws_items come back under "missing"; resolve those ' +
+        'live via mx-amazon-retail catalog.search_items.',
     )
     .requiredOption('--seller-id <id>', 'seller to resolve against', parseInt10)
     .requiredOption('--asins <list>', 'comma-separated ASINs (e.g. B0ABC,B0XYZ)')
@@ -320,12 +320,21 @@ export function registerDataCommands(program: Command): void {
           if (!result.ok) {
             if (root.json) {
               process.stdout.write(
-                JSON.stringify({ status: 'error', message: result.friendly }, null, 2) + '\n',
+                JSON.stringify(
+                  {
+                    status: 'error',
+                    failure_kind: result.kind,
+                    table_name: result.table_name,
+                    message: result.friendly,
+                  },
+                  null,
+                  2,
+                ) + '\n',
               );
             } else {
               process.stderr.write(`\n✗ ${result.friendly}\n`);
             }
-            process.exitCode = 1;
+            process.exitCode = handleAccessDeniedExit(result.kind);
             return;
           }
 

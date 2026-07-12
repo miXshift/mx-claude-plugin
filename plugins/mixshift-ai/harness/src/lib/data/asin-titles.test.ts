@@ -17,6 +17,11 @@ describe('normalizeAsins', () => {
   it('returns empty for an all-blank list', () => {
     expect(normalizeAsins(['', '   ', '\t'])).toEqual([]);
   });
+
+  it('returns empty (no throw) for a non-array input', () => {
+    expect(normalizeAsins(undefined as unknown as string[])).toEqual([]);
+    expect(normalizeAsins(null as unknown as string[])).toEqual([]);
+  });
 });
 
 describe('resolveAsinTitles', () => {
@@ -79,5 +84,7 @@ describe('resolveAsinTitles', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.friendly).toMatch(/read access/);
+    // kind is preserved so the subcommand can route the exit code like siblings
+    expect(r.kind).toBe('access_denied_db');
   });
 });
