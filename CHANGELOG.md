@@ -3,6 +3,21 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.7.3
+
+A clear starting point for people who do not have a MixShift account yet.
+
+### Added
+
+- **New-user registration handoff.** When someone brand new tries to sign in or
+  set up the plugin without a MixShift account, the plugin now points them to the
+  right first step instead of failing quietly: create an account, connect your
+  Amazon accounts, and activate ads and retail data, with a link to the getting
+  started guide. It also sets expectations up front that most accounts finish
+  populating within 24 to 48 hours of activation (large catalogs can take longer),
+  so the data-backed skills become useful once the first pulls land. The sign-in,
+  consent, admin, and developer pages carry the same pointer.
+
 ## 0.7.2
 
 Internal telemetry accuracy only; no changes to any feature, command, or workflow.
