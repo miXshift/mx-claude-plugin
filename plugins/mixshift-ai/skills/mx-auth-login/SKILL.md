@@ -12,7 +12,7 @@ description: >
   raw-MySQL path; the CLI `mixshift auth setup` command exists only
   for backward compatibility and should not be recommended.
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: "MixShift"
 trigger_phrases:
   - sign in to mixshift
@@ -42,6 +42,7 @@ Ask yourself one question: **will a human be present every time this credential 
 | User wants to query data now, says "sign in", first-run welcome | **Path A** (interactive, device-code) — the default |
 | "scheduled task", "cron", "runs at 9am", "automation", "CI", "when I'm not around", "service credential", auth failing inside a scheduled Cowork task | **Invoke the `mx-auth-service-setup` skill** — it orchestrates the whole machine-credential flow |
 | claude.ai web / no Bash tool available | **Path D** (direct mode, paste token) |
+| "I don't have a MixShift account", brand-new to MixShift, no login yet | **No-account handoff** (see "No MixShift account yet" below); registration lives on the web platform, not in the plugin |
 
 When in doubt, ask: *"Is this for you to use right now, or for something that runs on its own (a schedule, automation, CI)?"* One question, then route. A user setting up a scheduled skill usually needs BOTH: their own interactive sign-in for building it, and a service credential so the schedule survives without them.
 
@@ -121,6 +122,8 @@ Default max-wait is 30s (fits comfortably under Cowork's Bash timeout). The CLI 
 - `{ "state": "expired", "error": "<reason>" }`: device code is no longer valid (typically 10 min limit on the server side). Restart from Step A1 with a fresh `device-init`.
 - `{ "ok": false, "error": "<message>" }`: the poll request itself couldn't reach `mcp.mixshift.io` (network/sandbox), not a sign-in state. Don't keep polling; go to **"If the sandbox is blocking sign-in"** below.
 
+One more case arrives in chat rather than in the poll JSON: the user reports the sign-in page rejected them with "Invalid email or password". If they are confident they have a MixShift account, have them retry (typo, stale password manager entry). If they are not sure they have an account at all, stop retrying and use **"No MixShift account yet"** below.
+
 ## Path C — Service credential (unattended runs): delegate
 
 Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at /admin, secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
@@ -134,6 +137,16 @@ There is no shell and no local disk, so the plugin cannot store tokens for the u
 > *"Open https://mcp.mixshift.io/login?mode=direct in a browser tab, sign in with your MixShift login plus your work email, and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
 
 Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the service (auth moved to the HTTP transport layer). If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
+
+## No MixShift account yet (registration handoff)
+
+Every path above requires an existing MixShift account, and the plugin does not do registration. If the user has no MixShift login (they say so, or they keep failing sign-in and are not sure they have an account), hand off to the web platform instead of retrying:
+
+> *"You'll need a MixShift account first. Create one at https://www.mydashapplications.com/auth/registration, then connect your Amazon accounts and activate ads + retail data in the Account Manager (walkthrough: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Most accounts are fully populated within 24-48 hours of activation; large catalogs can take longer. MixShift emails you when your data is ready. Come back then and say 'sign me in'."*
+
+Set the expectation clearly: they can sign in to the plugin as soon as the account exists, but data-dependent skills only get useful once the initial pulls after activation have landed (timing detail: https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift).
+
+Emit `skill.completed --outcome ok` for the handoff (the user got the correct next step; nothing failed) and end the turn.
 
 ## If the sandbox is blocking sign-in (Cowork / Claude Code egress)
 

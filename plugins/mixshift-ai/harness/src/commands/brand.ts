@@ -38,6 +38,7 @@ import { registerBrandConfigCommand } from './brand-config.js';
 import { registerBrandRenderContextCommand } from './brand-render-context.js';
 import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
 import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
+import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
 
 interface RootOptions {
   json?: boolean;
@@ -160,6 +161,8 @@ export function registerBrandCommands(program: Command): void {
                 '\n' +
                 'Onboarding help doc:\n' +
                 '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+                '\n' +
+                DATA_TIMING_TERMINAL +
                 '\n',
             );
             return;
@@ -174,6 +177,8 @@ export function registerBrandCommands(program: Command): void {
                 '\n' +
                 'Onboarding help doc:\n' +
                 '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+                '\n' +
+                DATA_TIMING_TERMINAL +
                 '\n',
             );
             return;
@@ -511,6 +516,8 @@ export function registerBrandCommands(program: Command): void {
               '\n' +
               'Onboarding help doc:\n' +
               '  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n' +
+              '\n' +
+              DATA_TIMING_TERMINAL +
               '\n',
           );
           return;

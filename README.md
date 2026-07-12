@@ -100,6 +100,8 @@ The plugin ships **24 skills**. Each is invoked naturally in chat: say what you 
 - A Claude account (Cowork or Claude Code)
 - An active MixShift customer account — the same email + password you use to log into MixShift authenticates the plugin (via a browser-based sign-in, not pasted in chat)
 
+No MixShift account yet? Create one at `https://www.mydashapplications.com/auth/registration`, then connect your Amazon accounts and activate ads + retail data per the [getting started guide](https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Most accounts are fully populated within 24-48 hours of activation; large catalogs can take longer.
+
 That's it. The plugin holds a short-lived token after sign-in (24h access / 30d refresh), stored at `~/.mixshift/auth/credentials` on your machine. No raw database passwords on disk, no IP whitelist setup — MixShift's auth service holds the single egress IP server-side.
 
 Everything else — brand context, run history, output destinations — lives at `~/.mixshift/` on your local machine. The plugin manages it.

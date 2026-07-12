@@ -24,6 +24,7 @@ import {
 } from '../lib/clients/index.js';
 import { networkErrorMessage } from '../lib/net/classify.js';
 import { resolveApiBaseHost } from '../lib/net/api-base.js';
+import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
 
 interface RootOptions {
   json?: boolean;
@@ -191,7 +192,9 @@ export function registerAuthCommands(program: Command): void {
                       `data in MixShift for your brands. Head to the Account Manager view:\n` +
                       `  https://dash.mydashapplications.com/account-manager\n` +
                       `\nOnboarding help doc:\n` +
-                      `  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n`
+                      `  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n` +
+                      `\n` +
+                      DATA_TIMING_TERMINAL
                     : counts.active > 5
                       ? `\nWith ${counts.active} active brand(s), you probably focus on a smaller set day-to-day.\n` +
                         `Mark them as "key" so portfolio skills default to those instead of all ${counts.active}:\n` +

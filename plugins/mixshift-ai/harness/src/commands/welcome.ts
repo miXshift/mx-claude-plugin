@@ -7,6 +7,11 @@ import { loadKeyBrands } from '../lib/clients/key-brands.js';
 import { loadBrain } from '../lib/brain/read.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { checkForUpdate, renderUpdateBanner } from '../lib/version-check.js';
+import {
+  NO_ACCOUNT_CHAT,
+  NO_ACCOUNT_TERMINAL,
+  DATA_TIMING_CHAT,
+} from '../lib/onboarding.js';
 
 interface RootOptions {
   json?: boolean;
@@ -225,6 +230,10 @@ function renderWelcome(args: {
   lines.push('  you use to log into MixShift). Your credentials stay in your');
   lines.push('  browser; the plugin only holds a token after.');
   lines.push('');
+  for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split('\n')) {
+    lines.push(l ? `  ${l}` : l);
+  }
+  lines.push('');
   lines.push('  In Claude Code / Cowork (recommended):');
   lines.push('    I\'ll get you a sign-in link in a moment — no need to say anything.');
   lines.push('');
@@ -308,6 +317,8 @@ function renderWelcomeChat(args: {
       lines.push("This means you haven't activated data in MixShift for your brands. Head to the Account Manager view to begin: https://dash.mydashapplications.com/account-manager");
       lines.push('');
       lines.push('Onboarding help doc: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift');
+      lines.push('');
+      lines.push(DATA_TIMING_CHAT);
       lines.push('');
       return lines.join('\n');
     }
@@ -474,6 +485,8 @@ function renderWelcomeChat(args: {
       'use to log into MixShift). Your credentials stay in your browser; ' +
       'the plugin only holds a token after.',
   );
+  lines.push('');
+  lines.push(NO_ACCOUNT_CHAT);
   lines.push('');
   lines.push("I'll set up a sign-in link for you right after this. (Or run `mixshift auth login` in a terminal yourself.)");
   lines.push('');

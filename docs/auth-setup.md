@@ -33,6 +33,17 @@ After this, every plugin command uses the access token as a Bearer credential ag
 
 ---
 
+## Don't have a MixShift account yet?
+
+Sign-in requires an existing MixShift account; the plugin does not do registration. If you're brand-new to MixShift:
+
+1. Create your account at `https://www.mydashapplications.com/auth/registration`.
+2. Connect your Amazon accounts and activate **ads data** and **retail data** in the Account Manager. Full walkthrough: [Getting started with MixShift](https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift).
+3. Wait for the initial data pulls. Most accounts are fully populated within 24-48 hours of activation; large catalogs can take longer ([data timing details](https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift)). MixShift emails you when your data is ready.
+4. Come back and sign in (below). You can sign in as soon as the account exists, but data-dependent skills only get useful once the initial pulls have landed.
+
+---
+
 ## How to sign in
 
 ### Method 1 — Chat-driven (Cowork + Claude Code, the recommended path)

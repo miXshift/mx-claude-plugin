@@ -5,7 +5,7 @@ description: >
   "welcome", asks "what is this plugin", asks how to get started, or is new
   and needs orientation on credential retrieval + initial setup steps.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - welcome
@@ -86,7 +86,9 @@ If `mixshift welcome --format chat` fails ("command not found", harness error, e
 
 This section is the most important part of the skill. If the rendered welcome shows `Current state: ✗ not signed in yet`, you MUST continue with these steps in the SAME chat turn. Don't end your reply with just the welcome text — keep going.
 
-The welcome copy already told the user: *"I'll set up a sign-in link for you right after this."* If you stop at the rendered welcome, you broke that promise. Follow through. The one legitimate stop is a network-blocked `device-init` (step 2), which you handle explicitly instead of stranding the user:
+The welcome copy already told the user: *"I'll set up a sign-in link for you right after this."* If you stop at the rendered welcome, you broke that promise. Follow through. Two legitimate stops: a network-blocked `device-init` (step 2), and a user with no MixShift account (next paragraph). Handle both explicitly instead of stranding the user.
+
+**If the user says they have no MixShift account** (or asks how to get one), do not drive the sign-in; there is nothing to sign in to yet. The rendered welcome already includes the "No MixShift account yet?" pointer. Reinforce it conversationally: create an account at https://www.mydashapplications.com/auth/registration, then connect Amazon accounts and activate ads + retail data (walkthrough: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Set the expectation that most accounts are fully populated within 24-48 hours of activation, large catalogs can take longer, and MixShift emails them when data is ready. Invite them back: say "welcome" then and sign-in continues from Step 1 here. Emit `skill.completed --outcome ok` (the registration handoff is the correct outcome for a brand-new user) and end the turn.
 
 1. **Collect their work email.** Ask once, in plain language: *"What's your work email? (Used for session attribution — the same one you use to log into MixShift is fine.)"* Skip this prompt if a stored email exists (check `~/.mixshift/auth/credentials` for `datahub.person_label` from a prior login, or `~/.mixshift/profile.yaml::user.email`).
 2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash (if `mixshift` isn't found, run the same args via `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js`).

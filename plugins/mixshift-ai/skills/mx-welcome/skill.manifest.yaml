@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: welcome
 display_name: Welcome / Quick Start
-version: "0.1.1"
+version: "0.1.2"
 description: >
   First-run welcome and quick-start orientation. Renders a two-step
   walkthrough: sign in (token-based `mixshift auth login` via browser),
