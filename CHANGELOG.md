@@ -3,6 +3,25 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.7.4
+
+Sturdier behavior when something goes wrong: clearer messages, no more crashes on a couple of edge cases, and more accurate run history.
+
+### Fixed
+
+- **A broken brand list no longer crashes a command.** If your local brand
+  registry file ends up malformed or in an older format, commands like
+  `brand key add` now stop with a clear message telling you to run
+  `mixshift brand discover` to rebuild it, instead of failing with a raw error.
+- **A bad plugin download now tells you how to fix it.** If the plugin's program
+  file gets cut short during a sync (which previously broke every command,
+  including help and feedback), the CLI now detects it and prints a short
+  re-sync instruction instead of an unreadable crash.
+- **More accurate run history.** A skill run that lands on a RED verdict is a
+  successful run, and is now recorded that way. Previously some completed runs
+  were logged as if the save had failed, and genuine save failures are now
+  reported clearly.
+
 ## 0.7.3
 
 A clear starting point for people who do not have a MixShift account yet.
