@@ -13,9 +13,16 @@
  * bounded, non-throwing, best-effort discipline as ads-emit and the key-brand
  * assignment mirror.
  *
+ * The seams AWAIT this call — it is NOT fire-and-forget. Awaiting is
+ * deliberate: a CLI process would exit before a detached push finished, so a
+ * genuine background publish would simply never land. Instead the call is
+ * bounded (PUSH_AFTER_WRITE_BUDGET_MS) and result-first — the local write is
+ * already durable, so the awaited result is discarded and never surfaced, and
+ * the worst the await costs is the wall-clock budget.
+ *
  * HARD CONSTRAINTS (mirrored in tests):
- *   - Never blocks or fails the user's write: the write already returned by
- *     the time this runs (result-first). The WHOLE attempt (token load/refresh
+ *   - Never fails the user's write: the local write is already durable by the
+ *     time this runs (result-first). The WHOLE attempt (token load/refresh
  *     included — a refresh rides the global fetch with its own 30s timeout,
  *     outside any per-request signal we control) is raced against one
  *     PUSH_AFTER_WRITE_BUDGET_MS wall-clock deadline, and every request the
@@ -29,6 +36,11 @@
  *     pattern (brandDir() joins it into a filesystem path verbatim) AND the
  *     brand directory must already exist locally — which it always does right
  *     after a write. A typo'd or hostile slug is skipped with no side effect.
+ *   - Participant-gated: enriches only a brand ALREADY in the org store (its
+ *     sync ledger has tracked docs). A brand with an empty ledger has never
+ *     been published, so it is skipped — the first publish stays an explicit
+ *     `context push` / `context migrate`. Mirrors autosync, which pulls only
+ *     for brands it already tracks.
  *   - Kill switch: MIXSHIFT_CONTEXT_AUTOPUBLISH=off (also '0'/'false')
  *     disables it entirely, before any file or network activity.
  *
@@ -40,6 +52,7 @@
 import { push } from './engine.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
+import { loadState } from './state.js';
 import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { DocActionReport } from './types.js';
 
@@ -120,6 +133,30 @@ export async function pushAfterWrite(
       };
     }
 
+    // PARTICIPANT GATE: auto-publish only ENRICHES a brand already in the org
+    // store; it never bootstraps a brand's first publish. A brand's FIRST
+    // publish stays explicit (the mx-brand-context skill's closing `context
+    // push`, or `context migrate`), which is what creates this ledger; only
+    // AFTER that do writes auto-enrich. An empty ledger means the brand has
+    // never been synced — pushing now would surprise-publish the whole
+    // local-ahead doc set for a user who never opted into org-brain, and would
+    // charge every non-participant an awaited network round-trip on every
+    // write. This makes pushAfterWrite the mirror image of autosync (which
+    // pulls only for brands it already tracks; see autosync.ts). Load the
+    // ledger RAW (no identity binding) — presence of tracked docs is all we
+    // gate on; push itself owns tenant-identity handling. Skip is a safe
+    // no-op, never a throw.
+    const state = await loadState(brandSlug, options.dataDirOverride);
+    if (Object.keys(state.docs).length === 0) {
+      return {
+        published: false,
+        reason: 'skipped',
+        detail:
+          'brand not yet in the org store; publish it explicitly first ' +
+          '(context push / context migrate)',
+      };
+    }
+
     // Fetch-level budget: one shared abort across every request the push
     // makes (manifest + per-doc PUTs). The per-request timeouts inside the
     // client (30s/120s) are far looser, so replacing the signal keeps the
@@ -142,11 +179,12 @@ export async function pushAfterWrite(
       // Wall-clock budget: the abort signal above only covers the fetches the
       // CLIENT makes; authedRequest first awaits getValidAccessToken, and a
       // token refresh/mint rides the GLOBAL fetch with its own 30s timeout.
-      // Racing the whole push keeps the promise to the write path regardless
-      // of where the hang is. On deadline the detached push is left to finish
-      // on its own: its errors are already swallowed by the result-envelope
-      // contract, and a push that completes after the write returned just
-      // publishes the doc a moment later.
+      // Racing the whole push bounds the await we hand back to the write path
+      // regardless of where the hang is. On deadline we STOP awaiting and
+      // return the quiet no-op; the raced push promise is abandoned un-awaited
+      // (its errors are already swallowed by the result-envelope contract, and
+      // a push that happens to settle after we returned just publishes the doc
+      // a moment later — harmless).
       const raced = await raceDeadline(
         push(brandSlug, {
           client,
