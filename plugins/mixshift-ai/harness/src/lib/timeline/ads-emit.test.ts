@@ -80,6 +80,12 @@ function capturingClient(
       posts.push(input);
       return result;
     },
+    corroborateEvent: async () => ({
+      ok: false,
+      kind: 'unknown',
+      message: 'unused',
+      friendly: 'unused',
+    }),
   };
   return { client, posts };
 }
@@ -221,6 +227,12 @@ describe('emitAdsCommitEvent', () => {
       postEvent: async () => {
         throw new Error('boom');
       },
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const result = await emitAdsCommitEvent(
       { operation: 'sp.update_keywords', legacySellerId: 574 },
@@ -234,6 +246,12 @@ describe('emitAdsCommitEvent', () => {
     const client: TimelineClient = {
       listEvents: async () => ({ ok: true, events: [] }),
       postEvent: () => new Promise(() => {}), // never settles
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const t0 = Date.now();
     const result = await emitAdsCommitEvent(

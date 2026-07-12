@@ -24,6 +24,7 @@ import {
   readPendingDiscoveries,
   clearPendingDiscoveries,
 } from './discoveries.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 export const brainObservationSchema = z.object({
   /** Dotted field path, namespaced by domain
@@ -91,6 +92,9 @@ export async function recordObservations(
   }
   const next = applyObservations(loaded.brain, observations);
   const { path } = await saveBrain(next, dataDirOverride);
+  // Auto-publish the updated brain to the org store (best-effort, bounded,
+  // non-throwing — the local saveBrain above is the durable result).
+  await pushAfterWrite(brandSlug, { dataDirOverride });
   return { ok: true, path, applied: observations.length };
 }
 

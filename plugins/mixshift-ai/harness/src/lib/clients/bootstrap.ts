@@ -27,6 +27,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { contextSchema, type BrandContext } from '../context/schema.js';
 import { formatZodError } from '../profile/format-error.js';
 import { brandDir, contextPath, narrativePath } from '../paths/resolve.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 import type { BrandSuggestion } from '../discovery/brand-grouping.js';
 import type { SellerRow } from '../discovery/seller-query.js';
 
@@ -106,6 +107,11 @@ export async function bootstrapBrand(
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
   await writeAtomic(readmePath, readmeTemplate(suggestion));
+
+  // Auto-publish the freshly-written context+narrative to the org store
+  // (best-effort, bounded, non-throwing — the local write above is the
+  // durable result; a failed publish is a no-op).
+  await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
 
   return {
     brand_dir: dir,

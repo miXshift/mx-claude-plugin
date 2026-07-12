@@ -32,7 +32,48 @@
  *  `knowledge` events from the context service; those are read-only here. */
 export type PostableTimelineFamily = 'action' | 'structural' | 'comment';
 
-/** One event as returned by GET /api/timeline. */
+/**
+ * The 12-value stake category enum (org brain P2.5). A `structural.*` event
+ * that carries a `category` is a "stake"; a structural event with no category
+ * behaves exactly as it did in P2. FROZEN — mirrors the server enum. The
+ * recurring categories are labels; recurrence is not occurrence-expanded.
+ */
+export const STAKE_CATEGORIES = [
+  'brand_migration',
+  'media_spike',
+  'media_spike_recurring',
+  'portfolio_decision',
+  'promotional_window',
+  'promotional_window_recurring',
+  'stockout',
+  'price_test',
+  'launch',
+  'content_change',
+  'strategy_change',
+  'platform_external',
+] as const;
+export type StakeCategory = (typeof STAKE_CATEGORIES)[number];
+
+/** Trust axis: who asserted the stake. Defaults to `declared` server-side;
+ *  any value is accepted from any writer. Independent of `status`. */
+export const STAKE_SOURCES = ['declared', 'system', 'suggested'] as const;
+export type StakeSource = (typeof STAKE_SOURCES)[number];
+
+/** Verification axis (a server-set projection column): a stake is born
+ *  `unverified` and moves only via corroborate. Never accepted on create. */
+export const STAKE_STATUSES = [
+  'unverified',
+  'corroborated',
+  'disputed',
+  'no_effect',
+] as const;
+export type StakeStatus = (typeof STAKE_STATUSES)[number];
+
+/** One event as returned by GET /api/timeline.
+ *
+ *  Stake fields (`end_ts`, `category`, `source`, `status`, `interpretation`,
+ *  `intensity`, `evidence`) are present only when meaningful, and `affects`
+ *  appears only when non-empty — a legacy (pre-P2.5) row grows no new keys. */
 export interface WireTimelineEvent {
   id: string;
   brand_slug: string;
@@ -49,6 +90,15 @@ export interface WireTimelineEvent {
   skill_id?: string;
   model_id?: string;
   decision?: string;
+  // Stake fields (org brain P2.5).
+  end_ts?: string;
+  category?: StakeCategory;
+  source?: StakeSource;
+  status?: StakeStatus;
+  interpretation?: string;
+  intensity?: number;
+  evidence?: Record<string, unknown>;
+  affects?: string[];
 }
 
 /** Filter set for GET /api/timeline (all optional; wire param names). */
@@ -64,9 +114,25 @@ export interface TimelineListQuery {
   until?: string;
   limit?: number;
   cursor?: string;
+  // Stake filters (org brain P2.5).
+  /** Restrict to stakes (category is not null). */
+  stakes?: boolean;
+  category?: StakeCategory;
+  source?: StakeSource;
+  status?: StakeStatus;
+  /** A single type-prefixed ref; matches stakes whose `affects` contains it. */
+  affects?: string;
+  /** Reinterpret since/until as an interval overlap against [ts, end_ts]. */
+  overlap?: boolean;
+  /** Lift the default now+24h upper bound (show scheduled stakes). */
+  include_future?: boolean;
 }
 
-/** Body for POST /api/timeline/event. actor/client_id come from the token. */
+/** Body for POST /api/timeline/event. actor/client_id come from the token.
+ *
+ *  Stake fields (org brain P2.5): presence of `category` makes the event a
+ *  stake (requires family `structural` + `interpretation`). `status` is never
+ *  sent — the server sets it. */
 export interface PostTimelineEventInput {
   brand_slug: string;
   family: PostableTimelineFamily;
@@ -80,6 +146,24 @@ export interface PostTimelineEventInput {
   skill_id?: string;
   model_id?: string;
   decision?: string;
+  // Stake fields (org brain P2.5).
+  category?: StakeCategory;
+  end_ts?: string;
+  affects?: string[];
+  source?: StakeSource;
+  intensity?: number;
+  interpretation?: string;
+  evidence?: Record<string, unknown>;
+}
+
+/** Body for POST /api/timeline/event/:id/corroborate. At least one of
+ *  status / end_ts / evidence must be present (a `note` alone is not a
+ *  corroboration). */
+export interface CorroborateEventInput {
+  status?: StakeStatus;
+  end_ts?: string;
+  note?: string;
+  evidence?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,3 +193,9 @@ export type ListTimelineResult =
   | TimelineFailure;
 
 export type PostTimelineEventResult = { ok: true; id: string } | TimelineFailure;
+
+/** Corroborate returns the updated stake (mapped like a list row) plus the
+ *  id of the appended `structural.corroboration` child event. */
+export type CorroborateEventResult =
+  | { ok: true; event: WireTimelineEvent; corroboration_id: string }
+  | TimelineFailure;

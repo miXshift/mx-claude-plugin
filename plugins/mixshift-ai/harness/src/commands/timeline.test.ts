@@ -18,6 +18,7 @@ import {
 } from './timeline.js';
 import { createTimelineClient, type TimelineClient } from '../lib/timeline/client.js';
 import type {
+  CorroborateEventInput,
   PostTimelineEventInput,
   TimelineListQuery,
   WireTimelineEvent,
@@ -57,10 +58,11 @@ function sampleEvent(overrides: Partial<WireTimelineEvent> = {}): WireTimelineEv
 interface FakeState {
   listQueries: TimelineListQuery[];
   posts: PostTimelineEventInput[];
+  corroborations: Array<{ eventId: string; input: CorroborateEventInput }>;
 }
 
 function fakeClient(pages: WireTimelineEvent[][]): { client: TimelineClient; state: FakeState } {
-  const state: FakeState = { listQueries: [], posts: [] };
+  const state: FakeState = { listQueries: [], posts: [], corroborations: [] };
   const client: TimelineClient = {
     listEvents: async (query: TimelineListQuery = {}) => {
       state.listQueries.push(query);
@@ -72,6 +74,19 @@ function fakeClient(pages: WireTimelineEvent[][]): { client: TimelineClient; sta
     postEvent: async (input: PostTimelineEventInput) => {
       state.posts.push(input);
       return { ok: true, id: 'evt_new' };
+    },
+    corroborateEvent: async (eventId: string, input: CorroborateEventInput) => {
+      state.corroborations.push({ eventId, input });
+      return {
+        ok: true,
+        event: sampleEvent({
+          id: eventId,
+          category: 'launch',
+          status: input.status ?? 'corroborated',
+          ...(input.end_ts !== undefined ? { end_ts: input.end_ts } : {}),
+        }),
+        corroboration_id: 'corr_new',
+      };
     },
   };
   return { client, state };
@@ -230,11 +245,300 @@ describe('timeline add', () => {
         message: 'no timeline:write',
         friendly: 'Your credential lacks timeline:write.',
       }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     vi.mocked(createTimelineClient).mockReturnValue(client);
     await runTimeline('add', '--brand', 'acme', '--kind', 'comment');
     expect(process.exitCode).toBe(1);
     expect(stderrText()).toContain('timeline:write');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timeline add — stakes (org brain P2.5)
+// ---------------------------------------------------------------------------
+
+describe('timeline add (stakes)', () => {
+  it('requires --interpretation when --category is given (fail fast, no network)', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--interpretation is required');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('rejects an unknown --category before any network call', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'not_a_category',
+      '--interpretation',
+      'x',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--category must be one of');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('rejects a --category stake on a comment kind', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'comment',
+      '--category',
+      'launch',
+      '--interpretation',
+      'x',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain("requires a 'structural.<what>'");
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('rejects stake fields on a non-stake (no --category)', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.price_change',
+      '--intensity',
+      '3',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('add --category to record one');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('rejects a non-finite --intensity', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+      '--interpretation',
+      'big launch',
+      '--intensity',
+      'huge',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--intensity must be a finite number');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('rejects --evidence that is not a JSON object', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+      '--interpretation',
+      'big launch',
+      '--evidence',
+      '[1,2,3]',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--evidence must be a JSON object');
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('posts a full stake with every field and confirms it as a stake', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.promo',
+      '--category',
+      'promotional_window',
+      '--interpretation',
+      'Prime Day promo push',
+      '--ts',
+      '2026-07-10T00:00:00.000Z',
+      '--end',
+      '2026-07-12T00:00:00.000Z',
+      '--affects',
+      'marketplace:US',
+      '--affects',
+      'asin:B000XYZ',
+      '--intensity',
+      '2.5',
+      '--source',
+      'system',
+      '--evidence',
+      '{"metric":"acos","magnitude":0.4}',
+    );
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(state.posts).toEqual([
+      {
+        brand_slug: 'acme',
+        family: 'structural',
+        kind: 'structural.promo',
+        ts: '2026-07-10T00:00:00.000Z',
+        category: 'promotional_window',
+        interpretation: 'Prime Day promo push',
+        end_ts: '2026-07-12T00:00:00.000Z',
+        affects: ['marketplace:US', 'asin:B000XYZ'],
+        intensity: 2.5,
+        source: 'system',
+        evidence: { metric: 'acos', magnitude: 0.4 },
+      },
+    ]);
+    const out = stdoutText();
+    expect(out).toContain('promotional_window stake');
+    expect(out).toContain('unverified');
+    expect(out).toContain('evt_new');
+  });
+
+  it('leaves the legacy structural add path byte-for-byte unchanged', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.stockout',
+      '--note',
+      'OOS on hero SKU',
+    );
+    expect(state.posts).toEqual([
+      {
+        brand_slug: 'acme',
+        family: 'structural',
+        kind: 'structural.stockout',
+        payload: { note: 'OOS on hero SKU' },
+      },
+    ]);
+    expect(stdoutText()).toBe(
+      "✓ Added structural.stockout to acme's timeline (event evt_new).\n",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timeline corroborate (org brain P2.5)
+// ---------------------------------------------------------------------------
+
+describe('timeline corroborate', () => {
+  it('requires at least one of --status / --end / --evidence', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('corroborate', 'evt_1', '--note', 'just a note');
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('at least one of --status');
+    expect(state.corroborations).toHaveLength(0);
+  });
+
+  it('rejects an unknown --status', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('corroborate', 'evt_1', '--status', 'maybe');
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--status must be one of');
+    expect(state.corroborations).toHaveLength(0);
+  });
+
+  it('posts a corroboration with status + end + evidence and confirms it', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'corroborate',
+      'evt_42',
+      '--status',
+      'corroborated',
+      '--end',
+      '2026-07-15T00:00:00.000Z',
+      '--note',
+      'confirmed by second anomaly',
+      '--evidence',
+      '{"metric":"units"}',
+    );
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(state.corroborations).toEqual([
+      {
+        eventId: 'evt_42',
+        input: {
+          status: 'corroborated',
+          end_ts: '2026-07-15T00:00:00.000Z',
+          note: 'confirmed by second anomaly',
+          evidence: { metric: 'units' },
+        },
+      },
+    ]);
+    const out = stdoutText();
+    expect(out).toContain('Corroborated evt_42');
+    expect(out).toContain('corr_new');
+  });
+
+  it('emits the updated stake + corroboration id in --json mode', async () => {
+    const { client } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('corroborate', 'evt_42', '--status', 'disputed', '--json');
+    const parsed = JSON.parse(stdoutText()) as {
+      status: string;
+      corroboration_id: string;
+      event: { id: string; status: string };
+    };
+    expect(parsed.status).toBe('ok');
+    expect(parsed.corroboration_id).toBe('corr_new');
+    expect(parsed.event.id).toBe('evt_42');
+    expect(parsed.event.status).toBe('disputed');
+  });
+
+  it('surfaces a server not_found as exit 1', async () => {
+    const client: TimelineClient = {
+      listEvents: async () => ({ ok: true, events: [] }),
+      postEvent: async () => ({ ok: true, id: 'x' }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'not_found',
+        message: 'no such stake',
+        friendly: 'No stake with that id on your tenant.',
+      }),
+    };
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('corroborate', 'evt_missing', '--status', 'corroborated');
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('No stake with that id');
   });
 });
 
@@ -332,6 +636,83 @@ describe('timeline list', () => {
     expect(state.listQueries).toHaveLength(1);
     expect(stdoutText()).toContain('--all');
   });
+
+  it('passes the stake filters through with wire param names', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'list',
+      '--stakes',
+      '--category',
+      'stockout',
+      '--source',
+      'suggested',
+      '--status',
+      'unverified',
+      '--affects',
+      'marketplace:US',
+      '--overlap',
+      '--include-future',
+      '--since',
+      '2026-07-01',
+    );
+    expect(state.listQueries).toHaveLength(1);
+    expect(state.listQueries[0]).toMatchObject({
+      stakes: true,
+      category: 'stockout',
+      source: 'suggested',
+      status: 'unverified',
+      affects: 'marketplace:US',
+      overlap: true,
+      include_future: true,
+    });
+  });
+
+  it('omits the boolean stake flags entirely when they are not set', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list', '--brand', 'acme');
+    const q = state.listQueries[0]!;
+    expect('stakes' in q).toBe(false);
+    expect('overlap' in q).toBe(false);
+    expect('include_future' in q).toBe(false);
+  });
+
+  it('renders a stake row with [category] status and range', async () => {
+    const stake = sampleEvent({
+      kind: 'structural.promo',
+      category: 'promotional_window',
+      status: 'corroborated',
+      ts: '2026-07-10T00:00:00.000Z',
+      end_ts: '2026-07-12T00:00:00.000Z',
+      interpretation: 'Prime Day promo push',
+      affects: ['marketplace:US', 'asin:B000XYZ'],
+      evidence: { metric: 'acos' },
+    });
+    const { client } = fakeClient([[stake]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list', '--stakes');
+    const out = stdoutText();
+    expect(out).toContain('[promotional_window] corroborated');
+    expect(out).toContain('2026-07-10T00:00:00.000Z → 2026-07-12T00:00:00.000Z');
+    expect(out).toContain('affects×2');
+    expect(out).toContain('evidence(1)');
+  });
+
+  it('renders a corroboration child compactly with its target', async () => {
+    const child = sampleEvent({
+      kind: 'structural.corroboration',
+      target_ref: 'evt_stake_1',
+      payload: { status: 'corroborated', note: 'second anomaly confirms' },
+    });
+    const { client } = fakeClient([[child]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list');
+    const out = stdoutText();
+    expect(out).toContain('corroborates');
+    expect(out).toContain('evt_stake_1');
+    expect(out).toContain('corroborated');
+  });
 });
 
 describe('formatEventLine', () => {
@@ -353,5 +734,56 @@ describe('formatEventLine', () => {
     expect(line).toContain('acme');
     expect(line).toContain('keywords×2');
     expect(line).toContain('sp.update_keywords');
+  });
+
+  it('renders a legacy structural event identically to the pre-stake format', () => {
+    const line = formatEventLine(
+      sampleEvent({
+        kind: 'structural.price_change',
+        payload: { note: 'MAP moved' },
+      }),
+    );
+    // Column layout (ts,kind,actor,brand) + payload digest, unchanged.
+    expect(line).toBe(
+      '2026-07-04T12:00:00.000Z  ' +
+        'structural.price_change'.padEnd(32) +
+        '  ' +
+        'sam@example.com'.padEnd(24) +
+        '  ' +
+        'acme'.padEnd(20) +
+        '  MAP moved',
+    );
+  });
+
+  it('renders a stake with [category] status, range, affects and evidence', () => {
+    const line = formatEventLine(
+      sampleEvent({
+        kind: 'structural.launch',
+        category: 'launch',
+        status: 'unverified',
+        end_ts: '2026-07-20T12:00:00.000Z',
+        interpretation: 'new hydration line',
+        affects: ['item_group:hydration'],
+        evidence: { metric: 'units', window: '14d' },
+      }),
+    );
+    expect(line).toContain('[launch] unverified');
+    expect(line).toContain('2026-07-04T12:00:00.000Z → 2026-07-20T12:00:00.000Z');
+    expect(line).toContain('new hydration line');
+    expect(line).toContain('affects×1');
+    expect(line).toContain('evidence(2)');
+  });
+
+  it('renders a corroboration child with its target ref', () => {
+    const line = formatEventLine(
+      sampleEvent({
+        kind: 'structural.corroboration',
+        target_ref: 'evt_stake_9',
+        payload: { status: 'disputed' },
+      }),
+    );
+    expect(line).toContain('corroborates');
+    expect(line).toContain('evt_stake_9');
+    expect(line).toContain('disputed');
   });
 });

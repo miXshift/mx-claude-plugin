@@ -52,6 +52,7 @@ import { dirname } from 'node:path';
 import { stringify as stringifyYaml, parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { brandConfigPath } from '../paths/resolve.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 import {
   type CalibrationField,
   type CalibrationManifest,
@@ -286,10 +287,13 @@ export async function resetSkillConfig(
       // skill block is gone from the in-memory representation. The file
       // just sticks around empty.
     }
-    return { existed: true, path };
+  } else {
+    await writeBrandConfigFile(path, next);
   }
-
-  await writeBrandConfigFile(path, next);
+  // Auto-publish the reset to the org store (best-effort, bounded,
+  // non-throwing — the local reset above is the durable result; a wholesale
+  // local delete never force-deletes the org copy, only a rewrite publishes).
+  await pushAfterWrite(brandSlug, { dataDirOverride });
   return { existed: true, path };
 }
 

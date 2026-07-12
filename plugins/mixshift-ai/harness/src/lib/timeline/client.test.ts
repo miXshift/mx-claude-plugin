@@ -254,6 +254,12 @@ function pagedClient(pages: WireTimelineEvent[][]): {
       };
     },
     postEvent: async () => ({ ok: true, id: 'x' }),
+    corroborateEvent: async () => ({
+      ok: false,
+      kind: 'unknown',
+      message: 'unused',
+      friendly: 'unused',
+    }),
   };
   return { client, cursorsSeen };
 }
@@ -304,6 +310,12 @@ describe('listAllEvents', () => {
         };
       },
       postEvent: async () => ({ ok: true, id: 'x' }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const result = await listAllEvents(client, {});
     expect(result.ok).toBe(false);
@@ -313,6 +325,12 @@ describe('listAllEvents', () => {
     const client: TimelineClient = {
       listEvents: async () => ({ ok: true, events: [], next_cursor: 'again' }),
       postEvent: async () => ({ ok: true, id: 'x' }),
+      corroborateEvent: async () => ({
+        ok: false,
+        kind: 'unknown',
+        message: 'unused',
+        friendly: 'unused',
+      }),
     };
     const result = await listAllEvents(client, {});
     expect(result.ok).toBe(true);

@@ -35,6 +35,7 @@
 
 import { validateBrandContext } from '../context/load.js';
 import { readBrandConfig, saveSkillConfig } from '../calibration/brand-config.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 type ScalarType = 'percent' | 'int' | 'float' | 'string' | 'bool';
 
@@ -148,6 +149,12 @@ export async function migrateBrandConfig(
     const merged = { ...existingBlock, ...additions };
     await saveSkillConfig(brandSlug, skillId, merged, dataDirOverride);
     wrote_skills.push(skillId);
+  }
+
+  // Auto-publish the migrated config.yaml to the org store, once, only when
+  // something actually moved (best-effort, bounded, non-throwing).
+  if (wrote_skills.length > 0) {
+    await pushAfterWrite(brandSlug, { dataDirOverride });
   }
 
   return { brand_slug: brandSlug, moved, skipped, wrote_skills };
