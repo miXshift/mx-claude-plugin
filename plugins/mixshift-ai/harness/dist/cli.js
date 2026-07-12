@@ -67128,14 +67128,18 @@ async function computePushResult(brandSlug, options, env) {
         dataDirOverride: options.dataDirOverride,
         fetchImpl: budgetedFetch
       });
-      const raced = await raceDeadline(
-        push(brandSlug, {
-          client,
-          ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {}
-          // NEVER force: diverged docs stay conflicts by design.
-        }),
-        budgetMs
-      );
+      const pushPromise = push(brandSlug, {
+        client,
+        ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {}
+        // NEVER force: diverged docs stay conflicts by design.
+      });
+      pushPromise.catch((err) => {
+        debugLog(
+          env,
+          `push-after-write(${brandSlug}): abandoned push rejected: ${err instanceof Error ? err.message : String(err)}`
+        );
+      });
+      const raced = await raceDeadline(pushPromise, budgetMs);
       if (raced === DEADLINE) {
         controller.abort();
         debugLog(env, `push-after-write(${brandSlug}): budget of ${budgetMs}ms exceeded`);
@@ -86316,7 +86320,7 @@ function registerAdd(timeline) {
           );
           return;
         }
-      } else if (opts.end !== void 0 || opts.affects.length > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
+      } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
         emitError11(
           "--end / --affects / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
@@ -86359,7 +86363,7 @@ function registerAdd(timeline) {
         ...isStake ? { category: opts.category } : {},
         ...isStake ? { interpretation: opts.interpretation } : {},
         ...opts.end !== void 0 ? { end_ts: opts.end } : {},
-        ...opts.affects.length > 0 ? { affects: opts.affects } : {},
+        ...opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {},
         ...intensity !== void 0 ? { intensity } : {},
         ...opts.source !== void 0 ? { source: opts.source } : {},
         ...evidence !== void 0 ? { evidence } : {}
@@ -86383,7 +86387,7 @@ function registerAdd(timeline) {
               category: opts.category,
               ...opts.source !== void 0 ? { source: opts.source } : {},
               has_end: opts.end !== void 0,
-              affects_count: opts.affects.length,
+              affects_count: opts.affects?.length ?? 0,
               has_evidence: evidence !== void 0,
               has_intensity: intensity !== void 0,
               has_ts: opts.ts !== void 0

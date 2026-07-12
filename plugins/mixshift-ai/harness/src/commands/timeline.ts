@@ -366,7 +366,7 @@ function registerAdd(timeline: Command): void {
           }
         } else if (
           opts.end !== undefined ||
-          opts.affects!.length > 0 ||
+          (opts.affects?.length ?? 0) > 0 ||
           opts.intensity !== undefined ||
           opts.source !== undefined ||
           opts.interpretation !== undefined ||
@@ -425,7 +425,7 @@ function registerAdd(timeline: Command): void {
           ...(isStake ? { category: opts.category as StakeCategory } : {}),
           ...(isStake ? { interpretation: opts.interpretation } : {}),
           ...(opts.end !== undefined ? { end_ts: opts.end } : {}),
-          ...(opts.affects!.length > 0 ? { affects: opts.affects } : {}),
+          ...(opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {}),
           ...(intensity !== undefined ? { intensity } : {}),
           ...(opts.source !== undefined ? { source: opts.source as StakeSource } : {}),
           ...(evidence !== undefined ? { evidence } : {}),
@@ -452,7 +452,7 @@ function registerAdd(timeline: Command): void {
                     category: opts.category,
                     ...(opts.source !== undefined ? { source: opts.source } : {}),
                     has_end: opts.end !== undefined,
-                    affects_count: opts.affects!.length,
+                    affects_count: opts.affects?.length ?? 0,
                     has_evidence: evidence !== undefined,
                     has_intensity: intensity !== undefined,
                     has_ts: opts.ts !== undefined,

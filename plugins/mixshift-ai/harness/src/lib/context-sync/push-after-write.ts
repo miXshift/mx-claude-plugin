@@ -205,19 +205,29 @@ async function computePushResult(
       // Racing the whole push bounds the await we hand back to the write path
       // regardless of where the hang is. On deadline we STOP awaiting and
       // return the quiet no-op; the raced push promise is abandoned un-awaited
-      // (its errors are already swallowed by the result-envelope contract, and
-      // a push that happens to settle after we returned just publishes the doc
-      // a moment later — harmless).
-      const raced = await raceDeadline(
-        push(brandSlug, {
-          client,
-          ...(options.dataDirOverride !== undefined
-            ? { dataDirOverride: options.dataDirOverride }
-            : {}),
-          // NEVER force: diverged docs stay conflicts by design.
-        }),
-        budgetMs,
-      );
+      // (a push that settles after we returned just publishes the doc a moment
+      // later — harmless). push()'s contract is envelope errors, never a
+      // rejection, but an ABANDONED promise is exactly where that invariant
+      // must hold even if it someday breaks (an abort landing mid-refresh, a
+      // future edit): a late rejection with no awaiter is an unhandled
+      // rejection crashing the CLI after the user's write already succeeded.
+      // The pre-attached catch pins that at the seam (review).
+      const pushPromise = push(brandSlug, {
+        client,
+        ...(options.dataDirOverride !== undefined
+          ? { dataDirOverride: options.dataDirOverride }
+          : {}),
+        // NEVER force: diverged docs stay conflicts by design.
+      });
+      pushPromise.catch((err: unknown) => {
+        debugLog(
+          env,
+          `push-after-write(${brandSlug}): abandoned push rejected: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+      const raced = await raceDeadline(pushPromise, budgetMs);
       if (raced === DEADLINE) {
         controller.abort(); // cut the budgeted fetches; a refresh dies on its own timer
         debugLog(env, `push-after-write(${brandSlug}): budget of ${budgetMs}ms exceeded`);
