@@ -67084,6 +67084,11 @@ var PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
 var PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
 async function pushAfterWrite(brandSlug, options = {}) {
   const env = options.env ?? process.env;
+  const result = await computePushResult(brandSlug, options, env);
+  emitNotice(brandSlug, result, options.notify ?? true);
+  return result;
+}
+async function computePushResult(brandSlug, options, env) {
   try {
     const flag = (env[PUSH_AFTER_WRITE_ENV] ?? "").toLowerCase();
     if (flag === "off" || flag === "0" || flag === "false") {
@@ -67157,6 +67162,34 @@ async function pushAfterWrite(brandSlug, options = {}) {
 function debugLog(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
+}
+var noticedBrands = /* @__PURE__ */ new Set();
+function emitNotice(brandSlug, result, notify) {
+  if (!notify) return;
+  const line = noticeLineFor(brandSlug, result);
+  if (line === null) return;
+  if (noticedBrands.has(brandSlug)) return;
+  noticedBrands.add(brandSlug);
+  process.stderr.write(line + "\n");
+}
+function noticeLineFor(brandSlug, result) {
+  if (result.published) {
+    const shared = result.pushed + result.created;
+    if (shared <= 0) return null;
+    return `\u2713 Shared ${brandSlug} to your team's brand context (${shared} doc(s)).`;
+  }
+  switch (result.reason) {
+    case "disabled":
+      return null;
+    // kill switch: intentional-off, say nothing
+    case "skipped":
+      if (result.detail.includes("not yet in the org store")) {
+        return `Saved locally. ${brandSlug} is not shared with your team yet. Run \`mixshift context push --brand ${brandSlug}\` to commit it.`;
+      }
+      return null;
+    case "failed":
+      return `Could not sync ${brandSlug} to your team just now; your work is saved locally. Retry with \`mixshift context push --brand ${brandSlug}\`.`;
+  }
 }
 
 // src/lib/clients/bootstrap.ts
@@ -85557,13 +85590,18 @@ function registerContextCommands(program3) {
         (n, r) => n + r.docs.filter((d) => d.verdict === "server-deleted").length,
         0
       );
+      const unshared = results.reduce(
+        (n, r) => n + r.docs.filter((d) => d.verdict === "local-only").length,
+        0
+      );
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
             {
               status: "ok",
               brands: results.map((r) => ({ brand: r.brand, docs: r.docs })),
-              conflicts
+              conflicts,
+              unshared
             },
             null,
             2
@@ -85600,6 +85638,15 @@ function registerContextCommands(program3) {
           `${serverDeleted} doc(s) deleted from the org store: delete the local file to accept the deletion, or recreate it with \`mixshift context push --brand <slug> --force\`.`
         );
         lines.push("");
+      }
+      for (const r of results) {
+        const localOnly = r.docs.filter((d) => d.verdict === "local-only").length;
+        if (localOnly > 0) {
+          lines.push(
+            `${localOnly} doc(s) not yet shared with your team: run \`mixshift context push --brand ${r.brand}\` to commit them.`
+          );
+          lines.push("");
+        }
       }
       process.stdout.write(lines.join("\n") + "\n");
       return;
