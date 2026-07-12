@@ -78814,27 +78814,33 @@ async function writeSidecar(input) {
     await mkdir17(dirname20(path2), { recursive: true });
     await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   } catch (err) {
+    try {
+      await track(
+        {
+          event_name: EventName.SidecarWritten,
+          skill_id: input.skill,
+          outcome: "failed",
+          error_class: "sidecar_write_failed",
+          payload: eventPayload
+        },
+        input.dataDirOverride
+      );
+    } catch {
+    }
+    throw err;
+  }
+  try {
     await track(
       {
         event_name: EventName.SidecarWritten,
         skill_id: input.skill,
-        outcome: "failed",
-        error_class: "sidecar_write_failed",
+        outcome: "ok",
         payload: eventPayload
       },
       input.dataDirOverride
     );
-    throw err;
+  } catch {
   }
-  await track(
-    {
-      event_name: EventName.SidecarWritten,
-      skill_id: input.skill,
-      outcome: "ok",
-      payload: eventPayload
-    },
-    input.dataDirOverride
-  );
   return {
     sidecar_path: path2,
     run_id: runId,

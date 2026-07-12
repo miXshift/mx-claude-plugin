@@ -129,18 +129,26 @@ export async function writeSidecar(
     // A GENUINE write failure (permissions, no space, a non-durable data dir on
     // Cowork). Emit a failure event with a real error_class so it surfaces in
     // the error-aggregate sweep — previously these threw with no telemetry at
-    // all, so silent sidecar-write failures were invisible. Re-throw so the
-    // command layer still reports it to the user.
-    await track(
-      {
-        event_name: EventName.SidecarWritten,
-        skill_id: input.skill,
-        outcome: 'failed',
-        error_class: 'sidecar_write_failed',
-        payload: eventPayload,
-      },
-      input.dataDirOverride,
-    );
+    // all, so silent sidecar-write failures were invisible. The failing
+    // condition (e.g. a full or read-only disk) is exactly the kind that could
+    // also break the queue write inside track(), so guard it: `track` already
+    // swallows internally today, but wrapping keeps the original write error the
+    // thing we re-throw regardless of that contract. Re-throw so the command
+    // layer still reports it to the user.
+    try {
+      await track(
+        {
+          event_name: EventName.SidecarWritten,
+          skill_id: input.skill,
+          outcome: 'failed',
+          error_class: 'sidecar_write_failed',
+          payload: eventPayload,
+        },
+        input.dataDirOverride,
+      );
+    } catch {
+      // Telemetry is best-effort; never let it mask the real write failure.
+    }
     throw err;
   }
 
@@ -149,16 +157,21 @@ export async function writeSidecar(
   // reflects WRITE success (we only reach here after writeAtomic succeeded);
   // the account VERDICT (RED/YELLOW/GREEN/OBSERVATIONAL) is a separate axis and
   // lives in payload.verdict. Do NOT map verdict onto outcome — a RED health
-  // check is a successful run, not a failed write.
-  await track(
-    {
-      event_name: EventName.SidecarWritten,
-      skill_id: input.skill,
-      outcome: 'ok',
-      payload: eventPayload,
-    },
-    input.dataDirOverride,
-  );
+  // check is a successful run, not a failed write. The file is already on disk,
+  // so a telemetry hiccup must not fail the operation: best-effort only.
+  try {
+    await track(
+      {
+        event_name: EventName.SidecarWritten,
+        skill_id: input.skill,
+        outcome: 'ok',
+        payload: eventPayload,
+      },
+      input.dataDirOverride,
+    );
+  } catch {
+    // Telemetry is best-effort; the sidecar write already succeeded.
+  }
 
   return {
     sidecar_path: path,
