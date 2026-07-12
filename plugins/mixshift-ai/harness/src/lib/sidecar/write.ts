@@ -111,30 +111,51 @@ export async function writeSidecar(
     dataDirOverride: input.dataDirOverride,
   });
 
-  await mkdir(dirname(path), { recursive: true });
-  await writeAtomic(path, JSON.stringify(parsed.data, null, 2) + '\n');
+  // Shared analytics payload for the emission event (success or failure).
+  const eventPayload = {
+    brand_slug: input.brand_slug,
+    data_date: input.data_date,
+    run_id: runId,
+    verdict: input.verdict,
+    run_kind: input.run_kind,
+    skill_version: input.skill_version,
+    sql_call_count: sqlCalls.length,
+  };
+
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeAtomic(path, JSON.stringify(parsed.data, null, 2) + '\n');
+  } catch (err) {
+    // A GENUINE write failure (permissions, no space, a non-durable data dir on
+    // Cowork). Emit a failure event with a real error_class so it surfaces in
+    // the error-aggregate sweep — previously these threw with no telemetry at
+    // all, so silent sidecar-write failures were invisible. Re-throw so the
+    // command layer still reports it to the user.
+    await track(
+      {
+        event_name: EventName.SidecarWritten,
+        skill_id: input.skill,
+        outcome: 'failed',
+        error_class: 'sidecar_write_failed',
+        payload: eventPayload,
+      },
+      input.dataDirOverride,
+    );
+    throw err;
+  }
 
   // Sidecar emission is the canonical "skill finished a run" signal.
-  // Tag it with skill_id, verdict, and run_kind for analytics.
+  // Tag it with skill_id, verdict, and run_kind for analytics. `outcome`
+  // reflects WRITE success (we only reach here after writeAtomic succeeded);
+  // the account VERDICT (RED/YELLOW/GREEN/OBSERVATIONAL) is a separate axis and
+  // lives in payload.verdict. Do NOT map verdict onto outcome — a RED health
+  // check is a successful run, not a failed write.
   await track(
     {
       event_name: EventName.SidecarWritten,
       skill_id: input.skill,
-      outcome:
-        input.verdict === 'RED'
-          ? 'failed'
-          : input.verdict === 'OBSERVATIONAL'
-            ? 'deferred'
-            : 'ok',
-      payload: {
-        brand_slug: input.brand_slug,
-        data_date: input.data_date,
-        run_id: runId,
-        verdict: input.verdict,
-        run_kind: input.run_kind,
-        skill_version: input.skill_version,
-        sql_call_count: sqlCalls.length,
-      },
+      outcome: 'ok',
+      payload: eventPayload,
     },
     input.dataDirOverride,
   );
