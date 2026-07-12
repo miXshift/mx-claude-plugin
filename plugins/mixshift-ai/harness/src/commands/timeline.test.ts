@@ -15,6 +15,7 @@ import {
   familyForKind,
   formatEventLine,
   MAX_NOTE_CHARS,
+  MAX_EVIDENCE_CHARS,
 } from './timeline.js';
 import { createTimelineClient, type TimelineClient } from '../lib/timeline/client.js';
 import type {
@@ -378,6 +379,78 @@ describe('timeline add (stakes)', () => {
     expect(state.posts).toHaveLength(0);
   });
 
+  it('rejects malformed --evidence JSON with a friendly message and no stack trace', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+      '--interpretation',
+      'big launch',
+      '--evidence',
+      '{not json}',
+    );
+    expect(process.exitCode).toBe(1);
+    const err = stderrText();
+    expect(err).toContain('--evidence must be valid JSON');
+    // A friendly one-liner, not a leaked stack trace.
+    expect(err).not.toMatch(/\n\s+at /);
+    expect(state.posts).toHaveLength(0);
+  });
+
+  it('accepts --evidence whose SERIALIZED form is within the cap even when the raw input is padded past it', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    // Raw length far exceeds the cap (whitespace padding), but the compact
+    // serialized object is tiny — the old raw-length check wrongly rejected it.
+    const padded = '{' + ' '.repeat(MAX_EVIDENCE_CHARS + 100) + '"metric":"acos"}';
+    expect(padded.length).toBeGreaterThan(MAX_EVIDENCE_CHARS);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+      '--interpretation',
+      'big launch',
+      '--evidence',
+      padded,
+    );
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(state.posts).toHaveLength(1);
+    expect(state.posts[0]!.evidence).toEqual({ metric: 'acos' });
+  });
+
+  it('rejects --evidence whose serialized form exceeds the cap', async () => {
+    const { client, state } = fakeClient([]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    const big = JSON.stringify({ blob: 'x'.repeat(MAX_EVIDENCE_CHARS) });
+    expect(big.length).toBeGreaterThan(MAX_EVIDENCE_CHARS);
+    await runTimeline(
+      'add',
+      '--brand',
+      'acme',
+      '--kind',
+      'structural.launch',
+      '--category',
+      'launch',
+      '--interpretation',
+      'big launch',
+      '--evidence',
+      big,
+    );
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain('--evidence is too large');
+    expect(state.posts).toHaveLength(0);
+  });
+
   it('posts a full stake with every field and confirms it as a stake', async () => {
     const { client, state } = fakeClient([]);
     vi.mocked(createTimelineClient).mockReturnValue(client);
@@ -605,6 +678,46 @@ describe('timeline list', () => {
     expect(state.listQueries).toHaveLength(0);
   });
 
+  it('threads --until into the query and composes with --since + --overlap', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'list',
+      '--since',
+      '2026-07-01',
+      '--until',
+      '2026-07-31',
+      '--overlap',
+    );
+    expect(state.listQueries).toHaveLength(1);
+    const q = state.listQueries[0]!;
+    expect(q.since).toBe('2026-07-01T00:00:00.000Z');
+    expect(q.until).toBe('2026-07-31T00:00:00.000Z');
+    expect(q.overlap).toBe(true);
+  });
+
+  it('resolves a relative --until against now before calling the client', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    const before = Date.now();
+    await runTimeline('list', '--until', '24h');
+    const after = Date.now();
+    const until = state.listQueries[0]?.until;
+    expect(typeof until).toBe('string');
+    const untilMs = Date.parse(until!);
+    expect(untilMs).toBeGreaterThanOrEqual(before - 24 * 3600_000 - 1000);
+    expect(untilMs).toBeLessThanOrEqual(after - 24 * 3600_000 + 1000);
+  });
+
+  it('rejects an unparseable --until with exit 1, labelled --until, and no network call', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list', '--until', 'someday');
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toContain("invalid --until 'someday'");
+    expect(state.listQueries).toHaveLength(0);
+  });
+
   it('rejects a non-positive --limit', async () => {
     const { client, state } = fakeClient([[]]);
     vi.mocked(createTimelineClient).mockReturnValue(client);
@@ -712,6 +825,41 @@ describe('timeline list', () => {
     expect(out).toContain('corroborates');
     expect(out).toContain('evt_stake_1');
     expect(out).toContain('corroborated');
+  });
+
+  it('--json emits the full stake fields verbatim (nothing dropped in the shape)', async () => {
+    const stake = sampleEvent({
+      kind: 'structural.promo',
+      category: 'promotional_window',
+      status: 'corroborated',
+      source: 'system',
+      ts: '2026-07-10T00:00:00.000Z',
+      end_ts: '2026-07-12T00:00:00.000Z',
+      interpretation: 'Prime Day promo push',
+      intensity: 2.5,
+      affects: ['marketplace:US', 'asin:B000XYZ'],
+      evidence: { metric: 'acos', magnitude: 0.4 },
+    });
+    const { client } = fakeClient([[stake]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list', '--stakes', '--json');
+    const parsed = JSON.parse(stdoutText()) as {
+      status: string;
+      count: number;
+      events: WireTimelineEvent[];
+    };
+    expect(parsed.status).toBe('ok');
+    expect(parsed.count).toBe(1);
+    expect(parsed.events[0]).toMatchObject({
+      category: 'promotional_window',
+      status: 'corroborated',
+      source: 'system',
+      end_ts: '2026-07-12T00:00:00.000Z',
+      interpretation: 'Prime Day promo push',
+      intensity: 2.5,
+      affects: ['marketplace:US', 'asin:B000XYZ'],
+      evidence: { metric: 'acos', magnitude: 0.4 },
+    });
   });
 });
 

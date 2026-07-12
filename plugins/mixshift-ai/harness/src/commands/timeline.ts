@@ -69,6 +69,7 @@ interface ListCliOptions {
   family?: string;
   kind?: string;
   since?: string;
+  until?: string;
   limit?: string;
   all?: boolean;
   // Stake filters (org brain P2.5).
@@ -95,7 +96,11 @@ function registerList(timeline: Command): void {
     .option('--kind <k>', "exact kind, e.g. 'action.ads_change_committed'")
     .option(
       '--since <when>',
-      'ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w',
+      'ISO timestamp (2026-07-01) or relative: 24h, 7d, 2w (lower bound)',
+    )
+    .option(
+      '--until <when>',
+      'ISO timestamp (2026-07-08) or relative: 24h, 7d, 2w (upper bound)',
     )
     .option('--limit <n>', 'max events per page (server default applies when omitted)')
     .option(
@@ -132,6 +137,16 @@ function registerList(timeline: Command): void {
             return;
           }
           query.since = since.iso;
+        }
+        if (opts.until) {
+          // Same parse rules as --since; with --overlap the two bound the
+          // interval [since, until] the stake range must overlap.
+          const until = parseSince(opts.until, new Date(), '--until');
+          if (!until.ok) {
+            emitError(until.message, root);
+            return;
+          }
+          query.until = until.iso;
         }
         if (opts.limit !== undefined) {
           const n = Number(opts.limit);
@@ -653,10 +668,16 @@ function parseEvidence(raw: string): ParseEvidenceResult {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, message: '--evidence must be a JSON object (e.g. \'{"metric":"acos"}\').' };
   }
-  if (raw.length > MAX_EVIDENCE_CHARS) {
+  // Measure the SERIALIZED (compact JSON) form, not the raw input: the server
+  // caps the serialized payload at 4KB, so a pretty-printed-but-small object
+  // must not be rejected and a compact-but-large one must not slip through.
+  const serialized = JSON.stringify(parsed);
+  if (serialized.length > MAX_EVIDENCE_CHARS) {
     return {
       ok: false,
-      message: `--evidence is too large (${raw.length} characters; the cap is ${MAX_EVIDENCE_CHARS}).`,
+      message:
+        `--evidence is too large (${serialized.length} characters serialized; ` +
+        `the cap is ${MAX_EVIDENCE_CHARS}).`,
     };
   }
   return { ok: true, value: parsed as Record<string, unknown> };
@@ -757,6 +778,7 @@ function filtersPayload(
     ...(query.family !== undefined ? { family: query.family } : {}),
     ...(query.kind !== undefined ? { kind: query.kind } : {}),
     ...(query.since !== undefined ? { since: query.since } : {}),
+    ...(query.until !== undefined ? { until: query.until } : {}),
     ...(query.limit !== undefined ? { limit: query.limit } : {}),
     ...(query.stakes !== undefined ? { stakes: query.stakes } : {}),
     ...(query.category !== undefined ? { category: query.category } : {}),
