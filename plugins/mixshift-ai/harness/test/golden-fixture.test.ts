@@ -2,7 +2,7 @@
  * Golden brand fixture suite (QA Layer 1).
  *
  * Exercises the brand-context machinery fully OFFLINE against the committed
- * synthetic fixtures in test/fixtures/golden-data-dir/. No warehouse, no auth,
+ * synthetic fixtures in harness/testdata/. No warehouse, no auth,
  * no network — everything routes through `dataDirOverride`.
  *
  * Asserts four things:
@@ -28,7 +28,7 @@ import { resolveAcosTargetPct } from '../src/lib/brain/read.js';
 import { clientsIndexSchema } from '../src/lib/clients/index-schema.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(here, 'fixtures', 'golden-data-dir');
+const DATA_DIR = join(here, '..', 'testdata');
 const SKILLS_DIR = join(here, '..', '..', 'skills');
 const AUDIT_LABELS = join(here, '..', '..', 'shared', 'clients', '_schema', 'audit-labels.yaml');
 
