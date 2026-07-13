@@ -36,7 +36,7 @@
 
 import { deflateRawSync } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -186,11 +186,13 @@ function buildZip(entries) {
 // Version consistency
 // ---------------------------------------------------------------------------
 
-const pluginJsonPath = join(REPO_ROOT, 'plugins', 'mixshift-ai', '.claude-plugin', 'plugin.json');
-const marketplaceJsonPath = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
-
-const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf8'));
-const marketplaceJson = JSON.parse(readFileSync(marketplaceJsonPath, 'utf8'));
+// Read the manifests from the committed HEAD blobs, same as every packaged
+// byte: reading the working tree here would let an uncommitted version bump
+// name the zip one version while the packaged manifests inside carry another.
+const pluginJson = JSON.parse(
+  blob('plugins/mixshift-ai/.claude-plugin/plugin.json').toString('utf8')
+);
+const marketplaceJson = JSON.parse(blob('.claude-plugin/marketplace.json').toString('utf8'));
 const version = pluginJson.version;
 const mpEntry =
   (marketplaceJson.plugins ?? []).find((p) => p.name === pluginJson.name) ??
