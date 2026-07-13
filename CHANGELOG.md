@@ -3,6 +3,26 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.1
+
+Readable names instead of raw numbers in your results.
+
+### Changed
+
+- **Skills now show names, not just IDs.** Where results used to print an
+  opaque campaign, ad group, keyword, or target number, they now lead with the
+  human-readable name and keep the id alongside it (the id is still there for
+  any follow-up change you make). Product rows show the product title next to
+  the ASIN. This applies across data exploration, the Amazon Ads views, and the
+  ASIN target negation report.
+
+### Added
+
+- **`mixshift data asin-titles`** — a quick way to turn a list of ASINs into
+  their product titles and brands. Ask for the titles behind a set of ASINs and
+  the plugin resolves them from your catalog (and tells you which ones it could
+  not find so they can be looked up live).
+
 ## 0.8.0
 
 Event stakes on the brand timeline, and automatic publishing of brand context
