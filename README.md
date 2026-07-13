@@ -37,10 +37,11 @@ Pick the row that matches your situation:
 |---|---|---|
 | You're a MixShift customer, want to install on your own Cowork seat | **Cowork — Personal install** | [`docs/install/cowork-personal.md`](./docs/install/cowork-personal.md) |
 | You're a Cowork org admin, want to deploy to your whole team | **Cowork — Organization install** | [`docs/install/cowork-organization.md`](./docs/install/cowork-organization.md) |
+| You're a Claude Team/Enterprise admin, want to deploy via the admin console | **Organization-level install (Claude admin console)** | [`docs/install/org-admin-console.md`](./docs/install/org-admin-console.md) |
 | You use Claude Code (terminal-based) | **Claude Code** | [`docs/install/claude-code.md`](./docs/install/claude-code.md) |
 | You want the harness CLI directly (without a plugin host) | **CLI direct** | [`docs/install/cli-direct.md`](./docs/install/cli-direct.md) |
 
-All four paths land at the same place: a working `mixshift` CLI on your machine, plus the plugin's skills available to Claude. After install, every path goes through the same browser-based sign-in flow — kicked off automatically by the `welcome` skill on first chat.
+All these paths land at the same place: a working `mixshift` CLI on your machine, plus the plugin's skills available to Claude. After install, every path goes through the same browser-based sign-in flow — kicked off automatically by the `welcome` skill on first chat.
 
 Using a non-Claude AI client? You can also point Cursor or Codex at the MixShift server, or set up a ChatGPT app, with the same sign-in. See [Connecting other AI clients](./docs/auth-setup.md#connecting-other-ai-clients-cursor-codex) in the auth setup guide.
 

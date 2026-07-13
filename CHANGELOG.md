@@ -3,6 +3,21 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## Unreleased
+
+A new way for Claude Team and Enterprise admins to roll the plugin out to their
+whole organization.
+
+### Added
+
+- **Organization-level install through the Claude admin console.** Admins can
+  now deploy `mixshift-ai` from the Claude admin console, either by uploading a
+  release zip from our GitHub Releases page or by pointing the console at a
+  private mirror that tracks our public stable branch automatically. Every
+  tagged release now publishes two install zips (a marketplace-layout zip for
+  the console and a single-plugin zip), and there is a new
+  "Organization-level install (Claude admin console)" guide in the install docs.
+
 ## 0.8.1
 
 Readable names instead of raw numbers in your results.

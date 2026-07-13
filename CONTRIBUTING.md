@@ -50,6 +50,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 - [ ] Release commit titled `release: X.Y.Z <summary>`
 - [ ] Annotated tag `mixshift-ai--vX.Y.Z`
 - [ ] Branch + tag pushed to origin together
+- [ ] **Release zips attached to the GitHub Release** — the `mixshift-ai--vX.Y.Z` tag push triggers `.github/workflows/release.yml`, which re-runs the gates, runs `npm run package-zip`, and attaches both zips (`mixshift-ai-plugin-X.Y.Z.zip` + `mixshift-ai-marketplace-X.Y.Z.zip`) to the release. Confirm the workflow went green and both zips are present; they feed the [org admin-console install](docs/install/org-admin-console.md).
 - [ ] **Announce the release to the releases Discord** — `node plugins/mixshift-ai/harness/scripts/announce-release.mjs --version X.Y.Z` (one `release.published` per version bump; reads that version's `CHANGELOG.md` entry). Announcements must stay in sync with releases, so reconcile first: compare `SELECT payload->>'version' FROM events WHERE event_name='release.published'` (Supabase `izurufltfnwxsljvtksy`) against the `CHANGELOG.md` `## X.Y.Z` headings, and catch up any gap with one announcement per missing version. Announcements started at 0.6.3; do not retro-announce earlier versions.
 - [ ] Post-release Cowork desktop sanity check
 
@@ -91,6 +92,15 @@ git push origin main mixshift-ai--vX.Y.Z
 ```
 
 Branch and tag go to origin together. Pushing the branch alone leaves the marketplace able to list the new version but unable to anchor it.
+
+### Release zips (org distribution)
+
+Pushing the `mixshift-ai--vX.Y.Z` tag triggers `.github/workflows/release.yml`. It re-runs the deterministic gates, verifies the tag version matches `plugin.json`, runs `npm run package-zip`, and attaches both artifacts to the tag's GitHub Release:
+
+- `mixshift-ai-plugin-X.Y.Z.zip` — single-plugin layout (contents at the zip root).
+- `mixshift-ai-marketplace-X.Y.Z.zip` — marketplace layout (`.claude-plugin/marketplace.json` + `plugins/mixshift-ai/`).
+
+These are what the [org admin-console install](docs/install/org-admin-console.md) consumes (release-zip upload, or a private mirror of `stable`). The zips read `dist/cli.js` from the committed git blob, so the `harness/dist/` rebuild must already be committed on the tagged commit (it is, per the release-commit files above). To build them locally for inspection: `npm run package-zip` from `plugins/mixshift-ai/harness/` writes to `dist-zip/` at the repo root (gitignored). After the tag push, confirm the workflow is green and both zips are on the release.
 
 ### Post-release sanity check
 
