@@ -11,7 +11,7 @@
       "name": "mixshift-ai",
       "source": "./plugins/mixshift-ai",
       "description": "MixShift AI skills for Amazon advertising and retail operations against MixShift's MySQL warehouse (legacy dashamazon schema): Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central revenue, orders, inventory, catalog. Warehouse access is read-only; the live Amazon API surface adds SP-API reports, retail lookups, AMC and DSP analytics, and Amazon Ads reads plus audited preview-gated writes. Ships mx-data-explore (querying + CSV export), the mx-amazon-* skills, PPC optimization skills, brand-context management (brand setup + render + edit + enrich + delta-merge), per-skill OCL calibration confirm-on-run, design-system HTML rendering, and onboarding commands.",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "author": {
         "name": "MixShift"
       },
