@@ -354,6 +354,140 @@ tables:
       - { name: frequencyAverage, type: "decimal(15,10)" }
       - { name: householdFrequencyAverage, type: "decimal(15,10)" }
       - { name: householdReach, type: "int" }
+  adgroupmetric:
+    columns:
+      - { name: AdGroupID, type: "int" }
+      - { name: ProfileId, type: "varchar(30)" }
+      - { name: SellerID, type: "int" }
+      - { name: AmazonSellerID, type: "varchar(100)" }
+      - { name: SellerName, type: "varchar(100)" }
+      - { name: MarketPlaceID, type: "int" }
+      - { name: MarketPlaceName, type: "varchar(100)" }
+      - { name: CurrencyCode, type: "varchar(30)" }
+      - { name: MerchantType, type: "varchar(200)" }
+      - { name: AmazonAdGroupID, type: "varchar(30)" }
+      - { name: DateKey, type: "int" }
+      - { name: CampaignType, type: "varchar(100)" }
+      - { name: costType, type: "varchar(100)" }
+      - { name: tactic, type: "varchar(150)" }
+      - { name: adFormat, type: "varchar(100)" }
+      - { name: DateTime, type: "datetime" }
+      - { name: AdGroupName, type: "varchar(300)" }
+      - { name: CampaignID, type: "int" }
+      - { name: CampaignName, type: "varchar(300)" }
+      - { name: PortfolioID, type: "int" }
+      - { name: PortfolioName, type: "varchar(255)" }
+      - { name: campaignBudgetType, type: "varchar(50)" }
+      - { name: CampaignBudget, type: "decimal(10,2)" }
+      - { name: CampaignStatus, type: "varchar(50)" }
+      - { name: Cost, type: "decimal(10,2)" }
+      - { name: Clicks, type: "int" }
+      - { name: CTR, type: "decimal(15,10)" }
+      - { name: CPC, type: "decimal(15,10)" }
+      - { name: ACos, type: "decimal(15,10)" }
+      - { name: Sales, type: "decimal(10,2)" }
+      - { name: Orders, type: "int" }
+      - { name: Units, type: "decimal(10,2)" }
+      - { name: Impressions, type: "int" }
+      - { name: AttributedSales1day, type: "decimal(10,2)" }
+      - { name: AttributedSalesSameSKU1day, type: "decimal(10,2)" }
+      - { name: AttributedConversions1day, type: "decimal(10,2)" }
+      - { name: AttributedConversionsSameSKU1day, type: "decimal(10,2)" }
+      - { name: AttributedSales7day, type: "decimal(10,2)" }
+      - { name: AttributedSalesSameSKU7day, type: "decimal(10,2)" }
+      - { name: AttributedConversions7day, type: "decimal(10,2)" }
+      - { name: AttributedConversionsSameSKU7day, type: "decimal(10,2)" }
+      - { name: AttributedSales14day, type: "decimal(10,2)" }
+      - { name: AttributedSalesSameSKU14day, type: "decimal(10,2)" }
+      - { name: AttributedConversions14day, type: "decimal(10,2)" }
+      - { name: AttributedConversionsSameSKU14day, type: "decimal(10,2)" }
+      - { name: AttributedSales30day, type: "decimal(10,2)" }
+      - { name: AttributedSalesSameSKU30day, type: "decimal(10,2)" }
+      - { name: AttributedConversions30day, type: "decimal(10,2)" }
+      - { name: AttributedConversionsSameSKU30day, type: "decimal(10,2)" }
+      - { name: AttributedUnitsOrdered1day, type: "decimal(10,2)" }
+      - { name: AttributedUnitsOrdered7day, type: "decimal(10,2)" }
+      - { name: AttributedUnitsOrdered14day, type: "decimal(10,2)" }
+      - { name: AttributedUnitsOrdered30day, type: "decimal(10,2)" }
+      - { name: attributedDetailPageViewsClicks14d, type: "int" }
+      - { name: attributedOrdersNewToBrand14d, type: "int" }
+      - { name: attributedOrdersNewToBrandPercentage14d, type: "decimal(10,10)" }
+      - { name: attributedOrderRateNewToBrand14d, type: "decimal(10,10)" }
+      - { name: attributedSalesNewToBrand14d, type: "decimal(10,2)" }
+      - { name: attributedSalesNewToBrandPercentage14d, type: "decimal(10,10)" }
+      - { name: attributedUnitsOrderedNewToBrand14d, type: "int" }
+      - { name: attributedUnitsOrderedNewToBrandPercentage14d, type: "decimal(10,10)" }
+      - { name: attributedBrandedSearches14d, type: "int" }
+      - { name: unitsSold14d, type: "int" }
+      - { name: dpv14d, type: "int" }
+      - { name: vctr, type: "decimal(10,10)" }
+      - { name: video5SecondViewRate, type: "decimal(10,10)" }
+      - { name: video5SecondViews, type: "int" }
+      - { name: videoCompleteViews, type: "int" }
+      - { name: videoFirstQuartileViews, type: "int" }
+      - { name: videoMidpointViews, type: "int" }
+      - { name: videoThirdQuartileViews, type: "int" }
+      - { name: videoUnmutes, type: "int" }
+      - { name: viewableImpressions, type: "int" }
+      - { name: vtr, type: "decimal(10,10)" }
+      - { name: viewAttributedOrdersNewToBrand14d, type: "int" }
+      - { name: viewAttributedSalesNewToBrand14d, type: "decimal(10,2)" }
+      - { name: viewAttributedUnitsOrderedNewToBrand14d, type: "int" }
+      - { name: viewAttributedConversions14d, type: "int" }
+      - { name: viewAttributedDetailPageView14d, type: "int" }
+      - { name: viewAttributedSales14d, type: "decimal(10,2)" }
+      - { name: viewAttributedUnitsOrdered14d, type: "int" }
+      - { name: viewImpressions, type: "int" }
+      - { name: viewAttributedBrandedSearches14d, type: "int" }
+      - { name: DownloadCode, type: "varchar(255)" }
+      - { name: addToCart, type: "int" }
+      - { name: addToCartClicks, type: "int" }
+      - { name: addToCartRate, type: "decimal(10,10)" }
+      - { name: addToCartViews, type: "int" }
+      - { name: bidOptimization, type: "varchar(150)" }
+      - { name: brandedSearches, type: "int" }
+      - { name: brandedSearchesViews, type: "int" }
+      - { name: brandedSearchRate, type: "int" }
+      - { name: campaignBudgetCurrencyCode, type: "varchar(150)" }
+      - { name: purchasesPromotedClicks, type: "int" }
+      - { name: eCPAddToCart, type: "decimal(10,10)" }
+      - { name: eCPBrandSearch, type: "decimal(10,10)" }
+      - { name: newToBrandUnitsSoldClicks, type: "int" }
+      - { name: cumulativeReach, type: "int" }
+      - { name: impressionsFrequencyAverage, type: "int" }
+      - { name: newToBrandDetailPageViewClicks, type: "int" }
+      - { name: newToBrandDetailPageViewRate, type: "decimal(10,10)" }
+      - { name: newToBrandDetailPageViews, type: "int" }
+      - { name: newToBrandDetailPageViewViews, type: "int" }
+      - { name: newToBrandECPDetailPageView, type: "decimal(10,10)" }
+      - { name: adStatus, type: "varchar(250)" }
+      - { name: newToBrandDetailPageViewsClicks, type: "int" }
+      - { name: purchasesPromoted, type: "int" }
+      - { name: salesPromoted, type: "int" }
+      - { name: clickThroughRate, type: "decimal(15,10)" }
+      - { name: costPerThousandImpressions, type: "decimal(15,10)" }
+      - { name: detailPageViewsViews, type: "int" }
+      - { name: frequencyAverage, type: "decimal(15,10)" }
+      - { name: householdFrequencyAverage, type: "decimal(15,10)" }
+      - { name: householdReach, type: "int" }
+      - { name: newToBrandPurchasesViews, type: "int" }
+      - { name: newToBrandSalesViews, type: "decimal(10,2)" }
+      - { name: purchasesViews, type: "int" }
+      - { name: reach, type: "int" }
+      - { name: roas, type: "decimal(15,10)" }
+      - { name: salesViews, type: "decimal(10,2)" }
+      - { name: unitsSoldViews, type: "int" }
+    notes: |
+      Ad-group-grain daily ad metrics: the ad-group analog of campaignmetric
+      (same rich metric set: spend/clicks/sales/orders/ACoS, attribution
+      windows, video, new-to-brand). One row per (ad group, day). Carries the
+      denormalized CampaignName/AdGroupName/PortfolioName next to the IDs like
+      the other *metric tables; prefer the adgroup dim-table name for display
+      when a join is already present since denormalized names can be mildly
+      stale. Join adgroup on AdGroupID for DefaultBid. Cataloged in
+      data-tables.yaml (category ad_metrics).
+
+
   keywordtargeting:
     columns:
       - { name: ID, type: "int" }

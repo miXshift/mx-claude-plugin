@@ -11,7 +11,7 @@ description: >
   only that the user has signed in (`mixshift auth login`) and optionally
   knows a SellerID or brand slug.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   author: "MixShift"
 trigger_phrases:
   - explore my data
@@ -350,7 +350,7 @@ You:  Run `mixshift data query --sql "SELECT CampaignType,
 unreadable on their own. Whenever your query selects a `*ID`, co-select its
 `*Name` in the same query and present the human-readable name — every ads
 metric table carries the name next to the id (`campaignmetric.CampaignName`,
-`keywordtargetingmetric.AdGroupName/KeywordText`,
+`adgroupmetric.AdGroupName`, `keywordtargetingmetric.KeywordText`,
 `targetexpressionsmetric.CampaignName/targetingText`, `portfolio.PortfolioName`,
 etc.), so it is a free extra column, not a join. In
 output, show `Name (id)` rather than the bare id — keep the id visible because a
