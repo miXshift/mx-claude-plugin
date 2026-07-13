@@ -18,10 +18,10 @@ Readable names instead of raw numbers in your results.
 
 ### Added
 
-- **`mixshift data asin-titles`** — a quick way to turn a list of ASINs into
-  their product titles and brands. Ask for the titles behind a set of ASINs and
-  the plugin resolves them from your catalog (and tells you which ones it could
-  not find so they can be looked up live).
+- **`mixshift data asin-titles`** turns a list of ASINs into their product
+  titles and brands. Ask for the titles behind a set of ASINs and the plugin
+  resolves them from your catalog (and tells you which ones it could not find
+  so they can be looked up live).
 
 ## 0.8.0
 
