@@ -1,3 +1,8 @@
+# Org-distribution release zips built by harness/scripts/package-zip.mjs.
+# Generated artifacts, attached to GitHub Releases by the release workflow —
+# never committed.
+dist-zip/
+
 # Local IDE / editor config
 .claude/*
 # ...except committed maintainer skills (e.g. release-docs), shared with the team.

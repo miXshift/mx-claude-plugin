@@ -34,7 +34,7 @@ import { assembleBrain } from '../brain/assemble.js';
 import { saveBrain } from '../brain/read.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(here, '..', '..', '..', 'test', 'fixtures', 'golden-data-dir');
+const DATA_DIR = join(here, '..', '..', '..', 'testdata');
 const DS_DIR = join(here, '..', '..', '..', 'assets', 'design-system');
 
 // The renderer walks up for assets; in unit-test runs from src/ that walk
