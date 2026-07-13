@@ -1,6 +1,6 @@
 ---
 name: mx-brand-context
-description: "Set up Brand Context for a brand: build its Tier 3 brand context directory for a new Amazon PPC account from scratch. Collects account metadata, runs structured database queries, synthesizes into a typed context.yaml + narrative.md + corpora/, and renders a human-reviewable Brand Context page. Use this skill whenever the user mentions setting up or building brand context, onboarding a brand, a cold start, new account setup, account onboarding, or kicking off a new client — even if they don't say 'brand context' explicitly. Always run before any other Amazon PPC skill on an account that doesn't yet have a populated ~/.mixshift/clients/<brand>/context.yaml."
+description: "Set up Brand Context for a brand: build its Tier 3 brand context directory for a new Amazon PPC account from scratch. Collects account metadata, runs structured database queries, synthesizes into a typed context.yaml + narrative.md + corpora/, and renders a human-reviewable Brand Context page. Use this skill whenever the user mentions setting up or building brand context, onboarding a brand, a cold start, new account setup, account onboarding, or kicking off a new client — even if they don't say 'brand context' explicitly. Always run before any other Amazon PPC skill on an account that doesn't yet have a populated ~/.mixshift/clients/[brand]/context.yaml."
 ---
 
 # Brand Context Setup — Tier 3 Context Builder
