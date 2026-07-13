@@ -76,11 +76,27 @@ jobs:
       - name: Build CLI bundle
         run: npm run build
 
+      # package-zip sources every byte from the committed HEAD blobs (never the
+      # working tree), so a release tagged with a stale committed dist/ would
+      # otherwise ship stale bytes while this job's fresh build gets discarded.
+      # Fail the release if the fresh build differs from what is committed.
+      # build-meta.json is excluded: build.mjs rewrites its timestamp on every
+      # run, so it always differs; cli.js is the shipped artifact that matters.
+      - name: Verify committed dist matches a fresh build
+        run: |
+          if ! git diff --exit-code -- dist/cli.js; then
+            echo "::error::dist/cli.js is stale: the committed bundle does not match a fresh build. Run the build, commit dist/, and re-tag."
+            exit 1
+          fi
+
       - name: Package release zips
         run: npm run package-zip
 
       - name: Publish GitHub Release with both zips
-        uses: softprops/action-gh-release@v2
+        # Third-party action in a contents:write job -> SHA-pinned for
+        # supply-chain hygiene (same posture as the pinned gitleaks CLI);
+        # bump the SHA deliberately, comment tracks the release it points at.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           # `files` is resolved from the repo root (GITHUB_WORKSPACE), not the
           # run working-directory; package-zip writes to <repo-root>/dist-zip.
