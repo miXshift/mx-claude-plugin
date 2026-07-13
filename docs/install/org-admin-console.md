@@ -31,6 +31,10 @@ Steps:
 3. Upload the zip. The console reads `.claude-plugin/marketplace.json` and lists `mixshift-ai` for your organization.
 4. (Optional) Mark it required so it installs for every member automatically.
 
+The console validates every upload before accepting it: it checks folder depth, plugin description length, and that descriptions contain no XML-like tags, among other rules. Our release zips are pre-validated against these same rules by the packaging gates that build them, so a zip downloaded from our Releases page uploads cleanly.
+
+If an upload does fail validation, the console can leave an empty marketplace entry behind (it shows as "No plugins in this source yet"). Delete that empty entry before retrying, so the retry registers cleanly.
+
 **Updating:** re-upload. When we ship a new version, download the new `mixshift-ai-marketplace-<version>.zip` and upload it the same way; the console replaces the prior version. There is no auto-update on this path, which is exactly why some admins prefer it: nothing changes for your members until you upload.
 
 ---
