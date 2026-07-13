@@ -25,8 +25,10 @@
  * bytes esbuild actually emitted. This is why the GitHub runner (ubuntu) and a
  * Windows dev box produce byte-identical zips.
  *
- * Standalone: Node builtins only (no zip dependency). The zip writer below is a
- * minimal DEFLATE + central-directory implementation on top of zlib.
+ * Standalone: Node builtins plus the `yaml` package (already a harness runtime
+ * dependency; used to parse SKILL.md frontmatter for the admin-console rules).
+ * No zip dependency — the zip writer below is a minimal DEFLATE +
+ * central-directory implementation on top of zlib.
  *
  * Usage:  node scripts/package-zip.mjs            (from harness/, or anywhere)
  *         npm run package-zip
@@ -37,6 +39,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 // ---------------------------------------------------------------------------
 // git helpers — everything sources from the committed tree at HEAD.
@@ -265,6 +268,70 @@ for (const rel of pluginRels) pluginBlobs.set(rel, blob(PLUGIN_PREFIX + rel));
 const licenseBuf = blob('LICENSE');
 const noticeBuf = blob('NOTICE');
 const marketplaceBuf = blob('.claude-plugin/marketplace.json');
+
+// ---------------------------------------------------------------------------
+// Claude admin-console upload rules. Source: the console's EXACT rejection
+// strings from a live claude.ai org admin-console upload (discovered
+// 2026-07-13):
+//   "Plugin validation failed: Plugin description must be at most 500 characters."
+//   "Skill 'skills/mx-brand-context': SKILL.md description cannot contain XML tags"
+// Enforced on the PACKAGED bytes so a zip that would bounce off the console
+// can never ship. Same rules gate PRs in check-docs.mjs. Skill description
+// LENGTH is deliberately unchecked — the console only enforces length on the
+// plugin description, and shortening skill descriptions degrades triggering.
+// ---------------------------------------------------------------------------
+
+const CONSOLE_DESC_MAX = 500;
+const XML_TAG = /<[^>]+>/;
+
+function assertConsoleDescription(label, desc) {
+  if (typeof desc !== 'string' || desc.trim() === '') fail(`${label} is missing or empty.`);
+  if (desc.length > CONSOLE_DESC_MAX) {
+    fail(
+      `${label} is ${desc.length} chars; the Claude admin console rejects plugin ` +
+        `descriptions over ${CONSOLE_DESC_MAX}.`,
+    );
+  }
+  const tag = desc.match(XML_TAG);
+  if (tag) {
+    fail(
+      `${label} contains an XML-like tag (${tag[0]}); the Claude admin console rejects it. ` +
+        'Use [placeholder] instead of <placeholder>.',
+    );
+  }
+}
+
+const packagedPluginJson = JSON.parse(pluginBlobs.get('.claude-plugin/plugin.json').toString('utf8'));
+assertConsoleDescription('plugin.json description', packagedPluginJson.description);
+
+const packagedMarketplace = JSON.parse(marketplaceBuf.toString('utf8'));
+for (const [i, p] of (packagedMarketplace.plugins ?? []).entries()) {
+  assertConsoleDescription(`marketplace.json plugins[${i}] ("${p.name}") description`, p.description);
+}
+
+for (const rel of pluginRels) {
+  const m = rel.match(/^skills\/([^/]+)\/SKILL\.md$/);
+  if (!m) continue;
+  const raw = pluginBlobs.get(rel).toString('utf8');
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) fail(`${rel} has no frontmatter block.`);
+  let fm;
+  try {
+    fm = parseYaml(fmMatch[1]) ?? {};
+  } catch (err) {
+    fail(`${rel} frontmatter does not parse as YAML: ${err.message}`);
+  }
+  const desc = fm.description;
+  if (typeof desc !== 'string' || desc.trim() === '') fail(`${rel} frontmatter has no description.`);
+  const tag = desc.match(XML_TAG);
+  if (tag) {
+    fail(
+      `${rel} frontmatter description contains an XML-like tag (${tag[0]}); the Claude ` +
+        'admin console rejects it ("SKILL.md description cannot contain XML tags"). ' +
+        'Use [placeholder] instead of <placeholder>.',
+    );
+  }
+}
 
 function modeFor(rel) {
   return EXEC_RELS.has(rel) ? 0o755 : 0o644;

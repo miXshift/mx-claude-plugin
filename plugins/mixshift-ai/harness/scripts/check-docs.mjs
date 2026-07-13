@@ -5,7 +5,7 @@
  * Doc-currency gate. Customer-facing docs drift behind the shipped skill set and
  * the version fields every release; this catches the mechanical cases
  * deterministically so they fail CI instead of shipping stale (the 0.5.39 README
- * still said "20 skills" and omitted the whole Amazon API surface). Three checks:
+ * still said "20 skills" and omitted the whole Amazon API surface). The checks:
  *
  *   1. README.md "ships **N** skills" == the number of skill directories.
  *   2. Every skill directory name appears somewhere in README.md, so a new skill
@@ -14,6 +14,18 @@
  *   3. plugin.json `version` == marketplace.json `plugins[].version`. CONTRIBUTING.md
  *      requires these to move together; check-version-consistency.mjs only covers
  *      per-skill SKILL.md <-> manifest drift, not these two top-level fields.
+ *   4. Claude admin-console upload rules (source: the console's EXACT rejection
+ *      strings from a live claude.ai org admin-console upload, 2026-07-13:
+ *      "Plugin validation failed: Plugin description must be at most 500
+ *      characters." and "Skill 'skills/mx-brand-context': SKILL.md description
+ *      cannot contain XML tags"). Enforced here so PRs catch a regression before
+ *      release: plugin.json `description` and marketplace.json
+ *      plugins[*].description must be <= 500 chars and contain no XML-like tags,
+ *      and every skills/<id>/SKILL.md frontmatter `description` must contain no
+ *      XML-like tags (angle-bracket placeholders like <brand> count — write
+ *      [brand] instead). Skill description LENGTH is deliberately NOT checked:
+ *      the console only enforces length on the plugin description, and
+ *      shortening skill descriptions would degrade skill triggering.
  *
  * Companion to check-skill-telemetry.mjs / check-version-consistency.mjs; shares
  * their conventions (skip `_`-prefixed dirs, exit-1-with-report). Prose accuracy
@@ -26,6 +38,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..', '..', '..');
@@ -109,9 +122,78 @@ try {
   );
 }
 
+// 4. Claude admin-console upload rules (see header — live console rejections,
+//    2026-07-13). <= 500 chars and no XML-like tags on the plugin/marketplace
+//    descriptions; no XML-like tags in any SKILL.md frontmatter description.
+const CONSOLE_DESC_MAX = 500;
+const XML_TAG = /<[^>]+>/;
+
+try {
+  const plugin = await readJson(pluginJsonPath);
+  const marketplace = await readJson(marketplaceJsonPath);
+  const descs = [
+    ['plugin.json description', plugin.description],
+    ...(marketplace.plugins ?? []).map((p, i) => [
+      `marketplace.json plugins[${i}] ("${p.name}") description`,
+      p.description,
+    ]),
+  ];
+  for (const [label, desc] of descs) {
+    if (desc == null) {
+      errors.push(`${label} is missing.`);
+      continue;
+    }
+    if (desc.length > CONSOLE_DESC_MAX) {
+      errors.push(
+        `${label} is ${desc.length} chars; the Claude admin console rejects uploads over ` +
+          `${CONSOLE_DESC_MAX} ("Plugin description must be at most 500 characters.").`,
+      );
+    }
+    const tag = desc.match(XML_TAG);
+    if (tag) {
+      errors.push(
+        `${label} contains an XML-like tag (${tag[0]}); the Claude admin console rejects ` +
+          `descriptions with XML tags. Use [placeholder] instead of <placeholder>.`,
+      );
+    }
+  }
+} catch {
+  // Read/parse failure already reported by check 3.
+}
+
+for (const id of skillIds) {
+  try {
+    const raw = await readFile(join(skillsDir, id, 'SKILL.md'), 'utf-8');
+    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fmMatch) {
+      errors.push(`skills/${id}/SKILL.md has no frontmatter block.`);
+      continue;
+    }
+    const fm = parseYaml(fmMatch[1]) ?? {};
+    const desc = fm.description;
+    if (typeof desc !== 'string' || desc.trim() === '') {
+      errors.push(`skills/${id}/SKILL.md frontmatter has no description.`);
+      continue;
+    }
+    const tag = desc.match(XML_TAG);
+    if (tag) {
+      errors.push(
+        `skills/${id}/SKILL.md frontmatter description contains an XML-like tag ` +
+          `(${tag[0]}); the Claude admin console rejects it ("SKILL.md description cannot ` +
+          `contain XML tags"). Use [placeholder] instead of <placeholder>.`,
+      );
+    }
+  } catch (err) {
+    errors.push(
+      `Cannot read/parse skills/${id}/SKILL.md frontmatter (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+}
+
 if (errors.length === 0) {
   console.log(
-    `✓ Docs are current: README lists all ${skillIds.length} skills, version fields agree.`,
+    `✓ Docs are current: README lists all ${skillIds.length} skills, version fields agree, ` +
+      'descriptions pass the admin-console rules.',
   );
   process.exit(0);
 }
