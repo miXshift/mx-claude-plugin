@@ -1,0 +1,91 @@
+name: release
+
+# Cuts an org-distribution GitHub Release when a version tag is pushed.
+#
+# Trigger: a tag matching `mixshift-ai--v*` (the tag convention already used for
+# releases, e.g. mixshift-ai--v0.8.0). On that tag this workflow re-runs the
+# deterministic CI gates (the same blocking set as ci.yml — typecheck, tests,
+# manifest validation, telemetry convention, version + docs currency, build),
+# verifies the tag version matches plugin.json, builds the two release zips with
+# `npm run package-zip`, and attaches BOTH to the GitHub Release for the tag.
+#
+# Intentionally NOT here (same as ci.yml): `check-named-pack` needs a live
+# `mixshift auth login` against mcp.mixshift.io, which CI cannot do; and
+# `check-contracts` is advisory. Both stay out of the release gate.
+
+on:
+  push:
+    tags:
+      - 'mixshift-ai--v*'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: plugins/mixshift-ai/harness
+
+jobs:
+  release:
+    name: Build gates + package zips + publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugins/mixshift-ai/harness/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Verify tag version matches plugin.json
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#mixshift-ai--v}"
+          PLUGIN_VERSION="$(node -p "require('../.claude-plugin/plugin.json').version")"
+          echo "tag=${GITHUB_REF_NAME} -> version ${TAG_VERSION}; plugin.json = ${PLUGIN_VERSION}"
+          if [ "$TAG_VERSION" != "$PLUGIN_VERSION" ]; then
+            echo "::error::Tag version '${TAG_VERSION}' does not match plugin.json version '${PLUGIN_VERSION}'."
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Validate skill manifests
+        run: npm run validate-manifests
+
+      - name: Skill telemetry convention
+        run: npm run check-skills
+
+      - name: Skill version consistency (SKILL.md <-> manifest)
+        run: npm run check-versions
+
+      - name: Docs currency (README skill table + count, plugin/marketplace version sync)
+        run: npm run check-docs
+
+      - name: Build CLI bundle
+        run: npm run build
+
+      - name: Package release zips
+        run: npm run package-zip
+
+      - name: Publish GitHub Release with both zips
+        uses: softprops/action-gh-release@v2
+        with:
+          # `files` is resolved from the repo root (GITHUB_WORKSPACE), not the
+          # run working-directory; package-zip writes to <repo-root>/dist-zip.
+          files: |
+            dist-zip/mixshift-ai-plugin-*.zip
+            dist-zip/mixshift-ai-marketplace-*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
