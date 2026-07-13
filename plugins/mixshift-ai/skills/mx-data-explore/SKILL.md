@@ -11,7 +11,7 @@ description: >
   only that the user has signed in (`mixshift auth login`) and optionally
   knows a SellerID or brand slug.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   author: "MixShift"
 trigger_phrases:
   - explore my data
@@ -325,6 +325,14 @@ If an ASIN has no `mws_items` row at all (common for Brand Analytics catalog
 ASINs, which are not necessarily listed), that is expected, not a bug: see
 mx-amazon-retail's Catalog Items lookup for a live title source in that case.
 
+**Shortcut — resolving a handful of ASINs to titles.** When you already have a
+list of ASINs (e.g. from a `productadmetric` pull) and just want their product
+titles, you do not need to hand-write the latest-row join: run
+`mixshift data asin-titles --seller-id <N> --asins B0ABC,B0XYZ` (add `--json`).
+It applies the canonical latest-`dtUpdatedOn`/tie-on-`ID` rule for you and
+returns `{titles, missing}` — `missing` is the ASINs with no listing row, which
+you then resolve live via mx-amazon-retail `catalog.search_items`.
+
 ### Pattern 4 — Custom query
 ```
 User: "Total spend by campaign type last 30 days for Ridgepak"
@@ -336,6 +344,23 @@ You:  Run `mixshift data query --sql "SELECT CampaignType,
                                        GROUP BY CampaignType"`.
       Use --out if they want CSV.
 ```
+
+**Names, not IDs — the output convention.** Raw numeric IDs
+(`CampaignID`, `AdGroupID`, `AmazonTargetID`, `KeywordID`, `PortfolioID`) are
+unreadable on their own. Whenever your query selects a `*ID`, co-select its
+`*Name` in the same query and present the human-readable name — every ads
+metric table carries the name next to the id (`campaignmetric.CampaignName`,
+`keywordtargetingmetric.AdGroupName/KeywordText`,
+`targetexpressionsmetric.CampaignName/targetingText`, `portfolio.PortfolioName`,
+etc.), so it is a free extra column, not a join. In
+output, show `Name (id)` rather than the bare id — keep the id visible because a
+downstream write step (a bid or budget edit) still needs it, but lead with the
+name. For ASIN rows, show the product title: `Title (ASIN)` (resolve via the
+`data asin-titles` shortcut above); if a title is unavailable, show
+`ASIN (title unavailable)` — never drop the row or fail. Prefer the dimension
+table's name (`campaign.CampaignName`) when a join to it already exists, since
+names denormalized onto metric rows can be mildly stale; for brand display use
+`seller.MerchantAlias` (SellerName is stale across rows).
 
 ### Pattern 5 — Bulk export to feed external tools
 ```

@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -271,6 +271,22 @@ get the following page.
 mixshift ads call sp.list_keywords --legacy-seller-id <id> \
   --body '{"campaignIdFilter":{"include":["123456789"]}}' --json
 ```
+
+**Names, not IDs — when you surface these results.** Lead with the human-readable
+name and keep the id in parentheses (`Name (id)`), because the id is still needed
+for any follow-up write. The list ops already return names inline (campaign name,
+ad group name, keyword text, target expression) — use them. Two cases need an
+extra lookup:
+- **`sp.list_product_ads` / `sd.list_product_ads`** return `adId` + `ASIN` + `SKU`
+  with **no product title**. Resolve the ASINs with
+  `mixshift data asin-titles --seller-id <legacySellerId> --asins <list> --json`
+  and present `Title (ASIN)`; ASINs it returns under `missing` are resolvable live
+  via mx-amazon-retail `catalog.search_items`.
+- **`sp.bid_recommendations`, `sp.budget_usage`, and the budget recommendations**
+  echo raw `campaignId` / `adGroupId` with no names. Map them back to names using
+  the `sp.list_campaigns` / `sp.list_ad_groups` results you already pulled (or pull
+  them once), and show `Campaign Name (campaignId)`. Present targets as
+  `expression (targetId)`.
 
 ### SD lists and sb.list_keywords are query-param GETs (not bodies)
 

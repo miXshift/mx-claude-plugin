@@ -4,6 +4,7 @@ import { loadTablesCatalog, describeTable } from '../lib/data/tables-catalog.js'
 import { sampleTable } from '../lib/data/sample.js';
 import { exportTable } from '../lib/data/export.js';
 import { runQuery } from '../lib/data/query-runner.js';
+import { resolveAsinTitles } from '../lib/data/asin-titles.js';
 import { rowsToCsv } from '../lib/output/csv.js';
 import { outputDir } from '../lib/paths/resolve.js';
 import { writeFile } from 'node:fs/promises';
@@ -284,6 +285,89 @@ export function registerDataCommands(program: Command): void {
             } else {
               process.stdout.write(
                 renderRowsAsMarkdown(result.rows as Array<Record<string, unknown>>) + '\n',
+              );
+            }
+          }
+        } catch (err) {
+          emitError(err, !!root.json);
+        }
+      },
+    );
+
+  // ---------------------------------------------------------------------
+  // asin-titles — resolve ASINs to Title + Brand (the shared name lookup)
+  // ---------------------------------------------------------------------
+  data
+    .command('asin-titles')
+    .description(
+      'Resolve ASINs to product Title + Brand from the Seller Central catalog. ' +
+        'ASINs not listed in mws_items come back under "missing"; resolve those ' +
+        'live via mx-amazon-retail catalog.search_items.',
+    )
+    .requiredOption('--seller-id <id>', 'seller to resolve against', parseInt10)
+    .requiredOption('--asins <list>', 'comma-separated ASINs (e.g. B0ABC,B0XYZ)')
+    .action(
+      async (opts: { sellerId: number; asins: string }, cmd: Command) => {
+        const root = cmd.optsWithGlobals<RootOptions>();
+        try {
+          const asins = opts.asins.split(',');
+          const result = await resolveAsinTitles({
+            sellerId: opts.sellerId,
+            asins,
+            dataDirOverride: root.dataDir,
+          });
+
+          if (!result.ok) {
+            if (root.json) {
+              process.stdout.write(
+                JSON.stringify(
+                  {
+                    status: 'error',
+                    failure_kind: result.kind,
+                    table_name: result.table_name,
+                    message: result.friendly,
+                  },
+                  null,
+                  2,
+                ) + '\n',
+              );
+            } else {
+              process.stderr.write(`\n✗ ${result.friendly}\n`);
+            }
+            process.exitCode = handleAccessDeniedExit(result.kind);
+            return;
+          }
+
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify(
+                {
+                  status: 'ok',
+                  seller_id: opts.sellerId,
+                  titles: result.titles,
+                  missing: result.missing,
+                  duration_ms: result.durationMs,
+                },
+                null,
+                2,
+              ) + '\n',
+            );
+          } else {
+            process.stderr.write(
+              `\n✓ ${result.titles.length} resolved` +
+                (result.missing.length ? `, ${result.missing.length} not in catalog` : '') +
+                ` (${result.durationMs}ms)\n\n`,
+            );
+            process.stdout.write(
+              renderRowsAsMarkdown(
+                result.titles as unknown as Array<Record<string, unknown>>,
+              ) + '\n',
+            );
+            if (result.missing.length) {
+              process.stderr.write(
+                `\nNot in mws_items (resolve live via mx-amazon-retail catalog.search_items):\n  ` +
+                  result.missing.join(', ') +
+                  '\n',
               );
             }
           }

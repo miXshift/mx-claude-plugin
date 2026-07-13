@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-ads
 display_name: Amazon Ads (live account state + audited writes)
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
