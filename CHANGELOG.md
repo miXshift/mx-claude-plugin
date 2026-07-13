@@ -3,7 +3,7 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
-## Unreleased
+## 0.8.2
 
 A new way for Claude Team and Enterprise admins to roll the plugin out to their
 whole organization.
@@ -17,6 +17,13 @@ whole organization.
   tagged release now publishes two install zips (a marketplace-layout zip for
   the console and a single-plugin zip), and there is a new
   "Organization-level install (Claude admin console)" guide in the install docs.
+
+### Fixed
+
+- **Ad group names in query results.** Warehouse queries and exports that
+  surface ad-group-level rows now show the ad group name again alongside its
+  id, restoring a data point that had briefly gone missing from data
+  exploration.
 
 ## 0.8.1
 

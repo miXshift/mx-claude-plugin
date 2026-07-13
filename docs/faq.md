@@ -12,6 +12,7 @@ Common questions about `mixshift-ai` across all install paths. If something isn'
 |---|---|
 | Solo MixShift user on Cowork | [Cowork — Personal install](./install/cowork-personal.md) |
 | Team admin deploying to your org's Cowork | [Cowork — Organization install](./install/cowork-organization.md) |
+| Claude Team/Enterprise admin deploying via the Claude admin console | [Organization-level install (Claude admin console)](./install/org-admin-console.md) |
 | Claude Code (terminal CLI) | [Claude Code](./install/claude-code.md) |
 | Scripting / CI / no plugin host | [CLI direct](./install/cli-direct.md) |
 
@@ -243,13 +244,16 @@ Each brand shows its SellerIDs, account types (SC/VC), and marketplaces.
 
 ### My team has 5 people at the same MixShift org. How should we set up?
 
-Two options, both work:
+A few options, all end at the same place (each person signs in with their own MixShift account):
 
 **Option A — Cowork organization install.**
-You (admin) publish the plugin once to your Cowork org marketplace, optionally marking it as required so it auto-installs for every seat. Each user signs in with their own MixShift account when they first use the plugin (~30 seconds in chat). No credential distribution. Best UX for teams. See [Cowork organization install](./install/cowork-organization.md).
+You (admin) publish the plugin once to your Cowork org marketplace, optionally marking it as required so it auto-installs for every seat. Each user signs in with their own MixShift account when they first use the plugin (~30 seconds in chat). No credential distribution. Best UX for Cowork teams. See [Cowork organization install](./install/cowork-organization.md).
 
-**Option B — Each user installs individually.**
-Each teammate installs via [Cowork personal install](./install/cowork-personal.md) and signs in with their own MixShift account. Same end state as Option A; just no admin involvement.
+**Option B: Organization-level install through the Claude admin console.**
+If your team is on Claude Team or Enterprise (Claude Code and the Claude apps, not Cowork), an admin deploys `mixshift-ai` to every member from the admin console, either by uploading a release zip or by pointing the console at a private mirror that auto-syncs. See [Organization-level install (Claude admin console)](./install/org-admin-console.md).
+
+**Option C — Each user installs individually.**
+Each teammate installs via [Cowork personal install](./install/cowork-personal.md) (or [Claude Code install](./install/claude-code.md)) and signs in with their own MixShift account. Same end state as the admin-managed options; just no admin involvement.
 
 ### Can two users on the same machine both use the plugin?
 
@@ -325,6 +329,7 @@ We read every piece during beta. Bugs typically get a response within a couple b
 
 - **Cowork personal install:** Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. (See "How do I get back to the Directory modal" above if you can't find this surface.)
 - **Cowork organization install:** org admin re-publishes from Organization settings → Plugins.
+- **Organization-level install (Claude admin console):** re-upload the new release zip (upload path), or nothing to do (private-mirror auto-sync path picks it up on its schedule, or trigger the mirror workflow by hand for an immediate update). See [Organization-level install](./install/org-admin-console.md).
 - **Claude Code:** in your terminal, run `claude plugin marketplace update mixshift` to refresh the catalog first, then `claude plugin update mixshift-ai`. (Refreshing first matters: an update without it can reinstall the same version when your local catalog is stale.)
 - **CLI direct:** `git pull && npm install && npm run build`.
 

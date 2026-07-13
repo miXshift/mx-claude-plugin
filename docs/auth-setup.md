@@ -7,7 +7,7 @@ This doc covers signing in to the MixShift warehouse from the plugin. Two paths:
 
 The previously documented raw-MySQL setup is retired; see [the note at the bottom](#legacy-raw-mysql-path-mixshift-auth-setup).
 
-The interactive flow is **the same for all four install paths** (Cowork personal, Cowork organization, Claude Code, CLI direct). Only the install ceremony differs.
+The interactive flow is **the same across install paths** (Cowork personal, Cowork organization, Organization-level install via the Claude admin console, Claude Code, CLI direct). Only the install ceremony differs.
 
 Building your own application against the warehouse instead of using the plugin? See [Querying from your own app](#querying-from-your-own-app-direct-api) for the direct HTTP path: mint a token, then post SQL.
 
@@ -416,7 +416,7 @@ Notes: ChatGPT limits each tool call to roughly 45 to 60 seconds, so very long r
 
 Two ways to use MixShift from Claude:
 
-**The plugin (recommended).** Installs into Cowork or Claude Code and ships all the MixShift skill workflows plus the raw tools, so it is the richest way to use MixShift from Claude. Sign-in is `mixshift auth login`, the flow at the top of this doc. Pick your install path: [Cowork personal](./install/cowork-personal.md), [Cowork organization](./install/cowork-organization.md), [Claude Code](./install/claude-code.md), or [CLI direct](./install/cli-direct.md).
+**The plugin (recommended).** Installs into Cowork or Claude Code and ships all the MixShift skill workflows plus the raw tools, so it is the richest way to use MixShift from Claude. Sign-in is `mixshift auth login`, the flow at the top of this doc. Pick your install path: [Cowork personal](./install/cowork-personal.md), [Cowork organization](./install/cowork-organization.md), [Organization-level install (Claude admin console)](./install/org-admin-console.md), [Claude Code](./install/claude-code.md), or [CLI direct](./install/cli-direct.md).
 
 **claude.ai custom connectors and Claude Desktop.** Add a custom connector with the server URL `https://mcp.mixshift.io/mcp`. Authentication is OAuth and registration is automatic: sign in with your MixShift account when prompted. No token pasting needed (unlike Cursor and Codex).
 
@@ -434,5 +434,6 @@ The raw-MySQL path (credentials fetched from the MixShift portal, a per-user IP 
 - [Privacy & telemetry](./privacy.md) — what the plugin collects during beta, how to opt out
 - [Cowork personal install](./install/cowork-personal.md)
 - [Cowork organization install](./install/cowork-organization.md)
+- [Organization-level install (Claude admin console)](./install/org-admin-console.md)
 - [Claude Code install](./install/claude-code.md)
 - [CLI direct install](./install/cli-direct.md)

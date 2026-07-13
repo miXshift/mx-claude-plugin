@@ -4,6 +4,8 @@
 
 If you use Cowork, you want [Cowork — Personal install](./cowork-personal.md) or [Cowork — Organization install](./cowork-organization.md) instead.
 
+If you administer a Claude Team or Enterprise org and want to deploy to every member through the Claude admin console instead of each person adding the marketplace themselves, see [Organization-level install (Claude admin console)](./org-admin-console.md).
+
 ---
 
 ## Prereqs
@@ -186,3 +188,4 @@ During the beta, the plugin sends usage events to MixShift so we can iterate. Th
 - [Privacy & telemetry](../privacy.md)
 - [FAQ](../faq.md)
 - [CLI direct install](./cli-direct.md) — if you want the harness CLI without going through a plugin host at all (e.g. for scripting or CI)
+- [Organization-level install (Claude admin console)](./org-admin-console.md) - if you administer a Claude Team/Enterprise org and want to deploy to every member at once
