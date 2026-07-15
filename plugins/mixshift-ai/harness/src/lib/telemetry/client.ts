@@ -69,8 +69,15 @@ export async function flushQueue(
       // Batch accepted: persist only the not-yet-sent tail. If a later batch
       // fails, the queue already excludes this (and every prior) accepted
       // batch, so we won't resend it. overwriteQueue is best-effort and never
-      // throws; if the rewrite itself fails the batch may be resent later
-      // (at-least-once), never lost.
+      // throws; the on-disk rewrite is atomic (temp + rename), so a hard kill
+      // mid-write can't leave a torn/empty queue with the tail lost — if the
+      // rewrite itself fails the batch may be resent later (at-least-once),
+      // never lost. KNOWN LIMITATION (deferred): overwriteQueue rewrites the
+      // whole file from the readQueue() snapshot with no offset preservation,
+      // so an event appended by a *concurrent* mixshift process between that
+      // read and this rewrite is clobbered. Pre-existing accepted race; the
+      // offset-preserving-clear + lockfile fix is deferred. See
+      // overwriteQueue's doc comment in queue.ts.
       await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
     } catch (err) {
       // Stop here. The queue holds exactly the un-sent tail (this batch plus

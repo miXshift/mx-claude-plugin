@@ -64027,7 +64027,7 @@ var init_identity = __esm({
 });
 
 // harness/src/lib/telemetry/queue.ts
-import { appendFile, readFile as readFile6, writeFile as writeFile3, mkdir as mkdir3, stat } from "node:fs/promises";
+import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat } from "node:fs/promises";
 import { dirname as dirname5 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
@@ -64066,9 +64066,18 @@ async function readQueue(dataDirOverride) {
 async function overwriteQueue(records, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   const body = records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
+  await atomicWrite(path2, body);
+}
+async function atomicWrite(path2, body) {
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
-    await writeFile3(path2, body, { encoding: "utf-8" });
+    await writeFile3(tmp, body, { encoding: "utf-8" });
+    await rename3(tmp, path2);
   } catch {
+    try {
+      await unlink2(tmp);
+    } catch {
+    }
   }
 }
 async function queueSizeBytes(dataDirOverride) {
@@ -66183,7 +66192,7 @@ function countBy(arr) {
 
 // harness/src/lib/clients/bootstrap.ts
 var import_yaml7 = __toESM(require_dist(), 1);
-import { mkdir as mkdir6, rename as rename5, writeFile as writeFile6, access } from "node:fs/promises";
+import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access } from "node:fs/promises";
 import { dirname as dirname8 } from "node:path";
 init_format_error();
 init_resolve();
@@ -66191,7 +66200,7 @@ init_resolve();
 // harness/src/lib/context-sync/engine.ts
 var import_yaml6 = __toESM(require_dist(), 1);
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir5, rename as rename4, unlink as unlink3, writeFile as writeFile5 } from "node:fs/promises";
+import { mkdir as mkdir5, rename as rename5, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
 import { basename as basename2, dirname as dirname7, join as join8 } from "node:path";
 
 // harness/src/lib/context-sync/client.ts
@@ -66464,7 +66473,7 @@ function isFileNotFoundError7(err) {
 init_credentials();
 init_resolve();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir4, readFile as readFile9, rename as rename3, unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
+import { mkdir as mkdir4, readFile as readFile9, rename as rename4, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
 import { dirname as dirname6 } from "node:path";
 function emptyState(identity) {
   return { schema: 2, ...identity ? { identity } : {}, docs: {} };
@@ -66527,10 +66536,10 @@ async function saveState(brandSlug, state, dataDirOverride) {
     const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
     try {
       await writeFile4(tmpPath, JSON.stringify(state, null, 2) + "\n", "utf8");
-      await rename3(tmpPath, path2);
+      await rename4(tmpPath, path2);
       return true;
     } catch (err) {
-      await unlink2(tmpPath).catch(() => {
+      await unlink3(tmpPath).catch(() => {
       });
       throw err;
     }
@@ -66731,9 +66740,9 @@ async function writeFileAtomic(path2, content) {
   );
   try {
     await writeFile5(tmpPath, content, "utf8");
-    await rename4(tmpPath, path2);
+    await rename5(tmpPath, path2);
   } catch (err) {
-    await unlink3(tmpPath).catch(() => {
+    await unlink4(tmpPath).catch(() => {
     });
     throw err;
   }
@@ -67366,7 +67375,7 @@ async function writeAtomic(path2, content) {
   await mkdir6(dirname8(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile6(tmpPath, content, { encoding: "utf-8" });
-  await rename5(tmpPath, path2);
+  await rename6(tmpPath, path2);
 }
 function todayISO() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -67379,7 +67388,7 @@ function isFileNotFoundError8(err) {
 var import_yaml8 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir7, readFile as readFile10, rename as rename6, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
+import { mkdir as mkdir7, readFile as readFile10, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
 import { dirname as dirname9 } from "node:path";
 
 // harness/src/lib/errors.ts
@@ -67487,7 +67496,7 @@ async function saveIndex(index, dataDirOverride) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile7(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
   await chmod2(tmpPath, 384);
-  await rename6(tmpPath, path2);
+  await rename7(tmpPath, path2);
   return { path: path2 };
 }
 function buildIndexFromBrands(brands, prev) {
@@ -67854,7 +67863,7 @@ import { promisify } from "node:util";
 var import_yaml9 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir8, readFile as readFile11, rename as rename7, writeFile as writeFile8, chmod as chmod3, unlink as unlink4 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile11, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
 import { dirname as dirname10 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
@@ -67952,7 +67961,7 @@ async function resetSkillConfig(brandSlug, skillId, dataDirOverride) {
   delete next[skillId];
   if (Object.keys(next).length === 0) {
     try {
-      await unlink4(path2);
+      await unlink5(path2);
     } catch {
     }
   } else {
@@ -68048,7 +68057,7 @@ async function writeBrandConfigFile(path2, config2) {
     await chmod3(tmpPath, 384);
   } catch {
   }
-  await rename7(tmpPath, path2);
+  await rename8(tmpPath, path2);
 }
 function isFileNotFoundError10(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -69475,7 +69484,7 @@ import { readFile as readFile18 } from "node:fs/promises";
 
 // harness/src/lib/brain/fetch.ts
 var import_yaml12 = __toESM(require_dist(), 1);
-import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename9 } from "node:fs/promises";
+import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
 import { dirname as dirname14 } from "node:path";
 
 // harness/src/lib/data/dispatch.ts
@@ -70896,7 +70905,7 @@ function toIso2(v) {
 
 // harness/src/lib/brain/read.ts
 var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename8 } from "node:fs/promises";
+import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
 import { dirname as dirname13 } from "node:path";
 init_resolve();
 init_format_error();
@@ -71046,7 +71055,7 @@ async function saveBrain(brain, dataDirOverride) {
   await mkdir10(dirname13(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile10(tmp, (0, import_yaml11.stringify)(brain), "utf-8");
-  await rename8(tmp, path2);
+  await rename9(tmp, path2);
   return { path: path2 };
 }
 var BRAND_FIELD_REGISTRY = {
@@ -71467,7 +71476,7 @@ async function writeBrainStatus(status, dataDirOverride) {
   await mkdir11(dirname14(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile11(tmp, JSON.stringify(status, null, 2), "utf-8");
-  await rename9(tmp, path2);
+  await rename10(tmp, path2);
 }
 async function readBrandTermsInput(slug, dataDirOverride) {
   try {
@@ -71497,7 +71506,7 @@ init_zod();
 // harness/src/lib/brain/discoveries.ts
 init_zod();
 init_resolve();
-import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename10, unlink as unlink5 } from "node:fs/promises";
+import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
 import { dirname as dirname15 } from "node:path";
 var contextFieldProposalSchema = external_exports.object({
   field: external_exports.string().min(1),
@@ -71552,7 +71561,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
     await mkdir12(dirname15(path2), { recursive: true });
     const tmp = `${path2}.tmp`;
     await writeFile12(tmp, JSON.stringify(doc, null, 2), "utf-8");
-    await rename10(tmp, path2);
+    await rename11(tmp, path2);
     return {
       ok: true,
       path: path2,
@@ -71574,7 +71583,7 @@ async function readPendingDiscoveries(brandSlug, dataDirOverride) {
 async function clearPendingDiscoveries(brandSlug, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   try {
-    await unlink5(path2);
+    await unlink6(path2);
   } catch {
   }
 }
@@ -71931,7 +71940,7 @@ function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
 // harness/src/lib/context-editor/flow.ts
 var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
-import { mkdir as mkdir13, readFile as readFile19, rename as rename11, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
+import { mkdir as mkdir13, readFile as readFile19, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
 import { dirname as dirname16 } from "node:path";
 
 // harness/src/lib/calibration/manifest-schema.ts
@@ -72530,7 +72539,7 @@ async function writeContextFile(path2, obj) {
     await chmod4(tmpPath, 384);
   } catch {
   }
-  await rename11(tmpPath, path2);
+  await rename12(tmpPath, path2);
 }
 function isFileNotFoundError13(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -74053,7 +74062,7 @@ function emitError3(json2, message) {
 // harness/src/lib/enrichment/delta-merge.ts
 var import_yaml15 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, writeFile as writeFile15, rename as rename12, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
+import { readFile as readFile21, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
 import { dirname as dirname18 } from "node:path";
 async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -74138,7 +74147,7 @@ async function writeYamlAtomic(path2, text) {
     await chmod5(tmpPath, 384);
   } catch {
   }
-  await rename12(tmpPath, path2);
+  await rename13(tmpPath, path2);
 }
 function isFileNotFoundError14(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -78422,7 +78431,7 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // harness/src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir16, writeFile as writeFile16, rename as rename13 } from "node:fs/promises";
+import { mkdir as mkdir16, writeFile as writeFile16, rename as rename14 } from "node:fs/promises";
 import { dirname as dirname19, join as join13 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
@@ -78557,7 +78566,7 @@ async function writeAtomic2(path2, content) {
   await mkdir16(dirname19(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile16(tmpPath, content, { encoding: "utf-8" });
-  await rename13(tmpPath, path2);
+  await rename14(tmpPath, path2);
 }
 
 // harness/src/lib/prefetch/runner.ts
@@ -78843,7 +78852,7 @@ import { readFile as readFile24 } from "node:fs/promises";
 
 // harness/src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir17, writeFile as writeFile17, rename as rename14 } from "node:fs/promises";
+import { mkdir as mkdir17, writeFile as writeFile17, rename as rename15 } from "node:fs/promises";
 import { join as join14, dirname as dirname20 } from "node:path";
 import { createHash as createHash4, randomBytes as randomBytes2 } from "node:crypto";
 
@@ -79035,7 +79044,7 @@ function hashParams(params) {
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile17(tmpPath, content, { encoding: "utf-8" });
-  await rename14(tmpPath, path2);
+  await rename15(tmpPath, path2);
 }
 
 // harness/src/commands/sidecar.ts
@@ -82558,7 +82567,7 @@ init_telemetry();
 
 // harness/src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir25, readFile as readFile32, rename as rename15, writeFile as writeFile22 } from "node:fs/promises";
+import { mkdir as mkdir25, readFile as readFile32, rename as rename16, writeFile as writeFile22 } from "node:fs/promises";
 import { dirname as dirname30 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
@@ -82577,7 +82586,7 @@ async function saveLedger(path2, handles) {
   await mkdir25(dirname30(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile22(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename15(tmp, path2);
+  await rename16(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
