@@ -71433,16 +71433,23 @@ async function fetchBrandBrain(opts) {
   }
 }
 async function failFetch(opts, startedAt, error51, kind) {
-  await writeBrainStatus(
-    {
-      status: "failed",
-      slug: opts.slug,
-      started_at: startedAt.toISOString(),
-      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
-      error: error51
-    },
-    opts.dataDirOverride
-  );
+  try {
+    await writeBrainStatus(
+      {
+        status: "failed",
+        slug: opts.slug,
+        started_at: startedAt.toISOString(),
+        finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+        error: error51
+      },
+      opts.dataDirOverride
+    );
+  } catch (statusErr) {
+    const detail = statusErr instanceof Error ? statusErr.message : String(statusErr);
+    console.error(
+      `[brain] could not write .brain-status.json for ${opts.slug} (${detail}); reporting failure without it`
+    );
+  }
   await track(
     {
       event_name: EventName.BrainFetchFailed,

@@ -612,16 +612,31 @@ async function failFetch(
   error: string,
   kind?: string,
 ): Promise<BrainFetchResult> {
-  await writeBrainStatus(
-    {
-      status: 'failed',
-      slug: opts.slug,
-      started_at: startedAt.toISOString(),
-      finished_at: new Date().toISOString(),
-      error,
-    },
-    opts.dataDirOverride,
-  );
+  // The failure handler MUST NOT itself throw. writeBrainStatus writes into the
+  // SAME client dir that just failed, so under ENOSPC/EACCES (disk full /
+  // permission) the status write can throw again — and that throw would escape
+  // fetchBrandBrain's catch and still fire plugin.crashed, defeating the fix.
+  // Swallow a status-write failure (best-effort log) and still return a clean
+  // `failed` result. The BrainFetchFailed telemetry below is the durable signal
+  // (track() is itself guaranteed non-throwing).
+  try {
+    await writeBrainStatus(
+      {
+        status: 'failed',
+        slug: opts.slug,
+        started_at: startedAt.toISOString(),
+        finished_at: new Date().toISOString(),
+        error,
+      },
+      opts.dataDirOverride,
+    );
+  } catch (statusErr) {
+    const detail =
+      statusErr instanceof Error ? statusErr.message : String(statusErr);
+    console.error(
+      `[brain] could not write .brain-status.json for ${opts.slug} (${detail}); reporting failure without it`,
+    );
+  }
   await track(
     {
       event_name: EventName.BrainFetchFailed,
