@@ -284,7 +284,8 @@ try {
   // Best-effort: fire a crash event so we see this in telemetry. We
   // await `track()` (not `void track(...)`) so the event is on disk
   // before the `finally` block flushes — otherwise the queue write
-  // races the flush and we lose the crash.
+  // races the flush and we lose the crash. This catch runs at most once
+  // per process (single emit site), so the crash is reported exactly once.
   await track({
     event_name: EventName.PluginCrashed,
     outcome: 'failed',

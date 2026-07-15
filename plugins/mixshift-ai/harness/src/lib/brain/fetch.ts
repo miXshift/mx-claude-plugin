@@ -487,99 +487,123 @@ export async function fetchBrandBrain(
     return { rows: out.rows, sproc: entry.sproc ?? queryId };
   };
 
-  const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
-  const brain: BrandBrain = assembleBrain({
-    brandSlug: slug,
-    sellerRows: sellerOut.rows,
-    sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
-    primarySellerId: primarySeatId,
-    generator: `plugin@${getPluginVersion()}`,
-    now,
-    previousObservations,
-    catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
-    catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
-    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
-    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
-    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
-    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
-    // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
-    // assignable to the typed SourceInput<CSxxRow> params (the computer row
-    // types are all-optional/unknown), so the existing helper is reused.
-    settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
-    captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
-    captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
-    captureRateDaily: await sourceInput(
-      CS_CAPTURE_RATE_DAILY_QUERY_ID,
-      captureDailyOut,
-    ),
-    stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
-    stockoutImpact: await sourceInput(
-      CS_STOCKOUT_IMPACT_QUERY_ID,
-      stockoutImpactOut,
-    ),
-    brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
-    brandTermsInput,
-  });
-  const { path } = await saveBrain(brain, dataDirOverride);
+  // Assemble + persist + auto-publish. saveBrain creates its own parent
+  // client dir (clients/<slug>/) before the atomic temp-write+rename, so a
+  // brand keyed but never set up on disk writes cleanly. This whole tail is
+  // guarded: any unexpected failure here (a rename racing a removed dir, a
+  // permission/space error, an assembly throw) is turned into a clean handled
+  // `failed` result via failFetch — it must NEVER escape as an unhandled
+  // exception that crashes the process (event plugin.crashed). Atomic-write
+  // semantics inside saveBrain are unchanged.
+  try {
+    const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
+    const brain: BrandBrain = assembleBrain({
+      brandSlug: slug,
+      sellerRows: sellerOut.rows,
+      sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+      primarySellerId: primarySeatId,
+      generator: `plugin@${getPluginVersion()}`,
+      now,
+      previousObservations,
+      catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
+      catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
+      campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
+      heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
+      heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
+      recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
+      // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
+      // assignable to the typed SourceInput<CSxxRow> params (the computer row
+      // types are all-optional/unknown), so the existing helper is reused.
+      settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
+      captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
+      captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
+      captureRateDaily: await sourceInput(
+        CS_CAPTURE_RATE_DAILY_QUERY_ID,
+        captureDailyOut,
+      ),
+      stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
+      stockoutImpact: await sourceInput(
+        CS_STOCKOUT_IMPACT_QUERY_ID,
+        stockoutImpactOut,
+      ),
+      brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
+      brandTermsInput,
+    });
+    const { path } = await saveBrain(brain, dataDirOverride);
 
-  // Auto-publish the freshly-saved brain to the org store, detached from the
-  // fetch's return summary (best-effort, bounded, non-throwing — the local
-  // saveBrain above is the durable result).
-  await pushAfterWrite(slug, { dataDirOverride });
+    // Auto-publish the freshly-saved brain to the org store, detached from the
+    // fetch's return summary (best-effort, bounded, non-throwing — the local
+    // saveBrain above is the durable result).
+    await pushAfterWrite(slug, { dataDirOverride });
 
-  const summary: BrainFetchSummary = {
-    row_count: sellerOut.rows.length,
-    acos_target_pct: brain.seller?.acos_target_pct ?? null,
-    merchant_alias: brain.seller?.merchant_alias ?? null,
-    used_dispatch: sellerOut.usedDispatch,
-    duration_ms: Date.now() - t0,
-    asin_count: brain.catalog?.asin_count ?? null,
-    campaign_count: brain.campaign_structure?.campaign_count ?? null,
-    hero_asin_count: brain.catalog?.top_asins
-      ? (brain.catalog.top_asins.sc?.length ?? 0) +
-        (brain.catalog.top_asins.vc?.length ?? 0)
-      : null,
-    has_recent_activity: brain.recent_activity !== undefined,
-    has_capture_rate: brain.capture_rate_calibration !== undefined,
-    stockout_count: brain.stockouts?.length ?? null,
-    brand_typo_count: brain.brand_term_typos?.length ?? null,
-    failed_sources: failedSources,
-  };
-  await writeBrainStatus(
-    {
-      status: 'complete',
-      slug,
-      started_at: now.toISOString(),
-      finished_at: new Date().toISOString(),
-      summary,
-    },
-    dataDirOverride,
-  );
-  await track(
-    {
-      event_name: EventName.BrainFetchCompleted,
-      outcome: 'ok',
-      duration_ms: summary.duration_ms,
-      row_count: summary.row_count,
-      payload: {
-        brand: slug,
-        used_dispatch: summary.used_dispatch,
-        has_acos_target: summary.acos_target_pct !== null,
-        asin_count: summary.asin_count,
-        campaign_count: summary.campaign_count,
-        hero_asin_count: summary.hero_asin_count,
-        has_recent_activity: summary.has_recent_activity,
-        failed_sources: failedSources,
-        // Which selector chose the primary seat: 'metrics' (per-seat
-        // revenue+spend ranking) or 'heuristic' (registry fallback).
-        primary_seat_source: metricSeatId !== null ? 'metrics' : 'heuristic',
-        primary_seat_id: primarySeatId,
+    const summary: BrainFetchSummary = {
+      row_count: sellerOut.rows.length,
+      acos_target_pct: brain.seller?.acos_target_pct ?? null,
+      merchant_alias: brain.seller?.merchant_alias ?? null,
+      used_dispatch: sellerOut.usedDispatch,
+      duration_ms: Date.now() - t0,
+      asin_count: brain.catalog?.asin_count ?? null,
+      campaign_count: brain.campaign_structure?.campaign_count ?? null,
+      hero_asin_count: brain.catalog?.top_asins
+        ? (brain.catalog.top_asins.sc?.length ?? 0) +
+          (brain.catalog.top_asins.vc?.length ?? 0)
+        : null,
+      has_recent_activity: brain.recent_activity !== undefined,
+      has_capture_rate: brain.capture_rate_calibration !== undefined,
+      stockout_count: brain.stockouts?.length ?? null,
+      brand_typo_count: brain.brand_term_typos?.length ?? null,
+      failed_sources: failedSources,
+    };
+    await writeBrainStatus(
+      {
+        status: 'complete',
+        slug,
+        started_at: now.toISOString(),
+        finished_at: new Date().toISOString(),
+        summary,
       },
-    },
-    dataDirOverride,
-  );
+      dataDirOverride,
+    );
+    await track(
+      {
+        event_name: EventName.BrainFetchCompleted,
+        outcome: 'ok',
+        duration_ms: summary.duration_ms,
+        row_count: summary.row_count,
+        payload: {
+          brand: slug,
+          used_dispatch: summary.used_dispatch,
+          has_acos_target: summary.acos_target_pct !== null,
+          asin_count: summary.asin_count,
+          campaign_count: summary.campaign_count,
+          hero_asin_count: summary.hero_asin_count,
+          has_recent_activity: summary.has_recent_activity,
+          failed_sources: failedSources,
+          // Which selector chose the primary seat: 'metrics' (per-seat
+          // revenue+spend ranking) or 'heuristic' (registry fallback).
+          primary_seat_source: metricSeatId !== null ? 'metrics' : 'heuristic',
+          primary_seat_id: primarySeatId,
+        },
+      },
+      dataDirOverride,
+    );
 
-  return { status: 'complete', path, summary };
+    return { status: 'complete', path, summary };
+  } catch (err) {
+    // Persist/assemble failed unexpectedly. Surface it as a clean handled
+    // failure (status file + BrainFetchFailed telemetry) instead of letting
+    // the exception crash the CLI. Carry the OS error code as the kind when we
+    // have one (e.g. ENOENT, EACCES) so telemetry can bucket write failures.
+    const message = err instanceof Error ? err.message : String(err);
+    const kind =
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      typeof (err as { code: unknown }).code === 'string'
+        ? (err as { code: string }).code
+        : 'brain_persist_failed';
+    return await failFetch(opts, now, message, kind);
+  }
 }
 
 async function failFetch(
@@ -588,16 +612,31 @@ async function failFetch(
   error: string,
   kind?: string,
 ): Promise<BrainFetchResult> {
-  await writeBrainStatus(
-    {
-      status: 'failed',
-      slug: opts.slug,
-      started_at: startedAt.toISOString(),
-      finished_at: new Date().toISOString(),
-      error,
-    },
-    opts.dataDirOverride,
-  );
+  // The failure handler MUST NOT itself throw. writeBrainStatus writes into the
+  // SAME client dir that just failed, so under ENOSPC/EACCES (disk full /
+  // permission) the status write can throw again — and that throw would escape
+  // fetchBrandBrain's catch and still fire plugin.crashed, defeating the fix.
+  // Swallow a status-write failure (best-effort log) and still return a clean
+  // `failed` result. The BrainFetchFailed telemetry below is the durable signal
+  // (track() is itself guaranteed non-throwing).
+  try {
+    await writeBrainStatus(
+      {
+        status: 'failed',
+        slug: opts.slug,
+        started_at: startedAt.toISOString(),
+        finished_at: new Date().toISOString(),
+        error,
+      },
+      opts.dataDirOverride,
+    );
+  } catch (statusErr) {
+    const detail =
+      statusErr instanceof Error ? statusErr.message : String(statusErr);
+    console.error(
+      `[brain] could not write .brain-status.json for ${opts.slug} (${detail}); reporting failure without it`,
+    );
+  }
   await track(
     {
       event_name: EventName.BrainFetchFailed,

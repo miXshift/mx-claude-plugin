@@ -64027,7 +64027,7 @@ var init_identity = __esm({
 });
 
 // harness/src/lib/telemetry/queue.ts
-import { appendFile, readFile as readFile6, writeFile as writeFile3, mkdir as mkdir3, stat } from "node:fs/promises";
+import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat } from "node:fs/promises";
 import { dirname as dirname5 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
@@ -64063,11 +64063,21 @@ async function readQueue(dataDirOverride) {
   }
   return events;
 }
-async function clearQueue(dataDirOverride) {
+async function overwriteQueue(records, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
+  const body = records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
+  await atomicWrite(path2, body);
+}
+async function atomicWrite(path2, body) {
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
-    await writeFile3(path2, "", { encoding: "utf-8" });
+    await writeFile3(tmp, body, { encoding: "utf-8" });
+    await rename3(tmp, path2);
   } catch {
+    try {
+      await unlink2(tmp);
+    } catch {
+    }
   }
 }
 async function queueSizeBytes(dataDirOverride) {
@@ -64105,6 +64115,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
     try {
       await postBatch(endpoint, apikey, batch, timeoutMs);
       sentCount += batch.length;
+      await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
     } catch (err) {
       return {
         status: "failed",
@@ -64113,7 +64124,6 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       };
     }
   }
-  await clearQueue(dataDirOverride);
   return { status: "sent", events_sent: sentCount };
 }
 async function postBatch(endpoint, apikey, batch, timeoutMs) {
@@ -64637,6 +64647,15 @@ var init_telemetry = __esm({
 });
 
 // harness/src/lib/data/query-runner.ts
+function capFriendlyMessage(kind, serverFriendly) {
+  if (kind === "too_many_rows") {
+    return "This query returns more than the 50,000-row service cap. To pull it, narrow the result: select only the columns you need instead of SELECT * on a wide table, add or lower a LIMIT, or stream the full result to a file with --out (which pages past the cap for you).";
+  }
+  if (kind === "response_too_large") {
+    return "This query's result is over the 10 MB service cap. To pull it, trim the result: select only the columns you need instead of SELECT * on a wide table, add or lower a LIMIT, or stream the full result to a file with --out (which pages past the cap for you).";
+  }
+  return serverFriendly;
+}
 function isServiceCapFailure(r) {
   if (r.ok) return false;
   return /service cap/i.test(`${r.message ?? ""} ${r.friendly ?? ""}`);
@@ -64723,6 +64742,18 @@ function hasTopLevelOrderBy(sql) {
         continue;
       }
       if (ch === quote2) quote2 = null;
+      continue;
+    }
+    if (ch === "-" && sql[i + 1] === "-") {
+      const nl = sql.indexOf("\n", i + 2);
+      if (nl === -1) break;
+      i = nl;
+      continue;
+    }
+    if (ch === "/" && sql[i + 1] === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      if (end === -1) break;
+      i = end + 1;
       continue;
     }
     if (ch === "'" || ch === '"' || ch === "`") {
@@ -64838,8 +64869,9 @@ async function paginateOverCap(sql, exec4, opts = {}) {
       return r;
     }
     if (r.rows.length > 0) {
-      const bytes = Buffer.byteLength(JSON.stringify(r.rows), "utf8");
-      const bytesPerRow = Math.max(1, Math.ceil(bytes / r.rows.length));
+      const sampleSize = Math.min(r.rows.length, 100);
+      const sampleBytes = Buffer.byteLength(JSON.stringify(r.rows.slice(0, sampleSize)), "utf8");
+      const bytesPerRow = Math.max(1, Math.ceil(sampleBytes / sampleSize));
       pageSize = Math.max(1, Math.min(PAGE_MAX_ROWS, Math.floor(PAGE_BYTE_BUDGET / bytesPerRow)));
     }
     if (opts.onPage) {
@@ -65014,13 +65046,15 @@ async function runDatahubQuery(creds, sql, params, options) {
       );
       return { ok: true, rows, rowCount, durationMs: serverDuration };
     }
+    const serverKind = json2.kind ?? "unknown";
+    const serverFriendly = json2.friendly ?? json2.message ?? "Query failed";
     const failure = {
       ok: false,
-      kind: json2.kind ?? "unknown",
+      kind: serverKind,
       table_name: json2.table_name,
       raw_code: json2.raw_code,
       message: json2.message ?? "Query failed",
-      friendly: json2.friendly ?? json2.message ?? "Query failed",
+      friendly: capFriendlyMessage(serverKind, serverFriendly),
       durationMs
     };
     void track(
@@ -66335,7 +66369,7 @@ function countBy(arr) {
 
 // harness/src/lib/clients/bootstrap.ts
 var import_yaml7 = __toESM(require_dist(), 1);
-import { mkdir as mkdir6, rename as rename5, writeFile as writeFile6, access } from "node:fs/promises";
+import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access } from "node:fs/promises";
 import { dirname as dirname8 } from "node:path";
 init_format_error();
 init_resolve();
@@ -66343,7 +66377,7 @@ init_resolve();
 // harness/src/lib/context-sync/engine.ts
 var import_yaml6 = __toESM(require_dist(), 1);
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir5, rename as rename4, unlink as unlink3, writeFile as writeFile5 } from "node:fs/promises";
+import { mkdir as mkdir5, rename as rename5, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
 import { basename as basename2, dirname as dirname7, join as join8 } from "node:path";
 
 // harness/src/lib/context-sync/client.ts
@@ -66616,7 +66650,7 @@ function isFileNotFoundError7(err) {
 init_credentials();
 init_resolve();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir4, readFile as readFile9, rename as rename3, unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
+import { mkdir as mkdir4, readFile as readFile9, rename as rename4, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
 import { dirname as dirname6 } from "node:path";
 function emptyState(identity) {
   return { schema: 2, ...identity ? { identity } : {}, docs: {} };
@@ -66679,10 +66713,10 @@ async function saveState(brandSlug, state, dataDirOverride) {
     const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
     try {
       await writeFile4(tmpPath, JSON.stringify(state, null, 2) + "\n", "utf8");
-      await rename3(tmpPath, path2);
+      await rename4(tmpPath, path2);
       return true;
     } catch (err) {
-      await unlink2(tmpPath).catch(() => {
+      await unlink3(tmpPath).catch(() => {
       });
       throw err;
     }
@@ -66883,9 +66917,9 @@ async function writeFileAtomic(path2, content) {
   );
   try {
     await writeFile5(tmpPath, content, "utf8");
-    await rename4(tmpPath, path2);
+    await rename5(tmpPath, path2);
   } catch (err) {
-    await unlink3(tmpPath).catch(() => {
+    await unlink4(tmpPath).catch(() => {
     });
     throw err;
   }
@@ -67518,7 +67552,7 @@ async function writeAtomic(path2, content) {
   await mkdir6(dirname8(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile6(tmpPath, content, { encoding: "utf-8" });
-  await rename5(tmpPath, path2);
+  await rename6(tmpPath, path2);
 }
 function todayISO() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -67531,7 +67565,7 @@ function isFileNotFoundError8(err) {
 var import_yaml8 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir7, readFile as readFile10, rename as rename6, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
+import { mkdir as mkdir7, readFile as readFile10, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
 import { dirname as dirname9 } from "node:path";
 
 // harness/src/lib/errors.ts
@@ -67639,7 +67673,7 @@ async function saveIndex(index, dataDirOverride) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile7(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
   await chmod2(tmpPath, 384);
-  await rename6(tmpPath, path2);
+  await rename7(tmpPath, path2);
   return { path: path2 };
 }
 function buildIndexFromBrands(brands, prev) {
@@ -68006,7 +68040,7 @@ import { promisify } from "node:util";
 var import_yaml9 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir8, readFile as readFile11, rename as rename7, writeFile as writeFile8, chmod as chmod3, unlink as unlink4 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile11, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
 import { dirname as dirname10 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
@@ -68104,7 +68138,7 @@ async function resetSkillConfig(brandSlug, skillId, dataDirOverride) {
   delete next[skillId];
   if (Object.keys(next).length === 0) {
     try {
-      await unlink4(path2);
+      await unlink5(path2);
     } catch {
     }
   } else {
@@ -68200,7 +68234,7 @@ async function writeBrandConfigFile(path2, config2) {
     await chmod3(tmpPath, 384);
   } catch {
   }
-  await rename7(tmpPath, path2);
+  await rename8(tmpPath, path2);
 }
 function isFileNotFoundError10(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -69627,7 +69661,7 @@ import { readFile as readFile18 } from "node:fs/promises";
 
 // harness/src/lib/brain/fetch.ts
 var import_yaml12 = __toESM(require_dist(), 1);
-import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename9 } from "node:fs/promises";
+import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
 import { dirname as dirname14 } from "node:path";
 
 // harness/src/lib/data/dispatch.ts
@@ -71048,7 +71082,7 @@ function toIso2(v) {
 
 // harness/src/lib/brain/read.ts
 var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename8 } from "node:fs/promises";
+import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
 import { dirname as dirname13 } from "node:path";
 init_resolve();
 init_format_error();
@@ -71198,7 +71232,7 @@ async function saveBrain(brain, dataDirOverride) {
   await mkdir10(dirname13(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile10(tmp, (0, import_yaml11.stringify)(brain), "utf-8");
-  await rename8(tmp, path2);
+  await rename9(tmp, path2);
   return { path: path2 };
 }
 var BRAND_FIELD_REGISTRY = {
@@ -71494,102 +71528,115 @@ async function fetchBrandBrain(opts) {
     const entry = await getQueryEntry(queryId);
     return { rows: out.rows, sproc: entry.sproc ?? queryId };
   };
-  const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
-  const brain = assembleBrain({
-    brandSlug: slug,
-    sellerRows: sellerOut.rows,
-    sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
-    primarySellerId: primarySeatId,
-    generator: `plugin@${getPluginVersion()}`,
-    now,
-    previousObservations,
-    catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
-    catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
-    campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
-    heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
-    heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
-    recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
-    // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
-    // assignable to the typed SourceInput<CSxxRow> params (the computer row
-    // types are all-optional/unknown), so the existing helper is reused.
-    settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
-    captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
-    captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
-    captureRateDaily: await sourceInput(
-      CS_CAPTURE_RATE_DAILY_QUERY_ID,
-      captureDailyOut
-    ),
-    stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
-    stockoutImpact: await sourceInput(
-      CS_STOCKOUT_IMPACT_QUERY_ID,
-      stockoutImpactOut
-    ),
-    brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
-    brandTermsInput
-  });
-  const { path: path2 } = await saveBrain(brain, dataDirOverride);
-  await pushAfterWrite(slug, { dataDirOverride });
-  const summary = {
-    row_count: sellerOut.rows.length,
-    acos_target_pct: brain.seller?.acos_target_pct ?? null,
-    merchant_alias: brain.seller?.merchant_alias ?? null,
-    used_dispatch: sellerOut.usedDispatch,
-    duration_ms: Date.now() - t0,
-    asin_count: brain.catalog?.asin_count ?? null,
-    campaign_count: brain.campaign_structure?.campaign_count ?? null,
-    hero_asin_count: brain.catalog?.top_asins ? (brain.catalog.top_asins.sc?.length ?? 0) + (brain.catalog.top_asins.vc?.length ?? 0) : null,
-    has_recent_activity: brain.recent_activity !== void 0,
-    has_capture_rate: brain.capture_rate_calibration !== void 0,
-    stockout_count: brain.stockouts?.length ?? null,
-    brand_typo_count: brain.brand_term_typos?.length ?? null,
-    failed_sources: failedSources
-  };
-  await writeBrainStatus(
-    {
-      status: "complete",
-      slug,
-      started_at: now.toISOString(),
-      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
-      summary
-    },
-    dataDirOverride
-  );
-  await track(
-    {
-      event_name: EventName.BrainFetchCompleted,
-      outcome: "ok",
-      duration_ms: summary.duration_ms,
-      row_count: summary.row_count,
-      payload: {
-        brand: slug,
-        used_dispatch: summary.used_dispatch,
-        has_acos_target: summary.acos_target_pct !== null,
-        asin_count: summary.asin_count,
-        campaign_count: summary.campaign_count,
-        hero_asin_count: summary.hero_asin_count,
-        has_recent_activity: summary.has_recent_activity,
-        failed_sources: failedSources,
-        // Which selector chose the primary seat: 'metrics' (per-seat
-        // revenue+spend ranking) or 'heuristic' (registry fallback).
-        primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
-        primary_seat_id: primarySeatId
-      }
-    },
-    dataDirOverride
-  );
-  return { status: "complete", path: path2, summary };
+  try {
+    const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
+    const brain = assembleBrain({
+      brandSlug: slug,
+      sellerRows: sellerOut.rows,
+      sellerSproc: sellerEntry.sproc ?? BRAIN_SELLER_QUERY_ID,
+      primarySellerId: primarySeatId,
+      generator: `plugin@${getPluginVersion()}`,
+      now,
+      previousObservations,
+      catalogSc: await sourceInput(BRAIN_CATALOG_SC_QUERY_ID, scOut),
+      catalogVc: await sourceInput(BRAIN_CATALOG_VC_QUERY_ID, vcOut),
+      campaign: await sourceInput(BRAIN_CAMPAIGN_QUERY_ID, campaignOut),
+      heroSc: await sourceInput(BRAIN_HERO_SC_QUERY_ID, heroScOut),
+      heroVc: await sourceInput(BRAIN_HERO_VC_QUERY_ID, heroVcOut),
+      recentActivity: await sourceInput(BRAIN_RECENT_ACTIVITY_QUERY_ID, recentOut),
+      // Phase 8 enrichment sources. sourceInput's SourceInput<RawSellerRow> is
+      // assignable to the typed SourceInput<CSxxRow> params (the computer row
+      // types are all-optional/unknown), so the existing helper is reused.
+      settlement: await sourceInput(CS_SETTLEMENT_QUERY_ID, settlementOut),
+      captureRateSc: await sourceInput(CS_CAPTURE_RATE_SC_QUERY_ID, captureScOut),
+      captureRateVc: await sourceInput(CS_CAPTURE_RATE_VC_QUERY_ID, captureVcOut),
+      captureRateDaily: await sourceInput(
+        CS_CAPTURE_RATE_DAILY_QUERY_ID,
+        captureDailyOut
+      ),
+      stockout: await sourceInput(CS_STOCKOUT_QUERY_ID, stockoutOut),
+      stockoutImpact: await sourceInput(
+        CS_STOCKOUT_IMPACT_QUERY_ID,
+        stockoutImpactOut
+      ),
+      brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
+      brandTermsInput
+    });
+    const { path: path2 } = await saveBrain(brain, dataDirOverride);
+    await pushAfterWrite(slug, { dataDirOverride });
+    const summary = {
+      row_count: sellerOut.rows.length,
+      acos_target_pct: brain.seller?.acos_target_pct ?? null,
+      merchant_alias: brain.seller?.merchant_alias ?? null,
+      used_dispatch: sellerOut.usedDispatch,
+      duration_ms: Date.now() - t0,
+      asin_count: brain.catalog?.asin_count ?? null,
+      campaign_count: brain.campaign_structure?.campaign_count ?? null,
+      hero_asin_count: brain.catalog?.top_asins ? (brain.catalog.top_asins.sc?.length ?? 0) + (brain.catalog.top_asins.vc?.length ?? 0) : null,
+      has_recent_activity: brain.recent_activity !== void 0,
+      has_capture_rate: brain.capture_rate_calibration !== void 0,
+      stockout_count: brain.stockouts?.length ?? null,
+      brand_typo_count: brain.brand_term_typos?.length ?? null,
+      failed_sources: failedSources
+    };
+    await writeBrainStatus(
+      {
+        status: "complete",
+        slug,
+        started_at: now.toISOString(),
+        finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+        summary
+      },
+      dataDirOverride
+    );
+    await track(
+      {
+        event_name: EventName.BrainFetchCompleted,
+        outcome: "ok",
+        duration_ms: summary.duration_ms,
+        row_count: summary.row_count,
+        payload: {
+          brand: slug,
+          used_dispatch: summary.used_dispatch,
+          has_acos_target: summary.acos_target_pct !== null,
+          asin_count: summary.asin_count,
+          campaign_count: summary.campaign_count,
+          hero_asin_count: summary.hero_asin_count,
+          has_recent_activity: summary.has_recent_activity,
+          failed_sources: failedSources,
+          // Which selector chose the primary seat: 'metrics' (per-seat
+          // revenue+spend ranking) or 'heuristic' (registry fallback).
+          primary_seat_source: metricSeatId !== null ? "metrics" : "heuristic",
+          primary_seat_id: primarySeatId
+        }
+      },
+      dataDirOverride
+    );
+    return { status: "complete", path: path2, summary };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const kind = typeof err === "object" && err !== null && "code" in err && typeof err.code === "string" ? err.code : "brain_persist_failed";
+    return await failFetch(opts, now, message, kind);
+  }
 }
 async function failFetch(opts, startedAt, error51, kind) {
-  await writeBrainStatus(
-    {
-      status: "failed",
-      slug: opts.slug,
-      started_at: startedAt.toISOString(),
-      finished_at: (/* @__PURE__ */ new Date()).toISOString(),
-      error: error51
-    },
-    opts.dataDirOverride
-  );
+  try {
+    await writeBrainStatus(
+      {
+        status: "failed",
+        slug: opts.slug,
+        started_at: startedAt.toISOString(),
+        finished_at: (/* @__PURE__ */ new Date()).toISOString(),
+        error: error51
+      },
+      opts.dataDirOverride
+    );
+  } catch (statusErr) {
+    const detail = statusErr instanceof Error ? statusErr.message : String(statusErr);
+    console.error(
+      `[brain] could not write .brain-status.json for ${opts.slug} (${detail}); reporting failure without it`
+    );
+  }
   await track(
     {
       event_name: EventName.BrainFetchFailed,
@@ -71606,7 +71653,7 @@ async function writeBrainStatus(status, dataDirOverride) {
   await mkdir11(dirname14(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile11(tmp, JSON.stringify(status, null, 2), "utf-8");
-  await rename9(tmp, path2);
+  await rename10(tmp, path2);
 }
 async function readBrandTermsInput(slug, dataDirOverride) {
   try {
@@ -71636,7 +71683,7 @@ init_zod();
 // harness/src/lib/brain/discoveries.ts
 init_zod();
 init_resolve();
-import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename10, unlink as unlink5 } from "node:fs/promises";
+import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
 import { dirname as dirname15 } from "node:path";
 var contextFieldProposalSchema = external_exports.object({
   field: external_exports.string().min(1),
@@ -71691,7 +71738,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
     await mkdir12(dirname15(path2), { recursive: true });
     const tmp = `${path2}.tmp`;
     await writeFile12(tmp, JSON.stringify(doc, null, 2), "utf-8");
-    await rename10(tmp, path2);
+    await rename11(tmp, path2);
     return {
       ok: true,
       path: path2,
@@ -71713,7 +71760,7 @@ async function readPendingDiscoveries(brandSlug, dataDirOverride) {
 async function clearPendingDiscoveries(brandSlug, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   try {
-    await unlink5(path2);
+    await unlink6(path2);
   } catch {
   }
 }
@@ -72070,7 +72117,7 @@ function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
 // harness/src/lib/context-editor/flow.ts
 var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
-import { mkdir as mkdir13, readFile as readFile19, rename as rename11, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
+import { mkdir as mkdir13, readFile as readFile19, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
 import { dirname as dirname16 } from "node:path";
 
 // harness/src/lib/calibration/manifest-schema.ts
@@ -72669,7 +72716,7 @@ async function writeContextFile(path2, obj) {
     await chmod4(tmpPath, 384);
   } catch {
   }
-  await rename11(tmpPath, path2);
+  await rename12(tmpPath, path2);
 }
 function isFileNotFoundError13(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -74192,7 +74239,7 @@ function emitError3(json2, message) {
 // harness/src/lib/enrichment/delta-merge.ts
 var import_yaml15 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, writeFile as writeFile15, rename as rename12, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
+import { readFile as readFile21, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
 import { dirname as dirname18 } from "node:path";
 async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -74277,7 +74324,7 @@ async function writeYamlAtomic(path2, text) {
     await chmod5(tmpPath, 384);
   } catch {
   }
-  await rename12(tmpPath, path2);
+  await rename13(tmpPath, path2);
 }
 function isFileNotFoundError14(err) {
   return err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT";
@@ -78561,7 +78608,7 @@ function readNumberFromUnknownObject(obj, key, fallback) {
 
 // harness/src/lib/prefetch/artifacts.ts
 init_resolve();
-import { mkdir as mkdir16, writeFile as writeFile16, rename as rename13 } from "node:fs/promises";
+import { mkdir as mkdir16, writeFile as writeFile16, rename as rename14 } from "node:fs/promises";
 import { dirname as dirname19, join as join13 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
@@ -78696,7 +78743,7 @@ async function writeAtomic2(path2, content) {
   await mkdir16(dirname19(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile16(tmpPath, content, { encoding: "utf-8" });
-  await rename13(tmpPath, path2);
+  await rename14(tmpPath, path2);
 }
 
 // harness/src/lib/prefetch/runner.ts
@@ -78982,7 +79029,7 @@ import { readFile as readFile24 } from "node:fs/promises";
 
 // harness/src/lib/sidecar/write.ts
 init_resolve();
-import { mkdir as mkdir17, writeFile as writeFile17, rename as rename14 } from "node:fs/promises";
+import { mkdir as mkdir17, writeFile as writeFile17, rename as rename15 } from "node:fs/promises";
 import { join as join14, dirname as dirname20 } from "node:path";
 import { createHash as createHash4, randomBytes as randomBytes2 } from "node:crypto";
 
@@ -79174,7 +79221,7 @@ function hashParams(params) {
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile17(tmpPath, content, { encoding: "utf-8" });
-  await rename14(tmpPath, path2);
+  await rename15(tmpPath, path2);
 }
 
 // harness/src/commands/sidecar.ts
@@ -79355,7 +79402,7 @@ async function sampleTable(opts) {
 
 // harness/src/lib/output/csv-file-sink.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir18, rename as rename15 } from "node:fs/promises";
+import { mkdir as mkdir18, rename as rename16 } from "node:fs/promises";
 import { dirname as dirname22 } from "node:path";
 
 // harness/src/lib/output/csv.ts
@@ -79412,6 +79459,7 @@ function createCsvFileSink(outPath) {
   let stream = null;
   let writer = null;
   let streamError = null;
+  let closed = false;
   function newStream() {
     const s = createWriteStream(outPath, { encoding: "utf-8" });
     s.on("error", (err) => {
@@ -79446,19 +79494,31 @@ function createCsvFileSink(outPath) {
     writer.writeHeader();
   }
   function closeStream() {
-    if (!stream) return Promise.resolve();
+    if (!stream || closed) return Promise.resolve();
     const s = stream;
+    closed = true;
     return new Promise((resolve3, reject) => {
       if (streamError) {
         s.destroy();
         reject(streamError);
         return;
       }
-      s.end((err) => {
-        const e = err ?? streamError;
-        if (e) reject(e);
-        else resolve3();
-      });
+      const cleanup = () => {
+        s.off("finish", onFinish);
+        s.off("error", onError);
+      };
+      const onFinish = () => {
+        cleanup();
+        resolve3();
+      };
+      const onError = (err) => {
+        cleanup();
+        s.destroy();
+        reject(err);
+      };
+      s.once("finish", onFinish);
+      s.once("error", onError);
+      s.end();
     });
   }
   return {
@@ -79499,7 +79559,7 @@ function createCsvFileSink(outPath) {
       });
       const partial2 = `${outPath}.partial`;
       try {
-        await rename15(outPath, partial2);
+        await rename16(outPath, partial2);
         return partial2;
       } catch {
         return null;
@@ -82963,7 +83023,7 @@ init_telemetry();
 
 // harness/src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir24, readFile as readFile32, rename as rename16, writeFile as writeFile21 } from "node:fs/promises";
+import { mkdir as mkdir24, readFile as readFile32, rename as rename17, writeFile as writeFile21 } from "node:fs/promises";
 import { dirname as dirname29 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
@@ -82982,7 +83042,7 @@ async function saveLedger(path2, handles) {
   await mkdir24(dirname29(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile21(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename16(tmp, path2);
+  await rename17(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getOrCreateInstallId, readInstallId } from './identity.js';
@@ -10,7 +10,13 @@ import {
   setOptedOut,
   getTelemetryStatus,
 } from './consent.js';
-import { enqueueEvent, readQueue, clearQueue, queueSizeBytes } from './queue.js';
+import {
+  enqueueEvent,
+  readQueue,
+  clearQueue,
+  overwriteQueue,
+  queueSizeBytes,
+} from './queue.js';
 import { track } from './index.js';
 import { normalizeRecord } from './client.js';
 import type { TelemetryEventRecord } from './events.js';
@@ -205,6 +211,48 @@ describe('queue', () => {
 
   it('queueSizeBytes returns 0 when the file does not exist', async () => {
     expect(await queueSizeBytes(dataDir)).toBe(0);
+  });
+
+  it('overwriteQueue replaces the file with exactly the given records', async () => {
+    for (const n of ['e1', 'e2', 'e3']) {
+      await enqueueEvent(makeRecord({ event_name: n }), dataDir);
+    }
+    // Drop the first record; keep the tail.
+    await overwriteQueue(
+      [makeRecord({ event_name: 'e2' }), makeRecord({ event_name: 'e3' })],
+      dataDir,
+    );
+    const out = await readQueue(dataDir);
+    expect(out.map((r) => r.event_name)).toEqual(['e2', 'e3']);
+  });
+
+  it('overwriteQueue with an empty array empties the queue', async () => {
+    await enqueueEvent(makeRecord(), dataDir);
+    await overwriteQueue([], dataDir);
+    expect(await queueSizeBytes(dataDir)).toBe(0);
+    expect(await readQueue(dataDir)).toEqual([]);
+  });
+
+  it('overwriteQueue is atomic: no .tmp leftover remains after the write', async () => {
+    // The atomic write path stages a `queue.jsonl.tmp.<pid>.<ts>` sibling and
+    // renames it over the target. A successful write must leave no temp file
+    // behind — only the real queue file in the telemetry dir.
+    await enqueueEvent(makeRecord({ event_name: 'seed' }), dataDir);
+    await overwriteQueue([makeRecord({ event_name: 'kept' })], dataDir);
+
+    const telemetryDir = join(dataDir, 'telemetry');
+    const entries = await readdir(telemetryDir);
+    expect(entries.filter((e) => e.includes('.tmp'))).toEqual([]);
+    // The real queue file survived and holds exactly the expected record.
+    expect(entries).toContain('queue.jsonl');
+    expect((await readQueue(dataDir)).map((r) => r.event_name)).toEqual(['kept']);
+  });
+
+  it('clearQueue leaves no .tmp leftover (atomic write)', async () => {
+    await enqueueEvent(makeRecord(), dataDir);
+    await clearQueue(dataDir);
+    const entries = await readdir(join(dataDir, 'telemetry'));
+    expect(entries.filter((e) => e.includes('.tmp'))).toEqual([]);
   });
 });
 

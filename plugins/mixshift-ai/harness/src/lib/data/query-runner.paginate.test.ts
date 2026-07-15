@@ -251,6 +251,44 @@ describe('paginateOverCap', () => {
     expect(collected2).toEqual(collected);
   });
 
+  it('ignores an ORDER BY that appears only inside a SQL comment (picks the no-ORDER-BY strategy)', async () => {
+    // A comment containing the words "ORDER BY" must NOT be mistaken for a real
+    // top-level clause: doing so would keep the LIMIT inside the derived table
+    // (the has-ORDER-BY path) and page a non-total order nondeterministically.
+    // With no REAL order, the pager must take the strip-and-positional path.
+    const M = 20_000;
+    const N = 8_000;
+    const cols = ['a', 'b'];
+    const base = Array.from({ length: M }, (_, i) => ({ a: (i * 7) % M, b: `k${i % 5}` }));
+    const dataCalls: string[] = [];
+    const exec = async (pageSql: string) => {
+      if (/LIMIT 1$/.test(pageSql)) return okResult([base[0]!]);
+      dataCalls.push(pageSql);
+      const ordered = applyOrder(base, orderByOf(pageSql), cols);
+      return okResult(ordered.slice(outerOffsetOf(pageSql), outerOffsetOf(pageSql) + outerLimitOf(pageSql)));
+    };
+    const got: Array<Record<string, unknown>> = [];
+    // Block comment (not a line comment, which would comment out the wrapping);
+    // it contains "ORDER BY a DESC" but the statement has no real ORDER BY.
+    const r = await paginateOverCap(
+      'SELECT a, b FROM big /* ORDER BY a DESC */ LIMIT 8000',
+      exec,
+      { onPage: (page) => { got.push(...page); } },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.rowCount).toBe(N);
+      // The comment's ORDER BY was ignored → no-ORDER-BY strategy → positional.
+      expect(r.outputOrderPositional).toBe(true);
+      expect(r.boundaryTiesMayVary).toBeFalsy();
+    }
+    for (const c of dataCalls) {
+      expect(c).not.toContain('LIMIT 8000)'); // bare LIMIT stripped from the inner query
+      expect(orderByOf(c)).toBe('1, 2'); // paged under the imposed positional total order
+    }
+    expect(got).toEqual(applyOrder(base, '1, 2', cols).slice(0, N));
+  });
+
   it('keeps LIMIT+OFFSET inside the derived table; outer paging starts at 0', async () => {
     const dataCalls: string[] = [];
     const INNER = 8_000; // rows the derived table yields after its own LIMIT/OFFSET

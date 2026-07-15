@@ -64,6 +64,10 @@ export function createCsvFileSink(outPath: string): CsvFileSink {
   // Captured by a persistent 'error' listener so a write failure that fires
   // between our explicit awaits does not escape as an unhandled 'error' event.
   let streamError: Error | null = null;
+  // Guards against ending the stream twice (e.g. an explicit close() followed by
+  // finalizePartial()). We keep the `stream`/`writer` references after close so
+  // rowsWritten()/bytesWritten()/opened() remain readable for the success line.
+  let closed = false;
 
   function newStream(): WriteStream {
     const s = createWriteStream(outPath, { encoding: 'utf-8' });
@@ -104,25 +108,44 @@ export function createCsvFileSink(outPath: string): CsvFileSink {
   }
 
   function closeStream(): Promise<void> {
-    if (!stream) return Promise.resolve();
+    if (!stream || closed) return Promise.resolve();
     const s = stream;
+    // Mark closed up front so a double close() (e.g. finalizePartial after an
+    // explicit close) is a no-op rather than ending the stream twice. We keep
+    // the references so post-close count getters still work.
+    closed = true;
     return new Promise<void>((resolve, reject) => {
       if (streamError) {
-        // The stream errored, so it was never end()ed on this path. Without an
-        // explicit destroy() the underlying file descriptor leaks; on Windows a
-        // lingering handle makes finalizePartial()'s rename throw (EPERM/EBUSY),
-        // so it reports "no salvageable file" though a partial exists on disk.
-        // destroy() releases the handle so the rename can succeed; we still
-        // reject with the original error to preserve the surfacing behavior.
+        // Already errored before we got here, so the stream was never end()ed.
+        // Without destroy() the file descriptor leaks; on Windows a lingering
+        // handle makes finalizePartial()'s rename throw (EPERM/EBUSY) so it
+        // reports "no salvageable file" though a partial exists. destroy()
+        // releases the handle; we still reject to preserve error surfacing.
         s.destroy();
         reject(streamError);
         return;
       }
-      s.end((err?: Error | null) => {
-        const e = err ?? streamError;
-        if (e) reject(e);
-        else resolve();
-      });
+      // s.end(cb) only invokes cb on the 'finish' event. If the FINAL flush
+      // errors (e.g. ENOSPC), 'finish' never fires and cb never runs, so an
+      // end(cb)-only close would hang forever and the CLI would never exit.
+      // Listen for BOTH: resolve on 'finish', reject (and destroy to release the
+      // fd) on 'error'.
+      const cleanup = (): void => {
+        s.off('finish', onFinish);
+        s.off('error', onError);
+      };
+      const onFinish = (): void => {
+        cleanup();
+        resolve();
+      };
+      const onError = (err: Error): void => {
+        cleanup();
+        s.destroy();
+        reject(err);
+      };
+      s.once('finish', onFinish);
+      s.once('error', onError);
+      s.end();
     });
   }
 
