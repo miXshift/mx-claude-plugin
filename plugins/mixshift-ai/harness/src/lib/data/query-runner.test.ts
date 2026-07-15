@@ -6,11 +6,12 @@ import {
   afterEach,
   vi,
 } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runQuery } from './query-runner.js';
+import { runQuery, streamQuery, FIRST_PAGE_PROBE_ROWS } from './query-runner.js';
+import { createCsvFileSink } from '../output/csv-file-sink.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
 
@@ -298,6 +299,112 @@ describe('runQuery :: resolveCreds preference', () => {
       expect(result.kind).toBe('unknown');
       expect(result.message).toMatch(/No credentials configured/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// streamQuery: page-at-a-time delivery (single shot vs paginated)
+// ---------------------------------------------------------------------------
+
+describe('streamQuery', () => {
+  const makeRows = (off: number, n: number): Array<Record<string, unknown>> =>
+    Array.from({ length: n }, (_, i) => ({ id: off + i, name: `n${off + i}` }));
+
+  it('single shot: delivers one page and reports paginated:false', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, rows: makeRows(0, 2), rowCount: 2, durationMs: 5 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const pages: Array<[number, number]> = [];
+    const res = await streamQuery('SELECT id, name FROM t', [], { dataDirOverride: testDir }, (rows, idx) => {
+      pages.push([idx, rows.length]);
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.paginated).toBe(false);
+    expect(res.rowCount).toBe(2);
+    expect(pages).toEqual([[0, 2]]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('paginates over a cap failure, streaming pages and reporting paginated:true', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const sql = JSON.parse(init.body as string).sql as string;
+      if (/LIMIT 1$/.test(sql)) return jsonResponse(200, { ok: true, rows: makeRows(0, 1), rowCount: 1, durationMs: 1 });
+      const off = Number(sql.match(/OFFSET (\d+)/)?.[1] ?? -1);
+      if (off === 0) return jsonResponse(200, { ok: true, rows: makeRows(0, FIRST_PAGE_PROBE_ROWS), rowCount: FIRST_PAGE_PROBE_ROWS, durationMs: 1 });
+      if (off === FIRST_PAGE_PROBE_ROWS) return jsonResponse(200, { ok: true, rows: makeRows(off, 7), rowCount: 7, durationMs: 1 });
+      // The first raw shot (no wrapping) trips the row cap.
+      return jsonResponse(200, { ok: false, kind: 'unknown', message: 'Query returned 60000 rows; service cap is 50000.', friendly: '', durationMs: 1 });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const pages: Array<[number, number]> = [];
+    let total = 0;
+    const res = await streamQuery('SELECT id, name FROM t', [], { dataDirOverride: testDir }, (rows, idx) => {
+      pages.push([idx, rows.length]);
+      total += rows.length;
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.paginated).toBe(true);
+    expect(res.rowCount).toBe(FIRST_PAGE_PROBE_ROWS + 7);
+    expect(total).toBe(FIRST_PAGE_PROBE_ROWS + 7);
+    expect(pages).toEqual([[0, FIRST_PAGE_PROBE_ROWS], [1, 7]]);
+  });
+
+  it('surfaces a non-cap failure without paginating or calling onPage', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: false, kind: 'syntax_error', message: 'bad', friendly: 'SQL error', durationMs: 1 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    let called = 0;
+    const res = await streamQuery('SELECT bad', [], { dataDirOverride: testDir }, () => { called++; });
+
+    expect(res.ok).toBe(false);
+    expect(res.paginated).toBe(false);
+    expect(res.failure?.kind).toBe('syntax_error');
+    expect(called).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('streams all paged rows to a CSV file without buffering the whole set', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const sql = JSON.parse(init.body as string).sql as string;
+      if (/LIMIT 1$/.test(sql)) return jsonResponse(200, { ok: true, rows: makeRows(0, 1), rowCount: 1, durationMs: 1 });
+      const off = Number(sql.match(/OFFSET (\d+)/)?.[1] ?? -1);
+      if (off === 0) return jsonResponse(200, { ok: true, rows: makeRows(0, FIRST_PAGE_PROBE_ROWS), rowCount: FIRST_PAGE_PROBE_ROWS, durationMs: 1 });
+      if (off === FIRST_PAGE_PROBE_ROWS) return jsonResponse(200, { ok: true, rows: makeRows(off, 3), rowCount: 3, durationMs: 1 });
+      return jsonResponse(200, { ok: false, kind: 'unknown', message: 'service cap is 50000', friendly: '', durationMs: 1 });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const outPath = join(testDir, 'out.csv');
+    const sink = createCsvFileSink(outPath);
+    const res = await streamQuery('SELECT id, name FROM t', [], { dataDirOverride: testDir }, async (rows) => {
+      await sink.writePage(rows);
+    });
+    await sink.close();
+
+    expect(res.ok).toBe(true);
+    expect(res.paginated).toBe(true);
+    expect(sink.rowsWritten()).toBe(FIRST_PAGE_PROBE_ROWS + 3);
+
+    const lines = (await readFile(outPath, 'utf-8')).trim().split('\n');
+    expect(lines[0]).toBe('id,name'); // header written once
+    expect(lines.length).toBe(1 + FIRST_PAGE_PROBE_ROWS + 3); // header + every row
+    expect(lines[1]).toBe('0,n0');
+    expect(lines[lines.length - 1]).toBe(`${FIRST_PAGE_PROBE_ROWS + 2},n${FIRST_PAGE_PROBE_ROWS + 2}`);
   });
 });
 

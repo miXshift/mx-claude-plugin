@@ -14,9 +14,10 @@
  *
  * Two execution modes:
  *   - `runQuery` — buffered. Returns all rows in memory. Use for
- *     sample/preview where N is bounded.
- *   - `streamQuery` — pass each row through a callback as it arrives.
- *     Use for exports where N could be 100K+ rows.
+ *     sample/preview and joins where N is bounded.
+ *   - `streamQuery` — hand each capped PAGE to a callback as it arrives, then
+ *     drop it. Peak memory is one page, not the whole result. Use for `--out`
+ *     delivery where N could be tens of thousands of (arbitrarily wide) rows.
  */
 
 import mysql, { type RowDataPacket } from 'mysql2/promise';
@@ -94,9 +95,19 @@ export interface RunQueryTelemetry {
  *  single request returning MORE than this is REJECTED outright, not
  *  truncated — so a large mask/export must be paged. */
 export const SERVICE_ROW_CAP = 50_000;
-/** Shrink floor when a page still trips the 10 MB byte cap (wide rows). */
-export const MIN_PAGE_SIZE = 1_000;
-/** Hard ceiling on assembled rows before we tell the caller to narrow. */
+/** Target serialized-bytes budget per paged request. Held safely under the
+ *  server's 10 MB response cap (2 MB headroom) so a page stays under the byte
+ *  cap by construction; the shrink-retry handles any residual overshoot. */
+export const PAGE_BYTE_BUDGET = 8 * 1024 * 1024;
+/** Upper bound on rows per page: never request more than the server row cap. */
+export const PAGE_MAX_ROWS = SERVICE_ROW_CAP;
+/** Conservative first-page size: measure the real serialized row width before
+ *  committing to a large page. We deliberately do NOT start at PAGE_MAX_ROWS. */
+export const FIRST_PAGE_PROBE_ROWS = 5_000;
+/** Hard ceiling on assembled rows before we tell the caller to narrow. A high
+ *  safety net for UNBOUNDED queries, not a normal failure — an explicit user
+ *  LIMIT (or a caller maxRows) is honored past nothing here because it opts
+ *  out of the ceiling. */
 export const MAX_PAGINATED_ROWS = 2_000_000;
 
 /** Detects EITHER gateway cap rejection — the 50k-row cap ("…service cap is
@@ -143,9 +154,12 @@ async function runOnce<Row>(
  * large pull (e.g. an account's full negative-keyword exclusion mask) would
  * otherwise fail outright and starve downstream skills. We page with a STABLE
  * order (ORDER BY every output column by position) so OFFSET windows neither
- * skip nor duplicate rows, shrinking the window when a wide-row page trips the
- * byte cap, then concatenate. Only the datahub backend caps; the mysql backend
- * returns the single shot unchanged.
+ * skip nor duplicate rows, sizing each window against a BYTE BUDGET so wide
+ * rows page small and narrow rows page large, then concatenate. Only the
+ * datahub backend caps; the mysql backend returns the single shot unchanged.
+ *
+ * Buffered: returns all rows in memory. For disk delivery that must not hold
+ * the whole result set, use `streamQuery` instead.
  */
 export async function runQuery<Row = Record<string, unknown>>(
   sql: string,
@@ -159,27 +173,152 @@ export async function runQuery<Row = Record<string, unknown>>(
   );
 }
 
+export interface StreamedQueryResult {
+  ok: boolean;
+  rowCount: number;
+  durationMs: number;
+  /** True when the result exceeded a single-request cap and was paged. A
+   *  single-shot result (fits under both caps) reports false. */
+  paginated: boolean;
+  /** Present only when ok === false — the classified failure envelope, whose
+   *  `kind` feeds the same telemetry `error_class` as the buffered path. */
+  failure?: DataQueryFailure;
+}
+
+/**
+ * Stream a query's rows to a sink WITHOUT buffering the whole result set. Each
+ * page is handed to `onPage(rows, pageIndex)` as it arrives and then dropped,
+ * so peak memory is one page, not the full result. A result that fits under
+ * the server caps arrives as a single page (pageIndex 0, `paginated: false`);
+ * a larger result is paged transparently (byte-budgeted OFFSET windows,
+ * `paginated: true`). `pageIndex` counts only non-empty pages, starting at 0.
+ *
+ * Use for `--out` delivery and any path that writes to disk. Callers that need
+ * the rows in memory (sample/preview, joins, prefetch) use `runQuery`.
+ */
+export async function streamQuery<Row = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] | Record<string, unknown> = [],
+  options: RunQueryOptions & RunQueryTelemetry = {},
+  onPage: (rows: Row[], pageIndex: number) => void | Promise<void>,
+): Promise<StreamedQueryResult> {
+  const t0 = Date.now();
+  const first = await runOnce<Row>(sql, params, options);
+  if (first.ok) {
+    // Single shot: the server returned the whole result under both caps.
+    if (first.rows.length > 0) await onPage(first.rows, 0);
+    return {
+      ok: true,
+      rowCount: first.rowCount,
+      durationMs: first.durationMs,
+      paginated: false,
+    };
+  }
+  if (!isServiceCapFailure(first)) {
+    return {
+      ok: false,
+      rowCount: 0,
+      durationMs: first.durationMs ?? Date.now() - t0,
+      paginated: false,
+      failure: first,
+    };
+  }
+  const paged = await paginateOverCap<Row>(
+    sql,
+    (pageSql) => runOnce<Row>(pageSql, params, options),
+    { onPage },
+  );
+  if (!paged.ok) {
+    return {
+      ok: false,
+      rowCount: 0,
+      durationMs: paged.durationMs ?? Date.now() - t0,
+      paginated: true,
+      failure: paged,
+    };
+  }
+  return {
+    ok: true,
+    rowCount: paged.rowCount,
+    durationMs: paged.durationMs ?? Date.now() - t0,
+    paginated: true,
+  };
+}
+
+export interface PaginateOptions<Row> {
+  /** Stream each non-empty page as it arrives instead of buffering. When set,
+   *  rows are NOT retained in memory and the returned `rows` array is empty
+   *  (read `rowCount` for the total delivered). */
+  onPage?: (rows: Row[], pageIndex: number) => void | Promise<void>;
+  /** Hard cap on total rows delivered, combined (min) with any user LIMIT
+   *  parsed off the SQL. A bounded result opts out of the MAX_PAGINATED_ROWS
+   *  ceiling (the caller explicitly asked for that many). */
+  maxRows?: number;
+}
+
+/** A statement-final LIMIT/OFFSET parsed off the top-level query. */
+interface OuterLimit {
+  innerSql: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Split a statement-final `LIMIT`/`OFFSET` off a SELECT so the pager can honor
+ * it as a hard total-row cap rather than leaving it inside the wrapped derived
+ * table. Left in place, a user LIMIT would be RE-EXECUTED on every page's
+ * derived-table materialization — and without a stable inner order MySQL is
+ * free to pick a different subset each time, so OFFSET windows would skip and
+ * duplicate rows (silently wrong results). Trailing position guarantees the
+ * match is top-level: a subquery's LIMIT is always followed by a closing paren
+ * or more SQL, never the end of the string. Only integer-literal LIMITs are
+ * detected; a parameterized `LIMIT ?` is left in the subquery unchanged (rare
+ * on this raw-SQL path).
+ */
+function extractOuterLimit(sql: string): OuterLimit {
+  const trimmed = sql.trim().replace(/;\s*$/, '');
+  // MySQL forms: `LIMIT count [OFFSET off]` and `LIMIT off, count`.
+  const m = /\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$/i.exec(trimmed);
+  if (!m) return { innerSql: trimmed };
+  const innerSql = trimmed.slice(0, m.index).trimEnd();
+  const first = Number(m[1]);
+  const second = m[2] !== undefined ? Number(m[2]) : undefined;
+  const offsetKeyword = m[3] !== undefined ? Number(m[3]) : undefined;
+  if (second !== undefined) {
+    // `LIMIT off, count`
+    return { innerSql, limit: second, offset: first };
+  }
+  // `LIMIT count [OFFSET off]`
+  return { innerSql, limit: first, offset: offsetKeyword };
+}
+
 /**
  * Page a cap-exceeding SELECT through repeated LIMIT/OFFSET windows. `exec`
  * runs one already-param-bound statement (LIMIT/OFFSET are inlined integers,
  * so the original `?`/`:name` params bind unchanged per page). Exported for
  * unit testing. Non-SELECT statements can't be wrapped — but they don't return
  * rows, so they never hit the cap.
+ *
+ * OFFSET paging over a derived table is correct and adequate at the target
+ * scale (tens of thousands of rows). We deliberately do NOT implement keyset
+ * paging here — it is out of scope for this phase and unnecessary until we see
+ * genuinely deep (million-row+) unbounded pulls.
  */
 export async function paginateOverCap<Row>(
   sql: string,
   exec: (pageSql: string) => Promise<DataQueryResult<Row>>,
+  opts: PaginateOptions<Row> = {},
 ): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
-  const inner = sql.trim().replace(/;\s*$/, '');
-  if (!/^\s*(select|with)\b/i.test(inner)) {
+  const { innerSql, limit: userLimit, offset: userOffset } = extractOuterLimit(sql);
+  if (!/^\s*(select|with)\b/i.test(innerSql)) {
     const message =
       'Result exceeds the 50,000-row service cap and the statement is not a ' +
       'SELECT, so it cannot be paginated. Narrow the query.';
     return { ok: false, kind: 'unknown', message, friendly: message, durationMs: Date.now() - t0 };
   }
   // Probe the output column count for a positional, deterministic ORDER BY.
-  const probe = await exec(`SELECT * FROM (${inner}) AS _mx_page LIMIT 1`);
+  const probe = await exec(`SELECT * FROM (${innerSql}) AS _mx_page LIMIT 1`);
   if (!probe.ok) return probe;
   const ncols = probe.rows.length
     ? Object.keys(probe.rows[0] as Record<string, unknown>).length
@@ -188,40 +327,70 @@ export async function paginateOverCap<Row>(
     return { ok: true, rows: [], rowCount: 0, durationMs: Date.now() - t0 };
   }
   const orderBy = Array.from({ length: ncols }, (_, i) => String(i + 1)).join(', ');
+
+  // A user LIMIT and/or a caller maxRows makes the result BOUNDED: honor the
+  // smaller as a hard cap on rows delivered, and opt out of the safety ceiling.
+  const maxRows = Math.min(userLimit ?? Infinity, opts.maxRows ?? Infinity);
+  const bounded = Number.isFinite(maxRows);
+
   const all: Row[] = [];
-  let pageSize = SERVICE_ROW_CAP;
-  let offset = 0;
+  // Byte budget: start conservative to measure the real serialized row width,
+  // then size the next page as clamp(floor(PAGE_BYTE_BUDGET / bytesPerRow), 1,
+  // PAGE_MAX_ROWS). Ultra-wide rows drive the page far below 1000 — there is no
+  // floor (the old 1000-row floor is exactly what made wide SELECT * fail).
+  let pageSize = FIRST_PAGE_PROBE_ROWS;
+  let offset = userOffset ?? 0;
+  let delivered = 0;
+  let pageIndex = 0;
   // Bounded: page advances + shrinks are both finite; the iteration cap is a
   // safety net (real results converge in a handful of iterations).
-  for (let iter = 0; iter < 10_000; iter++) {
+  for (let iter = 0; iter < 100_000; iter++) {
+    const remaining = maxRows - delivered;
+    if (remaining <= 0) break; // hit the bounded cap
+    const cap = bounded ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
+    const requestSize = Math.max(1, Math.min(pageSize, cap));
     const r = await exec(
-      `SELECT * FROM (${inner}) AS _mx_page ORDER BY ${orderBy} ` +
-        `LIMIT ${pageSize} OFFSET ${offset}`,
+      `SELECT * FROM (${innerSql}) AS _mx_page ORDER BY ${orderBy} ` +
+        `LIMIT ${requestSize} OFFSET ${offset}`,
     );
     if (!r.ok) {
-      // A page can still trip the 10 MB byte cap (wide rows) even under the
-      // row cap. Halve the window and retry the SAME offset — the stable
-      // ORDER BY keeps offsets consistent across page sizes.
-      if (isServiceCapFailure(r) && pageSize > MIN_PAGE_SIZE) {
-        pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+      // A page can still trip the 10 MB byte cap for very wide rows. Halve the
+      // window and retry the SAME offset — the stable ORDER BY keeps offsets
+      // consistent across page sizes. Shrink all the way to 1 row if needed.
+      if (isServiceCapFailure(r) && requestSize > 1) {
+        pageSize = Math.max(1, Math.floor(requestSize / 2));
         continue;
       }
       return r;
     }
-    all.push(...r.rows);
-    if (r.rows.length < pageSize) {
-      return { ok: true, rows: all, rowCount: all.length, durationMs: Date.now() - t0 };
+    // Observe the serialized width of this page to size the NEXT one. Measuring
+    // rows-only JSON bytes tracks the server's response size closely enough,
+    // and the 2 MB headroom under the 10 MB cap absorbs the difference.
+    if (r.rows.length > 0) {
+      const bytes = Buffer.byteLength(JSON.stringify(r.rows), 'utf8');
+      const bytesPerRow = Math.max(1, Math.ceil(bytes / r.rows.length));
+      pageSize = Math.max(1, Math.min(PAGE_MAX_ROWS, Math.floor(PAGE_BYTE_BUDGET / bytesPerRow)));
     }
+    if (opts.onPage) {
+      if (r.rows.length > 0) await opts.onPage(r.rows, pageIndex++);
+    } else {
+      all.push(...r.rows);
+    }
+    delivered += r.rows.length;
     offset += r.rows.length;
-    if (all.length >= MAX_PAGINATED_ROWS) {
+    if (r.rows.length < requestSize) {
+      // Short page → end of the (possibly bounded) result.
+      return { ok: true, rows: all, rowCount: delivered, durationMs: Date.now() - t0 };
+    }
+    if (!bounded && delivered >= MAX_PAGINATED_ROWS) {
       const m =
         `Result exceeds ${MAX_PAGINATED_ROWS} rows even after pagination; ` +
-        `narrow the query (add a WHERE filter or aggregate).`;
+        `narrow the query (add a WHERE filter, aggregate, or pass an explicit LIMIT).`;
       return { ok: false, kind: 'unknown', message: m, friendly: m, durationMs: Date.now() - t0 };
     }
   }
-  const m = 'Pagination did not converge; narrow the query.';
-  return { ok: false, kind: 'unknown', message: m, friendly: m, durationMs: Date.now() - t0 };
+  // Loop exited by hitting the bounded cap (remaining <= 0).
+  return { ok: true, rows: all, rowCount: delivered, durationMs: Date.now() - t0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -674,10 +843,12 @@ class DatahubNetworkError extends Error {
   }
 }
 
-// Note: a row-by-row streaming variant lived here but was buggy under
-// mysql2/promise (the .stream() API requires the callback connection).
-// For exports under ~100K rows the buffered runQuery is fine; switch to
-// true streaming when we see real users pulling million-row datasets.
+// Note: an earlier row-by-row streaming variant using mysql2's .stream() API
+// was removed (it required the callback connection). Streaming is now done a
+// PAGE at a time via `streamQuery` + `paginateOverCap({ onPage })`: each capped
+// page is handed to the sink and dropped, so `--out` delivery never holds the
+// whole result set in memory. This works uniformly across the datahub and
+// mysql backends because it rides the same cap-aware pagination path.
 
 // -----------------------------------------------------------------------
 // Error classification
