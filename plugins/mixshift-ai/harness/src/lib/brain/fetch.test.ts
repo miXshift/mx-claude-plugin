@@ -9,6 +9,33 @@ vi.mock('../data/dispatch.js', async (importOriginal) => {
   return { ...actual, runDispatched: vi.fn() };
 });
 
+// fs control for the "failFetch is defensive" test. The mock is INERT by
+// default (delegates every call to the real implementation); a test arms it by
+// setting `renameFailFrom` to make the Nth `rename` throw an ENOSPC-like error.
+// Used to simulate the status-file write itself failing on a full/read-only
+// disk. vi.hoisted so the value exists when the (hoisted) vi.mock factory runs.
+const fsControl = vi.hoisted(() => ({
+  renameCalls: 0,
+  renameFailFrom: Number.POSITIVE_INFINITY,
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    rename: async (from: string, to: string) => {
+      fsControl.renameCalls += 1;
+      if (fsControl.renameCalls >= fsControl.renameFailFrom) {
+        throw Object.assign(
+          new Error('ENOSPC: no space left on device, rename'),
+          { code: 'ENOSPC' },
+        );
+      }
+      return actual.rename(from, to);
+    },
+  };
+});
+
 import { runDispatched } from '../data/dispatch.js';
 import { fetchBrandBrain, BRAIN_TTL_DAYS } from './fetch.js';
 import { loadBrain, saveBrain } from './read.js';
@@ -140,6 +167,9 @@ function callFor(id: string) {
 
 beforeEach(() => {
   runDispatchedMock.mockReset();
+  // Disarm the fs rename fault-injection between tests.
+  fsControl.renameCalls = 0;
+  fsControl.renameFailFrom = Number.POSITIVE_INFINITY;
 });
 
 describe('fetchBrandBrain — multi-source orchestration', () => {
@@ -558,6 +588,54 @@ describe('fetchBrandBrain — primary-seat selection (metrics vs heuristic)', ()
         expect(brain.brain.seller?.primary_seller_id).toBe(800);
       } else {
         expect.fail('brain should load');
+      }
+    });
+  });
+});
+
+describe('fetchBrandBrain — failFetch is defensive under a failing status write', () => {
+  it('does NOT throw when the .brain-status.json write itself fails (ENOSPC/EACCES tail)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      // Fatal seller failure routes straight to failFetch (no saveBrain in
+      // between), so the rename calls are: #1 the 'fetching' status write
+      // (succeeds), #2 the failFetch 'failed' status write. Arm #2 to throw —
+      // this is the exact disk-full/permission tail the fix hardens against.
+      fsControl.renameFailFrom = 2;
+      routeDispatch({
+        'BRAIN-SELLER': failed('BRAIN-SELLER', 'PROCEDURE sp_brain_seller_fetch does not exist'),
+      });
+
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        // The whole point: this must RESOLVE to a clean failed result, never
+        // reject. A reject here would escape to the CLI and fire plugin.crashed.
+        const result = await fetchBrandBrain({
+          slug: 'foragers-pantry',
+          dataDirOverride: dir,
+          now: NOW,
+        });
+
+        expect(result.status).toBe('failed');
+        if (result.status === 'failed') {
+          expect(result.error).toContain('sp_brain_seller_fetch');
+        }
+        // failFetch swallowed the status-write throw (best-effort stderr log)
+        // instead of propagating it.
+        expect(errSpy).toHaveBeenCalled();
+        // The 'fetching' write (rename #1) landed; the 'failed' write (rename
+        // #2) threw and was swallowed, so the file is still the earlier
+        // 'fetching' snapshot rather than being updated to 'failed'. Either way
+        // the process didn't crash — that is the guarantee under test.
+        const status = JSON.parse(
+          await readFile(
+            join(dir, 'clients', 'foragers-pantry', '.brain-status.json'),
+            'utf-8',
+          ),
+        );
+        expect(status.status).toBe('fetching');
+      } finally {
+        errSpy.mockRestore();
       }
     });
   });

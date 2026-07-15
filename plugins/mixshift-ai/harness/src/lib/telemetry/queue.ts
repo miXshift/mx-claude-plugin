@@ -24,7 +24,7 @@
  * per CLI command, so concurrent drains are unusual.)
  */
 
-import { appendFile, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { appendFile, readFile, writeFile, rename, unlink, mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { telemetryQueuePath } from '../paths/resolve.js';
 import type { TelemetryEventRecord } from './events.js';
@@ -87,23 +87,91 @@ export async function readQueue(
 }
 
 /**
- * Truncate the queue to empty. Called after a successful flush.
+ * Empty the queue. Called after a successful flush.
  *
- * NOTE: there's an inherent race here — between readQueue() and clearQueue(),
- * new events may have been appended by a different CLI process. To avoid
- * losing those events, callers should pass `keepFromOffset` (the byte size
- * of the queue file when readQueue was called) — anything written past that
- * offset is preserved. We don't currently do this in the simple flush path
- * because concurrent CLI runs are rare; revisit if it becomes a problem.
+ * The on-disk write is ATOMIC (temp file + rename; see atomicWrite below), so
+ * a hard kill mid-clear can never leave a torn or partially-written file — a
+ * concurrent reader sees either the full old contents or the empty file.
+ *
+ * KNOWN LIMITATION (deferred): there's an inherent concurrent-append race —
+ * between readQueue() and clearQueue(), new events may have been appended by a
+ * different CLI process, and this whole-file overwrite clobbers them. To avoid
+ * losing those events, callers would pass `keepFromOffset` (the byte size of
+ * the queue file when readQueue was called) so anything written past that
+ * offset is preserved. We don't do this today because concurrent CLI runs are
+ * rare; the offset-preserving clear (plus a lockfile) is the proper fix and is
+ * deferred. See overwriteQueue's doc comment.
  */
 export async function clearQueue(
   dataDirOverride?: string,
 ): Promise<void> {
+  await atomicWrite(telemetryQueuePath(dataDirOverride), '');
+}
+
+/**
+ * Overwrite the queue file with exactly `records` (JSONL), replacing whatever
+ * was there. Used by the flusher to drop already-accepted batches from the
+ * persisted queue after each successful POST, so a mid-flush failure can't
+ * leave an accepted batch behind to be resent next invocation.
+ *
+ * ATOMIC on disk: the rewrite goes to a unique temp file in the same directory
+ * and is then rename()d over the queue (see atomicWrite below). rename() is
+ * atomic on a single filesystem, so a hard kill mid-write can no longer leave
+ * the queue empty or torn with the not-yet-sent tail lost — a reader (or the
+ * next invocation) sees either the full previous contents or the full new
+ * tail, never a partial file.
+ *
+ * Best-effort: never throws (matches clearQueue). If the write fails the queue
+ * keeps its previous contents, which at worst means an accepted batch is
+ * resent later — an at-least-once outcome, never data loss.
+ *
+ * KNOWN LIMITATION (deferred): the atomic write closes the torn-file window
+ * but NOT the concurrent-append race. This is a whole-file rewrite built from
+ * the in-memory readQueue() snapshot with no offset preservation, so an event
+ * appended by a *concurrent* `mixshift` process between readQueue() and this
+ * rewrite is truncated away (clobbered). This is a pre-existing, accepted race
+ * — the harness runs single-shot per command, so concurrent drains are
+ * unusual (see the module comment and clearQueue's `keepFromOffset` note). The
+ * atomic-write change here does not fix it and marginally extends its window.
+ * The proper fix is an offset-preserving clear plus a lockfile; it is
+ * intentionally DEFERRED, not addressed by this change.
+ */
+export async function overwriteQueue(
+  records: TelemetryEventRecord[],
+  dataDirOverride?: string,
+): Promise<void> {
   const path = telemetryQueuePath(dataDirOverride);
+  const body = records.length ? records.map((r) => JSON.stringify(r)).join('\n') + '\n' : '';
+  await atomicWrite(path, body);
+}
+
+/**
+ * Overwrite `path` atomically: write `body` to a unique temp file in the same
+ * directory, then rename() it over the target. rename() is atomic within a
+ * single filesystem, so a concurrent reader — or a process hard-killed
+ * mid-write — never observes a truncated or half-written file; it sees either
+ * the whole old file or the whole new file. Matches the temp-then-rename
+ * pattern used throughout the harness (e.g. saveBrain in brain/read.ts,
+ * auth/credentials.ts, profile/save.ts).
+ *
+ * Best-effort: never throws (telemetry must not fail user commands). On any
+ * failure the previous file contents survive intact (the rename never
+ * happened), and we make a best-effort attempt to remove the temp file so a
+ * failed write leaves no `.tmp` sibling behind.
+ */
+async function atomicWrite(path: string, body: string): Promise<void> {
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
   try {
-    await writeFile(path, '', { encoding: 'utf-8' });
+    await writeFile(tmp, body, { encoding: 'utf-8' });
+    await rename(tmp, path);
   } catch {
-    // ignore
+    // Swallow — see caller doc comments (previous contents survive,
+    // at-least-once). Clean up the temp file on a best-effort basis.
+    try {
+      await unlink(tmp);
+    } catch {
+      // ignore
+    }
   }
 }
 

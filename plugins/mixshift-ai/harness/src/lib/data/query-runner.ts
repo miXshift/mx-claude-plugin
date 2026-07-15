@@ -99,6 +99,36 @@ export const MIN_PAGE_SIZE = 1_000;
 /** Hard ceiling on assembled rows before we tell the caller to narrow. */
 export const MAX_PAGINATED_ROWS = 2_000_000;
 
+/**
+ * Educational user-facing message for the datahub gateway's two output-size
+ * caps. These arrive as the failure envelope's `kind` from POST /api/query:
+ *   - 'too_many_rows'      the 50k-row cap
+ *   - 'response_too_large' the 10 MB byte cap
+ * They are server-side values NOT in DataQueryFailureKind's client union, and
+ * telemetry buckets on them verbatim, so this ONLY improves the human-readable
+ * `friendly` text and never touches `kind`. For every other kind it returns the
+ * server's friendly unchanged. Copy rule: no em dashes (customer-facing).
+ */
+export function capFriendlyMessage(kind: string, serverFriendly: string): string {
+  if (kind === 'too_many_rows') {
+    return (
+      'This query returns more than the 50,000-row service cap. ' +
+      'To pull it, narrow the result: select only the columns you need instead ' +
+      'of SELECT * on a wide table, add or lower a LIMIT, or stream the full ' +
+      'result to a file with --out (which pages past the cap for you).'
+    );
+  }
+  if (kind === 'response_too_large') {
+    return (
+      "This query's result is over the 10 MB service cap. " +
+      'To pull it, trim the result: select only the columns you need instead of ' +
+      'SELECT * on a wide table, add or lower a LIMIT, or stream the full result ' +
+      'to a file with --out (which pages past the cap for you).'
+    );
+  }
+  return serverFriendly;
+}
+
 /** Detects EITHER gateway cap rejection — the 50k-row cap ("…service cap is
  *  50000") OR the 10 MB byte cap ("…service cap of 10.0 MB"). Matched across
  *  both `message` (raw) and `friendly` because the phrasing differs between
@@ -436,14 +466,19 @@ async function runDatahubQuery<Row>(
       return { ok: true, rows, rowCount, durationMs: serverDuration };
     }
 
-    // Failure envelope
+    // Failure envelope. `message` stays the raw server text (isServiceCapFailure
+    // matches it to trigger pagination); only `friendly` is upgraded to the
+    // educational cap guidance for the two output-size caps, and `kind` is kept
+    // verbatim so telemetry buckets are unchanged.
+    const serverKind = json.kind ?? 'unknown';
+    const serverFriendly = json.friendly ?? json.message ?? 'Query failed';
     const failure: DataQueryFailure = {
       ok: false,
-      kind: (json.kind ?? 'unknown') as DataQueryFailureKind,
+      kind: serverKind as DataQueryFailureKind,
       table_name: json.table_name,
       raw_code: json.raw_code,
       message: json.message ?? 'Query failed',
-      friendly: json.friendly ?? json.message ?? 'Query failed',
+      friendly: capFriendlyMessage(serverKind, serverFriendly),
       durationMs,
     };
     void track(
