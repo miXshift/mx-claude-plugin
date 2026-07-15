@@ -108,6 +108,13 @@ export function createCsvFileSink(outPath: string): CsvFileSink {
     const s = stream;
     return new Promise<void>((resolve, reject) => {
       if (streamError) {
+        // The stream errored, so it was never end()ed on this path. Without an
+        // explicit destroy() the underlying file descriptor leaks; on Windows a
+        // lingering handle makes finalizePartial()'s rename throw (EPERM/EBUSY),
+        // so it reports "no salvageable file" though a partial exists on disk.
+        // destroy() releases the handle so the rename can succeed; we still
+        // reject with the original error to preserve the surfacing behavior.
+        s.destroy();
         reject(streamError);
         return;
       }

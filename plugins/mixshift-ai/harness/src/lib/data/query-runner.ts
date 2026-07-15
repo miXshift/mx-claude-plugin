@@ -63,6 +63,14 @@ export interface DataQuerySuccess<Row> {
    *  exactly what the server returned) and for paged results whose user order
    *  was preserved. */
   outputOrderPositional?: boolean;
+  /** Set by the pager when a CAPPED result (the user carried a bare `LIMIT N`)
+   *  ALSO has a top-level user `ORDER BY`. The delivered top-N is exactly the
+   *  rows the server returns, but rows that TIE at the Nth position under a
+   *  non-total ORDER BY can differ between runs. That boundary nondeterminism
+   *  is inherent to `ORDER BY ... LIMIT N` (it exists without pagination too);
+   *  we do NOT rewrite the user's statement, only surface an honest note.
+   *  Undefined when the result is not capped or carries no user ORDER BY. */
+  boundaryTiesMayVary?: boolean;
 }
 
 export interface DataQueryFailure {
@@ -198,6 +206,11 @@ export interface StreamedQueryResult {
    *  carried to the outer paging query. The ROW SET is still exactly correct;
    *  only the ordering differs. Callers surface this in a user-facing note. */
   outputOrderPositional?: boolean;
+  /** True only for a PAGED, CAPPED result (user bare `LIMIT N`) that ALSO has a
+   *  top-level user ORDER BY: rows tied exactly at the Nth position may differ
+   *  between runs (inherent to `ORDER BY ... LIMIT`, not the paging). Callers
+   *  surface an honest boundary-ties note. */
+  boundaryTiesMayVary?: boolean;
   /** Present only when ok === false — the classified failure envelope, whose
    *  `kind` feeds the same telemetry `error_class` as the buffered path. */
   failure?: DataQueryFailure;
@@ -261,6 +274,7 @@ export async function streamQuery<Row = Record<string, unknown>>(
     durationMs: paged.durationMs ?? Date.now() - t0,
     paginated: true,
     outputOrderPositional: paged.outputOrderPositional,
+    boundaryTiesMayVary: paged.boundaryTiesMayVary,
   };
 }
 
@@ -289,26 +303,101 @@ interface OuterAnalysis {
   sqlWithoutLimit: string;
   /** True when the statement carries an explicit statement-final LIMIT. The
    *  result is then BOUNDED (the user asked for exactly that many rows) and
-   *  opts out of the MAX_PAGINATED_ROWS safety ceiling. We do NOT strip the
-   *  LIMIT — this flag only governs the unbounded ceiling. */
+   *  opts out of the MAX_PAGINATED_ROWS safety ceiling. This flag governs the
+   *  unbounded ceiling; whether the LIMIT is stripped is decided separately (see
+   *  `bareLimitRowCap` + the no-ORDER-BY branch in paginateOverCap). */
   hasLimit: boolean;
+  /** True when the statement has a TOP-LEVEL (depth-0) `ORDER BY`. Governs the
+   *  pagination strategy: a statement with a user ORDER BY keeps its LIMIT inside
+   *  the derived table (true top-N); one WITHOUT a top-level ORDER BY but with a
+   *  bare `LIMIT N` has that LIMIT stripped and paged under a positional total
+   *  order instead (see paginateOverCap). */
+  hasOrderBy: boolean;
+  /** The row count N of a BARE statement-final `LIMIT N` — a single integer with
+   *  no OFFSET and no `off, count` comma form. Undefined for the offset-bearing
+   *  forms (whose window a positional page-from-0 cannot reproduce) and when
+   *  there is no LIMIT. Only consumed for the no-ORDER-BY branch, where N becomes
+   *  a hard row cap after the LIMIT is stripped from the inner query. */
+  bareLimitRowCap?: number;
+}
+
+/**
+ * True when `sql` has a TOP-LEVEL (depth-0) `ORDER BY`. Parenthesis depth and
+ * string/identifier quoting are tracked so a subquery's or window function's
+ * `ORDER BY` (always nested inside parens, e.g. `(SELECT ... ORDER BY x)` or
+ * `OVER (ORDER BY x)`) is never mistaken for a statement-level one. A CTE's
+ * inner ORDER BY is likewise parenthesized and ignored. Used to choose the
+ * pagination strategy in paginateOverCap.
+ */
+function hasTopLevelOrderBy(sql: string): boolean {
+  let depth = 0;
+  let quote: "'" | '"' | '`' | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      // Backslash escapes apply inside string literals, not backtick identifiers.
+      if ((quote === "'" || quote === '"') && ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      continue;
+    }
+    if (ch === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0 && (ch === 'o' || ch === 'O')) {
+      const prev = i > 0 ? sql[i - 1]! : ' ';
+      if (!/[\w$]/.test(prev) && /^order\s+by\b/i.test(sql.slice(i))) return true;
+    }
+  }
+  return false;
 }
 
 /**
  * Statically analyze a SELECT for pagination. Detects the statement-final
- * `LIMIT`/`OFFSET` (both MySQL forms) purely to know whether the result is
- * BOUNDED — it is NOT stripped. Trailing position guarantees the match is
- * top-level: a subquery's LIMIT is always followed by a closing paren or more
- * SQL, never the end of the string. Only integer-literal LIMITs are detected; a
- * parameterized `LIMIT ?` is treated as no explicit limit (rare on this
- * raw-SQL path).
+ * `LIMIT`/`OFFSET` (both MySQL forms) to know whether the result is BOUNDED and
+ * whether it is a bare `LIMIT N`, and detects a top-level `ORDER BY`. Trailing
+ * position guarantees the LIMIT match is top-level: a subquery's LIMIT is always
+ * followed by a closing paren or more SQL, never the end of the string. Only
+ * integer-literal LIMITs are detected; a parameterized `LIMIT ?` is treated as
+ * no explicit limit (rare on this raw-SQL path).
  */
 function analyzeOuterQuery(sql: string): OuterAnalysis {
   const innerSql = sql.trim().replace(/;\s*$/, '');
   // MySQL forms: `LIMIT count [OFFSET off]` and `LIMIT off, count`.
-  const m = /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?\s*$/i.exec(innerSql);
-  if (!m) return { innerSql, sqlWithoutLimit: innerSql, hasLimit: false };
-  return { innerSql, sqlWithoutLimit: innerSql.slice(0, m.index).trimEnd(), hasLimit: true };
+  const m = /\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$/i.exec(innerSql);
+  if (!m) {
+    return {
+      innerSql,
+      sqlWithoutLimit: innerSql,
+      hasLimit: false,
+      hasOrderBy: hasTopLevelOrderBy(innerSql),
+    };
+  }
+  const sqlWithoutLimit = innerSql.slice(0, m.index).trimEnd();
+  // Only a bare `LIMIT N` (single count, no `off, count` comma form m[2], no
+  // `OFFSET off` m[3]) converts to a hard row cap in the no-ORDER-BY branch: the
+  // offset-bearing forms carry a skip whose window a positional page-from-0
+  // cannot reproduce, so they keep the user's LIMIT inside the derived table.
+  const bareLimitRowCap =
+    m[2] === undefined && m[3] === undefined ? Number(m[1]) : undefined;
+  return {
+    innerSql,
+    sqlWithoutLimit,
+    hasLimit: true,
+    hasOrderBy: hasTopLevelOrderBy(sqlWithoutLimit),
+    bareLimitRowCap,
+  };
 }
 
 /**
@@ -375,14 +464,32 @@ function deriveOuterOrder(
  * unit testing. Non-SELECT statements can't be wrapped — but they don't return
  * rows, so they never hit the cap.
  *
- * Correctness: the user's FULL statement (ORDER BY + LIMIT) is the inner
- * derived table, so the materialized set is exactly the rows the query
- * specifies — a ranked `ORDER BY spend DESC LIMIT N` materializes the true
- * top-N by spend, and the inner LIMIT makes OFFSET paging stop at N on a short
- * page (the "hard cap" is honored for free). The outer paging order is the
- * user's ORDER BY when it can be safely carried (output rows match intent),
- * else positional `ORDER BY 1..N` (still a correct SET, only the row order
- * differs — surfaced to the caller via `outputOrderPositional`).
+ * Correctness turns on whether the user statement has a TOP-LEVEL ORDER BY:
+ *
+ *   - HAS a user ORDER BY: the user's FULL statement (ORDER BY + LIMIT) is the
+ *     inner derived table, so the materialized set is exactly what the query
+ *     specifies — a ranked `ORDER BY spend DESC LIMIT N` materializes the true
+ *     top-N by spend, and the inner LIMIT makes OFFSET paging stop at N on a
+ *     short page (the "hard cap" is honored for free). The outer paging order
+ *     is the user's ORDER BY when it can be safely carried (output rows match
+ *     intent), else positional `ORDER BY 1..N` (still a correct SET, only the
+ *     row order differs — surfaced via `outputOrderPositional`).
+ *
+ *   - NO user ORDER BY, but a bare `LIMIT N` (e.g. `data export --max-rows N`,
+ *     whose SQL is `SELECT * FROM t WHERE ... LIMIT N`): keeping that `LIMIT N`
+ *     inside the derived table is NOT safe. With no ORDER BY, MySQL may pick a
+ *     DIFFERENT arbitrary N-row set each time the derived table is materialized,
+ *     so OFFSET windows over it skip/duplicate rows and the delivered file
+ *     silently loses rows. Because there is no ordering to disturb, we STRIP the
+ *     trailing LIMIT, page the UNLIMITED inner query under the positional total
+ *     order `ORDER BY 1..N`, and honor N as a hard row cap. The positional total
+ *     order fixes which rows fall in [0,N), so the delivered set is
+ *     deterministic and complete across page re-executions.
+ *
+ * Boundary ties: a user `ORDER BY x LIMIT N` whose order is non-total can return
+ * different rows AT the Nth position between runs. That is the user's own query
+ * nondeterminism (it exists without pagination); we do not rewrite their
+ * statement, and surface it via `boundaryTiesMayVary` for an honest caller note.
  *
  * OFFSET paging over a derived table is correct and adequate at the target
  * scale (tens of thousands of rows). We deliberately do NOT implement keyset
@@ -395,16 +502,27 @@ export async function paginateOverCap<Row>(
   opts: PaginateOptions<Row> = {},
 ): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
-  const { innerSql, sqlWithoutLimit, hasLimit } = analyzeOuterQuery(sql);
+  const { innerSql, sqlWithoutLimit, hasLimit, hasOrderBy, bareLimitRowCap } =
+    analyzeOuterQuery(sql);
   if (!/^\s*(select|with)\b/i.test(innerSql)) {
     const message =
       'Result exceeds the 50,000-row service cap and the statement is not a ' +
       'SELECT, so it cannot be paginated. Narrow the query.';
     return { ok: false, kind: 'unknown', message, friendly: message, durationMs: Date.now() - t0 };
   }
-  // Probe the output columns. The user's full statement (incl. any ORDER BY +
-  // LIMIT) is the derived table, so the probe sees the exact result shape.
-  const probe = await exec(`SELECT * FROM (${innerSql}) AS _mx_page LIMIT 1`);
+
+  // Choose the inner query to page. With NO top-level user ORDER BY but a bare
+  // `LIMIT N`, page the LIMIT-STRIPPED query under the positional total order and
+  // convert N to a hard row cap — keeping the LIMIT inside would let MySQL pick a
+  // different arbitrary N-row set per page re-execution and skip/duplicate rows.
+  // With a user ORDER BY, keep the full statement (LIMIT inside) so the derived
+  // table materializes the true top-N (verified-correct path, unchanged).
+  const stripBareLimit = !hasOrderBy && bareLimitRowCap !== undefined;
+  const pageInner = stripBareLimit ? sqlWithoutLimit : innerSql;
+  const limitRowCap = stripBareLimit ? bareLimitRowCap : undefined;
+
+  // Probe the output columns off the query we will actually page.
+  const probe = await exec(`SELECT * FROM (${pageInner}) AS _mx_page LIMIT 1`);
   if (!probe.ok) return probe;
   const columns = probe.rows.length
     ? Object.keys(probe.rows[0] as Record<string, unknown>)
@@ -414,13 +532,21 @@ export async function paginateOverCap<Row>(
   }
   const { orderBy, userOrderPreserved } = deriveOuterOrder(sqlWithoutLimit, columns);
   const outputOrderPositional = !userOrderPreserved;
+  // A CAPPED result (a user bare `LIMIT N`) that ALSO carries a top-level user
+  // ORDER BY has the user's own boundary nondeterminism: rows tied at the Nth
+  // position under a non-total ORDER BY can vary between runs. Not applicable
+  // once the bare LIMIT is stripped (positional total order is tie-free) or when
+  // there is no LIMIT.
+  const boundaryTiesMayVary = hasOrderBy && hasLimit;
 
-  // The pager's OWN row cap (opts.maxRows). The user's LIMIT is NOT applied
+  // The pager's OWN row cap. For a user ORDER BY, the user's LIMIT is NOT applied
   // here — it lives inside the derived table and self-terminates via a short
-  // page. A caller maxRows OR a user LIMIT makes the result BOUNDED → skip the
+  // page. For the stripped no-ORDER-BY case, the user's N becomes this hard cap.
+  // A caller maxRows OR a user LIMIT makes the result BOUNDED → skip the
   // MAX_PAGINATED_ROWS safety ceiling.
-  const maxRows = opts.maxRows ?? Infinity;
-  const bounded = hasLimit || Number.isFinite(maxRows);
+  const callerMax = opts.maxRows ?? Infinity;
+  const maxRows = Math.min(callerMax, limitRowCap ?? Infinity);
+  const bounded = hasLimit || Number.isFinite(callerMax);
 
   const all: Row[] = [];
   // Byte budget: start conservative to measure the real serialized row width,
@@ -446,7 +572,7 @@ export async function paginateOverCap<Row>(
     const cap = Number.isFinite(maxRows) ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
     const requestSize = Math.max(1, Math.min(pageSize, cap));
     const r = await exec(
-      `SELECT * FROM (${innerSql}) AS _mx_page ORDER BY ${orderBy} ` +
+      `SELECT * FROM (${pageInner}) AS _mx_page ORDER BY ${orderBy} ` +
         `LIMIT ${requestSize} OFFSET ${offset}`,
     );
     if (!r.ok) {
@@ -502,6 +628,7 @@ export async function paginateOverCap<Row>(
     rowCount: delivered,
     durationMs: Date.now() - t0,
     outputOrderPositional,
+    boundaryTiesMayVary,
   };
 }
 

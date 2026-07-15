@@ -522,6 +522,10 @@ async function runQueryToFile(
     streamed.outputOrderPositional
       ? ' Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct.'
       : '';
+  const boundaryNote =
+    streamed.boundaryTiesMayVary
+      ? ' This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging).'
+      : '';
   if (json) {
     process.stdout.write(
       JSON.stringify(
@@ -531,6 +535,7 @@ async function runQueryToFile(
           duration_ms: streamed.durationMs,
           out_path: outPath,
           ...(streamed.outputOrderPositional ? { output_order_positional: true } : {}),
+          ...(streamed.boundaryTiesMayVary ? { boundary_ties_may_vary: true } : {}),
         },
         null,
         2,
@@ -539,7 +544,8 @@ async function runQueryToFile(
   } else {
     process.stderr.write(
       `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms)\n  written to ${outPath}\n` +
-        (orderNote ? `  Note:${orderNote}\n` : ''),
+        (orderNote ? `  Note:${orderNote}\n` : '') +
+        (boundaryNote ? `  Note:${boundaryNote}\n` : ''),
     );
   }
 }
@@ -625,6 +631,10 @@ async function runQueryInlineOrTemp(
       streamed.outputOrderPositional
         ? ' Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct.'
         : '';
+    const boundaryNote =
+      streamed.boundaryTiesMayVary
+        ? ' This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging).'
+        : '';
     if (json) {
       process.stdout.write(
         JSON.stringify(
@@ -635,6 +645,7 @@ async function runQueryInlineOrTemp(
             out_path: state.tempPath,
             streamed_to_file: true,
             ...(streamed.outputOrderPositional ? { output_order_positional: true } : {}),
+            ...(streamed.boundaryTiesMayVary ? { boundary_ties_may_vary: true } : {}),
           },
           null,
           2,
@@ -645,6 +656,7 @@ async function runQueryInlineOrTemp(
         `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms). Result is large, so I streamed it to a CSV file:\n` +
           `  ${state.tempPath}\n` +
           (orderNote ? `  Note:${orderNote}\n` : '') +
+          (boundaryNote ? `  Note:${boundaryNote}\n` : '') +
           `  Tip: pass --out <path> next time to choose the destination.\n`,
       );
     }

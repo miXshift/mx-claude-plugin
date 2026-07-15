@@ -194,24 +194,61 @@ describe('paginateOverCap', () => {
     expect(Math.min(...requested)).toBeLessThan(1_000);
   });
 
-  it('keeps the user LIMIT INSIDE the derived table and stops at N via a short page', async () => {
+  it('NO user ORDER BY + bare LIMIT N: strips the LIMIT, pages a positional total order, delivers a deterministic complete first-N with no dupes', async () => {
+    // A bare `LIMIT N` with NO ORDER BY (the `data export --max-rows N` shape).
+    // Keeping the LIMIT inside would let the DB pick an arbitrary N-row set that
+    // varies per page re-execution. The pager must STRIP the LIMIT and page the
+    // unlimited inner query under a positional total order, honoring N as a cap.
+    const M = 30_000; // base table size, larger than N
+    const N = 12_000; // the user's bare LIMIT
+    const cols = ['a', 'b'];
+    // `a` is a permutation of 0..M-1 (gcd(7, 30000)=1), scrambled vs insertion
+    // order, so "first N under ORDER BY 1,2" is a real reordering (and unique).
+    const base = Array.from({ length: M }, (_, i) => ({ a: (i * 7) % M, b: `k${i % 5}` }));
+
     const dataCalls: string[] = [];
-    const INNER = 12_000; // the user LIMIT — materialized inside the derived table
-    const exec = async (pageSql: string) => {
-      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
-      dataCalls.push(pageSql);
-      const off = outerOffsetOf(pageSql);
-      const lim = outerLimitOf(pageSql);
-      return okResult(rows(Math.min(lim, Math.max(0, INNER - off))));
+    const run = async (): Promise<Array<Record<string, unknown>>> => {
+      const got: Array<Record<string, unknown>> = [];
+      const exec = async (pageSql: string) => {
+        if (/LIMIT 1$/.test(pageSql)) return okResult([base[0]!]); // probe → 2 cols
+        dataCalls.push(pageSql);
+        // Underlying row source is FIXED; the OUTER positional order governs
+        // which rows land in each OFFSET window.
+        const ordered = applyOrder(base, orderByOf(pageSql), cols);
+        return okResult(ordered.slice(outerOffsetOf(pageSql), outerOffsetOf(pageSql) + outerLimitOf(pageSql)));
+      };
+      const r = await paginateOverCap('SELECT a, b FROM big LIMIT 12000', exec, {
+        onPage: (page) => {
+          got.push(...page);
+        },
+      });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.rowCount).toBe(N); // N honored as a hard row cap
+        expect(r.outputOrderPositional).toBe(true); // no user order → positional
+        expect(r.boundaryTiesMayVary).toBeFalsy(); // positional total order is tie-free
+      }
+      return got;
     };
-    const r = await paginateOverCap('SELECT a, b FROM big LIMIT 12000', exec);
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.rowCount).toBe(12_000); // stops at N via the derived-table LIMIT
-    // The user LIMIT is KEPT inside the wrapped subquery so the correct top-N
-    // SET is materialized; the inner LIMIT self-terminates paging (short page).
+
+    const collected = await run();
+    // The user's bare LIMIT is STRIPPED from the inner query (not kept inside),
+    // and every page runs under the positional total order `ORDER BY 1, 2`.
     for (const c of dataCalls) {
-      expect(c).toContain('FROM (SELECT a, b FROM big LIMIT 12000) AS _mx_page');
+      expect(c).toContain('FROM (SELECT a, b FROM big) AS _mx_page');
+      expect(c).not.toContain('LIMIT 12000)'); // the user LIMIT is gone from the derived table
+      expect(orderByOf(c)).toBe('1, 2');
     }
+    // Delivered set is EXACTLY the first N under the imposed positional total
+    // order — complete, no skips, no duplicates.
+    const expected = applyOrder(base, '1, 2', cols).slice(0, N);
+    expect(collected).toEqual(expected);
+    expect(new Set(collected.map((r) => r.a)).size).toBe(N); // no duplicate rows
+
+    // Re-running the identical query yields the identical set (deterministic
+    // across page re-executions, which is the whole point of the total order).
+    const collected2 = await run();
+    expect(collected2).toEqual(collected);
   });
 
   it('keeps LIMIT+OFFSET inside the derived table; outer paging starts at 0', async () => {
@@ -305,6 +342,49 @@ describe('paginateOverCap', () => {
     for (let i = 1; i < collected.length; i++) {
       expect(collected[i]!.spend as number).toBeLessThan(collected[i - 1]!.spend as number);
     }
+  });
+
+  it('FINDING 1 (row-cap trip): an ordered top-N returns the true top-N by the user order, not the positional-first N', async () => {
+    // Row-cap sibling of the byte-cap test above: an ordered `... ORDER BY spend
+    // DESC LIMIT K` paged over the ordinary (non-shrinking) path. The delivered
+    // SET must be the user's true top-N by spend, not the positional-first N.
+    const NBASE = 200;
+    const K = 120;
+    const cols = ['id', 'spend'];
+    // spend is a permutation of id (gcd(37,200)=1), so top-N by spend is a
+    // scattered id set distinct from ids 0..K-1.
+    const base = Array.from({ length: NBASE }, (_, id) => ({ id, spend: (id * 37) % NBASE }));
+    const mat = [...base].sort((a, b) => b.spend - a.spend).slice(0, K);
+
+    const collected: Array<Record<string, unknown>> = [];
+    let sawInnerLimit = false;
+    const exec = async (pageSql: string) => {
+      if (/LIMIT 1$/.test(pageSql)) return okResult([mat[0]!]); // probe → 2 cols
+      if (pageSql.includes('FROM (SELECT id, spend FROM t ORDER BY spend DESC LIMIT 120) AS _mx_page')) {
+        sawInnerLimit = true;
+      }
+      const ordered = applyOrder(mat, orderByOf(pageSql), cols);
+      return okResult(ordered.slice(outerOffsetOf(pageSql), outerOffsetOf(pageSql) + outerLimitOf(pageSql)));
+    };
+
+    const r = await paginateOverCap('SELECT id, spend FROM t ORDER BY spend DESC LIMIT 120', exec, {
+      onPage: (page) => {
+        collected.push(...page);
+      },
+    });
+
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.rowCount).toBe(K);
+      expect(r.outputOrderPositional).toBe(false); // user ORDER BY carried
+      expect(r.boundaryTiesMayVary).toBe(true); // capped result + user ORDER BY
+    }
+    expect(sawInnerLimit).toBe(true); // the user LIMIT stayed INSIDE the derived table
+    // Delivered SET + order is EXACTLY the user's top-N by spend...
+    expect(collected.map((row) => row.id)).toEqual(mat.map((row) => row.id));
+    // ...and emphatically NOT the positional-first N (ids 0..K-1).
+    const positionalFirst = Array.from({ length: K }, (_, i) => i);
+    expect(collected.map((row) => row.id)).not.toEqual(positionalFirst);
   });
 
   it('streams pages via onPage without buffering (returned rows array is empty)', async () => {

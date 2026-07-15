@@ -64708,14 +64708,62 @@ async function streamQuery(sql, params = [], options = {}, onPage) {
     rowCount: paged.rowCount,
     durationMs: paged.durationMs ?? Date.now() - t0,
     paginated: true,
-    outputOrderPositional: paged.outputOrderPositional
+    outputOrderPositional: paged.outputOrderPositional,
+    boundaryTiesMayVary: paged.boundaryTiesMayVary
   };
+}
+function hasTopLevelOrderBy(sql) {
+  let depth = 0;
+  let quote2 = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (quote2) {
+      if ((quote2 === "'" || quote2 === '"') && ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === quote2) quote2 = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote2 = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth++;
+      continue;
+    }
+    if (ch === ")") {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0 && (ch === "o" || ch === "O")) {
+      const prev = i > 0 ? sql[i - 1] : " ";
+      if (!/[\w$]/.test(prev) && /^order\s+by\b/i.test(sql.slice(i))) return true;
+    }
+  }
+  return false;
 }
 function analyzeOuterQuery(sql) {
   const innerSql = sql.trim().replace(/;\s*$/, "");
-  const m = /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?\s*$/i.exec(innerSql);
-  if (!m) return { innerSql, sqlWithoutLimit: innerSql, hasLimit: false };
-  return { innerSql, sqlWithoutLimit: innerSql.slice(0, m.index).trimEnd(), hasLimit: true };
+  const m = /\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$/i.exec(innerSql);
+  if (!m) {
+    return {
+      innerSql,
+      sqlWithoutLimit: innerSql,
+      hasLimit: false,
+      hasOrderBy: hasTopLevelOrderBy(innerSql)
+    };
+  }
+  const sqlWithoutLimit = innerSql.slice(0, m.index).trimEnd();
+  const bareLimitRowCap = m[2] === void 0 && m[3] === void 0 ? Number(m[1]) : void 0;
+  return {
+    innerSql,
+    sqlWithoutLimit,
+    hasLimit: true,
+    hasOrderBy: hasTopLevelOrderBy(sqlWithoutLimit),
+    bareLimitRowCap
+  };
 }
 function deriveOuterOrder(sqlWithoutLimit, columns) {
   const positional = columns.map((_, i) => String(i + 1));
@@ -64745,12 +64793,15 @@ function deriveOuterOrder(sqlWithoutLimit, columns) {
 }
 async function paginateOverCap(sql, exec4, opts = {}) {
   const t0 = Date.now();
-  const { innerSql, sqlWithoutLimit, hasLimit } = analyzeOuterQuery(sql);
+  const { innerSql, sqlWithoutLimit, hasLimit, hasOrderBy, bareLimitRowCap } = analyzeOuterQuery(sql);
   if (!/^\s*(select|with)\b/i.test(innerSql)) {
     const message = "Result exceeds the 50,000-row service cap and the statement is not a SELECT, so it cannot be paginated. Narrow the query.";
     return { ok: false, kind: "unknown", message, friendly: message, durationMs: Date.now() - t0 };
   }
-  const probe = await exec4(`SELECT * FROM (${innerSql}) AS _mx_page LIMIT 1`);
+  const stripBareLimit = !hasOrderBy && bareLimitRowCap !== void 0;
+  const pageInner = stripBareLimit ? sqlWithoutLimit : innerSql;
+  const limitRowCap = stripBareLimit ? bareLimitRowCap : void 0;
+  const probe = await exec4(`SELECT * FROM (${pageInner}) AS _mx_page LIMIT 1`);
   if (!probe.ok) return probe;
   const columns = probe.rows.length ? Object.keys(probe.rows[0]) : [];
   if (columns.length === 0) {
@@ -64758,8 +64809,10 @@ async function paginateOverCap(sql, exec4, opts = {}) {
   }
   const { orderBy, userOrderPreserved } = deriveOuterOrder(sqlWithoutLimit, columns);
   const outputOrderPositional = !userOrderPreserved;
-  const maxRows = opts.maxRows ?? Infinity;
-  const bounded = hasLimit || Number.isFinite(maxRows);
+  const boundaryTiesMayVary = hasOrderBy && hasLimit;
+  const callerMax = opts.maxRows ?? Infinity;
+  const maxRows = Math.min(callerMax, limitRowCap ?? Infinity);
+  const bounded = hasLimit || Number.isFinite(callerMax);
   const all = [];
   let pageSize = FIRST_PAGE_PROBE_ROWS;
   let offset = 0;
@@ -64775,7 +64828,7 @@ async function paginateOverCap(sql, exec4, opts = {}) {
     const cap = Number.isFinite(maxRows) ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
     const requestSize = Math.max(1, Math.min(pageSize, cap));
     const r = await exec4(
-      `SELECT * FROM (${innerSql}) AS _mx_page ORDER BY ${orderBy} LIMIT ${requestSize} OFFSET ${offset}`
+      `SELECT * FROM (${pageInner}) AS _mx_page ORDER BY ${orderBy} LIMIT ${requestSize} OFFSET ${offset}`
     );
     if (!r.ok) {
       if (isServiceCapFailure(r) && requestSize > 1) {
@@ -64814,7 +64867,8 @@ async function paginateOverCap(sql, exec4, opts = {}) {
     rows: all,
     rowCount: delivered,
     durationMs: Date.now() - t0,
-    outputOrderPositional
+    outputOrderPositional,
+    boundaryTiesMayVary
   };
 }
 async function runMysqlQuery(creds, sql, params, options) {
@@ -79396,6 +79450,7 @@ function createCsvFileSink(outPath) {
     const s = stream;
     return new Promise((resolve3, reject) => {
       if (streamError) {
+        s.destroy();
         reject(streamError);
         return;
       }
@@ -80026,6 +80081,7 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
   if (!sink.opened()) await sink.ensureFile();
   await sink.close();
   const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
+  const boundaryNote = streamed.boundaryTiesMayVary ? " This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging)." : "";
   if (json2) {
     process.stdout.write(
       JSON.stringify(
@@ -80034,7 +80090,8 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
           row_count: streamed.rowCount,
           duration_ms: streamed.durationMs,
           out_path: outPath,
-          ...streamed.outputOrderPositional ? { output_order_positional: true } : {}
+          ...streamed.outputOrderPositional ? { output_order_positional: true } : {},
+          ...streamed.boundaryTiesMayVary ? { boundary_ties_may_vary: true } : {}
         },
         null,
         2
@@ -80046,6 +80103,7 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
 \u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms)
   written to ${outPath}
 ` + (orderNote ? `  Note:${orderNote}
+` : "") + (boundaryNote ? `  Note:${boundaryNote}
 ` : "")
     );
   }
@@ -80105,6 +80163,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
     }
     await s.close();
     const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
+    const boundaryNote = streamed.boundaryTiesMayVary ? " This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging)." : "";
     if (json2) {
       process.stdout.write(
         JSON.stringify(
@@ -80114,7 +80173,8 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
             duration_ms: streamed.durationMs,
             out_path: state.tempPath,
             streamed_to_file: true,
-            ...streamed.outputOrderPositional ? { output_order_positional: true } : {}
+            ...streamed.outputOrderPositional ? { output_order_positional: true } : {},
+            ...streamed.boundaryTiesMayVary ? { boundary_ties_may_vary: true } : {}
           },
           null,
           2
@@ -80126,6 +80186,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
 \u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms). Result is large, so I streamed it to a CSV file:
   ${state.tempPath}
 ` + (orderNote ? `  Note:${orderNote}
+` : "") + (boundaryNote ? `  Note:${boundaryNote}
 ` : "") + `  Tip: pass --out <path> next time to choose the destination.
 `
       );
