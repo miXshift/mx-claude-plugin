@@ -1,20 +1,18 @@
 /**
  * `mixshift data export` — bulk export rows from a warehouse table to CSV.
  *
- * Streams rows directly from the DB to disk so 100K+ row exports don't
- * blow up memory. Date-range filtering uses the table's configured
- * date column from data-tables.yaml.
+ * Streams rows a PAGE at a time from the DB straight to disk (via
+ * `streamQuery` + a CSV file sink) so tens-of-thousands-of-row exports never
+ * hold the whole result set in memory. Date-range filtering uses the table's
+ * configured date column from data-tables.yaml.
  *
  * No row limit enforced (per Sam: "I don't want to be too limiting").
  * Caller can pass --max-rows if they want a cap; otherwise it runs to
  * completion.
  */
 
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { createCsvWriter } from '../output/csv.js';
-import { runQuery, type DataQueryResult } from './query-runner.js';
+import { createCsvFileSink, fmtBytes } from '../output/csv-file-sink.js';
+import { streamQuery, type DataQueryResult } from './query-runner.js';
 import { describeTable } from './tables-catalog.js';
 
 export interface ExportOptions {
@@ -82,48 +80,48 @@ export async function exportTable(opts: ExportOptions): Promise<ExportResult> {
     return typeof v === 'string' ? `'${v}'` : String(v);
   });
 
-  // Buffered query — pulls all rows into memory then writes the CSV.
-  // Future optimization: switch to true streaming for multi-million-row
-  // pulls. v1 handles up to ~100K rows comfortably.
-  const queryResult = await runQuery(sql, params, {
-    dataDirOverride: opts.dataDirOverride,
+  // Stream each page straight to the CSV file and drop it — the full result
+  // set is never held in memory. A user --max-rows lands as a trailing LIMIT
+  // on `sql`, which the pager honors as a hard cap.
+  const sink = createCsvFileSink(opts.outPath);
+  let lastProgressRows = 0;
+  const streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
+    await sink.writePage(rows);
+    // Report progress to stderr as it streams (coarse: at page boundaries).
+    if (sink.rowsWritten() - lastProgressRows >= 1) {
+      lastProgressRows = sink.rowsWritten();
+      process.stderr.write(
+        `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written\n`,
+      );
+    }
   });
 
-  if (!queryResult.ok) {
+  if (!streamed.ok) {
+    await sink.close().catch(() => {});
     return {
       out_path: opts.outPath,
       rows_written: 0,
-      duration_ms: queryResult.durationMs ?? 0,
-      query_result: queryResult,
+      duration_ms: streamed.durationMs,
+      query_result: streamed.failure!,
       display_sql: displaySql,
     };
   }
 
-  await mkdir(dirname(opts.outPath), { recursive: true });
-  const stream = createWriteStream(opts.outPath, { encoding: 'utf-8' });
-
-  const rows = queryResult.rows as Array<Record<string, unknown>>;
-  let rowsWritten = 0;
-  if (rows.length > 0) {
-    const columns = Object.keys(rows[0]!).map((name) => ({ name }));
-    const csvWriter = createCsvWriter(stream, columns);
-    csvWriter.writeHeader();
-    for (const row of rows) {
-      csvWriter.writeRow(row);
-    }
-    rowsWritten = csvWriter.rowsWritten();
-  }
-
-  // Close stream cleanly so the file is fully flushed before we return.
-  await new Promise<void>((resolve, reject) => {
-    stream.end((err?: Error | null) => (err ? reject(err) : resolve()));
-  });
+  // Close the file so it is fully flushed before we return.
+  await sink.close();
 
   return {
     out_path: opts.outPath,
-    rows_written: rowsWritten,
-    duration_ms: queryResult.durationMs,
-    query_result: queryResult,
+    rows_written: streamed.rowCount,
+    duration_ms: streamed.durationMs,
+    // Synthetic success envelope: callers only read `.ok` on success (the rows
+    // were streamed to disk, not retained).
+    query_result: {
+      ok: true,
+      rows: [],
+      rowCount: streamed.rowCount,
+      durationMs: streamed.durationMs,
+    },
     display_sql: displaySql,
   };
 }
