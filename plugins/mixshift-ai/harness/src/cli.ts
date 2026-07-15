@@ -268,14 +268,6 @@ function printFirstRunNotice(): void {
   );
 }
 
-// Once-guard: a single crash must emit exactly ONE plugin.crashed event.
-// Guards the emit so that if the crash path is ever reached more than once in
-// a process (a re-thrown error, a future uncaughtException/unhandledRejection
-// handler added alongside this catch), we still enqueue the crash exactly
-// once. See the report on the flush-layer resend caveat: this guard covers the
-// emit, not cross-invocation resend of an already-queued event.
-let crashReported = false;
-
 // The one-and-only place `process.exit()` is allowed. See the
 // "Exit / telemetry-flush contract" block at the top of this file.
 try {
@@ -292,21 +284,18 @@ try {
   // Best-effort: fire a crash event so we see this in telemetry. We
   // await `track()` (not `void track(...)`) so the event is on disk
   // before the `finally` block flushes — otherwise the queue write
-  // races the flush and we lose the crash. The once-guard makes the emit
-  // idempotent within this process (exactly one plugin.crashed per crash).
-  if (!crashReported) {
-    crashReported = true;
-    await track({
-      event_name: EventName.PluginCrashed,
-      outcome: 'failed',
-      error_class: isUserFacing ? err.errorClass : 'unhandled_exception',
-      payload: {
-        message,
-        argv: redactArgs(process.argv.slice(2)),
-        ...(isUserFacing ? { user_facing: true } : {}),
-      },
-    });
-  }
+  // races the flush and we lose the crash. This catch runs at most once
+  // per process (single emit site), so the crash is reported exactly once.
+  await track({
+    event_name: EventName.PluginCrashed,
+    outcome: 'failed',
+    error_class: isUserFacing ? err.errorClass : 'unhandled_exception',
+    payload: {
+      message,
+      argv: redactArgs(process.argv.slice(2)),
+      ...(isUserFacing ? { user_facing: true } : {}),
+    },
+  });
   process.exitCode = 1;
 } finally {
   // Drain every event queued during this run before we exit. Adds

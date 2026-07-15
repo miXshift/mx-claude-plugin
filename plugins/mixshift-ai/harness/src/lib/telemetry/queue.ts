@@ -108,6 +108,35 @@ export async function clearQueue(
 }
 
 /**
+ * Overwrite the queue file with exactly `records` (JSONL), replacing whatever
+ * was there. Used by the flusher to drop already-accepted batches from the
+ * persisted queue after each successful POST, so a mid-flush failure can't
+ * leave an accepted batch behind to be resent next invocation.
+ *
+ * Best-effort: never throws (matches clearQueue). If the write fails the
+ * queue keeps its previous contents, which at worst means an accepted batch
+ * is resent later — an at-least-once outcome, never data loss.
+ *
+ * Same drain race as clearQueue: this is a whole-file rewrite, so events
+ * appended by a *concurrent* CLI process between readQueue() and this write
+ * are clobbered. The harness runs single-shot per command, so concurrent
+ * drains are unusual; see the class comment above. If concurrent flushing
+ * ever becomes real, this needs a lockfile or offset-preserving write.
+ */
+export async function overwriteQueue(
+  records: TelemetryEventRecord[],
+  dataDirOverride?: string,
+): Promise<void> {
+  const path = telemetryQueuePath(dataDirOverride);
+  const body = records.length ? records.map((r) => JSON.stringify(r)).join('\n') + '\n' : '';
+  try {
+    await writeFile(path, body, { encoding: 'utf-8' });
+  } catch {
+    // ignore — see doc comment (previous contents survive, at-least-once).
+  }
+}
+
+/**
  * Size of the queue file in bytes (for the rare debug case).
  */
 export async function queueSizeBytes(

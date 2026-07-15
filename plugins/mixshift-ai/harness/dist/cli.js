@@ -64063,10 +64063,11 @@ async function readQueue(dataDirOverride) {
   }
   return events;
 }
-async function clearQueue(dataDirOverride) {
+async function overwriteQueue(records, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
+  const body = records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
   try {
-    await writeFile3(path2, "", { encoding: "utf-8" });
+    await writeFile3(path2, body, { encoding: "utf-8" });
   } catch {
   }
 }
@@ -64105,6 +64106,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
     try {
       await postBatch(endpoint, apikey, batch, timeoutMs);
       sentCount += batch.length;
+      await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
     } catch (err) {
       return {
         status: "failed",
@@ -64113,7 +64115,6 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       };
     }
   }
-  await clearQueue(dataDirOverride);
   return { status: "sent", events_sent: sentCount };
 }
 async function postBatch(endpoint, apikey, batch, timeoutMs) {
@@ -86959,7 +86960,6 @@ function printFirstRunNotice() {
     "\n\u2501\u2501 MixShift plugin: beta usage tracking \u2501\u2501\nDuring the beta, this plugin sends usage events to MixShift so we can\nimprove it: which skills and commands run (including command arguments,\nwith secrets redacted), query timings, the accounts actions were for, and\nthe onboarding funnel. Not collected: your query results, your password\nor tokens, or your chat with Claude.\n\nFull disclosure + opt-out:\n  https://github.com/miXshift/mx-claude-plugin/blob/main/docs/privacy.md\n\nOpt out anytime:  mixshift telemetry opt-out\nCheck status:     mixshift telemetry status\nBy continuing, you agree to this collection.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
   );
 }
-var crashReported = false;
 try {
   await program2.parseAsync(process.argv);
 } catch (err) {
@@ -86967,19 +86967,16 @@ try {
   process.stderr.write(`error: ${message}
 `);
   const isUserFacing = err instanceof UserFacingError;
-  if (!crashReported) {
-    crashReported = true;
-    await track({
-      event_name: EventName.PluginCrashed,
-      outcome: "failed",
-      error_class: isUserFacing ? err.errorClass : "unhandled_exception",
-      payload: {
-        message,
-        argv: redactArgs(process.argv.slice(2)),
-        ...isUserFacing ? { user_facing: true } : {}
-      }
-    });
-  }
+  await track({
+    event_name: EventName.PluginCrashed,
+    outcome: "failed",
+    error_class: isUserFacing ? err.errorClass : "unhandled_exception",
+    payload: {
+      message,
+      argv: redactArgs(process.argv.slice(2)),
+      ...isUserFacing ? { user_facing: true } : {}
+    }
+  });
   process.exitCode = 1;
 } finally {
   const flushResult = await maybeFlush();

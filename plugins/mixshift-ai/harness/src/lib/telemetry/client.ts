@@ -10,7 +10,7 @@
  */
 
 import { loadPluginDefaults } from '../defaults/load.js';
-import { readQueue, clearQueue } from './queue.js';
+import { readQueue, overwriteQueue } from './queue.js';
 import type { TelemetryEventRecord } from './events.js';
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -28,10 +28,21 @@ export interface FlushResult {
  * Flush strategy:
  *   - Read all queued events.
  *   - POST them in batches of `defaults.telemetry.batch_size`.
- *   - If every batch succeeds, clear the queue.
- *   - If any batch fails, leave the queue intact for the next flush.
- *     (Means we may resend successful batches on retry; Supabase dedup is
- *     downstream by (install_id, event_name, ts) if you care to enforce it.)
+ *   - After EACH batch is accepted, rewrite the queue with only the events
+ *     that haven't been sent yet, so an accepted batch is removed from disk
+ *     immediately. A later batch failure then leaves only the un-sent events
+ *     behind — the accepted ones are never resent on the next invocation.
+ *   - If any batch fails, stop and return 'failed' (callers still learn the
+ *     flush was incomplete); the queue already holds exactly the un-sent tail.
+ *
+ * At-least-once caveat: a batch the server actually committed but whose
+ * response we never saw (connection dropped after the DB write) is treated
+ * as failed here, so its events stay queued and get resent → a duplicate
+ * row. That is an inherent property of at-least-once delivery over an
+ * unreliable network and is OUT OF SCOPE for this function; downstream dedup
+ * by (install_id, event_name, ts) is the backstop if it matters. What this
+ * function DOES guarantee is that a cleanly-accepted batch (2xx seen) is
+ * never deterministically resent because a *different* batch failed.
  */
 export async function flushQueue(
   dataDirOverride?: string,
@@ -55,8 +66,15 @@ export async function flushQueue(
     try {
       await postBatch(endpoint, apikey, batch, timeoutMs);
       sentCount += batch.length;
+      // Batch accepted: persist only the not-yet-sent tail. If a later batch
+      // fails, the queue already excludes this (and every prior) accepted
+      // batch, so we won't resend it. overwriteQueue is best-effort and never
+      // throws; if the rewrite itself fails the batch may be resent later
+      // (at-least-once), never lost.
+      await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
     } catch (err) {
-      // Leave the queue intact for next time.
+      // Stop here. The queue holds exactly the un-sent tail (this batch plus
+      // everything after it), thanks to the per-batch rewrite above.
       return {
         status: 'failed',
         events_sent: sentCount,
@@ -65,7 +83,7 @@ export async function flushQueue(
     }
   }
 
-  await clearQueue(dataDirOverride);
+  // All batches accepted; the final overwriteQueue already emptied the queue.
   return { status: 'sent', events_sent: sentCount };
 }
 
