@@ -31,6 +31,11 @@ export interface ExportResult {
   duration_ms: number;
   query_result: DataQueryResult<Record<string, unknown>>;
   display_sql: string;
+  /** Set on a mid-stream failure after rows were already written: the partial
+   *  file was renamed here so `out_path` is not left looking complete. */
+  partial_path?: string;
+  /** True when the export failed mid-stream and no complete file was written. */
+  incomplete?: boolean;
 }
 
 export async function exportTable(opts: ExportOptions): Promise<ExportResult> {
@@ -85,28 +90,52 @@ export async function exportTable(opts: ExportOptions): Promise<ExportResult> {
   // on `sql`, which the pager honors as a hard cap.
   const sink = createCsvFileSink(opts.outPath);
   let lastProgressRows = 0;
-  const streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
-    await sink.writePage(rows);
-    // Report progress to stderr as it streams (coarse: at page boundaries).
-    if (sink.rowsWritten() - lastProgressRows >= 1) {
-      lastProgressRows = sink.rowsWritten();
-      process.stderr.write(
-        `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written\n`,
-      );
-    }
-  });
+  let streamed;
+  try {
+    streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
+      await sink.writePage(rows);
+      // Report progress to stderr as it streams (coarse: at page boundaries).
+      if (sink.rowsWritten() - lastProgressRows >= 1) {
+        lastProgressRows = sink.rowsWritten();
+        process.stderr.write(
+          `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written\n`,
+        );
+      }
+    });
+  } catch (err) {
+    // A sink write failure (e.g. ENOSPC) surfaced through onPage. Do not leave
+    // a complete-looking file behind: rename any partial to <out>.partial.
+    const partialPath = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      out_path: opts.outPath,
+      rows_written: 0,
+      duration_ms: 0,
+      query_result: { ok: false, kind: 'unknown', message, friendly: `Export failed while writing: ${message}` },
+      display_sql: displaySql,
+      partial_path: partialPath ?? undefined,
+      incomplete: true,
+    };
+  }
 
   if (!streamed.ok) {
-    await sink.close().catch(() => {});
+    // Mid-stream DB failure after some pages were written: the on-disk file is
+    // truncated. Rename it to <out>.partial so no consumer reads it as complete.
+    const partialPath = await sink.finalizePartial();
     return {
       out_path: opts.outPath,
       rows_written: 0,
       duration_ms: streamed.durationMs,
       query_result: streamed.failure!,
       display_sql: displaySql,
+      partial_path: partialPath ?? undefined,
+      incomplete: partialPath != null,
     };
   }
 
+  // Success. Create the file even for a 0-row result so the success message is
+  // truthful and downstream reads don't ENOENT.
+  if (!sink.opened()) await sink.ensureFile();
   // Close the file so it is fully flushed before we return.
   await sink.close();
 

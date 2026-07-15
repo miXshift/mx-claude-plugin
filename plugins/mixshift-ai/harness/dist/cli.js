@@ -64707,47 +64707,72 @@ async function streamQuery(sql, params = [], options = {}, onPage) {
     ok: true,
     rowCount: paged.rowCount,
     durationMs: paged.durationMs ?? Date.now() - t0,
-    paginated: true
+    paginated: true,
+    outputOrderPositional: paged.outputOrderPositional
   };
 }
-function extractOuterLimit(sql) {
-  const trimmed = sql.trim().replace(/;\s*$/, "");
-  const m = /\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$/i.exec(trimmed);
-  if (!m) return { innerSql: trimmed };
-  const innerSql = trimmed.slice(0, m.index).trimEnd();
-  const first = Number(m[1]);
-  const second = m[2] !== void 0 ? Number(m[2]) : void 0;
-  const offsetKeyword = m[3] !== void 0 ? Number(m[3]) : void 0;
-  if (second !== void 0) {
-    return { innerSql, limit: second, offset: first };
+function analyzeOuterQuery(sql) {
+  const innerSql = sql.trim().replace(/;\s*$/, "");
+  const m = /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?\s*$/i.exec(innerSql);
+  if (!m) return { innerSql, sqlWithoutLimit: innerSql, hasLimit: false };
+  return { innerSql, sqlWithoutLimit: innerSql.slice(0, m.index).trimEnd(), hasLimit: true };
+}
+function deriveOuterOrder(sqlWithoutLimit, columns) {
+  const positional = columns.map((_, i) => String(i + 1));
+  const fallback = { orderBy: positional.join(", "), userOrderPreserved: false };
+  const m = /\border\s+by\s+([^()]+?)\s*$/i.exec(sqlWithoutLimit);
+  if (!m) return fallback;
+  const terms = m[1].split(",").map((t) => t.trim()).filter(Boolean);
+  if (terms.length === 0) return fallback;
+  const mapped = [];
+  for (const term of terms) {
+    const tm = /^(?:`?[\w$]+`?\.)?`?([\w$]+)`?(?:\s+(asc|desc))?$/i.exec(term);
+    if (!tm) return fallback;
+    const ident = tm[1];
+    const dir = tm[2] ? ` ${tm[2].toUpperCase()}` : "";
+    let pos;
+    if (/^\d+$/.test(ident)) {
+      pos = Number(ident);
+      if (pos < 1 || pos > columns.length) return fallback;
+    } else {
+      const idx = columns.findIndex((c) => c.toLowerCase() === ident.toLowerCase());
+      if (idx < 0) return fallback;
+      pos = idx + 1;
+    }
+    mapped.push(`${pos}${dir}`);
   }
-  return { innerSql, limit: first, offset: offsetKeyword };
+  return { orderBy: [...mapped, ...positional].join(", "), userOrderPreserved: true };
 }
 async function paginateOverCap(sql, exec4, opts = {}) {
   const t0 = Date.now();
-  const { innerSql, limit: userLimit, offset: userOffset } = extractOuterLimit(sql);
+  const { innerSql, sqlWithoutLimit, hasLimit } = analyzeOuterQuery(sql);
   if (!/^\s*(select|with)\b/i.test(innerSql)) {
     const message = "Result exceeds the 50,000-row service cap and the statement is not a SELECT, so it cannot be paginated. Narrow the query.";
     return { ok: false, kind: "unknown", message, friendly: message, durationMs: Date.now() - t0 };
   }
   const probe = await exec4(`SELECT * FROM (${innerSql}) AS _mx_page LIMIT 1`);
   if (!probe.ok) return probe;
-  const ncols = probe.rows.length ? Object.keys(probe.rows[0]).length : 0;
-  if (ncols === 0) {
+  const columns = probe.rows.length ? Object.keys(probe.rows[0]) : [];
+  if (columns.length === 0) {
     return { ok: true, rows: [], rowCount: 0, durationMs: Date.now() - t0 };
   }
-  const orderBy = Array.from({ length: ncols }, (_, i) => String(i + 1)).join(", ");
-  const maxRows = Math.min(userLimit ?? Infinity, opts.maxRows ?? Infinity);
-  const bounded = Number.isFinite(maxRows);
+  const { orderBy, userOrderPreserved } = deriveOuterOrder(sqlWithoutLimit, columns);
+  const outputOrderPositional = !userOrderPreserved;
+  const maxRows = opts.maxRows ?? Infinity;
+  const bounded = hasLimit || Number.isFinite(maxRows);
   const all = [];
   let pageSize = FIRST_PAGE_PROBE_ROWS;
-  let offset = userOffset ?? 0;
+  let offset = 0;
   let delivered = 0;
   let pageIndex = 0;
+  let completed = false;
   for (let iter = 0; iter < 1e5; iter++) {
     const remaining = maxRows - delivered;
-    if (remaining <= 0) break;
-    const cap = bounded ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
+    if (remaining <= 0) {
+      completed = true;
+      break;
+    }
+    const cap = Number.isFinite(maxRows) ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
     const requestSize = Math.max(1, Math.min(pageSize, cap));
     const r = await exec4(
       `SELECT * FROM (${innerSql}) AS _mx_page ORDER BY ${orderBy} LIMIT ${requestSize} OFFSET ${offset}`
@@ -64772,14 +64797,25 @@ async function paginateOverCap(sql, exec4, opts = {}) {
     delivered += r.rows.length;
     offset += r.rows.length;
     if (r.rows.length < requestSize) {
-      return { ok: true, rows: all, rowCount: delivered, durationMs: Date.now() - t0 };
+      completed = true;
+      break;
     }
     if (!bounded && delivered >= MAX_PAGINATED_ROWS) {
       const m = `Result exceeds ${MAX_PAGINATED_ROWS} rows even after pagination; narrow the query (add a WHERE filter, aggregate, or pass an explicit LIMIT).`;
       return { ok: false, kind: "unknown", message: m, friendly: m, durationMs: Date.now() - t0 };
     }
   }
-  return { ok: true, rows: all, rowCount: delivered, durationMs: Date.now() - t0 };
+  if (!completed) {
+    const m = "Pagination did not converge (exceeded the internal iteration limit); narrow the query (add a WHERE filter, aggregate, or pass an explicit LIMIT).";
+    return { ok: false, kind: "unknown", message: m, friendly: m, durationMs: Date.now() - t0 };
+  }
+  return {
+    ok: true,
+    rows: all,
+    rowCount: delivered,
+    durationMs: Date.now() - t0,
+    outputOrderPositional
+  };
 }
 async function runMysqlQuery(creds, sql, params, options) {
   const t0 = Date.now();
@@ -79265,9 +79301,8 @@ async function sampleTable(opts) {
 
 // harness/src/lib/output/csv-file-sink.ts
 import { createWriteStream } from "node:fs";
-import { mkdir as mkdir18 } from "node:fs/promises";
+import { mkdir as mkdir18, rename as rename15 } from "node:fs/promises";
 import { dirname as dirname22 } from "node:path";
-import { once } from "node:events";
 
 // harness/src/lib/output/csv.ts
 function createCsvWriter(stream, columns) {
@@ -79322,20 +79357,74 @@ function fmtBytes(n) {
 function createCsvFileSink(outPath) {
   let stream = null;
   let writer = null;
+  let streamError = null;
+  function newStream() {
+    const s = createWriteStream(outPath, { encoding: "utf-8" });
+    s.on("error", (err) => {
+      if (!streamError) streamError = err;
+    });
+    return s;
+  }
+  function waitDrain(s) {
+    if (!s.writableNeedDrain) return Promise.resolve();
+    return new Promise((resolve3, reject) => {
+      const onDrain = () => {
+        cleanup();
+        resolve3();
+      };
+      const onError = (err) => {
+        cleanup();
+        reject(err);
+      };
+      const cleanup = () => {
+        s.off("drain", onDrain);
+        s.off("error", onError);
+      };
+      s.once("drain", onDrain);
+      s.once("error", onError);
+    });
+  }
   async function ensureOpen(columns) {
     if (stream) return;
     await mkdir18(dirname22(outPath), { recursive: true });
-    stream = createWriteStream(outPath, { encoding: "utf-8" });
+    stream = newStream();
     writer = createCsvWriter(stream, columns);
     writer.writeHeader();
   }
+  function closeStream() {
+    if (!stream) return Promise.resolve();
+    const s = stream;
+    return new Promise((resolve3, reject) => {
+      if (streamError) {
+        reject(streamError);
+        return;
+      }
+      s.end((err) => {
+        const e = err ?? streamError;
+        if (e) reject(e);
+        else resolve3();
+      });
+    });
+  }
   return {
     async writePage(rows) {
+      if (streamError) throw streamError;
       if (rows.length === 0) return;
       const columns = Object.keys(rows[0]).map((name) => ({ name }));
       await ensureOpen(columns);
       for (const row of rows) writer.writeRow(row);
-      if (stream.writableNeedDrain) await once(stream, "drain");
+      if (streamError) throw streamError;
+      await waitDrain(stream);
+      if (streamError) throw streamError;
+    },
+    async ensureFile(columns) {
+      if (stream) return;
+      if (columns && columns.length > 0) {
+        await ensureOpen(columns);
+        return;
+      }
+      await mkdir18(dirname22(outPath), { recursive: true });
+      stream = newStream();
     },
     rowsWritten() {
       return writer ? writer.rowsWritten() : 0;
@@ -79347,11 +79436,19 @@ function createCsvFileSink(outPath) {
       return stream !== null;
     },
     close() {
-      if (!stream) return Promise.resolve();
-      const s = stream;
-      return new Promise((resolve3, reject) => {
-        s.end((err) => err ? reject(err) : resolve3());
+      return closeStream();
+    },
+    async finalizePartial() {
+      if (!stream) return null;
+      await closeStream().catch(() => {
       });
+      const partial2 = `${outPath}.partial`;
+      try {
+        await rename15(outPath, partial2);
+        return partial2;
+      } catch {
+        return null;
+      }
     }
   };
 }
@@ -79400,27 +79497,44 @@ async function exportTable(opts) {
   });
   const sink = createCsvFileSink(opts.outPath);
   let lastProgressRows = 0;
-  const streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
-    await sink.writePage(rows);
-    if (sink.rowsWritten() - lastProgressRows >= 1) {
-      lastProgressRows = sink.rowsWritten();
-      process.stderr.write(
-        `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written
+  let streamed;
+  try {
+    streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
+      await sink.writePage(rows);
+      if (sink.rowsWritten() - lastProgressRows >= 1) {
+        lastProgressRows = sink.rowsWritten();
+        process.stderr.write(
+          `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written
 `
-      );
-    }
-  });
-  if (!streamed.ok) {
-    await sink.close().catch(() => {
+        );
+      }
     });
+  } catch (err) {
+    const partialPath = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      out_path: opts.outPath,
+      rows_written: 0,
+      duration_ms: 0,
+      query_result: { ok: false, kind: "unknown", message, friendly: `Export failed while writing: ${message}` },
+      display_sql: displaySql,
+      partial_path: partialPath ?? void 0,
+      incomplete: true
+    };
+  }
+  if (!streamed.ok) {
+    const partialPath = await sink.finalizePartial();
     return {
       out_path: opts.outPath,
       rows_written: 0,
       duration_ms: streamed.durationMs,
       query_result: streamed.failure,
-      display_sql: displaySql
+      display_sql: displaySql,
+      partial_path: partialPath ?? void 0,
+      incomplete: partialPath != null
     };
   }
+  if (!sink.opened()) await sink.ensureFile();
   await sink.close();
   return {
     out_path: opts.outPath,
@@ -79649,7 +79763,9 @@ function registerDataCommands(program3) {
                 ...result.query_result.ok ? {} : {
                   failure_kind: result.query_result.kind,
                   table_name: result.query_result.table_name,
-                  message: result.query_result.friendly
+                  message: result.query_result.friendly,
+                  incomplete: result.incomplete ?? false,
+                  ...result.partial_path ? { partial_path: result.partial_path } : {}
                 }
               },
               null,
@@ -79661,6 +79777,13 @@ function registerDataCommands(program3) {
             process.stderr.write(`
 \u2717 ${result.query_result.friendly}
 `);
+            if (result.incomplete) {
+              process.stderr.write(
+                result.partial_path ? `  Export is INCOMPLETE \u2014 no complete file was written. Partial output saved to ${result.partial_path}
+` : `  Export is INCOMPLETE \u2014 no file was written.
+`
+              );
+            }
             process.exitCode = handleAccessDeniedExit(result.query_result.kind);
             return;
           }
@@ -79834,7 +79957,8 @@ function formatCellForMd(v) {
   const s = String(v);
   return s.replace(/\|/g, "\\|");
 }
-function emitQueryFailure(failure, json2) {
+function emitQueryFailure(failure, json2, partialPath) {
+  const incomplete = partialPath !== void 0;
   if (json2) {
     process.stdout.write(
       JSON.stringify(
@@ -79842,7 +79966,9 @@ function emitQueryFailure(failure, json2) {
           status: "error",
           failure_kind: failure.kind,
           table_name: failure.table_name,
-          message: failure.friendly
+          message: failure.friendly,
+          ...incomplete ? { incomplete: true } : {},
+          ...partialPath ? { partial_path: partialPath } : {}
         },
         null,
         2
@@ -79852,6 +79978,13 @@ function emitQueryFailure(failure, json2) {
     process.stderr.write(`
 \u2717 ${failure.friendly}
 `);
+    if (incomplete) {
+      process.stderr.write(
+        partialPath ? `  Output is INCOMPLETE \u2014 no complete file was written. Partial output saved to ${partialPath}
+` : `  Output is INCOMPLETE \u2014 no file was written.
+`
+      );
+    }
   }
   process.exitCode = handleAccessDeniedExit(failure.kind);
 }
@@ -79869,21 +80002,40 @@ function progressReporter(sink) {
 async function runQueryToFile(sql, outPath, json2, dataDir) {
   const sink = createCsvFileSink(outPath);
   const report = progressReporter(sink);
-  const streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
-    await sink.writePage(rows);
-    report();
-  });
-  if (!streamed.ok) {
-    await sink.close().catch(() => {
+  let streamed;
+  try {
+    streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
+      await sink.writePage(rows);
+      report();
     });
-    emitQueryFailure(streamed.failure, json2);
+  } catch (err) {
+    const partial2 = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure(
+      { kind: "unknown", friendly: `Write failed: ${message}` },
+      json2,
+      partial2
+    );
     return;
   }
+  if (!streamed.ok) {
+    const partial2 = await sink.finalizePartial();
+    emitQueryFailure(streamed.failure, json2, partial2);
+    return;
+  }
+  if (!sink.opened()) await sink.ensureFile();
   await sink.close();
+  const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
   if (json2) {
     process.stdout.write(
       JSON.stringify(
-        { status: "ok", row_count: streamed.rowCount, duration_ms: streamed.durationMs, out_path: outPath },
+        {
+          status: "ok",
+          row_count: streamed.rowCount,
+          duration_ms: streamed.durationMs,
+          out_path: outPath,
+          ...streamed.outputOrderPositional ? { output_order_positional: true } : {}
+        },
         null,
         2
       ) + "\n"
@@ -79893,7 +80045,8 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
       `
 \u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms)
   written to ${outPath}
-`
+` + (orderNote ? `  Note:${orderNote}
+` : "")
     );
   }
 }
@@ -79908,28 +80061,39 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
     report = progressReporter(s);
     return s;
   };
-  const streamed = await streamQuery(
-    sql,
-    [],
-    { dataDirOverride: dataDir },
-    async (rows, idx) => {
-      if (idx === 0) {
-        for (const r of rows) bufferFirst.push(r);
-        return;
+  let streamed;
+  try {
+    streamed = await streamQuery(
+      sql,
+      [],
+      { dataDirOverride: dataDir },
+      async (rows, idx) => {
+        if (idx === 0) {
+          for (const r of rows) bufferFirst.push(r);
+          return;
+        }
+        if (idx === 1) {
+          state.sink = openTemp();
+          await state.sink.writePage(bufferFirst);
+          bufferFirst.length = 0;
+        }
+        await state.sink.writePage(rows);
+        report();
       }
-      if (idx === 1) {
-        state.sink = openTemp();
-        await state.sink.writePage(bufferFirst);
-        bufferFirst.length = 0;
-      }
-      await state.sink.writePage(rows);
-      report();
-    }
-  );
+    );
+  } catch (err) {
+    const partial2 = state.sink ? await state.sink.finalizePartial() : null;
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure(
+      { kind: "unknown", friendly: `Write failed: ${message}` },
+      json2,
+      state.sink ? partial2 : void 0
+    );
+    return;
+  }
   if (!streamed.ok) {
-    if (state.sink) await state.sink.close().catch(() => {
-    });
-    emitQueryFailure(streamed.failure, json2);
+    const partial2 = state.sink ? await state.sink.finalizePartial() : null;
+    emitQueryFailure(streamed.failure, json2, state.sink ? partial2 : void 0);
     return;
   }
   if (streamed.paginated) {
@@ -79940,6 +80104,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
       bufferFirst.length = 0;
     }
     await s.close();
+    const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
     if (json2) {
       process.stdout.write(
         JSON.stringify(
@@ -79948,7 +80113,8 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
             row_count: streamed.rowCount,
             duration_ms: streamed.durationMs,
             out_path: state.tempPath,
-            streamed_to_file: true
+            streamed_to_file: true,
+            ...streamed.outputOrderPositional ? { output_order_positional: true } : {}
           },
           null,
           2
@@ -79959,7 +80125,8 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
         `
 \u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms). Result is large, so I streamed it to a CSV file:
   ${state.tempPath}
-  Tip: pass --out <path> next time to choose the destination.
+` + (orderNote ? `  Note:${orderNote}
+` : "") + `  Tip: pass --out <path> next time to choose the destination.
 `
       );
     }
@@ -82735,7 +82902,7 @@ init_telemetry();
 
 // harness/src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir24, readFile as readFile32, rename as rename15, writeFile as writeFile21 } from "node:fs/promises";
+import { mkdir as mkdir24, readFile as readFile32, rename as rename16, writeFile as writeFile21 } from "node:fs/promises";
 import { dirname as dirname29 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
@@ -82754,7 +82921,7 @@ async function saveLedger(path2, handles) {
   await mkdir24(dirname29(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile21(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename15(tmp, path2);
+  await rename16(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {

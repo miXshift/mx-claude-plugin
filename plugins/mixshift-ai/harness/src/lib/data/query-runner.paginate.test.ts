@@ -42,6 +42,44 @@ function limitOf(sql: string): number {
 function offsetOf(sql: string): number {
   return Number(sql.match(/OFFSET (\d+)/)?.[1] ?? 0);
 }
+/** The OUTER (statement-final) page LIMIT/OFFSET. With the user's own LIMIT now
+ *  kept INSIDE the derived table, the first `LIMIT` in a page SQL can be the
+ *  inner one, so these anchor to the trailing `LIMIT n OFFSET m` the pager adds. */
+function outerLimitOf(sql: string): number {
+  return Number(sql.match(/LIMIT (\d+) OFFSET \d+\s*$/)?.[1] ?? 0);
+}
+function outerOffsetOf(sql: string): number {
+  return Number(sql.match(/OFFSET (\d+)\s*$/)?.[1] ?? 0);
+}
+function orderByOf(sql: string): string {
+  // The OUTER (trailing) ORDER BY only — `[^()]` skips the inner derived-table
+  // ORDER BY, which is wrapped in parentheses.
+  return sql.match(/ORDER BY ([^()]+?) LIMIT \d+ OFFSET \d+\s*$/)?.[1] ?? '';
+}
+/** Faithfully sort a row list by a positional outer ORDER BY (e.g. "2 DESC, 1, 2"). */
+function applyOrder(
+  list: Array<Record<string, unknown>>,
+  orderBy: string,
+  cols: string[],
+): Array<Record<string, unknown>> {
+  const parsed = orderBy
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => {
+      const m = /^(\d+)(?:\s+(asc|desc))?$/i.exec(t)!;
+      return { key: cols[Number(m[1]) - 1]!, dir: (m[2] ?? 'ASC').toUpperCase() };
+    });
+  return [...list].sort((a, b) => {
+    for (const { key, dir } of parsed) {
+      const av = a[key] as number | string;
+      const bv = b[key] as number | string;
+      if (av < bv) return dir === 'DESC' ? 1 : -1;
+      if (av > bv) return dir === 'DESC' ? -1 : 1;
+    }
+    return 0;
+  });
+}
 
 describe('isServiceCapFailure', () => {
   it('matches the gateway cap rejection across both phrasings/fields', () => {
@@ -156,48 +194,117 @@ describe('paginateOverCap', () => {
     expect(Math.min(...requested)).toBeLessThan(1_000);
   });
 
-  it('honors a user outer LIMIT as a hard cap and strips it from the paged subquery', async () => {
+  it('keeps the user LIMIT INSIDE the derived table and stops at N via a short page', async () => {
     const dataCalls: string[] = [];
+    const INNER = 12_000; // the user LIMIT — materialized inside the derived table
     const exec = async (pageSql: string) => {
       if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
       dataCalls.push(pageSql);
-      // Pretend the table is effectively infinite: always fill the page.
-      return okResult(rows(limitOf(pageSql)));
+      const off = outerOffsetOf(pageSql);
+      const lim = outerLimitOf(pageSql);
+      return okResult(rows(Math.min(lim, Math.max(0, INNER - off))));
     };
     const r = await paginateOverCap('SELECT a, b FROM big LIMIT 12000', exec);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.rowCount).toBe(12_000); // capped at the user LIMIT, not run forever
-    // The user LIMIT is stripped from the wrapped subquery — no LIMIT inside
-    // the derived table (which would re-limit non-deterministically per page).
+    if (r.ok) expect(r.rowCount).toBe(12_000); // stops at N via the derived-table LIMIT
+    // The user LIMIT is KEPT inside the wrapped subquery so the correct top-N
+    // SET is materialized; the inner LIMIT self-terminates paging (short page).
     for (const c of dataCalls) {
-      expect(c).toContain('FROM (SELECT a, b FROM big) AS _mx_page');
+      expect(c).toContain('FROM (SELECT a, b FROM big LIMIT 12000) AS _mx_page');
     }
   });
 
-  it('honors LIMIT with OFFSET: paging starts at the user offset and caps the count', async () => {
-    const offsets: number[] = [];
+  it('keeps LIMIT+OFFSET inside the derived table; outer paging starts at 0', async () => {
+    const dataCalls: string[] = [];
+    const INNER = 8_000; // rows the derived table yields after its own LIMIT/OFFSET
     const exec = async (pageSql: string) => {
       if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
-      offsets.push(offsetOf(pageSql));
-      return okResult(rows(limitOf(pageSql)));
+      dataCalls.push(pageSql);
+      const off = outerOffsetOf(pageSql);
+      const lim = outerLimitOf(pageSql);
+      return okResult(rows(Math.min(lim, Math.max(0, INNER - off))));
     };
     const r = await paginateOverCap('SELECT a, b FROM big LIMIT 8000 OFFSET 100', exec);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.rowCount).toBe(8_000);
-    expect(offsets[0]).toBe(100); // paging begins at the user OFFSET
+    // The user OFFSET is applied inside the derived table, so outer paging must
+    // begin at 0 (never re-apply the offset, which would double-skip rows).
+    expect(outerOffsetOf(dataCalls[0]!)).toBe(0);
+    for (const c of dataCalls) {
+      expect(c).toContain('FROM (SELECT a, b FROM big LIMIT 8000 OFFSET 100) AS _mx_page');
+    }
   });
 
-  it('parses the MySQL `LIMIT offset, count` form', async () => {
-    const offsets: number[] = [];
+  it('parses the MySQL `LIMIT offset, count` form and keeps it inside the derived table', async () => {
+    const dataCalls: string[] = [];
+    const INNER = 8_000;
     const exec = async (pageSql: string) => {
       if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
-      offsets.push(offsetOf(pageSql));
-      return okResult(rows(limitOf(pageSql)));
+      dataCalls.push(pageSql);
+      const off = outerOffsetOf(pageSql);
+      const lim = outerLimitOf(pageSql);
+      return okResult(rows(Math.min(lim, Math.max(0, INNER - off))));
     };
     const r = await paginateOverCap('SELECT a, b FROM big LIMIT 100, 8000', exec);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.rowCount).toBe(8_000);
-    expect(offsets[0]).toBe(100);
+    expect(outerOffsetOf(dataCalls[0]!)).toBe(0);
+    for (const c of dataCalls) {
+      expect(c).toContain('FROM (SELECT a, b FROM big LIMIT 100, 8000) AS _mx_page');
+    }
+  });
+
+  it('FINDING 1 (byte-cap trip): an ordered top-N export returns the true top-N by the user order, not the positional-first N', async () => {
+    // Base table whose spend is a permutation of id, so "top-N by spend" is a
+    // scattered set of ids that is DIFFERENT from the positional-first N (ids
+    // 0..K-1). Wide filler forces the byte cap to trip and the pager to shrink.
+    const N = 3_000;
+    const K = 2_000;
+    const FILLER = 'x'.repeat(12_000);
+    const SERVER_BYTE_CAP = 10 * 1024 * 1024;
+    const cols = ['id', 'spend', 'filler'];
+    const base = Array.from({ length: N }, (_, id) => ({ id, spend: (id * 37) % N, filler: FILLER }));
+    // The derived table = user's `... ORDER BY spend DESC LIMIT K`.
+    const mat = [...base].sort((a, b) => b.spend - a.spend).slice(0, K);
+
+    const collected: Array<Record<string, unknown>> = [];
+    let sawInnerLimit = false;
+    const exec = async (pageSql: string) => {
+      if (/LIMIT 1$/.test(pageSql)) return okResult([mat[0]!]); // probe → 3 cols
+      if (pageSql.includes('FROM (SELECT id, spend FROM t ORDER BY spend DESC LIMIT 2000) AS _mx_page')) {
+        sawInnerLimit = true;
+      }
+      const lim = outerLimitOf(pageSql);
+      const off = outerOffsetOf(pageSql);
+      const ordered = applyOrder(mat, orderByOf(pageSql), cols);
+      const page = ordered.slice(off, off + lim);
+      const bytes = Buffer.byteLength(JSON.stringify(page), 'utf8');
+      if (bytes > SERVER_BYTE_CAP) return capFailure(); // byte-cap trip → shrink
+      return okResult(page);
+    };
+
+    const r = await paginateOverCap('SELECT id, spend FROM t ORDER BY spend DESC LIMIT 2000', exec, {
+      onPage: (page) => {
+        collected.push(...page);
+      },
+    });
+
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.rowCount).toBe(K);
+      // User order preserved → NOT flagged positional.
+      expect(r.outputOrderPositional).toBe(false);
+    }
+    expect(sawInnerLimit).toBe(true); // the user LIMIT stayed inside the derived table
+    // The delivered ROW SET (and order) is exactly the user's top-N by spend.
+    expect(collected.map((row) => row.id)).toEqual(mat.map((row) => row.id));
+    // And it is emphatically NOT the positional-first N (ids 0..K-1).
+    const positionalFirst = Array.from({ length: K }, (_, i) => i);
+    expect(collected.map((row) => row.id)).not.toEqual(positionalFirst);
+    // Sanity: spend is strictly descending across the whole delivered set.
+    for (let i = 1; i < collected.length; i++) {
+      expect(collected[i]!.spend as number).toBeLessThan(collected[i - 1]!.spend as number);
+    }
   });
 
   it('streams pages via onPage without buffering (returned rows array is empty)', async () => {
@@ -247,6 +354,43 @@ describe('paginateOverCap', () => {
     const r = await paginateOverCap('SELECT a, b FROM t', exec);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('timeout');
+  });
+
+  it('FINDING 1 (positional fallback): a non-carryable ORDER BY still returns the correct SET, flagged positional', async () => {
+    // An ORDER BY with a function call cannot be safely carried to the outer
+    // paging query, so the pager falls back to positional order. The delivered
+    // SET is still correct; only the output order is positional.
+    const orders: string[] = [];
+    const exec = async (pageSql: string) => {
+      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
+      orders.push(orderByOf(pageSql));
+      if (outerOffsetOf(pageSql) === 0) return okResult(rows(FIRST_PAGE_PROBE_ROWS));
+      return okResult(rows(5)); // short page → stop
+    };
+    const r = await paginateOverCap('SELECT a, b FROM t ORDER BY LOWER(b) DESC', exec);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.rowCount).toBe(FIRST_PAGE_PROBE_ROWS + 5);
+      expect(r.outputOrderPositional).toBe(true); // could not carry the user order
+    }
+    expect(orders[0]).toBe('1, 2'); // purely positional outer order
+  });
+
+  it('FINDING 5: fails with non-convergence when the iteration guard is exhausted without a short page', async () => {
+    // Unbounded query whose pages never shorten (every page returns exactly the
+    // requested count) and never reach the MAX_PAGINATED_ROWS ceiling because
+    // the byte cap pins each page to a single row. This must FAIL as
+    // non-convergence, not silently return a truncated tail as success.
+    const W = 200;
+    const exec = async (pageSql: string) => {
+      if (/LIMIT 1$/.test(pageSql)) return okResult(wideRows(0, 1, W));
+      const lim = outerLimitOf(pageSql);
+      if (lim > 1) return capFailure(); // force shrink to a 1-row page every time
+      return okResult(wideRows(0, 1, W)); // exactly 1 full row → never a short page
+    };
+    const r = await paginateOverCap('SELECT a, b FROM t', exec);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/did not converge/i);
   });
 
   it('still exposes SERVICE_ROW_CAP as the row-cap ceiling', () => {

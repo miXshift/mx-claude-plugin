@@ -187,6 +187,8 @@ export function registerDataCommands(program: Command): void {
                         failure_kind: result.query_result.kind,
                         table_name: result.query_result.table_name,
                         message: result.query_result.friendly,
+                        incomplete: result.incomplete ?? false,
+                        ...(result.partial_path ? { partial_path: result.partial_path } : {}),
                       }),
                 },
                 null,
@@ -196,6 +198,13 @@ export function registerDataCommands(program: Command): void {
           } else {
             if (!result.query_result.ok) {
               process.stderr.write(`\n✗ ${result.query_result.friendly}\n`);
+              if (result.incomplete) {
+                process.stderr.write(
+                  result.partial_path
+                    ? `  Export is INCOMPLETE — no complete file was written. Partial output saved to ${result.partial_path}\n`
+                    : `  Export is INCOMPLETE — no file was written.\n`,
+                );
+              }
               process.exitCode = handleAccessDeniedExit(result.query_result.kind);
               return;
             }
@@ -420,11 +429,18 @@ function formatCellForMd(v: unknown): string {
 // `data query` streaming helpers
 // -----------------------------------------------------------------------
 
-/** Emit a classified query failure in the shared JSON / stderr shape. */
+/** Emit a classified query failure in the shared JSON / stderr shape. When a
+ *  partial file was salvaged on a mid-stream failure, make the incompleteness
+ *  explicit so no consumer reads a truncated CSV as complete. */
 function emitQueryFailure(
   failure: { kind: string; table_name?: string; friendly: string },
   json: boolean,
+  partialPath?: string | null,
 ): void {
+  // `partialPath` is only passed on the --out streaming path. `undefined`
+  // means "not a file path" (inline query); `null` means a file path was
+  // requested but nothing had been written yet (so nothing to salvage).
+  const incomplete = partialPath !== undefined;
   if (json) {
     process.stdout.write(
       JSON.stringify(
@@ -433,6 +449,8 @@ function emitQueryFailure(
           failure_kind: failure.kind,
           table_name: failure.table_name,
           message: failure.friendly,
+          ...(incomplete ? { incomplete: true } : {}),
+          ...(partialPath ? { partial_path: partialPath } : {}),
         },
         null,
         2,
@@ -440,6 +458,13 @@ function emitQueryFailure(
     );
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
+    if (incomplete) {
+      process.stderr.write(
+        partialPath
+          ? `  Output is INCOMPLETE — no complete file was written. Partial output saved to ${partialPath}\n`
+          : `  Output is INCOMPLETE — no file was written.\n`,
+      );
+    }
   }
   process.exitCode = handleAccessDeniedExit(failure.kind);
 }
@@ -465,27 +490,56 @@ async function runQueryToFile(
 ): Promise<void> {
   const sink = createCsvFileSink(outPath);
   const report = progressReporter(sink);
-  const streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
-    await sink.writePage(rows);
-    report();
-  });
-  if (!streamed.ok) {
-    await sink.close().catch(() => {});
-    emitQueryFailure(streamed.failure!, json);
+  let streamed;
+  try {
+    streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
+      await sink.writePage(rows);
+      report();
+    });
+  } catch (err) {
+    // A sink write failure (e.g. ENOSPC) surfaced through onPage. Rename any
+    // partial file so it is not mistaken for a complete export.
+    const partial = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure(
+      { kind: 'unknown', friendly: `Write failed: ${message}` },
+      json,
+      partial,
+    );
     return;
   }
+  if (!streamed.ok) {
+    // Mid-stream failure after some pages were written: rename the truncated
+    // file to <out>.partial so no consumer reads it as complete.
+    const partial = await sink.finalizePartial();
+    emitQueryFailure(streamed.failure!, json, partial);
+    return;
+  }
+  // Create the file even for a 0-row result so the success message is truthful.
+  if (!sink.opened()) await sink.ensureFile();
   await sink.close();
+  const orderNote =
+    streamed.outputOrderPositional
+      ? ' Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct.'
+      : '';
   if (json) {
     process.stdout.write(
       JSON.stringify(
-        { status: 'ok', row_count: streamed.rowCount, duration_ms: streamed.durationMs, out_path: outPath },
+        {
+          status: 'ok',
+          row_count: streamed.rowCount,
+          duration_ms: streamed.durationMs,
+          out_path: outPath,
+          ...(streamed.outputOrderPositional ? { output_order_positional: true } : {}),
+        },
         null,
         2,
       ) + '\n',
     );
   } else {
     process.stderr.write(
-      `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms)\n  written to ${outPath}\n`,
+      `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms)\n  written to ${outPath}\n` +
+        (orderNote ? `  Note:${orderNote}\n` : ''),
     );
   }
 }
@@ -516,28 +570,44 @@ async function runQueryInlineOrTemp(
     return s;
   };
 
-  const streamed = await streamQuery<Record<string, unknown>>(
-    sql,
-    [],
-    { dataDirOverride: dataDir },
-    async (rows, idx) => {
-      if (idx === 0) {
-        for (const r of rows) bufferFirst.push(r);
-        return;
-      }
-      if (idx === 1) {
-        state.sink = openTemp();
-        await state.sink.writePage(bufferFirst);
-        bufferFirst.length = 0;
-      }
-      await state.sink!.writePage(rows);
-      report();
-    },
-  );
+  let streamed;
+  try {
+    streamed = await streamQuery<Record<string, unknown>>(
+      sql,
+      [],
+      { dataDirOverride: dataDir },
+      async (rows, idx) => {
+        if (idx === 0) {
+          for (const r of rows) bufferFirst.push(r);
+          return;
+        }
+        if (idx === 1) {
+          state.sink = openTemp();
+          await state.sink.writePage(bufferFirst);
+          bufferFirst.length = 0;
+        }
+        await state.sink!.writePage(rows);
+        report();
+      },
+    );
+  } catch (err) {
+    // A sink write failure surfaced through onPage after we began spilling to a
+    // temp file. Rename any partial so it is not read as a complete result.
+    const partial = state.sink ? await state.sink.finalizePartial() : null;
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure(
+      { kind: 'unknown', friendly: `Write failed: ${message}` },
+      json,
+      state.sink ? partial : undefined,
+    );
+    return;
+  }
 
   if (!streamed.ok) {
-    if (state.sink) await state.sink.close().catch(() => {});
-    emitQueryFailure(streamed.failure!, json);
+    // If we had begun spilling to a temp file, rename the truncated file to
+    // <temp>.partial rather than leaving a complete-looking CSV behind.
+    const partial = state.sink ? await state.sink.finalizePartial() : null;
+    emitQueryFailure(streamed.failure!, json, state.sink ? partial : undefined);
     return;
   }
 
@@ -551,6 +621,10 @@ async function runQueryInlineOrTemp(
       bufferFirst.length = 0;
     }
     await s.close();
+    const orderNote =
+      streamed.outputOrderPositional
+        ? ' Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct.'
+        : '';
     if (json) {
       process.stdout.write(
         JSON.stringify(
@@ -560,6 +634,7 @@ async function runQueryInlineOrTemp(
             duration_ms: streamed.durationMs,
             out_path: state.tempPath,
             streamed_to_file: true,
+            ...(streamed.outputOrderPositional ? { output_order_positional: true } : {}),
           },
           null,
           2,
@@ -569,6 +644,7 @@ async function runQueryInlineOrTemp(
       process.stderr.write(
         `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms). Result is large, so I streamed it to a CSV file:\n` +
           `  ${state.tempPath}\n` +
+          (orderNote ? `  Note:${orderNote}\n` : '') +
           `  Tip: pass --out <path> next time to choose the destination.\n`,
       );
     }

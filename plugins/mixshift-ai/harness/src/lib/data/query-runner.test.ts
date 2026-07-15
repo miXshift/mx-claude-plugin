@@ -6,7 +6,7 @@ import {
   afterEach,
   vi,
 } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -376,6 +376,61 @@ describe('streamQuery', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('FINDING 1 (row-cap trip): an ordered top-N export returns the true top-N by spend, not the positional-first N', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    // spend is a permutation of id, so top-N by spend ≠ positional-first N.
+    const NBASE = 200;
+    const K = 120;
+    const cols = ['id', 'spend'];
+    const base = Array.from({ length: NBASE }, (_, id) => ({ id, spend: (id * 37) % NBASE }));
+    const mat = [...base].sort((a, b) => b.spend - a.spend).slice(0, K);
+    const userSql = 'SELECT id, spend FROM t ORDER BY spend DESC LIMIT 120';
+
+    const outerLimit = (s: string): number => Number(s.match(/LIMIT (\d+) OFFSET \d+\s*$/)?.[1] ?? 0);
+    const outerOffset = (s: string): number => Number(s.match(/OFFSET (\d+)\s*$/)?.[1] ?? 0);
+    const orderClause = (s: string): string => s.match(/ORDER BY ([^()]+?) LIMIT \d+ OFFSET \d+\s*$/)?.[1] ?? '';
+    const applyOrder = (list: typeof mat, ob: string): typeof mat =>
+      [...list].sort((a, b) => {
+        for (const t of ob.split(',').map((x) => x.trim())) {
+          const m = /^(\d+)(?:\s+(asc|desc))?$/i.exec(t)!;
+          const key = cols[Number(m[1]) - 1]! as 'id' | 'spend';
+          const dir = (m[2] ?? 'ASC').toUpperCase();
+          if (a[key] < b[key]) return dir === 'DESC' ? 1 : -1;
+          if (a[key] > b[key]) return dir === 'DESC' ? -1 : 1;
+        }
+        return 0;
+      });
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const sql = JSON.parse(init.body as string).sql as string;
+      // The raw single shot (no wrapping) trips the 50k ROW cap → triggers paging.
+      if (!sql.includes('_mx_page')) {
+        return jsonResponse(200, { ok: false, kind: 'unknown', message: 'Query returned 60000 rows; service cap is 50000.', friendly: '', durationMs: 1 });
+      }
+      if (/LIMIT 1$/.test(sql)) return jsonResponse(200, { ok: true, rows: [mat[0]], rowCount: 1, durationMs: 1 });
+      const page = applyOrder(mat, orderClause(sql)).slice(outerOffset(sql), outerOffset(sql) + outerLimit(sql));
+      return jsonResponse(200, { ok: true, rows: page, rowCount: page.length, durationMs: 1 });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const collected: Array<Record<string, unknown>> = [];
+    const res = await streamQuery(userSql, [], { dataDirOverride: testDir }, (rows) => {
+      collected.push(...rows);
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.paginated).toBe(true);
+    expect(res.rowCount).toBe(K);
+    expect(res.outputOrderPositional).toBe(false); // user ORDER BY preserved
+    // Delivered SET + order is exactly the user's top-N by spend...
+    expect(collected.map((r) => r.id)).toEqual(mat.map((r) => r.id));
+    // ...and NOT the positional-first N (ids 0..K-1) — the bug this fix closes.
+    expect(collected.map((r) => r.id)).not.toEqual(Array.from({ length: K }, (_, i) => i));
+    expect(collected[0]!.id).not.toBe(0);
+  });
+
   it('streams all paged rows to a CSV file without buffering the whole set', async () => {
     const creds = freshDatahubFixture();
     await saveDatahub(creds, testDir);
@@ -405,6 +460,60 @@ describe('streamQuery', () => {
     expect(lines.length).toBe(1 + FIRST_PAGE_PROBE_ROWS + 3); // header + every row
     expect(lines[1]).toBe('0,n0');
     expect(lines[lines.length - 1]).toBe(`${FIRST_PAGE_PROBE_ROWS + 2},n${FIRST_PAGE_PROBE_ROWS + 2}`);
+  });
+
+  it('FINDING 2: a mid-stream (page 2) failure renames the partial file so no complete-looking CSV remains', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const sql = JSON.parse(init.body as string).sql as string;
+      if (/LIMIT 1$/.test(sql)) return jsonResponse(200, { ok: true, rows: makeRows(0, 1), rowCount: 1, durationMs: 1 });
+      const off = Number(sql.match(/OFFSET (\d+)/)?.[1] ?? -1);
+      if (off === 0) return jsonResponse(200, { ok: true, rows: makeRows(0, FIRST_PAGE_PROBE_ROWS), rowCount: FIRST_PAGE_PROBE_ROWS, durationMs: 1 });
+      // Page 2 fails (a non-cap failure) AFTER page 1 was already written to disk.
+      if (off === FIRST_PAGE_PROBE_ROWS) return jsonResponse(200, { ok: false, kind: 'timeout', message: 'timed out', friendly: 'Query exceeded the 60s timeout.', durationMs: 1 });
+      return jsonResponse(200, { ok: false, kind: 'unknown', message: 'service cap is 50000', friendly: '', durationMs: 1 });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const outPath = join(testDir, 'partial-out.csv');
+    const sink = createCsvFileSink(outPath);
+    const res = await streamQuery('SELECT id, name FROM t', [], { dataDirOverride: testDir }, async (rows) => {
+      await sink.writePage(rows);
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.failure?.kind).toBe('timeout');
+    // Command wiring: on a mid-stream failure, salvage-rename the partial file.
+    const partial = await sink.finalizePartial();
+    expect(partial).toBe(`${outPath}.partial`);
+    // The bare <out> path must NOT exist as a complete-looking file.
+    await expect(stat(outPath)).rejects.toThrow();
+    const content = await readFile(partial!, 'utf-8');
+    expect(content.split('\n')[0]).toBe('id,name'); // partial carries header + page-1 rows
+  });
+
+  it('FINDING 3: a successful 0-row result still yields an output file (ensureFile)', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, rows: [], rowCount: 0, durationMs: 3 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const outPath = join(testDir, 'zero-rows.csv');
+    const sink = createCsvFileSink(outPath);
+    const res = await streamQuery('SELECT id, name FROM t WHERE 1=0', [], { dataDirOverride: testDir }, async (rows) => {
+      await sink.writePage(rows);
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.rowCount).toBe(0);
+    expect(sink.opened()).toBe(false); // no page was ever written
+    // Command wiring: create the file anyway so the success message is truthful.
+    if (!sink.opened()) await sink.ensureFile();
+    await sink.close();
+    expect((await stat(outPath)).isFile()).toBe(true);
   });
 });
 
