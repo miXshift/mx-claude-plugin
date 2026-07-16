@@ -9,6 +9,7 @@
  */
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
+import { intentHeader } from '../auth/intent.js';
 import type {
   CorroborateEventInput,
   CorroborateEventResult,
@@ -90,6 +91,7 @@ export function createTimelineClient(
           headers: {
             Authorization: `Bearer ${bearer}`,
             ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...intentHeader(),
           },
           ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(timeoutMs),

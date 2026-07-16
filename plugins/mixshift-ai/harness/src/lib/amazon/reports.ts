@@ -56,6 +56,7 @@ import { pipeline } from 'node:stream/promises';
 import { createGunzip, gunzipSync } from 'node:zlib';
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
+import { intentHeader } from '../auth/intent.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -843,6 +844,7 @@ export async function amazonRequest(
         headers: {
           Authorization: `Bearer ${bearer}`,
           ...(spec.body ? { 'Content-Type': 'application/json' } : {}),
+          ...intentHeader(),
         },
         body: spec.body ? JSON.stringify(spec.body) : undefined,
         signal: AbortSignal.timeout(timeoutMs),

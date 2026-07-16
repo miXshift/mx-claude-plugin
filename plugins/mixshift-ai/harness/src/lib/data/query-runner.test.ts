@@ -77,6 +77,65 @@ describe('runQuery :: datahub happy path', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Datahub: x-mixshift-intent attribution header
+// ---------------------------------------------------------------------------
+
+describe('runQuery :: intent header', () => {
+  const INTENT_VAR = 'MIXSHIFT_INTENT';
+  const SKILL_VAR = 'MIXSHIFT_SKILL_ID';
+  let savedIntent: string | undefined;
+  let savedSkill: string | undefined;
+
+  beforeEach(() => {
+    savedIntent = process.env[INTENT_VAR];
+    savedSkill = process.env[SKILL_VAR];
+    delete process.env[INTENT_VAR];
+    delete process.env[SKILL_VAR];
+  });
+
+  afterEach(() => {
+    if (savedIntent === undefined) delete process.env[INTENT_VAR];
+    else process.env[INTENT_VAR] = savedIntent;
+    if (savedSkill === undefined) delete process.env[SKILL_VAR];
+    else process.env[SKILL_VAR] = savedSkill;
+  });
+
+  it('sends x-mixshift-intent when MIXSHIFT_SKILL_ID is set', async () => {
+    process.env[SKILL_VAR] = 'mx-data-explore';
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, rows: [], rowCount: 0, durationMs: 1 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      'x-mixshift-intent': 'mx-data-explore',
+    });
+  });
+
+  it('omits x-mixshift-intent entirely when no skill/intent env is set', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, rows: [], rowCount: 0, durationMs: 1 }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    const [, init] = mockFetch.mock.calls[0];
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers).not.toHaveProperty('x-mixshift-intent');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Datahub: mid-session 401 → force-refresh → retry
 // ---------------------------------------------------------------------------
 
