@@ -70,7 +70,7 @@ paraphrase or condense it, and do NOT paste the bash command above it.
 
 ### Fallback if the CLI fails
 
-1. `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js guide --format chat` is the same output via an absolute path.
+1. `node "$MIXSHIFT_CLI" guide --format chat` is the same output via an absolute path.
 2. **If there is no shell at all (for example claude.ai web):** present the
    capability map yourself, built from the MixShift skills available in this
    session, grouped by outcome. Use this structure and fill each group from the

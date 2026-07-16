@@ -21,10 +21,18 @@ app plugin panel, Cowork, and the admin console).
 ### Added
 
 - **Session hook scaffolding.** The plugin now ships a `hooks/` directory with
-  a SessionStart hook (currently used only for PATH registration). Skills also
-  carry an explicit fallback so every command still runs even on a surface
-  where hooks are unavailable, via
-  `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"`.
+  a SessionStart hook (currently used for PATH registration; it also exports
+  `MIXSHIFT_CLI`, the absolute path to the bundled CLI). Skills carry an
+  explicit two-step fallback so every command still runs even on a surface
+  where hooks are unavailable: `node "$MIXSHIFT_CLI"`, or resolving the plugin
+  root from the skill's own base directory.
+
+### Upgrade note for direct-CLI users
+
+- If you cloned the repo and symlinked or PATH-exported `bin/mixshift` per the
+  old install guide, update your link: the entry point moved to
+  `harness/bin/mixshift`. Example:
+  `sudo ln -sf <clone>/plugins/mixshift-ai/harness/bin/mixshift /usr/local/bin/mixshift`.
 
 ## 0.8.2
 

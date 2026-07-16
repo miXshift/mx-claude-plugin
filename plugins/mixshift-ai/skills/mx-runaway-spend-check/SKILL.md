@@ -19,7 +19,7 @@ trigger_phrases:
 
 # Runaway Spend Check
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
 
 
 ## Hard Rules

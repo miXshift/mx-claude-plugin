@@ -93,7 +93,7 @@ The CLI returns JSON immediately and exits:
 
 Capture `device_code` and `login_url`. The other fields don't need to be passed again; `device-poll` only needs `device_code` + `person_label`.
 
-(If `mixshift` isn't found, e.g. it isn't on PATH inside this sandbox, run the same command via `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js auth device-init ...`.)
+(If `mixshift` isn't found, e.g. it isn't on PATH inside this sandbox, run the same command via `node "$MIXSHIFT_CLI" auth device-init ...`.)
 
 **If device-init returns `{ "ok": false, "error": "<message>" }`** instead of the JSON above, the request to `mcp.mixshift.io` never completed, almost always the Cowork / Claude Code sandbox egress allowlist. Do NOT send a link or retry in a loop. Surface the message and go to **"If the sandbox is blocking sign-in"** below.
 
@@ -154,7 +154,7 @@ Emit `skill.completed --outcome ok` for the handoff (the user got the correct ne
 
 Lead with `doctor`, which confirms the cause and prints the exact remediation:
 
-1. **Diagnose:** run `mixshift doctor` (or `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js doctor`). It reports whether the service is reachable and, if not, the required allowlist domains.
+1. **Diagnose:** run `mixshift doctor` (or `node "$MIXSHIFT_CLI" doctor`). It reports whether the service is reachable and, if not, the required allowlist domains.
 2. **Fix the allowlist** (pick the row for your plan; add BOTH `mcp.mixshift.io` and `*.amazonaws.com`, the second for SP-API report downloads):
    - **Cowork, personal Pro/Max:** open Settings > Capabilities (claude.ai/settings/capabilities) > "Code execution and file creation", enable "Allow network egress", add both domains under "Additional allowed domains", then start a **new** conversation. If they do not take under "Package managers only" mode, set the mode to "All domains".
    - **Cowork, Team/Enterprise:** an org admin adds the same domains under Organization settings > Capabilities > Code execution, then a **new** conversation.

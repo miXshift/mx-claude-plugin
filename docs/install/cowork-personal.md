@@ -107,7 +107,7 @@ First, fully quit and restart the Claude app (macOS: Cmd+Q, not just closing the
 Retry once first: transient network hiccups produce the same blank error. If it keeps failing, check the network egress allowlist (same fix as the "fetch failed" entry below; the marketplace fetch goes through the same sandbox). Also note the URL form: the branch-pinned form (`https://github.com/miXshift/mx-claude-plugin.git#stable`) may fail in Cowork's add-marketplace UI. Use the plain repo URL (`https://github.com/miXshift/mx-claude-plugin`) there.
 
 **"command not found: mixshift" when Claude tries to run the welcome.**
-This means Cowork didn't auto-PATH the plugin's `bin/` directory. File a Cowork support request — this is the documented behavior per Cowork's plugin install docs and should be auto-handled. Workaround: ask Claude to invoke the harness via its absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
+This means the plugin's SessionStart hook did not register the PATH in this session (hooks run at session start, so make sure you started a NEW session after installing or updating). Workaround: ask Claude to invoke the harness directly with `node "$MIXSHIFT_CLI" welcome`, or if that variable is unset, to locate the plugin's install directory and run `node "<plugin root>/harness/dist/cli.js" welcome`.
 
 **Browser didn't open during sign-in.**
 The PKCE flow tries to open your default browser via the OS-native handler. If that fails (rare), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat — open that URL in any browser. If the chat skill never showed a URL at all, the harness may not be on PATH inside Cowork's Bash tool — say "run welcome" again, and if the issue persists open a feedback ticket.

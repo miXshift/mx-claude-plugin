@@ -284,10 +284,11 @@ Publish your existing local brand context to the shared org store once with `mix
 
 ### "command not found: mixshift"
 
-Cowork / Claude Code didn't auto-PATH the plugin's `bin/` directory. Workarounds:
+As of 0.8.3 the `mixshift` command is added to the session PATH by the plugin's SessionStart hook (the older auto-registered `bin/` directory is gone). If the command is not found:
 
-- Invoke via absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js <command>`
-- File a Cowork support ticket if the auto-PATH behavior is broken — it's documented to work.
+- Invoke via the hook-exported variable: `node "$MIXSHIFT_CLI" <command>`
+- If that variable is unset (the surface did not run the hook), ask Claude to locate the plugin's install directory and run `node "<plugin root>/harness/dist/cli.js" <command>`
+- Start a new session after installing or updating; hooks register PATH at session start.
 
 ### Browser didn't open during sign-in
 
