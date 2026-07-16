@@ -26,6 +26,7 @@
  */
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
+import { intentHeader } from '../auth/intent.js';
 import type {
   ContextSyncFailure,
   ContextSyncFailureKind,
@@ -120,6 +121,7 @@ export function createContextSyncClient(
           headers: {
             Authorization: `Bearer ${bearer}`,
             ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...intentHeader(),
           },
           ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(timeoutMs),

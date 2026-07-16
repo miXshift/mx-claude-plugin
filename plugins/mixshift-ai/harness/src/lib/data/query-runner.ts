@@ -22,6 +22,7 @@
 import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { type MysqlCreds, type DatahubCreds, isDatahubCreds } from '../auth/schema.js';
+import { intentHeader } from '../auth/intent.js';
 import { track, EventName } from '../telemetry/index.js';
 
 export type DataQueryFailureKind =
@@ -387,6 +388,7 @@ async function datahubAuthedPost(
         headers: {
           Authorization: `Bearer ${bearer}`,
           'Content-Type': 'application/json',
+          ...intentHeader(),
         },
         body: JSON.stringify(body),
         // Give the server a small grace window beyond its own timeout so

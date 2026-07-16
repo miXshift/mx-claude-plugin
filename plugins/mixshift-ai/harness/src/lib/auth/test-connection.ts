@@ -17,6 +17,7 @@
 
 import mysql from 'mysql2/promise';
 import type { DatahubCreds, MysqlCreds } from './schema.js';
+import { intentHeader } from './intent.js';
 
 export type FailureKind =
   | 'ip_not_allowed'
@@ -123,7 +124,7 @@ export async function testDatahubConnection(
   try {
     res = await fetch(`${creds.api_base}/auth/echo`, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${creds.access_token}` },
+      headers: { Authorization: `Bearer ${creds.access_token}`, ...intentHeader() },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
