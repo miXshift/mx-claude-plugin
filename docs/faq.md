@@ -284,11 +284,10 @@ Publish your existing local brand context to the shared org store once with `mix
 
 ### "command not found: mixshift"
 
-As of 0.8.3 the `mixshift` command is added to the session PATH by the plugin's SessionStart hook (the older auto-registered `bin/` directory is gone). If the command is not found:
+As of 0.8.3 the `mixshift` command is added to the session PATH by the plugin's SessionStart hook (the older auto-registered `bin/` directory is gone). Notes per surface:
 
-- Invoke via the hook-exported variable: `node "$MIXSHIFT_CLI" <command>`
-- If that variable is unset (the surface did not run the hook), ask Claude to locate the plugin's install directory and run `node "<plugin root>/harness/dist/cli.js" <command>`
-- Start a new session after installing or updating; hooks register PATH at session start.
+- Claude Code (terminal or desktop app): the hook runs at session start. If `mixshift` is not found, start a new session after installing or updating, or invoke via the hook-exported variable: `node "$MIXSHIFT_CLI" <command>`.
+- Cowork: plugin session hooks do not run there, so `mixshift` is never on PATH. This is expected; the skills locate the harness automatically and run `node "<plugin root>/harness/dist/cli.js" <command>` for you.
 
 ### Browser didn't open during sign-in
 

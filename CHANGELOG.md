@@ -27,6 +27,15 @@ app plugin panel, Cowork, and the admin console).
   where hooks are unavailable: `node "$MIXSHIFT_CLI"`, or resolving the plugin
   root from the skill's own base directory.
 
+### Upgrade note for Cowork scheduled tasks
+
+- Cowork does not run plugin session hooks, so scheduled-task prompts must
+  not call bare `mixshift`. If you have a scheduled task created before
+  0.8.3, update its stored prompt to resolve the CLI entrypoint at runtime
+  (see the mx-auth-service-setup skill's runtime-discovery block) and invoke
+  commands as `node "$MIXSHIFT_CLI" <command>`. Interactive skills are
+  unaffected; they fall back automatically.
+
 ### Upgrade note for direct-CLI users
 
 - If you cloned the repo and symlinked or PATH-exported `bin/mixshift` per the

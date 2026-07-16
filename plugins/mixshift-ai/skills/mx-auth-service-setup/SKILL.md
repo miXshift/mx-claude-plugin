@@ -112,9 +112,17 @@ CRED="$(find /sessions -maxdepth 7 -type f -path '*/.mixshift/auth/credentials' 
 export MIXSHIFT_DATA_DIR="$(dirname "$(dirname "$CRED")")"
 # If CRED is empty, STOP and report the credential is missing (re-run this setup) —
 # never proceed (or report success) as if all is well.
+
+# Resolve the harness CLI the same way. Cowork does NOT run plugin session
+# hooks (verified 2026-07-16), so in a scheduled sandbox neither `mixshift`
+# on PATH nor $MIXSHIFT_CLI can be assumed. NEVER write bare `mixshift ...`
+# into a scheduled task's stored prompt; resolve the entrypoint first:
+MIXSHIFT_CLI="${MIXSHIFT_CLI:-$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' -path '*mixshift*' 2>/dev/null | head -1)}"
+# Then invoke every command as: node "$MIXSHIFT_CLI" <cmd> <args>
+# If MIXSHIFT_CLI resolves empty, STOP and report the plugin payload is missing.
 ```
 
-This runtime discovery is the proven pattern for Cowork scheduled tasks. If you can see the scheduled skill's file in this workspace, offer to add that block; otherwise hand the user the exact lines. (Outside Cowork, the default `~/.mixshift` is found automatically — no block needed.)
+This runtime discovery is the proven pattern for Cowork scheduled tasks. If you can see the scheduled skill's file in this workspace, offer to add that block; otherwise hand the user the exact lines. Offer the same fix for any EXISTING scheduled task whose stored prompt still calls bare `mixshift` — those prompts break silently when the plugin updates. (Outside Cowork, the default `~/.mixshift` is found automatically and the session hook provides `mixshift`/`$MIXSHIFT_CLI` — no block needed.)
 
 3. Bottom line:
 
