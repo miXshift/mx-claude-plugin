@@ -12,7 +12,7 @@
  * session start — on any error it exits 0 having done nothing, and skills
  * fall back to `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"`.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,7 +27,14 @@ try {
       // a `C:/...` entry would split at the drive colon. Use the /c/... form.
       binDir = binDir.replace(/\\/g, '/').replace(/^([A-Za-z]):\//, (_, d) => `/${d.toLowerCase()}/`);
     }
-    appendFileSync(envFile, `\nexport PATH="${binDir}:$PATH"\n`);
+    const exportLine = `export PATH="${binDir}:$PATH"`;
+    // SessionStart fires more than once per session (startup, then again on
+    // every resume/compact) against the SAME env file — append only once.
+    let already = false;
+    try {
+      already = readFileSync(envFile, 'utf8').includes(exportLine);
+    } catch {}
+    if (!already) appendFileSync(envFile, `\n${exportLine}\n`);
   }
 } catch {
   // Never surface errors from a session-start hook; fallback invocation covers us.
