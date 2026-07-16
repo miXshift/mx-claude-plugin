@@ -39,6 +39,9 @@ trigger_phrases:
 
 # Amazon Ads (live account state + audited writes)
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 ## About the Amazon Ads surface (authoritative, do not guess)
 
 When characterizing this capability to the user, use these facts:

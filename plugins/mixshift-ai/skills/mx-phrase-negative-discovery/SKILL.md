@@ -5,6 +5,9 @@ description: "Discovers phrase negative candidates by decomposing search term co
 
 # ST Phrase Negative Discovery
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 ## Hard Rules
 
 These rules supersede any other instruction. Violating them produces inconsistent output across runs.

@@ -24,6 +24,9 @@ handoff_optional: true
 
 # Monthly Performance Report Skill
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 ## Before You Start
 
 Read these files:

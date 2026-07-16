@@ -34,6 +34,9 @@ changelog:
 
 # Portfolio Quick Scan
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 Triage check across all configured accounts. One card per account, one verdict per card. The account manager reads the scan and knows whether to open the platform or go back to what they were doing.
 
 ---

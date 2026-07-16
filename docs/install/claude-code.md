@@ -166,9 +166,9 @@ claude plugin update mixshift-ai
 Confirm what your local clone is actually pinned at with `git -C ~/.claude/plugins/marketplaces/mixshift log --oneline -1`, and what's installed in `~/.claude/plugins/installed_plugins.json` (`version` + `gitCommitSha`). As always, the new version only loads after a full restart.
 
 **"command not found: mixshift" after install.**
-Claude Code should auto-add the plugin's `bin/` directory to the Bash tool's PATH. If it doesn't, you have two workarounds:
+The plugin's SessionStart hook adds `harness/bin/` to the Bash tool's PATH when a session starts. If `mixshift` still isn't found (for example, the surface doesn't run plugin hooks), you have two workarounds:
 - Run via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`
-- Add the bin path to your shell's PATH manually: `export PATH="$HOME/.claude/plugins/mixshift-ai/bin:$PATH"` (exact path may vary)
+- Add the bin path to your shell's PATH manually: `export PATH="$HOME/.claude/plugins/cache/mixshift/mixshift-ai/<version>/harness/bin:$PATH"` (exact path may vary)
 
 **Browser didn't open during sign-in.**
 PKCE tries to open your default browser via the OS-native handler. On Linux without a display environment (headless server, container, SSH session), the open call fails. The harness detects this and falls back to device-code, printing a URL you can open on any machine with a browser. To force the device-code flow up front: `mixshift auth login --mode device --person-label you@yourcompany.com`.

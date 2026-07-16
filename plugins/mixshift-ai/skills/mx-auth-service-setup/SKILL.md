@@ -35,6 +35,9 @@ trigger_phrases:
 
 # Service credential setup (chat-orchestrated)
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 Get a machine credential configured so this workspace's MixShift access works with nobody at the keyboard. The user only does the two things Claude cannot: create the credential in the MixShift admin page (it needs their tenant password), and hand over the secret. Claude does everything else.
 
 ## When this skill applies (and when it doesn't)

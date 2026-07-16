@@ -5,6 +5,9 @@ description: "Set up Brand Context for a brand: build its Tier 3 brand context d
 
 # Brand Context Setup — Tier 3 Context Builder
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 *(formerly mx-account-cold-start.)*
 
 **Use only data returned by the prefetched queries, `context.yaml`, `narrative.md`, and source-backed `brand-intelligence.yaml`. Do not supplement with general Amazon or e-commerce knowledge, industry benchmarks, or assumed platform dynamics not present in those inputs.**

@@ -3,6 +3,29 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.3
+
+Restores the ability to install the plugin through claude.ai surfaces (desktop
+app plugin panel, Cowork, and the admin console).
+
+### Fixed
+
+- **Installs through claude.ai were being rejected.** A new claude.ai plugin
+  validation rule disallows plugins that ship a top-level `bin/` directory,
+  which blocked zip uploads and marketplace syncs of 0.8.2 and earlier. The
+  `mixshift` command now lives at `harness/bin/` and is placed on the session
+  PATH by a new SessionStart hook, which is the mechanism the validator
+  endorses. No behavior change for existing installs: `mixshift <command>`
+  works exactly as before.
+
+### Added
+
+- **Session hook scaffolding.** The plugin now ships a `hooks/` directory with
+  a SessionStart hook (currently used only for PATH registration). Skills also
+  carry an explicit fallback so every command still runs even on a surface
+  where hooks are unavailable, via
+  `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"`.
+
 ## 0.8.2
 
 A new way for Claude Team and Enterprise admins to roll the plugin out to their

@@ -7,8 +7,10 @@
  *
  *   dist-zip/mixshift-ai-plugin-<version>.zip
  *     Single-plugin layout. The plugin's own contents sit at the zip ROOT
- *     (.claude-plugin/plugin.json, bin/, harness/dist/, skills/, ...), so the
- *     admin console sees a plugin folder directly.
+ *     (.claude-plugin/plugin.json, hooks/, harness/bin/, harness/dist/,
+ *     skills/, ...), so the admin console sees a plugin folder directly.
+ *     NOTE: no top-level bin/ — the claude.ai validator rejects it; PATH
+ *     registration happens via the SessionStart hook instead.
  *
  *   dist-zip/mixshift-ai-marketplace-<version>.zip
  *     Marketplace layout: .claude-plugin/marketplace.json at the root plus the
@@ -244,8 +246,8 @@ const EXACT = new Set([
   'harness/dist/build-meta.json',
   'harness/package.json',
 ]);
-const PREFIXES = ['bin/', 'harness/assets/', 'shared/', 'skills/'];
-const EXEC_RELS = new Set(['bin/mixshift', 'harness/dist/cli.js']);
+const PREFIXES = ['harness/bin/', 'hooks/', 'harness/assets/', 'shared/', 'skills/'];
+const EXEC_RELS = new Set(['harness/bin/mixshift', 'harness/dist/cli.js']);
 
 function isIncluded(rel) {
   if (EXACT.has(rel)) return true;

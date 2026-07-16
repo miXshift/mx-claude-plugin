@@ -29,14 +29,14 @@ npm install
 npm run build
 ```
 
-The build emits `dist/cli.js` — a bundled, self-contained executable. Make `bin/mixshift` (the public entry point) available on your PATH:
+The build emits `dist/cli.js` — a bundled, self-contained executable. Make `harness/bin/mixshift` (the public entry point) available on your PATH:
 
 ```bash
 # Replace ~/path/to with where you cloned
-export PATH="$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/bin:$PATH"
+export PATH="$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/harness/bin:$PATH"
 
 # Or symlink globally
-sudo ln -sf "$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/bin/mixshift" /usr/local/bin/mixshift
+sudo ln -sf "$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/harness/bin/mixshift" /usr/local/bin/mixshift
 ```
 
 Test:
@@ -177,7 +177,7 @@ Install a current Node. The plugin requires `node ≥ 20.0.0` per the harness's 
 Your PATH isn't persisted. Add the `export PATH=...` line to your shell rc file (`~/.bashrc`, `~/.zshrc`, etc.).
 
 **You want to test a fork / development branch.**
-Clone, `git checkout <branch>`, then `npm install && npm run build`. The bin/mixshift wrapper forwards to whichever `dist/cli.js` is in your local working tree.
+Clone, `git checkout <branch>`, then `npm install && npm run build`. The harness/bin/mixshift wrapper forwards to whichever `dist/cli.js` is in your local working tree.
 
 **Any command fails with "fetch failed" or a "403 from proxy after CONNECT".**
 You're running inside a network-restricted sandbox (most often Claude Code's Bash sandbox). The MixShift host has to be on the egress allowlist. Run `mixshift doctor` for the exact remediation. See [A note on sandbox egress](#a-note-on-sandbox-egress) below. In a plain terminal with normal outbound access, this error means something else (DNS, VPN, or the service being down) and `mixshift doctor` will tell you which.

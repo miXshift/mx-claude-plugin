@@ -29,6 +29,9 @@ trigger_phrases:
 
 # Share a skill with MixShift
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 Use this when a user has built something with the plugin (a skill, a workflow, a
 reusable prompt) and wants MixShift to have it for the shared skill library. The
 goal for now is simply to RECEIVE it cleanly so the team can review and

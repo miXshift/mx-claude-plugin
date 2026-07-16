@@ -5,6 +5,9 @@ description: "Pure data extraction layer for search term analysis. Pulls window 
 
 # ST Data Pull
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 Pure data extraction. No recommendations, no LLM, no judgment calls. Output is a structured JSON artifact that feeds downstream negation and harvest skills.
 
 ---

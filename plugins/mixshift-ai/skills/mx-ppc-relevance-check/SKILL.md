@@ -25,6 +25,9 @@ standalone: true
 
 # PPC Relevance Check
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"` instead.
+
+
 Classification only. This skill answers one question: does this search term describe a customer
 with meaningful purchase intent for this brand's products? It does not recommend negation.
 
