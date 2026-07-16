@@ -210,7 +210,9 @@ function registerCall(ads: Command): void {
         'preview) so the brand-timeline event links preview → commit. When ' +
         'omitted, the commit audit id is used. Set MIXSHIFT_SKILL_ID / ' +
         'MIXSHIFT_MODEL_ID env vars to attribute the change to the driving ' +
-        'skill/model.',
+        'skill/model. The same MIXSHIFT_SKILL_ID (or MIXSHIFT_INTENT to ' +
+        'override it) also rides every request to MixShift as the ' +
+        'x-mixshift-intent header, for usage attribution only.',
     )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
