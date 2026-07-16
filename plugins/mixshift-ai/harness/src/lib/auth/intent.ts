@@ -51,11 +51,17 @@ function normalize(value: string | undefined): string | undefined {
  * Never throws. Never returns a header the server-side sanitizer would drop.
  */
 export function intentHeader(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
-  const raw = normalize(env.MIXSHIFT_INTENT) ?? normalize(env.MIXSHIFT_SKILL_ID);
-  if (raw === undefined) return {};
-
-  const candidate = raw.trim().toLowerCase();
-  if (!INTENT_PATTERN.test(candidate)) return {};
-
-  return { [INTENT_HEADER]: candidate };
+  // Try each source in precedence order and use the first that SANITIZES to a
+  // valid value — not merely the first non-empty one. A malformed explicit
+  // override (whitespace, a stray shell expansion, bad charset) must NOT
+  // suppress a valid MIXSHIFT_SKILL_ID: an invalid intent can only make a
+  // stat wrong, and silently dropping attribution for a whole run is the worse
+  // failure. (red team, PR #78)
+  for (const raw of [env.MIXSHIFT_INTENT, env.MIXSHIFT_SKILL_ID]) {
+    const value = normalize(raw);
+    if (value === undefined) continue;
+    const candidate = value.trim().toLowerCase();
+    if (INTENT_PATTERN.test(candidate)) return { [INTENT_HEADER]: candidate };
+  }
+  return {};
 }

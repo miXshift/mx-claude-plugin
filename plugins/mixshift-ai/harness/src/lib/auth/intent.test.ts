@@ -58,6 +58,21 @@ describe('intentHeader precedence', () => {
   it('returns {} when both are set but empty', () => {
     expect(intentHeader({ MIXSHIFT_INTENT: '', MIXSHIFT_SKILL_ID: '' })).toEqual({});
   });
+
+  it('falls back to a valid MIXSHIFT_SKILL_ID when MIXSHIFT_INTENT is non-empty but INVALID (not just empty)', () => {
+    // A malformed override (whitespace / stray shell expansion / bad charset)
+    // must not suppress a valid skill id — sanitize-then-fallback, not
+    // first-non-empty. (red team, PR #78)
+    for (const bad of ['   ', 'has space', '$UNSET foo', 'x'.repeat(65), 'UPPER!bad']) {
+      expect(
+        intentHeader({ MIXSHIFT_INTENT: bad, MIXSHIFT_SKILL_ID: 'mx-daily-health-check' }),
+      ).toEqual({ 'x-mixshift-intent': 'mx-daily-health-check' });
+    }
+  });
+
+  it('returns {} when the override is invalid AND the skill id is also invalid', () => {
+    expect(intentHeader({ MIXSHIFT_INTENT: 'bad space', MIXSHIFT_SKILL_ID: 'also bad' })).toEqual({});
+  });
 });
 
 describe('intentHeader sanitization (mirrors the server sanitizer)', () => {

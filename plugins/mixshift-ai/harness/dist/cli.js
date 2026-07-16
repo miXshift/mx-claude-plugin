@@ -63788,11 +63788,13 @@ function normalize(value) {
   return value && value.length > 0 ? value : void 0;
 }
 function intentHeader(env = process.env) {
-  const raw = normalize(env.MIXSHIFT_INTENT) ?? normalize(env.MIXSHIFT_SKILL_ID);
-  if (raw === void 0) return {};
-  const candidate = raw.trim().toLowerCase();
-  if (!INTENT_PATTERN.test(candidate)) return {};
-  return { [INTENT_HEADER]: candidate };
+  for (const raw of [env.MIXSHIFT_INTENT, env.MIXSHIFT_SKILL_ID]) {
+    const value = normalize(raw);
+    if (value === void 0) continue;
+    const candidate = value.trim().toLowerCase();
+    if (INTENT_PATTERN.test(candidate)) return { [INTENT_HEADER]: candidate };
+  }
+  return {};
 }
 var INTENT_HEADER, INTENT_PATTERN;
 var init_intent = __esm({
