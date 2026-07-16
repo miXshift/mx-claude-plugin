@@ -46,6 +46,9 @@ changelog:
 
 # ASIN Target Negation Review
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+
+
 This skill answers one question: for ASIN targets entered through automatic, category, substitute, complement, or related Product Attribute Targeting paths, which ASINs should be negated exact now, and which should instead be reviewed or watched?
 
 This is Phase 2 because the judgment problem is different from exact search-term negation. Search terms are language-intent review. ASIN targets are PDP overlap review: product class, form factor, buyer intent, and competitive adjacency.

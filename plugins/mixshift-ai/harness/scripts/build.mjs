@@ -44,10 +44,10 @@ const __dirname = (await import('node:path')).dirname(__filename);
 // Make it executable so `./dist/cli.js` works in addition to `node dist/cli.js`
 await chmod(outFile, 0o755);
 
-// Also chmod the bin/mixshift wrapper so the plugin-runtime PATH-registered
+// Also chmod the harness/bin/mixshift wrapper so the hook-PATH-registered
 // entry stays executable across rebuilds. On Windows the mode is informational
 // (Bash on Windows reads the shebang directly), but on POSIX it matters.
-const binPath = join(rootDir, '..', 'bin', 'mixshift');
+const binPath = join(rootDir, 'bin', 'mixshift');
 try {
   await chmod(binPath, 0o755);
 } catch (err) {

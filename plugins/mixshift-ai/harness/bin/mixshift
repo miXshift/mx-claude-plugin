@@ -2,21 +2,21 @@
 /**
  * mixshift — plugin-runtime entry point.
  *
- * Files in this `bin/` directory are auto-added to the Bash tool's PATH
- * when the plugin loads in Claude Code or Cowork. SKILL.md files can
- * therefore invoke `mixshift data list-tables` etc. without knowing the
- * plugin install path.
+ * This dir is added to the Bash tool's PATH by the plugin's SessionStart
+ * hook (hooks/session-start.mjs writes the export to CLAUDE_ENV_FILE), so
+ * SKILL.md files can invoke `mixshift data list-tables` etc. without
+ * knowing the plugin install path.
+ *
+ * It deliberately does NOT live in a top-level `bin/` directory: the
+ * claude.ai plugin validator rejects payloads with top-level bin/
+ * executables (they get PATH-registered by the CLI runtime without
+ * appearing on the admin approval surface). Hooks ARE shown on that
+ * surface, so PATH registration happens there instead. On surfaces where
+ * hooks do not run, skills fall back to
+ * `node "$CLAUDE_PLUGIN_ROOT/harness/dist/cli.js"`.
  *
  * This script is a thin shim that forwards to the bundled CLI at
- * `../harness/dist/cli.js` (built by `npm run build` in `harness/`).
- *
- * Why not put dist/cli.js directly in bin/?
- *   - dist/ is the build output; keeping it separate from bin/ makes the
- *     boundary between source and packaged binary clear.
- *   - The plugin runtime PATH-registers bin/ but not arbitrary build
- *     directories, so a small forwarding shim is the cleanest pattern.
- *   - Local development can still call `node harness/dist/cli.js` directly
- *     without going through this wrapper.
+ * `../dist/cli.js` (built by `npm run build` in `harness/`).
  */
 
 import { readFileSync, statSync } from 'node:fs';
@@ -24,8 +24,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cliPath = join(here, '..', 'harness', 'dist', 'cli.js');
-const metaPath = join(here, '..', 'harness', 'dist', 'build-meta.json');
+const cliPath = join(here, '..', 'dist', 'cli.js');
+const metaPath = join(here, '..', 'dist', 'build-meta.json');
 
 // Bundle-integrity preflight. The Cowork plugin sync has been observed to
 // truncate dist/cli.js mid-download; when that happens the dynamic import below

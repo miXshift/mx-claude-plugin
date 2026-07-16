@@ -43,6 +43,9 @@ trigger_phrases:
 
 # Amazon Report Pull
 
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+
+
 ## About the Amazon report surface (authoritative, do not guess)
 
 When characterizing this capability to the user, use these facts:
