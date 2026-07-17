@@ -212,6 +212,8 @@ Every write is preview-gated. The harness sends the change to MixShift's service
 
 Yes. `mixshift data query --sql "<your SQL>"` runs arbitrary read-only SQL. The warehouse user has SELECT permissions only — destructive operations (INSERT/UPDATE/DELETE/DDL) fail at the database level. Statement-level timeout is 60s; narrow your query if it takes longer.
 
+Large results no longer fail with a size error. The harness pages through big result sets automatically, so a query that returns more than the old inline limit still comes back with every row. Pass `--out <path>` to stream the full result straight to a CSV file. Without `--out`, a small result renders inline and a large one is written to a temporary CSV instead, with the file path reported so you can open it. In practice this comfortably covers pulls up to tens of thousands of rows; genuinely massive extracts are still best narrowed by date range or filters.
+
 In chat: "run this query: SELECT ..." → Claude routes through `data query`.
 
 ### How do I export to CSV?
