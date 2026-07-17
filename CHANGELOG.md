@@ -3,6 +3,28 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.4
+
+Big query and export results now come back automatically instead of failing
+with a size error.
+
+### Changed
+
+- **Large `data query` and `data export` results no longer hit a size limit.**
+  Previously a query or export that returned too many rows or too much data
+  came back as a size error and you had to narrow it and retry. Now the harness
+  pages through the full result set for you, so you get every row. Pass
+  `--out <path>` to stream a large result straight to a CSV file. If you run a
+  large query without `--out`, the harness writes the result to a temporary CSV
+  and tells you the file path instead of trying to render it inline.
+
+### Practical guidance
+
+- For big pulls, add `--out <path>` (or in chat, ask to export to CSV) so the
+  result lands in a file you can open directly. This comfortably covers pulls up
+  to tens of thousands of rows; for genuinely massive extracts, still narrow by
+  date range or add filters.
+
 ## 0.8.3
 
 Restores the ability to install the plugin through claude.ai surfaces (desktop

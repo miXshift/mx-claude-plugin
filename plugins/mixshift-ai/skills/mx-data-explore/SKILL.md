@@ -397,7 +397,7 @@ A successful query that returns 0 rows isn't an error — surface it cleanly. Of
 
 - **Small results** (≤ 20 rows): render inline as a markdown table.
 - **Wide tables** (>15 columns) like `campaignmetric`: the table is unreadable inline. Either (a) suggest selecting specific columns via a custom query, or (b) export to CSV and report the path.
-- **Large results** (≥ 100 rows): always export to CSV instead of inline rendering.
+- **Large results** (≥ 100 rows): always export to CSV instead of inline rendering. The harness pages through large result sets automatically and never rejects a query for being too big; pass `--out <path>` to stream the full set to a chosen file, or omit it and the harness spills a large result to a temporary CSV and reports the path. Either way, prefer surfacing the file path over dumping rows inline.
 - **Numeric columns**: render as-is. The harness already coerces nulls / NaN / Infinity to empty cells.
 - **Dates**: harness writes `YYYY-MM-DD` (no time component) in CSV. Same in markdown.
 
