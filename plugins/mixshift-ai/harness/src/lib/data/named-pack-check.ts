@@ -13,6 +13,7 @@
  */
 
 import { loadCatalog } from '../prefetch/sql-library.js';
+import { intentHeader } from '../auth/intent.js';
 
 export interface NamedPackResult {
   /** False when we couldn't run the check (no named ids, or fetch failed). */
@@ -68,7 +69,7 @@ export async function checkNamedPackCompat(opts: {
   let manifest: PackManifest;
   try {
     const res = await doFetch(`${opts.apiBase}/api/named-query/ids`, {
-      headers: { Authorization: `Bearer ${opts.accessToken}` },
+      headers: { Authorization: `Bearer ${opts.accessToken}`, ...intentHeader() },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {

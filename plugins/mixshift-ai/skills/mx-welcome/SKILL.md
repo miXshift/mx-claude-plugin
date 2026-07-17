@@ -79,7 +79,7 @@ If the user asks a follow-up about a specific step, reference the rendered text 
 
 If `mixshift welcome --format chat` fails ("command not found", harness error, etc.), fall back to:
 
-1. `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome --format chat` — same output, absolute path.
+1. `node "$MIXSHIFT_CLI" welcome --format chat` — same output, absolute path.
 2. As a last resort, the older `mixshift welcome` (no --format flag) outputs the terminal-ASCII version. Surface that as-is in a code block; don't try to paraphrase it.
 
 ## Drive the sign-in inline (REQUIRED for not-signed-in users)
@@ -91,7 +91,7 @@ The welcome copy already told the user: *"I'll set up a sign-in link for you rig
 **If the user says they have no MixShift account** (or asks how to get one), do not drive the sign-in; there is nothing to sign in to yet. The rendered welcome already includes the "No MixShift account yet?" pointer. Reinforce it conversationally: create an account at https://www.mydashapplications.com/auth/registration, then connect Amazon accounts and activate ads + retail data (walkthrough: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Set the expectation that most accounts are fully populated within 24-48 hours of activation, large catalogs can take longer, and MixShift emails them when data is ready. Invite them back: say "welcome" then and sign-in continues from Step 1 here. Emit `skill.completed --outcome ok` (the registration handoff is the correct outcome for a brand-new user) and end the turn.
 
 1. **Collect their work email.** Ask once, in plain language: *"What's your work email? (Used for session attribution — the same one you use to log into MixShift is fine.)"* Skip this prompt if a stored email exists (check `~/.mixshift/auth/credentials` for `datahub.person_label` from a prior login, or `~/.mixshift/profile.yaml::user.email`).
-2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash (if `mixshift` isn't found, run the same args via `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js`).
+2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash (if `mixshift` isn't found, run the same args via `node "$MIXSHIFT_CLI"`).
    - **On success**, the JSON carries `device_code` and `login_url`; capture both and continue to step 3.
    - **If it returns `{ "ok": false, "error": "<message>" }`** (a network failure, typically the Cowork / Claude Code sandbox egress allowlist not including `mcp.mixshift.io`): **stop here. Do NOT send a sign-in link you can't complete.** Surface the `error` text, have the user run `mixshift doctor` for the full diagnosis, and point them to mx-auth-login's **"If the sandbox is blocking sign-in"** section for remediation plus no-sandbox alternatives. Emit `skill.completed --outcome failed` and end. Don't loop device-init.
 3. **Prep the user + send them the link** in one chat reply:
@@ -118,7 +118,7 @@ Trigger when the user:
 
 The `mixshift welcome` command writes to stderr (so it shows up correctly in terminals). In Claude's Bash output you'll see the rendered text. Just pass it through to the user.
 
-If the command fails with "command not found" or similar, fall back to a brief one-line message: *"Looks like the plugin's bin path isn't registered. Try restarting Claude Code, or run `node ${CLAUDE_PLUGIN_ROOT}/harness/dist/cli.js welcome` as a fallback."*
+If the command fails with "command not found" or similar, fall back to a brief one-line message: *"Looks like the plugin's bin path isn't registered. Try restarting Claude Code, or run `node "$MIXSHIFT_CLI" welcome` as a fallback."*
 
 ## One-time note for users from before Org Brain
 

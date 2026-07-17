@@ -63783,6 +63783,28 @@ var init_credentials = __esm({
   }
 });
 
+// harness/src/lib/auth/intent.ts
+function normalize(value) {
+  return value && value.length > 0 ? value : void 0;
+}
+function intentHeader(env = process.env) {
+  for (const raw of [env.MIXSHIFT_INTENT, env.MIXSHIFT_SKILL_ID]) {
+    const value = normalize(raw);
+    if (value === void 0) continue;
+    const candidate = value.trim().toLowerCase();
+    if (INTENT_PATTERN.test(candidate)) return { [INTENT_HEADER]: candidate };
+  }
+  return {};
+}
+var INTENT_HEADER, INTENT_PATTERN;
+var init_intent = __esm({
+  "harness/src/lib/auth/intent.ts"() {
+    "use strict";
+    INTENT_HEADER = "x-mixshift-intent";
+    INTENT_PATTERN = /^[a-z0-9_.:-]{1,64}$/;
+  }
+});
+
 // harness/src/lib/defaults/schema.ts
 var mysqlDefaults, credentialRetrieval, defaultsSchema;
 var init_schema3 = __esm({
@@ -64985,7 +65007,8 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
         method: "POST",
         headers: {
           Authorization: `Bearer ${bearer}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...intentHeader()
         },
         body: JSON.stringify(body),
         // Give the server a small grace window beyond its own timeout so
@@ -65323,6 +65346,7 @@ var init_query_runner = __esm({
     import_promise = __toESM(require_promise(), 1);
     init_credentials();
     init_schema2();
+    init_intent();
     init_telemetry();
     SERVICE_ROW_CAP = 5e4;
     PAGE_BYTE_BUDGET = 8 * 1024 * 1024;
@@ -66382,6 +66406,7 @@ import { basename as basename2, dirname as dirname7, join as join8 } from "node:
 
 // harness/src/lib/context-sync/client.ts
 init_credentials();
+init_intent();
 var TEXT_DOC_TIMEOUT_MS = 3e4;
 var CORPUS_TIMEOUT_MS = 12e4;
 var ASSIGNMENT_TIMEOUT_MS = 2e3;
@@ -66403,7 +66428,8 @@ function createContextSyncClient(options = {}) {
           method,
           headers: {
             Authorization: `Bearer ${bearer}`,
-            ...body !== void 0 ? { "Content-Type": "application/json" } : {}
+            ...body !== void 0 ? { "Content-Type": "application/json" } : {},
+            ...intentHeader()
           },
           ...body !== void 0 ? { body: JSON.stringify(body) } : {},
           signal: AbortSignal.timeout(timeoutMs)
@@ -76841,6 +76867,7 @@ import { randomUUID as randomUUID4 } from "node:crypto";
 
 // harness/src/lib/auth/test-connection.ts
 var import_promise2 = __toESM(require_promise(), 1);
+init_intent();
 async function testConnection(creds, timeoutMs = 1e4) {
   let conn;
   try {
@@ -79326,7 +79353,7 @@ async function loadTablesCatalog(overridePath) {
       const parsed = (0, import_yaml18.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
-        ([name, meta3]) => normalize(name, meta3)
+        ([name, meta3]) => normalize2(name, meta3)
       );
     } catch (err) {
       if (isFileNotFoundError16(err)) continue;
@@ -79339,7 +79366,7 @@ async function describeTable(tableName, overridePath) {
   const all = await loadTablesCatalog(overridePath);
   return all.find((t) => t.name === tableName) ?? null;
 }
-function normalize(name, raw) {
+function normalize2(name, raw) {
   return {
     name,
     description: raw.description ?? "",
@@ -82334,6 +82361,7 @@ import { resolve as resolvePath2 } from "node:path";
 
 // harness/src/lib/amazon/reports.ts
 init_credentials();
+init_intent();
 import { createWriteStream as createWriteStream2 } from "node:fs";
 import { mkdir as mkdir23 } from "node:fs/promises";
 import { dirname as dirname27 } from "node:path";
@@ -82643,7 +82671,8 @@ async function amazonRequest(spec, opts) {
         method: spec.method,
         headers: {
           Authorization: `Bearer ${bearer}`,
-          ...spec.body ? { "Content-Type": "application/json" } : {}
+          ...spec.body ? { "Content-Type": "application/json" } : {},
+          ...intentHeader()
         },
         body: spec.body ? JSON.stringify(spec.body) : void 0,
         signal: AbortSignal.timeout(timeoutMs)
@@ -82868,7 +82897,7 @@ async function loadReportCatalog(overridePath) {
       const raw = await readFile31(path2, "utf-8");
       const parsed = (0, import_yaml20.parse)(raw);
       if (!parsed?.reports) continue;
-      return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize2);
+      return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
     } catch (err) {
       if (isFileNotFoundError17(err)) continue;
       throw err;
@@ -82880,7 +82909,7 @@ async function findReportType(reportType, overridePath) {
   const all = await loadReportCatalog(overridePath);
   return all.find((r) => r.reportType === reportType) ?? null;
 }
-function normalize2(raw) {
+function normalize3(raw) {
   return {
     reportType: raw.report_type,
     title: raw.title ?? raw.report_type,
@@ -84565,6 +84594,7 @@ async function adsCall(input, opts = {}) {
 
 // harness/src/lib/timeline/client.ts
 init_credentials();
+init_intent();
 var TIMELINE_TIMEOUT_MS = 3e4;
 var LIST_ALL_CAP = 2e3;
 var UNREACHABLE_FRIENDLY2 = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
@@ -84585,7 +84615,8 @@ function createTimelineClient(options = {}) {
           method,
           headers: {
             Authorization: `Bearer ${bearer}`,
-            ...body !== void 0 ? { "Content-Type": "application/json" } : {}
+            ...body !== void 0 ? { "Content-Type": "application/json" } : {},
+            ...intentHeader()
           },
           ...body !== void 0 ? { body: JSON.stringify(body) } : {},
           signal: AbortSignal.timeout(timeoutMs)
@@ -84968,7 +84999,7 @@ function registerCall2(ads) {
     "WRITE operations: actually apply the change set (default is a dry-run preview that mutates nothing). Use only after explicit user confirmation."
   ).option(
     "--proposal-id <id>",
-    "WRITE operations, with --commit: the dry-run audit id (printed by the preview) so the brand-timeline event links preview \u2192 commit. When omitted, the commit audit id is used. Set MIXSHIFT_SKILL_ID / MIXSHIFT_MODEL_ID env vars to attribute the change to the driving skill/model."
+    "WRITE operations, with --commit: the dry-run audit id (printed by the preview) so the brand-timeline event links preview \u2192 commit. When omitted, the commit audit id is used. Set MIXSHIFT_SKILL_ID / MIXSHIFT_MODEL_ID env vars to attribute the change to the driving skill/model. The same MIXSHIFT_SKILL_ID (or MIXSHIFT_INTENT to override it) also rides every request to MixShift as the x-mixshift-intent header, for usage attribution only."
   ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
@@ -85303,6 +85334,7 @@ init_consent();
 init_queue();
 
 // harness/src/lib/data/named-pack-check.ts
+init_intent();
 var DEFAULT_TIMEOUT_MS2 = 1e4;
 async function checkNamedPackCompat(opts) {
   const doFetch = opts.fetchImpl ?? fetch;
@@ -85320,7 +85352,7 @@ async function checkNamedPackCompat(opts) {
   let manifest;
   try {
     const res = await doFetch(`${opts.apiBase}/api/named-query/ids`, {
-      headers: { Authorization: `Bearer ${opts.accessToken}` },
+      headers: { Authorization: `Bearer ${opts.accessToken}`, ...intentHeader() },
       signal: AbortSignal.timeout(timeoutMs)
     });
     if (!res.ok) {

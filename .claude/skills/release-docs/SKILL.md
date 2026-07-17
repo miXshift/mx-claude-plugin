@@ -58,6 +58,13 @@ truth is the shipped code: `plugins/mixshift-ai/skills/<id>/` (the roster + each
    (dry-run by default, explicit confirm, `--commit`). Correct anything that
    over- or under-claims. Keep customer-facing copy free of em dashes.
 
+   Also audit the **invocation mechanism wording** (README, FAQ troubleshooting,
+   `docs/install/*`): since 0.8.3 the `mixshift` command reaches PATH via the
+   plugin's SessionStart hook, with fallbacks `node "$MIXSHIFT_CLI"` and resolving
+   the plugin root from a skill's base directory. No doc may describe the retired
+   top-level `bin/` auto-PATH, tell users to file Cowork tickets about it, or use
+   `$CLAUDE_PLUGIN_ROOT` in a Bash context (it is empty there; hook processes only).
+
 4. **Draft the CHANGELOG entry — two tiers (the public file is a customer surface).**
    `git log <last-tag>..HEAD --oneline` (last tag: `git describe --tags --abbrev=0`),
    then split the work into two destinations:

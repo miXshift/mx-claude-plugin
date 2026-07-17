@@ -84,7 +84,7 @@ You may not be an org owner. Cowork plugin admin requires owner permissions, not
 Confirm the repo is public (it must be for the GitHub source type). Check the published entry's status in the admin panel — Cowork should show whether the marketplace was successfully pulled.
 
 **Plugin installs but `mixshift welcome` returns "command not found".**
-Cowork didn't PATH-register the plugin's `bin/` directory for that user's seat. File a Cowork support ticket — this is the documented behavior. Workaround: invoke the harness via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`.
+This is expected on Cowork: Cowork does not run plugin session hooks, so the `mixshift` shorthand is never on PATH there. It is not an error and needs no support ticket. The skills handle it automatically by locating the plugin's install directory and running `node "<plugin root>/harness/dist/cli.js" welcome` — ask Claude to continue. Scheduled tasks are the one case that needs care: their stored prompts must resolve the CLI path at runtime (see the mx-auth-service-setup skill).
 
 **A user's plugin seems stuck on an old version after an update was published.**
 Two common causes:

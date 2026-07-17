@@ -7,8 +7,10 @@
  *
  *   dist-zip/mixshift-ai-plugin-<version>.zip
  *     Single-plugin layout. The plugin's own contents sit at the zip ROOT
- *     (.claude-plugin/plugin.json, bin/, harness/dist/, skills/, ...), so the
- *     admin console sees a plugin folder directly.
+ *     (.claude-plugin/plugin.json, hooks/, harness/bin/, harness/dist/,
+ *     skills/, ...), so the admin console sees a plugin folder directly.
+ *     NOTE: no top-level bin/ — the claude.ai validator rejects it; PATH
+ *     registration happens via the SessionStart hook instead.
  *
  *   dist-zip/mixshift-ai-marketplace-<version>.zip
  *     Marketplace layout: .claude-plugin/marketplace.json at the root plus the
@@ -244,8 +246,8 @@ const EXACT = new Set([
   'harness/dist/build-meta.json',
   'harness/package.json',
 ]);
-const PREFIXES = ['bin/', 'harness/assets/', 'shared/', 'skills/'];
-const EXEC_RELS = new Set(['bin/mixshift', 'harness/dist/cli.js']);
+const PREFIXES = ['harness/bin/', 'hooks/', 'harness/assets/', 'shared/', 'skills/'];
+const EXEC_RELS = new Set(['harness/bin/mixshift', 'harness/dist/cli.js']);
 
 function isIncluded(rel) {
   if (EXACT.has(rel)) return true;
@@ -262,6 +264,21 @@ if (!pluginRels.includes('harness/package.json')) {
   fail('harness/package.json missing — required so the CLI runs as ESM (avoids MODULE_TYPELESS warning).');
 }
 if (!pluginRels.includes('harness/dist/cli.js')) fail('harness/dist/cli.js not found in tracked set.');
+if (pluginRels.some((rel) => rel.startsWith('bin/'))) {
+  fail('top-level bin/ made it into the payload set — the claude.ai validator rejects it.');
+}
+if (!pluginRels.includes('hooks/hooks.json')) {
+  fail('hooks/hooks.json not found in tracked set — the PATH-registration hook must ship.');
+}
+try {
+  const h = JSON.parse(blob(PLUGIN_PREFIX + 'hooks/hooks.json').toString('utf8'));
+  const ss = h?.hooks?.SessionStart;
+  if (!Array.isArray(ss) || ss.length === 0 || !ss.some((m) => (m?.hooks ?? []).some((x) => x?.type === 'command'))) {
+    fail('hooks/hooks.json malformed: expected hooks.SessionStart[].hooks[] with a command entry.');
+  }
+} catch (err) {
+  fail(`hooks/hooks.json is not valid JSON: ${err.message}`);
+}
 
 // Cache each plugin blob once; reused across both layouts.
 const pluginBlobs = new Map();

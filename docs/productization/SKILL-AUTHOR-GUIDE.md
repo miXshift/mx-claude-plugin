@@ -8,16 +8,19 @@ an existing one.
 
 ## CLI invocation: always have a node fallback
 
-Skills call the bundled CLI as `mixshift <cmd>`. That works only when the plugin's `bin/` is on the session PATH, which is NOT guaranteed. Observed in the field: macOS Cowork sandboxes where `mixshift` returns `command not found` (exit 127), with the harness reachable only via its absolute entrypoint. Every skill that runs a CLI command must be able to fall back to it:
+Skills call the bundled CLI as `mixshift <cmd>`. Since 0.8.3 that name is put on the session PATH by the plugin's SessionStart hook (hooks/session-start.mjs), which is NOT guaranteed to have run on every surface. Observed in the field even before the hook era: macOS Cowork sandboxes where `mixshift` returns `command not found` (exit 127). Every skill that runs a CLI command must be able to fall back:
 
 ```bash
 # Preferred:
 mixshift <cmd> <args>
-# Fallback when `mixshift` is not found (e.g. not on the sandbox PATH):
-node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js <cmd> <args>
+# Fallback 1 - hook-exported absolute entrypoint:
+node "$MIXSHIFT_CLI" <cmd> <args>
+# Fallback 2 - no hook ran at all: resolve the plugin root from the skill's
+# own base directory (it is <plugin root>/skills/<skill name>) and run:
+node "<plugin root>/harness/dist/cli.js" <cmd> <args>
 ```
 
-`$CLAUDE_PLUGIN_ROOT` is set by the host to the plugin's install dir. For auth-critical and first-run skills (`mx-welcome`, `mx-auth-login`), state the fallback inline at the first CLI call so a missing PATH never strands a brand-new user. For other skills, one note near the first CLI call is enough.
+Do NOT use `$CLAUDE_PLUGIN_ROOT` in SKILL.md fallbacks: the host sets it for hook/MCP processes but it is EMPTY in the session's Bash environment (verified 2026-07-16). For auth-critical and first-run skills (`mx-welcome`, `mx-auth-login`), state the fallback inline at the first CLI call so a missing PATH never strands a brand-new user. For other skills, one note near the first CLI call is enough.
 
 ---
 
