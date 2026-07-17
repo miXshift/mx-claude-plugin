@@ -13,7 +13,7 @@ description: >
   summary). Read-only, routes through the bundled harness CLI. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.4.3"
+  version: "0.5.0"
   author: "MixShift"
 trigger_phrases:
   - pull a report
@@ -619,6 +619,47 @@ You:  1. Resolve merchant (Brand Registry required, same as above).
            --option "asins=B0XXXX1111 B0XXXX2222 B0XXXX3333" \
            --start 2026-05-25 --end 2026-05-31 --json
       4. Poll, then get with --out (JSON).
+```
+
+**ASIN-level Search Query Performance (SQP): the `asin` reportOption is
+REQUIRED.** `GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT` is the one
+Brand Analytics report type where Amazon will not generate anything without a
+`reportOptions.asin` value. Omitting it does not fail fast: Amazon accepts the
+request and then fails the report with FATAL during processing, with no
+useful error message, so always pass it. Watch the key name: this report uses
+the SINGULAR `asin`, while Search Catalog Performance (above) uses the PLURAL
+`asins`. Gather the ASIN list first (from brand context's hero SKUs, a quick
+warehouse pull, or by asking the user), and remember the window rule: a WEEK
+window must run Sunday to Saturday (MONTH/QUARTER are calendar periods
+instead), and a request cannot span two periods. Amazon caps this option at
+200 characters per report (about 18 ASINs), but you do not need to chunk
+anything yourself: `amazon report run` auto-batches any-size ASIN lists into
+multiple pulls and merges the resulting JSON into one file, so pass the full
+list. A large list means a proportionally longer, more throttle-heavy run;
+poll patiently through it the same as the Search Terms report above, and give
+the user a progress update every turn or two.
+```
+User: "Search Query Performance for these 40 ASINs, last week"
+You:  1. Resolve merchant (Brand Registry required, same as above).
+      2. describe-report GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT
+         to confirm the reportPeriod and asin options and the window rule.
+      3. Start (or, in a real terminal, run) with reportPeriod + the full
+         ASIN list under the singular `asin` key:
+         mixshift amazon report run --seller-id <id> \
+           --type GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT \
+           --option reportPeriod=WEEK \
+           --option "asin=B0XXXX1111 B0XXXX2222 ... (all 40)" \
+           --start 2026-07-05 --end 2026-07-11 --out <path>.json --json
+         (Sunday start, Saturday end for a WEEK window.) The result reports
+         how many chunks/report pulls it took (`chunks`, `run_ids`) even
+         though the output is one merged file.
+      4. In chat, `report run` is blocking and terminal-only (see above), so
+         its auto-batch/merge is not available there. For an ASIN list that
+         fits in one pull (about 18 ASINs), use start/poll/get exactly like
+         any other reportOptions call. For a longer list in chat, either ask
+         the user to run it from a real terminal with `report run`, or split
+         the ASIN list into <=200-char groups yourself and run separate
+         start/poll/get cycles per group, saving each to its own file.
 ```
 
 ### Pattern 4 - Vendor report

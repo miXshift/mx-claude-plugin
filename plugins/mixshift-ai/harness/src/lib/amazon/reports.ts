@@ -381,6 +381,158 @@ export function throttleBackoffMs(
   return Math.min(Math.max(base, eff), remaining);
 }
 
+// ---------------------------------------------------------------------------
+// Search Query Performance (SQP) ASIN-option chunking + merge
+//
+// SQP (GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT) is the one report
+// type modeled here that REQUIRES a reportOptions.asin value: a
+// space-separated ASIN list, capped by Amazon at SQP_ASIN_OPTION_CHAR_LIMIT
+// characters per report (~18 ASINs). Omit it and Amazon accepts the
+// createReport call, then fails the run with FATAL during processing -- a
+// slow, confusing failure with no useful error (confirmed live against a
+// beta user's account). The product requirement is that a caller can ask for
+// ANY number of ASINs; `report run` (commands/amazon.ts) uses these two pure
+// helpers to auto-batch a long ASIN list into multiple <=200-char pulls and
+// merge the resulting JSON documents back into one.
+// ---------------------------------------------------------------------------
+
+/** Amazon's Search Query Performance report type enum. */
+export const SQP_REPORT_TYPE = 'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT';
+
+/** Amazon's hard cap on the reportOptions.asin value for SQP: a
+ *  space-separated ASIN list, at most this many characters (about 18 real
+ *  10-character ASINs plus separators). Amazon rejects a longer value
+ *  outright -- this is not a soft/throughput limit. */
+export const SQP_ASIN_OPTION_CHAR_LIMIT = 200;
+
+/**
+ * Split a whitespace-separated ASIN list into chunks that each fit within
+ * `charLimit`, so a caller can auto-batch an arbitrarily long list into
+ * multiple SQP report pulls.
+ *
+ *   - Splits on any run of whitespace (not just single spaces); empty tokens
+ *     are dropped.
+ *   - Dedupes, preserving first-seen order -- a repeated ASIN would otherwise
+ *     double-count in the merged report.
+ *   - Greedily packs tokens into space-joined chunks, each <= charLimit.
+ *   - A single token longer than charLimit cannot be a valid ASIN (real
+ *     ASINs are 10 characters) and cannot fit in any chunk on its own, so it
+ *     throws rather than silently emitting a chunk Amazon would reject.
+ *   - Blank/empty input returns `{ asins: [], chunks: [] }`; the caller
+ *     decides whether an empty ASIN list is an error (see the SQP preflight
+ *     in commands/amazon.ts).
+ */
+export function chunkAsinList(
+  raw: string,
+  charLimit: number = SQP_ASIN_OPTION_CHAR_LIMIT,
+): { asins: string[]; chunks: string[] } {
+  const seen = new Set<string>();
+  const asins: string[] = [];
+  for (const tok of raw.split(/\s+/)) {
+    if (!tok) continue;
+    if (seen.has(tok)) continue;
+    seen.add(tok);
+    asins.push(tok);
+  }
+  if (asins.length === 0) return { asins: [], chunks: [] };
+
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let currentLen = 0;
+  for (const asin of asins) {
+    if (asin.length > charLimit) {
+      throw new Error(
+        `"${asin}" is ${asin.length} characters, longer than the ${charLimit}-character ` +
+          'reportOptions.asin cap by itself -- it cannot be a valid ASIN (Amazon ASINs are ' +
+          '10 characters).',
+      );
+    }
+    const candidateLen = current.length === 0 ? asin.length : currentLen + 1 + asin.length;
+    if (candidateLen > charLimit) {
+      chunks.push(current.join(' '));
+      current = [asin];
+      currentLen = asin.length;
+    } else {
+      current.push(asin);
+      currentLen = candidateLen;
+    }
+  }
+  if (current.length > 0) chunks.push(current.join(' '));
+
+  return { asins, chunks };
+}
+
+/**
+ * Merge N SQP report documents (one per chunked reportOptions.asin pull)
+ * into a single document matching Amazon's official
+ * sellingPartnerSearchQueryPerformanceReport.json shape: a top-level
+ * `reportSpecification` object plus a `dataByAsin` array.
+ *
+ * Concatenates every chunk's `dataByAsin` array in order into the first
+ * chunk's document (which supplies the base `reportSpecification` and any
+ * other top-level fields). When that base's
+ * `reportSpecification.reportOptions.asin` is a string, it is rewritten to
+ * `fullAsinList` so the merged document's spec reflects the full request
+ * rather than just the first chunk's slice.
+ *
+ * A single document is a valid (degenerate) input: it comes back
+ * re-serialized with the same asin fix-up applied.
+ */
+export function mergeSqpDocuments(docs: string[], fullAsinList: string): string {
+  if (docs.length === 0) {
+    throw new Error('mergeSqpDocuments: no documents to merge');
+  }
+
+  let base: Record<string, unknown> | undefined;
+  let dataByAsin: unknown[] = [];
+
+  docs.forEach((doc, i) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(doc);
+    } catch (err) {
+      throw new Error(
+        `SQP chunk ${i + 1} of ${docs.length} is not valid JSON: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !Array.isArray((parsed as Record<string, unknown>).dataByAsin)
+    ) {
+      throw new Error(
+        `SQP chunk ${i + 1} of ${docs.length} is missing a dataByAsin array -- not a ` +
+          'recognizable SQP report document.',
+      );
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (i === 0) base = obj;
+    dataByAsin = dataByAsin.concat(obj.dataByAsin as unknown[]);
+  });
+
+  const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  merged.dataByAsin = dataByAsin;
+
+  const spec = merged.reportSpecification;
+  if (typeof spec === 'object' && spec !== null) {
+    const specObj = spec as Record<string, unknown>;
+    const options = specObj.reportOptions;
+    if (
+      typeof options === 'object' &&
+      options !== null &&
+      typeof (options as Record<string, unknown>).asin === 'string'
+    ) {
+      merged.reportSpecification = {
+        ...specObj,
+        reportOptions: { ...(options as Record<string, unknown>), asin: fullAsinList },
+      };
+    }
+  }
+
+  return JSON.stringify(merged);
+}
+
 /** List merchants the signed-in tenant can pull reports for. */
 export async function listMerchants(
   opts: ReportClientOptions = {},
