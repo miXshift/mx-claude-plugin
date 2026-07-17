@@ -3,6 +3,35 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.5
+
+Amazon's ASIN-level Search Query Performance report now works, and you can pull
+it for any number of ASINs in one command.
+
+### Fixed
+
+- **Search Query Performance reports no longer fail.** Amazon's ASIN-level
+  Search Query Performance report needs a list of ASINs to run. Without one,
+  Amazon accepted the request and then failed the report while generating it,
+  with an unhelpful error. The plugin now always sends the ASIN list, and tells
+  you right away if it is missing, so the report completes.
+
+### Added
+
+- **Pull Search Query Performance for any number of ASINs.** Amazon limits a
+  single request to roughly 18 ASINs. `mixshift amazon report run` now
+  automatically splits a longer list across as many pulls as it takes and
+  merges the results into one file, so you can request your whole catalog at
+  once. Large lists take proportionally longer because Amazon rate limits Brand
+  Analytics heavily; the run tells you how many pulls it made.
+
+### Practical guidance
+
+- Gather the ASINs first (your key products, or a quick catalog pull), then
+  pass them with `--option "asin=B0... B0..."`. A WEEK window must run Sunday to
+  Saturday. In a terminal, `report run` handles any size list end to end and
+  writes one merged file; in chat, keep a single request to about 18 ASINs.
+
 ## 0.8.4
 
 Big query and export results now come back automatically instead of failing

@@ -1,6 +1,6 @@
 {
   "name": "mixshift-ai",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "MixShift AI skills for Amazon advertising and retail operations. Query the MixShift warehouse (Sponsored Ads, DSP, Seller and Vendor Central revenue, orders, inventory, catalog) with read-only SQL and CSV export. Pull live Amazon data: SP-API reports, retail lookups, AMC and DSP analytics. Run PPC optimization workflows: health checks, bid management, search term negation, monthly reports, brand setup. Ads writes preview first and require explicit confirmation.",
   "author": {
     "name": "MixShift"
