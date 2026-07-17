@@ -84601,7 +84601,7 @@ function registerReportRun(report) {
         }
         const docRes = await getReportDocument(outcome.runId, clientOpts);
         if (isReportFailure(docRes)) {
-          await trackFailure2(EventName.ReportFailed, docRes, startedAt, root.dataDir, reportType);
+          await trackFailure2(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType);
           emitChunkFailure(docRes, !!root.json, chunkNum, chunks.length, runIds);
           return;
         }
@@ -84610,7 +84610,7 @@ function registerReportRun(report) {
             {
               event_name: EventName.ReportPolled,
               outcome: "deferred",
-              duration_ms: Date.now() - startedAt,
+              duration_ms: Date.now() - chunkStartedAt,
               payload: { ready: false, status: docRes.status, via: "run" }
             },
             root.dataDir
@@ -84861,7 +84861,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
   process.exitCode = exitCodeForKind(failure.kind);
 }
 function emitChunkTimeout(json2, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
-  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). Its run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
+  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). Its run handle is still valid; poll it later with \`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
   if (json2) {
     writeJson3({
       status: "error",
@@ -85025,7 +85025,7 @@ function requireSqpAsinOption(reportType, options) {
   const asin = options.asin;
   if (!asin || !asin.trim()) {
     throw new Error(
-      `${SQP_REPORT_TYPE} requires a reportOptions.asin value (a space-separated ASIN list). Amazon accepts the request without it and then fails the report with FATAL during processing, with no useful error message \u2014 pass it with --option "asin=B0XXXX1111 B0XXXX2222". For more than ~18 ASINs, use \`amazon report run\`, which auto-batches any-size ASIN lists into multiple pulls and merges the resulting JSON into one file.`
+      `${SQP_REPORT_TYPE} requires a reportOptions.asin value (a space-separated ASIN list). Amazon accepts the request without it and then fails the report with FATAL during processing, with no useful error message. Pass it with --option "asin=B0XXXX1111 B0XXXX2222". For more than ~18 ASINs, use \`amazon report run\`, which auto-batches any-size ASIN lists into multiple pulls and merges the resulting JSON into one file.`
     );
   }
   return asin;
@@ -85033,7 +85033,7 @@ function requireSqpAsinOption(reportType, options) {
 function requireAsinFitsSingleReport(asin) {
   if (asin.length > SQP_ASIN_OPTION_CHAR_LIMIT) {
     throw new Error(
-      `reportOptions.asin is ${asin.length} characters; Amazon caps this option at ${SQP_ASIN_OPTION_CHAR_LIMIT} characters per report (about 18 ASINs). \`amazon report start\` starts exactly one report and cannot split this list \u2014 use \`amazon report run\`, which auto-batches any-size ASIN lists into multiple pulls and merges the resulting JSON documents into one output file.`
+      `reportOptions.asin is ${asin.length} characters; Amazon caps this option at ${SQP_ASIN_OPTION_CHAR_LIMIT} characters per report (about 18 ASINs). \`amazon report start\` starts exactly one report and cannot split this list; use \`amazon report run\`, which auto-batches any-size ASIN lists into multiple pulls and merges the resulting JSON documents into one output file.`
     );
   }
 }

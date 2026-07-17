@@ -724,7 +724,10 @@ function registerReportRun(report: Command): void {
           // chunk somehow comes back oversized.
           const docRes = await getReportDocument(outcome.runId, clientOpts);
           if (isReportFailure(docRes)) {
-            await trackFailure(EventName.ReportFailed, docRes, startedAt, root.dataDir, reportType);
+            // Per-chunk telemetry uses this chunk's own start time, not the
+            // command start, so duration_ms is this chunk's latency (matching
+            // the ReportStarted/ReportPolled events inside startAndPollUntilReady).
+            await trackFailure(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType);
             emitChunkFailure(docRes, !!root.json, chunkNum, chunks.length, runIds);
             return;
           }
@@ -734,7 +737,7 @@ function registerReportRun(report: Command): void {
               {
                 event_name: EventName.ReportPolled,
                 outcome: 'deferred',
-                duration_ms: Date.now() - startedAt,
+                duration_ms: Date.now() - chunkStartedAt,
                 payload: { ready: false, status: docRes.status, via: 'run' },
               },
               root.dataDir,
@@ -1104,7 +1107,7 @@ function emitChunkTimeout(
 ): void {
   const msg =
     `Timed out after ${Math.round(maxWaitMs / 1000)}s waiting for SQP chunk ${chunk}/${totalChunks} ` +
-    `(last status: ${lastStatus}). Its run handle is still valid — poll it later with ` +
+    `(last status: ${lastStatus}). Its run handle is still valid; poll it later with ` +
     `\`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed ` +
     `before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(', ')}` : ''}.`;
   if (json) {
@@ -1347,7 +1350,7 @@ function requireSqpAsinOption(
     throw new Error(
       `${SQP_REPORT_TYPE} requires a reportOptions.asin value (a space-separated ASIN ` +
         'list). Amazon accepts the request without it and then fails the report with ' +
-        'FATAL during processing, with no useful error message — pass it with ' +
+        'FATAL during processing, with no useful error message. Pass it with ' +
         '--option "asin=B0XXXX1111 B0XXXX2222". For more than ~18 ASINs, use `amazon ' +
         'report run`, which auto-batches any-size ASIN lists into multiple pulls and ' +
         'merges the resulting JSON into one file.',
@@ -1365,7 +1368,7 @@ function requireAsinFitsSingleReport(asin: string): void {
     throw new Error(
       `reportOptions.asin is ${asin.length} characters; Amazon caps this option at ` +
         `${SQP_ASIN_OPTION_CHAR_LIMIT} characters per report (about 18 ASINs). \`amazon ` +
-        'report start` starts exactly one report and cannot split this list — use `amazon ' +
+        'report start` starts exactly one report and cannot split this list; use `amazon ' +
         'report run`, which auto-batches any-size ASIN lists into multiple pulls and merges ' +
         'the resulting JSON documents into one output file.',
     );
