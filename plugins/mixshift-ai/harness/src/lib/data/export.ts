@@ -1,20 +1,18 @@
 /**
  * `mixshift data export` — bulk export rows from a warehouse table to CSV.
  *
- * Streams rows directly from the DB to disk so 100K+ row exports don't
- * blow up memory. Date-range filtering uses the table's configured
- * date column from data-tables.yaml.
+ * Streams rows a PAGE at a time from the DB straight to disk (via
+ * `streamQuery` + a CSV file sink) so tens-of-thousands-of-row exports never
+ * hold the whole result set in memory. Date-range filtering uses the table's
+ * configured date column from data-tables.yaml.
  *
  * No row limit enforced (per Sam: "I don't want to be too limiting").
  * Caller can pass --max-rows if they want a cap; otherwise it runs to
  * completion.
  */
 
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { createCsvWriter } from '../output/csv.js';
-import { runQuery, type DataQueryResult } from './query-runner.js';
+import { createCsvFileSink, fmtBytes } from '../output/csv-file-sink.js';
+import { streamQuery, type DataQueryResult } from './query-runner.js';
 import { describeTable } from './tables-catalog.js';
 
 export interface ExportOptions {
@@ -33,6 +31,11 @@ export interface ExportResult {
   duration_ms: number;
   query_result: DataQueryResult<Record<string, unknown>>;
   display_sql: string;
+  /** Set on a mid-stream failure after rows were already written: the partial
+   *  file was renamed here so `out_path` is not left looking complete. */
+  partial_path?: string;
+  /** True when the export failed mid-stream and no complete file was written. */
+  incomplete?: boolean;
 }
 
 export async function exportTable(opts: ExportOptions): Promise<ExportResult> {
@@ -82,48 +85,72 @@ export async function exportTable(opts: ExportOptions): Promise<ExportResult> {
     return typeof v === 'string' ? `'${v}'` : String(v);
   });
 
-  // Buffered query — pulls all rows into memory then writes the CSV.
-  // Future optimization: switch to true streaming for multi-million-row
-  // pulls. v1 handles up to ~100K rows comfortably.
-  const queryResult = await runQuery(sql, params, {
-    dataDirOverride: opts.dataDirOverride,
-  });
-
-  if (!queryResult.ok) {
+  // Stream each page straight to the CSV file and drop it — the full result
+  // set is never held in memory. A user --max-rows lands as a trailing LIMIT
+  // on `sql`, which the pager honors as a hard cap.
+  const sink = createCsvFileSink(opts.outPath);
+  let lastProgressRows = 0;
+  let streamed;
+  try {
+    streamed = await streamQuery(sql, params, { dataDirOverride: opts.dataDirOverride }, async (rows) => {
+      await sink.writePage(rows);
+      // Report progress to stderr as it streams (coarse: at page boundaries).
+      if (sink.rowsWritten() - lastProgressRows >= 1) {
+        lastProgressRows = sink.rowsWritten();
+        process.stderr.write(
+          `  ... ${sink.rowsWritten()} rows (${fmtBytes(sink.bytesWritten())}) written\n`,
+        );
+      }
+    });
+  } catch (err) {
+    // A sink write failure (e.g. ENOSPC) surfaced through onPage. Do not leave
+    // a complete-looking file behind: rename any partial to <out>.partial.
+    const partialPath = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
     return {
       out_path: opts.outPath,
       rows_written: 0,
-      duration_ms: queryResult.durationMs ?? 0,
-      query_result: queryResult,
+      duration_ms: 0,
+      query_result: { ok: false, kind: 'unknown', message, friendly: `Export failed while writing: ${message}` },
       display_sql: displaySql,
+      partial_path: partialPath ?? undefined,
+      incomplete: true,
     };
   }
 
-  await mkdir(dirname(opts.outPath), { recursive: true });
-  const stream = createWriteStream(opts.outPath, { encoding: 'utf-8' });
-
-  const rows = queryResult.rows as Array<Record<string, unknown>>;
-  let rowsWritten = 0;
-  if (rows.length > 0) {
-    const columns = Object.keys(rows[0]!).map((name) => ({ name }));
-    const csvWriter = createCsvWriter(stream, columns);
-    csvWriter.writeHeader();
-    for (const row of rows) {
-      csvWriter.writeRow(row);
-    }
-    rowsWritten = csvWriter.rowsWritten();
+  if (!streamed.ok) {
+    // Mid-stream DB failure after some pages were written: the on-disk file is
+    // truncated. Rename it to <out>.partial so no consumer reads it as complete.
+    const partialPath = await sink.finalizePartial();
+    return {
+      out_path: opts.outPath,
+      rows_written: 0,
+      duration_ms: streamed.durationMs,
+      query_result: streamed.failure!,
+      display_sql: displaySql,
+      partial_path: partialPath ?? undefined,
+      incomplete: partialPath != null,
+    };
   }
 
-  // Close stream cleanly so the file is fully flushed before we return.
-  await new Promise<void>((resolve, reject) => {
-    stream.end((err?: Error | null) => (err ? reject(err) : resolve()));
-  });
+  // Success. Create the file even for a 0-row result so the success message is
+  // truthful and downstream reads don't ENOENT.
+  if (!sink.opened()) await sink.ensureFile();
+  // Close the file so it is fully flushed before we return.
+  await sink.close();
 
   return {
     out_path: opts.outPath,
-    rows_written: rowsWritten,
-    duration_ms: queryResult.durationMs,
-    query_result: queryResult,
+    rows_written: streamed.rowCount,
+    duration_ms: streamed.durationMs,
+    // Synthetic success envelope: callers only read `.ok` on success (the rows
+    // were streamed to disk, not retained).
+    query_result: {
+      ok: true,
+      rows: [],
+      rowCount: streamed.rowCount,
+      durationMs: streamed.durationMs,
+    },
     display_sql: displaySql,
   };
 }
