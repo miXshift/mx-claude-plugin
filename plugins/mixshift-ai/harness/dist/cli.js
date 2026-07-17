@@ -64946,8 +64946,51 @@ function deriveQueryShape(sql) {
   projection = projection.replace(/^(?:distinct|all)\s+/i, "").trim();
   const selectStar = isStarProjection(projection);
   const projectedCols = selectStar ? null : countTopLevelTerms(projection);
-  const table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + "from".length);
+  let table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + "from".length);
+  if (table !== null && /^with\b/i.test(clean)) {
+    const cteNames = collectCteNames(clean);
+    if (cteNames.includes(table)) table = null;
+  }
   return { table, select_star: selectStar, projected_cols: projectedCols };
+}
+function collectCteNames(clean) {
+  const head = /^with\s+(?:recursive\s+)?/i.exec(clean);
+  if (!head) return [];
+  const names = [];
+  const len = clean.length;
+  let i = head[0].length;
+  const skipWs = () => {
+    while (i < len && /\s/.test(clean[i])) i++;
+  };
+  for (; ; ) {
+    skipWs();
+    const nameMatch = /^(`[^`]+`|[\w$]+)/.exec(clean.slice(i));
+    if (!nameMatch) break;
+    const name = nameMatch[1].replace(/`/g, "").toLowerCase();
+    i += nameMatch[0].length;
+    skipWs();
+    if (clean[i] === "(") {
+      const close = matchingParen(clean, i);
+      if (close < 0) break;
+      i = close + 1;
+      skipWs();
+    }
+    if (!/^as\b/i.test(clean.slice(i))) break;
+    i += 2;
+    skipWs();
+    if (clean[i] !== "(") break;
+    const bodyClose = matchingParen(clean, i);
+    if (bodyClose < 0) break;
+    names.push(name);
+    i = bodyClose + 1;
+    skipWs();
+    if (clean[i] === ",") {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return names;
 }
 function stripSqlComments(sql) {
   let out = "";
@@ -65054,13 +65097,20 @@ function unwrapPagerWrapper(clean) {
   return clean.slice(openIdx + 1, closeIdx).trim();
 }
 function isStarProjection(projection) {
-  return projection === "*" || /^`?[\w$]+`?\s*\.\s*\*$/.test(projection);
+  if (!projection) return false;
+  return splitTopLevelTerms(projection).some(
+    (t) => t === "*" || /^`?[\w$]+`?\s*\.\s*\*$/.test(t)
+  );
 }
 function countTopLevelTerms(projection) {
   if (!projection) return null;
+  return splitTopLevelTerms(projection).length;
+}
+function splitTopLevelTerms(projection) {
+  const terms = [];
   let depth = 0;
   let quote2 = null;
-  let terms = 1;
+  let start = 0;
   for (let i = 0; i < projection.length; i++) {
     const ch = projection[i];
     if (quote2) {
@@ -65078,8 +65128,12 @@ function countTopLevelTerms(projection) {
     if (ch === "(") depth++;
     else if (ch === ")") {
       if (depth > 0) depth--;
-    } else if (ch === "," && depth === 0) terms++;
+    } else if (ch === "," && depth === 0) {
+      terms.push(projection.slice(start, i).trim());
+      start = i + 1;
+    }
   }
+  terms.push(projection.slice(start).trim());
   return terms;
 }
 function parsePrimaryTable(sql, fromEnd) {

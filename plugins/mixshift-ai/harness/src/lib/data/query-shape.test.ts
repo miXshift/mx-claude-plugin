@@ -71,6 +71,58 @@ describe('deriveQueryShape', () => {
     });
   });
 
+  it('CTE alias in the OUTER FROM → table null (query-local, not a warehouse table)', () => {
+    const sql =
+      'WITH recent AS (SELECT id FROM staging_orders WHERE dt > ?) SELECT * FROM recent';
+    expect(deriveQueryShape(sql)).toEqual({
+      table: null,
+      select_star: true,
+      projected_cols: null,
+    });
+  });
+
+  it('CTE alias in the OUTER FROM even when it JOINs a real table → table null', () => {
+    // The OUTER FROM is the CTE; the joined real table does not rescue it,
+    // because parsePrimaryTable only reads the first (primary) FROM reference.
+    const sql =
+      'WITH recent AS (SELECT id FROM staging_orders) ' +
+      'SELECT id FROM recent JOIN real_t ON recent.id = real_t.id';
+    expect(deriveQueryShape(sql).table).toBe(null);
+  });
+
+  it('WITH RECURSIVE: outer FROM on the CTE alias → table null', () => {
+    const sql =
+      'WITH RECURSIVE tree AS (SELECT id, parent FROM nodes) SELECT id FROM tree';
+    expect(deriveQueryShape(sql).table).toBe(null);
+  });
+
+  it('CTE present but OUTER FROM is a real table → table extracted (unchanged)', () => {
+    const sql =
+      'WITH x AS (SELECT id FROM staging_orders) ' +
+      'SELECT a, b FROM real_table JOIN x ON real_table.id = x.id';
+    expect(deriveQueryShape(sql)).toEqual({
+      table: 'real_table',
+      select_star: false,
+      projected_cols: 2,
+    });
+  });
+
+  it('SELECT *, <expr> is still a star projection → projected_cols null', () => {
+    expect(deriveQueryShape('SELECT *, DATE(created) FROM t')).toEqual({
+      table: 't',
+      select_star: true,
+      projected_cols: null,
+    });
+  });
+
+  it('SELECT t.*, <col> is still a star projection', () => {
+    expect(deriveQueryShape('SELECT t.*, x FROM t')).toEqual({
+      table: 't',
+      select_star: true,
+      projected_cols: null,
+    });
+  });
+
   it('subquery in FROM → table null (not confidently extractable)', () => {
     const sql = 'SELECT x, y FROM (SELECT x, y FROM campaigns) AS sub';
     expect(deriveQueryShape(sql)).toEqual({

@@ -739,7 +739,9 @@ export async function paginateOverCap<Row>(
  *     (the primary defense is threading the shape from the user SQL entry point);
  *   - treats a leading CTE (`WITH x AS (...) SELECT ... FROM t`) correctly: the
  *     CTE bodies are parenthesized (depth > 0), so the first depth-0 SELECT is
- *     the OUTER query and its FROM is the primary table, not the CTE's;
+ *     the OUTER query and its FROM is the primary table, not the CTE's. When the
+ *     OUTER FROM is itself a CTE alias (`... SELECT * FROM x`), the name is a
+ *     query-local binding, not a warehouse table, so `table` is null;
  *   - returns nulls rather than a wrong guess when the FROM is a subquery, is
  *     absent, or the reference cannot be parsed.
  *
@@ -769,9 +771,70 @@ export function deriveQueryShape(sql: string): QueryShape {
   const selectStar = isStarProjection(projection);
   const projectedCols = selectStar ? null : countTopLevelTerms(projection);
 
-  const table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + 'from'.length);
+  let table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + 'from'.length);
+
+  // A leading WITH defines query-local CTE aliases. If the OUTER FROM's primary
+  // name is one of them, it is a CTE reference, not a warehouse table — report
+  // null (a phantom table pollutes pack-candidate grouping worse than null).
+  // Only the outer FROM matters; we never descend into subqueries.
+  if (table !== null && /^with\b/i.test(clean)) {
+    const cteNames = collectCteNames(clean);
+    if (cteNames.includes(table)) table = null;
+  }
 
   return { table, select_star: selectStar, projected_cols: projectedCols };
+}
+
+/**
+ * Collect the CTE names a leading `WITH` (or `WITH RECURSIVE`) clause defines:
+ * the `<name> AS ( ... )` bindings at depth 0, comma-separated. Names are
+ * lowercased with backticks stripped, matching `parsePrimaryTable`'s output so
+ * an outer-FROM name can be compared case-insensitively. Dependency-free,
+ * quote/paren-aware; returns [] when `clean` has no leading WITH. Only the
+ * depth-0 WITH bindings are collected — nested CTEs inside a body are ignored.
+ */
+function collectCteNames(clean: string): string[] {
+  const head = /^with\s+(?:recursive\s+)?/i.exec(clean);
+  if (!head) return [];
+  const names: string[] = [];
+  const len = clean.length;
+  let i = head[0].length;
+  const skipWs = () => {
+    while (i < len && /\s/.test(clean[i]!)) i++;
+  };
+  for (;;) {
+    skipWs();
+    // CTE name (identifier, optionally backtick-quoted).
+    const nameMatch = /^(`[^`]+`|[\w$]+)/.exec(clean.slice(i));
+    if (!nameMatch) break;
+    const name = nameMatch[1]!.replace(/`/g, '').toLowerCase();
+    i += nameMatch[0].length;
+    skipWs();
+    // Optional explicit column list `(a, b)` before AS.
+    if (clean[i] === '(') {
+      const close = matchingParen(clean, i);
+      if (close < 0) break;
+      i = close + 1;
+      skipWs();
+    }
+    // Require `AS` as a whole word, then the parenthesized body.
+    if (!/^as\b/i.test(clean.slice(i))) break;
+    i += 2;
+    skipWs();
+    if (clean[i] !== '(') break;
+    const bodyClose = matchingParen(clean, i);
+    if (bodyClose < 0) break;
+    // Record only after confirming a well-formed `name AS ( ... )` binding.
+    names.push(name);
+    i = bodyClose + 1;
+    skipWs();
+    if (clean[i] === ',') {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return names;
 }
 
 /**
@@ -903,9 +966,17 @@ function unwrapPagerWrapper(clean: string): string | null {
   return clean.slice(openIdx + 1, closeIdx).trim();
 }
 
-/** True when the whole projection is `*` or `<qualifier>.*` (e.g. `t.*`). */
+/**
+ * True when ANY top-level (depth-0) projection term is exactly `*` or
+ * `<qualifier>.*` (e.g. `t.*`). This catches the mixed forms `SELECT *, DATE(x)`
+ * and `SELECT t.*, y` too: they still pull every column, so they are star
+ * projections for pack-candidate grouping — not just a bare `SELECT *`.
+ */
 function isStarProjection(projection: string): boolean {
-  return projection === '*' || /^`?[\w$]+`?\s*\.\s*\*$/.test(projection);
+  if (!projection) return false;
+  return splitTopLevelTerms(projection).some(
+    (t) => t === '*' || /^`?[\w$]+`?\s*\.\s*\*$/.test(t),
+  );
 }
 
 /**
@@ -915,9 +986,20 @@ function isStarProjection(projection: string): boolean {
  */
 function countTopLevelTerms(projection: string): number | null {
   if (!projection) return null;
+  return splitTopLevelTerms(projection).length;
+}
+
+/**
+ * Split a projection list on depth-0 commas, returning each trimmed term.
+ * Commas inside function calls (`COUNT(a, b)`), subqueries, string literals, or
+ * backtick identifiers are ignored, so `IFNULL(a, 0)` stays one term. A
+ * non-empty projection always yields at least one term.
+ */
+function splitTopLevelTerms(projection: string): string[] {
+  const terms: string[] = [];
   let depth = 0;
   let quote: "'" | '"' | '`' | null = null;
-  let terms = 1;
+  let start = 0;
   for (let i = 0; i < projection.length; i++) {
     const ch = projection[i]!;
     if (quote) {
@@ -935,8 +1017,12 @@ function countTopLevelTerms(projection: string): number | null {
     if (ch === '(') depth++;
     else if (ch === ')') {
       if (depth > 0) depth--;
-    } else if (ch === ',' && depth === 0) terms++;
+    } else if (ch === ',' && depth === 0) {
+      terms.push(projection.slice(start, i).trim());
+      start = i + 1;
+    }
   }
+  terms.push(projection.slice(start).trim());
   return terms;
 }
 
