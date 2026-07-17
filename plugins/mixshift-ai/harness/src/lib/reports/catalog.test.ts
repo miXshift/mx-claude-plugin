@@ -75,6 +75,22 @@ describe('loadReportCatalog — real shipped catalog', () => {
     expect(ba?.documentFormat).toBe('json');
     expect(ba?.reportOptions.some((o) => o.key === 'reportPeriod')).toBe(true);
   });
+
+  it('documents SQP as requiring BOTH reportPeriod and asin (Amazon FATALs the report without asin)', async () => {
+    const all = await loadReportCatalog();
+    const sqp = all.find(
+      (e) => e.reportType === 'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT',
+    );
+    expect(sqp).toBeTruthy();
+    expect(sqp?.documentFormat).toBe('json');
+    expect(sqp?.reportOptions.some((o) => o.key === 'reportPeriod')).toBe(true);
+    const asinOpt = sqp?.reportOptions.find((o) => o.key === 'asin');
+    expect(asinOpt, 'SQP catalog entry is missing the required `asin` reportOption').toBeTruthy();
+    // Singular `asin` (not the plural `asins` used by Search Catalog
+    // Performance) is the classic silent-failure trap this entry exists to
+    // prevent -- pin the note text so a future edit can't quietly drop it.
+    expect(asinOpt?.note ?? '').toMatch(/required/i);
+  });
 });
 
 describe('findReportType — real shipped catalog', () => {

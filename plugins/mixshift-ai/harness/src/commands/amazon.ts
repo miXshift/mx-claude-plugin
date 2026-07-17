@@ -32,7 +32,8 @@
  */
 
 import type { Command } from 'commander';
-import { resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath, dirname } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import {
   listMerchants,
   startReport,
@@ -43,9 +44,14 @@ import {
   isReportFailure,
   exitCodeForKind,
   throttleBackoffMs,
+  chunkAsinList,
+  mergeSqpDocuments,
+  SQP_REPORT_TYPE,
+  SQP_ASIN_OPTION_CHAR_LIMIT,
   type ReportFailure,
   type MerchantView,
   type StartReportInput,
+  type PollReportResult,
 } from '../lib/amazon/reports.js';
 import {
   loadReportCatalog,
@@ -261,6 +267,15 @@ function registerReportStart(report: Command): void {
       const startedAt = Date.now();
       const reportType = opts.type ?? '';
       try {
+        // SQP requires reportOptions.asin; Amazon accepts a request without
+        // it and then FATALs the report during processing, with no useful
+        // error. Preflight it locally so the failure is instant and
+        // actionable, before ever calling startReport. `report start` kicks
+        // off exactly one report, so an oversize asin (Amazon caps it at 200
+        // chars) fails here too -- only `report run` can auto-batch it.
+        const asin = requireSqpAsinOption(reportType, opts.option);
+        if (asin !== undefined) requireAsinFitsSingleReport(asin);
+
         const input: StartReportInput = {
           amazonSellerId: opts.sellerId,
           legacySellerId: opts.legacySellerId,
@@ -508,192 +523,289 @@ function registerReportRun(report: Command): void {
       const sellerId = opts.sellerId ?? '';
       const clientOpts = { dataDirOverride: root.dataDir };
       try {
+        // SQP requires reportOptions.asin; Amazon accepts a request without
+        // it and then FATALs the report during processing, with no useful
+        // error. Preflight it locally, before any network call. Unlike
+        // `report start`, an oversize asin here is NOT an error -- it drives
+        // the auto-batch path below instead.
+        const asin = requireSqpAsinOption(reportType, opts.option);
+        const needsChunking = asin !== undefined && asin.length > SQP_ASIN_OPTION_CHAR_LIMIT;
+
         if (!root.json) {
           process.stderr.write(
             `\n• Running ${reportType} for ${sellerId || 'your merchant'} (blocking up to ${Math.round(opts.maxWaitMs / 1000)}s)...\n`,
           );
         }
 
-        // 1. start
-        const started = await startReport(
-          {
-            amazonSellerId: opts.sellerId,
-            legacySellerId: opts.legacySellerId,
-            reportType,
-            start: opts.start,
-            end: opts.end,
-            marketplace: opts.marketplace,
-            reportOptions: Object.keys(opts.option).length > 0 ? opts.option : undefined,
-          },
-          clientOpts,
-        );
-        if (isReportFailure(started)) {
-          await trackFailure(EventName.ReportFailed, started, startedAt, root.dataDir, reportType);
-          return emitFailure(started, !!root.json);
-        }
-        await track(
-          {
-            event_name: EventName.ReportStarted,
-            outcome: 'ok',
-            duration_ms: Date.now() - startedAt,
-            payload: { report_type: reportType, status: started.status, via: 'run' },
-          },
-          root.dataDir,
-        );
-        const runId = started.runId;
-
-        // 2. poll until ready or timeout. A 429 (throttled) is transient —
-        // Amazon rate-limited this poll, not the pull — so back off (honoring
-        // any server retry-after) and keep polling to the deadline instead of
-        // failing the whole run on the first one. Only a non-throttled failure
-        // is terminal in the loop; a run that stays throttled to the deadline
-        // surfaces at the finalPoll below as ONE report.failed, not one per poll.
+        // --max-wait-ms is a PER-REPORT budget. For an ordinary single pull
+        // that is the whole run. For the SQP auto-batch path each chunk is a
+        // separate Amazon report and gets its own fresh --max-wait-ms window
+        // (computed per chunk in the loop below), so total wall-clock scales
+        // with the ASIN count instead of forcing an N-chunk run to finish
+        // inside one report's budget -- Brand Analytics is heavily throttled,
+        // and a shared deadline would make any multi-chunk request time out.
         const deadline = startedAt + opts.maxWaitMs;
-        let polls = 0;
-        let throttledPolls = 0;
-        let throttleStreak = 0;
-        let lastStatus = started.status ?? 'UNKNOWN';
-        let pollFailure: ReportFailure | undefined;
-        // Capture the last successful poll so the post-loop step can reuse it
-        // instead of firing a redundant Amazon poll on the ready path.
-        let lastPoll: Awaited<ReturnType<typeof pollReport>> | undefined;
-        while (Date.now() < deadline) {
-          const poll = await pollReport(runId, clientOpts);
-          if (isReportFailure(poll)) {
-            if (poll.kind !== 'throttled') {
-              pollFailure = poll;
-              break;
+
+        if (!needsChunking) {
+          // -----------------------------------------------------------------
+          // Ordinary path: one report, start -> poll -> stream to file. This
+          // is ALSO the path for SQP when its asin already fits in one
+          // report (<=200 chars) -- behavior here is byte-for-byte identical
+          // to before this change.
+          // -----------------------------------------------------------------
+          const outcome = await startAndPollUntilReady(
+            {
+              amazonSellerId: opts.sellerId,
+              legacySellerId: opts.legacySellerId,
+              reportType,
+              start: opts.start,
+              end: opts.end,
+              marketplace: opts.marketplace,
+              reportOptions: Object.keys(opts.option).length > 0 ? opts.option : undefined,
+            },
+            // Single report: telemetry duration_ms stays "since command start"
+            // (stepStartedAt === the command startedAt), byte-for-byte as before.
+            { root, clientOpts, stepStartedAt: startedAt, deadline, intervalMs: opts.intervalMs, reportType },
+          );
+
+          if (outcome.outcome === 'start_failed' || outcome.outcome === 'poll_failed') {
+            return emitFailure(outcome.failure, !!root.json);
+          }
+          if (outcome.outcome === 'timeout') {
+            const msg =
+              `Timed out after ${Math.round(opts.maxWaitMs / 1000)}s waiting for the report ` +
+              `(last status: ${outcome.lastStatus}). The run handle is still valid — ` +
+              `poll it later with \`mixshift amazon report poll ${outcome.runId}\`.`;
+            if (root.json) {
+              writeJson({
+                status: 'error',
+                failure_kind: 'timeout',
+                run_id: outcome.runId,
+                report_status: outcome.lastStatus,
+                message: msg,
+              });
+            } else {
+              process.stderr.write(`\n✗ ${msg}\n`);
             }
-            throttledPolls += 1;
-            throttleStreak += 1;
-            const backoff = throttleBackoffMs(
-              poll.retryAfterMs,
-              opts.intervalMs,
-              throttleStreak,
-              Date.now(),
-              deadline,
+            process.exitCode = EXIT_NOT_READY;
+            return;
+          }
+
+          const { runId, polls } = outcome;
+
+          // fetch the document: always stream to a file (any size, no V8
+          // string-length crash). Fetch metadata only, then pipe the
+          // presigned body through gunzip into the destination.
+          const meta = await getReportDocumentMeta(runId, clientOpts);
+          if (isReportFailure(meta)) {
+            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, reportType);
+            return emitFailure(meta, !!root.json);
+          }
+          if (!meta.ready || !meta.document) {
+            // We just confirmed ready above, so this is an unexpected race;
+            // treat it as not-ready so the run handle stays usable.
+            await track(
+              {
+                event_name: EventName.ReportPolled,
+                outcome: 'deferred',
+                duration_ms: Date.now() - startedAt,
+                payload: { ready: false, status: meta.status, via: 'run' },
+              },
+              root.dataDir,
             );
-            if (backoff <= 0) break; // out of time; fall through to the timeout path
-            if (!root.json) {
-              process.stderr.write(
-                `  ... rate-limited by Amazon; backing off ${(backoff / 1000).toFixed(1)}s ` +
-                  `(throttle ${throttledPolls})\n`,
-              );
+            const msg =
+              `The report reported ready but its document was not available yet ` +
+              `(status: ${meta.status ?? 'unknown'}). The run handle is still valid; ` +
+              `fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
+            if (root.json) {
+              writeJson({ status: 'ok', ready: false, run_id: runId, report_status: meta.status, message: msg });
+            } else {
+              process.stderr.write(`\n• ${msg}\n`);
             }
-            await sleep(backoff);
-            continue;
+            process.exitCode = EXIT_NOT_READY;
+            return;
           }
-          throttleStreak = 0;
-          polls += 1;
-          lastStatus = poll.status;
-          lastPoll = poll;
-          if (poll.ready) break;
-          if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
-          await sleep(opts.intervalMs);
-        }
 
-        // One deduped summary when throttling happened at all, so the
-        // error-aggregate sweep sees "throttled but handled" as its own signal
-        // rather than as inflated report.failed rows.
-        if (throttledPolls > 0) {
-          await track(
-            {
-              event_name: EventName.ReportPollThrottled,
-              outcome: 'ok',
-              duration_ms: Date.now() - startedAt,
-              payload: { report_type: reportType, throttled_polls: throttledPolls, via: 'run' },
-            },
-            root.dataDir,
+          // default out path: scope by amazonSellerId, ext by catalog format.
+          const outPath = resolvePath(
+            opts.out ?? (await defaultOutPath(sellerId, reportType, root.dataDir)),
           );
-        }
+          const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
+          if (isReportFailure(streamed)) {
+            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
+            return emitFailure(streamed, !!root.json);
+          }
+          const bytes = streamed.bytes;
 
-        // A non-throttled poll failure is terminal.
-        if (pollFailure) {
-          await trackFailure(EventName.ReportFailed, pollFailure, startedAt, root.dataDir, reportType);
-          return emitFailure(pollFailure, !!root.json);
-        }
-
-        // Reuse the ready poll from the loop; only re-poll if we never got a
-        // non-failure poll (e.g. throttled until the deadline).
-        const finalPoll = lastPoll ?? (await pollReport(runId, clientOpts));
-        if (isReportFailure(finalPoll)) {
-          await trackFailure(EventName.ReportFailed, finalPoll, startedAt, root.dataDir, reportType);
-          return emitFailure(finalPoll, !!root.json);
-        }
-        if (!finalPoll.ready) {
-          await track(
-            {
-              event_name: EventName.ReportPolled,
-              outcome: 'timeout',
-              duration_ms: Date.now() - startedAt,
-              payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: 'run' },
-            },
-            root.dataDir,
-          );
-          const msg =
-            `Timed out after ${Math.round(opts.maxWaitMs / 1000)}s waiting for the report ` +
-            `(last status: ${finalPoll.status}). The run handle is still valid — ` +
-            `poll it later with \`mixshift amazon report poll ${runId}\`.`;
+          await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
           if (root.json) {
-            writeJson({ status: 'error', failure_kind: 'timeout', run_id: runId, report_status: finalPoll.status, message: msg });
+            writeJson({ status: 'ok', ready: true, run_id: runId, out_path: outPath, bytes, polls });
           } else {
-            process.stderr.write(`\n✗ ${msg}\n`);
+            process.stderr.write(
+              `\n✓ ${reportType} done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s (${polls} poll(s))\n` +
+                `  wrote ${bytes} bytes to ${outPath}\n`,
+            );
           }
-          process.exitCode = EXIT_NOT_READY;
           return;
         }
 
-        // 3. fetch the document: always stream to a file (any size, no V8
-        // string-length crash). Fetch metadata only, then pipe the presigned
-        // body through gunzip into the destination.
-        const meta = await getReportDocumentMeta(runId, clientOpts);
-        if (isReportFailure(meta)) {
-          await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, reportType);
-          return emitFailure(meta, !!root.json);
-        }
-        if (!meta.ready || !meta.document) {
-          // We just confirmed ready above, so this is an unexpected race; treat
-          // it as not-ready so the run handle stays usable.
-          await track(
-            {
-              event_name: EventName.ReportPolled,
-              outcome: 'deferred',
-              duration_ms: Date.now() - startedAt,
-              payload: { ready: false, status: meta.status, via: 'run' },
-            },
-            root.dataDir,
+        // -------------------------------------------------------------------
+        // SQP auto-batch path: the asin list is longer than Amazon's 200-char
+        // reportOptions.asin cap. Split it into multiple <=200-char pulls,
+        // run them SEQUENTIALLY (Brand Analytics is heavily throttled; do not
+        // parallelize), fetch each chunk's document buffered (chunk docs are
+        // far below the 25 MB inline cap), and merge the JSON at the end.
+        // -------------------------------------------------------------------
+        const { asins: asinList, chunks } = chunkAsinList(asin as string);
+        if (!root.json) {
+          process.stderr.write(
+            `SQP ASIN list: ${asinList.length} ASINs -> ${chunks.length} report pulls ` +
+              `(Amazon caps reportOptions.asin at ${SQP_ASIN_OPTION_CHAR_LIMIT} chars)\n`,
           );
-          const msg =
-            `The report reported ready but its document was not available yet ` +
-            `(status: ${meta.status ?? 'unknown'}). The run handle is still valid; ` +
-            `fetch it with \`mixshift amazon report get ${runId} --out <file>\`.`;
-          if (root.json) {
-            writeJson({ status: 'ok', ready: false, run_id: runId, report_status: meta.status, message: msg });
-          } else {
-            process.stderr.write(`\n• ${msg}\n`);
-          }
-          process.exitCode = EXIT_NOT_READY;
-          return;
         }
 
-        // default out path: scope by amazonSellerId, ext by catalog format.
+        const docs: string[] = [];
+        const runIds: string[] = [];
+        let totalPolls = 0;
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkNum = i + 1;
+          const chunkAsinStr = chunks[i]!;
+          if (!root.json) {
+            process.stderr.write(`\n• chunk ${chunkNum}/${chunks.length}: starting...\n`);
+          }
+
+          // Each chunk is a separate Amazon report: it gets a fresh
+          // --max-wait-ms budget (not the shared outer `deadline`), so a large
+          // ASIN list is not forced to complete inside one report's window,
+          // and a fresh `stepStartedAt` so its telemetry duration_ms measures
+          // THIS chunk's start/poll latency, not cumulative time across chunks.
+          const chunkStartedAt = Date.now();
+          const chunkDeadline = chunkStartedAt + opts.maxWaitMs;
+          const outcome = await startAndPollUntilReady(
+            {
+              amazonSellerId: opts.sellerId,
+              legacySellerId: opts.legacySellerId,
+              reportType,
+              start: opts.start,
+              end: opts.end,
+              marketplace: opts.marketplace,
+              reportOptions: { ...opts.option, asin: chunkAsinStr },
+            },
+            {
+              root,
+              clientOpts,
+              stepStartedAt: chunkStartedAt,
+              deadline: chunkDeadline,
+              intervalMs: opts.intervalMs,
+              reportType,
+            },
+          );
+
+          if (outcome.outcome === 'start_failed' || outcome.outcome === 'poll_failed') {
+            emitChunkFailure(outcome.failure, !!root.json, chunkNum, chunks.length, runIds);
+            return;
+          }
+          if (outcome.outcome === 'timeout') {
+            emitChunkTimeout(
+              !!root.json,
+              chunkNum,
+              chunks.length,
+              outcome.runId,
+              outcome.lastStatus,
+              runIds,
+              opts.maxWaitMs,
+            );
+            return;
+          }
+
+          // Fetch buffered (not streamed): SQP chunk docs are far below the
+          // 25 MB inline cap. getReportDocument already fails cleanly if a
+          // chunk somehow comes back oversized.
+          const docRes = await getReportDocument(outcome.runId, clientOpts);
+          if (isReportFailure(docRes)) {
+            await trackFailure(EventName.ReportFailed, docRes, startedAt, root.dataDir, reportType);
+            emitChunkFailure(docRes, !!root.json, chunkNum, chunks.length, runIds);
+            return;
+          }
+          if (!docRes.ready || docRes.document === undefined) {
+            // We just confirmed ready above, so this is an unexpected race.
+            await track(
+              {
+                event_name: EventName.ReportPolled,
+                outcome: 'deferred',
+                duration_ms: Date.now() - startedAt,
+                payload: { ready: false, status: docRes.status, via: 'run' },
+              },
+              root.dataDir,
+            );
+            const msg =
+              `SQP chunk ${chunkNum}/${chunks.length} reported ready but its document was not ` +
+              `available yet (status: ${docRes.status ?? 'unknown'}). Its run handle is still ` +
+              `valid: fetch it with \`mixshift amazon report get ${outcome.runId} --out <file>\`. ` +
+              `${runIds.length} chunk(s) completed before this one` +
+              `${runIds.length > 0 ? `: ${runIds.join(', ')}` : ''}.`;
+            if (root.json) {
+              writeJson({
+                status: 'ok',
+                ready: false,
+                run_id: outcome.runId,
+                run_ids: runIds,
+                chunk: chunkNum,
+                chunks: chunks.length,
+                report_status: docRes.status,
+                message: msg,
+              });
+            } else {
+              process.stderr.write(`\n• ${msg}\n`);
+            }
+            process.exitCode = EXIT_NOT_READY;
+            return;
+          }
+
+          docs.push(docRes.document);
+          runIds.push(outcome.runId);
+          totalPolls += outcome.polls;
+        }
+
+        // Every chunk succeeded: merge, write once, track once. If the merge
+        // (a malformed chunk doc) or the file write (bad --out path, disk full)
+        // throws HERE, all N throttled chunk pulls already completed — surface
+        // their run_ids so the user can fetch them individually instead of
+        // losing the whole expensive batch to the generic outer catch.
+        const fullAsinList = asinList.join(' ');
         const outPath = resolvePath(
           opts.out ?? (await defaultOutPath(sellerId, reportType, root.dataDir)),
         );
-        const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
-        if (isReportFailure(streamed)) {
-          await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
-          return emitFailure(streamed, !!root.json);
+        let bytes: number;
+        try {
+          const merged = mergeSqpDocuments(docs, fullAsinList);
+          bytes = Buffer.byteLength(merged, 'utf8');
+          await mkdir(dirname(outPath), { recursive: true });
+          await writeFile(outPath, merged, 'utf8');
+        } catch (mergeErr) {
+          emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
+          return;
         }
-        const bytes = streamed.bytes;
 
         await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
         if (root.json) {
-          writeJson({ status: 'ok', ready: true, run_id: runId, out_path: outPath, bytes, polls });
+          writeJson({
+            status: 'ok',
+            ready: true,
+            run_id: runIds[0],
+            run_ids: runIds,
+            chunks: chunks.length,
+            asin_count: asinList.length,
+            out_path: outPath,
+            bytes,
+            polls: totalPolls,
+          });
         } else {
           process.stderr.write(
-            `\n✓ ${reportType} done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s (${polls} poll(s))\n` +
-              `  wrote ${bytes} bytes to ${outPath}\n`,
+            `\n✓ ${reportType} done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s ` +
+              `(${chunks.length} chunk(s), ${totalPolls} poll(s) total)\n` +
+              `  wrote ${bytes} bytes to ${outPath} (${asinList.length} ASINs)\n`,
           );
         }
         return;
@@ -701,6 +813,155 @@ function registerReportRun(report: Command): void {
         emitError(err, !!root.json);
       }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Shared start -> poll-until-ready machinery for `report run`
+// ---------------------------------------------------------------------------
+
+type StartPollOutcome =
+  | { outcome: 'ready'; runId: string; polls: number }
+  | { outcome: 'start_failed'; failure: ReportFailure }
+  | { outcome: 'poll_failed'; runId: string; failure: ReportFailure; polls: number }
+  | { outcome: 'timeout'; runId: string; lastStatus: string; polls: number };
+
+/**
+ * One start + poll-until-ready cycle, extracted so `report run` can share it
+ * between the ordinary single-report path and each chunk of the SQP
+ * auto-batch path (they are genuinely separate Amazon reports, so each gets
+ * its own ReportStarted/ReportPolled/ReportPollThrottled telemetry). Fetching
+ * the document is intentionally NOT part of this function: the two callers
+ * fetch differently (stream-to-file vs. buffered) and merge differently
+ * (single write vs. accumulate-then-merge).
+ *
+ * `ctx.deadline` and `ctx.stepStartedAt` are caller-supplied and NOT computed
+ * inside this function, because their meaning differs by path:
+ *   - the ordinary single-report path passes the outer command deadline
+ *     (`startedAt + opts.maxWaitMs`) and the command's `startedAt`, so its
+ *     telemetry `duration_ms` stays "since the command started" exactly as
+ *     before this function existed;
+ *   - the SQP auto-batch loop passes a FRESH `chunkDeadline = Date.now() +
+ *     opts.maxWaitMs` and a fresh `chunkStartedAt` on every iteration, so each
+ *     chunk gets its own full --max-wait-ms budget AND its telemetry
+ *     `duration_ms` measures that chunk's own start/poll latency rather than
+ *     cumulative time across all prior chunks.
+ * Every telemetry emission here (ReportStarted / ReportPollThrottled /
+ * ReportPolled / ReportFailed) is therefore relative to `ctx.stepStartedAt`.
+ */
+async function startAndPollUntilReady(
+  input: StartReportInput,
+  ctx: {
+    root: RootOptions;
+    clientOpts: { dataDirOverride: string | undefined };
+    stepStartedAt: number;
+    deadline: number;
+    intervalMs: number;
+    reportType: string;
+  },
+): Promise<StartPollOutcome> {
+  const { root, clientOpts, stepStartedAt, deadline, intervalMs, reportType } = ctx;
+
+  const started = await startReport(input, clientOpts);
+  if (isReportFailure(started)) {
+    await trackFailure(EventName.ReportFailed, started, stepStartedAt, root.dataDir, reportType);
+    return { outcome: 'start_failed', failure: started };
+  }
+  await track(
+    {
+      event_name: EventName.ReportStarted,
+      outcome: 'ok',
+      duration_ms: Date.now() - stepStartedAt,
+      payload: { report_type: reportType, status: started.status, via: 'run' },
+    },
+    root.dataDir,
+  );
+  const runId = started.runId;
+
+  // Poll until ready or timeout. A 429 (throttled) is transient — Amazon
+  // rate-limited this poll, not the pull — so back off (honoring any server
+  // retry-after) and keep polling to the deadline instead of failing the
+  // whole run on the first one. Only a non-throttled failure is terminal in
+  // the loop; a run that stays throttled to the deadline surfaces at the
+  // finalPoll below as ONE report.failed, not one per poll.
+  let polls = 0;
+  let throttledPolls = 0;
+  let throttleStreak = 0;
+  let lastStatus = started.status ?? 'UNKNOWN';
+  let pollFailure: ReportFailure | undefined;
+  // Capture the last successful poll so the post-loop step can reuse it
+  // instead of firing a redundant Amazon poll on the ready path.
+  let lastPoll: PollReportResult | undefined;
+  while (Date.now() < deadline) {
+    const poll = await pollReport(runId, clientOpts);
+    if (isReportFailure(poll)) {
+      if (poll.kind !== 'throttled') {
+        pollFailure = poll;
+        break;
+      }
+      throttledPolls += 1;
+      throttleStreak += 1;
+      const backoff = throttleBackoffMs(poll.retryAfterMs, intervalMs, throttleStreak, Date.now(), deadline);
+      if (backoff <= 0) break; // out of time; fall through to the timeout path
+      if (!root.json) {
+        process.stderr.write(
+          `  ... rate-limited by Amazon; backing off ${(backoff / 1000).toFixed(1)}s ` +
+            `(throttle ${throttledPolls})\n`,
+        );
+      }
+      await sleep(backoff);
+      continue;
+    }
+    throttleStreak = 0;
+    polls += 1;
+    lastStatus = poll.status;
+    lastPoll = poll;
+    if (poll.ready) break;
+    if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
+    await sleep(intervalMs);
+  }
+
+  // One deduped summary when throttling happened at all, so the
+  // error-aggregate sweep sees "throttled but handled" as its own signal
+  // rather than as inflated report.failed rows.
+  if (throttledPolls > 0) {
+    await track(
+      {
+        event_name: EventName.ReportPollThrottled,
+        outcome: 'ok',
+        duration_ms: Date.now() - stepStartedAt,
+        payload: { report_type: reportType, throttled_polls: throttledPolls, via: 'run' },
+      },
+      root.dataDir,
+    );
+  }
+
+  // A non-throttled poll failure is terminal.
+  if (pollFailure) {
+    await trackFailure(EventName.ReportFailed, pollFailure, stepStartedAt, root.dataDir, reportType);
+    return { outcome: 'poll_failed', runId, failure: pollFailure, polls };
+  }
+
+  // Reuse the ready poll from the loop; only re-poll if we never got a
+  // non-failure poll (e.g. throttled until the deadline).
+  const finalPoll = lastPoll ?? (await pollReport(runId, clientOpts));
+  if (isReportFailure(finalPoll)) {
+    await trackFailure(EventName.ReportFailed, finalPoll, stepStartedAt, root.dataDir, reportType);
+    return { outcome: 'poll_failed', runId, failure: finalPoll, polls };
+  }
+  if (!finalPoll.ready) {
+    await track(
+      {
+        event_name: EventName.ReportPolled,
+        outcome: 'timeout',
+        duration_ms: Date.now() - stepStartedAt,
+        payload: { report_type: reportType, status: lastStatus, polls, throttled_polls: throttledPolls, via: 'run' },
+      },
+      root.dataDir,
+    );
+    return { outcome: 'timeout', runId, lastStatus: finalPoll.status, polls };
+  }
+
+  return { outcome: 'ready', runId, polls };
 }
 
 // ---------------------------------------------------------------------------
@@ -785,6 +1046,119 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
     }
   }
   process.exitCode = exitCodeForKind(failure.kind);
+}
+
+/** Like emitFailure, but for one chunk of the SQP auto-batch path in `report
+ *  run`: adds chunk context (which chunk of N, run_ids of chunks that
+ *  already completed) so a mid-run failure is diagnosable, and — same as
+ *  emitFailure — never writes an output file (the merge only happens after
+ *  every chunk succeeds). */
+function emitChunkFailure(
+  failure: ReportFailure,
+  json: boolean,
+  chunk: number,
+  totalChunks: number,
+  completedRunIds: string[],
+): void {
+  if (json) {
+    writeJson({
+      status: 'error',
+      failure_kind: failure.kind,
+      message: failure.friendly,
+      detail: failure.message,
+      http_status: failure.httpStatus,
+      amazon_seller_id: failure.amazonSellerId,
+      report_type: failure.reportType,
+      retry_after_ms: failure.retryAfterMs,
+      candidates: failure.candidates,
+      chunk,
+      chunks: totalChunks,
+      run_ids: completedRunIds,
+    });
+  } else {
+    process.stderr.write(`\n✗ [SQP chunk ${chunk}/${totalChunks}] ${failure.friendly}\n`);
+    if (completedRunIds.length > 0) {
+      process.stderr.write(
+        `  ${completedRunIds.length} chunk(s) completed before this failure: ${completedRunIds.join(', ')}\n`,
+      );
+    }
+    if (failure.candidates && failure.candidates.length > 0) {
+      process.stderr.write(renderCandidates(failure.candidates));
+    }
+  }
+  process.exitCode = exitCodeForKind(failure.kind);
+}
+
+/** Timeout counterpart to emitChunkFailure: the overall --max-wait-ms
+ *  deadline was hit mid-chunk. The failing chunk's run handle is still valid
+ *  to poll/get later; earlier chunks' run handles are listed too. No output
+ *  file is written. */
+function emitChunkTimeout(
+  json: boolean,
+  chunk: number,
+  totalChunks: number,
+  runId: string,
+  lastStatus: string,
+  completedRunIds: string[],
+  maxWaitMs: number,
+): void {
+  const msg =
+    `Timed out after ${Math.round(maxWaitMs / 1000)}s waiting for SQP chunk ${chunk}/${totalChunks} ` +
+    `(last status: ${lastStatus}). Its run handle is still valid — poll it later with ` +
+    `\`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed ` +
+    `before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(', ')}` : ''}.`;
+  if (json) {
+    writeJson({
+      status: 'error',
+      failure_kind: 'timeout',
+      run_id: runId,
+      run_ids: completedRunIds,
+      chunk,
+      chunks: totalChunks,
+      report_status: lastStatus,
+      message: msg,
+    });
+  } else {
+    process.stderr.write(`\n✗ ${msg}\n`);
+  }
+  process.exitCode = EXIT_NOT_READY;
+}
+
+/** Every SQP chunk pulled successfully but the final merge or file write threw
+ *  (a malformed chunk document, or an unwritable --out path / full disk). All
+ *  the expensive throttled pulls already completed, so surface their run_ids
+ *  (like emitChunkFailure/emitChunkTimeout do) instead of letting the generic
+ *  outer catch drop them: the user can fetch each with `report get <runId>`
+ *  rather than re-running the whole batch. No output file is left behind. */
+function emitMergeFailure(
+  err: unknown,
+  json: boolean,
+  totalChunks: number,
+  completedRunIds: string[],
+  outPath: string,
+): void {
+  const detail = err instanceof Error ? err.message : String(err);
+  const msg =
+    `All ${totalChunks} SQP chunk(s) pulled, but combining them into ${outPath} failed: ${detail}. ` +
+    `The completed pulls are still fetchable individually with ` +
+    `\`mixshift amazon report get <run_id> --out <file>\`.`;
+  if (json) {
+    writeJson({
+      status: 'error',
+      failure_kind: 'merge_failed',
+      chunks: totalChunks,
+      run_ids: completedRunIds,
+      out_path: outPath,
+      message: msg,
+      detail,
+    });
+  } else {
+    process.stderr.write(`\n✗ ${msg}\n`);
+    if (completedRunIds.length > 0) {
+      process.stderr.write(`  completed chunk run ids: ${completedRunIds.join(', ')}\n`);
+    }
+  }
+  process.exitCode = 1;
 }
 
 /** Render the candidate rows from a multi-marketplace `merchant_not_found` so
@@ -949,6 +1323,54 @@ function mdCell(v: string): string {
 // ---------------------------------------------------------------------------
 // Option parsers / small utilities
 // ---------------------------------------------------------------------------
+
+/**
+ * SQP (GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT) is the one report
+ * type here that REQUIRES a reportOptions.asin value. Amazon accepts a
+ * createReport call missing it, then FATALs the report during processing —
+ * a slow, confusing failure with no useful error (confirmed live against a
+ * beta user's account). Both `report start` and `report run` call this
+ * BEFORE any network call so the failure is instant; it throws (the file's
+ * existing convention for bad input — see loadItemList in
+ * amazon-pricing.ts — is to throw and let the action's catch route it through
+ * emitError, `{status:'error', message}`, exit 1). Returns the asin value
+ * when the report type is SQP (so callers can act on it further), or
+ * `undefined` for every other report type (a no-op).
+ */
+function requireSqpAsinOption(
+  reportType: string,
+  options: Record<string, string>,
+): string | undefined {
+  if (reportType !== SQP_REPORT_TYPE) return undefined;
+  const asin = options.asin;
+  if (!asin || !asin.trim()) {
+    throw new Error(
+      `${SQP_REPORT_TYPE} requires a reportOptions.asin value (a space-separated ASIN ` +
+        'list). Amazon accepts the request without it and then fails the report with ' +
+        'FATAL during processing, with no useful error message — pass it with ' +
+        '--option "asin=B0XXXX1111 B0XXXX2222". For more than ~18 ASINs, use `amazon ' +
+        'report run`, which auto-batches any-size ASIN lists into multiple pulls and ' +
+        'merges the resulting JSON into one file.',
+    );
+  }
+  return asin;
+}
+
+/** `report start` kicks off exactly one report and cannot split a too-long
+ *  asin across multiple pulls — only `report run` auto-batches. Call this
+ *  after requireSqpAsinOption returns a defined asin, on the `report start`
+ *  path only. */
+function requireAsinFitsSingleReport(asin: string): void {
+  if (asin.length > SQP_ASIN_OPTION_CHAR_LIMIT) {
+    throw new Error(
+      `reportOptions.asin is ${asin.length} characters; Amazon caps this option at ` +
+        `${SQP_ASIN_OPTION_CHAR_LIMIT} characters per report (about 18 ASINs). \`amazon ` +
+        'report start` starts exactly one report and cannot split this list — use `amazon ' +
+        'report run`, which auto-batches any-size ASIN lists into multiple pulls and merges ' +
+        'the resulting JSON documents into one output file.',
+    );
+  }
+}
 
 function collectKV(
   value: string,

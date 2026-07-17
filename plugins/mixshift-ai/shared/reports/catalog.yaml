@@ -867,19 +867,22 @@ reports:
     notes: Requires Brand Registry. Not enrolled -> restricted_report.
 
   - report_type: GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT
-    title: Brand Analytics — Search Query Performance
-    purpose: Per-query funnel for your brand's ASINs — impressions, clicks, cart-adds, purchases + share.
+    title: "Brand Analytics: Search Query Performance"
+    purpose: Per-query funnel for your brand's ASINs (impressions, clicks, cart-adds, purchases, plus share), scoped to the ASINs you pass.
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window aligns to reportPeriod.
+    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday; MONTH is a calendar month and QUARTER a calendar quarter. Requests cannot span two periods. MONTH reaches back at most 17 months.
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
       - key: reportPeriod
         example: WEEK
-        note: WEEK | MONTH | QUARTER.
-    parse_hints: JSON with per-query funnel objects (impression/click/cartAdd/purchase counts + median price + share).
+        note: WEEK | MONTH | QUARTER. start/end must align to this period.
+      - key: asin
+        example: B0XXXX1111 B0XXXX2222
+        note: "REQUIRED. Amazon accepts a request missing this option and then FATALs the report during processing (the classic silent failure for this report type), so always pass it. Space-separated ASIN list. Amazon caps this option at 200 characters per report (about 18 ASINs); `amazon report run` auto-batches longer lists into multiple pulls and merges the resulting JSON into one file. Key-name trap - this report uses the SINGULAR `asin`, while Search Catalog Performance uses the PLURAL `asins`."
+    parse_hints: "JSON with a top-level reportSpecification object plus a dataByAsin[] array; each record has startDate, endDate, asin, and searchQueryData/impressionData/clickData/cartAddData/purchaseData objects."
     notes: Requires Brand Registry. Not enrolled -> restricted_report.
 
   - report_type: GET_BRAND_ANALYTICS_MARKET_BASKET_REPORT

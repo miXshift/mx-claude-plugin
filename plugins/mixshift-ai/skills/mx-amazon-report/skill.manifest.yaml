@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-report
 display_name: Amazon Report Pull
-version: "0.4.3"
+version: "0.5.0"
 description: >
   Pull Amazon SP-API reports on demand, directly from Amazon, for any
   merchant and window. The report analogue of mx-data-explore: a

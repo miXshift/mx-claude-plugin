@@ -13,6 +13,9 @@ import {
   streamReportDocumentToFile,
   exitCodeForKind,
   throttleBackoffMs,
+  chunkAsinList,
+  mergeSqpDocuments,
+  SQP_ASIN_OPTION_CHAR_LIMIT,
   THROTTLE_BACKOFF_CAP_MS,
   THROTTLE_BACKOFF_FLOOR_MS,
   type ReportClientOptions,
@@ -806,6 +809,153 @@ describe('throttleBackoffMs — adversarial / degenerate inputs', () => {
         expect(v).toBeLessThanOrEqual(DEADLINE);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// chunkAsinList — splits a long ASIN list into <=200-char reportOptions.asin
+// chunks for the SQP auto-batch path in `report run`
+// ---------------------------------------------------------------------------
+
+describe('chunkAsinList', () => {
+  it('returns a single chunk when the whole list fits', () => {
+    const r = chunkAsinList('B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC');
+    expect(r.asins).toEqual(['B0AAAAAAAA', 'B0BBBBBBBB', 'B0CCCCCCCC']);
+    expect(r.chunks).toEqual(['B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC']);
+  });
+
+  it('returns { asins: [], chunks: [] } on blank/empty input', () => {
+    expect(chunkAsinList('')).toEqual({ asins: [], chunks: [] });
+    expect(chunkAsinList('   ')).toEqual({ asins: [], chunks: [] });
+    expect(chunkAsinList('\n\t  \n')).toEqual({ asins: [], chunks: [] });
+  });
+
+  it('splits on any run of whitespace, not just single spaces', () => {
+    const r = chunkAsinList('B0AAAAAAAA\tB0BBBBBBBB\n\nB0CCCCCCCC   B0DDDDDDDD');
+    expect(r.asins).toEqual(['B0AAAAAAAA', 'B0BBBBBBBB', 'B0CCCCCCCC', 'B0DDDDDDDD']);
+    expect(r.chunks).toEqual(['B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC B0DDDDDDDD']);
+  });
+
+  it('dedupes repeated ASINs, preserving first-seen order', () => {
+    const r = chunkAsinList('B0AAAAAAAA B0BBBBBBBB B0AAAAAAAA B0CCCCCCCC B0BBBBBBBB');
+    expect(r.asins).toEqual(['B0AAAAAAAA', 'B0BBBBBBBB', 'B0CCCCCCCC']);
+    expect(r.chunks).toEqual(['B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC']);
+  });
+
+  it('packs greedily up to the char limit, splitting into a new chunk once a token would overflow', () => {
+    // 10-char ASINs joined by single spaces: charLimit 21 fits exactly 2 per
+    // chunk (10 + 1 + 10 = 21), so a 5-ASIN list packs 2/2/1.
+    const asins = ['B0AAAAAAAA', 'B0BBBBBBBB', 'B0CCCCCCCC', 'B0DDDDDDDD', 'B0EEEEEEEE'];
+    const r = chunkAsinList(asins.join(' '), 21);
+    expect(r.chunks).toEqual([
+      'B0AAAAAAAA B0BBBBBBBB',
+      'B0CCCCCCCC B0DDDDDDDD',
+      'B0EEEEEEEE',
+    ]);
+  });
+
+  it('respects an exact-boundary chunk (candidate length == charLimit stays in the chunk)', () => {
+    // 10 + 1 + 10 = 21 exactly; charLimit 21 must keep both in one chunk.
+    const r = chunkAsinList('B0AAAAAAAA B0BBBBBBBB', 21);
+    expect(r.chunks).toEqual(['B0AAAAAAAA B0BBBBBBBB']);
+    // One char less (20) cannot fit both -> two chunks.
+    const r2 = chunkAsinList('B0AAAAAAAA B0BBBBBBBB', 20);
+    expect(r2.chunks).toEqual(['B0AAAAAAAA', 'B0BBBBBBBB']);
+  });
+
+  it('every produced chunk is at or under the char limit', () => {
+    const asins = Array.from({ length: 40 }, (_, i) => `B0${String(i).padStart(8, '0')}`);
+    const r = chunkAsinList(asins.join(' '), SQP_ASIN_OPTION_CHAR_LIMIT);
+    expect(r.asins).toHaveLength(40);
+    for (const chunk of r.chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(SQP_ASIN_OPTION_CHAR_LIMIT);
+    }
+    // Round-trips back to the full deduped ASIN set with nothing dropped.
+    expect(r.chunks.join(' ').split(' ').sort()).toEqual([...r.asins].sort());
+  });
+
+  it('throws on a single token longer than the char limit (cannot be a valid ASIN)', () => {
+    expect(() => chunkAsinList('B0AAAAAAAA B0' + 'X'.repeat(250), 200)).toThrow(/characters/);
+  });
+
+  it('uses the default SQP_ASIN_OPTION_CHAR_LIMIT (200) when no limit is passed', () => {
+    const asins = Array.from({ length: 20 }, (_, i) => `B0${String(i).padStart(8, '0')}`);
+    const r = chunkAsinList(asins.join(' '));
+    for (const chunk of r.chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(200);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeSqpDocuments — recombines N chunked SQP report documents into the
+// single { reportSpecification, dataByAsin[] } shape Amazon's own schema
+// (sellingPartnerSearchQueryPerformanceReport.json) defines
+// ---------------------------------------------------------------------------
+
+describe('mergeSqpDocuments', () => {
+  function doc(rows: unknown[], asinOption?: string): string {
+    return JSON.stringify({
+      reportSpecification: {
+        reportType: 'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT',
+        reportOptions: { reportPeriod: 'WEEK', ...(asinOption !== undefined ? { asin: asinOption } : {}) },
+      },
+      dataByAsin: rows,
+    });
+  }
+
+  it('concatenates dataByAsin across chunks in order', () => {
+    const d1 = doc([{ asin: 'B0AAAAAAAA', n: 1 }], 'B0AAAAAAAA');
+    const d2 = doc([{ asin: 'B0BBBBBBBB', n: 2 }, { asin: 'B0BBBBBBBB', n: 3 }], 'B0BBBBBBBB');
+    const merged = JSON.parse(mergeSqpDocuments([d1, d2], 'B0AAAAAAAA B0BBBBBBBB'));
+    expect(merged.dataByAsin).toEqual([
+      { asin: 'B0AAAAAAAA', n: 1 },
+      { asin: 'B0BBBBBBBB', n: 2 },
+      { asin: 'B0BBBBBBBB', n: 3 },
+    ]);
+  });
+
+  it('keeps the first document reportSpecification otherwise, rewriting reportOptions.asin to the full list', () => {
+    const d1 = doc([], 'B0AAAAAAAA');
+    const d2 = doc([], 'B0BBBBBBBB');
+    const merged = JSON.parse(mergeSqpDocuments([d1, d2], 'B0AAAAAAAA B0BBBBBBBB'));
+    expect(merged.reportSpecification.reportType).toBe(
+      'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT',
+    );
+    expect(merged.reportSpecification.reportOptions.reportPeriod).toBe('WEEK');
+    expect(merged.reportSpecification.reportOptions.asin).toBe('B0AAAAAAAA B0BBBBBBBB');
+  });
+
+  it('single-doc passthrough still applies the asin fix-up', () => {
+    const d1 = doc([{ asin: 'B0AAAAAAAA', n: 1 }], 'B0AAAAAAAA');
+    const merged = JSON.parse(mergeSqpDocuments([d1], 'B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC'));
+    expect(merged.dataByAsin).toEqual([{ asin: 'B0AAAAAAAA', n: 1 }]);
+    expect(merged.reportSpecification.reportOptions.asin).toBe(
+      'B0AAAAAAAA B0BBBBBBBB B0CCCCCCCC',
+    );
+  });
+
+  it('leaves reportSpecification untouched when reportOptions.asin is absent', () => {
+    const d1 = doc([{ asin: 'B0AAAAAAAA', n: 1 }]); // no asin option this time
+    const merged = JSON.parse(mergeSqpDocuments([d1], 'B0AAAAAAAA'));
+    expect(merged.reportSpecification.reportOptions.asin).toBeUndefined();
+    expect(merged.reportSpecification.reportOptions.reportPeriod).toBe('WEEK');
+  });
+
+  it('throws, naming the chunk index, when a chunk is missing dataByAsin', () => {
+    const good = doc([{ asin: 'B0AAAAAAAA', n: 1 }], 'B0AAAAAAAA');
+    const bad = JSON.stringify({ reportSpecification: {} }); // no dataByAsin
+    expect(() => mergeSqpDocuments([good, bad], 'B0AAAAAAAA')).toThrow(/chunk 2 of 2/);
+    expect(() => mergeSqpDocuments([bad, good], 'B0AAAAAAAA')).toThrow(/chunk 1 of 2/);
+  });
+
+  it('throws, naming the chunk index, on invalid JSON', () => {
+    const good = doc([{ asin: 'B0AAAAAAAA', n: 1 }], 'B0AAAAAAAA');
+    expect(() => mergeSqpDocuments([good, '{not json'], 'B0AAAAAAAA')).toThrow(/chunk 2 of 2/);
+  });
+
+  it('throws on zero documents', () => {
+    expect(() => mergeSqpDocuments([], 'B0AAAAAAAA')).toThrow();
   });
 });
 
