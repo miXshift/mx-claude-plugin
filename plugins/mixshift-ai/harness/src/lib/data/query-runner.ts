@@ -107,6 +107,30 @@ export interface RunQueryTelemetry {
   query_id?: string;
   /** Primary table touched (best-effort; surface what callers know cheaply). */
   query_table?: string;
+  /** Normalized shape of the USER's query (table + SELECT-* + projected-col
+   *  count), computed ONCE from the original statement at the runQuery /
+   *  streamQuery entry point and threaded through so the per-page telemetry emit
+   *  reflects the user-level shape, not the pager's wrapped page SQL. Callers
+   *  normally leave this unset and let runQuery/streamQuery derive it. */
+  query_shape?: QueryShape;
+}
+
+/**
+ * Normalized, PII-free shape of a user query, stamped onto QueryExecuted /
+ * QueryFailed telemetry so a pack-candidate report can group by table +
+ * SELECT-* without regex-parsing raw SQL after the fact. Table name +
+ * booleans/counts only — the raw text already lives in `sql_normalized`.
+ */
+export interface QueryShape {
+  /** Primary table in the outer query's FROM clause (lowercased, schema
+   *  qualifier dropped). null when not confidently extractable (subquery in
+   *  FROM, no FROM, or an unparseable reference). */
+  table: string | null;
+  /** True when the user's top-level projection is `SELECT *` (or `SELECT t.*`). */
+  select_star: boolean;
+  /** Count of top-level projected columns when NOT select_star (best-effort);
+   *  null when select_star or when the projection cannot be determined. */
+  projected_cols: number | null;
 }
 
 /** Server-side per-request row cap on the datahub gateway (`/api/query`). A
@@ -218,11 +242,27 @@ export async function runQuery<Row = Record<string, unknown>>(
   params: unknown[] | Record<string, unknown> = [],
   options: RunQueryOptions & RunQueryTelemetry = {},
 ): Promise<DataQueryResult<Row>> {
-  const first = await runOnce<Row>(sql, params, options);
+  const opts = withQueryShape(sql, options);
+  const first = await runOnce<Row>(sql, params, opts);
   if (!isServiceCapFailure(first)) return first;
   return paginateOverCap<Row>(sql, (pageSql) =>
-    runOnce<Row>(pageSql, params, options),
+    runOnce<Row>(pageSql, params, opts),
   );
+}
+
+/**
+ * Attach the user query's normalized `query_shape` to the telemetry options if a
+ * caller didn't already supply one. Derived ONCE here from the user's ORIGINAL
+ * `sql`; the same object is threaded to every per-page emit inside
+ * paginateOverCap, so a paged query reports the user-level shape (its real
+ * table + SELECT-*) rather than the pager's wrapped `_mx_page` page SQL.
+ */
+function withQueryShape<T extends RunQueryOptions & RunQueryTelemetry>(
+  sql: string,
+  options: T,
+): T {
+  if (options.query_shape !== undefined) return options;
+  return { ...options, query_shape: deriveQueryShape(sql) };
 }
 
 export interface StreamedQueryResult {
@@ -265,7 +305,8 @@ export async function streamQuery<Row = Record<string, unknown>>(
   onPage: (rows: Row[], pageIndex: number) => void | Promise<void>,
 ): Promise<StreamedQueryResult> {
   const t0 = Date.now();
-  const first = await runOnce<Row>(sql, params, options);
+  const opts = withQueryShape(sql, options);
+  const first = await runOnce<Row>(sql, params, opts);
   if (first.ok) {
     // Single shot: the server returned the whole result under both caps.
     if (first.rows.length > 0) await onPage(first.rows, 0);
@@ -287,7 +328,7 @@ export async function streamQuery<Row = Record<string, unknown>>(
   }
   const paged = await paginateOverCap<Row>(
     sql,
-    (pageSql) => runOnce<Row>(pageSql, params, options),
+    (pageSql) => runOnce<Row>(pageSql, params, opts),
     { onPage },
   );
   if (!paged.ok) {
@@ -683,6 +724,238 @@ export async function paginateOverCap<Row>(
 }
 
 // ---------------------------------------------------------------------------
+// Query-shape derivation (PII-free telemetry enrichment)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a normalized, PII-free {@link QueryShape} from a SQL statement so
+ * telemetry can group by table + SELECT-* without regex-parsing raw SQL later.
+ *
+ * Tolerant, dependency-free tokenizer (NOT a SQL parser). It:
+ *   - skips `--` line and `/* *\/` block comments (mirrors hasTopLevelOrderBy);
+ *   - UNWRAPS the pager's `SELECT * FROM (<inner>) AS _mx_page ...` wrapper and
+ *     analyzes the INNER user SQL — a belt-and-suspenders guard so even a shape
+ *     derived from a wrapped page reports the user's real table, not `_mx_page`
+ *     (the primary defense is threading the shape from the user SQL entry point);
+ *   - treats a leading CTE (`WITH x AS (...) SELECT ... FROM t`) correctly: the
+ *     CTE bodies are parenthesized (depth > 0), so the first depth-0 SELECT is
+ *     the OUTER query and its FROM is the primary table, not the CTE's;
+ *   - returns nulls rather than a wrong guess when the FROM is a subquery, is
+ *     absent, or the reference cannot be parsed.
+ *
+ * The `table` is lowercased with any schema qualifier dropped (`db.tbl` → `tbl`)
+ * so the warehouse's single-DB rows group cleanly.
+ */
+export function deriveQueryShape(sql: string): QueryShape {
+  const nulls: QueryShape = { table: null, select_star: false, projected_cols: null };
+  if (!sql) return nulls;
+  const clean = stripSqlComments(sql).trim().replace(/;\s*$/, '').trim();
+  if (!clean) return nulls;
+
+  // Pager wrapper → analyze the user's inner SQL instead.
+  const inner = unwrapPagerWrapper(clean);
+  if (inner !== null) return deriveQueryShape(inner);
+
+  // Outer SELECT (skips parenthesized CTE bodies, which sit at depth > 0).
+  const selIdx = firstKeywordAtDepth0(clean, 0, 'select');
+  if (selIdx < 0) return nulls;
+  const afterSelect = selIdx + 'select'.length;
+
+  const fromIdx = firstKeywordAtDepth0(clean, afterSelect, 'from');
+  let projection = (fromIdx < 0 ? clean.slice(afterSelect) : clean.slice(afterSelect, fromIdx)).trim();
+  // Drop a leading DISTINCT / ALL quantifier before classifying the projection.
+  projection = projection.replace(/^(?:distinct|all)\s+/i, '').trim();
+
+  const selectStar = isStarProjection(projection);
+  const projectedCols = selectStar ? null : countTopLevelTerms(projection);
+
+  const table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + 'from'.length);
+
+  return { table, select_star: selectStar, projected_cols: projectedCols };
+}
+
+/**
+ * Return `sql` with `--` and `/* *\/` comments replaced by a space, preserving
+ * string literals and backtick identifiers (a comment marker inside a quote is
+ * NOT a comment). Same quote/escape rules as hasTopLevelOrderBy.
+ */
+function stripSqlComments(sql: string): string {
+  let out = '';
+  let quote: "'" | '"' | '`' | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      out += ch;
+      if ((quote === "'" || quote === '"') && ch === '\\') {
+        if (i + 1 < sql.length) out += sql[++i];
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i + 2);
+      out += ' ';
+      if (nl === -1) break;
+      i = nl - 1;
+      continue;
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2);
+      out += ' ';
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Find the first `keyword` (a whole word) at parenthesis depth 0, scanning from
+ * `start`. Tracks quotes/backticks so a keyword inside a literal or identifier
+ * is ignored. Returns the keyword's index, or -1. `sql` is assumed already
+ * comment-stripped.
+ */
+function firstKeywordAtDepth0(sql: string, start: number, keyword: string): number {
+  let depth = 0;
+  let quote: "'" | '"' | '`' | null = null;
+  const kw = keyword.toLowerCase();
+  for (let i = start; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      if ((quote === "'" || quote === '"') && ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      continue;
+    }
+    if (ch === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0 && (ch === kw[0] || ch === kw[0]!.toUpperCase())) {
+      const prev = i > 0 ? sql[i - 1]! : ' ';
+      const next = sql[i + kw.length];
+      if (
+        !/[\w$]/.test(prev) &&
+        sql.slice(i, i + kw.length).toLowerCase() === kw &&
+        (next === undefined || !/[\w$]/.test(next))
+      ) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+/** Index of the `)` matching the `(` at `openIdx`, or -1. Quote-aware. */
+function matchingParen(sql: string, openIdx: number): number {
+  let depth = 0;
+  let quote: "'" | '"' | '`' | null = null;
+  for (let i = openIdx; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      if ((quote === "'" || quote === '"') && ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * If `clean` is the pager's `SELECT * FROM (<inner>) AS _mx_page ...` wrapper,
+ * return the inner user SQL; else null. Robust to the exact wrappers this file
+ * emits (the `LIMIT 1` probe and the `ORDER BY ... LIMIT ... OFFSET ...` page).
+ */
+function unwrapPagerWrapper(clean: string): string | null {
+  const m = /^select\s+\*\s+from\s*\(/i.exec(clean);
+  if (!m) return null;
+  const openIdx = m[0].length - 1;
+  const closeIdx = matchingParen(clean, openIdx);
+  if (closeIdx < 0) return null;
+  const after = clean.slice(closeIdx + 1).trim();
+  if (!/^as\s+_mx_page\b/i.test(after)) return null;
+  return clean.slice(openIdx + 1, closeIdx).trim();
+}
+
+/** True when the whole projection is `*` or `<qualifier>.*` (e.g. `t.*`). */
+function isStarProjection(projection: string): boolean {
+  return projection === '*' || /^`?[\w$]+`?\s*\.\s*\*$/.test(projection);
+}
+
+/**
+ * Count top-level (depth-0) comma-separated terms in a projection list, so
+ * commas inside function calls (`COUNT(a, b)`) or subqueries don't inflate the
+ * count. Returns null for an empty projection.
+ */
+function countTopLevelTerms(projection: string): number | null {
+  if (!projection) return null;
+  let depth = 0;
+  let quote: "'" | '"' | '`' | null = null;
+  let terms = 1;
+  for (let i = 0; i < projection.length; i++) {
+    const ch = projection[i]!;
+    if (quote) {
+      if ((quote === "'" || quote === '"') && ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      if (depth > 0) depth--;
+    } else if (ch === ',' && depth === 0) terms++;
+  }
+  return terms;
+}
+
+/**
+ * Parse the primary table reference immediately after the FROM keyword. Returns
+ * the table name (lowercased, backticks stripped, schema qualifier dropped), or
+ * null when the FROM opens a subquery `(...)` or the reference can't be parsed.
+ */
+function parsePrimaryTable(sql: string, fromEnd: number): string | null {
+  const rest = sql.slice(fromEnd).replace(/^\s+/, '');
+  if (rest.startsWith('(')) return null; // subquery / derived table in FROM
+  const m = /^(`[^`]+`|[\w$]+)(?:\s*\.\s*(`[^`]+`|[\w$]+))?/.exec(rest);
+  if (!m) return null;
+  const raw = (m[2] ?? m[1])!.replace(/`/g, '').trim();
+  if (!raw) return null;
+  return raw.toLowerCase();
+}
+
+// ---------------------------------------------------------------------------
 // MySQL path (legacy raw-creds)
 // ---------------------------------------------------------------------------
 
@@ -734,6 +1007,7 @@ async function runMysqlQuery<Row>(
         payload: {
           auth_path: 'mysql',
           sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          query_shape: options.query_shape,
         },
       },
       options.dataDirOverride,
@@ -759,6 +1033,7 @@ async function runMysqlQuery<Row>(
           raw_code: failure.raw_code,
           sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
           table_name: failure.table_name,
+          query_shape: options.query_shape,
         },
       },
       options.dataDirOverride,
@@ -888,6 +1163,7 @@ async function runDatahubQuery<Row>(
             server_duration_ms: serverDuration,
             sql_normalized:
               sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+            query_shape: options.query_shape,
           },
         },
         options.dataDirOverride,
@@ -924,6 +1200,7 @@ async function runDatahubQuery<Row>(
           sql_normalized:
             sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
           table_name: failure.table_name,
+          query_shape: options.query_shape,
         },
       },
       options.dataDirOverride,
@@ -964,6 +1241,7 @@ async function runDatahubQuery<Row>(
           auth_path: 'datahub',
           sql_normalized:
             sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          query_shape: options.query_shape,
         },
       },
       options.dataDirOverride,
