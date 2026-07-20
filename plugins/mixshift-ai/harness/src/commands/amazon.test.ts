@@ -43,6 +43,17 @@ import {
   chunkAsinList,
   type StartReportInput,
 } from '../lib/amazon/reports.js';
+import { track } from '../lib/telemetry/index.js';
+import { EventName } from '../lib/telemetry/events.js';
+
+/** Pull the payload of the report.started track() call (the last one, so the
+ *  SQP chunked path returns the most recent chunk's). */
+function reportStartedPayloads(): any[] {
+  return vi
+    .mocked(track)
+    .mock.calls.filter((c) => (c[0] as any)?.event_name === EventName.ReportStarted)
+    .map((c) => (c[0] as any).payload);
+}
 
 const SQP_TYPE = 'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT';
 
@@ -458,5 +469,127 @@ describe('report run — single-report path unaffected', () => {
     expect(result.status).toBe('ok');
     expect(result.bytes).toBe(999);
     expect(result.chunks).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// report.started telemetry enrichment (FF-1): the event now carries the
+// window (start/end) and reportOptions so a later FATAL is diagnosable.
+// ---------------------------------------------------------------------------
+
+describe('report.started telemetry captures window + reportOptions', () => {
+  it('report start (SQP) stamps report_options, start, end, and run_id', async () => {
+    vi.mocked(startReport).mockResolvedValue({ ok: true, runId: 'run-1', status: 'IN_QUEUE' });
+
+    await runCli(
+      'amazon',
+      'report',
+      'start',
+      '--seller-id',
+      'A1SELLER',
+      '--type',
+      SQP_TYPE,
+      '--option',
+      'reportPeriod=WEEK',
+      '--option',
+      'asin=B0AAAA1111 B0BBBB2222',
+      '--start',
+      '2026-07-05',
+      '--end',
+      '2026-07-11',
+      '--json',
+    );
+
+    const payloads = reportStartedPayloads();
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      report_type: SQP_TYPE,
+      run_id: 'run-1',
+      amazon_seller_id: 'A1SELLER',
+      start: '2026-07-05',
+      end: '2026-07-11',
+      report_options: { reportPeriod: 'WEEK', asin: 'B0AAAA1111 B0BBBB2222' },
+    });
+  });
+
+  it('report run (non-SQP) stamps via:run, start, end, run_id on report.started', async () => {
+    vi.mocked(startReport).mockResolvedValue({ ok: true, runId: 'run-1', status: 'IN_QUEUE' });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' });
+    vi.mocked(getReportDocumentMeta).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: { url: 'https://example.test/doc', compressionAlgorithm: null },
+    });
+    vi.mocked(streamReportDocumentToFile).mockResolvedValue({ ok: true, bytes: 10 });
+
+    await runCli(
+      'amazon',
+      'report',
+      'run',
+      '--type',
+      'GET_SALES_AND_TRAFFIC_REPORT',
+      '--start',
+      '2026-07-01',
+      '--end',
+      '2026-07-07',
+      '--out',
+      join(tmpDir, 'st.json'),
+      '--json',
+    );
+
+    const payloads = reportStartedPayloads();
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      report_type: 'GET_SALES_AND_TRAFFIC_REPORT',
+      via: 'run',
+      run_id: 'run-1',
+      start: '2026-07-01',
+      end: '2026-07-07',
+    });
+  });
+
+  it('report run (SQP auto-batch) emits one report.started per chunk, each with that chunk’s own asin', async () => {
+    const asins = makeAsins(30);
+    const { chunks: expectedChunks } = chunkAsinList(asins.join(' '));
+    let startCounter = 0;
+    const asinByRun = new Map<string, string>();
+    vi.mocked(startReport).mockImplementation(async (input) => {
+      startCounter += 1;
+      const runId = `run-${startCounter}`;
+      asinByRun.set(runId, (input.reportOptions?.asin as string) ?? '');
+      return { ok: true, runId, status: 'IN_QUEUE' };
+    });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' });
+    vi.mocked(getReportDocument).mockImplementation(async (runId: string) => {
+      const asinStr = asinByRun.get(runId) ?? '';
+      const rows = asinStr.split(' ').filter(Boolean).map((asin) => ({ asin }));
+      const text = JSON.stringify({ reportSpecification: {}, dataByAsin: rows });
+      return { ok: true, ready: true, status: 'DONE', document: text, bytes: text.length };
+    });
+
+    await runCli(
+      'amazon',
+      'report',
+      'run',
+      '--type',
+      SQP_TYPE,
+      '--option',
+      'reportPeriod=WEEK',
+      '--option',
+      `asin=${asins.join(' ')}`,
+      '--out',
+      join(tmpDir, 'sqp.json'),
+      '--json',
+    );
+
+    const payloads = reportStartedPayloads();
+    expect(payloads).toHaveLength(expectedChunks.length);
+    payloads.forEach((p, i) => {
+      expect(p.via).toBe('run');
+      expect(p.report_options.asin).toBe(expectedChunks[i]);
+      expect(p.report_options.reportPeriod).toBe('WEEK');
+      expect(p.run_id).toBe(`run-${i + 1}`);
+    });
   });
 });
