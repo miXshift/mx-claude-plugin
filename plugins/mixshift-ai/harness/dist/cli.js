@@ -84274,17 +84274,23 @@ function registerReportStart(report) {
           outcome: "ok",
           duration_ms: Date.now() - startedAt,
           // Beta richness (feedback #10): stamp the run handle plus the
-          // merchant/marketplace selectors the caller pulled for, so a
-          // report.started can be traced to a seller/window — not just a
-          // report type. run_id from the result; seller/marketplace from the
-          // in-scope request (input). Never document bytes.
+          // merchant/marketplace selectors AND the window + reportOptions the
+          // caller pulled with, so a report.started can be traced to a
+          // seller/window/options, not just a report type. This is what makes
+          // a later FATAL diagnosable: e.g. an SQP run that omitted
+          // reportOptions.asin, or a window that did not align to the period.
+          // run_id from the result; everything else from the in-scope request
+          // (input). Never document bytes.
           payload: {
             report_type: reportType,
             status: result.status,
             run_id: result.runId,
             ...input.amazonSellerId !== void 0 ? { amazon_seller_id: input.amazonSellerId } : {},
             ...input.legacySellerId !== void 0 ? { legacy_seller_id: input.legacySellerId } : {},
-            ...input.marketplace !== void 0 ? { marketplace: input.marketplace } : {}
+            ...input.marketplace !== void 0 ? { marketplace: input.marketplace } : {},
+            ...input.start !== void 0 ? { start: input.start } : {},
+            ...input.end !== void 0 ? { end: input.end } : {},
+            ...input.reportOptions ? { report_options: input.reportOptions } : {}
           }
         },
         root.dataDir
@@ -84687,16 +84693,33 @@ async function startAndPollUntilReady(input, ctx) {
     await trackFailure2(EventName.ReportFailed, started, stepStartedAt, root.dataDir, reportType);
     return { outcome: "start_failed", failure: started };
   }
+  const runId = started.runId;
   await track(
     {
       event_name: EventName.ReportStarted,
       outcome: "ok",
       duration_ms: Date.now() - stepStartedAt,
-      payload: { report_type: reportType, status: started.status, via: "run" }
+      // Same beta richness as the `report start` path: stamp the run handle,
+      // merchant/marketplace selectors, window, and reportOptions from the
+      // in-scope request. For the SQP auto-batch path this fires once per chunk
+      // with that chunk's own reportOptions.asin substring, so a per-chunk FATAL
+      // shows exactly which ASIN slice failed. `via:'run'` distinguishes this
+      // from the `report start` emit. Never document bytes.
+      payload: {
+        report_type: reportType,
+        status: started.status,
+        via: "run",
+        run_id: runId,
+        ...input.amazonSellerId !== void 0 ? { amazon_seller_id: input.amazonSellerId } : {},
+        ...input.legacySellerId !== void 0 ? { legacy_seller_id: input.legacySellerId } : {},
+        ...input.marketplace !== void 0 ? { marketplace: input.marketplace } : {},
+        ...input.start !== void 0 ? { start: input.start } : {},
+        ...input.end !== void 0 ? { end: input.end } : {},
+        ...input.reportOptions ? { report_options: input.reportOptions } : {}
+      }
     },
     root.dataDir
   );
-  const runId = started.runId;
   let polls = 0;
   let throttledPolls = 0;
   let throttleStreak = 0;
