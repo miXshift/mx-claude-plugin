@@ -55,6 +55,14 @@ function reportStartedPayloads(): any[] {
     .map((c) => (c[0] as any).payload);
 }
 
+/** Pull the payloads of any report.failed track() calls. */
+function reportFailedPayloads(): any[] {
+  return vi
+    .mocked(track)
+    .mock.calls.filter((c) => (c[0] as any)?.event_name === EventName.ReportFailed)
+    .map((c) => (c[0] as any).payload);
+}
+
 const SQP_TYPE = 'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT';
 
 vi.mock('../lib/amazon/reports.js', async (importOriginal) => {
@@ -591,5 +599,61 @@ describe('report.started telemetry captures window + reportOptions', () => {
       expect(p.report_options.reportPeriod).toBe('WEEK');
       expect(p.run_id).toBe(`run-${i + 1}`);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// report.failed carries run_id so a failure correlates to its report.started
+// (gemini review follow-up: without it, a first-poll failure leaves the
+// started + failed events with no common id).
+// ---------------------------------------------------------------------------
+
+describe('report.failed carries run_id for started<->failed correlation', () => {
+  it('report run: a non-throttled poll failure emits report.failed with the started run_id', async () => {
+    vi.mocked(startReport).mockResolvedValue({ ok: true, runId: 'run-1', status: 'IN_QUEUE' });
+    // First poll fails terminally (non-throttled) -> no report.polled ever
+    // carries the id, so run_id on report.failed is the only correlator.
+    vi.mocked(pollReport).mockResolvedValue({
+      ok: false,
+      kind: 'report_fatal',
+      friendly: 'Amazon could not generate this report.',
+    });
+
+    await runCli(
+      'amazon',
+      'report',
+      'run',
+      '--type',
+      'GET_SALES_AND_TRAFFIC_REPORT',
+      '--start',
+      '2026-07-01',
+      '--end',
+      '2026-07-07',
+      '--out',
+      join(tmpDir, 'x.json'),
+      '--json',
+    );
+
+    const failed = reportFailedPayloads();
+    expect(failed).toHaveLength(1);
+    expect(failed[0].run_id).toBe('run-1');
+    // Same id as the started event -> the pair is now correlatable.
+    expect(reportStartedPayloads()[0].run_id).toBe('run-1');
+  });
+
+  it('report poll: a failure carries the polled run_id', async () => {
+    vi.mocked(pollReport).mockResolvedValue({
+      ok: false,
+      kind: 'report_fatal',
+      friendly: 'Amazon could not generate this report.',
+    });
+
+    await runCli('amazon', 'report', 'poll', 'run-xyz', '--json');
+
+    const failed = reportFailedPayloads();
+    expect(failed).toHaveLength(1);
+    expect(failed[0].run_id).toBe('run-xyz');
+    // No report_type on the poll/get path (not in scope there).
+    expect(failed[0].report_type).toBeUndefined();
   });
 });

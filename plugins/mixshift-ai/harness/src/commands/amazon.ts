@@ -349,7 +349,7 @@ function registerReportPoll(report: Command): void {
       try {
         const result = await pollReport(runId, { dataDirOverride: root.dataDir });
         if (isReportFailure(result)) {
-          await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
+          await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir, undefined, runId);
           return emitFailure(result, !!root.json);
         }
         await track(
@@ -417,7 +417,7 @@ function registerReportGet(report: Command): void {
         if (opts.out) {
           const meta = await getReportDocumentMeta(runId, clientOpts);
           if (isReportFailure(meta)) {
-            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir);
+            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, undefined, runId);
             return emitFailure(meta, !!root.json);
           }
           if (!meta.ready || !meta.document) {
@@ -427,7 +427,7 @@ function registerReportGet(report: Command): void {
           const outPath = resolvePath(opts.out);
           const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
           if (isReportFailure(streamed)) {
-            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir);
+            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, undefined, runId);
             return emitFailure(streamed, !!root.json);
           }
           await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
@@ -443,7 +443,7 @@ function registerReportGet(report: Command): void {
         // documents fail cleanly (pointing at --out) instead of crashing.
         const result = await getReportDocument(runId, clientOpts);
         if (isReportFailure(result)) {
-          await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir);
+          await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir, undefined, runId);
           return emitFailure(result, !!root.json);
         }
         if (!result.ready) {
@@ -604,7 +604,7 @@ function registerReportRun(report: Command): void {
           // presigned body through gunzip into the destination.
           const meta = await getReportDocumentMeta(runId, clientOpts);
           if (isReportFailure(meta)) {
-            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, reportType);
+            await trackFailure(EventName.ReportFailed, meta, startedAt, root.dataDir, reportType, runId);
             return emitFailure(meta, !!root.json);
           }
           if (!meta.ready || !meta.document) {
@@ -638,7 +638,7 @@ function registerReportRun(report: Command): void {
           );
           const streamed = await streamReportDocumentToFile(meta.document, outPath, clientOpts);
           if (isReportFailure(streamed)) {
-            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
+            await trackFailure(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType, runId);
             return emitFailure(streamed, !!root.json);
           }
           const bytes = streamed.bytes;
@@ -733,7 +733,7 @@ function registerReportRun(report: Command): void {
             // Per-chunk telemetry uses this chunk's own start time, not the
             // command start, so duration_ms is this chunk's latency (matching
             // the ReportStarted/ReportPolled events inside startAndPollUntilReady).
-            await trackFailure(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType);
+            await trackFailure(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType, outcome.runId);
             emitChunkFailure(docRes, !!root.json, chunkNum, chunks.length, runIds);
             return;
           }
@@ -963,7 +963,7 @@ async function startAndPollUntilReady(
 
   // A non-throttled poll failure is terminal.
   if (pollFailure) {
-    await trackFailure(EventName.ReportFailed, pollFailure, stepStartedAt, root.dataDir, reportType);
+    await trackFailure(EventName.ReportFailed, pollFailure, stepStartedAt, root.dataDir, reportType, runId);
     return { outcome: 'poll_failed', runId, failure: pollFailure, polls };
   }
 
@@ -971,7 +971,7 @@ async function startAndPollUntilReady(
   // non-failure poll (e.g. throttled until the deadline).
   const finalPoll = lastPoll ?? (await pollReport(runId, clientOpts));
   if (isReportFailure(finalPoll)) {
-    await trackFailure(EventName.ReportFailed, finalPoll, stepStartedAt, root.dataDir, reportType);
+    await trackFailure(EventName.ReportFailed, finalPoll, stepStartedAt, root.dataDir, reportType, runId);
     return { outcome: 'poll_failed', runId, failure: finalPoll, polls };
   }
   if (!finalPoll.ready) {
@@ -1018,6 +1018,7 @@ async function trackFailure(
   startedAt: number,
   dataDir: string | undefined,
   reportType?: string,
+  runId?: string,
 ): Promise<void> {
   await track(
     {
@@ -1028,6 +1029,12 @@ async function trackFailure(
       payload: {
         kind: failure.kind,
         ...(reportType ? { report_type: reportType } : {}),
+        // run_id ties this report.failed back to its report.started (same
+        // run handle), even when the failure surfaces in a separate `report
+        // poll`/`report get` invocation, or on the first poll of a chunk
+        // before any report.polled event carried the id. Absent only on the
+        // pre-run start-failure paths, where no run exists yet.
+        ...(runId !== undefined ? { run_id: runId } : {}),
         ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
         // Beta richness (feedback #10): seller/report context the service
         // attached to the failure, so a report.failed can be tied to the

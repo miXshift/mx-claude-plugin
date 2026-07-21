@@ -84321,7 +84321,7 @@ function registerReportPoll(report) {
     try {
       const result = await pollReport(runId, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
-        await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir);
+        await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, void 0, runId);
         return emitFailure3(result, !!root.json);
       }
       await track(
@@ -84376,7 +84376,7 @@ function registerReportGet(report) {
       if (opts.out) {
         const meta3 = await getReportDocumentMeta(runId, clientOpts);
         if (isReportFailure(meta3)) {
-          await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir);
+          await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, void 0, runId);
           return emitFailure3(meta3, !!root.json);
         }
         if (!meta3.ready || !meta3.document) {
@@ -84385,7 +84385,7 @@ function registerReportGet(report) {
         const outPath = resolvePath2(opts.out);
         const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
         if (isReportFailure(streamed)) {
-          await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir);
+          await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, void 0, runId);
           return emitFailure3(streamed, !!root.json);
         }
         await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
@@ -84400,7 +84400,7 @@ function registerReportGet(report) {
       }
       const result = await getReportDocument(runId, clientOpts);
       if (isReportFailure(result)) {
-        await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir);
+        await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, void 0, runId);
         return emitFailure3(result, !!root.json);
       }
       if (!result.ready) {
@@ -84504,7 +84504,7 @@ function registerReportRun(report) {
         const { runId, polls } = outcome;
         const meta3 = await getReportDocumentMeta(runId, clientOpts);
         if (isReportFailure(meta3)) {
-          await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, reportType);
+          await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, reportType, runId);
           return emitFailure3(meta3, !!root.json);
         }
         if (!meta3.ready || !meta3.document) {
@@ -84533,7 +84533,7 @@ function registerReportRun(report) {
         );
         const streamed = await streamReportDocumentToFile(meta3.document, outPath2, clientOpts);
         if (isReportFailure(streamed)) {
-          await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType);
+          await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType, runId);
           return emitFailure3(streamed, !!root.json);
         }
         const bytes2 = streamed.bytes;
@@ -84607,7 +84607,7 @@ function registerReportRun(report) {
         }
         const docRes = await getReportDocument(outcome.runId, clientOpts);
         if (isReportFailure(docRes)) {
-          await trackFailure2(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType);
+          await trackFailure2(EventName.ReportFailed, docRes, chunkStartedAt, root.dataDir, reportType, outcome.runId);
           emitChunkFailure(docRes, !!root.json, chunkNum, chunks.length, runIds);
           return;
         }
@@ -84767,12 +84767,12 @@ async function startAndPollUntilReady(input, ctx) {
     );
   }
   if (pollFailure) {
-    await trackFailure2(EventName.ReportFailed, pollFailure, stepStartedAt, root.dataDir, reportType);
+    await trackFailure2(EventName.ReportFailed, pollFailure, stepStartedAt, root.dataDir, reportType, runId);
     return { outcome: "poll_failed", runId, failure: pollFailure, polls };
   }
   const finalPoll = lastPoll ?? await pollReport(runId, clientOpts);
   if (isReportFailure(finalPoll)) {
-    await trackFailure2(EventName.ReportFailed, finalPoll, stepStartedAt, root.dataDir, reportType);
+    await trackFailure2(EventName.ReportFailed, finalPoll, stepStartedAt, root.dataDir, reportType, runId);
     return { outcome: "poll_failed", runId, failure: finalPoll, polls };
   }
   if (!finalPoll.ready) {
@@ -84801,7 +84801,7 @@ async function trackRetrieved(startedAt, bytes, dataDir, reportType) {
     dataDir
   );
 }
-async function trackFailure2(eventName, failure, startedAt, dataDir, reportType) {
+async function trackFailure2(eventName, failure, startedAt, dataDir, reportType, runId) {
   await track(
     {
       event_name: eventName,
@@ -84811,6 +84811,12 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType)
       payload: {
         kind: failure.kind,
         ...reportType ? { report_type: reportType } : {},
+        // run_id ties this report.failed back to its report.started (same
+        // run handle), even when the failure surfaces in a separate `report
+        // poll`/`report get` invocation, or on the first poll of a chunk
+        // before any report.polled event carried the id. Absent only on the
+        // pre-run start-failure paths, where no run exists yet.
+        ...runId !== void 0 ? { run_id: runId } : {},
         ...failure.httpStatus ? { http_status: failure.httpStatus } : {},
         // Beta richness (feedback #10): seller/report context the service
         // attached to the failure, so a report.failed can be tied to the
