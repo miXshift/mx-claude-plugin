@@ -59,6 +59,7 @@ const CATALOG: HubGroup[] = [
       { id: 'mx-auth-login', say: 'sign me in', what: 'sign in, or switch MixShift accounts' },
       { id: 'mx-auth-service-setup', say: 'set up an unattended credential', what: 'a service credential for scheduled or CI runs' },
       { id: 'mx-brand-context', say: 'set up brand context for <brand>', what: 'onboard a brand so the analytical skills know it' },
+      { id: 'mx-update', say: 'update the plugin', what: 'guide the update and walk post-update catch-up actions' },
     ],
   },
   {

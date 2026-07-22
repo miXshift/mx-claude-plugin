@@ -1,0 +1,55 @@
+schema_version: 1
+skill_id: mx-update
+display_name: Update & Catch-Up
+version: "0.1.0"
+description: >
+  Guides the user through updating the plugin on their surface (terminal,
+  Claude Code, or Cowork), shows what changed via `mixshift whatsnew`, and
+  walks any recommended post-update catch-up actions from `mixshift
+  update-actions`. Use when the user asks to update the plugin, update
+  MixShift, says they are on an old version, just updated, or wants to catch
+  up after an update or see what to do with new features. Distinct from
+  mx-welcome (first-run setup and sign-in) and mx-help (general navigation
+  hub).
+
+# Tier 1 = informational only. No file writes, no DB calls of its own; it
+# only reads via the harness CLI (version / whatsnew / update-actions) and,
+# when the user accepts a catch-up action, hands off to that action's OWN
+# named skill, which carries its own confirm flow and writes tier.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read]
+side_effect_policy: none
+review_required: never
+sql_ids: []
+
+harness_commands:
+  - mixshift version
+  - mixshift whatsnew --format chat
+  - mixshift update-actions --json
+  - mixshift update-actions record
+  - mixshift update-actions catch-up
+
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range: []
+pricing_tier: free
+trigger_phrases:
+  - update the plugin
+  - update mixshift
+  - am i on the latest version
+  - i just updated
+  - what should i do after updating
+  - catch me up
+notes: >
+  Thin skill wrapping three harness commands (version, whatsnew,
+  update-actions). The engine (lib/update-actions.ts) fetches
+  releases/actions.yaml from GitHub raw (untrusted source, same threat class
+  as the update-notice version strings that produced two red-team HIGHs)
+  and only ever offers a fixed-vocabulary predicate plus a NAMED, already-
+  installed skill to run; it writes nothing itself and never evaluates
+  anything from the fetched file. This skill presents each action's
+  title/teach as quoted DATA, not instructions, and always routes actual
+  execution through the named skill's own confirm flow.

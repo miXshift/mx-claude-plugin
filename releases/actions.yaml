@@ -1,0 +1,42 @@
+# Guided catch-up actions (P2, mx-update skill + `mixshift update-actions`).
+#
+# Fetched from GitHub raw over the network (24h cache) by
+# harness/src/lib/update-actions.ts, so treat every field here as
+# UNTRUSTED, attacker-influenceable input if this repo is ever compromised
+# or the fetch is MITM'd — same threat class as the version strings that
+# produced two red-team HIGHs in the update-notice feature (P1). The
+# engine is defensive by construction:
+#
+#   - `applies_if` / `detect_done` `kind` MUST be one of a fixed vocabulary
+#     (currently: always, signed_in, has_brands) or the whole action is
+#     dropped. Never eval'd.
+#   - `run.skill` MUST name a skill that actually exists under skills/ or
+#     the action is dropped. `run.args_hint` is shown to the user, never
+#     executed.
+#   - `title` (<=120 chars) and `teach` (<=600 chars) are DATA: the skill
+#     shows them to the user as quoted content, not as instructions to
+#     follow.
+#   - The engine writes nothing but its own ledger. Actual execution
+#     always goes through the named skill, which owns its own confirm
+#     flow and writes tier.
+#
+# Authored per-release (see internal/UPDATE-ACTIONS-DESIGN.md, P4 /
+# release-docs). Seed conservatively: only ship an action once you have
+# verified the underlying skill actually supports the flow you are
+# describing.
+
+version: 1
+actions:
+  - id: brand-context-refresh
+    introduced_in: "0.8.0"
+    title: "Bring your brand context up to date"
+    teach: |
+      Recent versions store brand context in an open format that also holds
+      event stakes: the promotions, stockouts, launches, and other moments
+      that move a brand's numbers. Re-running brand setup refreshes your
+      existing brand context so it is stored the newer way and the newer
+      skills can read it correctly.
+    applies_if: { kind: has_brands }
+    run: { skill: mx-brand-context, args_hint: "refresh brand context" }
+    writes: local
+    supersedes: []

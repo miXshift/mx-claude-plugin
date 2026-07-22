@@ -226,6 +226,16 @@ export const EventName = {
   // emitted normally through track() from `mixshift whatsnew --dismiss`.
   UpdateBannerShown: 'update.banner_shown',
   UpdateDismissed: 'update.dismissed',
+
+  // Guided catch-up actions (P2, lib/update-actions.ts + lib/update-actions-
+  // state.ts + `mixshift update-actions` + the mx-update skill). Privacy:
+  // payloads carry only action ids (stable slugs from releases/actions.yaml,
+  // not user data), version strings, counts, and a status/source
+  // discriminator — never title/teach content or anything skill-specific.
+  // The `record` subcommand fires UpdateActionApplied itself (not the
+  // model), so the ledger and the telemetry can never drift apart.
+  UpdateActionsListed: 'update_actions.listed',
+  UpdateActionApplied: 'update_actions.action_applied',
 } as const;
 
 export type EventNameValue = (typeof EventName)[keyof typeof EventName];
