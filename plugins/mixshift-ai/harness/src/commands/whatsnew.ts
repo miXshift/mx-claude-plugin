@@ -13,6 +13,13 @@
 
 import type { Command } from 'commander';
 import { getPluginVersion } from '../lib/plugin-version.js';
+import { readCachedLatestVersion } from '../lib/version-check.js';
+import {
+  loadUpdateNoticeState,
+  saveUpdateNoticeState,
+  isValidVersion,
+} from '../lib/update-notice-state.js';
+import { track, EventName } from '../lib/telemetry/index.js';
 import {
   loadChangelog,
   entriesSince,
@@ -40,13 +47,30 @@ export function registerWhatsnewCommand(program: Command): void {
     .option('--since <version>', 'show every release newer than this version (e.g. 0.5.39)')
     .option('--all', 'show the entire changelog', false)
     .option('--force-fetch', 'bypass the 24h cache and re-fetch', false)
+    .option(
+      '--dismiss',
+      'stop the proactive session-start update notice until a newer version ships',
+      false,
+    )
     .action(
       async (
-        opts: { format?: string; since?: string; all?: boolean; forceFetch?: boolean },
+        opts: {
+          format?: string;
+          since?: string;
+          all?: boolean;
+          forceFetch?: boolean;
+          dismiss?: boolean;
+        },
         cmd: Command,
       ) => {
         const root = cmd.optsWithGlobals<RootOptions>();
         const current = getPluginVersion();
+
+        if (opts.dismiss) {
+          await dismissUpdateNotice(root, current);
+          return;
+        }
+
         const { entries, source, error } = await loadChangelog({
           dataDirOverride: root.dataDir,
           forceFetch: opts.forceFetch,
@@ -88,6 +112,60 @@ export function registerWhatsnewCommand(program: Command): void {
         process.stdout.write(render(selected, current, format) + '\n');
       },
     );
+}
+
+/**
+ * `mixshift whatsnew --dismiss` — stop the SessionStart hook's proactive
+ * update notice (see hooks/session-start.mjs stage 2 + lib/update-notice-
+ * state.ts) from repeating.
+ *
+ * "Latest known version" comes from the version-check cache the hook itself
+ * maintains (~/.mixshift/version-check.json) when present, so dismissing
+ * matches whatever version the notice actually named; falling back to the
+ * currently-installed version means a dismiss still does something sane on a
+ * data dir that has never run a version check (nothing to suppress yet, but
+ * the command still succeeds instead of erroring).
+ *
+ * SECURITY: `latest` here is printed to stdout, returned in `--json`, and
+ * persisted to update-notice-state.json — and the hook's update notice
+ * instructs the model to run this command via Bash, so this stdout re-enters
+ * the conversation. readCachedLatestVersion() already gates the cache read
+ * through isValidVersion() and returns null on failure, but we re-check here
+ * too (final gate before use, same defense-in-depth pattern as the hook's
+ * renderNotice()) so no future change to that reader can silently start
+ * handing back an unvalidated string. A cache miss OR a value that somehow
+ * fails validation both fall back identically to the installed version.
+ */
+async function dismissUpdateNotice(root: RootOptions, current: string): Promise<void> {
+  const cachedLatest = await readCachedLatestVersion(root.dataDir);
+  const latest = isValidVersion(cachedLatest) ? cachedLatest : current;
+
+  const state = await loadUpdateNoticeState(root.dataDir);
+  state.dismissed_version = latest;
+  try {
+    await saveUpdateNoticeState(state, root.dataDir);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: 'error', message }, null, 2) + '\n');
+    } else {
+      process.stderr.write(`error: could not save dismiss state: ${message}\n`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  await track({
+    event_name: EventName.UpdateDismissed,
+    payload: { latest },
+  });
+
+  const message = `Got it. You will not be notified again about version ${latest} until a newer version ships.`;
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: 'ok', dismissed_version: latest }, null, 2) + '\n');
+    return;
+  }
+  process.stdout.write(message + '\n');
 }
 
 function render(

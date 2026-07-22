@@ -17,6 +17,7 @@ import { dirname } from 'node:path';
 import { join } from 'node:path';
 import { getPluginVersion } from './plugin-version.js';
 import { resolveDataDir } from './paths/resolve.js';
+import { isValidVersion } from './update-notice-state.js';
 
 const MARKETPLACE_URL =
   'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json';
@@ -121,6 +122,39 @@ export async function checkForUpdate(opts: {
       : null;
 
   return { current, latest, isStale, releaseUrl, fetched };
+}
+
+/**
+ * Read the on-disk version-check cache WITHOUT triggering a fetch or
+ * touching the 24h freshness window. Returns null if the cache is missing,
+ * unreadable, the wrong shape, or holds a value that fails isValidVersion().
+ *
+ * Used by callers that want "latest known version" as a cheap best-effort
+ * hint (e.g. `mixshift whatsnew --dismiss`, which needs *a* version to record
+ * as dismissed but shouldn't pay for a network round trip just to dismiss a
+ * notice) rather than the full staleness assessment `checkForUpdate` provides.
+ *
+ * SECURITY: version-check.json is written by this same process on a
+ * successful fetch, but it is still on-disk, plain JSON, editable by
+ * anything with filesystem access. `--dismiss` prints this value to stdout,
+ * returns it in `--json`, and persists it to update-notice-state.json — and
+ * the SessionStart hook's update notice instructs the model to run
+ * `mixshift whatsnew` via Bash, so that stdout re-enters the conversation.
+ * Gate the cached value through the shared isValidVersion() shape check
+ * before ever returning it; an invalid cache is treated as a cache miss
+ * (null), same as missing/corrupt, so callers fall back to a trusted value
+ * (the currently-installed version) instead of a poisoned one.
+ */
+export async function readCachedLatestVersion(
+  dataDirOverride?: string,
+): Promise<string | null> {
+  try {
+    const raw = await readFile(versionCheckCachePath(dataDirOverride), 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<CacheFile>;
+    return isValidVersion(parsed.latest_version) ? parsed.latest_version : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchLatestVersion(): Promise<string | null> {

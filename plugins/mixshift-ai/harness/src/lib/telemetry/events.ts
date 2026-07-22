@@ -216,6 +216,17 @@ export const EventName = {
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',
 
+  // Proactive update notice (SessionStart hook stage 2, hooks/session-start.mjs
+  // + lib/update-notice-state.ts + `mixshift whatsnew --dismiss`). Privacy:
+  // payloads carry only version strings (from/to/latest) + a `kind`
+  // discriminator + `source` — never anything else. banner_shown is emitted
+  // by the standalone hook script itself (best-effort, its own tiny
+  // queue-append — see the hook's telemetry section), NOT through this
+  // client, so it can fire without importing harness/dist. dismissed is
+  // emitted normally through track() from `mixshift whatsnew --dismiss`.
+  UpdateBannerShown: 'update.banner_shown',
+  UpdateDismissed: 'update.dismissed',
+
   // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
   // "can this run do MixShift work" for a fresh Cowork sandbox before the
   // task's real work starts. Privacy: payload carries discovered_via (an

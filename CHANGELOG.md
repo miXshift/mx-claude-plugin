@@ -3,6 +3,20 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.6
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs. See internal/RELEASE-QUEUE.md -->
+
+### Added
+
+- **Sessions now let you know when the plugin updated, or when a newer
+  version is available.** At the start of a session, if the plugin just
+  updated since you last used it, or a newer release has shipped, you will
+  get a short heads-up with the option to see what changed. Run
+  `mixshift whatsnew` any time for a rundown of recent releases, or
+  `mixshift whatsnew --dismiss` to stop the reminder until the next version
+  ships.
+
 ## 0.8.5
 
 Amazon's ASIN-level Search Query Performance report now works, and you can pull

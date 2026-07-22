@@ -60983,7 +60983,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join23(tree) {
+      function join24(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61009,7 +61009,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join23(parse4(query));
+        tree = join24(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64342,6 +64342,16 @@ var init_events = __esm({
       TimelineEventCorroborated: "timeline.event_corroborated",
       // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
       WarmStartServed: "warm_start.served",
+      // Proactive update notice (SessionStart hook stage 2, hooks/session-start.mjs
+      // + lib/update-notice-state.ts + `mixshift whatsnew --dismiss`). Privacy:
+      // payloads carry only version strings (from/to/latest) + a `kind`
+      // discriminator + `source` — never anything else. banner_shown is emitted
+      // by the standalone hook script itself (best-effort, its own tiny
+      // queue-append — see the hook's telemetry section), NOT through this
+      // client, so it can fire without importing harness/dist. dismissed is
+      // emitted normally through track() from `mixshift whatsnew --dismiss`.
+      UpdateBannerShown: "update.banner_shown",
+      UpdateDismissed: "update.dismissed",
       // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
       // "can this run do MixShift work" for a fresh Cowork sandbox before the
       // task's real work starts. Privacy: payload carries discovered_via (an
@@ -65936,15 +65946,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir21, readFile as readFile28 } from "node:fs/promises";
-import { join as join18, dirname as dirname25 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir22, readFile as readFile29 } from "node:fs/promises";
+import { join as join19, dirname as dirname26 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join18(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join19(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir21(dirname25(path2), { recursive: true });
+    await mkdir22(dirname26(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -65955,7 +65965,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile28(path2, "utf-8");
+    const raw = await readFile29(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -80647,22 +80657,87 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile26, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname23 } from "node:path";
-import { join as join16 } from "node:path";
+import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
+import { dirname as dirname24 } from "node:path";
+import { join as join17 } from "node:path";
+
+// src/lib/update-notice-state.ts
+init_resolve();
+import { readFile as readFile26, writeFile as writeFile18, mkdir as mkdir19, rename as rename17, unlink as unlink7 } from "node:fs/promises";
+import { dirname as dirname23, join as join16 } from "node:path";
+var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
+var VERSION_RE = /^\d{1,5}(\.\d{1,5}){1,3}(-[0-9A-Za-z][0-9A-Za-z.]{0,14})?(\+[0-9A-Za-z][0-9A-Za-z.]{0,14})?$/;
+function isValidVersion(v) {
+  return typeof v === "string" && VERSION_RE.test(v);
+}
+function emptyUpdateNoticeState() {
+  return {
+    last_seen_version: null,
+    stale_notice: null,
+    dismissed_version: null,
+    last_fetch_attempt_at: null
+  };
+}
+function updateNoticeStateDir(dataDirOverride) {
+  return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
+}
+function updateNoticeStatePath(dataDirOverride) {
+  return join16(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
+}
+async function loadUpdateNoticeState(dataDirOverride) {
+  try {
+    const raw = await readFile26(updateNoticeStatePath(dataDirOverride), "utf-8");
+    return coerceState(JSON.parse(raw));
+  } catch {
+    return emptyUpdateNoticeState();
+  }
+}
+function coerceState(parsed) {
+  const p = parsed && typeof parsed === "object" ? parsed : {};
+  const state = emptyUpdateNoticeState();
+  if (isValidVersion(p.last_seen_version)) state.last_seen_version = p.last_seen_version;
+  if (isValidVersion(p.dismissed_version)) state.dismissed_version = p.dismissed_version;
+  if (typeof p.last_fetch_attempt_at === "string") {
+    state.last_fetch_attempt_at = p.last_fetch_attempt_at;
+  }
+  if (p.stale_notice && typeof p.stale_notice === "object") {
+    const sn = p.stale_notice;
+    if (isValidVersion(sn.version) && typeof sn.at === "string") {
+      state.stale_notice = { version: sn.version, at: sn.at };
+    }
+  }
+  return state;
+}
+async function saveUpdateNoticeState(state, dataDirOverride) {
+  const path2 = updateNoticeStatePath(dataDirOverride);
+  await mkdir19(dirname23(path2), { recursive: true });
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    await writeFile18(tmp, JSON.stringify(state, null, 2) + "\n", { encoding: "utf-8" });
+    await rename17(tmp, path2);
+  } catch (err) {
+    try {
+      await unlink7(tmp);
+    } catch {
+    }
+    throw err;
+  }
+}
+
+// src/lib/version-check.ts
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join16(resolveDataDir(dataDirOverride), "version-check.json");
+  return join17(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile26(cachePath2, "utf-8");
+    const raw = await readFile27(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -80683,8 +80758,8 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir19(dirname23(cachePath2), { recursive: true });
-        await writeFile18(
+        await mkdir20(dirname24(cachePath2), { recursive: true });
+        await writeFile19(
           cachePath2,
           JSON.stringify(
             {
@@ -80703,6 +80778,15 @@ async function checkForUpdate(opts = {}) {
   const isStale2 = latest !== null && compareVersions(current, latest) < 0;
   const releaseUrl = latest && isStale2 ? `${RELEASES_TAG_BASE}mixshift-ai--v${latest}` : null;
   return { current, latest, isStale: isStale2, releaseUrl, fetched };
+}
+async function readCachedLatestVersion(dataDirOverride) {
+  try {
+    const raw = await readFile27(versionCheckCachePath(dataDirOverride), "utf-8");
+    const parsed = JSON.parse(raw);
+    return isValidVersion(parsed.latest_version) ? parsed.latest_version : null;
+  } catch {
+    return null;
+  }
 }
 async function fetchLatestVersion() {
   try {
@@ -81185,11 +81269,12 @@ function registerVersionCommand(program3) {
 
 // src/commands/whatsnew.ts
 init_plugin_version();
+init_telemetry();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
-import { dirname as dirname24, join as join17 } from "node:path";
+import { readFile as readFile28, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
+import { dirname as dirname25, join as join18 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -81229,13 +81314,13 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join17(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join18(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile27(path2, "utf-8");
+    const raw = await readFile28(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
       cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
@@ -81250,8 +81335,8 @@ async function loadChangelog(opts = {}) {
   const fetched = await fetchChangelogMarkdown();
   if (fetched.markdown !== null) {
     try {
-      await mkdir20(dirname24(path2), { recursive: true });
-      await writeFile19(
+      await mkdir21(dirname25(path2), { recursive: true });
+      await writeFile20(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), markdown: fetched.markdown }, null, 2) + "\n",
         "utf-8"
@@ -81283,10 +81368,18 @@ function registerWhatsnewCommand(program3) {
     "--format <type>",
     "output format: `terminal` (default) | `chat` (markdown for Claude/Cowork)",
     "terminal"
-  ).option("--since <version>", "show every release newer than this version (e.g. 0.5.39)").option("--all", "show the entire changelog", false).option("--force-fetch", "bypass the 24h cache and re-fetch", false).action(
+  ).option("--since <version>", "show every release newer than this version (e.g. 0.5.39)").option("--all", "show the entire changelog", false).option("--force-fetch", "bypass the 24h cache and re-fetch", false).option(
+    "--dismiss",
+    "stop the proactive session-start update notice until a newer version ships",
+    false
+  ).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       const current = getPluginVersion();
+      if (opts.dismiss) {
+        await dismissUpdateNotice(root, current);
+        return;
+      }
       const { entries, source, error: error51 } = await loadChangelog({
         dataDirOverride: root.dataDir,
         forceFetch: opts.forceFetch
@@ -81322,6 +81415,35 @@ Couldn't load release notes right now${error51 ? ` (${error51})` : ""}.
       process.stdout.write(render(selected, current, format) + "\n");
     }
   );
+}
+async function dismissUpdateNotice(root, current) {
+  const cachedLatest = await readCachedLatestVersion(root.dataDir);
+  const latest = isValidVersion(cachedLatest) ? cachedLatest : current;
+  const state = await loadUpdateNoticeState(root.dataDir);
+  state.dismissed_version = latest;
+  try {
+    await saveUpdateNoticeState(state, root.dataDir);
+  } catch (err) {
+    const message2 = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "error", message: message2 }, null, 2) + "\n");
+    } else {
+      process.stderr.write(`error: could not save dismiss state: ${message2}
+`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+  await track({
+    event_name: EventName.UpdateDismissed,
+    payload: { latest }
+  });
+  const message = `Got it. You will not be notified again about version ${latest} until a newer version ships.`;
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: "ok", dismissed_version: latest }, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write(message + "\n");
 }
 function render(entries, current, format) {
   if (entries.length === 0) {
@@ -81643,7 +81765,7 @@ Context:
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml19 = __toESM(require_dist(), 1);
-import { readFile as readFile29 } from "node:fs/promises";
+import { readFile as readFile30 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -81903,7 +82025,7 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile29(path2, "utf-8");
+    const raw = await readFile30(path2, "utf-8");
     return (0, import_yaml19.parse)(raw);
   } catch {
     return null;
@@ -82063,8 +82185,8 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir22, readFile as readFile30, writeFile as writeFile20 } from "node:fs/promises";
-import { dirname as dirname26 } from "node:path";
+import { mkdir as mkdir23, readFile as readFile31, writeFile as writeFile21 } from "node:fs/promises";
+import { dirname as dirname27 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -82466,7 +82588,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname26(path2);
+  const runDir = dirname27(path2);
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -82513,8 +82635,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir22(dirname26(path2), { recursive: true });
-  await writeFile20(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir23(dirname27(path2), { recursive: true });
+  await writeFile21(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -82543,7 +82665,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile30(path2, "utf-8");
+    const raw = await readFile31(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -82589,15 +82711,15 @@ function emitError6(json2, message) {
 }
 
 // src/commands/amazon.ts
-import { resolve as resolvePath2, dirname as dirname30 } from "node:path";
-import { mkdir as mkdir25, writeFile as writeFile22 } from "node:fs/promises";
+import { resolve as resolvePath2, dirname as dirname31 } from "node:path";
+import { mkdir as mkdir26, writeFile as writeFile23 } from "node:fs/promises";
 
 // src/lib/amazon/reports.ts
 init_credentials();
 init_intent();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir23 } from "node:fs/promises";
-import { dirname as dirname27 } from "node:path";
+import { mkdir as mkdir24 } from "node:fs/promises";
+import { dirname as dirname28 } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -82833,7 +82955,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
   if (!res.body) {
     return hostUnreachable("the report download returned an empty response body");
   }
-  await mkdir23(dirname27(outPath), { recursive: true });
+  await mkdir24(dirname28(outPath), { recursive: true });
   const out = createWriteStream2(outPath);
   const source = Readable.fromWeb(
     res.body
@@ -83193,14 +83315,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile31 } from "node:fs/promises";
-import { dirname as dirname28, join as join19 } from "node:path";
+import { readFile as readFile32 } from "node:fs/promises";
+import { dirname as dirname29, join as join20 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile31(path2, "utf-8");
+      const raw = await readFile32(path2, "utf-8");
       const parsed = (0, import_yaml20.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
@@ -83245,12 +83367,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname28(fileURLToPath6(import.meta.url));
+  const here = dirname29(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join19(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname28(dir);
+    candidates.push(join20(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname29(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -83265,7 +83387,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile33 } from "node:fs/promises";
+import { readFile as readFile34 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -83358,12 +83480,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir24, readFile as readFile32, rename as rename17, writeFile as writeFile21 } from "node:fs/promises";
-import { dirname as dirname29 } from "node:path";
+import { mkdir as mkdir25, readFile as readFile33, rename as rename18, writeFile as writeFile22 } from "node:fs/promises";
+import { dirname as dirname30 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile32(path2, "utf8");
+    const raw = await readFile33(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -83374,10 +83496,10 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir24(dirname29(path2), { recursive: true });
+  await mkdir25(dirname30(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile21(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename17(tmp, path2);
+  await writeFile22(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename18(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -83813,7 +83935,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile33(file2, "utf8");
+    const text = await readFile34(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -83885,7 +84007,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile34 } from "node:fs/promises";
+import { readFile as readFile35 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -84000,7 +84122,7 @@ function registerCall(amazon) {
         return emitError7(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile34(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile35(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -84660,8 +84782,8 @@ function registerReportRun(report) {
       try {
         const merged = mergeSqpDocuments(docs, fullAsinList);
         bytes = Buffer.byteLength(merged, "utf8");
-        await mkdir25(dirname30(outPath), { recursive: true });
-        await writeFile22(outPath, merged, "utf8");
+        await mkdir26(dirname31(outPath), { recursive: true });
+        await writeFile23(outPath, merged, "utf8");
       } catch (mergeErr) {
         emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
         return;
@@ -85102,7 +85224,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile35 } from "node:fs/promises";
+import { readFile as readFile36 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -85596,7 +85718,7 @@ function registerCall2(ads) {
         return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile35(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile36(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -86256,7 +86378,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname31, join as join20 } from "node:path";
+import { dirname as dirname32, join as join21 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -86390,17 +86512,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join20(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join21(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname31(fileURLToPath7(import.meta.url));
+  let dir = dirname32(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join20(dir, "skills");
+      const candidate = join21(dir, "skills");
       const stat5 = await fs.stat(candidate);
       if (stat5.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname31(dir);
+    const parent = dirname32(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -86521,7 +86643,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join21, relative, basename as basename3 } from "node:path";
+import { resolve as resolve2, join as join22, relative, basename as basename3 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -86846,7 +86968,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join21(dir, e.name);
+        const abs = join22(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -87901,7 +88023,7 @@ function emitError11(message, root) {
 // src/commands/task.ts
 init_credentials();
 import { readdir as readdir4, stat as stat4 } from "node:fs/promises";
-import { basename as basename4, dirname as dirname32, join as join22 } from "node:path";
+import { basename as basename4, dirname as dirname33, join as join23 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -87958,14 +88080,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join22(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join23(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename4(dir) !== "auth" || basename4(dirname32(dir)) !== ".mixshift") continue;
-    found.push(join22(dir, entry.name));
+    if (basename4(dir) !== "auth" || basename4(dirname33(dir)) !== ".mixshift") continue;
+    found.push(join23(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -87980,7 +88102,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname32(dirname32(hitPath));
+  return dirname33(dirname33(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -88047,7 +88169,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join22(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join23(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       candidates = [
