@@ -26,9 +26,7 @@ In Cowork desktop:
 1. Click **Customize** in the left sidebar.
 2. Click the **+** button.
 3. Choose **"Add marketplace from GitHub"**.
-4. Paste either:
-   - `miXshift/mx-claude-plugin` (owner/repo shorthand), or
-   - `https://github.com/miXshift/mx-claude-plugin` (full URL)
+4. Paste the marketplace address: `https://github.com/miXshift/mx-claude-plugin/tree/stable` (recommended; the `/tree/stable` on the end keeps you on the tested stable build). Only if that address will not add, fall back to the plain URL `https://github.com/miXshift/mx-claude-plugin` or the shorthand `miXshift/mx-claude-plugin`; both track the latest internal build instead of stable, so tell MixShift if you end up on one of those.
 5. Confirm.
 
 Cowork pulls the marketplace manifest and registers the marketplace locally — only on your seat, not org-wide.
@@ -103,8 +101,15 @@ The most common cause: Node.js is not installed on the machine. The plugin's bun
 **"Add marketplace" / "Add plugin" menu is missing.**
 First, fully quit and restart the Claude app (macOS: Cmd+Q, not just closing the window), then look again under Customize. We've seen the menu fail to appear on multiple machines until a full restart. If it's still missing: the exact UI label may differ between Cowork versions. Look for "+" next to **Marketplaces** or a similar add-marketplace control. If you can't find it, your Cowork build may not expose user-level marketplace adds (older builds didn't). Fall back to [Claude Code install](./claude-code.md) or ask your team admin to use the [Organization install](./cowork-organization.md) path.
 
-**"Failed to add marketplace" with no error detail.**
-Retry once first: transient network hiccups produce the same blank error. If it keeps failing, check the network egress allowlist (same fix as the "fetch failed" entry below; the marketplace fetch goes through the same sandbox). Also note the URL form: the branch-pinned form (`https://github.com/miXshift/mx-claude-plugin.git#stable`) may fail in Cowork's add-marketplace UI. Use the plain repo URL (`https://github.com/miXshift/mx-claude-plugin`) there.
+**"Failed to add marketplace" or "Marketplace sync failed" with no error detail.**
+Almost always a temporary failure on the Claude side, not something wrong with your setup. Work through these in order:
+
+1. **Just retry.** If the failed attempt left a marketplace entry behind in the panel, remove it first (three-dot menu → **Remove**), then add it again. A second or third try usually succeeds.
+2. **On Windows, clear leftovers from the failed attempt.** Antivirus real-time scanning can interrupt the very first install, and the debris blocks retries. Fully quit Claude, open `%USERPROFILE%\.claude\plugins` in File Explorer, delete any folders whose names start with `temp_github_`, then reopen Claude and retry. On IT-managed machines, asking IT to exclude that plugins folder from real-time scanning prevents repeats.
+3. **Check the URL form.** Use the web URL (`https://github.com/miXshift/mx-claude-plugin/tree/stable` for stable, or the plain repo URL). The `.git#stable` form (`...mx-claude-plugin.git#stable`) may fail in the add-marketplace UI, or appear to succeed while silently ignoring the `#stable` pin; it is for the Claude Code path only. If only the plain URL will add for you, it works but tracks our internal build instead of stable, so tell MixShift and we will move you to the right channel afterward.
+4. **Check the network egress allowlist** (same fix as the "fetch failed" entry below; the marketplace fetch goes through the same sandbox).
+5. **Fall back to the terminal.** The [Claude Code path](./claude-code.md) uses a more reliable install mechanism and honors the stable pin: `claude plugin marketplace add https://github.com/miXshift/mx-claude-plugin.git#stable`, then `claude plugin install mixshift-ai@mixshift`.
+6. **Still failing after a few tries?** Contact MixShift. A repo that persistently refuses to sync for everyone can be a stale index on Anthropic's side that only they can reset; we will escalate and get you installed another way in the meantime.
 
 **"command not found: mixshift" when Claude tries to run the welcome.**
 This is expected on Cowork: Cowork does not run plugin session hooks, so the `mixshift` shorthand is never on PATH there. It is not an error. The skills handle it automatically by locating the plugin's install directory and running `node "<plugin root>/harness/dist/cli.js" welcome` — just ask Claude to continue, or say "run welcome" again.
@@ -122,14 +127,14 @@ Your refresh token expired (>30d since last sign-in) or was revoked. Just say "s
 In Cowork: Customize → **+** next to Personal plugins → Directory modal → three-dot menu next to `mx-claude-plugin` → **Check for updates**. Cowork pulls the latest marketplace manifest. Then fully quit and reopen Cowork so the new version actually loads: a running session keeps the plugin version it started with, so the update only takes effect after a restart (a new conversation in the same session is not enough). Same auth credentials carry over across updates.
 
 **Plugin shows an old version even after Check for updates / Sync automatically.**
-Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub"). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.
+Known Cowork bug — "Sync automatically" pulls the latest commit and refreshes file contents on disk, but doesn't refresh the displayed version field. The plugin behavior reflects the latest synced files; only the version label is stale. Workaround: remove + re-add the marketplace via the Directory modal (same surface — three-dot menu → **Remove**, then re-add via "Add marketplace from GitHub", using the same URL form you originally installed with, so you stay on your channel). `marketplace_*` and `plugin_*` IDs are preserved so it's safe — your auth credentials live in `~/.mixshift/` independently of Cowork's plugin state and carry over.
 
 **"This plugin doesn't have any skills or agents" in the Customize panel after a restart or after manually cleaning up plugin files.**
 This usually means Cowork's plugin cache extraction (`~/.claude/plugins/cache/mixshift/mixshift-ai/<version>/`) is empty or missing while the install record (`~/.claude/plugins/installed_plugins.json`) still points at that path. Triggered most commonly by manually deleting the cache directory, or by a botched update where the new version's files never landed.
 
 Fix: in the Customize panel, click the three-dot menu next to `mixshift-ai` and choose **Uninstall**, then reinstall from the Directory modal. This forces Cowork to re-extract the plugin from its marketplace clone into a fresh cache directory. Auth credentials in `~/.mixshift/` are unaffected, so no re-sign-in.
 
-If that doesn't help, the marketplace clone itself may be stale (Cowork doesn't always auto-fetch new origin commits on restart). Also remove + re-add the marketplace (Directory → three-dot menu next to `mx-claude-plugin` → **Remove**, then "Add marketplace from GitHub" again) to force Cowork to re-clone from origin.
+If that doesn't help, the marketplace clone itself may be stale (Cowork doesn't always auto-fetch new origin commits on restart). Also remove + re-add the marketplace (Directory → three-dot menu next to `mx-claude-plugin` → **Remove**, then "Add marketplace from GitHub" again with the same URL form you originally used) to force Cowork to re-clone from origin.
 
 **Sign-in fails with "fetch failed" or a "403 from proxy" error.**
 Your Cowork environment is blocking the plugin's outbound connection to the MixShift service. Cowork runs plugin commands in a sandbox whose network is locked down by default, so the MixShift host has to be on the egress allowlist. First, diagnose it: say "run mixshift doctor" (or run `mixshift doctor` in a terminal). It detects the sandbox proxy, probes the service, and tells you exactly which domains need allowlisting.

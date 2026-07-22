@@ -1,0 +1,59 @@
+# Machine-readable descriptor for mx-scheduled-task.
+# Orchestration skill: builds and repairs unattended scheduled MixShift tasks
+# (Cowork scheduled tasks, Claude Code crons). Delegates credential minting to
+# mx-auth-service-setup; owns the anchor folder, the generated task prompt with
+# the `task preflight` preamble, and the verified first run.
+
+schema_version: 1
+skill_id: mx-scheduled-task
+display_name: "Scheduled task setup"
+version: "0.1.0"
+description: >
+  Set up a scheduled MixShift task that survives fresh sandboxes: durable anchor
+  folder, service credential anchored inside it, task instructions that preflight
+  every run, and a verified first run. Also repairs existing scheduled tasks that
+  start unauthenticated or lose brand context.
+
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools:
+  - file_read
+  - file_write
+side_effect_policy: context_write
+review_required: never
+pricing_tier: free
+
+sql_ids: []
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range:
+  - OBSERVATIONAL
+
+upstream_skills:
+  - mx-auth-service-setup
+
+trigger_phrases:
+  - set up a scheduled task
+  - schedule this
+  - make this run on a schedule
+  - run this every day
+  - make this unattended
+  - my scheduled task is failing
+  - fix my scheduled task
+  - scheduled run says no credentials found
+
+# Documentation only (not schema-enforced): harness surface this skill drives.
+harness_commands:
+  - mixshift task preflight --brand [brand-slug] --json
+  - mixshift auth service-setup --setup-code [SVC-code] --json (via mx-auth-service-setup)
+  - mixshift data query --sql "SELECT NOW()" --json
+
+notes: >
+  The single durable dependency of any scheduled run is one persistent folder
+  attached to the task; the credential anchors under it and `task preflight`
+  rediscovers it each run and re-pulls brand context from the org store. Fresh
+  sandboxes with nothing attached are the norm (always on Mac Cowork); never
+  anchor in a session home. Stored prompts must invoke the CLI as
+  node "$MIXSHIFT_CLI" because scheduled sandboxes run no plugin session hooks.

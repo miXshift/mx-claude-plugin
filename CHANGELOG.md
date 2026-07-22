@@ -22,6 +22,27 @@ starts at 0.5.39; earlier versions predate the changelog.
   and offers any recommended follow-up steps for what shipped since you last
   updated, one at a time, with your confirmation before anything runs.
   `mixshift update-actions` is the read-only command behind it.
+- **New skill: scheduled task setup (`mx-scheduled-task`).** Say "set up a
+  scheduled task" and Claude builds the whole thing so it keeps working with
+  nobody at the keyboard: a persistent folder attached to the task, a service
+  credential stored inside it, task instructions that re-establish everything
+  at the start of every run, and a verified first run. It also repairs
+  existing scheduled tasks that report "not signed in" or "No credentials
+  found" on every fire.
+- **New command: `mixshift task preflight`.** The first thing a scheduled run
+  executes. It finds the service credential (even in a brand-new sandbox),
+  verifies it against the service for real, fetches brand context for the
+  brands the task uses, and either reports READY or tells you exactly what is
+  blocking the run and how to fix it, with a distinct exit code per blocker.
+
+### Fixed
+
+- **Service credential setup no longer reports success from a location that
+  will not survive.** In a sandboxed session with no persistent folder
+  attached, setup used to write the credential somewhere temporary and look
+  successful; the next scheduled run then started signed out. Setup now stops
+  and walks you through attaching a folder first, and recommends read-only
+  scopes unless the scheduled work actually writes.
 
 ## 0.8.5
 

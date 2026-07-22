@@ -77,6 +77,7 @@ import { registerHelpCommand } from './commands/help.js';
 import { registerShareSkillCommand } from './commands/share-skill.js';
 import { registerContextCommands } from './commands/context.js';
 import { registerTimelineCommands } from './commands/timeline.js';
+import { registerTaskCommands } from './commands/task.js';
 import { UserFacingError } from './lib/errors.js';
 import {
   hasAcknowledgedConsent,
@@ -136,6 +137,7 @@ registerHelpCommand(program);
 registerShareSkillCommand(program);
 registerContextCommands(program);
 registerTimelineCommands(program);
+registerTaskCommands(program);
 
 // First-run cross-cutting telemetry chore: show the consent notice once
 // per install. Idempotent on subsequent runs. Skipped silently when

@@ -30,6 +30,10 @@ Yes to all three. The harness is Node 20+, the bundled CLI is platform-portable.
 
 Not yet. Today you install from the public GitHub repo (`miXshift/mx-claude-plugin`). Submission to Anthropic's "Anthropic & Partners" curated directory is a future move; until then, install from GitHub via the docs above.
 
+### The app says "Marketplace sync failed" (or "Failed to add marketplace") when I add the plugin. What do I do?
+
+This is almost always a temporary failure on the Claude side, not something you did wrong, and a retry fixes most cases: remove the failed marketplace entry if one appeared (three-dot menu → **Remove**), then add it again. On Windows, if it keeps failing, fully quit Claude and delete any `temp_github_*` folders under `%USERPROFILE%\.claude\plugins` before retrying (antivirus scanning can interrupt the first install, and the leftovers block later attempts). The most reliable fallback is the terminal path: `claude plugin marketplace add https://github.com/miXshift/mx-claude-plugin.git#stable`, then `claude plugin install mixshift-ai@mixshift`. The full step-by-step playbook is in the [install troubleshooting](./install/cowork-personal.md#troubleshooting). If installs fail persistently for days no matter what, contact MixShift and we will escalate; a repo can get a stale index on Anthropic's side that only they can reset.
+
 ### How do I get back to the Cowork Directory modal after installing?
 
 The Directory modal is the surface where you add marketplaces, install plugins, check for updates, toggle Sync automatically, and remove plugins. It's only obvious during first install. To reopen it:
@@ -53,7 +57,7 @@ This is the version-field bug above. Quickest reliable workaround:
 
 1. Cowork → Customize → **+** next to Personal plugins → Directory modal opens.
 2. Click the three-dot menu next to `mx-claude-plugin` → **Remove**. (Confirms removal of the marketplace, which also uninstalls plugins from it.)
-3. Same modal → re-add the marketplace via "Add marketplace from GitHub" → `miXshift/mx-claude-plugin`.
+3. Same modal → re-add the marketplace via "Add marketplace from GitHub", using the **same URL form you originally installed with** (beta testers: `https://github.com/miXshift/mx-claude-plugin/tree/stable`, so you stay on the stable channel).
 4. Open the newly-listed marketplace → install `mixshift-ai`.
 
 Cowork preserves its internal `marketplace_*` and `plugin_*` IDs across this — safe, no data loss. Your local auth credentials (`~/.mixshift/auth/credentials`) are independent of Cowork's plugin state and also carry over.

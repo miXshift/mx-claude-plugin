@@ -236,6 +236,14 @@ export const EventName = {
   // model), so the ledger and the telemetry can never drift apart.
   UpdateActionsListed: 'update_actions.listed',
   UpdateActionApplied: 'update_actions.action_applied',
+
+  // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
+  // "can this run do MixShift work" for a fresh Cowork sandbox before the
+  // task's real work starts. Privacy: payload carries discovered_via (an
+  // enum) and candidate/brand/pulled/warning COUNTS only — never a brand
+  // slug and never a filesystem path (candidate paths and data_dir are
+  // print-only, in the command's stdout, not in telemetry).
+  TaskPreflightCompleted: 'task.preflight_completed',
 } as const;
 
 export type EventNameValue = (typeof EventName)[keyof typeof EventName];

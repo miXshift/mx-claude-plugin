@@ -157,6 +157,9 @@ The most common cause: Node.js is not installed on the machine. The plugin's bun
 **"Marketplace not found" when running `/plugin marketplace add`.**
 Confirm the GitHub repo is reachable from your machine: `curl -sI https://github.com/miXshift/mx-claude-plugin/blob/main/.claude-plugin/marketplace.json` should return a 200 (or redirect). If you're behind a corporate proxy, configure `git` to use it; Claude Code uses `git` under the hood for marketplace fetches.
 
+**Marketplace add or plugin install fails intermittently on Windows (EPERM / EBUSY / rename errors).**
+Antivirus real-time scanning can hold freshly-downloaded plugin files at the exact moment Claude Code renames them into place, which fails the install with an EPERM or EBUSY error. It is a timing race, so retrying often works. Before retrying, delete any leftover `temp_github_*` folders under `%USERPROFILE%\.claude\plugins`; debris from the failed attempt can block the next try with the same error. On machines where antivirus is IT-managed, excluding the `.claude\plugins` folder from real-time scanning (Windows Security → Virus & threat protection → Exclusions, or ask IT) prevents repeats.
+
 **A fresh install shows an old version (e.g. you expected the latest but `/plugin` lists an older number).**
 `/plugin marketplace add` is a no-op if a marketplace of that name is already registered; it does **not** re-fetch an existing local clone. So if you (or a previous session) added `mixshift` before, a later `add` reuses the stale clone and installs whatever version it was pinned at. Fix: refresh the clone, then update the plugin, then restart:
 ```
