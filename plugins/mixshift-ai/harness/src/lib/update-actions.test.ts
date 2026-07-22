@@ -484,3 +484,107 @@ describe('computePending', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression tests for the red-team / check-team hardening pass (2026-07-22).
+// ---------------------------------------------------------------------------
+
+function hasControlChars(s: string, allowNewline: boolean): boolean {
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c === 0x0a && allowNewline) continue;
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
+describe('parseActions — untrusted-manifest hardening', () => {
+  it('flattens a newline-bearing title to a single line (no heading break-out)', () => {
+    const actions = parseActions(actionYaml({ title: 'Real title\n### Injected heading' }));
+    expect(actions).toHaveLength(1);
+    expect(actions[0].title).not.toContain('\n');
+    expect(hasControlChars(actions[0].title, false)).toBe(false);
+    expect(actions[0].title).toBe('Real title ### Injected heading');
+  });
+
+  it('strips other control characters from teach but keeps newlines', () => {
+    const actions = parseActions(actionYaml({ teach: 'Line one\nLine\ttwo\u0007 tail' }));
+    expect(actions).toHaveLength(1);
+    expect(actions[0].teach).toContain('\n');
+    expect(hasControlChars(actions[0].teach, true)).toBe(false);
+  });
+
+  it('drops an action whose title sanitizes away to nothing', () => {
+    const actions = parseActions(actionYaml({ title: '   ' }));
+    expect(actions).toEqual([]);
+  });
+
+  it('caps the number of validated entries at MAX_ACTIONS (200)', () => {
+    const entries = Array.from({ length: 250 }, (_, i) =>
+      toYamlEntry({
+        id: `a-${i}`,
+        introduced_in: '0.8.0',
+        title: `Action ${i}`,
+        teach: 'why',
+        applies_if: { kind: 'always' },
+        run: { skill: 'mx-help', args_hint: '' },
+        writes: 'none',
+        supersedes: [],
+      }),
+    );
+    const yaml = `version: 1\nactions:\n${entries.join('\n')}`;
+    expect(parseActions(yaml).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('evalPredicate — never throws (contract)', () => {
+  it('returns false rather than throwing on an unreadable/absent data dir', async () => {
+    const bogus = join(testDir, 'does', 'not', 'exist', 'nested');
+    await expect(evalPredicate('signed_in', { dataDirOverride: bogus })).resolves.toBe(false);
+    await expect(evalPredicate('has_brands', { dataDirOverride: bogus })).resolves.toBe(false);
+  });
+});
+
+describe('computePending — supersedes collapse runs among eligible only', () => {
+  it('an action filtered out by the skill allowlist cannot suppress a real one', async () => {
+    const actions: Action[] = [
+      action({ id: 'real', introduced_in: '0.8.0', run: { skill: 'mx-help', args_hint: '' } }),
+      action({
+        id: 'phantom',
+        introduced_in: '0.8.0',
+        run: { skill: 'not-a-real-skill', args_hint: '' },
+        supersedes: ['real'],
+      }),
+    ];
+    const pending = await computePending({
+      installed: '0.8.0',
+      caughtUpTo: '0.7.0',
+      ledger: emptyActionsLedger(),
+      actions,
+      dataDirOverride: testDir,
+      installedSkillIds: new Set(['mx-help']),
+    });
+    expect(pending.map((p) => p.id)).toEqual(['real']);
+  });
+
+  it('an action whose predicate is false cannot suppress the action it supersedes', async () => {
+    const actions: Action[] = [
+      action({ id: 'real', introduced_in: '0.8.0', applies_if: { kind: 'always' } }),
+      action({
+        id: 'not-applicable',
+        introduced_in: '0.8.0',
+        applies_if: { kind: 'has_brands' },
+        supersedes: ['real'],
+      }),
+    ];
+    const pending = await computePending({
+      installed: '0.8.0',
+      caughtUpTo: '0.7.0',
+      ledger: emptyActionsLedger(),
+      actions,
+      dataDirOverride: testDir,
+      installedSkillIds: new Set(['mx-help']),
+    });
+    expect(pending.map((p) => p.id)).toEqual(['real']);
+  });
+});

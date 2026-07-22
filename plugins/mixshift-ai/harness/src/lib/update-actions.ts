@@ -63,11 +63,35 @@ const ACTIONS_URL_DEFAULT =
   'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const FETCH_TIMEOUT_MS = 5_000;
+// Hard cap on the fetched manifest so a hostile/compromised feed can't drive
+// unbounded memory/CPU. actions.yaml is a handful of short entries; 256KB is
+// generous. A larger body is treated as a fetch failure.
+const MAX_YAML_BYTES = 256 * 1024;
+// Cap the number of entries we will even attempt to validate, so a feed with
+// a giant `actions:` array can't force unbounded parse work.
+const MAX_ACTIONS = 200;
 
 /** Resolved at call time (not module load) so tests can flip
- *  MIXSHIFT_ACTIONS_URL between cases without re-importing the module. */
+ *  MIXSHIFT_ACTIONS_URL between cases without re-importing the module.
+ *
+ *  The override is honored ONLY for https, or http on loopback (test
+ *  affordance) — identical restriction to version-check.ts's
+ *  resolveMarketplaceUrl. Without this an env var becomes an open
+ *  SSRF/redirect target that also feeds the untrusted-manifest surface
+ *  below; never widen it to arbitrary hosts. */
 function actionsUrl(): string {
-  return process.env.MIXSHIFT_ACTIONS_URL || ACTIONS_URL_DEFAULT;
+  const override = process.env.MIXSHIFT_ACTIONS_URL;
+  if (!override) return ACTIONS_URL_DEFAULT;
+  try {
+    const u = new URL(override);
+    if (u.protocol === 'https:') return override;
+    if (u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost')) {
+      return override;
+    }
+  } catch {
+    // malformed — fall through to the default
+  }
+  return ACTIONS_URL_DEFAULT;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,12 +157,50 @@ const actionsFileSchema = z.object({
   actions: z.array(z.unknown()).default([]),
 });
 
+/** title/teach come from an untrusted feed and are surfaced to the model +
+ *  user. They are prose (not charset-gateable like a version), so strip
+ *  formatting-breaking control characters at the boundary. */
+function stripControl(s: string, keepNewline: boolean): string {
+  // Escape-free by construction: compare code points numerically rather than
+  // matching control-char ranges with regex literals (which are fragile to
+  // author and read). C0 controls (< 0x20) and DEL (0x7f) are removed; a
+  // newline (0x0a) is optionally kept, other controls become a space so words
+  // don't fuse.
+  let out = '';
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c >= 0x20 && c !== 0x7f) {
+      out += ch;
+    } else if (keepNewline && c === 0x0a) {
+      out += ch;
+    } else {
+      out += ' ';
+    }
+  }
+  return out;
+}
+
+function sanitizeTitle(s: string): string {
+  // A title is a single line: strip every control char, collapse whitespace.
+  // A stray newline would otherwise break out of the "### <title>" markdown
+  // heading the renderer builds.
+  return stripControl(s, false).replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeTeach(s: string): string {
+  // teach keeps newlines (the renderer quotes each line); other control chars
+  // are dropped and 3+ blank lines collapse to a single paragraph break.
+  const kept = stripControl(s.replace(/\r/g, ''), true);
+  return kept.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /**
  * Parse + validate `releases/actions.yaml`. Any entry that fails schema
  * validation (malformed shape, oversized title/teach, invalid
  * introduced_in, unknown predicate kind, anything) is silently dropped —
  * never logged, never partially coerced. Pure + total: any input yields an
- * array (possibly empty), never throws.
+ * array (possibly empty), never throws. The entry count is capped at
+ * MAX_ACTIONS so a giant feed can't drive unbounded validation work.
  */
 export function parseActions(yamlText: string): Action[] {
   let parsed: unknown;
@@ -151,10 +213,13 @@ export function parseActions(yamlText: string): Action[] {
   if (!top.success) return [];
 
   const out: Action[] = [];
-  for (const raw of top.data.actions) {
+  for (const raw of top.data.actions.slice(0, MAX_ACTIONS)) {
     const result = actionSchema.safeParse(raw);
-    if (result.success) out.push(result.data);
-    // else: drop silently — see module header.
+    if (!result.success) continue; // drop silently — see module header.
+    const title = sanitizeTitle(result.data.title);
+    const teach = sanitizeTeach(result.data.teach);
+    if (!title || !teach) continue; // sanitized away to nothing -> drop.
+    out.push({ ...result.data, title, teach });
   }
   return out;
 }
@@ -232,7 +297,18 @@ async function fetchActionsYaml(): Promise<{ yaml: string | null; error?: string
   try {
     const res = await fetch(actionsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { yaml: null, error: `HTTP ${res.status}` };
-    return { yaml: await res.text() };
+    // Reject an oversized body before materializing it as a string. Trust the
+    // content-length when present; otherwise fall back to a post-read byte
+    // check (the body is already capped by the string length below).
+    const len = Number(res.headers.get('content-length'));
+    if (Number.isFinite(len) && len > MAX_YAML_BYTES) {
+      return { yaml: null, error: 'manifest too large' };
+    }
+    const text = await res.text();
+    if (Buffer.byteLength(text, 'utf-8') > MAX_YAML_BYTES) {
+      return { yaml: null, error: 'manifest too large' };
+    }
+    return { yaml: text };
   } catch (err) {
     return { yaml: null, error: err instanceof Error ? err.message : String(err) };
   }
@@ -249,6 +325,22 @@ async function fetchActionsYaml(): Promise<{ yaml: string | null; error?: string
 export async function evalPredicate(
   kind: string,
   opts: { dataDirOverride?: string } = {},
+): Promise<boolean> {
+  // Fail closed and NEVER throw: a predicate reads on-disk state (credentials,
+  // brand index) that a corrupt/locked file could make throw. A predicate that
+  // can't be evaluated resolves to false, so the action simply isn't offered,
+  // rather than crashing `mixshift update-actions`. This is what makes
+  // computePending's own "never throws" contract hold.
+  try {
+    return await evalPredicateInner(kind, opts);
+  } catch {
+    return false;
+  }
+}
+
+async function evalPredicateInner(
+  kind: string,
+  opts: { dataDirOverride?: string },
 ): Promise<boolean> {
   switch (kind) {
     case 'always':
@@ -325,26 +417,19 @@ export async function computePending(args: ComputePendingArgs): Promise<PendingA
     return true;
   });
 
-  // 2. Collapse supersedes chains: drop any candidate that some OTHER
-  // candidate's `supersedes` names, so jumping several versions at once
-  // only ever offers the newest action in a chain.
-  const supersededIds = new Set<string>();
-  for (const a of candidates) for (const s of a.supersedes) supersededIds.add(s);
-  candidates = candidates.filter((a) => !supersededIds.has(a.id));
-
-  // 3. Ledger filter: an action already completed or dismissed never
+  // 2. Ledger filter: an action already completed or dismissed never
   // resurfaces. ('skipped' / 'later' DO resurface — see design.)
   candidates = candidates.filter((a) => {
     const rec = ledger.actions[a.id];
     return !(rec && (rec.status === 'completed' || rec.status === 'dismissed'));
   });
 
-  // 4. Skill allowlist: run.skill must be a real, installed skill.
+  // 3. Skill allowlist: run.skill must be a real, installed skill.
   const installedSkills = args.installedSkillIds ?? (await listInstalledSkillIds());
   candidates = candidates.filter((a) => installedSkills.has(a.run.skill));
 
-  // 5. Predicate filter.
-  const survivors: PendingAction[] = [];
+  // 4. Predicate filter -> the actions that would actually be offered.
+  const eligible: Action[] = [];
   for (const a of candidates) {
     const applies = await evalPredicate(a.applies_if.kind, { dataDirOverride: args.dataDirOverride });
     if (!applies) continue;
@@ -352,7 +437,18 @@ export async function computePending(args: ComputePendingArgs): Promise<PendingA
       const done = await evalPredicate(a.detect_done.kind, { dataDirOverride: args.dataDirOverride });
       if (done) continue;
     }
-    survivors.push({ id: a.id, title: a.title, teach: a.teach, run: a.run, writes: a.writes });
+    eligible.push(a);
   }
-  return survivors;
+
+  // 5. Collapse supersedes AMONG THE ELIGIBLE SET ONLY, so jumping several
+  // versions at once offers just the newest action in a chain. Doing this
+  // last (not on raw window candidates) is load-bearing: an action that was
+  // filtered out above — because its skill isn't installed, its predicate is
+  // false, or it is a hostile phantom in a poisoned manifest — must NOT be
+  // able to suppress a real, offerable action via its `supersedes` list.
+  const supersededIds = new Set<string>();
+  for (const a of eligible) for (const s of a.supersedes) supersededIds.add(s);
+  return eligible
+    .filter((a) => !supersededIds.has(a.id))
+    .map((a) => ({ id: a.id, title: a.title, teach: a.teach, run: a.run, writes: a.writes }));
 }

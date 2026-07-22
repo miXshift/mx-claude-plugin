@@ -81550,8 +81550,20 @@ init_credentials();
 var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
 var CACHE_TTL_MS3 = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS3 = 5e3;
+var MAX_YAML_BYTES = 256 * 1024;
+var MAX_ACTIONS = 200;
 function actionsUrl() {
-  return process.env.MIXSHIFT_ACTIONS_URL || ACTIONS_URL_DEFAULT;
+  const override = process.env.MIXSHIFT_ACTIONS_URL;
+  if (!override) return ACTIONS_URL_DEFAULT;
+  try {
+    const u = new URL(override);
+    if (u.protocol === "https:") return override;
+    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) {
+      return override;
+    }
+  } catch {
+  }
+  return ACTIONS_URL_DEFAULT;
 }
 var PREDICATE_KINDS = ["always", "signed_in", "has_brands"];
 var WRITES_TIERS = ["none", "local", "warehouse", "amazon"];
@@ -81580,6 +81592,27 @@ var actionsFileSchema = external_exports.object({
   version: external_exports.literal(1),
   actions: external_exports.array(external_exports.unknown()).default([])
 });
+function stripControl(s, keepNewline) {
+  let out = "";
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c >= 32 && c !== 127) {
+      out += ch;
+    } else if (keepNewline && c === 10) {
+      out += ch;
+    } else {
+      out += " ";
+    }
+  }
+  return out;
+}
+function sanitizeTitle(s) {
+  return stripControl(s, false).replace(/\s+/g, " ").trim();
+}
+function sanitizeTeach(s) {
+  const kept = stripControl(s.replace(/\r/g, ""), true);
+  return kept.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 function parseActions(yamlText) {
   let parsed;
   try {
@@ -81590,9 +81623,13 @@ function parseActions(yamlText) {
   const top = actionsFileSchema.safeParse(parsed);
   if (!top.success) return [];
   const out = [];
-  for (const raw of top.data.actions) {
+  for (const raw of top.data.actions.slice(0, MAX_ACTIONS)) {
     const result = actionSchema.safeParse(raw);
-    if (result.success) out.push(result.data);
+    if (!result.success) continue;
+    const title = sanitizeTitle(result.data.title);
+    const teach = sanitizeTeach(result.data.teach);
+    if (!title || !teach) continue;
+    out.push({ ...result.data, title, teach });
   }
   return out;
 }
@@ -81637,12 +81674,27 @@ async function fetchActionsYaml() {
   try {
     const res = await fetch(actionsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS3) });
     if (!res.ok) return { yaml: null, error: `HTTP ${res.status}` };
-    return { yaml: await res.text() };
+    const len = Number(res.headers.get("content-length"));
+    if (Number.isFinite(len) && len > MAX_YAML_BYTES) {
+      return { yaml: null, error: "manifest too large" };
+    }
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf-8") > MAX_YAML_BYTES) {
+      return { yaml: null, error: "manifest too large" };
+    }
+    return { yaml: text };
   } catch (err) {
     return { yaml: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 async function evalPredicate(kind, opts = {}) {
+  try {
+    return await evalPredicateInner(kind, opts);
+  } catch {
+    return false;
+  }
+}
+async function evalPredicateInner(kind, opts) {
   switch (kind) {
     case "always":
       return true;
@@ -81674,16 +81726,13 @@ async function computePending(args) {
     if (compareVersions(caughtUpTo, a.introduced_in) >= 0) return false;
     return true;
   });
-  const supersededIds = /* @__PURE__ */ new Set();
-  for (const a of candidates) for (const s of a.supersedes) supersededIds.add(s);
-  candidates = candidates.filter((a) => !supersededIds.has(a.id));
   candidates = candidates.filter((a) => {
     const rec = ledger.actions[a.id];
     return !(rec && (rec.status === "completed" || rec.status === "dismissed"));
   });
   const installedSkills = args.installedSkillIds ?? await listInstalledSkillIds();
   candidates = candidates.filter((a) => installedSkills.has(a.run.skill));
-  const survivors = [];
+  const eligible = [];
   for (const a of candidates) {
     const applies = await evalPredicate(a.applies_if.kind, { dataDirOverride: args.dataDirOverride });
     if (!applies) continue;
@@ -81691,9 +81740,11 @@ async function computePending(args) {
       const done = await evalPredicate(a.detect_done.kind, { dataDirOverride: args.dataDirOverride });
       if (done) continue;
     }
-    survivors.push({ id: a.id, title: a.title, teach: a.teach, run: a.run, writes: a.writes });
+    eligible.push(a);
   }
-  return survivors;
+  const supersededIds = /* @__PURE__ */ new Set();
+  for (const a of eligible) for (const s of a.supersedes) supersededIds.add(s);
+  return eligible.filter((a) => !supersededIds.has(a.id)).map((a) => ({ id: a.id, title: a.title, teach: a.teach, run: a.run, writes: a.writes }));
 }
 
 // src/commands/update-actions.ts
@@ -81739,17 +81790,28 @@ async function runList(root, opts) {
     },
     root.dataDir
   );
+  const checked = source !== "none";
   if (root.json) {
     process.stdout.write(
-      JSON.stringify({ status: "ok", installed, caught_up_to: caughtUpTo, pending }, null, 2) + "\n"
+      JSON.stringify(
+        { status: "ok", installed, caught_up_to: caughtUpTo, checked, source, pending },
+        null,
+        2
+      ) + "\n"
     );
     return;
   }
   const format = opts.format === "chat" ? "chat" : "terminal";
-  process.stdout.write(render2(pending, format) + "\n");
+  process.stdout.write(render2(pending, checked, format) + "\n");
 }
-function render2(pending, format) {
+function render2(pending, checked, format) {
   if (pending.length === 0) {
+    if (!checked) {
+      const msg2 = "Could not check for catch-up actions right now (the update service was unreachable). Try again later.";
+      return format === "chat" ? msg2 : `
+${msg2}
+`;
+    }
     return format === "chat" ? "No catch-up actions pending. You are current." : "\nNo catch-up actions pending. You are current.\n";
   }
   if (format === "chat") {

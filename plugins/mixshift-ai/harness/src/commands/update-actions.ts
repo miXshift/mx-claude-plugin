@@ -109,19 +109,34 @@ async function runList(
     root.dataDir,
   );
 
+  // A total fetch failure (no network AND no usable cache) returns an empty
+  // list that is indistinguishable from "genuinely nothing pending" unless we
+  // say so. Surface it, so the skill (and a --json consumer) can tell "you are
+  // current" apart from "could not check right now".
+  const checked = source !== 'none';
+
   if (root.json) {
     process.stdout.write(
-      JSON.stringify({ status: 'ok', installed, caught_up_to: caughtUpTo, pending }, null, 2) + '\n',
+      JSON.stringify(
+        { status: 'ok', installed, caught_up_to: caughtUpTo, checked, source, pending },
+        null,
+        2,
+      ) + '\n',
     );
     return;
   }
 
   const format = opts.format === 'chat' ? 'chat' : 'terminal';
-  process.stdout.write(render(pending, format) + '\n');
+  process.stdout.write(render(pending, checked, format) + '\n');
 }
 
-function render(pending: PendingAction[], format: 'terminal' | 'chat'): string {
+function render(pending: PendingAction[], checked: boolean, format: 'terminal' | 'chat'): string {
   if (pending.length === 0) {
+    if (!checked) {
+      const msg =
+        'Could not check for catch-up actions right now (the update service was unreachable). Try again later.';
+      return format === 'chat' ? msg : `\n${msg}\n`;
+    }
     return format === 'chat'
       ? 'No catch-up actions pending. You are current.'
       : '\nNo catch-up actions pending. You are current.\n';
