@@ -454,9 +454,14 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
       // sessions mount, and cwd/outputs sits inside cwd), so one file can be
       // hit twice; dedupe before counting candidates or picking winners.
       const scanHits = [...new Set([...sessionsHits, ...cwdHits])];
-      candidates = resolvedDirHadFile
-        ? [credentialsPath(resolvedDir), ...scanHits]
-        : scanHits;
+      // The resolved dir can itself sit under a scan root (MIXSHIFT_DATA_DIR
+      // pointing into the sessions tree), so dedupe it against the hits too.
+      candidates = [
+        ...new Set([
+          ...(resolvedDirHadFile ? [credentialsPath(resolvedDir)] : []),
+          ...scanHits,
+        ]),
+      ];
 
       // Try hits newest-first until one holds a usable credential, so a
       // stray unusable file cannot shadow the real one behind it.

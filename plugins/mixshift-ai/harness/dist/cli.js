@@ -88050,7 +88050,12 @@ async function runPreflight(brandSlugs, root) {
       const cwdRoots = [process.cwd(), join22(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
-      candidates = resolvedDirHadFile ? [credentialsPath(resolvedDir), ...scanHits] : scanHits;
+      candidates = [
+        .../* @__PURE__ */ new Set([
+          ...resolvedDirHadFile ? [credentialsPath(resolvedDir)] : [],
+          ...scanHits
+        ])
+      ];
       credentials = null;
       loadFailure = null;
       for (const hit of await sortCandidatesByMtime(scanHits)) {
