@@ -58,6 +58,7 @@ const CATALOG: HubGroup[] = [
       { id: 'mx-welcome', say: 'welcome', what: 'first-run orientation and sign-in' },
       { id: 'mx-auth-login', say: 'sign me in', what: 'sign in, or switch MixShift accounts' },
       { id: 'mx-auth-service-setup', say: 'set up an unattended credential', what: 'a service credential for scheduled or CI runs' },
+      { id: 'mx-scheduled-task', say: 'set up a scheduled task', what: 'scheduled MixShift runs that survive fresh sandboxes' },
       { id: 'mx-brand-context', say: 'set up brand context for <brand>', what: 'onboard a brand so the analytical skills know it' },
     ],
   },

@@ -60983,7 +60983,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join23(tree) {
+      function join24(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61009,7 +61009,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join23(parse4(query));
+        tree = join24(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64351,7 +64351,14 @@ var init_events = __esm({
       // client, so it can fire without importing harness/dist. dismissed is
       // emitted normally through track() from `mixshift whatsnew --dismiss`.
       UpdateBannerShown: "update.banner_shown",
-      UpdateDismissed: "update.dismissed"
+      UpdateDismissed: "update.dismissed",
+      // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
+      // "can this run do MixShift work" for a fresh Cowork sandbox before the
+      // task's real work starts. Privacy: payload carries discovered_via (an
+      // enum) and candidate/brand/pulled/warning COUNTS only — never a brand
+      // slug and never a filesystem path (candidate paths and data_dir are
+      // print-only, in the command's stdout, not in telemetry).
+      TaskPreflightCompleted: "task.preflight_completed"
     };
   }
 });
@@ -86379,6 +86386,7 @@ var CATALOG = [
       { id: "mx-welcome", say: "welcome", what: "first-run orientation and sign-in" },
       { id: "mx-auth-login", say: "sign me in", what: "sign in, or switch MixShift accounts" },
       { id: "mx-auth-service-setup", say: "set up an unattended credential", what: "a service credential for scheduled or CI runs" },
+      { id: "mx-scheduled-task", say: "set up a scheduled task", what: "scheduled MixShift runs that survive fresh sandboxes" },
       { id: "mx-brand-context", say: "set up brand context for <brand>", what: "onboard a brand so the analytical skills know it" }
     ]
   },
@@ -86510,8 +86518,8 @@ async function findSkillsDir() {
   for (let i = 0; i < 6; i++) {
     try {
       const candidate = join21(dir, "skills");
-      const stat4 = await fs.stat(candidate);
-      if (stat4.isDirectory()) return candidate;
+      const stat5 = await fs.stat(candidate);
+      if (stat5.isDirectory()) return candidate;
     } catch {
     }
     const parent = dirname32(dir);
@@ -86911,8 +86919,8 @@ function registerShareSkillCommand(program3) {
   );
 }
 async function collectBundle(path2) {
-  const stat4 = await fs2.stat(path2).catch(() => null);
-  if (!stat4) throw new Error(`Path not found: ${path2}`);
+  const stat5 = await fs2.stat(path2).catch(() => null);
+  if (!stat5) throw new Error(`Path not found: ${path2}`);
   const files = [];
   const skipped = [];
   let totalBytes = 0;
@@ -86950,7 +86958,7 @@ async function collectBundle(path2) {
     files.push({ path: relPath, content, bytes });
     totalBytes += bytes;
   };
-  if (stat4.isFile()) {
+  if (stat5.isFile()) {
     await addFile(path2, basename3(path2));
   } else {
     const walk = async (dir) => {
@@ -88012,6 +88020,381 @@ function emitError11(message, root) {
   process.exitCode = 1;
 }
 
+// src/commands/task.ts
+init_credentials();
+import { readdir as readdir4, stat as stat4 } from "node:fs/promises";
+import { basename as basename4, dirname as dirname33, join as join23 } from "node:path";
+init_resolve();
+init_service_attribution_cache();
+init_telemetry();
+var EXIT_CODES = {
+  credential_missing: 6,
+  credential_invalid: 7,
+  endpoint_unreachable: 8,
+  context_unavailable: 9
+};
+var BLOCKER_PRIORITY = [
+  "credential_missing",
+  "credential_invalid",
+  "endpoint_unreachable",
+  "context_unavailable"
+];
+function computeExitCode(blockers) {
+  for (const cls of BLOCKER_PRIORITY) {
+    if (blockers.some((b) => b.class === cls)) {
+      return { exitCode: EXIT_CODES[cls], firstBlockerClass: cls };
+    }
+  }
+  return { exitCode: 0, firstBlockerClass: null };
+}
+var SESSIONS_MAX_DEPTH = 9;
+var CWD_MAX_DEPTH = 4;
+function sessionsRoot() {
+  return process.env.MIXSHIFT_PREFLIGHT_SESSIONS_ROOT || "/sessions";
+}
+function shellQuoteSingle(value) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+function describeCredentialLoadFailure(dir) {
+  return `credentials file at ${credentialsPath(dir)} exists but could not be parsed (malformed JSON or invalid schema; contents not shown)`;
+}
+var NEVER_DESCEND = /* @__PURE__ */ new Set(["node_modules", ".git"]);
+async function discoverCredentialFiles(roots, maxDepth) {
+  const found = [];
+  for (const root of roots) {
+    await walkForCredentials(root, 0, maxDepth, found);
+  }
+  return found;
+}
+async function walkForCredentials(dir, depth, maxDepth, found) {
+  let entries;
+  try {
+    entries = await readdir4(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    if (/[\u0000-\u001f]/.test(entry.name)) continue;
+    const childDepth = depth + 1;
+    if (entry.isDirectory()) {
+      if (NEVER_DESCEND.has(entry.name)) continue;
+      if (childDepth > maxDepth) continue;
+      await walkForCredentials(join23(dir, entry.name), childDepth, maxDepth, found);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (entry.name !== "credentials") continue;
+    if (childDepth > maxDepth) continue;
+    if (basename4(dir) !== "auth" || basename4(dirname33(dir)) !== ".mixshift") continue;
+    found.push(join23(dir, entry.name));
+  }
+}
+async function sortCandidatesByMtime(paths) {
+  const stated = [];
+  for (const p of paths) {
+    try {
+      stated.push({ path: p, mtimeMs: (await stat4(p)).mtimeMs });
+    } catch {
+    }
+  }
+  stated.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return stated.map((s) => s.path);
+}
+function dataDirFromCredentialPath(hitPath) {
+  return dirname33(dirname33(hitPath));
+}
+async function pathExists(path2) {
+  try {
+    await stat4(path2);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function classifyMintError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/rejected \(revoked/i.test(message) || /session expired/i.test(message) || /returned HTTP 401\b/.test(message)) {
+    return "credential_invalid";
+  }
+  return "endpoint_unreachable";
+}
+function collect3(value, prev) {
+  return [...prev, value];
+}
+function registerTaskCommands(program3) {
+  const task = program3.command("task").description(
+    "Helpers for scheduled/unattended runs (Cowork scheduled tasks, CI, cloud automations): code a task prompt calls first instead of hand-rolling shell preamble."
+  );
+  task.command("preflight").description(
+    "Resolve and verify the credential a scheduled/unattended run should use (including scanning a fresh Cowork sandbox under /sessions when the default data dir has none), seed any requested brand contexts, and report READY or the exact blocker + remediation. Exit codes: 0 ready, 6 credential_missing, 7 credential_invalid, 8 endpoint_unreachable, 9 context_unavailable."
+  ).option(
+    "--brand <slug>",
+    "brand slug to ensure local context.yaml for (repeatable); pulls from the org store when not already present locally",
+    collect3,
+    []
+  ).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    await runPreflight(opts.brand, root);
+  });
+}
+async function runPreflight(brandSlugs, root) {
+  const t0 = Date.now();
+  try {
+    const lines = [];
+    const blockers = [];
+    const warnings = [];
+    const resolvedDir = resolveDataDir(root.dataDir);
+    let discoveredVia = root.dataDir ? "flag" : process.env.MIXSHIFT_DATA_DIR ? "env" : "default";
+    let dataDir = resolvedDir;
+    let candidates = [];
+    const isUsable = (env) => Boolean(env?.datahub || env?.service);
+    let credentials = null;
+    let loadFailure = null;
+    let malformedResolvedWarning = null;
+    const loadFrom = async (dir) => {
+      try {
+        const loaded = await loadCredentials(dir);
+        return { envelope: loaded.credentials, failure: null };
+      } catch {
+        return { envelope: null, failure: { dir, message: describeCredentialLoadFailure(dir) } };
+      }
+    };
+    const first = await loadFrom(resolvedDir);
+    credentials = first.envelope;
+    loadFailure = first.failure;
+    const resolvedDirHadFile = first.envelope !== null || first.failure !== null;
+    if (isUsable(credentials)) {
+      candidates = [credentialsPath(resolvedDir)];
+    } else {
+      const resolvedFailure = loadFailure;
+      const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
+      const cwdRoots = [process.cwd(), join23(process.cwd(), "outputs")];
+      const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
+      const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
+      candidates = [
+        .../* @__PURE__ */ new Set([
+          ...resolvedDirHadFile ? [credentialsPath(resolvedDir)] : [],
+          ...scanHits
+        ])
+      ];
+      credentials = null;
+      loadFailure = null;
+      for (const hit of await sortCandidatesByMtime(scanHits)) {
+        const hitDir = dataDirFromCredentialPath(hit);
+        const attempt = await loadFrom(hitDir);
+        if (isUsable(attempt.envelope)) {
+          credentials = attempt.envelope;
+          dataDir = hitDir;
+          discoveredVia = sessionsHits.includes(hit) ? "sessions_scan" : "cwd_scan";
+          break;
+        }
+        if (!loadFailure && attempt.failure) loadFailure = attempt.failure;
+      }
+      if (isUsable(credentials)) {
+        if (resolvedFailure) {
+          malformedResolvedWarning = `${resolvedFailure.message}; proceeding with the credential discovered under ${dataDir} instead. Delete or repair the malformed file.`;
+        }
+        loadFailure = null;
+      } else if (resolvedFailure) {
+        loadFailure = resolvedFailure;
+      }
+    }
+    lines.push(
+      statusLine(
+        "ok",
+        `data dir: ${dataDir}  (via ${discoveredVia}; ${candidates.length} candidate(s) found)`
+      )
+    );
+    for (const c of candidates) lines.push(`          ${c}`);
+    if (malformedResolvedWarning) {
+      warnings.push(malformedResolvedWarning);
+      lines.push(statusLine("warn", malformedResolvedWarning));
+    }
+    let credentialSummary = null;
+    let kind = null;
+    let credentialLabel;
+    let serviceClientId;
+    if (credentials?.datahub) {
+      kind = "interactive";
+      credentialLabel = credentials.datahub.person_label || credentials.datahub.email;
+    } else if (credentials?.service) {
+      kind = "service";
+      credentialLabel = credentials.service.label ?? credentials.service.client_id;
+      serviceClientId = credentials.service.client_id;
+    }
+    if (loadFailure !== null) {
+      lines.push(statusLine("BLOCKED", `credential: ${loadFailure.message}`));
+      blockers.push({
+        class: "credential_invalid",
+        message: loadFailure.message,
+        remediation: "Delete the malformed credentials file and recreate it with `mixshift auth service-setup` (unattended) or `mixshift auth login` (interactive)."
+      });
+    } else if (kind === null) {
+      const message = candidates.length > 0 ? `Found ${candidates.length} candidate credentials file(s), but none contain a usable service or interactive credential.` : `No credentials file found at ${credentialsPath(resolvedDir)}, under ${sessionsRoot()}, or under the current directory (${process.cwd()}) / its outputs subdirectory.`;
+      lines.push(statusLine("BLOCKED", `credential: ${message}`));
+      blockers.push({
+        class: "credential_missing",
+        message,
+        remediation: "Run `mixshift auth service-setup` (recommended for unattended/scheduled runs) or `mixshift auth login` (interactive) to create one, then re-run this command."
+      });
+    } else {
+      lines.push(
+        statusLine("ok", `credential: ${kind}${credentialLabel ? ` (${credentialLabel})` : ""}`)
+      );
+      if (kind === "interactive") {
+        const w = "signed in with an interactive credential; scheduled/unattended runs should use a service credential (`mixshift auth service-setup`), because interactive token refresh is unreliable when nobody is present to re-authenticate.";
+        warnings.push(w);
+        lines.push(statusLine("warn", w));
+      }
+      let verified = false;
+      let mintErr;
+      try {
+        await getValidAccessToken(dataDir, true);
+        verified = true;
+      } catch (err) {
+        mintErr = err;
+      }
+      if (verified) {
+        lines.push(statusLine("ok", "auth verify: minted a fresh access token"));
+        let scopes;
+        if (kind === "service" && serviceClientId) {
+          const attribution = await readServiceAttributionCache(serviceClientId, dataDir);
+          if (attribution.scopes && attribution.scopes.length > 0) {
+            scopes = attribution.scopes;
+            lines.push(statusLine("ok", `scopes: ${scopes.join(", ")}`));
+          }
+        }
+        credentialSummary = {
+          path: credentialsPath(dataDir),
+          kind,
+          verified: true,
+          ...credentialLabel ? { label: credentialLabel } : {},
+          ...scopes ? { scopes } : {}
+        };
+      } else {
+        const message = mintErr instanceof Error ? mintErr.message : String(mintErr);
+        const cls = classifyMintError(mintErr);
+        lines.push(statusLine("BLOCKED", `auth verify: ${message}`));
+        blockers.push({
+          class: cls,
+          message,
+          remediation: cls === "credential_invalid" ? "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential)." : "Check egress connectivity to the MixShift auth service (mcp.mixshift.io must be reachable/allowlisted from this sandbox), then retry."
+        });
+        credentialSummary = {
+          path: credentialsPath(dataDir),
+          kind,
+          verified: false,
+          ...credentialLabel ? { label: credentialLabel } : {}
+        };
+      }
+    }
+    const brands = [];
+    for (const slug of brandSlugs) {
+      const ctxPath = contextPath(slug, dataDir);
+      if (await pathExists(ctxPath)) {
+        brands.push({ slug, status: "present" });
+        lines.push(statusLine("ok", `brand ${slug}: present`));
+        continue;
+      }
+      const client = createContextSyncClient({ dataDirOverride: dataDir });
+      const result = await pull(slug, { client, dataDirOverride: dataDir });
+      if (!result.ok) {
+        const message = `brand '${slug}': ${result.message}`;
+        lines.push(statusLine("BLOCKED", message));
+        blockers.push({
+          class: "context_unavailable",
+          message,
+          remediation: "Confirm the brand slug and that this credential has access to it (`mixshift context status` lists the known brands), or run `mixshift context pull --brand <slug>` directly to see the full error."
+        });
+        brands.push({ slug, status: "unavailable" });
+        continue;
+      }
+      if (await pathExists(ctxPath)) {
+        brands.push({ slug, status: "pulled" });
+        lines.push(statusLine("ok", `brand ${slug}: pulled`));
+      } else {
+        const message = `brand '${slug}': pull completed but context.yaml still does not exist locally; the org store may not hold a context doc for this brand yet`;
+        lines.push(statusLine("BLOCKED", message));
+        blockers.push({
+          class: "context_unavailable",
+          message,
+          remediation: "Run brand-context setup for this brand (`mixshift brand discover` / the mx-brand-context skill), or confirm the slug with `mixshift context status`."
+        });
+        brands.push({ slug, status: "unavailable" });
+      }
+    }
+    const { exitCode, firstBlockerClass } = computeExitCode(blockers);
+    const ready = blockers.length === 0;
+    const exportLine = kind !== null ? `export MIXSHIFT_DATA_DIR=${shellQuoteSingle(dataDir)}` : null;
+    const resultOut = {
+      ready,
+      data_dir: dataDir,
+      export_line: exportLine,
+      discovered_via: discoveredVia,
+      candidates,
+      credential: credentialSummary,
+      brands,
+      blockers,
+      warnings
+    };
+    await track(
+      {
+        event_name: EventName.TaskPreflightCompleted,
+        outcome: ready ? "ok" : "failed",
+        ...firstBlockerClass ? { error_class: firstBlockerClass } : {},
+        duration_ms: Date.now() - t0,
+        payload: {
+          discovered_via: discoveredVia,
+          candidates_found: candidates.length,
+          brand_count: brandSlugs.length,
+          brands_pulled: brands.filter((b) => b.status === "pulled").length,
+          warnings_count: warnings.length
+        }
+      },
+      // Deviation from the house `track(..., root.dataDir)` pattern,
+      // deliberately: attribution (the svc actor block), the install id, and
+      // the offline queue must ride the DISCOVERED data dir. On the scan
+      // path root.dataDir is undefined and would resolve to the throwaway
+      // sandbox home — the event would go out anonymous (or queue into a dir
+      // that dies with the sandbox). [red-team fix]
+      dataDir
+    );
+    if (root.json) {
+      process.stdout.write(JSON.stringify(resultOut, null, 2) + "\n");
+      process.exitCode = exitCode;
+      return;
+    }
+    lines.push("");
+    if (ready) {
+      lines.push("READY");
+      if (exportLine) lines.push(exportLine);
+    } else {
+      const first2 = blockers.find((b) => b.class === firstBlockerClass) ?? blockers[0];
+      lines.push(`BLOCKED: ${first2.class} - ${first2.message}`);
+      lines.push(`Remediation: ${first2.remediation}`);
+      if (exportLine) {
+        lines.push("");
+        lines.push(exportLine);
+      }
+    }
+    process.stdout.write(lines.join("\n") + "\n");
+    process.exitCode = exitCode;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+    } else {
+      process.stderr.write(`error: ${message}
+`);
+    }
+    process.exitCode = 1;
+  }
+}
+function statusLine(status, message) {
+  return `${status.padEnd(8)}${message}`;
+}
+
 // src/cli.ts
 init_telemetry();
 init_load();
@@ -88095,6 +88478,7 @@ registerHelpCommand(program2);
 registerShareSkillCommand(program2);
 registerContextCommands(program2);
 registerTimelineCommands(program2);
+registerTaskCommands(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();

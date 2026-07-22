@@ -226,6 +226,14 @@ export const EventName = {
   // emitted normally through track() from `mixshift whatsnew --dismiss`.
   UpdateBannerShown: 'update.banner_shown',
   UpdateDismissed: 'update.dismissed',
+
+  // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
+  // "can this run do MixShift work" for a fresh Cowork sandbox before the
+  // task's real work starts. Privacy: payload carries discovered_via (an
+  // enum) and candidate/brand/pulled/warning COUNTS only — never a brand
+  // slug and never a filesystem path (candidate paths and data_dir are
+  // print-only, in the command's stdout, not in telemetry).
+  TaskPreflightCompleted: 'task.preflight_completed',
 } as const;
 
 export type EventNameValue = (typeof EventName)[keyof typeof EventName];

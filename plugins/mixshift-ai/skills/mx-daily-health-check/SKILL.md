@@ -594,10 +594,12 @@ All SQL queries are pre-fetched before skill execution. Do not read the referenc
 
 If the user wants this health check on a schedule (a Cowork scheduled task, a
 daily cron), a browser sign-in will NOT survive: scheduled sandboxes start
-fresh with no session. Before wiring the schedule, invoke the
-`mx-auth-service-setup` skill to configure an admin-issued service credential
-in this workspace; it also anchors credentials to the project folder via
-MIXSHIFT_DATA_DIR so they persist across sandbox restarts.
+fresh with no session. Invoke the `mx-scheduled-task` skill to set the task up
+end to end: it attaches a persistent anchor folder to the task, sets up an
+admin-issued service credential inside it (via `mx-auth-service-setup`), and
+generates task instructions that begin with `mixshift task preflight --brand
+[slug]`, so every run re-finds the credential and re-pulls this brand's
+context on its own.
 
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 

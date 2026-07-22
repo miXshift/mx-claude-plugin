@@ -53,6 +53,10 @@ The `{{PLUGIN_ROOT}}` substitution is the surface-specific plugin install path. 
 | 0 | Success |
 | 1 | Real error (failed validation, DB connection lost, etc.) |
 | 2 | Command exists but is not yet implemented (stub) |
+| 6 | `task preflight`: no usable credential found anywhere (default dir, the sessions tree, cwd) |
+| 7 | `task preflight`: credential invalid (rejected at mint as revoked/rotated, or the credentials file is malformed) |
+| 8 | `task preflight`: token endpoint unreachable (network/timeout) |
+| 9 | `task preflight`: a requested `--brand` could not be seeded from the org store |
 
 This lets Claude distinguish "skill is broken" from "feature isn't built yet."
 

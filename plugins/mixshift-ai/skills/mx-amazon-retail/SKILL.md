@@ -779,12 +779,13 @@ merchant `type` before calling rather than relying on the error.
 
 If the user wants live SP-API lookups on a schedule (a Cowork scheduled task, a
 daily cron), a browser sign-in will NOT survive: scheduled sandboxes start fresh
-with no session. Before wiring the schedule, invoke the `mx-auth-service-setup`
-skill to configure an admin-issued service credential in this workspace; it also
-anchors credentials to the project folder via `MIXSHIFT_DATA_DIR` so they
-persist across sandbox restarts. For Data Kiosk specifically, keep the create /
-poll / fetch steps as separate scheduled calls (the query handle survives across
-calls), never a single blocking run.
+with no session. Invoke the `mx-scheduled-task` skill to set the task up end to
+end: it attaches a persistent anchor folder to the task, sets up an admin-issued
+service credential inside it (via `mx-auth-service-setup`), and generates task
+instructions that begin with `mixshift task preflight`, so every run re-finds
+the credential and re-pulls brand context on its own. For Data Kiosk
+specifically, keep the create / poll / fetch steps as separate scheduled calls
+(the query handle survives across calls), never a single blocking run.
 
 ## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
 
