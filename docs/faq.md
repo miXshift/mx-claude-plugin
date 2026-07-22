@@ -57,7 +57,7 @@ This is the version-field bug above. Quickest reliable workaround:
 
 1. Cowork → Customize → **+** next to Personal plugins → Directory modal opens.
 2. Click the three-dot menu next to `mx-claude-plugin` → **Remove**. (Confirms removal of the marketplace, which also uninstalls plugins from it.)
-3. Same modal → re-add the marketplace via "Add marketplace from GitHub" → `miXshift/mx-claude-plugin`.
+3. Same modal → re-add the marketplace via "Add marketplace from GitHub", using the **same URL form you originally installed with** (beta testers: `https://github.com/miXshift/mx-claude-plugin/tree/stable`, so you stay on the stable channel).
 4. Open the newly-listed marketplace → install `mixshift-ai`.
 
 Cowork preserves its internal `marketplace_*` and `plugin_*` IDs across this — safe, no data loss. Your local auth credentials (`~/.mixshift/auth/credentials`) are independent of Cowork's plugin state and also carry over.
