@@ -80650,22 +80650,87 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile26, writeFile as writeFile18, mkdir as mkdir19 } from "node:fs/promises";
-import { dirname as dirname23 } from "node:path";
-import { join as join16 } from "node:path";
+import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
+import { dirname as dirname24 } from "node:path";
+import { join as join17 } from "node:path";
+
+// src/lib/update-notice-state.ts
+init_resolve();
+import { readFile as readFile26, writeFile as writeFile18, mkdir as mkdir19, rename as rename17, unlink as unlink7 } from "node:fs/promises";
+import { dirname as dirname23, join as join16 } from "node:path";
+var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
+var VERSION_RE = /^\d{1,5}(\.\d{1,5}){1,3}(-[0-9A-Za-z][0-9A-Za-z.]{0,14})?(\+[0-9A-Za-z][0-9A-Za-z.]{0,14})?$/;
+function isValidVersion(v) {
+  return typeof v === "string" && VERSION_RE.test(v);
+}
+function emptyUpdateNoticeState() {
+  return {
+    last_seen_version: null,
+    stale_notice: null,
+    dismissed_version: null,
+    last_fetch_attempt_at: null
+  };
+}
+function updateNoticeStateDir(dataDirOverride) {
+  return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
+}
+function updateNoticeStatePath(dataDirOverride) {
+  return join16(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
+}
+async function loadUpdateNoticeState(dataDirOverride) {
+  try {
+    const raw = await readFile26(updateNoticeStatePath(dataDirOverride), "utf-8");
+    return coerceState(JSON.parse(raw));
+  } catch {
+    return emptyUpdateNoticeState();
+  }
+}
+function coerceState(parsed) {
+  const p = parsed && typeof parsed === "object" ? parsed : {};
+  const state = emptyUpdateNoticeState();
+  if (isValidVersion(p.last_seen_version)) state.last_seen_version = p.last_seen_version;
+  if (isValidVersion(p.dismissed_version)) state.dismissed_version = p.dismissed_version;
+  if (typeof p.last_fetch_attempt_at === "string") {
+    state.last_fetch_attempt_at = p.last_fetch_attempt_at;
+  }
+  if (p.stale_notice && typeof p.stale_notice === "object") {
+    const sn = p.stale_notice;
+    if (isValidVersion(sn.version) && typeof sn.at === "string") {
+      state.stale_notice = { version: sn.version, at: sn.at };
+    }
+  }
+  return state;
+}
+async function saveUpdateNoticeState(state, dataDirOverride) {
+  const path2 = updateNoticeStatePath(dataDirOverride);
+  await mkdir19(dirname23(path2), { recursive: true });
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    await writeFile18(tmp, JSON.stringify(state, null, 2) + "\n", { encoding: "utf-8" });
+    await rename17(tmp, path2);
+  } catch (err) {
+    try {
+      await unlink7(tmp);
+    } catch {
+    }
+    throw err;
+  }
+}
+
+// src/lib/version-check.ts
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join16(resolveDataDir(dataDirOverride), "version-check.json");
+  return join17(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile26(cachePath2, "utf-8");
+    const raw = await readFile27(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -80686,8 +80751,8 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir19(dirname23(cachePath2), { recursive: true });
-        await writeFile18(
+        await mkdir20(dirname24(cachePath2), { recursive: true });
+        await writeFile19(
           cachePath2,
           JSON.stringify(
             {
@@ -80709,9 +80774,9 @@ async function checkForUpdate(opts = {}) {
 }
 async function readCachedLatestVersion(dataDirOverride) {
   try {
-    const raw = await readFile26(versionCheckCachePath(dataDirOverride), "utf-8");
+    const raw = await readFile27(versionCheckCachePath(dataDirOverride), "utf-8");
     const parsed = JSON.parse(raw);
-    return typeof parsed.latest_version === "string" ? parsed.latest_version : null;
+    return isValidVersion(parsed.latest_version) ? parsed.latest_version : null;
   } catch {
     return null;
   }
@@ -81197,71 +81262,6 @@ function registerVersionCommand(program3) {
 
 // src/commands/whatsnew.ts
 init_plugin_version();
-
-// src/lib/update-notice-state.ts
-init_resolve();
-import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20, rename as rename17, unlink as unlink7 } from "node:fs/promises";
-import { dirname as dirname24, join as join17 } from "node:path";
-var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
-var VERSION_RE = /^[0-9A-Za-z.\-+]{1,64}$/;
-function isValidVersion(v) {
-  return typeof v === "string" && VERSION_RE.test(v);
-}
-function emptyUpdateNoticeState() {
-  return {
-    last_seen_version: null,
-    stale_notice: null,
-    dismissed_version: null,
-    last_fetch_attempt_at: null
-  };
-}
-function updateNoticeStateDir(dataDirOverride) {
-  return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
-}
-function updateNoticeStatePath(dataDirOverride) {
-  return join17(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
-}
-async function loadUpdateNoticeState(dataDirOverride) {
-  try {
-    const raw = await readFile27(updateNoticeStatePath(dataDirOverride), "utf-8");
-    return coerceState(JSON.parse(raw));
-  } catch {
-    return emptyUpdateNoticeState();
-  }
-}
-function coerceState(parsed) {
-  const p = parsed && typeof parsed === "object" ? parsed : {};
-  const state = emptyUpdateNoticeState();
-  if (isValidVersion(p.last_seen_version)) state.last_seen_version = p.last_seen_version;
-  if (isValidVersion(p.dismissed_version)) state.dismissed_version = p.dismissed_version;
-  if (typeof p.last_fetch_attempt_at === "string") {
-    state.last_fetch_attempt_at = p.last_fetch_attempt_at;
-  }
-  if (p.stale_notice && typeof p.stale_notice === "object") {
-    const sn = p.stale_notice;
-    if (isValidVersion(sn.version) && typeof sn.at === "string") {
-      state.stale_notice = { version: sn.version, at: sn.at };
-    }
-  }
-  return state;
-}
-async function saveUpdateNoticeState(state, dataDirOverride) {
-  const path2 = updateNoticeStatePath(dataDirOverride);
-  await mkdir20(dirname24(path2), { recursive: true });
-  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
-  try {
-    await writeFile19(tmp, JSON.stringify(state, null, 2) + "\n", { encoding: "utf-8" });
-    await rename17(tmp, path2);
-  } catch (err) {
-    try {
-      await unlink7(tmp);
-    } catch {
-    }
-    throw err;
-  }
-}
-
-// src/commands/whatsnew.ts
 init_telemetry();
 
 // src/lib/changelog.ts
@@ -81410,7 +81410,8 @@ Couldn't load release notes right now${error51 ? ` (${error51})` : ""}.
   );
 }
 async function dismissUpdateNotice(root, current) {
-  const latest = await readCachedLatestVersion(root.dataDir) ?? current;
+  const cachedLatest = await readCachedLatestVersion(root.dataDir);
+  const latest = isValidVersion(cachedLatest) ? cachedLatest : current;
   const state = await loadUpdateNoticeState(root.dataDir);
   state.dismissed_version = latest;
   try {

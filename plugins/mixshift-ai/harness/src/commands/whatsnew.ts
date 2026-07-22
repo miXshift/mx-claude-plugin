@@ -17,6 +17,7 @@ import { readCachedLatestVersion } from '../lib/version-check.js';
 import {
   loadUpdateNoticeState,
   saveUpdateNoticeState,
+  isValidVersion,
 } from '../lib/update-notice-state.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import {
@@ -124,9 +125,20 @@ export function registerWhatsnewCommand(program: Command): void {
  * currently-installed version means a dismiss still does something sane on a
  * data dir that has never run a version check (nothing to suppress yet, but
  * the command still succeeds instead of erroring).
+ *
+ * SECURITY: `latest` here is printed to stdout, returned in `--json`, and
+ * persisted to update-notice-state.json — and the hook's update notice
+ * instructs the model to run this command via Bash, so this stdout re-enters
+ * the conversation. readCachedLatestVersion() already gates the cache read
+ * through isValidVersion() and returns null on failure, but we re-check here
+ * too (final gate before use, same defense-in-depth pattern as the hook's
+ * renderNotice()) so no future change to that reader can silently start
+ * handing back an unvalidated string. A cache miss OR a value that somehow
+ * fails validation both fall back identically to the installed version.
  */
 async function dismissUpdateNotice(root: RootOptions, current: string): Promise<void> {
-  const latest = (await readCachedLatestVersion(root.dataDir)) ?? current;
+  const cachedLatest = await readCachedLatestVersion(root.dataDir);
+  const latest = isValidVersion(cachedLatest) ? cachedLatest : current;
 
   const state = await loadUpdateNoticeState(root.dataDir);
   state.dismissed_version = latest;
