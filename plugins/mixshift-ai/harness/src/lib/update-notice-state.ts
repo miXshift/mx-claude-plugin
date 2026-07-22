@@ -27,6 +27,21 @@ import { resolveDataDir } from './paths/resolve.js';
 
 export const UPDATE_NOTICE_STATE_FILENAME = 'update-notice-state.json';
 
+/**
+ * Strict version-string validator — mirrors hooks/session-start.mjs's own
+ * copy exactly (search that file for "isValidVersion"). Version fields in
+ * this state file are on-disk and editable by anything with filesystem
+ * access, and the hook's copy of this schema feeds a model-directed output
+ * channel, so a poisoned value here must never be trusted by either reader.
+ * Semver-ish charset only: no whitespace, newlines, backticks, quotes, or
+ * other shell/markdown metacharacters; bounded length.
+ */
+const VERSION_RE = /^[0-9A-Za-z.\-+]{1,64}$/;
+
+function isValidVersion(v: unknown): v is string {
+  return typeof v === 'string' && VERSION_RE.test(v);
+}
+
 export interface UpdateNoticeState {
   /** Version the user last saw this install report as (for detecting an
    *  update between sessions). Null on a brand-new data dir. */
@@ -84,14 +99,14 @@ export async function loadUpdateNoticeState(
 function coerceState(parsed: unknown): UpdateNoticeState {
   const p = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
   const state = emptyUpdateNoticeState();
-  if (typeof p.last_seen_version === 'string') state.last_seen_version = p.last_seen_version;
-  if (typeof p.dismissed_version === 'string') state.dismissed_version = p.dismissed_version;
+  if (isValidVersion(p.last_seen_version)) state.last_seen_version = p.last_seen_version;
+  if (isValidVersion(p.dismissed_version)) state.dismissed_version = p.dismissed_version;
   if (typeof p.last_fetch_attempt_at === 'string') {
     state.last_fetch_attempt_at = p.last_fetch_attempt_at;
   }
   if (p.stale_notice && typeof p.stale_notice === 'object') {
     const sn = p.stale_notice as Record<string, unknown>;
-    if (typeof sn.version === 'string' && typeof sn.at === 'string') {
+    if (isValidVersion(sn.version) && typeof sn.at === 'string') {
       state.stale_notice = { version: sn.version, at: sn.at };
     }
   }

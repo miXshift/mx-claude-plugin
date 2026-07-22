@@ -93,6 +93,16 @@ try {
  * resolution rule here, make the matching edit there, and vice versa — the
  * two must never drift apart.
  *
+ * SECURITY: every version string this stage handles — from the state file
+ * on disk, or from the live marketplace fetch — is untrusted external input
+ * that eventually gets interpolated into `hookSpecificOutput.additionalContext`,
+ * a model-directed channel that routinely gets echoed back into a Bash
+ * invocation. Same threat class as the PATH stage's `SAFE` allowlist above:
+ * every such value passes isValidVersion() at the boundary where it enters
+ * (readState, readCurrentVersion, fetchMarketplaceVersion) AND again, as a
+ * final gate, in renderNotice() right before anything is interpolated. A
+ * value that fails is dropped/treated as absent, never trusted.
+ *
  * State machine, in order:
  *   1. Resolve currentVersion from plugin.json. Failure -> skip the whole
  *      stage (steps 2-10 never run).
@@ -102,20 +112,28 @@ try {
  *      `mixshift` invocations too.
  *   3. State file lives in CLAUDE_PLUGIN_DATA (if the host sets it) or else
  *      dataDir. Missing/corrupt -> treated as empty state.
- *   4. "Just updated" notice: state.last_seen_version was a real version and
- *      differs from currentVersion. last_seen_version is then advanced to
- *      currentVersion regardless (so this only ever fires once per update).
+ *   4. "Just updated" notice: state.last_seen_version was a real (validated)
+ *      version AND currentVersion is strictly NEWER than it (a downgrade
+ *      never fires this notice, though last_seen_version still advances to
+ *      currentVersion regardless of direction, so this only ever fires once
+ *      per genuine upgrade and we never nag about a downgrade later either).
+ *      A first-ever run (no prior last_seen_version) never fires this either
+ *      — nothing to compare against yet.
  *   5. Staleness: read the harness's version-check.json cache; if fresh
- *      (<24h) use it, else fetch the marketplace manifest at most once/24h
- *      (2.5s timeout, no retries) and refresh that same cache file on
- *      success. Any failure here is silent — no staleness signal this run.
+ *      (<24h old AND not itself timestamped in the future — a corrupt/future
+ *      checked_at is treated as expired, never as trustworthy) use it, else
+ *      fetch the marketplace manifest at most once/24h (2.5s timeout, no
+ *      retries) and refresh that same cache file on success. Any failure
+ *      here is silent — no staleness signal this run.
  *   6. Compare currentVersion vs latest with the SAME hand-rolled comparator
  *      the harness uses (src/lib/version-check.ts::compareVersions) —
  *      reimplemented here rather than imported, since this script can't
  *      import from harness/dist.
- *   7. Stale notices are suppressed once the user dismisses that exact
- *      version, or within 24h of the last time we showed that exact stale
- *      notice.
+ *   7. Stale notices are suppressed (a) on a first-ever run (no prior
+ *      last_seen_version — a genuinely fresh install must never open with
+ *      "you're already behind"), (b) once the user dismisses that exact
+ *      version, or (c) within 24h of the last time we showed that exact
+ *      stale notice.
  *   8. Precedence: if BOTH an update just happened AND a newer version than
  *      that exists, emit ONE "updated" notice that also mentions the newer
  *      version — never two separate notices in the same run.
@@ -136,6 +154,26 @@ const DEFAULT_MARKETPLACE_URL =
   'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2500;
+
+/**
+ * Strict version-string validator — the SAME threat class as the PATH stage's
+ * `SAFE` allowlist above (untrusted external text must pass a conservative
+ * character allowlist before it is ever interpolated into anything the model
+ * or shell reads). Version strings here originate from two untrusted-ish
+ * sources: the marketplace manifest fetched over the network, and the
+ * on-disk state file (which anything with filesystem access could edit).
+ * Both eventually get interpolated into `hookSpecificOutput.additionalContext`
+ * — a channel the model treats as instructions, and which routinely gets
+ * echoed into a Bash invocation ("mixshift whatsnew" etc.) — so an unvalidated
+ * version string is a prompt-injection / shell-injection vector. Keep this
+ * charset conservative: semver-ish only, no whitespace, no newlines, no
+ * backticks/quotes, no shell or markdown metacharacters, bounded length.
+ */
+const VERSION_RE = /^[0-9A-Za-z.\-+]{1,64}$/;
+
+function isValidVersion(v) {
+  return typeof v === 'string' && VERSION_RE.test(v);
+}
 
 // --- tiny fs helpers ---------------------------------------------------------
 
@@ -169,10 +207,16 @@ async function writeJsonAtomic(path, obj) {
   }
 }
 
+/** A timestamp is "fresh" only inside a sane window: it must be in the past
+ *  (or now) AND within `ttlMs` of now. A future timestamp (nowMs - t < 0) is
+ *  NOT fresh — clock skew or a corrupted/tampered `checked_at` /
+ *  `stale_notice.at` must never be able to disable fetching or suppress
+ *  notices forever by claiming to be from the future. */
 function isFreshIso(iso, nowMs, ttlMs) {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return false;
-  return nowMs - t < ttlMs;
+  const age = nowMs - t;
+  return age >= 0 && age < ttlMs;
 }
 
 // --- state file (step 3) -----------------------------------------------------
@@ -188,19 +232,25 @@ function emptyState() {
 
 /** Tolerant read: missing OR corrupt (unreadable / invalid JSON / wrong
  *  shape) collapses to the empty state. Recovers whatever individual fields
- *  ARE valid rather than discarding the whole file on one bad field. */
+ *  ARE valid rather than discarding the whole file on one bad field.
+ *
+ *  Every version-shaped field is additionally run through isValidVersion()
+ *  — the state file is on-disk, editable by anything with filesystem
+ *  access, and its version fields flow straight into renderNotice()'s
+ *  model-directed output. A field that fails validation is treated as
+ *  ABSENT (dropped to null) rather than trusted, same as a missing field. */
 async function readState(path) {
   const parsed = await readJsonFile(path);
   const state = emptyState();
   if (parsed && typeof parsed === 'object') {
-    if (typeof parsed.last_seen_version === 'string') state.last_seen_version = parsed.last_seen_version;
-    if (typeof parsed.dismissed_version === 'string') state.dismissed_version = parsed.dismissed_version;
+    if (isValidVersion(parsed.last_seen_version)) state.last_seen_version = parsed.last_seen_version;
+    if (isValidVersion(parsed.dismissed_version)) state.dismissed_version = parsed.dismissed_version;
     if (typeof parsed.last_fetch_attempt_at === 'string') {
       state.last_fetch_attempt_at = parsed.last_fetch_attempt_at;
     }
     if (parsed.stale_notice && typeof parsed.stale_notice === 'object') {
       const sn = parsed.stale_notice;
-      if (typeof sn.version === 'string' && typeof sn.at === 'string') {
+      if (isValidVersion(sn.version) && typeof sn.at === 'string') {
         state.stale_notice = { version: sn.version, at: sn.at };
       }
     }
@@ -210,11 +260,15 @@ async function readState(path) {
 
 // --- version resolution (steps 1, 5, 6) -------------------------------------
 
+/** Reads our OWN plugin.json — already trusted in practice — but still run
+ *  through isValidVersion() as defense in depth. If it somehow fails
+ *  validation, skip the whole stage (matches the existing "missing version"
+ *  contract: return null here means step 1's caller returns immediately). */
 function readCurrentVersion(pluginRoot) {
   try {
     const raw = readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf-8');
     const parsed = JSON.parse(raw);
-    return typeof parsed.version === 'string' && parsed.version ? parsed.version : null;
+    return isValidVersion(parsed.version) ? parsed.version : null;
   } catch {
     return null;
   }
@@ -259,12 +313,43 @@ async function fetchMarketplaceVersion(url, timeoutMs) {
     const entry = Array.isArray(data?.plugins)
       ? data.plugins.find((p) => p && p.name === 'mixshift-ai')
       : undefined;
-    return entry && typeof entry.version === 'string' ? entry.version : null;
+    // Defense in depth: only ever return a version that passes the same
+    // strict validator applied everywhere else. A malicious/compromised
+    // manifest could otherwise inject arbitrary text into the notice.
+    return isValidVersion(entry?.version) ? entry.version : null;
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Resolve the marketplace URL to fetch. `MIXSHIFT_VERSION_CHECK_URL` is a
+ * test affordance only (the test suite points it at a closed local port so
+ * the fetch-failure path is instant and deterministic) — it must never widen
+ * to an arbitrary host in production copy, since the response body flows
+ * straight into a model-directed output channel. Only honor the override
+ * when it parses as a URL with protocol exactly 'https:', or is explicitly
+ * 'http://127.0.0.1'/'http://localhost' (kept for the test suite). Anything
+ * else falls back to DEFAULT_MARKETPLACE_URL.
+ */
+function resolveMarketplaceUrl() {
+  const override = process.env.MIXSHIFT_VERSION_CHECK_URL;
+  if (!override) return DEFAULT_MARKETPLACE_URL;
+  try {
+    const parsed = new URL(override);
+    if (parsed.protocol === 'https:') return override;
+    if (
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost')
+    ) {
+      return override;
+    }
+  } catch {
+    // Malformed URL — fall through to the default below.
+  }
+  return DEFAULT_MARKETPLACE_URL;
 }
 
 /**
@@ -300,7 +385,7 @@ async function resolveLatestVersion({ dataDir, state, now, markDirty }) {
   state.last_fetch_attempt_at = new Date(now).toISOString();
   markDirty();
 
-  const url = process.env.MIXSHIFT_VERSION_CHECK_URL || DEFAULT_MARKETPLACE_URL;
+  const url = resolveMarketplaceUrl();
   const fetched = await fetchMarketplaceVersion(url, FETCH_TIMEOUT_MS);
   if (!fetched) return null;
 
@@ -317,8 +402,26 @@ async function resolveLatestVersion({ dataDir, state, now, markDirty }) {
 
 // --- notice copy (steps 8-9) --------------------------------------------------
 
-/** Customer-facing copy: no em dashes, never "cold start". */
+/** Customer-facing copy: no em dashes, never "cold start".
+ *
+ *  Defense in depth (final gate before anything reaches stdout): every
+ *  version-shaped value this function is about to interpolate into
+ *  `systemMessage` or `additionalContext` — the model-directed channel that
+ *  can trigger a Bash invocation — must independently pass isValidVersion().
+ *  Earlier boundaries (readState, readCurrentVersion, fetchMarketplaceVersion)
+ *  already validate their inputs, but this assertion means no code path,
+ *  present or future, can smuggle a raw external string into the output
+ *  channel: if any value fails, render nothing and the caller prints
+ *  nothing. Same threat class as the PATH-stage SAFE allowlist earlier in
+ *  this file — untrusted text never reaches an interpolation point without
+ *  passing a strict charset check first. */
 function renderNotice(notice) {
+  const candidateVersions =
+    notice.kind === 'updated'
+      ? [notice.from, notice.to, notice.newerAvailable].filter((v) => v !== undefined)
+      : [notice.current, notice.latest];
+  if (!candidateVersions.every(isValidVersion)) return null;
+
   if (notice.kind === 'updated') {
     const { from, to, newerAvailable } = notice;
     if (newerAvailable) {
@@ -517,8 +620,22 @@ async function runUpdateNoticeStage() {
 
     // Step 4: "just updated" notice.
     const prevSeen = state.last_seen_version;
+    // A first-ever run (no prior last_seen_version — readState() already
+    // collapses an invalid/poisoned value to null) must never surface a
+    // staleness notice: there is nothing to be "behind" relative to, from
+    // this install's own point of view, until it has completed at least one
+    // prior run. See step 7.
+    const isFirstRun = !(typeof prevSeen === 'string' && prevSeen);
     let updatedNotice = null;
-    if (typeof prevSeen === 'string' && prevSeen && prevSeen !== currentVersion) {
+    // Only a genuine upgrade (currentVersion strictly newer than what we last
+    // recorded) counts as "updated". A downgrade (or a no-op re-run with the
+    // same version) must not emit the "Updated X -> Y" notice, though we
+    // still advance last_seen_version below so we don't nag about it later.
+    if (
+      !isFirstRun &&
+      prevSeen !== currentVersion &&
+      compareVersions(currentVersion, prevSeen) > 0
+    ) {
       updatedNotice = { from: prevSeen, to: currentVersion };
     }
     if (prevSeen !== currentVersion) {
@@ -526,12 +643,14 @@ async function runUpdateNoticeStage() {
       dirty = true;
     }
 
-    // Steps 5-6: staleness signal (throttled fetch + comparator).
+    // Steps 5-6: staleness signal (throttled fetch + comparator). Still run
+    // on a first-ever run so the cache/throttle bookkeeping is seeded, even
+    // though no notice will fire this run (step 7).
     const latest = await resolveLatestVersion({ dataDir, state, now, markDirty });
 
     // Step 7: suppression -> does a stale notice apply this run?
     let staleApplies = false;
-    if (latest && compareVersions(currentVersion, latest) < 0) {
+    if (!isFirstRun && latest && compareVersions(currentVersion, latest) < 0) {
       const dismissed = state.dismissed_version === latest;
       const recentlyShown =
         state.stale_notice &&
@@ -565,14 +684,26 @@ async function runUpdateNoticeStage() {
 
     if (!notice) return; // nothing to show — print nothing, matches current behavior.
 
-    // Step 9: single JSON object on stdout.
-    const { systemMessage, additionalContext } = renderNotice(notice);
-    process.stdout.write(
+    // Step 9: single JSON object on stdout. renderNotice() is the final
+    // defense-in-depth gate — it returns null if any interpolated version
+    // value fails isValidVersion, in which case we print nothing (same as
+    // "no notice") rather than risk emitting a malformed/injected payload.
+    const rendered = renderNotice(notice);
+    if (!rendered) return;
+    const { systemMessage, additionalContext } = rendered;
+    const payload =
       JSON.stringify({
         systemMessage,
         hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
-      }) + '\n',
-    );
+      }) + '\n';
+    // Await the write's callback rather than fire-and-forget: process.exit(0)
+    // at the top level runs as soon as this async function resolves, and on
+    // a pipe (as opposed to a TTY) a write can still be buffered when that
+    // happens, truncating the notice. This guarantees the OS has the full
+    // payload before we let the process move on to exit.
+    await new Promise((res, rej) => {
+      process.stdout.write(payload, (err) => (err ? rej(err) : res()));
+    });
 
     // Step 10: best-effort telemetry, entirely optional.
     await maybeEmitTelemetry({ dataDir, pluginRoot, currentVersion, notice });

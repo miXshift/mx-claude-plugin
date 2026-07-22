@@ -25,6 +25,7 @@ vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
 });
 
 import { track, EventName } from '../lib/telemetry/index.js';
+import * as updateNoticeState from '../lib/update-notice-state.js';
 
 let testDir: string;
 
@@ -58,11 +59,17 @@ async function runWhatsnew(...args: string[]): Promise<void> {
 }
 
 let stdoutChunks: string[];
+let stderrChunks: string[];
 
 beforeEach(() => {
   stdoutChunks = [];
+  stderrChunks = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown): boolean => {
     stdoutChunks.push(String(chunk));
+    return true;
+  });
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown): boolean => {
+    stderrChunks.push(String(chunk));
     return true;
   });
 });
@@ -72,6 +79,7 @@ afterEach(() => {
 });
 
 const stdoutText = (): string => stdoutChunks.join('');
+const stderrText = (): string => stderrChunks.join('');
 
 describe('whatsnew --dismiss', () => {
   it('falls back to the installed version when there is no version-check cache', async () => {
@@ -141,5 +149,41 @@ describe('whatsnew --dismiss', () => {
     const parsed = JSON.parse(stdoutText());
     expect(parsed.status).toBe('ok');
     expect(parsed.dismissed_version).toBe(getPluginVersion());
+  });
+
+  it('FIX 7: a state-save failure prints a clean one-line error and exits nonzero, not a stack trace', async () => {
+    const saveSpy = vi
+      .spyOn(updateNoticeState, 'saveUpdateNoticeState')
+      .mockRejectedValueOnce(new Error('EACCES: permission denied'));
+
+    await expect(runWhatsnew('--dismiss', '--data-dir', testDir)).resolves.not.toThrow();
+
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0; // don't leak a nonzero exit code into the test runner
+
+    const text = stderrText();
+    expect(text).not.toContain('—'); // no em dash
+    expect(text.trim().split('\n')).toHaveLength(1);
+    expect(text).toContain('EACCES');
+    expect(stdoutText()).toBe(''); // nothing partial on stdout
+
+    saveSpy.mockRestore();
+  });
+
+  it('FIX 7: a --json state-save failure reports a clean error envelope', async () => {
+    const saveSpy = vi
+      .spyOn(updateNoticeState, 'saveUpdateNoticeState')
+      .mockRejectedValueOnce(new Error('ENOSPC: no space left on device'));
+
+    await runWhatsnew('--dismiss', '--json', '--data-dir', testDir);
+
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.status).toBe('error');
+    expect(parsed.message).toContain('ENOSPC');
+
+    saveSpy.mockRestore();
   });
 });

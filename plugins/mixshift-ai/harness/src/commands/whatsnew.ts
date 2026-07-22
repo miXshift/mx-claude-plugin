@@ -130,7 +130,18 @@ async function dismissUpdateNotice(root: RootOptions, current: string): Promise<
 
   const state = await loadUpdateNoticeState(root.dataDir);
   state.dismissed_version = latest;
-  await saveUpdateNoticeState(state, root.dataDir);
+  try {
+    await saveUpdateNoticeState(state, root.dataDir);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: 'error', message }, null, 2) + '\n');
+    } else {
+      process.stderr.write(`error: could not save dismiss state: ${message}\n`);
+    }
+    process.exitCode = 1;
+    return;
+  }
 
   await track({
     event_name: EventName.UpdateDismissed,

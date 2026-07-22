@@ -90,6 +90,26 @@ describe('loadUpdateNoticeState', () => {
     expect(JSON.parse(raw)).toEqual(emptyUpdateNoticeState());
   });
 
+  it('FIX 1: drops a poisoned last_seen_version/dismissed_version/stale_notice.version to null', async () => {
+    await mkdir(testDir, { recursive: true });
+    await writeFile(
+      updateNoticeStatePath(testDir),
+      JSON.stringify({
+        last_seen_version: '0.8.5\n`whoami`',
+        dismissed_version: '0.8.5; rm -rf /',
+        last_fetch_attempt_at: '2026-07-01T00:00:00.000Z',
+        stale_notice: { version: '0.9.0 <script>', at: '2026-07-01T00:00:00.000Z' },
+      }),
+      'utf-8',
+    );
+    const state = await loadUpdateNoticeState(testDir);
+    expect(state.last_seen_version).toBeNull();
+    expect(state.dismissed_version).toBeNull();
+    expect(state.stale_notice).toBeNull();
+    // Untouched, valid fields still come through.
+    expect(state.last_fetch_attempt_at).toBe('2026-07-01T00:00:00.000Z');
+  });
+
   it('honors CLAUDE_PLUGIN_DATA for both save and load', async () => {
     const pluginDataDir = join(testDir, 'plugin-data');
     process.env.CLAUDE_PLUGIN_DATA = pluginDataDir;

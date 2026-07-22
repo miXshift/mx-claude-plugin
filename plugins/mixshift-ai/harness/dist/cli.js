@@ -81203,6 +81203,10 @@ init_resolve();
 import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20, rename as rename17, unlink as unlink7 } from "node:fs/promises";
 import { dirname as dirname24, join as join17 } from "node:path";
 var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
+var VERSION_RE = /^[0-9A-Za-z.\-+]{1,64}$/;
+function isValidVersion(v) {
+  return typeof v === "string" && VERSION_RE.test(v);
+}
 function emptyUpdateNoticeState() {
   return {
     last_seen_version: null,
@@ -81228,14 +81232,14 @@ async function loadUpdateNoticeState(dataDirOverride) {
 function coerceState(parsed) {
   const p = parsed && typeof parsed === "object" ? parsed : {};
   const state = emptyUpdateNoticeState();
-  if (typeof p.last_seen_version === "string") state.last_seen_version = p.last_seen_version;
-  if (typeof p.dismissed_version === "string") state.dismissed_version = p.dismissed_version;
+  if (isValidVersion(p.last_seen_version)) state.last_seen_version = p.last_seen_version;
+  if (isValidVersion(p.dismissed_version)) state.dismissed_version = p.dismissed_version;
   if (typeof p.last_fetch_attempt_at === "string") {
     state.last_fetch_attempt_at = p.last_fetch_attempt_at;
   }
   if (p.stale_notice && typeof p.stale_notice === "object") {
     const sn = p.stale_notice;
-    if (typeof sn.version === "string" && typeof sn.at === "string") {
+    if (isValidVersion(sn.version) && typeof sn.at === "string") {
       state.stale_notice = { version: sn.version, at: sn.at };
     }
   }
@@ -81409,7 +81413,19 @@ async function dismissUpdateNotice(root, current) {
   const latest = await readCachedLatestVersion(root.dataDir) ?? current;
   const state = await loadUpdateNoticeState(root.dataDir);
   state.dismissed_version = latest;
-  await saveUpdateNoticeState(state, root.dataDir);
+  try {
+    await saveUpdateNoticeState(state, root.dataDir);
+  } catch (err) {
+    const message2 = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "error", message: message2 }, null, 2) + "\n");
+    } else {
+      process.stderr.write(`error: could not save dismiss state: ${message2}
+`);
+    }
+    process.exitCode = 1;
+    return;
+  }
   await track({
     event_name: EventName.UpdateDismissed,
     payload: { latest }
