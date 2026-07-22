@@ -61,7 +61,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **24 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **25 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -71,6 +71,7 @@ The plugin ships **24 skills**. Each is invoked naturally in chat: say what you 
 | `mx-help` | Navigation and discovery hub: what the plugin can do, how to fix something, where the docs are. Say "help" or "what can this do". |
 | `mx-auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
 | `mx-auth-service-setup` | Set up an admin-issued service credential for unattended runs: scheduled Cowork tasks, CI, cron. |
+| `mx-scheduled-task` | Build or repair a scheduled MixShift task end to end: durable anchor folder, service credential, task instructions that preflight every run, verified first run. Say "set up a scheduled task" or "fix my scheduled task". |
 | `mx-data-explore` | Query, sample, and CSV-export your MixShift warehouse: Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
 | `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Read-only. |
 | `mx-amazon-retail` | Live SP-API retail lookups: catalog, inventory, orders, finances, listings, offer pricing. The title / brand source for ASINs missing from the warehouse. Read-only. |

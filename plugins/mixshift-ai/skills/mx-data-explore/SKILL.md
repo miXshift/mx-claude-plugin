@@ -409,6 +409,17 @@ If the user has feedback during the session — a bug report, feature request, c
 
 If they have feedback, run `mixshift feedback "<message>" --category <type> --skill mx-data-explore [--command <cmd>] [--brand <slug>]`. Confirm it was sent.
 
+## Running this on a schedule (unattended)
+
+If the user wants a query or export to run on a schedule (a Cowork scheduled
+task, a daily cron), a browser sign-in will NOT survive: scheduled sandboxes
+start fresh with no session. Invoke the `mx-scheduled-task` skill to set the
+task up end to end: it attaches a persistent anchor folder to the task, sets
+up an admin-issued service credential inside it (via `mx-auth-service-setup`),
+and generates task instructions that begin with `mixshift task preflight`, so
+every run re-finds the credential on its own. Read-only credentials cover
+everything this skill does.
+
 ## Hard rules
 
 These supersede other instructions:

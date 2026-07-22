@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-service-setup
 display_name: MixShift Service Credential Setup
-version: "0.2.0"
+version: "0.3.0"
 description: >
   Chat-orchestrated setup of an admin-issued service credential (OAuth
   client_credentials) so MixShift skills run unattended: scheduled Cowork
@@ -48,10 +48,6 @@ trigger_phrases:
   - unattended auth
   - headless auth
   - auth for automation
-  - schedule this skill
-  - make this run on a schedule
-  - run this daily without me
-  - set up a scheduled task
   - cron auth
 notes: >
   Companion to mx-auth-login: that skill covers humans present at run time
@@ -63,6 +59,10 @@ notes: >
   deleted after `verified: true` because the credential then lives in the
   data dir's credentials.json. The single recurring failure mode for
   schedules is a MIXSHIFT_DATA_DIR mismatch between setup and the scheduled
-  run; Step 0/5 exist to prevent it. Server-side mechanics:
-  mx-legacy-auth /oauth/token grant_type=client_credentials, ~1h access
-  tokens, dual-secret zero-downtime rotation at /admin.
+  run; Step 0/5 exist to prevent it, and Step 0 now STOPS outright when no
+  durable folder is attached to the task (anchoring into a session home
+  loses the credential by the next fire; mx-scheduled-task owns attaching
+  the folder). Whole-task lifecycle phrases moved to mx-scheduled-task in
+  0.3.0. Server-side mechanics: mx-legacy-auth /oauth/token
+  grant_type=client_credentials, ~1h access tokens, dual-secret
+  zero-downtime rotation at /admin.
