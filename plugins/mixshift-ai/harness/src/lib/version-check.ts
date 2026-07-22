@@ -123,6 +123,28 @@ export async function checkForUpdate(opts: {
   return { current, latest, isStale, releaseUrl, fetched };
 }
 
+/**
+ * Read the on-disk version-check cache WITHOUT triggering a fetch or
+ * touching the 24h freshness window. Returns null if the cache is missing,
+ * unreadable, or the wrong shape.
+ *
+ * Used by callers that want "latest known version" as a cheap best-effort
+ * hint (e.g. `mixshift whatsnew --dismiss`, which needs *a* version to record
+ * as dismissed but shouldn't pay for a network round trip just to dismiss a
+ * notice) rather than the full staleness assessment `checkForUpdate` provides.
+ */
+export async function readCachedLatestVersion(
+  dataDirOverride?: string,
+): Promise<string | null> {
+  try {
+    const raw = await readFile(versionCheckCachePath(dataDirOverride), 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<CacheFile>;
+    return typeof parsed.latest_version === 'string' ? parsed.latest_version : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchLatestVersion(): Promise<string | null> {
   try {
     const res = await fetch(MARKETPLACE_URL, {
