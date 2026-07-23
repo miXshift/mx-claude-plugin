@@ -71,7 +71,8 @@ paraphrase or condense it, and do NOT paste the bash command above it.
 ### Fallback if the CLI fails
 
 1. `node "$MIXSHIFT_CLI" guide --format chat` is the same output via an absolute path.
-2. **If there is no shell at all (for example claude.ai web):** present the
+2. **If `$MIXSHIFT_CLI` is also empty** (normal in Cowork, which does not run the session hook that sets it): resolve the CLI by scanning, then use that path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"` and run `node "$MIXSHIFT_CLI" guide --format chat`. `mixshift` being off PATH with `$MIXSHIFT_CLI` unset does not mean the plugin is missing. Its CLI is in the plugin directory the scan finds.
+3. **If there is no shell at all (for example claude.ai web):** present the
    capability map yourself, built from the MixShift skills available in this
    session, grouped by outcome. Use this structure and fill each group from the
    skills you can actually see:

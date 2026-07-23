@@ -52,7 +52,7 @@ trigger_phrases:
 
 # Amazon Retail Lookups (live SP-API)
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
 
 ## About this surface (authoritative, do not guess)
@@ -565,10 +565,19 @@ Gotchas:
 - **Account-scoped: no marketplace param.** The NA-region token carries identity
   (like `sellers` / `finances`), so you do not pass a marketplace; pin the US row
   with `--legacy-seller-id`.
-- **Requires the "Amazon Warehousing and Distribution" role AND a per-seller
-  re-authorization performed after the role was added.** A seller not yet re-authed
-  for the role fails with `reauth_required` - have them re-connect in the MixShift
-  app, then retry.
+- **Requires the "Amazon Warehousing and Distribution" role, which is newer than
+  most connections.** AWD was added as an SP-API role after many merchants first
+  authorized, so a merchant who has not re-authorized since fails with a 403
+  (surfaced as `restricted_report`), distinct from the empty-200 not-enrolled
+  shape above. This 403 is terminal: do NOT retry it. The CLI now returns the
+  exact fix - direct the user to add the role by updating the merchant's token:
+    1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants
+    2. Find the merchant and click "Update Token".
+    3. Seller Central opens to add the role and finish authorization, then
+       redirects back to MixShift.
+  The call works once the token is updated. (Enrollment is a separate axis: an
+  enrolled seller still 403s here until re-authorized; a not-enrolled seller
+  returns the empty 200 shape above.)
 - `list_inventory` query (all optional): `sku`, `details`, `sortOrder`,
   `maxResults`, `nextToken`. `list_inbound_shipments` query (all optional):
   `sortBy`, `sortOrder`, `shipmentStatus`, `updatedAfter` / `updatedBefore`

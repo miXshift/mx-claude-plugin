@@ -5,7 +5,7 @@ description: "Pure data extraction layer for search term analysis. Pulls window 
 
 # ST Data Pull
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
 
 Pure data extraction. No recommendations, no LLM, no judgment calls. Output is a structured JSON artifact that feeds downstream negation and harvest skills.
@@ -18,7 +18,7 @@ Pure data extraction. No recommendations, no LLM, no judgment calls. Output is a
 
 ## Data Integrity — Non-Negotiable
 
-- `dtCreatedOn` is the date field in the search term report (NOT `DateTime`)
+- The source table is `keywordtargetingmetric` (the live base metric table); `DateTime` is its per-day date field, used for the analysis window
 - `recordType` split is mandatory: 'Keyword Targeting' vs 'Product Attribute Targeting'
 - Exclusion mask must be applied before any downstream skill sees the data
 - Never pass a row to a downstream skill that is already negated

@@ -34,19 +34,31 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Skills reliably find the MixShift CLI on Cowork.** Cowork does not run the
+  plugin's session hook, so `mixshift` is never on the command path there and
+  each skill has to locate the bundled CLI itself. Most skills previously gave
+  up when they could not find it, and sometimes reported the plugin as "not
+  installed" when it was in fact installed and working. Every skill now locates
+  the CLI by scanning for it, so commands run on Cowork the same as anywhere
+  else. This most affects the first thing a new Cowork user does (`mx-welcome`
+  and signing in), which could previously stall.
 - **Service credential setup no longer reports success from a location that
   will not survive.** In a sandboxed session with no persistent folder
   attached, setup used to write the credential somewhere temporary and look
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
-- **Scheduled-task setup now finds the MixShift CLI on Cowork.** The setup
-  guidance for locating the CLI in a scheduled sandbox filtered for a
-  "mixshift" folder name, but Cowork installs the plugin into an ID-named
-  directory, so the lookup came back empty and stored task instructions
-  failed. The guidance now matches the CLI by its own path shape, and states
-  plainly that `mixshift` is not on PATH in scheduled sandboxes (run commands
-  as `node` plus the CLI path).
+- **Search-term data pulls return the full window again.** The search-term
+  data-pull skill (and the negation, harvest, and relevance reviews built on
+  it) had been reading a stale internal table that stopped updating, so recent
+  date ranges came back empty. It now reads the live source table, so a pull
+  returns the complete window of search-term performance.
+- **Clearer message when an AWD call needs a token update.** Amazon Warehousing
+  & Distribution (AWD) is a newer permission. If a merchant was connected before
+  it was added, AWD lookups returned a vague "restricted" error and could get
+  retried in a loop. The plugin now tells you plainly that the merchant needs
+  its token updated to add the AWD role, and points you to the exact place to do
+  it, so the call is not retried until it can succeed.
 - **Feedback and usage reporting now work from sandboxed and scheduled
   runs.** `mixshift feedback` and the plugin's anonymized usage events used
   to post to a separate host that sandboxed environments block, so reports

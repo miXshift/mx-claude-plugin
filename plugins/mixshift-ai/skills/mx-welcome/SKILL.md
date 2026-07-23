@@ -77,10 +77,11 @@ If the user asks a follow-up about a specific step, reference the rendered text 
 
 ### Fallback if the CLI fails
 
-If `mixshift welcome --format chat` fails ("command not found", harness error, etc.), fall back to:
+If `mixshift welcome --format chat` fails ("command not found", harness error, etc.), fall back in order:
 
 1. `node "$MIXSHIFT_CLI" welcome --format chat` — same output, absolute path.
-2. As a last resort, the older `mixshift welcome` (no --format flag) outputs the terminal-ASCII version. Surface that as-is in a code block; don't try to paraphrase it.
+2. If `$MIXSHIFT_CLI` is also empty (normal in Cowork, which does not run the session hook that sets it), resolve the bundled CLI by scanning, then use that path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"` and run `node "$MIXSHIFT_CLI" welcome --format chat`. This is the first thing a new Cowork user hits, so do NOT skip it and do NOT conclude the plugin is missing: `mixshift` being off PATH with `$MIXSHIFT_CLI` unset is expected here; the CLI ships inside the plugin directory (an ID-named folder a PATH or npm check will not show), which the scan finds.
+3. As a last resort, the older `mixshift welcome` (no --format flag) outputs the terminal-ASCII version. Surface that as-is in a code block; don't try to paraphrase it.
 
 ## Drive the sign-in inline (REQUIRED for not-signed-in users)
 
@@ -118,7 +119,7 @@ Trigger when the user:
 
 The `mixshift welcome` command writes to stderr (so it shows up correctly in terminals). In Claude's Bash output you'll see the rendered text. Just pass it through to the user.
 
-If the command fails with "command not found" or similar, fall back to a brief one-line message: *"Looks like the plugin's bin path isn't registered. Try restarting Claude Code, or run `node "$MIXSHIFT_CLI" welcome` as a fallback."*
+If the command fails with "command not found" or similar, resolve the CLI by scanning before giving up: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"` and retry as `node "$MIXSHIFT_CLI" welcome`. Only if that scan also comes back empty, fall back to a brief message: *"The plugin's CLI could not be located in this session. Try restarting Claude Code / Cowork, or open a new session."* Do not tell the user the plugin is not installed; an off-PATH `mixshift` is expected in Cowork.
 
 ## One-time note for users from before Org Brain
 
