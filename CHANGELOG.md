@@ -28,6 +28,9 @@ starts at 0.5.39; earlier versions predate the changelog.
   verifies it against the service for real, fetches brand context for the
   brands the task uses, and either reports READY or tells you exactly what is
   blocking the run and how to fix it, with a distinct exit code per blocker.
+  When the credential it finds turns out to be revoked, it automatically tries
+  the next one it discovered (newest first) instead of failing on a stale
+  leftover, and tells you to clean the stale one up.
 
 ### Fixed
 
