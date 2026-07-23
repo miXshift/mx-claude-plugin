@@ -59,22 +59,29 @@ auth:
       session, use your tenant subdomain instead (e.g.
       marpartners.mydashapplications.com/database-admin).
 
-# Telemetry destination — MixShift's Supabase events table.
+# Telemetry destination.
+#
+# Default: the MixShift gateway ingest at mcp.mixshift.io, which forwards
+# events server-side to the analytics store. This rides the ONE domain every
+# install already needs (sandboxed and scheduled runs can reach it, so their
+# telemetry and `mixshift feedback` actually deliver instead of queueing
+# forever), and it keeps the storage credential out of the shipped plugin.
 #
 # When `endpoint` or `apikey` is empty, telemetry is "configured off": events
 # are written to the local queue file (~/.mixshift/telemetry/queue.jsonl) but
-# never flushed to the network. Populating both flips telemetry on for every
-# install — provided the user hasn't run `mixshift telemetry opt-out` and
-# hasn't set MIXSHIFT_TELEMETRY=0 in their environment.
+# never flushed to the network. Both values below must therefore stay
+# non-empty. The gateway ignores the apikey header entirely; `mx-gateway` is
+# a placeholder that satisfies the non-empty gate, not a secret.
 #
-# The anon key is safe to embed in the plugin (Supabase anon keys are designed
-# for client-side use; security is enforced server-side via Row Level Security
-# policies that limit the anon role to INSERT-only on the events table).
+# Direct-to-store override (internal/dev): set MIXSHIFT_TELEMETRY_ENDPOINT to
+# a PostgREST events URL and MIXSHIFT_TELEMETRY_APIKEY to that project's anon
+# key. Users can disable telemetry with `mixshift telemetry opt-out` or
+# MIXSHIFT_TELEMETRY=0.
 #
 # Setup: see internal/SUPABASE-SETUP.md.
 telemetry:
   enabled: true
-  endpoint: https://izurufltfnwxsljvtksy.supabase.co/rest/v1/events
-  apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dXJ1Zmx0Zm53eHNsanZ0a3N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDgxNzksImV4cCI6MjA5NDY4NDE3OX0.0GG7vjVGCc5vQvjoSjZTN5U7GP9uYRWVHmy5i8KywK8
+  endpoint: https://mcp.mixshift.io/telemetry/events
+  apikey: mx-gateway
   batch_size: 10
   flush_interval_ms: 5000

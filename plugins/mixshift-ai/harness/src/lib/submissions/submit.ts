@@ -66,14 +66,25 @@ export interface SubmitResult {
 }
 
 /**
- * Derive the skill_submissions PostgREST URL from the telemetry events URL.
- * Events endpoint shape: https://<ref>.supabase.co/rest/v1/events
- * We rewrite the table segment only, and refuse anything that isn't that
- * known shape so a misconfigured endpoint can't post to a surprise table.
+ * Derive the skill-submissions URL from the telemetry events URL. Two known
+ * shapes, rewritten segment-for-segment; anything else is refused so a
+ * misconfigured endpoint can't post to a surprise location:
+ *
+ *   gateway (shipped default): https://mcp.mixshift.io/telemetry/events
+ *                           -> https://mcp.mixshift.io/telemetry/submissions
+ *   PostgREST (env override):  https://<ref>.supabase.co/rest/v1/events
+ *                           -> https://<ref>.supabase.co/rest/v1/skill_submissions
+ *
+ * Exported for tests.
  */
-function deriveSubmissionsEndpoint(eventsEndpoint: string): string | null {
-  if (!/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) return null;
-  return eventsEndpoint.replace(/\/events\/?$/, '/skill_submissions');
+export function deriveSubmissionsEndpoint(eventsEndpoint: string): string | null {
+  if (/\/telemetry\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, '/submissions');
+  }
+  if (/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, '/skill_submissions');
+  }
+  return null;
 }
 
 export async function submitSkill(
