@@ -15,12 +15,19 @@ Skills call the bundled CLI as `mixshift <cmd>`. Since 0.8.3 that name is put on
 mixshift <cmd> <args>
 # Fallback 1 - hook-exported absolute entrypoint:
 node "$MIXSHIFT_CLI" <cmd> <args>
-# Fallback 2 - no hook ran at all: resolve the plugin root from the skill's
-# own base directory (it is <plugin root>/skills/<skill name>) and run:
-node "<plugin root>/harness/dist/cli.js" <cmd> <args>
+# Fallback 2 - no hook ran at all (this is the NORMAL case in Cowork): resolve
+# the bundled CLI by scanning the filesystem, then reuse the path:
+MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"
+node "$MIXSHIFT_CLI" <cmd> <args>
 ```
 
-Do NOT use `$CLAUDE_PLUGIN_ROOT` in SKILL.md fallbacks: the host sets it for hook/MCP processes but it is EMPTY in the session's Bash environment (verified 2026-07-16). For auth-critical and first-run skills (`mx-welcome`, `mx-auth-login`), state the fallback inline at the first CLI call so a missing PATH never strands a brand-new user. For other skills, one note near the first CLI call is enough.
+Fallback 2 must be the **executable scan**, not prose. In Cowork the SessionStart hook never runs (confirmed platform-wide, not just intermittently), so `mixshift` is off PATH AND `$MIXSHIFT_CLI` is unset on every Cowork session — Fallbacks 1 is empty and the ONLY thing that locates the CLI is the scan. An earlier version of this guide told skills to "derive the plugin root from the skill's own base directory"; that was prose the model did not follow (it ran `which`/`npm`, found nothing, and wrongly told users the plugin was "not installed"). Do NOT reintroduce a prose rung.
+
+Two hard rules that follow:
+- **Never filter the scan on `*mixshift*`.** The plugin installs into an ID-named directory (e.g. `plugin_01LC7x...`) with no "mixshift" in the path, so `-path '*mixshift*'` matches nothing on Cowork. `*/harness/dist/cli.js` is specific enough.
+- **`mixshift` off PATH + `$MIXSHIFT_CLI` empty does NOT mean the plugin is uninstalled** — that is the expected Cowork state, and the CLI is sitting in the plugin directory the scan finds. Never report the plugin as missing/not-installed on that basis; run the scan.
+
+Do NOT use `$CLAUDE_PLUGIN_ROOT` in SKILL.md fallbacks: the host sets it for hook/MCP processes but it is EMPTY in the session's Bash environment (verified 2026-07-16). For auth-critical and first-run skills (`mx-welcome`, `mx-auth-login`, `mx-help`), state the full fallback (including the scan) inline at the first CLI call so a missing PATH never strands a brand-new user. For other skills the shared "Invocation note" blockquote carries it. **Enforced:** `npm run check-skills` fails any SKILL.md that does not contain the scan resolver (`-path '*/harness/dist/cli.js'`).
 
 ---
 
