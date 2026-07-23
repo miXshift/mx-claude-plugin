@@ -516,3 +516,77 @@ describe('paginateOverCap', () => {
     expect(PAGE_BYTE_BUDGET).toBeLessThan(10 * 1024 * 1024);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Track B: the gateway cap rejection can carry actualRowCount/actualBytes. When
+// present, the pager sizes its FIRST page from the real bytes/row instead of
+// starting at FIRST_PAGE_PROBE_ROWS and halving down on a wide result.
+// ---------------------------------------------------------------------------
+
+describe('paginateOverCap size hint (Track B)', () => {
+  it('sizes the first data page from a byte hint, skipping the 5000-row probe', async () => {
+    // bytesPerRow = 8000 → pageSize = floor(PAGE_BYTE_BUDGET / 8000).
+    const bytesPerRow = 8000;
+    const rowCount = 1000;
+    const expectedFirstPage = Math.floor(PAGE_BYTE_BUDGET / bytesPerRow);
+
+    const calls: string[] = [];
+    const exec = async (pageSql: string) => {
+      calls.push(pageSql);
+      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1)); // column probe
+      if (offsetOf(pageSql) === 0) return okResult(rows(outerLimitOf(pageSql))); // full first page
+      return okResult(rows(3)); // short second page → stop
+    };
+
+    const r = await paginateOverCap('SELECT a, b FROM t', exec, {
+      sizeHint: { rowCount, bytes: rowCount * bytesPerRow },
+    });
+
+    expect(r.ok).toBe(true);
+    // The first data page used the HINT-derived size, not FIRST_PAGE_PROBE_ROWS.
+    expect(expectedFirstPage).not.toBe(FIRST_PAGE_PROBE_ROWS);
+    expect(outerLimitOf(calls[1]!)).toBe(expectedFirstPage);
+  });
+
+  it('never exceeds PAGE_MAX_ROWS even for a tiny bytes/row hint', async () => {
+    const calls: string[] = [];
+    const exec = async (pageSql: string) => {
+      calls.push(pageSql);
+      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
+      if (offsetOf(pageSql) === 0) return okResult(rows(3)); // short → stop after one page
+      return okResult(rows(0));
+    };
+    // 1 byte/row would imply an enormous page; must clamp to PAGE_MAX_ROWS.
+    await paginateOverCap('SELECT a, b FROM t', exec, {
+      sizeHint: { rowCount: 1_000_000, bytes: 1_000_000 },
+    });
+    expect(outerLimitOf(calls[1]!)).toBe(PAGE_MAX_ROWS);
+  });
+
+  it('falls back to the probe size when the hint is incomplete (bytes only)', async () => {
+    const calls: string[] = [];
+    const exec = async (pageSql: string) => {
+      calls.push(pageSql);
+      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
+      if (offsetOf(pageSql) === 0) return okResult(rows(3));
+      return okResult(rows(0));
+    };
+    // rowCount missing → cannot compute bytes/row → probe as usual.
+    await paginateOverCap('SELECT a, b FROM t', exec, {
+      sizeHint: { bytes: 9_000_000 },
+    });
+    expect(outerLimitOf(calls[1]!)).toBe(FIRST_PAGE_PROBE_ROWS);
+  });
+
+  it('falls back to the probe size when no hint is given', async () => {
+    const calls: string[] = [];
+    const exec = async (pageSql: string) => {
+      calls.push(pageSql);
+      if (/LIMIT 1$/.test(pageSql)) return okResult(rows(1));
+      if (offsetOf(pageSql) === 0) return okResult(rows(3));
+      return okResult(rows(0));
+    };
+    await paginateOverCap('SELECT a, b FROM t', exec);
+    expect(outerLimitOf(calls[1]!)).toBe(FIRST_PAGE_PROBE_ROWS);
+  });
+});

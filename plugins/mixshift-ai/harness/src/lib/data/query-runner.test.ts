@@ -256,6 +256,57 @@ describe('runQuery :: datahub error envelope', () => {
     }
   });
 
+  it('threads the gateway cap size hint into the pager so the first page is right-sized (Track B)', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    // 10k rows @ 8000 bytes/row → the pager should size its first page at
+    // floor(PAGE_BYTE_BUDGET / 8000) = 1048, NOT the 5000-row probe (which for
+    // a wide result would trip the 10 MB cap and halve down ~log2(N) times).
+    const expectedFirstPage = 1048;
+    const sqls: string[] = [];
+    const mockFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      const sql = JSON.parse(String(init?.body)).sql as string;
+      sqls.push(sql);
+      if (!/_mx_page/.test(sql)) {
+        // Initial user query → gateway cap rejection carrying the size hint.
+        return jsonResponse(200, {
+          ok: false,
+          kind: 'response_too_large',
+          message: 'Serialized response 80000000 bytes exceeds cap 10485760.',
+          friendly:
+            "This query's result is over the 10.0 MB service cap. Select fewer columns.",
+          durationMs: 1,
+          actualRowCount: 10_000,
+          actualBytes: 10_000 * 8000,
+        });
+      }
+      if (/LIMIT 1$/.test(sql)) {
+        // Column probe.
+        return jsonResponse(200, { ok: true, rows: [{ a: 1, b: 2 }], rowCount: 1, durationMs: 1 });
+      }
+      // First data page → short page so paging stops after one page.
+      return jsonResponse(200, {
+        ok: true,
+        rows: [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }],
+        rowCount: 3,
+        durationMs: 1,
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runQuery('SELECT * FROM t', [], { dataDirOverride: testDir });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rowCount).toBe(3);
+    // The first data page used the hint-derived size, not FIRST_PAGE_PROBE_ROWS.
+    expect(expectedFirstPage).not.toBe(FIRST_PAGE_PROBE_ROWS);
+    expect(sqls.some((s) => /LIMIT 1048 OFFSET 0/.test(s))).toBe(true);
+    expect(sqls.some((s) => new RegExp(`LIMIT ${FIRST_PAGE_PROBE_ROWS} OFFSET 0`).test(s))).toBe(
+      false,
+    );
+  });
+
   it('passes server syntax_error envelope through', async () => {
     const creds = freshDatahubFixture();
     await saveDatahub(creds, testDir);

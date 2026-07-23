@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -512,6 +512,185 @@ describe('streamReportDocumentToFile', () => {
       expect(r.friendly).toMatch(/expired/i);
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Reliability v2: stall/timeout + retry + real error_class (never `unknown`)
+  // -------------------------------------------------------------------------
+
+  const noSleep = async (): Promise<void> => {};
+
+  /** A presigned response whose body yields `chunk` then ERRORS mid-stream —
+   *  simulates a dropped connection while downloading. */
+  function erroringBody(chunk: Buffer): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(chunk));
+        controller.error(new Error('ECONNRESET mid-stream'));
+      },
+    });
+    return new Response(body, { status: 200 });
+  }
+
+  const doc = (sig: string) => ({
+    url: `https://s3.amazonaws.com/report?sig=${sig}`,
+    compressionAlgorithm: null,
+  });
+
+  it('retries a transient network error, then succeeds', async () => {
+    const tsv = 'a\tb\n1\t2\n';
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from(tsv, 'utf8')));
+    const outPath = join(testDir, 'retry-net.tsv');
+
+    const r = await streamReportDocumentToFile(doc('a'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(await readFile(outPath, 'utf8')).toBe(tsv);
+  });
+
+  it('retries a 5xx presigned response, then succeeds', async () => {
+    const tsv = 'sku\tunits\nABC\t42\n';
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(bytesResponse(503, Buffer.from('slow down')))
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from(tsv, 'utf8')));
+    const outPath = join(testDir, 'retry-5xx.tsv');
+
+    const r = await streamReportDocumentToFile(doc('b'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(await readFile(outPath, 'utf8')).toBe(tsv);
+  });
+
+  it('recovers from a mid-stream drop on retry', async () => {
+    const tsv = 'x\ty\n9\t9\n';
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(erroringBody(Buffer.from('partial')))
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from(tsv, 'utf8')));
+    const outPath = join(testDir, 'retry-midstream.tsv');
+
+    const r = await streamReportDocumentToFile(doc('c'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // The retry overwrote the truncated first attempt with the full document.
+    expect(await readFile(outPath, 'utf8')).toBe(tsv);
+  });
+
+  it('gives up after maxDownloadAttempts with a real download_failed class (never unknown)', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('ECONNRESET'));
+    const sleep = vi.fn(noSleep);
+    const outPath = join(testDir, 'give-up.tsv');
+
+    const r = await streamReportDocumentToFile(doc('d'), outPath, {
+      fetchImpl,
+      sleepImpl: sleep,
+      maxDownloadAttempts: 3,
+    });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('download_failed');
+      expect(r.kind).not.toBe('unknown');
+      expect(r.message).toMatch(/3 attempt/);
+      expect(r.friendly).toMatch(/still ready/i);
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2); // backoff between attempts, not after the last
+  });
+
+  it('does NOT retry an expired presigned link (410) and surfaces it at once', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(bytesResponse(410, Buffer.from('Gone')))
+      .mockResolvedValueOnce(bytesResponse(200, Buffer.from('should-not-be-used', 'utf8')));
+    const outPath = join(testDir, 'expired.tsv');
+
+    const r = await streamReportDocumentToFile(doc('e'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+    });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.httpStatus).toBe(410);
+      expect(r.friendly).toMatch(/expired/i);
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // no retry against the same URL
+  });
+
+  it('honors maxDownloadAttempts:1 (no retry)', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('ECONNRESET'));
+    const outPath = join(testDir, 'single.tsv');
+
+    const r = await streamReportDocumentToFile(doc('f'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+      maxDownloadAttempts: 1,
+    });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.kind).toBe('download_failed');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('salvages a truncated download to <path>.partial after exhausting retries', async () => {
+    // Fresh Response per call: a ReadableStream body can only be consumed once.
+    const fetchImpl = vi.fn(async () => erroringBody(Buffer.from('partial-bytes')));
+    const outPath = join(testDir, 'trunc.tsv');
+
+    const r = await streamReportDocumentToFile(doc('g'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+      maxDownloadAttempts: 2,
+    });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.kind).toBe('download_failed');
+    // The truncated file is NOT left where a consumer would read it as complete.
+    await expect(readFile(outPath, 'utf8')).rejects.toThrow();
+    // It was renamed to .partial (best-effort salvage).
+    const partial = await readFile(`${outPath}.partial`, 'utf8').catch(() => null);
+    expect(partial).not.toBeNull();
+  });
+
+  it('classifies a mkdir/open failure as download_failed instead of throwing out of the loop', async () => {
+    // Put a FILE where the output directory needs to be, so mkdir(dirname)
+    // fails (ENOTDIR/EEXIST). The fetch itself succeeds; the failure is purely
+    // in creating the destination — which must still be classified + retried,
+    // not thrown as a raw error past the retry loop (the red-team gap).
+    const blocker = join(testDir, 'blocker');
+    await writeFile(blocker, 'x');
+    const outPath = join(blocker, 'sub', 'report.tsv');
+    const fetchImpl = vi.fn(async () => bytesResponse(200, Buffer.from('data', 'utf8')));
+
+    const r = await streamReportDocumentToFile(doc('h'), outPath, {
+      fetchImpl,
+      sleepImpl: noSleep,
+      maxDownloadAttempts: 2,
+    });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('download_failed'); // classified, not a bare thrown error
+      expect(r.kind).not.toBe('unknown');
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // went through the retry loop
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -715,6 +894,7 @@ describe('exitCodeForKind', () => {
       report_fatal: 9,
       insufficient_scope: 11,
       host_unreachable: 1,
+      download_failed: 1,
       unknown: 1,
     };
     for (const [kind, code] of Object.entries(documented)) {
