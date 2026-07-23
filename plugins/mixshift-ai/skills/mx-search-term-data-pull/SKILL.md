@@ -18,7 +18,7 @@ Pure data extraction. No recommendations, no LLM, no judgment calls. Output is a
 
 ## Data Integrity — Non-Negotiable
 
-- `dtCreatedOn` is the date field in the search term report (NOT `DateTime`)
+- The source table is `keywordtargetingmetric` (the live base metric table); `DateTime` is its per-day date field, used for the analysis window
 - `recordType` split is mandatory: 'Keyword Targeting' vs 'Product Attribute Targeting'
 - Exclusion mask must be applied before any downstream skill sees the data
 - Never pass a row to a downstream skill that is already negated
