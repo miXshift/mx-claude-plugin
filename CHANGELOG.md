@@ -37,6 +37,11 @@ starts at 0.5.39; earlier versions predate the changelog.
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
+- **Search-term data pulls return the full window again.** The search-term
+  data-pull skill (and the negation, harvest, and relevance reviews built on
+  it) had been reading a stale internal table that stopped updating, so recent
+  date ranges came back empty. It now reads the live source table, so a pull
+  returns the complete window of search-term performance.
 - **Clearer message when an AWD call needs a token update.** Amazon Warehousing
   & Distribution (AWD) is a newer permission. If a merchant was connected before
   it was added, AWD lookups returned a vague "restricted" error and could get
