@@ -490,9 +490,14 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
         // A malformed file at the RESOLVED dir demotes to a warning: the run
         // proceeds on the discovered credential, but someone should clean up.
         if (resolvedFailure) {
+          // Name the malformed file's own location (stable), NOT the dir we
+          // proceed on: a later mint-rejection fall-through can change the
+          // adopted dir, so "proceeding under <X>" could point at the wrong
+          // place. The verdict's data_dir shows what was actually used.
+          // [red-team LOW fix]
           malformedResolvedWarning =
-            `${resolvedFailure.message}; proceeding with the credential discovered under ` +
-            `${dataDir} instead. Delete or repair the malformed file.`;
+            `${resolvedFailure.message}; skipped it and proceeded with a credential ` +
+            'found by scanning. Delete or repair the malformed file.';
         }
         loadFailure = null;
       } else if (resolvedFailure) {
@@ -590,19 +595,21 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
       };
 
       /** Usable alternates in newest-first order, excluding dirs already
-       *  tried. Runs the sandbox scan late when the resolved-dir fast path
-       *  skipped it (the stale credential can sit AT the resolved dir too),
-       *  and surfaces any late hits in `candidates` for transparency. */
+       *  tried. Draws ONLY from a scan that already ran during discovery
+       *  (Step 2). It deliberately does NOT trigger a fresh scan: falling
+       *  through only makes sense when the current credential was itself
+       *  discovered by scanning. If the credential came from an explicit
+       *  `--data-dir`/`MIXSHIFT_DATA_DIR` (or the default ~/.mixshift) that
+       *  the caller pointed at, a rejection there is terminal — we must not
+       *  react to it by scanning /sessions and adopting some other
+       *  credential, which would defeat the explicit pin AND let a planted
+       *  credentials file (its self-declared api_base is the mint oracle)
+       *  hijack the run. [red-team HIGH fix] So: no scanState => no
+       *  alternates => the rejection stands. */
       const materializeAlternates = async (
         triedDirs: ReadonlySet<string>,
       ): Promise<Array<{ dir: string; envelope: CredentialsEnvelope; via: DiscoveredVia }>> => {
-        if (!scanState) {
-          const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-          const cwdRoots = [process.cwd(), join(process.cwd(), 'outputs')];
-          const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
-          scanState = { sessionsHits, scanHits: [...new Set([...sessionsHits, ...cwdHits])] };
-          candidates = [...new Set([...candidates, ...scanState.scanHits])];
-        }
+        if (!scanState) return [];
         const out: Array<{ dir: string; envelope: CredentialsEnvelope; via: DiscoveredVia }> = [];
         for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
           const dir = dataDirFromCredentialPath(hit);
@@ -643,14 +650,6 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
             `credential: ${current.kind}${current.label ? ` (${current.label})` : ''}`,
           ),
         );
-        if (current.kind === 'interactive') {
-          const w =
-            'signed in with an interactive credential; scheduled/unattended runs should use ' +
-            'a service credential (`mixshift auth service-setup`), because interactive token ' +
-            'refresh is unreliable when nobody is present to re-authenticate.';
-          warnings.push(w);
-          lines.push(statusLine('warn', w));
-        }
 
         mintAttempts++;
         try {
@@ -687,6 +686,20 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
 
       mintAttemptsTotal = mintAttempts;
       fallbackUsed = verified && mintAttempts > 1;
+
+      // Interactive-credential warning: emit ONCE, for the credential actually
+      // in play (the adopted one when verified, else the primary the failure
+      // report describes) — not once per attempt, which duplicated it and
+      // inflated warnings_count. [red-team LOW fix]
+      const effectiveKind = verified ? current.kind : kind;
+      if (effectiveKind === 'interactive') {
+        const w =
+          'signed in with an interactive credential; scheduled/unattended runs should use ' +
+          'a service credential (`mixshift auth service-setup`), because interactive token ' +
+          'refresh is unreliable when nobody is present to re-authenticate.';
+        warnings.push(w);
+        lines.push(statusLine('warn', w));
+      }
 
       if (verified) {
         // Adopt the verified credential for everything downstream (data dir,

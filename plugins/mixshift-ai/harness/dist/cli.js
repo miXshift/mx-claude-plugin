@@ -88200,7 +88200,7 @@ async function runPreflight(brandSlugs, root) {
       }
       if (isUsable(credentials)) {
         if (resolvedFailure) {
-          malformedResolvedWarning = `${resolvedFailure.message}; proceeding with the credential discovered under ${dataDir} instead. Delete or repair the malformed file.`;
+          malformedResolvedWarning = `${resolvedFailure.message}; skipped it and proceeded with a credential found by scanning. Delete or repair the malformed file.`;
         }
         loadFailure = null;
       } else if (resolvedFailure) {
@@ -88262,13 +88262,7 @@ async function runPreflight(brandSlugs, root) {
         return null;
       };
       const materializeAlternates = async (triedDirs2) => {
-        if (!scanState) {
-          const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-          const cwdRoots = [process.cwd(), join23(process.cwd(), "outputs")];
-          const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
-          scanState = { sessionsHits, scanHits: [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])] };
-          candidates = [.../* @__PURE__ */ new Set([...candidates, ...scanState.scanHits])];
-        }
+        if (!scanState) return [];
         const out = [];
         for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
           const dir = dataDirFromCredentialPath(hit);
@@ -88299,11 +88293,6 @@ async function runPreflight(brandSlugs, root) {
             `credential: ${current.kind}${current.label ? ` (${current.label})` : ""}`
           )
         );
-        if (current.kind === "interactive") {
-          const w = "signed in with an interactive credential; scheduled/unattended runs should use a service credential (`mixshift auth service-setup`), because interactive token refresh is unreliable when nobody is present to re-authenticate.";
-          warnings.push(w);
-          lines.push(statusLine("warn", w));
-        }
         mintAttempts++;
         try {
           await getValidAccessToken(current.dir, true);
@@ -88332,6 +88321,12 @@ async function runPreflight(brandSlugs, root) {
       const INVALID_REMEDIATION = "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential).";
       mintAttemptsTotal = mintAttempts;
       fallbackUsed = verified && mintAttempts > 1;
+      const effectiveKind = verified ? current.kind : kind;
+      if (effectiveKind === "interactive") {
+        const w = "signed in with an interactive credential; scheduled/unattended runs should use a service credential (`mixshift auth service-setup`), because interactive token refresh is unreliable when nobody is present to re-authenticate.";
+        warnings.push(w);
+        lines.push(statusLine("warn", w));
+      }
       if (verified) {
         dataDir = current.dir;
         discoveredVia = current.via;
