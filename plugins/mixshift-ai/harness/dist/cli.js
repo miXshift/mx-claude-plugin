@@ -84021,6 +84021,15 @@ async function listOperations(family, opts = {}) {
   const operations = Array.isArray(raw) ? raw : [];
   return { ok: true, operations };
 }
+var AWD_REAUTH_FRIENDLY = `This merchant isn't authorized for Amazon Warehousing & Distribution (AWD) yet. AWD is a newly added SP-API role, so the merchant's existing connection does not include it. To enable AWD endpoints for this merchant:
+  1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants
+  2. Find this merchant and click "Update Token".
+  3. Amazon Seller Central will open to add the new role and finish
+     authorization, then redirect you back to MixShift.
+Once the token is updated, this endpoint will work from the plugin. There is no need to retry the call until the token has been updated.`;
+function isAwdOperation(operation) {
+  return operation === "awd" || operation.startsWith("awd.");
+}
 async function spapiCall(input, opts = {}) {
   const body = { operation: input.operation };
   if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
@@ -84038,7 +84047,12 @@ async function spapiCall(input, opts = {}) {
     { method: "POST", path: "/api/amazon/spapi/call", body },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    if (r.kind === "restricted_report" && isAwdOperation(input.operation)) {
+      return { ...r, friendly: AWD_REAUTH_FRIENDLY };
+    }
+    return r;
+  }
   const json2 = r.json;
   if (typeof json2.operation !== "string") {
     return {

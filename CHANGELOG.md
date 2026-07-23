@@ -42,6 +42,12 @@ starts at 0.5.39; earlier versions predate the changelog.
   it) had been reading a stale internal table that stopped updating, so recent
   date ranges came back empty. It now reads the live source table, so a pull
   returns the complete window of search-term performance.
+- **Clearer message when an AWD call needs a token update.** Amazon Warehousing
+  & Distribution (AWD) is a newer permission. If a merchant was connected before
+  it was added, AWD lookups returned a vague "restricted" error and could get
+  retried in a loop. The plugin now tells you plainly that the merchant needs
+  its token updated to add the AWD role, and points you to the exact place to do
+  it, so the call is not retried until it can succeed.
 - **Feedback and usage reporting now work from sandboxed and scheduled
   runs.** `mixshift feedback` and the plugin's anonymized usage events used
   to post to a separate host that sandboxed environments block, so reports

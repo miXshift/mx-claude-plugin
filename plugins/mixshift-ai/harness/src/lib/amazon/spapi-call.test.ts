@@ -147,6 +147,46 @@ describe('spapiCall', () => {
     }
   });
 
+  it('rewrites a restricted_report on an AWD operation into a re-auth call-to-action', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(403, {
+        ok: false,
+        kind: 'restricted_report',
+        friendly: 'Amazon denied awd.list_inventory (403).',
+        operation: 'awd.list_inventory',
+      }),
+    );
+    const r = await spapiCall({ operation: 'awd.list_inventory' }, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      // kind + status preserved; only the friendly text is swapped
+      expect(r.kind).toBe('restricted_report');
+      expect(r.httpStatus).toBe(403);
+      expect(r.friendly).not.toMatch(/Amazon denied/);
+      expect(r.friendly).toMatch(/Update Token/);
+      expect(r.friendly).toMatch(/account-manager\/SP-API-merchants/);
+      expect(r.friendly).toMatch(/AWD/);
+    }
+  });
+
+  it('does NOT rewrite a non-restricted_report failure on an AWD operation', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(429, {
+        ok: false,
+        kind: 'throttled',
+        friendly: 'Amazon rate limited the request.',
+        operation: 'awd.list_inventory',
+      }),
+    );
+    const r = await spapiCall({ operation: 'awd.list_inventory' }, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('throttled');
+      expect(r.friendly).toMatch(/rate limited/);
+      expect(r.friendly).not.toMatch(/Update Token/);
+    }
+  });
+
   it('surfaces merchant_not_found candidates for multi-marketplace sellers', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(404, {
