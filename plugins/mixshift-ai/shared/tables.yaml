@@ -1351,6 +1351,11 @@ tables:
       - { name: roas, type: "decimal(15,10)" }
       - { name: salesViews, type: "decimal(10,2)" }
       - { name: unitsSoldViews, type: "int" }
+  # DEPRECATED / DO NOT USE for date-windowed or lifetime metric pulls: this is a
+  # frozen dashboard rollup snapshot, not a refreshed table. Its dtCreatedOn is a
+  # one-time materialization timestamp and its Period column holds text labels
+  # (e.g. 'Last 30 Days'), so a date-window filter against it returns zero rows.
+  # Use keywordtargetingmetric (live base metric table, per-day DateTime) instead.
   KW_Target_ST_report_MV:
     columns:
       - { name: SellerID, type: "int" }
