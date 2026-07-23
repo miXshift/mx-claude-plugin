@@ -16,7 +16,7 @@ description: >
   folder, generated task instructions, verified first run) belongs to
   mx-scheduled-task; this skill is the credential step inside it.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   author: "MixShift"
 trigger_phrases:
   - set up a service credential
@@ -117,8 +117,11 @@ export MIXSHIFT_DATA_DIR="$(dirname "$(dirname "$CRED")")"
 # Resolve the harness CLI the same way. Cowork does NOT run plugin session
 # hooks (verified 2026-07-16), so in a scheduled sandbox neither `mixshift`
 # on PATH nor $MIXSHIFT_CLI can be assumed. NEVER write bare `mixshift ...`
-# into a scheduled task's stored prompt; resolve the entrypoint first:
-MIXSHIFT_CLI="${MIXSHIFT_CLI:-$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' -path '*mixshift*' 2>/dev/null | head -1)}"
+# into a scheduled task's stored prompt; resolve the entrypoint first.
+# Do NOT add a `-path '*mixshift*'` filter: the plugin installs into an
+# ID-named directory (e.g. plugin_01LC7x...) with no "mixshift" in the path,
+# so that filter matches nothing on Cowork. `*/harness/dist/cli.js` is enough.
+MIXSHIFT_CLI="${MIXSHIFT_CLI:-$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)}"
 # Then invoke every command as: node "$MIXSHIFT_CLI" <cmd> <args>
 # If MIXSHIFT_CLI resolves empty, STOP and report the plugin payload is missing.
 ```
@@ -144,7 +147,7 @@ This runtime discovery is the proven pattern for Cowork scheduled tasks. If you 
 - **The setup CODE in argv is fine** (single-use, 10-minute TTL, burned on exchange). The raw SECRET never is: no `echo`, no `printf`, no argv — file-writing tool or user file drop only, on the fallback path.
 - **Never echo the secret back** in any message, log, or confirmation. Refer to the credential by its label or client_id.
 - **On the raw path, delete the secret file only after `verified: true`.**
-- **One credential per automation.** Distinct label per scheduled task keeps /admin attribution and revocation surgical.
+- **One credential can serve many tasks.** A service credential is a tenant machine credential, not bound to a task, so multiple scheduled tasks sharing one anchor folder can all use the same credential (as long as its scopes cover them). Mint a distinct per-task credential only when you want finer /admin attribution or revocation, not because each task needs its own. (Note: the Cowork folder GRANT is still per-task even when the credential is shared, see mx-scheduled-task.)
 - **Anchor in a persistent folder; the schedule discovers the path at runtime.** The Cowork sandbox path carries a session UUID that changes between runs, so NEVER hardcode an absolute `MIXSHIFT_DATA_DIR` into a schedule. Anchor the credential in a folder attached to the task and have the schedule locate it each run (`task preflight`, or the Step 5 `find /sessions …` block). A credential addressed by a stale per-session path silently dies "No credentials found."
 - **No durable folder means STOP, not improvise.** Writing the credential into a session home and reporting success is the one failure that costs the user a setup code per scheduled fire. Fix the anchor first (`mx-scheduled-task`), then mint.
 - **Default to read-only scopes.** Ask for write scopes only when the scheduled work itself writes, and name them to the user.

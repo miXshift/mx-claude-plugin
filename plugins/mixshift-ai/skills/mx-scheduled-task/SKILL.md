@@ -13,7 +13,7 @@ description: >
   context. Credential minting alone belongs to mx-auth-service-setup; this
   skill orchestrates the full task setup around it.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - set up a scheduled task
@@ -109,6 +109,17 @@ keep lives under that folder; nothing outside it survives.
 Tell the user which folder is the anchor and that the credential and any task
 state must live under it, nowhere else.
 
+**Multiple scheduled tasks can share one anchor folder and one credential.** A
+service credential is a tenant machine credential, not bound to a task, so point
+every task at the same anchor and reuse the one credential when its scopes cover
+them (mint a separate credential only for finer /admin attribution or
+revocation, never because each task "needs its own"). The one thing that does
+NOT carry over is the Cowork folder grant: the mount permission is stored per
+task, so each task still needs its own one-time approval to reach the shared
+folder (its first manual Run-now), even though they all then use the same
+credential inside it. So: one folder, one credential, but approve the mount once
+per task.
+
 ## Step 2 - Service credential, anchored
 
 Invoke `mx-auth-service-setup` and follow it, with one instruction pinned: the
@@ -131,9 +142,13 @@ first, filling in the bracketed values, then the actual work steps:
 
 ```
 STEP 0: MixShift preflight. Must pass before any other work.
-Resolve the CLI (scheduled sandboxes have no PATH hook and no $MIXSHIFT_CLI):
-  MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' -path '*mixshift*' 2>/dev/null | head -1)"
+Resolve the CLI (scheduled sandboxes have no PATH hook and no $MIXSHIFT_CLI, and
+`mixshift` is NOT on PATH — every call must run as `node <cli.js>`):
+  MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"
 If empty: STOP and report that the MixShift plugin is not available in this run.
+(Do NOT add a `-path '*mixshift*'` filter: the plugin installs into an ID-named
+directory like `plugin_01LC7x...` with no "mixshift" in the path, so that filter
+matches nothing on Cowork. The `*/harness/dist/cli.js` shape is specific enough.)
 
 Run the preflight. It discovers the service credential, verifies it against the
 service, and pulls brand context for the brands this task uses:

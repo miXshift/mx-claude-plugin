@@ -41,7 +41,11 @@ export const OPTIONAL_ALLOWLIST: AllowlistEntry[] = [
   },
   {
     domain: 'telemetry endpoint',
-    why: 'Best-effort anonymized usage events. MIXSHIFT_TELEMETRY=0 disables it entirely.',
+    why:
+      'Best-effort anonymized usage events. As of 0.8.6 these ride mcp.mixshift.io ' +
+      '(already required above), so no extra domain is needed unless a custom ' +
+      'MIXSHIFT_TELEMETRY_ENDPOINT override points elsewhere. ' +
+      'MIXSHIFT_TELEMETRY=0 disables telemetry entirely.',
   },
 ];
 
