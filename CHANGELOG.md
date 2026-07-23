@@ -67,6 +67,21 @@ starts at 0.5.39; earlier versions predate the changelog.
   scheduled task actually reaches the MixShift team. Skill sharing
   (`mixshift share-skill`) rides the same path. No new domains to allowlist,
   and one less embedded credential in the plugin.
+- **Large query results no longer flood the screen.** When a `data query`
+  returns a lot of rows, the plugin now saves the full result to a CSV and
+  gives you a short summary plus a preview of the first rows, instead of
+  printing every row. Pass `--inline` if you really want the whole result
+  printed, or `--rows N` for a larger inline preview. Writing to a chosen file
+  with `--out` works as before.
+- **Large Amazon report downloads are more reliable, and never dump a huge
+  document on screen.** Fetching a big report to a file (`report get`/`report
+  run` with `--out`) used to fail after a fixed timeout with no retry if the
+  download was slow or the connection hiccuped, so you had to run it again by
+  hand. It now keeps a slow-but-progressing download going, retries a stalled
+  or dropped one automatically, and only gives up with a clear "the report is
+  still ready, just fetch it again" message if every attempt fails. Fetching a
+  large report without `--out` now saves it to a file and shows a preview
+  rather than printing the whole document (pass `--inline` to print it all).
 
 ## 0.8.5
 

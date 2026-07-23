@@ -86,6 +86,13 @@ export interface DataQueryFailure {
   friendly: string;
   /** Duration up to the point of failure (0 if not measured). */
   durationMs?: number;
+  /** Gateway cap-rejection size hints (typed fields the service now returns on
+   *  `too_many_rows` / `response_too_large`). Let the pager size its first page
+   *  directly from the real serialized width instead of binary-searching it.
+   *  Undefined when the service predates the fields, so the pager falls back to
+   *  its FIRST_PAGE_PROBE_ROWS probe. */
+  actualRowCount?: number;
+  actualBytes?: number;
 }
 
 export type DataQueryResult<Row> = DataQuerySuccess<Row> | DataQueryFailure;
@@ -245,9 +252,24 @@ export async function runQuery<Row = Record<string, unknown>>(
   const opts = withQueryShape(sql, options);
   const first = await runOnce<Row>(sql, params, opts);
   if (!isServiceCapFailure(first)) return first;
-  return paginateOverCap<Row>(sql, (pageSql) =>
-    runOnce<Row>(pageSql, params, opts),
+  return paginateOverCap<Row>(
+    sql,
+    (pageSql) => runOnce<Row>(pageSql, params, opts),
+    { sizeHint: sizeHintFromFailure(first) },
   );
+}
+
+/** Extract the gateway's cap-rejection size hint (Track B) from the first
+ *  (cap-failing) response, so the pager can size its first page from the real
+ *  serialized width. Returns undefined when neither field is present (older
+ *  service deploy) — the pager then probes as before. */
+function sizeHintFromFailure(
+  first: DataQueryResult<unknown>,
+): { rowCount?: number; bytes?: number } | undefined {
+  if (first.ok) return undefined;
+  const { actualRowCount, actualBytes } = first;
+  if (actualRowCount === undefined && actualBytes === undefined) return undefined;
+  return { rowCount: actualRowCount, bytes: actualBytes };
 }
 
 /**
@@ -329,7 +351,7 @@ export async function streamQuery<Row = Record<string, unknown>>(
   const paged = await paginateOverCap<Row>(
     sql,
     (pageSql) => runOnce<Row>(pageSql, params, opts),
-    { onPage },
+    { onPage, sizeHint: sizeHintFromFailure(first) },
   );
   if (!paged.ok) {
     return {
@@ -360,6 +382,12 @@ export interface PaginateOptions<Row> {
    *  caller maxRows OR a user LIMIT — opts out of the MAX_PAGINATED_ROWS
    *  ceiling (the request is explicitly finite). */
   maxRows?: number;
+  /** Cap-rejection size hint from the gateway (Track B): the whole result's
+   *  serialized `bytes` and `rowCount`. When both are present, the FIRST page is
+   *  sized directly from the real bytes/row instead of starting at
+   *  FIRST_PAGE_PROBE_ROWS and halving on a wide `SELECT *`, which cost ~log2(N)
+   *  wasted round-trips (each a `query.failed` emit). Absent → probe as before. */
+  sizeHint?: { rowCount?: number; bytes?: number };
 }
 
 /** Result of statically analyzing the top-level SELECT before paging. */
@@ -640,7 +668,18 @@ export async function paginateOverCap<Row>(
   // then size the next page as clamp(floor(PAGE_BYTE_BUDGET / bytesPerRow), 1,
   // PAGE_MAX_ROWS). Ultra-wide rows drive the page far below 1000 — there is no
   // floor (the old 1000-row floor is exactly what made wide SELECT * fail).
+  //
+  // When the gateway's cap rejection carried a size hint (Track B), size the
+  // FIRST page from the real bytes/row up front instead of starting at
+  // FIRST_PAGE_PROBE_ROWS and halving down on a wide result — that halving cost
+  // ~log2(N) failed round-trips. The per-page re-measure + shrink-retry below
+  // still correct any estimate error, so a stale/rough hint is never unsafe.
   let pageSize = FIRST_PAGE_PROBE_ROWS;
+  const hint = opts.sizeHint;
+  if (hint?.bytes && hint.bytes > 0 && hint.rowCount && hint.rowCount > 0) {
+    const bytesPerRow = Math.max(1, Math.ceil(hint.bytes / hint.rowCount));
+    pageSize = Math.max(1, Math.min(PAGE_MAX_ROWS, Math.floor(PAGE_BYTE_BUDGET / bytesPerRow)));
+  }
   // Outer OFFSET always starts at 0: any user OFFSET is already applied inside
   // the derived table, so re-applying it here would double-skip.
   let offset = 0;
@@ -1152,6 +1191,9 @@ interface DatahubQueryWire {
   raw_code?: string;
   message?: string;
   friendly?: string;
+  // Cap-rejection size hints (Track B). Optional: absent on older service deploys.
+  actualRowCount?: number;
+  actualBytes?: number;
 }
 
 /**
@@ -1271,6 +1313,9 @@ async function runDatahubQuery<Row>(
       message: json.message ?? 'Query failed',
       friendly: capFriendlyMessage(serverKind, serverFriendly),
       durationMs,
+      // Cap-rejection size hints (Track B), when the service provides them.
+      ...(typeof json.actualRowCount === 'number' ? { actualRowCount: json.actualRowCount } : {}),
+      ...(typeof json.actualBytes === 'number' ? { actualBytes: json.actualBytes } : {}),
     };
     void track(
       {
