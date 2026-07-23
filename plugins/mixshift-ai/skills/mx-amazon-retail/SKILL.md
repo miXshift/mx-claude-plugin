@@ -565,10 +565,19 @@ Gotchas:
 - **Account-scoped: no marketplace param.** The NA-region token carries identity
   (like `sellers` / `finances`), so you do not pass a marketplace; pin the US row
   with `--legacy-seller-id`.
-- **Requires the "Amazon Warehousing and Distribution" role AND a per-seller
-  re-authorization performed after the role was added.** A seller not yet re-authed
-  for the role fails with `reauth_required` - have them re-connect in the MixShift
-  app, then retry.
+- **Requires the "Amazon Warehousing and Distribution" role, which is newer than
+  most connections.** AWD was added as an SP-API role after many merchants first
+  authorized, so a merchant who has not re-authorized since fails with a 403
+  (surfaced as `restricted_report`), distinct from the empty-200 not-enrolled
+  shape above. This 403 is terminal: do NOT retry it. The CLI now returns the
+  exact fix - direct the user to add the role by updating the merchant's token:
+    1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants
+    2. Find the merchant and click "Update Token".
+    3. Seller Central opens to add the role and finish authorization, then
+       redirects back to MixShift.
+  The call works once the token is updated. (Enrollment is a separate axis: an
+  enrolled seller still 403s here until re-authorized; a not-enrolled seller
+  returns the empty 200 shape above.)
 - `list_inventory` query (all optional): `sku`, `details`, `sortOrder`,
   `maxResults`, `nextToken`. `list_inbound_shipments` query (all optional):
   `sortBy`, `sortOrder`, `shipmentStatus`, `updatedAfter` / `updatedBefore`

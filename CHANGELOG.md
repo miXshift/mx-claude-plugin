@@ -37,6 +37,12 @@ starts at 0.5.39; earlier versions predate the changelog.
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
+- **Clearer message when an AWD call needs a token update.** Amazon Warehousing
+  & Distribution (AWD) is a newer permission. If a merchant was connected before
+  it was added, AWD lookups returned a vague "restricted" error and could get
+  retried in a loop. The plugin now tells you plainly that the merchant needs
+  its token updated to add the AWD role, and points you to the exact place to do
+  it, so the call is not retried until it can succeed.
 
 ## 0.8.5
 
