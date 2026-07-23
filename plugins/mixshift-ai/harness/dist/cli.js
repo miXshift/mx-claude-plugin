@@ -85939,7 +85939,7 @@ var OPTIONAL_ALLOWLIST = [
   },
   {
     domain: "telemetry endpoint",
-    why: "Best-effort anonymized usage events. MIXSHIFT_TELEMETRY=0 disables it entirely."
+    why: "Best-effort anonymized usage events. As of 0.8.6 these ride mcp.mixshift.io (already required above), so no extra domain is needed unless a custom MIXSHIFT_TELEMETRY_ENDPOINT override points elsewhere. MIXSHIFT_TELEMETRY=0 disables telemetry entirely."
   }
 ];
 var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
@@ -86649,8 +86649,13 @@ import { resolve as resolve2, join as join22, relative, basename as basename3 } 
 init_load2();
 var DEFAULT_TIMEOUT_MS3 = 15e3;
 function deriveSubmissionsEndpoint(eventsEndpoint) {
-  if (!/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) return null;
-  return eventsEndpoint.replace(/\/events\/?$/, "/skill_submissions");
+  if (/\/telemetry\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, "/submissions");
+  }
+  if (/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, "/skill_submissions");
+  }
+  return null;
 }
 async function submitSkill(input, timeoutMs = DEFAULT_TIMEOUT_MS3) {
   const defaults = await loadPluginDefaults();

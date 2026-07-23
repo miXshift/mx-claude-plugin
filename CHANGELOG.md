@@ -37,6 +37,14 @@ starts at 0.5.39; earlier versions predate the changelog.
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
+- **Feedback and usage reporting now work from sandboxed and scheduled
+  runs.** `mixshift feedback` and the plugin's anonymized usage events used
+  to post to a separate host that sandboxed environments block, so reports
+  queued locally and never arrived. Both now travel through mcp.mixshift.io,
+  the one domain every install already requires, so a bug report sent from a
+  scheduled task actually reaches the MixShift team. Skill sharing
+  (`mixshift share-skill`) rides the same path. No new domains to allowlist,
+  and one less embedded credential in the plugin.
 
 ## 0.8.5
 
