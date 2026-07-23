@@ -259,7 +259,7 @@ Save to:
 
 If the portfolio config provides `delivery.reports_local_dir`, honor that override. Newer scans are written as new files (one per day); the prior day's scan remains on disk for retrospective comparison.
 
-Drift comparison against the prior portfolio sidecar will be handled by `mixshift sidecar compare` (not yet implemented). For now, manually inspect prior sidecars under `~/.mixshift/clients/portfolio/runs/mx-portfolio-quick-scan/` before delivery if you suspect roster or verdict drift.
+Inspect the most recent prior sidecar under `~/.mixshift/clients/portfolio/runs/mx-portfolio-quick-scan/` before delivery if you suspect roster or verdict drift.
 
 **Per-account summary JSON** (optional, alongside the report):
 ```json
@@ -379,7 +379,7 @@ mixshift sidecar write --input-file /tmp/pqs-sidecar-input.json
 
 **Verdict rule (portfolio-level):** `GREEN` = all accounts GREEN or YELLOW (no intervention required at the portfolio level today). `YELLOW` = 1–2 accounts RED (per-account drill-downs required, but not a systemic issue). `RED` = ≥3 accounts RED, or a systemic issue spans multiple accounts (e.g., a shared structural event, a vendor-wide data lag). `OBSERVATIONAL` = portfolio config incomplete or several accounts in provisional history tier — verdict suspended.
 
-`mixshift sidecar compare` will surface drift against the prior portfolio scan once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Portfolio sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior scan when drift context matters.
 
 
 ## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))

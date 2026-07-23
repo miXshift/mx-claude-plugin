@@ -319,7 +319,7 @@ mixshift sidecar write --input-file /tmp/stn-sidecar-input.json
 
 **Verdict rule:** `GREEN` = balanced tier mix (most terms cleanly fall into Tier A keep or Tier B negate; Tier C review burden is small). `YELLOW` = many Tier C terms (review burden is high — lane rules or brand context may be underspecified for this corpus). `RED` = a `negation.protected_terms` breach was attempted (a protected term was a candidate for exact negation — held back, but the attempt itself is a context-integrity signal that requires investigation before next run). `OBSERVATIONAL` = first negation pass for the account or insufficient lifetime corpus to evaluate Tier A confidently.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ---
 

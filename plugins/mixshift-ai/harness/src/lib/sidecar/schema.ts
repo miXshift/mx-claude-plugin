@@ -12,8 +12,8 @@
  *   - Headline metrics (numbers downstream runs compare against)
  *   - A verdict (GREEN | YELLOW | RED | OBSERVATIONAL)
  *
- * Used by `mixshift sidecar compare` (future) to surface drift between
- * runs: config edits, dropped queries, metric jumps, verdict regressions.
+ * Stable enough for current and prior sidecars to be inspected together for
+ * config edits, dropped queries, metric jumps, and verdict regressions.
  */
 
 import { z } from 'zod';

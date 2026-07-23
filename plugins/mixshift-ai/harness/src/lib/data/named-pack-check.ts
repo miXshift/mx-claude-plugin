@@ -31,20 +31,24 @@ export interface NamedPackResult {
 }
 
 interface PackManifest {
+  schema_version?: number;
   ids?: string[];
   revisions?: Record<string, string>;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const PUBLIC_PACK_PATH = '/.well-known/mixshift-query-pack';
+const LEGACY_PACK_PATH = '/api/named-query/ids';
 
 /**
- * Fetch the deployed pack manifest (`GET {apiBase}/api/named-query/ids`) and
- * diff it against the catalog's `dispatch: named` ids. Pure over
- * (apiBase, accessToken): callers resolve credentials however they like.
+ * Fetch the public deployed-pack manifest and diff it against the catalog's
+ * `dispatch: named` ids. During the gateway deployment transition, a 404 from
+ * the well-known route falls back to the authenticated legacy endpoint when a
+ * caller supplied an access token.
  */
 export async function checkNamedPackCompat(opts: {
   apiBase: string;
-  accessToken: string;
+  accessToken?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<NamedPackResult> {
@@ -67,21 +71,44 @@ export async function checkNamedPackCompat(opts: {
   }
 
   let manifest: PackManifest;
+  const apiBase = opts.apiBase.replace(/\/+$/, '');
   try {
-    const res = await doFetch(`${opts.apiBase}/api/named-query/ids`, {
-      headers: { Authorization: `Bearer ${opts.accessToken}`, ...intentHeader() },
+    const publicRes = await doFetch(`${apiBase}${PUBLIC_PACK_PATH}`, {
+      headers: { ...intentHeader() },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) {
+    if (publicRes.ok) {
+      manifest = (await publicRes.json()) as PackManifest;
+      if (manifest.schema_version !== 1) {
+        return unchecked(
+          `GET ${PUBLIC_PACK_PATH} returned unsupported schema_version`,
+          namedIds.length,
+        );
+      }
+    } else if (publicRes.status === 404 && opts.accessToken) {
+      const legacyRes = await doFetch(`${apiBase}${LEGACY_PACK_PATH}`, {
+        headers: {
+          Authorization: `Bearer ${opts.accessToken}`,
+          ...intentHeader(),
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!legacyRes.ok) {
+        return unchecked(
+          `GET ${LEGACY_PACK_PATH} returned HTTP ${legacyRes.status}`,
+          namedIds.length,
+        );
+      }
+      manifest = (await legacyRes.json()) as PackManifest;
+    } else {
       return unchecked(
-        `GET /api/named-query/ids returned HTTP ${res.status}`,
+        `GET ${PUBLIC_PACK_PATH} returned HTTP ${publicRes.status}`,
         namedIds.length,
       );
     }
-    manifest = (await res.json()) as PackManifest;
   } catch (err) {
     return unchecked(
-      `could not reach ${opts.apiBase}/api/named-query/ids: ${msg(err)}`,
+      `could not reach ${apiBase}${PUBLIC_PACK_PATH}: ${msg(err)}`,
       namedIds.length,
     );
   }

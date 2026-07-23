@@ -242,7 +242,7 @@ mixshift sidecar write --input-file /tmp/stdp-sidecar-input.json
 
 **Verdict rule:** `GREEN` = successful pull, all 7 queries returned, row counts in expected band for this account. `YELLOW` = row counts <10% of typical for this account (data lag suspected; downstream skills should hold). `RED` = a query failed or returned empty when prior runs were non-empty (pipeline regression — escalate before downstream skills run on a partial dataset). `OBSERVATIONAL` = first pull for the account; no historical band yet.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ---
 

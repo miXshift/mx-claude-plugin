@@ -453,7 +453,7 @@ mixshift sidecar write --input-file /tmp/aneg-sidecar-input.json
 
 **Verdict rule:** `GREEN` = ≤5 negation recommendations (routine cleanup). `YELLOW` = 5–25 negations (worth a review pass, may signal a category-targeting drift). `RED` = >25 negations (signal of broader targeting problem upstream — escalate to relevance check or campaign structure review before applying). `OBSERVATIONAL` = window too short or insufficient lifetime data; recommendations held back.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 
 ## Applying ASIN negations (optional, requires explicit user confirmation)

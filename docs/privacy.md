@@ -33,9 +33,9 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 
 **Warehouse query events:**
 - Which library SQL query ID or ad-hoc query ran
-- For our built-in library queries, the query-execution event logs the template form (`WHERE SellerID = :seller_id`), not the resolved value. An ad-hoc query you type yourself is captured as part of the command line (above), redacted for secrets
-- Table(s) touched
-- Seller IDs referenced
+- For built-in library queries, the query-execution event logs the stable query ID. When the client analyzes the statement locally, it may also log a structural shape (primary table, whether it uses `SELECT *`, and projected-column count). It does not log the SQL text or resolved parameter values
+- For ad-hoc queries, the SQL text is captured in the command line and in the query-execution event (truncated to 2,000 characters). The command-line secret redactor does not parse inside SQL text, so do not put credentials or other secrets in SQL literals
+- The primary table, when the client can derive it
 - Duration and row count
 - Error classification (`access_denied_table`, `timeout`, `syntax_error`, etc.), a friendly category, not raw stack traces
 
@@ -53,8 +53,16 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - **Your MixShift password.** It is entered on the sign-in page in your browser, never seen by the plugin or by Claude.
 - **Your auth tokens or client secrets.** The tokens at `~/.mixshift/auth/credentials` stay on your machine and are sent only as Bearer credentials to the MixShift auth service. A secret passed on the command line (a setup code, a client secret) is redacted before any event is stored (see below).
 - **Your chat content with Claude.** We do not have access to the conversational stream between you and Claude. Only the skill trigger phrases (manifest matches) are visible to us.
-- **Brand context.** The files under `~/.mixshift/clients/<brand>/` (your context.yaml, narrative.md, corpora) never leave your machine. They are your IP.
-- **Resolved parameters of our built-in library queries.** For the SQL we ship, the execution event logs the template (`WHERE SellerID = :seller_id`), not the value. This is distinct from an ad-hoc query you type yourself, which is captured as part of the command line (see Usage events and Secret redaction).
+- **Brand-context contents as telemetry.** Telemetry events do not include the contents of `context.yaml`, `narrative.md`, or corpora. Brand-context sharing is a separate, user-controlled product feature described below.
+- **SQL text or resolved parameters from built-in library queries.** Their execution events use a stable query ID and structural shape instead. This is distinct from an ad-hoc query you type yourself, which is captured as part of the command line (see Usage events and Secret redaction).
+
+## Brand-context sharing (separate from telemetry)
+
+Brand files remain local unless you explicitly start sharing a brand with the MixShift organization store by running `mixshift context push --brand <brand>` or `mixshift context migrate`. Those commands upload the selected context documents, including their contents, so authorized teammates and MixShift services can use the shared organizational context.
+
+After that explicit first share, later local writes to the same shared brand are automatically published to keep the organization copy current. The plugin prints a notice when an automatic publish succeeds or needs attention. Brands that have never been shared are not automatically uploaded.
+
+To disable automatic publishing, set `MIXSHIFT_CONTEXT_AUTOPUBLISH=off`. Explicit `mixshift context push` and `mixshift context migrate` commands still share documents when you run them.
 
 ## Secret redaction
 
@@ -105,13 +113,13 @@ To re-enable later: `mixshift telemetry opt-in`.
 
 To check current status: `mixshift telemetry status`.
 
-When you've opted out, the harness still writes events to its local queue file (`~/.mixshift/telemetry/queue.jsonl`) but never sends them anywhere. The queue is bounded to avoid disk growth. If you want zero local logging too, the env-var approach + checking `~/.mixshift/telemetry/` periodically is your tightest setting.
+When you've opted out, the harness does not enqueue new events and does not send telemetry. Events queued before you opted out remain local and are not flushed while telemetry is disabled. You can remove `~/.mixshift/telemetry/queue.jsonl` if you also want to delete that previously queued local data.
 
 ## What changes after beta
 
 When the plugin exits beta, we'll move from "collection is on by default" to "opt-in only", meaning a customer affirmatively chooses to share usage data. The privacy disclosure here will be updated at that time.
 
-Beta status is published in the plugin's `version` field. Today the plugin is in beta (releases in the `0.7.x` line); the production-grade release will be tagged at `1.0.0`.
+Beta status is published in the plugin's `version` field. Releases before `1.0.0` are beta; the production-grade release will be tagged at `1.0.0`.
 
 ## Questions
 

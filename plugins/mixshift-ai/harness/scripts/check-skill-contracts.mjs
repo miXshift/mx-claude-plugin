@@ -14,8 +14,6 @@
  *       top-level segment declared in the BrandContext schema
  *     - every `calibration.fields[].seed_from` (after the `context.` prefix) has
  *       a top-level segment declared in the BrandContext schema
- *
- *   WARNINGS (reported, do NOT fail the build):
  *     - SKILL.md references a known-unimplemented command (e.g. `sidecar compare`)
  *
  * Deep context-path resolution (does `management.acos_target_pct` resolve to a
@@ -25,8 +23,7 @@
  * objective_calibration, brand_terms, ...) are typed `z.unknown()` and have no
  * inspectable deep shape.
  *
- * Exit 0 clean; exit 1 on any ERROR. Land as a non-blocking advisory CI job
- * until green, then promote into `gates` (the path check-versions took).
+ * Exit 0 clean; exit 1 on any ERROR.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -98,7 +95,6 @@ const skillIdSet = new Set(skillIds);
 const results = [];
 for (const skillId of skillIds) {
   const errors = [];
-  const warnings = [];
   const manifestPath = join(skillsDir, skillId, 'skill.manifest.yaml');
 
   let m;
@@ -106,7 +102,7 @@ for (const skillId of skillIds) {
     m = parseYaml(await readFile(manifestPath, 'utf-8')) ?? {};
   } catch (err) {
     errors.push(`cannot read/parse skill.manifest.yaml (${err instanceof Error ? err.message : String(err)})`);
-    results.push({ skillId, errors, warnings });
+    results.push({ skillId, errors });
     continue;
   }
 
@@ -147,31 +143,20 @@ for (const skillId of skillIds) {
     }
   }
 
-  // 6. (warning) SKILL.md references a known-unimplemented command
+  // 6. SKILL.md cannot promise a command that the harness does not implement.
   try {
     const md = await readFile(join(skillsDir, skillId, 'SKILL.md'), 'utf-8');
     for (const ref of KNOWN_UNIMPLEMENTED_REFS) {
-      if (md.includes(ref)) warnings.push(`SKILL.md references unimplemented \`${ref}\``);
+      if (md.includes(ref)) errors.push(`SKILL.md references unimplemented \`${ref}\``);
     }
   } catch {
     /* a missing SKILL.md is the telemetry/version linters' concern, not ours */
   }
 
-  results.push({ skillId, errors, warnings });
+  results.push({ skillId, errors });
 }
 
 const withErrors = results.filter((r) => r.errors.length);
-const withWarnings = results.filter((r) => r.warnings.length);
-
-// Warnings first (informational), then errors (gating).
-if (withWarnings.length) {
-  console.log(`⚠ ${withWarnings.length} skill(s) reference unimplemented commands (advisory):`);
-  for (const r of withWarnings) {
-    console.log(`  ${r.skillId}`);
-    for (const w of r.warnings) console.log(`    - ${w}`);
-  }
-  console.log('');
-}
 
 if (withErrors.length === 0) {
   console.log(`✓ All ${results.length} skills pass contract checks (sql_ids, batch_plan, upstream, context fields).`);
