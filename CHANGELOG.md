@@ -31,6 +31,14 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Skills reliably find the MixShift CLI on Cowork.** Cowork does not run the
+  plugin's session hook, so `mixshift` is never on the command path there and
+  each skill has to locate the bundled CLI itself. Most skills previously gave
+  up when they could not find it, and sometimes reported the plugin as "not
+  installed" when it was in fact installed and working. Every skill now locates
+  the CLI by scanning for it, so commands run on Cowork the same as anywhere
+  else. This most affects the first thing a new Cowork user does (`mx-welcome`
+  and signing in), which could previously stall.
 - **Service credential setup no longer reports success from a location that
   will not survive.** In a sandboxed session with no persistent folder
   attached, setup used to write the credential somewhere temporary and look

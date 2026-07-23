@@ -80,7 +80,24 @@ async function checkSkill(skillId) {
     );
   }
 
-  // 4. (optional sanity) trigger_phrase_matched mentioned at least conditionally
+  // 4. CLI-resolution fallback: every skill must carry the executable resolver
+  //    for the CLI, because in Cowork the session hook never runs, so `mixshift`
+  //    is off PATH and `$MIXSHIFT_CLI` is unset — the only thing that locates
+  //    the bundled CLI is a filesystem scan. A prose "derive from the plugin
+  //    root" instruction is not enough (the model does not follow it; it
+  //    concludes "not installed" instead). Require the scan one-liner's
+  //    signature so no skill can ship a dead fallback ladder again.
+  //    (Guidance-only skills still call the CLI, so this applies to all.)
+  if (!raw.includes("-path '*/harness/dist/cli.js'")) {
+    result.errors.push(
+      "Missing the executable CLI resolver. Every SKILL.md must include the scan " +
+        "`find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1` " +
+        'in its CLI-invocation guidance so the CLI is locatable in Cowork (no PATH hook, ' +
+        'no $MIXSHIFT_CLI). See docs/productization/SKILL-AUTHOR-GUIDE.md.',
+    );
+  }
+
+  // 5. (optional sanity) trigger_phrase_matched mentioned at least conditionally
   // Not required — many skills are explicit /<command> triggers only — so just warn.
   if (
     !raw.includes('skill.trigger_phrase_matched') &&
