@@ -88447,6 +88447,7 @@ async function runPreflight(brandSlugs, root) {
     let discoveredVia = root.dataDir ? "flag" : process.env.MIXSHIFT_DATA_DIR ? "env" : "default";
     let dataDir = resolvedDir;
     let candidates = [];
+    let scanState = null;
     const isUsable = (env) => Boolean(env?.datahub || env?.service);
     let credentials = null;
     let loadFailure = null;
@@ -88471,6 +88472,7 @@ async function runPreflight(brandSlugs, root) {
       const cwdRoots = [process.cwd(), join23(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
+      scanState = { sessionsHits, scanHits };
       candidates = [
         .../* @__PURE__ */ new Set([
           ...resolvedDirHadFile ? [credentialsPath(resolvedDir)] : [],
@@ -88492,7 +88494,7 @@ async function runPreflight(brandSlugs, root) {
       }
       if (isUsable(credentials)) {
         if (resolvedFailure) {
-          malformedResolvedWarning = `${resolvedFailure.message}; proceeding with the credential discovered under ${dataDir} instead. Delete or repair the malformed file.`;
+          malformedResolvedWarning = `${resolvedFailure.message}; skipped it and proceeded with a credential found by scanning. Delete or repair the malformed file.`;
         }
         loadFailure = null;
       } else if (resolvedFailure) {
@@ -88511,6 +88513,8 @@ async function runPreflight(brandSlugs, root) {
       lines.push(statusLine("warn", malformedResolvedWarning));
     }
     let credentialSummary = null;
+    let mintAttemptsTotal = 0;
+    let fallbackUsed = false;
     let kind = null;
     let credentialLabel;
     let serviceClientId;
@@ -88538,24 +88542,97 @@ async function runPreflight(brandSlugs, root) {
         remediation: "Run `mixshift auth service-setup` (recommended for unattended/scheduled runs) or `mixshift auth login` (interactive) to create one, then re-run this command."
       });
     } else {
-      lines.push(
-        statusLine("ok", `credential: ${kind}${credentialLabel ? ` (${credentialLabel})` : ""}`)
-      );
-      if (kind === "interactive") {
+      const describeSelected = (env) => {
+        if (env?.datahub) {
+          return { kind: "interactive", label: env.datahub.person_label || env.datahub.email };
+        }
+        if (env?.service) {
+          return {
+            kind: "service",
+            label: env.service.label ?? env.service.client_id,
+            serviceClientId: env.service.client_id
+          };
+        }
+        return null;
+      };
+      const materializeAlternates = async (triedDirs2) => {
+        if (!scanState) return [];
+        const out = [];
+        for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
+          const dir = dataDirFromCredentialPath(hit);
+          if (triedDirs2.has(dir)) continue;
+          const attempt = await loadFrom(dir);
+          if (!isUsable(attempt.envelope)) continue;
+          out.push({
+            dir,
+            envelope: attempt.envelope,
+            via: scanState.sessionsHits.includes(hit) ? "sessions_scan" : "cwd_scan"
+          });
+        }
+        return out;
+      };
+      const MAX_MINT_ATTEMPTS = 3;
+      const triedDirs = /* @__PURE__ */ new Set([dataDir]);
+      let current = { dir: dataDir, via: discoveredVia, kind, label: credentialLabel, serviceClientId };
+      let queue = null;
+      let mintAttempts = 0;
+      let verified = false;
+      let firstRejection = null;
+      let extraRejections = 0;
+      let unreachableMessage = null;
+      for (; ; ) {
+        lines.push(
+          statusLine(
+            "ok",
+            `credential: ${current.kind}${current.label ? ` (${current.label})` : ""}`
+          )
+        );
+        mintAttempts++;
+        try {
+          await getValidAccessToken(current.dir, true);
+          verified = true;
+          break;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          lines.push(statusLine("BLOCKED", `auth verify: ${message}`));
+          if (classifyMintError(err) === "endpoint_unreachable") {
+            unreachableMessage = message;
+            break;
+          }
+          if (firstRejection === null) firstRejection = message;
+          else extraRejections++;
+          if (mintAttempts >= MAX_MINT_ATTEMPTS) break;
+          if (queue === null) queue = await materializeAlternates(triedDirs);
+          const next = queue.shift();
+          if (!next) break;
+          const described = describeSelected(next.envelope);
+          if (!described) break;
+          triedDirs.add(next.dir);
+          lines.push(statusLine("warn", "trying the next discovered credential (newest first)"));
+          current = { dir: next.dir, via: next.via, ...described };
+        }
+      }
+      const INVALID_REMEDIATION = "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential).";
+      mintAttemptsTotal = mintAttempts;
+      fallbackUsed = verified && mintAttempts > 1;
+      const effectiveKind = verified ? current.kind : kind;
+      if (effectiveKind === "interactive") {
         const w = "signed in with an interactive credential; scheduled/unattended runs should use a service credential (`mixshift auth service-setup`), because interactive token refresh is unreliable when nobody is present to re-authenticate.";
         warnings.push(w);
         lines.push(statusLine("warn", w));
       }
-      let verified = false;
-      let mintErr;
-      try {
-        await getValidAccessToken(dataDir, true);
-        verified = true;
-      } catch (err) {
-        mintErr = err;
-      }
       if (verified) {
+        dataDir = current.dir;
+        discoveredVia = current.via;
+        kind = current.kind;
+        credentialLabel = current.label;
+        serviceClientId = current.serviceClientId;
         lines.push(statusLine("ok", "auth verify: minted a fresh access token"));
+        if (firstRejection !== null) {
+          const w = `a discovered credential was rejected (revoked or rotated) before this one verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ""}. Delete stale credentials files and revoke unused credentials at /admin so discovery stays unambiguous.`;
+          warnings.push(w);
+          lines.push(statusLine("warn", w));
+        }
         let scopes;
         if (kind === "service" && serviceClientId) {
           const attribution = await readServiceAttributionCache(serviceClientId, dataDir);
@@ -88572,14 +88649,25 @@ async function runPreflight(brandSlugs, root) {
           ...scopes ? { scopes } : {}
         };
       } else {
-        const message = mintErr instanceof Error ? mintErr.message : String(mintErr);
-        const cls = classifyMintError(mintErr);
-        lines.push(statusLine("BLOCKED", `auth verify: ${message}`));
-        blockers.push({
-          class: cls,
-          message,
-          remediation: cls === "credential_invalid" ? "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential)." : "Check egress connectivity to the MixShift auth service (mcp.mixshift.io must be reachable/allowlisted from this sandbox), then retry."
-        });
+        if (firstRejection !== null) {
+          blockers.push({
+            class: "credential_invalid",
+            message: firstRejection,
+            remediation: INVALID_REMEDIATION
+          });
+          if (extraRejections > 0) {
+            const w = `${extraRejections} other discovered credential(s) were also rejected (revoked or rotated?).`;
+            warnings.push(w);
+            lines.push(statusLine("warn", w));
+          }
+        }
+        if (unreachableMessage !== null) {
+          blockers.push({
+            class: "endpoint_unreachable",
+            message: unreachableMessage,
+            remediation: "Check egress connectivity to the MixShift auth service (mcp.mixshift.io must be reachable/allowlisted from this sandbox), then retry."
+          });
+        }
         credentialSummary = {
           path: credentialsPath(dataDir),
           kind,
@@ -88648,7 +88736,12 @@ async function runPreflight(brandSlugs, root) {
           candidates_found: candidates.length,
           brand_count: brandSlugs.length,
           brands_pulled: brands.filter((b) => b.status === "pulled").length,
-          warnings_count: warnings.length
+          warnings_count: warnings.length,
+          // Fall-through visibility (counts/booleans only): >1 attempts means
+          // a discovered credential was rejected at mint and alternates were
+          // tried; fallback_used means one of them is what verified.
+          mint_attempts: mintAttemptsTotal,
+          fallback_used: fallbackUsed
         }
       },
       // Deviation from the house `track(..., root.dataDir)` pattern,

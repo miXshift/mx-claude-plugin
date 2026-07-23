@@ -435,6 +435,8 @@ describe('task preflight (command)', () => {
       brand_count: 0,
       brands_pulled: 0,
       warnings_count: 0,
+      mint_attempts: 1,
+      fallback_used: false,
     });
     // The DISCOVERED/resolved dir, deliberately not the raw root option:
     // attribution and the offline queue must ride the dir that actually
@@ -496,6 +498,11 @@ describe('task preflight (command)', () => {
 
   it('mint rejected: exit 7 and the representative blocked JSON shape', async () => {
     vi.mocked(getValidAccessToken).mockRejectedValue(new Error(MINT_REJECTED_MESSAGE));
+    // Rejection now triggers the fall-through scan; keep it hermetic (the
+    // stubbed sessions root from beforeEach is empty, and so is this cwd).
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-cwd7-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
 
     await runTask('preflight', '--json', '--data-dir', tmpDataDir);
 
@@ -808,6 +815,9 @@ describe('task preflight (command)', () => {
 
   it('multi-blocker run: first blocker in priority order wins the exit code', async () => {
     vi.mocked(getValidAccessToken).mockRejectedValue(new Error(MINT_REJECTED_MESSAGE));
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-cwd8-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
     vi.mocked(pull).mockResolvedValue({
       ok: false,
       brand: 'ghost',
@@ -830,6 +840,245 @@ describe('task preflight (command)', () => {
     const [input] = vi.mocked(track).mock.calls[0];
     expect(input.outcome).toBe('failed');
     expect(input.error_class).toBe('credential_invalid');
+  });
+
+  // --- Verify fall-through on mint rejection (Cartology field case) --------
+  // A structurally-usable credential can be REVOKED; preflight must try the
+  // next discovered candidate instead of dying on the stale one.
+
+  /** SERVICE_ENVELOPE with a distinguishable label, for asserting WHICH
+   *  credential the run ends up using. */
+  function serviceEnvelope(label: string): Credentials {
+    return {
+      ...SERVICE_ENVELOPE,
+      service: { ...SERVICE_ENVELOPE.service!, label },
+    };
+  }
+
+  /** Wire loadCredentials + getValidAccessToken by data dir: `creds` maps a
+   *  dir to its envelope (missing dir => no file); `rejects` lists dirs whose
+   *  mint is rejected (everything else mints fine). */
+  function wireByDir(
+    creds: Array<{ dir: string; envelope: Credentials | null }>,
+    rejects: string[],
+    rejectError: () => Error = () => new Error(MINT_REJECTED_MESSAGE),
+  ): void {
+    vi.mocked(loadCredentials).mockImplementation(async (dir?: string) => {
+      const hit = creds.find((c) => resolve(c.dir) === resolve(dir ?? ''));
+      return { credentials: hit?.envelope ?? null, path: credentialsPath(dir ?? '') };
+    });
+    vi.mocked(getValidAccessToken).mockImplementation(async (dir?: string) => {
+      if (rejects.some((r) => resolve(r) === resolve(dir ?? ''))) throw rejectError();
+      return 'token-abc';
+    });
+  }
+
+  it('SECURITY: a revoked credential at an EXPLICITLY PINNED --data-dir is terminal — no scan, no fall-through', async () => {
+    // The red-team HIGH: a rejection on a pinned/resolved dir must NOT trigger
+    // a /sessions scan that could adopt a planted credential. Plant a VALID
+    // credential in the sessions tree; it must be ignored because the caller
+    // pinned a specific dir. exit 7, one blocker, the pinned dir stands.
+    const sessRoot = await mkdtemp(join(tmpdir(), 'mx-task-ft1-'));
+    extraTmp.push(sessRoot);
+    vi.stubEnv('MIXSHIFT_PREFLIGHT_SESSIONS_ROOT', sessRoot);
+    const plantedHit = await plantCredentials(sessRoot, 'ws', 'anchor');
+    const plantedDir = dataDirFromCredentialPath(plantedHit);
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-ft1cwd-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
+
+    wireByDir(
+      [
+        { dir: tmpDataDir, envelope: serviceEnvelope('svc:pinned-revoked') },
+        { dir: plantedDir, envelope: serviceEnvelope('svc:planted-valid') },
+      ],
+      [tmpDataDir], // only the pinned one is revoked; the planted one WOULD verify
+    );
+
+    await runTask('preflight', '--json', '--data-dir', tmpDataDir);
+
+    expect(process.exitCode).toBe(7);
+    const parsed = JSON.parse(stdoutText()) as {
+      ready: boolean;
+      data_dir: string;
+      credential: { label?: string; verified: boolean };
+      candidates: string[];
+      blockers: Array<{ class: string }>;
+    };
+    expect(parsed.ready).toBe(false);
+    expect(parsed.data_dir).toBe(expectedDataDir); // the pin, unchanged
+    expect(parsed.credential).toMatchObject({ label: 'svc:pinned-revoked', verified: false });
+    expect(parsed.blockers.map((b) => b.class)).toEqual(['credential_invalid']);
+    // The planted /sessions credential was never scanned for or adopted.
+    expect(parsed.candidates).toEqual([credentialsPath(expectedDataDir)]);
+    expect(getValidAccessToken).toHaveBeenCalledTimes(1); // only the pinned dir minted
+    expect(getValidAccessToken).not.toHaveBeenCalledWith(plantedDir, true);
+
+    const [input] = vi.mocked(track).mock.calls[0];
+    expect(input.outcome).toBe('failed');
+    expect(input.payload).toMatchObject({ mint_attempts: 1, fallback_used: false });
+  });
+
+  it('scan path: newest candidate revoked, older one verifies', async () => {
+    const sessRoot = await mkdtemp(join(tmpdir(), 'mx-task-ft2-'));
+    extraTmp.push(sessRoot);
+    vi.stubEnv('MIXSHIFT_PREFLIGHT_SESSIONS_ROOT', sessRoot);
+    const newerHit = await plantCredentials(sessRoot, 'newer');
+    const olderHit = await plantCredentials(sessRoot, 'older');
+    await utimes(olderHit, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+    await utimes(newerHit, new Date('2026-06-01T00:00:00Z'), new Date('2026-06-01T00:00:00Z'));
+    const newerDir = dataDirFromCredentialPath(newerHit);
+    const olderDir = dataDirFromCredentialPath(olderHit);
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-ft2cwd-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
+
+    wireByDir(
+      [
+        { dir: tmpDataDir, envelope: null }, // resolved dir: no file -> scan
+        { dir: newerDir, envelope: serviceEnvelope('svc:stale-newest') },
+        { dir: olderDir, envelope: serviceEnvelope('svc:older-valid') },
+      ],
+      [newerDir],
+    );
+
+    await runTask('preflight', '--json', '--data-dir', tmpDataDir);
+
+    expect(process.exitCode ?? 0).toBe(0);
+    const parsed = JSON.parse(stdoutText()) as {
+      ready: boolean;
+      data_dir: string;
+      credential: { label?: string };
+      warnings: string[];
+    };
+    expect(parsed.ready).toBe(true);
+    expect(parsed.data_dir).toBe(olderDir);
+    expect(parsed.credential.label).toBe('svc:older-valid');
+    expect(parsed.warnings.some((w) => w.includes('rejected'))).toBe(true);
+
+    const [input] = vi.mocked(track).mock.calls[0];
+    expect(input.payload).toMatchObject({ mint_attempts: 2, fallback_used: true });
+  });
+
+  it('scan path, all discovered credentials rejected: exit 7, primary blocker, extra-rejection warning', async () => {
+    const sessRoot = await mkdtemp(join(tmpdir(), 'mx-task-ft3-'));
+    extraTmp.push(sessRoot);
+    vi.stubEnv('MIXSHIFT_PREFLIGHT_SESSIONS_ROOT', sessRoot);
+    // Both discovered by scan (resolved dir empty). Newest = the "primary"
+    // the failure report describes.
+    const primaryHit = await plantCredentials(sessRoot, 'primary');
+    const altHit = await plantCredentials(sessRoot, 'alt');
+    await utimes(altHit, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+    await utimes(primaryHit, new Date('2026-06-01T00:00:00Z'), new Date('2026-06-01T00:00:00Z'));
+    const primaryDir = dataDirFromCredentialPath(primaryHit);
+    const altDir = dataDirFromCredentialPath(altHit);
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-ft3cwd-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
+
+    wireByDir(
+      [
+        { dir: tmpDataDir, envelope: null }, // resolved dir empty -> scan
+        { dir: primaryDir, envelope: serviceEnvelope('svc:primary') },
+        { dir: altDir, envelope: serviceEnvelope('svc:alt') },
+      ],
+      [primaryDir, altDir], // both reject
+    );
+
+    await runTask('preflight', '--json', '--data-dir', tmpDataDir);
+
+    expect(process.exitCode).toBe(7);
+    const parsed = JSON.parse(stdoutText()) as {
+      ready: boolean;
+      data_dir: string;
+      credential: { path: string; label?: string; verified: boolean };
+      blockers: Array<{ class: string; message: string }>;
+      warnings: string[];
+    };
+    expect(parsed.ready).toBe(false);
+    // Blocker + summary describe the PRIMARY (newest scan hit); fallback
+    // attempts are a warning, not the headline.
+    expect(parsed.blockers).toHaveLength(1);
+    expect(parsed.blockers[0].class).toBe('credential_invalid');
+    expect(parsed.blockers[0].message).toBe(MINT_REJECTED_MESSAGE);
+    expect(parsed.data_dir).toBe(primaryDir);
+    expect(parsed.credential).toMatchObject({
+      path: credentialsPath(primaryDir),
+      label: 'svc:primary',
+      verified: false,
+    });
+    expect(parsed.warnings.some((w) => w.includes('also rejected'))).toBe(true);
+
+    const [input] = vi.mocked(track).mock.calls[0];
+    expect(input.outcome).toBe('failed');
+    expect(input.error_class).toBe('credential_invalid');
+    expect(input.payload).toMatchObject({ mint_attempts: 2, fallback_used: false });
+  });
+
+  it('scan path, rejection then endpoint failure on the fallback: both blockers, exit 7 by priority', async () => {
+    const sessRoot = await mkdtemp(join(tmpdir(), 'mx-task-ft4-'));
+    extraTmp.push(sessRoot);
+    vi.stubEnv('MIXSHIFT_PREFLIGHT_SESSIONS_ROOT', sessRoot);
+    const primaryHit = await plantCredentials(sessRoot, 'primary');
+    const altHit = await plantCredentials(sessRoot, 'alt');
+    await utimes(altHit, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+    await utimes(primaryHit, new Date('2026-06-01T00:00:00Z'), new Date('2026-06-01T00:00:00Z'));
+    const primaryDir = dataDirFromCredentialPath(primaryHit);
+    const altDir = dataDirFromCredentialPath(altHit);
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-ft4cwd-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
+
+    vi.mocked(loadCredentials).mockImplementation(async (dir?: string) => {
+      const map = [
+        { dir: primaryDir, envelope: serviceEnvelope('svc:primary') },
+        { dir: altDir, envelope: serviceEnvelope('svc:alt') },
+      ];
+      const hit = map.find((c) => resolve(c.dir) === resolve(dir ?? ''));
+      return { credentials: hit?.envelope ?? null, path: credentialsPath(dir ?? '') };
+    });
+    vi.mocked(getValidAccessToken).mockImplementation(async (dir?: string) => {
+      if (resolve(dir ?? '') === resolve(primaryDir)) throw new Error(MINT_REJECTED_MESSAGE);
+      throw new Error(MINT_UNREACHABLE_MESSAGE); // the older fallback hits a network failure
+    });
+
+    await runTask('preflight', '--json', '--data-dir', tmpDataDir);
+
+    // credential_invalid (7) outranks endpoint_unreachable (8).
+    expect(process.exitCode).toBe(7);
+    const parsed = JSON.parse(stdoutText()) as { blockers: Array<{ class: string }> };
+    expect(parsed.blockers.map((b) => b.class)).toEqual([
+      'credential_invalid',
+      'endpoint_unreachable',
+    ]);
+  });
+
+  it('scan path caps total mint attempts at 3 even with more candidates available', async () => {
+    const sessRoot = await mkdtemp(join(tmpdir(), 'mx-task-ft5-'));
+    extraTmp.push(sessRoot);
+    vi.stubEnv('MIXSHIFT_PREFLIGHT_SESSIONS_ROOT', sessRoot);
+    const dirs: string[] = [];
+    for (const name of ['a', 'b', 'c', 'd', 'e']) {
+      dirs.push(dataDirFromCredentialPath(await plantCredentials(sessRoot, name)));
+    }
+    const emptyCwd = await mkdtemp(join(tmpdir(), 'mx-task-ft5cwd-'));
+    extraTmp.push(emptyCwd);
+    vi.spyOn(process, 'cwd').mockReturnValue(emptyCwd);
+
+    wireByDir(
+      [
+        { dir: tmpDataDir, envelope: null }, // resolved dir empty -> scan
+        ...dirs.map((dir, i) => ({ dir, envelope: serviceEnvelope(`svc:alt${i}`) })),
+      ],
+      dirs, // every discovered credential rejects; the cap must stop the run
+    );
+
+    await runTask('preflight', '--json', '--data-dir', tmpDataDir);
+
+    expect(process.exitCode).toBe(7);
+    expect(vi.mocked(getValidAccessToken)).toHaveBeenCalledTimes(3);
+    const [input] = vi.mocked(track).mock.calls[0];
+    expect(input.payload).toMatchObject({ mint_attempts: 3, fallback_used: false });
   });
 
   it('unexpected throw hits the top-level catch: exit 1 and the {status:error} JSON shape', async () => {
