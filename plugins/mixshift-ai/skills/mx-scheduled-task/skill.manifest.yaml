@@ -7,7 +7,7 @@
 schema_version: 1
 skill_id: mx-scheduled-task
 display_name: "Scheduled task setup"
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Set up a scheduled MixShift task that survives fresh sandboxes: durable anchor
   folder, service credential anchored inside it, task instructions that preflight
