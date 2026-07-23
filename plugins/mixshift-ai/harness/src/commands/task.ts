@@ -408,6 +408,10 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
         : 'default';
     let dataDir = resolvedDir;
     let candidates: string[] = [];
+    /** Results of the sandbox scan, kept so the verify stage can fall through
+     *  to other discovered credentials on a mint REJECTION without scanning
+     *  twice. null = no scan has run yet (the resolved dir was usable). */
+    let scanState: { sessionsHits: string[]; scanHits: string[] } | null = null;
 
     type CredentialsEnvelope = Awaited<ReturnType<typeof loadCredentials>>['credentials'];
     const isUsable = (env: CredentialsEnvelope): boolean =>
@@ -454,6 +458,7 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
       // sessions mount, and cwd/outputs sits inside cwd), so one file can be
       // hit twice; dedupe before counting candidates or picking winners.
       const scanHits = [...new Set([...sessionsHits, ...cwdHits])];
+      scanState = { sessionsHits, scanHits };
       // The resolved dir can itself sit under a scan root (MIXSHIFT_DATA_DIR
       // pointing into the sessions tree), so dedupe it against the hits too.
       candidates = [
@@ -511,6 +516,10 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
 
     // --- Steps 3-4: credential kind + real verify. ------------------------
     let credentialSummary: CredentialSummary | null = null;
+    /** Telemetry: how many real mints this run performed (1 = no fall-through)
+     *  and whether a fallback credential is the one that verified. */
+    let mintAttemptsTotal = 0;
+    let fallbackUsed = false;
 
     // datahub wins over service — the SAME precedence getValidAccessToken
     // uses, because that is what will actually authenticate. A `mysql`-only
@@ -554,32 +563,151 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
           'or `mixshift auth login` (interactive) to create one, then re-run this command.',
       });
     } else {
-      lines.push(
-        statusLine('ok', `credential: ${kind}${credentialLabel ? ` (${credentialLabel})` : ''}`),
-      );
-      if (kind === 'interactive') {
-        const w =
-          'signed in with an interactive credential; scheduled/unattended runs should use ' +
-          'a service credential (`mixshift auth service-setup`), because interactive token ' +
-          'refresh is unreliable when nobody is present to re-authenticate.';
-        warnings.push(w);
-        lines.push(statusLine('warn', w));
+      // --- Step 4: real verify, with bounded fall-through on REJECTION. ----
+      // A structurally-usable credential can still be revoked (field case,
+      // Cartology 2026-07-23: discovery picked a stale credential out of a
+      // previously-granted folder that had been rotated at /admin, while a
+      // valid credential sat in another candidate — the run died "credential
+      // rejected" even though a working one existed). So: when the mint is
+      // REJECTED (credential_invalid), try the next discovered candidate,
+      // newest-first, up to MAX_MINT_ATTEMPTS total mints. Never fall through
+      // on endpoint_unreachable — a network failure would fail every
+      // candidate identically, and each mint is a real network round trip.
+      const describeSelected = (
+        env: CredentialsEnvelope,
+      ): { kind: CredentialKind; label?: string; serviceClientId?: string } | null => {
+        if (env?.datahub) {
+          return { kind: 'interactive', label: env.datahub.person_label || env.datahub.email };
+        }
+        if (env?.service) {
+          return {
+            kind: 'service',
+            label: env.service.label ?? env.service.client_id,
+            serviceClientId: env.service.client_id,
+          };
+        }
+        return null; // callers filter on isUsable, so this is unreachable
+      };
+
+      /** Usable alternates in newest-first order, excluding dirs already
+       *  tried. Runs the sandbox scan late when the resolved-dir fast path
+       *  skipped it (the stale credential can sit AT the resolved dir too),
+       *  and surfaces any late hits in `candidates` for transparency. */
+      const materializeAlternates = async (
+        triedDirs: ReadonlySet<string>,
+      ): Promise<Array<{ dir: string; envelope: CredentialsEnvelope; via: DiscoveredVia }>> => {
+        if (!scanState) {
+          const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
+          const cwdRoots = [process.cwd(), join(process.cwd(), 'outputs')];
+          const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
+          scanState = { sessionsHits, scanHits: [...new Set([...sessionsHits, ...cwdHits])] };
+          candidates = [...new Set([...candidates, ...scanState.scanHits])];
+        }
+        const out: Array<{ dir: string; envelope: CredentialsEnvelope; via: DiscoveredVia }> = [];
+        for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
+          const dir = dataDirFromCredentialPath(hit);
+          if (triedDirs.has(dir)) continue;
+          const attempt = await loadFrom(dir);
+          if (!isUsable(attempt.envelope)) continue;
+          out.push({
+            dir,
+            envelope: attempt.envelope,
+            via: scanState.sessionsHits.includes(hit) ? 'sessions_scan' : 'cwd_scan',
+          });
+        }
+        return out;
+      };
+
+      const MAX_MINT_ATTEMPTS = 3;
+      const triedDirs = new Set<string>([dataDir]);
+      let current: {
+        dir: string;
+        via: DiscoveredVia;
+        kind: CredentialKind;
+        label?: string;
+        serviceClientId?: string;
+      } = { dir: dataDir, via: discoveredVia, kind, label: credentialLabel, serviceClientId };
+      let queue: Array<{ dir: string; envelope: CredentialsEnvelope; via: DiscoveredVia }> | null = null;
+      let mintAttempts = 0;
+      let verified = false;
+      /** The PRIMARY credential's rejection — the blocker we report when
+       *  nothing verifies (later rejections become a warning count). */
+      let firstRejection: string | null = null;
+      let extraRejections = 0;
+      let unreachableMessage: string | null = null;
+
+      for (;;) {
+        lines.push(
+          statusLine(
+            'ok',
+            `credential: ${current.kind}${current.label ? ` (${current.label})` : ''}`,
+          ),
+        );
+        if (current.kind === 'interactive') {
+          const w =
+            'signed in with an interactive credential; scheduled/unattended runs should use ' +
+            'a service credential (`mixshift auth service-setup`), because interactive token ' +
+            'refresh is unreliable when nobody is present to re-authenticate.';
+          warnings.push(w);
+          lines.push(statusLine('warn', w));
+        }
+
+        mintAttempts++;
+        try {
+          // Mint exactly the way `auth service-setup`'s verify step does (same
+          // helper, forceRefresh: true so this is a REAL round trip, never a
+          // stale cached token papering over a revoked credential).
+          await getValidAccessToken(current.dir, true);
+          verified = true;
+          break;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          lines.push(statusLine('BLOCKED', `auth verify: ${message}`));
+          if (classifyMintError(err) === 'endpoint_unreachable') {
+            unreachableMessage = message;
+            break;
+          }
+          if (firstRejection === null) firstRejection = message;
+          else extraRejections++;
+          if (mintAttempts >= MAX_MINT_ATTEMPTS) break;
+          if (queue === null) queue = await materializeAlternates(triedDirs);
+          const next = queue.shift();
+          if (!next) break;
+          const described = describeSelected(next.envelope);
+          if (!described) break; // defensive; alternates are pre-filtered usable
+          triedDirs.add(next.dir);
+          lines.push(statusLine('warn', 'trying the next discovered credential (newest first)'));
+          current = { dir: next.dir, via: next.via, ...described };
+        }
       }
 
-      let verified = false;
-      let mintErr: unknown;
-      try {
-        // Mint exactly the way `auth service-setup`'s verify step does (same
-        // helper, forceRefresh: true so this is a REAL round trip, never a
-        // stale cached token papering over a revoked credential).
-        await getValidAccessToken(dataDir, true);
-        verified = true;
-      } catch (err) {
-        mintErr = err;
-      }
+      const INVALID_REMEDIATION =
+        'Re-run `mixshift auth service-setup` with a fresh setup code (service ' +
+        'credential), or `mixshift auth login` (interactive credential).';
+
+      mintAttemptsTotal = mintAttempts;
+      fallbackUsed = verified && mintAttempts > 1;
 
       if (verified) {
+        // Adopt the verified credential for everything downstream (data dir,
+        // export line, scopes, brand pulls). On the no-fallback path these
+        // assignments are no-ops.
+        dataDir = current.dir;
+        discoveredVia = current.via;
+        kind = current.kind;
+        credentialLabel = current.label;
+        serviceClientId = current.serviceClientId;
+
         lines.push(statusLine('ok', 'auth verify: minted a fresh access token'));
+        if (firstRejection !== null) {
+          const w =
+            `a discovered credential was rejected (revoked or rotated) before this one ` +
+            `verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ''}. ` +
+            'Delete stale credentials files and revoke unused credentials at /admin ' +
+            'so discovery stays unambiguous.';
+          warnings.push(w);
+          lines.push(statusLine('warn', w));
+        }
 
         let scopes: string[] | undefined;
         if (kind === 'service' && serviceClientId) {
@@ -598,19 +726,31 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
           ...(scopes ? { scopes } : {}),
         };
       } else {
-        const message = mintErr instanceof Error ? mintErr.message : String(mintErr);
-        const cls = classifyMintError(mintErr);
-        lines.push(statusLine('BLOCKED', `auth verify: ${message}`));
-        blockers.push({
-          class: cls,
-          message,
-          remediation:
-            cls === 'credential_invalid'
-              ? 'Re-run `mixshift auth service-setup` with a fresh setup code (service ' +
-                'credential), or `mixshift auth login` (interactive credential).'
-              : 'Check egress connectivity to the MixShift auth service (mcp.mixshift.io ' +
-                'must be reachable/allowlisted from this sandbox), then retry.',
-        });
+        // Not verified: report against the PRIMARY credential (the outer
+        // dataDir/kind/label were never reassigned), so the blocker, summary,
+        // and export line all describe the same credential the run selected
+        // first — fallback attempts are context, not the headline.
+        if (firstRejection !== null) {
+          blockers.push({
+            class: 'credential_invalid',
+            message: firstRejection,
+            remediation: INVALID_REMEDIATION,
+          });
+          if (extraRejections > 0) {
+            const w = `${extraRejections} other discovered credential(s) were also rejected (revoked or rotated?).`;
+            warnings.push(w);
+            lines.push(statusLine('warn', w));
+          }
+        }
+        if (unreachableMessage !== null) {
+          blockers.push({
+            class: 'endpoint_unreachable',
+            message: unreachableMessage,
+            remediation:
+              'Check egress connectivity to the MixShift auth service (mcp.mixshift.io ' +
+              'must be reachable/allowlisted from this sandbox), then retry.',
+          });
+        }
         credentialSummary = {
           path: credentialsPath(dataDir),
           kind,
@@ -703,6 +843,11 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
           brand_count: brandSlugs.length,
           brands_pulled: brands.filter((b) => b.status === 'pulled').length,
           warnings_count: warnings.length,
+          // Fall-through visibility (counts/booleans only): >1 attempts means
+          // a discovered credential was rejected at mint and alternates were
+          // tried; fallback_used means one of them is what verified.
+          mint_attempts: mintAttemptsTotal,
+          fallback_used: fallbackUsed,
         },
       },
       // Deviation from the house `track(..., root.dataDir)` pattern,

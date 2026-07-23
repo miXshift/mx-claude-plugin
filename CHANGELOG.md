@@ -28,6 +28,9 @@ starts at 0.5.39; earlier versions predate the changelog.
   verifies it against the service for real, fetches brand context for the
   brands the task uses, and either reports READY or tells you exactly what is
   blocking the run and how to fix it, with a distinct exit code per blocker.
+  When the credential it finds turns out to be revoked, it automatically tries
+  the next one it discovered (newest first) instead of failing on a stale
+  leftover, and tells you to clean the stale one up.
 
 ### Fixed
 
@@ -37,6 +40,13 @@ starts at 0.5.39; earlier versions predate the changelog.
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
+- **Scheduled-task setup now finds the MixShift CLI on Cowork.** The setup
+  guidance for locating the CLI in a scheduled sandbox filtered for a
+  "mixshift" folder name, but Cowork installs the plugin into an ID-named
+  directory, so the lookup came back empty and stored task instructions
+  failed. The guidance now matches the CLI by its own path shape, and states
+  plainly that `mixshift` is not on PATH in scheduled sandboxes (run commands
+  as `node` plus the CLI path).
 - **Feedback and usage reporting now work from sandboxed and scheduled
   runs.** `mixshift feedback` and the plugin's anonymized usage events used
   to post to a separate host that sandboxed environments block, so reports
