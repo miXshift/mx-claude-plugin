@@ -294,7 +294,7 @@ mixshift sidecar write --input-file /tmp/kbh-sidecar-input.json
 
 **Verdict rule:** see Step 7.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ---
 

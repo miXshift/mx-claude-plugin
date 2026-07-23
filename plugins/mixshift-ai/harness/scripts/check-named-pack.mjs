@@ -4,9 +4,10 @@
 // `unknown_query` failure mid-skill.
 //
 // Run via: npx tsx scripts/check-named-pack.mjs
-// Uses this machine's signed-in datahub credentials (run `mixshift auth
-// login` first). Set MIXSHIFT_SKIP_PACK_CHECK=1 to bypass loudly (e.g. a
-// CI box with no warehouse credentials) — never pass silently.
+// Release CI sets MIXSHIFT_PACK_CHECK_API_BASE and reads the public,
+// tenant-free `/.well-known/mixshift-query-pack` manifest. Local runs fall
+// back to the signed-in datahub api_base and, while an older gateway deploy is
+// still live, its authenticated `/api/named-query/ids` endpoint.
 //
 // Exits 1 on any named id missing from the deployed pack, or if the
 // deployed manifest can't be fetched (fail closed: don't ship a flip you
@@ -26,6 +27,7 @@ if (process.env.MIXSHIFT_SKIP_PACK_CHECK === '1') {
 
 const { loadCatalog } = await import('../src/lib/prefetch/sql-library.ts');
 const { resolveDataDir } = await import('../src/lib/paths/resolve.ts');
+const { checkNamedPackCompat } = await import('../src/lib/data/named-pack-check.ts');
 
 // 1. Catalog ids that depend on the deployed pack.
 const catalog = await loadCatalog();
@@ -39,7 +41,8 @@ if (namedIds.length === 0) {
   process.exit(0);
 }
 
-// 2. This machine's datahub session (api_base + bearer).
+// 2. Resolve the deployment to verify. CI supplies only a public API base.
+//    Local runs may use a signed-in session for the temporary legacy fallback.
 let creds;
 try {
   const raw = readFileSync(join(resolveDataDir(), 'auth', 'credentials'), 'utf-8');
@@ -47,50 +50,41 @@ try {
 } catch {
   creds = undefined;
 }
-if (!creds?.api_base || !creds?.access_token) {
+const apiBase = process.env.MIXSHIFT_PACK_CHECK_API_BASE ?? creds?.api_base;
+if (!apiBase) {
   console.error(
-    'check-named-pack: no datahub session found. Run `mixshift auth login` first, ' +
-      'or set MIXSHIFT_SKIP_PACK_CHECK=1 to bypass (CI without warehouse creds).',
+    'check-named-pack: no deployment configured. Set MIXSHIFT_PACK_CHECK_API_BASE ' +
+      'or run `mixshift auth login` for a local check.',
   );
   process.exit(1);
 }
 
-// 3. Deployed pack manifest.
-let manifest;
-try {
-  const res = await fetch(`${creds.api_base}/api/named-query/ids`, {
-    headers: { Authorization: `Bearer ${creds.access_token}` },
-  });
-  if (res.status === 401) {
-    console.error('check-named-pack: session expired (401). Run `mixshift auth login` and retry.');
-    process.exit(1);
-  }
-  if (!res.ok) {
-    console.error(`check-named-pack: GET /api/named-query/ids returned ${res.status}.`);
-    process.exit(1);
-  }
-  manifest = await res.json();
-} catch (err) {
-  console.error(`check-named-pack: could not reach ${creds.api_base}: ${err.message ?? err}`);
+// 3. Public manifest first; authenticated endpoint only as a 404 fallback.
+const result = await checkNamedPackCompat({
+  apiBase,
+  accessToken: creds?.access_token,
+});
+if (!result.checked) {
+  console.error(`check-named-pack: ${result.reason ?? 'deployment could not be verified'}.`);
   process.exit(1);
 }
 
-const deployed = new Set(manifest.ids ?? []);
-const revisions = manifest.revisions ?? {};
-const missing = namedIds.filter((id) => !deployed.has(id));
-
 for (const id of namedIds) {
-  const ok = deployed.has(id);
-  console.log(`${ok ? 'OK  ' : 'MISS'} ${id.padEnd(20)} ${ok ? `rev=${revisions[id] ?? '?'}` : 'NOT DEPLOYED'}`);
+  const missing = result.missing.includes(id);
+  console.log(
+    `${missing ? 'MISS' : 'OK  '} ${id.padEnd(20)} ` +
+      `${missing ? 'NOT DEPLOYED' : `rev=${result.revisions[id] ?? '?'}`}`,
+  );
 }
 
-if (missing.length > 0) {
+if (!result.ok) {
   console.error(
-    `\n${missing.length} dispatch:named id(s) are NOT in the deployed pack: ${missing.join(', ')}.\n` +
+    `\n${result.missing.length} dispatch:named id(s) are NOT in the deployed pack: ` +
+      `${result.missing.join(', ')}.\n` +
       'Deploy the mx-legacy-auth query pack entries BEFORE releasing this catalog flip, ' +
       'or users hit unknown_query. (Append-only ids; ship service first, plugin flip second.)',
   );
   process.exit(1);
 }
 
-console.log(`\nAll ${namedIds.length} dispatch:named id(s) resolve against the deployed pack.`);
+console.log(`\nAll ${result.total} dispatch:named id(s) resolve against the deployed pack.`);

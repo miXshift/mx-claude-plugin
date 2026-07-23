@@ -495,7 +495,7 @@ If validation fails:
 
 Do not hand off to downstream skills with a failing validator.
 
-The legacy SQL drift gate is not yet ported. Today, the manifest's `sql_ids` list is the contract; new SQL must be added to `shared/sql-library/catalog.yaml` + the relevant skill manifest before consumption. The harness's `mixshift sidecar compare` will fill this gap once implemented.
+The manifest's `sql_ids` list is the SQL inventory contract. New SQL must be added to `shared/sql-library/catalog.yaml` and the relevant skill manifest before consumption; review changes by comparing that inventory with the prior committed manifest.
 
 ---
 

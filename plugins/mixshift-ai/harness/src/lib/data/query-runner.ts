@@ -126,7 +126,9 @@ export interface RunQueryTelemetry {
  * Normalized, PII-free shape of a user query, stamped onto QueryExecuted /
  * QueryFailed telemetry so a pack-candidate report can group by table +
  * SELECT-* without regex-parsing raw SQL after the fact. Table name +
- * booleans/counts only — the raw text already lives in `sql_normalized`.
+ * booleans/counts only. Library queries are identified by `query_id` and never
+ * include SQL text in telemetry because their executed statement may contain
+ * resolved list parameters.
  */
 export interface QueryShape {
   /** Primary table in the outer query's FROM clause (lowercased, schema
@@ -158,6 +160,22 @@ export const FIRST_PAGE_PROBE_ROWS = 5_000;
  *  LIMIT (or a caller maxRows) is honored past nothing here because it opts
  *  out of the ceiling. */
 export const MAX_PAGINATED_ROWS = 2_000_000;
+
+/**
+ * Ad-hoc queries retain the beta's documented normalized-SQL telemetry.
+ * Library queries never do: list parameters are substituted into their SQL
+ * before execution, so recording that statement would leak resolved values
+ * despite the presence of a stable query id.
+ */
+function querySqlTelemetry(
+  sql: string,
+  queryId: string | undefined,
+): { sql_normalized?: string } {
+  if (queryId) return {};
+  return {
+    sql_normalized: sql.length > 2000 ? `${sql.slice(0, 2000)}...` : sql,
+  };
+}
 
 /**
  * Educational user-facing message for the datahub gateway's two output-size
@@ -1131,7 +1149,7 @@ async function runMysqlQuery<Row>(
         query_table: options.query_table,
         payload: {
           auth_path: 'mysql',
-          sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
         },
       },
@@ -1156,7 +1174,7 @@ async function runMysqlQuery<Row>(
         payload: {
           auth_path: 'mysql',
           raw_code: failure.raw_code,
-          sql_normalized: sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          ...querySqlTelemetry(sql, options.query_id),
           table_name: failure.table_name,
           query_shape: options.query_shape,
         },
@@ -1289,8 +1307,7 @@ async function runDatahubQuery<Row>(
           payload: {
             auth_path: 'datahub',
             server_duration_ms: serverDuration,
-            sql_normalized:
-              sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+            ...querySqlTelemetry(sql, options.query_id),
             query_shape: options.query_shape,
           },
         },
@@ -1328,8 +1345,7 @@ async function runDatahubQuery<Row>(
         payload: {
           auth_path: 'datahub',
           raw_code: failure.raw_code,
-          sql_normalized:
-            sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          ...querySqlTelemetry(sql, options.query_id),
           table_name: failure.table_name,
           query_shape: options.query_shape,
         },
@@ -1370,8 +1386,7 @@ async function runDatahubQuery<Row>(
         error_class: failure.kind,
         payload: {
           auth_path: 'datahub',
-          sql_normalized:
-            sql.length > 2000 ? sql.slice(0, 2000) + '...' : sql,
+          ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
         },
       },

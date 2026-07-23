@@ -112,7 +112,8 @@ shapes:
       - report_html_archive_path
       - block_html_path
 
-# Drift detection rules (applied by scripts/compare-sidecars.py):
+# Drift-detection review rules for comparing the current sidecar with the most
+# recent prior sidecar:
 #
 # 1. context_snapshot field changed between runs → emit "config drift"
 #    warning. This catches accidental edits to acos_target_pct, etc.
@@ -124,6 +125,6 @@ shapes:
 #    CI bounds (e.g., a multi-day catastrophic shift that warps the CI).
 # 4. verdict regressed (GREEN→RED in <3 days) → emit "verdict regression".
 #
-# Skills do NOT consume sidecars during a run — they emit them. The
-# compare-sidecars.py script runs as a post-step (or weekly audit) and
-# emails/notifies. Keeps the skill loop deterministic.
+# Skills do NOT consume sidecars during a run. They emit them, and reviewers or
+# downstream aggregator skills can inspect prior sidecars without changing the
+# deterministic skill loop.

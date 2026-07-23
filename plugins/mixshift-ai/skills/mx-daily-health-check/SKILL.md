@@ -481,7 +481,7 @@ Save the report to the brand's local reports directory using the Write tool:
 ```
 (or `.html` if HTML was requested.) If `context.yaml::delivery.reports_local_dir` is set, save there instead — honor that override.
 
-Drift comparison against the prior sidecar will be handled by `mixshift sidecar compare` (not yet implemented). For now, you can manually inspect prior sidecars under `~/.mixshift/clients/<brand-slug>/runs/mx-daily-health-check/` to spot config / verdict drift before delivering.
+Inspect the most recent prior sidecar under `~/.mixshift/clients/<brand-slug>/runs/mx-daily-health-check/` to spot config or verdict drift before delivering.
 
 ### Step 14: Emit Run Sidecar (canonical, drift-detection input)
 
@@ -552,7 +552,7 @@ mixshift sidecar write --input-file /tmp/dhc-sidecar-input.json
 
 **Verdict rule:** `GREEN` = no intervention required. `YELLOW` = approaching threshold or structural-event-explained anomaly. `RED` = intervention required. `OBSERVATIONAL` = history tier <14 days; no claims made.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ## Writing Rules
 

@@ -292,7 +292,7 @@ mixshift sidecar write --input-file /tmp/rsc-sidecar-input.json
 - `YELLOW` — runaway found but small (under spend floor / localized, e.g. <5% of account spend)
 - `RED` — runaway found above floor; bid cuts or pauses recommended
 
-The sidecar lives at `~/.mixshift/clients/<brand>/runs/mx-runaway-spend-check/<data-date>-<run-id>.json` for future drift comparisons (`mixshift sidecar compare`, coming later).
+The sidecar lives at `~/.mixshift/clients/<brand>/runs/mx-runaway-spend-check/<data-date>-<run-id>.json`. Compare it with the most recent prior sidecar when reviewing config, query-inventory, metric, or verdict drift.
 
 ---
 

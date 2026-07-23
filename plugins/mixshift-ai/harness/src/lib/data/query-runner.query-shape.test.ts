@@ -107,6 +107,30 @@ describe('query_shape telemetry enrichment', () => {
     });
   });
 
+  it('does not emit SQL text or resolved parameters for a library query', async () => {
+    await saveDatahub(freshDatahubFixture(), testDir);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        jsonResponse(200, { ok: true, rows: [], rowCount: 0, durationMs: 1 }),
+      ),
+    );
+
+    await runQuery(
+      "SELECT * FROM campaigns WHERE SellerID IN ('sensitive-seller-id')",
+      [],
+      {
+        dataDirOverride: testDir,
+        query_id: 'DHC-02',
+      },
+    );
+
+    const emit = lastEmit();
+    expect(emit.query_id).toBe('DHC-02');
+    expect(emit.payload).not.toHaveProperty('sql_normalized');
+    expect(JSON.stringify(emit)).not.toContain('sensitive-seller-id');
+  });
+
   it('stamps payload.query_shape on QueryFailed', async () => {
     await saveDatahub(freshDatahubFixture(), testDir);
     vi.stubGlobal(

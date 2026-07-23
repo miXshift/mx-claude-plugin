@@ -363,7 +363,7 @@ mixshift sidecar write --input-file /tmp/pnd-sidecar-input.json
 
 **Verdict rule:** `GREEN` = <10 candidates surfaced (routine maintenance pass). `YELLOW` = 10–50 candidates (worth a careful review pass; phrase-negatives have blast radius). `RED` = >50 candidates (corpus saturation — likely a campaign-targeting drift upstream; do not bulk-apply without an upstream relevance/structure review). `OBSERVATIONAL` = corpus too small or window too short to produce stable n-gram aggregates.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ---
 

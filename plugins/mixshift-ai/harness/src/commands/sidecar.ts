@@ -10,14 +10,11 @@
  *   user-hostile and brittle. The skill writes a JSON to a tmp file
  *   (often the same `data.json` directory) and points us at it.
  *
- * `mixshift sidecar compare` is reserved for the future drift checker —
- * stub for now so the CLI surface is stable.
  */
 
 import type { Command } from 'commander';
 import { readFile } from 'node:fs/promises';
 import { writeSidecar, type SidecarWriteInput } from '../lib/sidecar/write.js';
-import { notYetImplemented } from '../lib/stub.js';
 
 interface RootOptions {
   json?: boolean;
@@ -32,9 +29,7 @@ interface SidecarWriteCmdOptions {
 export function registerSidecarCommands(program: Command): void {
   const sidecar = program
     .command('sidecar')
-    .description(
-      'Write run sidecars after skill execution + (future) drift comparison.',
-    );
+    .description('Write run sidecars after skill execution.');
 
   sidecar
     .command('write')
@@ -101,14 +96,4 @@ export function registerSidecarCommands(program: Command): void {
       }
     });
 
-  sidecar
-    .command('compare')
-    .description(
-      'Drift check this run against the prior run sidecar (NOT YET IMPLEMENTED).',
-    )
-    .requiredOption('--brand <slug>', 'brand slug')
-    .requiredOption('--skill <skill-id>', 'skill identifier')
-    .action((opts: { brand: string; skill: string }) => {
-      notYetImplemented('sidecar compare', opts);
-    });
 }

@@ -288,7 +288,7 @@ mixshift sidecar write --input-file /tmp/sth-sidecar-input.json
 
 **Verdict rule:** `GREEN` = balanced harvest mix (candidates split between auto-to-phrase and auto-to-exact; conversion-rich auto traffic is being captured). `YELLOW` = many candidates already explicit (corpus saturation — auto campaigns are doing their discovery job but explicit campaigns may be over-built; reduce harvest cadence). `RED` = zero candidates (auto campaigns are not running or not generating measurable conversion volume — escalate to campaign structure review). `OBSERVATIONAL` = window too short or first run after brand setup; no historical band yet.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 ---
 
