@@ -366,7 +366,7 @@ These supersede other instructions:
   Save the result to disk and report the path + row count, never paste it
   inline.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

@@ -438,7 +438,7 @@ These supersede other instructions:
   so. Save large result sets to CSV and report the path + row count, never
   paste them inline.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

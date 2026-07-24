@@ -3,9 +3,8 @@
 # Fetched from GitHub raw over the network (24h cache) by
 # harness/src/lib/update-actions.ts, so treat every field here as
 # UNTRUSTED, attacker-influenceable input if this repo is ever compromised
-# or the fetch is MITM'd — same threat class as the version strings that
-# produced two red-team HIGHs in the update-notice feature (P1). The
-# engine is defensive by construction:
+# or the fetch is MITM'd — the same threat class as any remotely-fetched
+# version string. The engine is defensive by construction:
 #
 #   - `applies_if` / `detect_done` `kind` MUST be one of a fixed vocabulary
 #     (currently: always, signed_in, has_brands) or the whole action is
@@ -20,9 +19,8 @@
 #     always goes through the named skill, which owns its own confirm
 #     flow and writes tier.
 #
-# Authored per-release (see internal/UPDATE-ACTIONS-DESIGN.md, P4 /
-# release-docs). Seed conservatively: only ship an action once you have
-# verified the underlying skill actually supports the flow you are
+# Authored per-release. Seed conservatively: only ship an action once you
+# have verified the underlying skill actually supports the flow you are
 # describing.
 
 version: 1

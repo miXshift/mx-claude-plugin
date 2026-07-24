@@ -433,7 +433,7 @@ These supersede other instructions:
 - **Don't fake data.** If a query fails, surface the failure. Don't generate plausible-looking rows.
 - **Don't assume timezone.** All dates in CSVs are UTC `YYYY-MM-DD`. Warehouse date columns are interpreted in MySQL's session timezone.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

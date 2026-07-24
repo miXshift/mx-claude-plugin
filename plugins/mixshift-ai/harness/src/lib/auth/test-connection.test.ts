@@ -22,7 +22,7 @@ describe('testDatahubConnection :: happy path', () => {
       jsonResponse(200, {
         ok: true,
         user_id: '3',
-        email: 'amazon+clients@dashapplications.com',
+        email: 'amazon+clients@example.com',
         actor: 'someone@example.com',
         client_id: 'mx-claude-plugin',
         sid: 'd620ab5c-8de9-4597-a715-9f1104ead870',
@@ -140,7 +140,7 @@ function fixture(): DatahubCreds {
     expires_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
     refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
     user_id: '3',
-    email: 'amazon+clients@dashapplications.com',
+    email: 'amazon+clients@example.com',
     person_label: 'someone@example.com',
     device_label: 'laptop-sam',
     client_id: 'mx-claude-plugin',

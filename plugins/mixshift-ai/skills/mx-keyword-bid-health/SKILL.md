@@ -369,7 +369,7 @@ specific change set; cap change sets at 200 items per call (split larger
 sets); on `insufficient_scope` the credential cannot write, so hand the user
 the change list for manual application instead.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

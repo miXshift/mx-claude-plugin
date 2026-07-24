@@ -12,16 +12,10 @@
 
 schema_version: 1
 
-# Discord routing for ops alerts (IP whitelist requests, user feedback,
-# table-access requests, plugin crashes) is server-side. The plugin POSTs
-# every event to the Supabase `events` table; a database trigger calls
-# the `fanout-discord` Edge Function which reads the Discord webhook URL
-# from the function's secrets (set once via the Supabase dashboard) and
-# posts to the ops channel. No Discord URL ever lives in the plugin.
-#
-# Setup: internal/SUPABASE-SETUP.md §10 documents the Edge Function,
-# the database trigger, and the secret pattern. internal/SECRETS.md
-# documents which fields are secrets and which aren't.
+# Routing for ops alerts (IP whitelist requests, user feedback,
+# table-access requests, plugin crashes) is handled server-side. The
+# plugin only reports events to the MixShift backend; no Discord URL or
+# other routing secret ever lives in the plugin.
 auth:
   public_ip_lookup_url: https://api.ipify.org?format=json
 
@@ -30,13 +24,13 @@ auth:
   # of truth: the user copies the actual values from there.
   #
   # Host: most users get db.mydashapplications.studio, but some tenants
-  # have a tenant-specific subdomain like marpartners.mydashapplications.studio.
+  # have a tenant-specific subdomain like acmeco.mydashapplications.studio.
   # The credentials page shows the actual host for the user's account.
   #
   # Port: 3306 is universal.
   #
   # Database: typically matches the user's MySQL username (e.g. user
-  # "marpartners" → schema "marpartners"). The harness pre-fills the
+  # "acmeco" → schema "acmeco"). The harness pre-fills the
   # database prompt with whatever the user typed for username, which is
   # correct for most accounts. Users with a different schema (Sam's `dash`
   # user → `dashamazon` schema is the canonical outlier) override at the
@@ -57,7 +51,7 @@ auth:
       The `www` URL works for most users via the wildcard SSL on
       mydashapplications.com. If it doesn't recognize your logged-in
       session, use your tenant subdomain instead (e.g.
-      marpartners.mydashapplications.com/database-admin).
+      acmeco.mydashapplications.com/database-admin).
 
 # Telemetry destination.
 #
@@ -77,8 +71,6 @@ auth:
 # a PostgREST events URL and MIXSHIFT_TELEMETRY_APIKEY to that project's anon
 # key. Users can disable telemetry with `mixshift telemetry opt-out` or
 # MIXSHIFT_TELEMETRY=0.
-#
-# Setup: see internal/SUPABASE-SETUP.md.
 telemetry:
   enabled: true
   endpoint: https://mcp.mixshift.io/telemetry/events

@@ -152,7 +152,7 @@ This runtime discovery is the proven pattern for Cowork scheduled tasks. If you 
 - **No durable folder means STOP, not improvise.** Writing the credential into a session home and reporting success is the one failure that costs the user a setup code per scheduled fire. Fix the anchor first (`mx-scheduled-task`), then mint.
 - **Default to read-only scopes.** Ask for write scopes only when the scheduled work itself writes, and name them to the user.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

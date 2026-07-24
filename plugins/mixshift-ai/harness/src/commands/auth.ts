@@ -392,7 +392,7 @@ async function promptPersonLabel(): Promise<string> {
     validate: (v: string) =>
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
         ? true
-        : 'Use email format (e.g. alice@marpartners.com)',
+        : 'Use email format (e.g. alice@acmeco.com)',
   });
 }
 

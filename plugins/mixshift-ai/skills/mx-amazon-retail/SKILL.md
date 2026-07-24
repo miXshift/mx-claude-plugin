@@ -796,7 +796,7 @@ the credential and re-pulls brand context on its own. For Data Kiosk
 specifically, keep the create / poll / fetch steps as separate scheduled calls
 (the query handle survives across calls), never a single blocking run.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

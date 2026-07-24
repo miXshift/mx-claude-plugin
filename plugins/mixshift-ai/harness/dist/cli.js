@@ -77345,7 +77345,7 @@ var HTTP_REQUEST_TIMEOUT_MS = 3e4;
 async function initDeviceFlow(opts) {
   if (!opts.personLabel) {
     throw new Error(
-      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@marpartners.com)."
+      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@acmeco.com)."
     );
   }
   if (!isLikelyEmail(opts.personLabel)) {
@@ -77494,7 +77494,7 @@ async function runAuthLogin(opts) {
   const startedAt = Date.now();
   if (!opts.personLabel) {
     throw new Error(
-      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@marpartners.com). Required because one MixShift tenant credential is shared across many employees; person_label lets admins see who did what."
+      "Missing --person-label. Pass your work email so we can attribute your session (e.g. --person-label alice@acmeco.com). Required because one MixShift tenant credential is shared across many employees; person_label lets admins see who did what."
     );
   }
   if (!isLikelyEmail(opts.personLabel)) {
@@ -78257,7 +78257,7 @@ async function promptPersonLabel() {
   return dist_default5({
     message: "Your work email (for per-employee session attribution; not auth):",
     required: true,
-    validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? true : "Use email format (e.g. alice@marpartners.com)"
+    validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? true : "Use email format (e.g. alice@acmeco.com)"
   });
 }
 function parseLoginMode(raw) {

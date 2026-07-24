@@ -3,8 +3,8 @@
  * check-skill-telemetry.mjs
  *
  * Scans every `plugins/mixshift-ai/skills/<id>/SKILL.md` and enforces
- * the canonical telemetry convention documented in
- * `docs/productization/SKILL-AUTHOR-GUIDE.md`.
+ * the canonical telemetry convention documented in the maintainer
+ * skill-author guide.
  *
  * Required in every SKILL.md:
  *   1. `mixshift telemetry emit skill.invoked --skill <id>` with the
@@ -56,7 +56,7 @@ async function checkSkill(skillId) {
   // 1. Standard heading
   if (!/##\s*Telemetry\s*\(required/i.test(raw)) {
     result.errors.push(
-      'Missing "## Telemetry (required ..." heading. See docs/productization/SKILL-AUTHOR-GUIDE.md for the canonical block.',
+      'Missing "## Telemetry (required ..." heading. See the skill-author guide for the canonical block.',
     );
   }
 
@@ -93,7 +93,7 @@ async function checkSkill(skillId) {
       "Missing the executable CLI resolver. Every SKILL.md must include the scan " +
         "`find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1` " +
         'in its CLI-invocation guidance so the CLI is locatable in Cowork (no PATH hook, ' +
-        'no $MIXSHIFT_CLI). See docs/productization/SKILL-AUTHOR-GUIDE.md.',
+        'no $MIXSHIFT_CLI). See the skill-author guide.',
     );
   }
 
@@ -104,7 +104,7 @@ async function checkSkill(skillId) {
     /trigger_phrases:/i.test(raw)
   ) {
     result.errors.push(
-      'SKILL.md declares trigger_phrases but never emits skill.trigger_phrase_matched. Either remove the natural-language triggers from frontmatter, or add the conditional emit (see SKILL-AUTHOR-GUIDE.md).',
+      'SKILL.md declares trigger_phrases but never emits skill.trigger_phrase_matched. Either remove the natural-language triggers from frontmatter, or add the conditional emit (see the skill-author guide).',
     );
   }
 
@@ -135,6 +135,6 @@ for (const f of failures) {
   console.error('');
 }
 console.error(
-  'Fix by copying the canonical block from docs/productization/SKILL-AUTHOR-GUIDE.md and substituting the skill-id.',
+  'Fix by copying the canonical block from the skill-author guide and substituting the skill-id.',
 );
 process.exit(1);

@@ -5,8 +5,6 @@ dist-zip/
 
 # Local IDE / editor config
 .claude/*
-# ...except committed maintainer skills (e.g. release-docs), shared with the team.
-!.claude/skills/
 .vscode/
 .idea/
 
@@ -33,8 +31,8 @@ internal/
 .env.test
 
 # Internal build/strategy docs — kept local, not for the public repo.
-# (docs/productization/SKILL-AUTHOR-GUIDE.md stays tracked: every SKILL.md and
-# the telemetry gate link it.)
+# (The maintainer skill-author guide now lives under internal/, which is
+# already ignored above; shipped SKILL.md files no longer link to it.)
 docs/productization/BRAND-MANAGEMENT.md
 docs/productization/HARNESS-REWRITE.md
 docs/productization/MIGRATION-NOTES.md

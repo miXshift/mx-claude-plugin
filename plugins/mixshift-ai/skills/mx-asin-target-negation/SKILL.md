@@ -496,7 +496,7 @@ Hard rules: never pass `--commit` without the user's confirmation of this
 specific change set; cap change sets at 200 items per call; on
 `insufficient_scope` hand the user the negation list for manual application.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

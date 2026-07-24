@@ -313,7 +313,7 @@ The sidecar lives at `~/.mixshift/clients/<brand>/runs/mx-runaway-spend-check/<d
 4. Bottom Line with keyword count and recommendation
 5. Areas to Monitor (if applicable)
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

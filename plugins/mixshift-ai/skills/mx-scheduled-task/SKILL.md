@@ -237,7 +237,7 @@ which path worked when sending feedback; this differs by platform version.
 - **Setup is done only after one verified attended run** (Step 4), never after
   the pieces merely exist.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

@@ -42,7 +42,7 @@ export const mysqlCredsSchema = z.object({
 //   refresh_expires_at  — ISO-8601 for the refresh_token. Past this, user
 //                         must re-run `mixshift auth login`.
 //   user_id             — service-side user id (string in the wire format).
-//   email               — tenant's shared login (e.g. "ops@marpartners.com").
+//   email               — tenant's shared login (e.g. "ops@acmeco.com").
 //                         One per tenant; same value shared by every
 //                         employee in that tenant.
 //   person_label        — self-attested per-employee actor email. Distinct

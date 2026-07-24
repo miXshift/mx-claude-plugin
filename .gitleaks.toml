@@ -3,7 +3,7 @@
 # Layered on top of gitleaks' default rule set (we extend via [extend]
 # below). This file defines:
 #   - allowlist entries for values that look secret-shaped but are
-#     intentional (master password, Supabase anon key when scoped to
+#     intentional (e.g. the Supabase anon key when scoped to the
 #     defaults file)
 #   - custom rules for things specific to our domain (Discord webhook URLs)
 #
@@ -30,10 +30,6 @@ tags = ["secret", "discord"]
 # -----------------------------------------------------------------------
 # Allowlists (array form — each entry is an independent allowlist)
 # -----------------------------------------------------------------------
-
-[[allowlists]]
-description = "Master password — shared across customers, intentionally public"
-regexes = ['''Dash!applications4you''']
 
 [[allowlists]]
 description = "Supabase anon key in plugin defaults (safe by design — client-embeddable per Supabase's security model; RLS does the auth on the database side)"

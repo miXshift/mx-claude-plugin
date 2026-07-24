@@ -838,7 +838,7 @@ up an admin-issued service credential inside it (via `mx-auth-service-setup`),
 and generates task instructions that begin with `mixshift task preflight`, so
 every run re-finds the credential and re-pulls brand context on its own.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

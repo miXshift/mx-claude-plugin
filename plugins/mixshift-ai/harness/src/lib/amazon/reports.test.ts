@@ -1147,7 +1147,7 @@ function freshDatahubFixture(): DatahubCreds {
     expires_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
     refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
     user_id: '3',
-    email: 'amazon+clients@dashapplications.com',
+    email: 'amazon+clients@example.com',
     person_label: 'someone@example.com',
     device_label: 'laptop-sam',
     client_id: 'mx-claude-plugin',

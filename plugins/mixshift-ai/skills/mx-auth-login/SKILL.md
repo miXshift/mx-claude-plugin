@@ -59,7 +59,7 @@ One or two sentences, then move. Don't repeat the framing at each step.
 
 **Check first:** if `~/.mixshift/auth/credentials` exists and has a `datahub.person_label` from a prior login, reuse it. Tell the user:
 
-> *"Reusing your stored email (alice@marpartners.com). Say so if that's wrong and I'll switch."*
+> *"Reusing your stored email (alice@acmeco.com). Say so if that's wrong and I'll switch."*
 
 **Otherwise ask once:**
 

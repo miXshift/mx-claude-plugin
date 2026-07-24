@@ -52,4 +52,4 @@ notes: >
   event fans out to the ops Discord as the live signal. Always dry-runs and
   confirms before sending. On the web path (no shell), the CLI is unavailable;
   the SKILL.md falls back to capturing the content and routing a heads-up via
-  mx-feedback. See internal/SUPABASE-SETUP.md section 11 for the backend.
+  mx-feedback.

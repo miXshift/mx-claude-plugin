@@ -295,7 +295,7 @@ mixshift sidecar write --input-file /tmp/sth-sidecar-input.json
 *Skill version: 1.1.0 — focused harvest extraction*
 *Ported from upstream with full domain logic preserved*
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

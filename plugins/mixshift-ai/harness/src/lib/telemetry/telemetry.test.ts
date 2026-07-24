@@ -259,9 +259,9 @@ describe('queue', () => {
 describe('normalizeRecord', () => {
   it('keeps person_label on the wire record (regression: it was dropped, severing per-employee attribution)', () => {
     const out = normalizeRecord(
-      makeRecord({ person_label: 'todd.vanderstelt@mixshift.io' }),
+      makeRecord({ person_label: 'jordan.lee@example.com' }),
     );
-    expect(out.person_label).toBe('todd.vanderstelt@mixshift.io');
+    expect(out.person_label).toBe('jordan.lee@example.com');
   });
 
   it('coerces missing optional fields to explicit null so batch key sets match (PGRST102)', () => {

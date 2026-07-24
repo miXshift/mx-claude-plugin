@@ -18,8 +18,8 @@ function datahub(overrides?: Partial<DatahubCreds>): DatahubCreds {
     expires_at: new Date(Date.now() + 3_600_000).toISOString(),
     refresh_expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     user_id: 'user-123',
-    email: 'ops@marpartners.com',
-    person_label: 'sam.hager@mixshift.io',
+    email: 'ops@acmeco.com',
+    person_label: 'taylor.rivera@example.com',
     device_label: 'test-host',
     client_id: 'mx-claude-plugin',
     ...overrides,
@@ -74,7 +74,7 @@ describe('resolveAttribution', () => {
     await writeCreds(dataDir, { datahub: datahub() });
     const a = await resolveAttribution(dataDir);
     expect(a.automation).toBe(false);
-    expect(a.personLabel).toBe('sam.hager@mixshift.io');
+    expect(a.personLabel).toBe('taylor.rivera@example.com');
     expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123' });
   });
 
@@ -104,7 +104,7 @@ describe('resolveAttribution', () => {
     const a = await resolveAttribution(dataDir);
     expect(a.actor.kind).toBe('human');
     expect(a.automation).toBe(false);
-    expect(a.personLabel).toBe('sam.hager@mixshift.io');
+    expect(a.personLabel).toBe('taylor.rivera@example.com');
   });
 
   it('enriches a service actor from the mint attribution cache (P2 path)', async () => {

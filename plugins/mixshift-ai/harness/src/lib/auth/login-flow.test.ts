@@ -109,7 +109,7 @@ describe('runAuthLogin :: PKCE happy path', () => {
     };
 
     const result = await runAuthLogin({
-      personLabel: 'alice@marpartners.com',
+      personLabel: 'alice@acmeco.com',
       mode: 'pkce',
       apiBase: 'https://mcp.test',
       dataDirOverride: testDir,
@@ -119,8 +119,8 @@ describe('runAuthLogin :: PKCE happy path', () => {
 
     expect(result.ok).toBe(true);
     expect(result.mode).toBe('pkce');
-    expect(result.email).toBe('amazon+clients@dashapplications.com');
-    expect(result.personLabel).toBe('alice@marpartners.com');
+    expect(result.email).toBe('amazon+clients@example.com');
+    expect(result.personLabel).toBe('alice@acmeco.com');
     expect(result.userId).toBe('3');
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
 
@@ -136,14 +136,14 @@ describe('runAuthLogin :: PKCE happy path', () => {
     expect(openedUrls).toHaveLength(1);
     const parsed = new URL(openedUrls[0]);
     expect(parsed.searchParams.get('client_id')).toBe('mx-claude-plugin');
-    expect(parsed.searchParams.get('actor')).toBe('alice@marpartners.com');
+    expect(parsed.searchParams.get('actor')).toBe('alice@acmeco.com');
     expect(parsed.searchParams.get('challenge')).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(parsed.searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]+$/);
 
     // Creds were persisted
     const { credentials } = await loadCredentials(testDir);
     expect(credentials?.datahub?.access_token).toBe('eyJtest.token');
-    expect(credentials?.datahub?.person_label).toBe('alice@marpartners.com');
+    expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
     expect(credentials?.datahub?.api_base).toBe('https://mcp.test');
   });
 });
@@ -167,7 +167,7 @@ describe('runAuthLogin :: PKCE failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'pkce',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -188,7 +188,7 @@ describe('runAuthLogin :: PKCE failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'pkce',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -207,7 +207,7 @@ describe('runAuthLogin :: PKCE failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'pkce',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -234,7 +234,7 @@ describe('runAuthLogin :: PKCE failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'pkce',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -278,7 +278,7 @@ describe('runAuthLogin :: device-code happy path', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await runAuthLogin({
-      personLabel: 'alice@marpartners.com',
+      personLabel: 'alice@acmeco.com',
       mode: 'device',
       apiBase: 'https://mcp.test',
       dataDirOverride: testDir,
@@ -287,11 +287,11 @@ describe('runAuthLogin :: device-code happy path', () => {
 
     expect(result.ok).toBe(true);
     expect(result.mode).toBe('device');
-    expect(result.email).toBe('amazon+clients@dashapplications.com');
+    expect(result.email).toBe('amazon+clients@example.com');
 
     const { credentials } = await loadCredentials(testDir);
     expect(credentials?.datahub?.access_token).toBe('eyJtest.token');
-    expect(credentials?.datahub?.person_label).toBe('alice@marpartners.com');
+    expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
   }, 15_000);
 });
 
@@ -304,7 +304,7 @@ describe('runAuthLogin :: device-code failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'device',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -337,7 +337,7 @@ describe('runAuthLogin :: device-code failure modes', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'device',
         apiBase: 'https://mcp.test',
         dataDirOverride: testDir,
@@ -379,7 +379,7 @@ describe('runAuthLogin :: auto mode', () => {
     };
 
     const result = await runAuthLogin({
-      personLabel: 'alice@marpartners.com',
+      personLabel: 'alice@acmeco.com',
       mode: 'auto',
       apiBase: 'https://mcp.test',
       dataDirOverride: testDir,
@@ -388,7 +388,7 @@ describe('runAuthLogin :: auto mode', () => {
     });
 
     expect(result.mode).toBe('device');
-    expect(result.email).toBe('amazon+clients@dashapplications.com');
+    expect(result.email).toBe('amazon+clients@example.com');
   }, 10_000);
 
   it('respects --no-fallback: PKCE failure does NOT fall back', async () => {
@@ -400,7 +400,7 @@ describe('runAuthLogin :: auto mode', () => {
 
     await expect(
       runAuthLogin({
-        personLabel: 'alice@marpartners.com',
+        personLabel: 'alice@acmeco.com',
         mode: 'auto',
         noFallback: true,
         apiBase: 'https://mcp.test',
@@ -432,7 +432,7 @@ describe('runAuthLogin :: auto mode', () => {
     };
 
     const result = await runAuthLogin({
-      personLabel: 'alice@marpartners.com',
+      personLabel: 'alice@acmeco.com',
       mode: 'auto',
       apiBase: 'https://mcp.test',
       dataDirOverride: testDir,
@@ -461,7 +461,7 @@ function validExchangeBody() {
     expires_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
     refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
     user_id: '3',
-    email: 'amazon+clients@dashapplications.com',
+    email: 'amazon+clients@example.com',
     client_id: 'mx-claude-plugin',
   };
 }

@@ -698,7 +698,7 @@ After a commit:
 
 Do not pad with "Here is what you asked for." Lead with the result.
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

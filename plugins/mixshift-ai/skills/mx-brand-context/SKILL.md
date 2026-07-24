@@ -599,7 +599,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 *Version history: see [CHANGELOG.md](CHANGELOG.md). Current version: v2.6.0.*
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

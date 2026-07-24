@@ -126,7 +126,7 @@ The hub also points two ways outward. Offer these when they fit:
 - Do not invent skills or capabilities. If the user asks for something the plugin does not do, say so plainly and offer to file it as a feature request via mx-feedback.
 - Stay a router. Hand off to the real skill rather than half-doing its job here.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

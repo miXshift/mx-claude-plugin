@@ -601,7 +601,7 @@ generates task instructions that begin with `mixshift task preflight --brand
 [slug]`, so every run re-finds the credential and re-pulls this brand's
 context on its own.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

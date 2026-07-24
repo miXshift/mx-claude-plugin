@@ -382,7 +382,7 @@ mixshift sidecar write --input-file /tmp/pqs-sidecar-input.json
 `mixshift sidecar compare` will surface drift against the prior portfolio scan once implemented; until then, sidecars accumulate read-only for retrospective inspection.
 
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

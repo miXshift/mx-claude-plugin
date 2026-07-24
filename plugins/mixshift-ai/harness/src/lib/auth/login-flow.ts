@@ -148,7 +148,7 @@ export async function initDeviceFlow(
   if (!opts.personLabel) {
     throw new Error(
       'Missing --person-label. Pass your work email so we can attribute ' +
-        'your session (e.g. --person-label alice@marpartners.com).',
+        'your session (e.g. --person-label alice@acmeco.com).',
     );
   }
   if (!isLikelyEmail(opts.personLabel)) {
@@ -388,7 +388,7 @@ export async function runAuthLogin(
   if (!opts.personLabel) {
     throw new Error(
       'Missing --person-label. Pass your work email so we can attribute ' +
-        'your session (e.g. --person-label alice@marpartners.com). ' +
+        'your session (e.g. --person-label alice@acmeco.com). ' +
         'Required because one MixShift tenant credential is shared across ' +
         'many employees; person_label lets admins see who did what.',
     );

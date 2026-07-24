@@ -190,7 +190,7 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 
 Brief is good. The user already knows what they said.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

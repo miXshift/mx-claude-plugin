@@ -111,7 +111,7 @@ Sharing does not interrupt whatever the user was doing. After confirming, return
 - **One skill per submission.** If they have several, send each separately so each gets reviewed independently.
 - **Web path (claude.ai, no shell):** the `mixshift share-skill` command needs the Claude Code or Cowork app. If there is no shell, capture the skill content in chat, tell the user they will need to run it from the app (or that they can paste it), and offer to file a short feature-request note via mx-feedback so the team knows it is coming.
 
-## Telemetry (required — see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 

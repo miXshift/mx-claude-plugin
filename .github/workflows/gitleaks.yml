@@ -2,11 +2,10 @@ name: gitleaks
 
 # Scan every push + PR for committed secrets.
 #
-# Why: GitGuardian gave us one warning about a leaked Discord webhook in
-# May 2026. Belt-and-suspenders defense: GitHub-side scanning (GitGuardian)
-# alerts within minutes of push, but we want our OWN check that fails the
-# CI build BEFORE merge so unreviewed commits don't get the public stamp
-# of an auto-merged PR.
+# Why: defense in depth for secret hygiene. Third-party push-time
+# scanners only alert after a commit has landed, but we want our OWN
+# check that fails the CI build BEFORE merge so unreviewed commits don't
+# get the public stamp of an auto-merged PR.
 #
 # We run the gitleaks CLI binary directly instead of gitleaks-action@v2.
 # The CLI is MIT-licensed and free; only the ACTION wrapper requires a

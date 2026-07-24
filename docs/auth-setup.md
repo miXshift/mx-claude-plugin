@@ -141,7 +141,7 @@ Inside `auth/credentials` (after a successful login):
     "expires_at": "2026-05-28T17:00:00.000Z",
     "refresh_expires_at": "2026-06-26T17:00:00.000Z",
     "user_id": "3",
-    "email": "amazon+clients@dashapplications.com",
+    "email": "amazon+clients@example.com",
     "person_label": "you@yourcompany.com",
     "device_label": "your-hostname",
     "client_id": "mx-claude-plugin"

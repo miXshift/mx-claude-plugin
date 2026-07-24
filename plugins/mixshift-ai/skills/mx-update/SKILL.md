@@ -120,7 +120,7 @@ This moves the watermark forward so the same actions do not resurface next time;
 - Never skip the confirmation step inside the named skill just because this skill already asked once. That skill's own confirm flow is the real gate for any write.
 - No em dashes in anything shown to the user. Say "brand setup" or "brand context," never "cold start."
 
-## Telemetry (required - see [SKILL-AUTHOR-GUIDE.md](../../../../docs/productization/SKILL-AUTHOR-GUIDE.md))
+## Telemetry (required)
 
 At the START of this skill, run:
 
