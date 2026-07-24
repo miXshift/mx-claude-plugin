@@ -58,7 +58,8 @@ import {
   findReportType,
   type ReportCatalogEntry,
 } from '../lib/reports/catalog.js';
-import { reportOutputPath } from '../lib/paths/resolve.js';
+import { reportOutputPath, outputDir } from '../lib/paths/resolve.js';
+import { planInlineDocument, previewLines } from '../lib/output/inline-ceiling.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { registerAmazonPricingCommands } from './amazon-pricing.js';
 import { registerAmazonSpApiCommands } from './amazon-spapi.js';
@@ -405,7 +406,12 @@ function registerReportGet(report: Command): void {
         'copy to stdout. Prefer --out so document size is never a concern.',
     )
     .option('--out <path>', 'stream the document to this file (recommended; handles reports of any size)')
-    .action(async (runId: string, opts: { out?: string }, cmd: Command) => {
+    .option(
+      '--inline',
+      'print the full document inline even when large (overrides the default ' +
+        'spill-to-file for big docs). Ignored when --out is set.',
+    )
+    .action(async (runId: string, opts: { out?: string; inline?: boolean }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
       const clientOpts = { dataDirOverride: root.dataDir };
@@ -439,8 +445,11 @@ function registerReportGet(report: Command): void {
           return;
         }
 
-        // No --out: print a size-capped inline copy to stdout. Oversized
-        // documents fail cleanly (pointing at --out) instead of crashing.
+        // No --out: fetch a size-capped inline copy. Oversized documents (over
+        // the 25 MB decode cap) fail cleanly pointing at --out. A document that
+        // decodes fine but is still large enough to flood an LLM's context
+        // (over the inline-doc ceiling) auto-spills to a file and comes back as
+        // a compact handle + short preview instead of dumping the whole doc.
         const result = await getReportDocument(runId, clientOpts);
         if (isReportFailure(result)) {
           await trackFailure(EventName.ReportFailed, result, startedAt, root.dataDir, undefined, runId);
@@ -453,6 +462,43 @@ function registerReportGet(report: Command): void {
         const document = result.document ?? '';
         const bytes = result.bytes ?? Buffer.byteLength(document, 'utf-8');
         await trackRetrieved(startedAt, bytes, root.dataDir);
+
+        const plan = planInlineDocument(bytes, { inline: opts.inline });
+        if (plan.mode === 'spill') {
+          // Write the decoded doc to a file and return a handle + preview.
+          const spillPath = resolvePath(
+            `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`,
+          );
+          await mkdir(dirname(spillPath), { recursive: true });
+          await writeFile(spillPath, document, 'utf-8');
+          const { preview, truncated, totalLines } = previewLines(document);
+          if (root.json) {
+            writeJson({
+              status: 'ok',
+              ready: true,
+              bytes,
+              out_path: spillPath,
+              spilled_to_file: true,
+              preview_truncated: truncated,
+              preview_line_count: preview === '' ? 0 : preview.split('\n').length,
+              total_lines: totalLines,
+              preview,
+            });
+          } else {
+            process.stderr.write(
+              `\n✓ ${bytes} bytes. Document is large, so I saved it to a file and show a preview below:\n` +
+                `  ${spillPath}\n` +
+                `  Tip: pass --out <path> to choose the destination, or --inline to print the full document.\n`,
+            );
+            process.stdout.write(
+              `Preview (first ${preview === '' ? 0 : preview.split('\n').length} of ${totalLines} lines):\n` +
+                preview +
+                (preview.endsWith('\n') || preview === '' ? '' : '\n'),
+            );
+          }
+          return;
+        }
+
         if (root.json) {
           writeJson({ status: 'ok', ready: true, bytes, document });
         } else {
@@ -1438,6 +1484,13 @@ async function defaultOutPath(
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Reduce a runId to filename-safe characters so the spill path can never
+ *  escape the output dir even if the service-minted handle is malformed. */
+function sanitizeForFilename(s: string): string {
+  const cleaned = s.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+  return cleaned || 'report';
 }
 
 function sleep(ms: number): Promise<void> {

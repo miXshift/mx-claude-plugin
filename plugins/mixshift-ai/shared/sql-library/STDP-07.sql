@@ -18,7 +18,7 @@ SELECT
          THEN ROUND(SUM(Cost) / SUM(Sales) * 100, 1)
          ELSE NULL
     END AS lifetime_acos
-FROM KW_Target_ST_report_MV
+FROM keywordtargetingmetric
 WHERE SellerID = :seller_id
   AND recordType = 'Product Attribute Targeting'
   AND KeywordText IN (:asin_target_list)

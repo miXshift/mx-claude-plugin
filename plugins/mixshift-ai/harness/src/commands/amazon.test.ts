@@ -657,3 +657,82 @@ describe('report.failed carries run_id for started<->failed correlation', () => 
     expect(failed[0].report_type).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// report get (no --out): inline context ceiling. A large decoded document is
+// spilled to a file and returned as a handle + preview instead of dumping the
+// whole doc into an LLM's context; a small doc still prints inline.
+// ---------------------------------------------------------------------------
+
+describe('report get — inline context ceiling', () => {
+  /** A TSV-ish document of `lines` rows, each ~`width` bytes wide. */
+  function bigDoc(lines: number, width: number): string {
+    return (
+      Array.from({ length: lines }, (_, i) => `${i}\t${'x'.repeat(width)}`).join('\n') + '\n'
+    );
+  }
+
+  it('spills a large document to a file and returns a handle + preview (no full dump)', async () => {
+    const doc = bigDoc(200, 4 * 1024); // ~800KB, well over the 256KB ceiling
+    const bytes = Buffer.byteLength(doc, 'utf-8');
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: doc,
+      bytes,
+    });
+
+    await runCli('amazon', 'report', 'get', 'run-big', '--json', '--data-dir', tmpDir);
+
+    const result = lastJson();
+    expect(result.status).toBe('ok');
+    expect(result.spilled_to_file).toBe(true);
+    expect(result.out_path).toBeTruthy();
+    expect(result.preview_truncated).toBe(true);
+    expect(result.total_lines).toBe(200);
+    // The compact envelope must NOT carry the full document.
+    expect(result.document).toBeUndefined();
+    // The preview is a small slice, not the whole thing.
+    expect(result.preview.split('\n').length).toBeLessThanOrEqual(40);
+    // The full document really landed on disk.
+    expect(await readFile(result.out_path, 'utf-8')).toBe(doc);
+  });
+
+  it('renders a small document inline (unchanged behavior)', async () => {
+    const doc = 'order-id\tdate\n123\t2026-05-01\n';
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: doc,
+      bytes: Buffer.byteLength(doc, 'utf-8'),
+    });
+
+    await runCli('amazon', 'report', 'get', 'run-small', '--json', '--data-dir', tmpDir);
+
+    const result = lastJson();
+    expect(result.status).toBe('ok');
+    expect(result.document).toBe(doc);
+    expect(result.spilled_to_file).toBeUndefined();
+    expect(result.out_path).toBeUndefined();
+  });
+
+  it('--inline forces a full inline dump even for a large document', async () => {
+    const doc = bigDoc(200, 4 * 1024);
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: doc,
+      bytes: Buffer.byteLength(doc, 'utf-8'),
+    });
+
+    await runCli('amazon', 'report', 'get', 'run-big', '--inline', '--json', '--data-dir', tmpDir);
+
+    const result = lastJson();
+    expect(result.status).toBe('ok');
+    expect(result.document).toBe(doc);
+    expect(result.spilled_to_file).toBeUndefined();
+  });
+});

@@ -122,6 +122,32 @@ export async function listOperations(
   return { ok: true, operations };
 }
 
+/** AWD (Amazon Warehousing & Distribution) is a newer SP-API role. A merchant
+ *  who authorized MixShift before the role was added will 403 on `awd.*`
+ *  operations until the token is re-authorized to include it. That 403 comes
+ *  back as kind='restricted_report' (403 -> restricted_report), the same kind
+ *  as a genuine RDT/PII gap, so we cannot fix the wording service-side by kind
+ *  alone. Here, where we know the operation id, we swap in an actionable
+ *  re-auth call-to-action. It also reads as clearly terminal, which stops a
+ *  caller (or an LLM) from retrying the same 403 in a loop. Enrollment gaps are
+ *  a separate case (empty 200, not a 403) and are handled by the skill. */
+const AWD_REAUTH_FRIENDLY =
+  "This merchant isn't authorized for Amazon Warehousing & Distribution (AWD) " +
+  "yet. AWD is a newly added SP-API role, so the merchant's existing " +
+  'connection does not include it. To enable AWD endpoints for this merchant:\n' +
+  '  1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants\n' +
+  '  2. Find this merchant and click "Update Token".\n' +
+  '  3. Amazon Seller Central will open to add the new role and finish\n' +
+  '     authorization, then redirect you back to MixShift.\n' +
+  'Once the token is updated, this endpoint will work from the plugin. There is ' +
+  'no need to retry the call until the token has been updated.';
+
+/** True for the AWD operation family (`awd.list_inventory`,
+ *  `awd.list_inbound_shipments`, `awd.get_inbound_shipment`, ...). */
+function isAwdOperation(operation: string): boolean {
+  return operation === 'awd' || operation.startsWith('awd.');
+}
+
 /** Execute one cataloged SP-API operation. Read-only against Amazon. */
 export async function spapiCall(
   input: SpApiCallInput,
@@ -157,7 +183,14 @@ export async function spapiCall(
     { method: 'POST', path: '/api/amazon/spapi/call', body },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    // AWD role gap: rewrite the generic restricted_report text into an
+    // actionable re-auth call-to-action (and a clearly terminal one).
+    if (r.kind === 'restricted_report' && isAwdOperation(input.operation)) {
+      return { ...r, friendly: AWD_REAUTH_FRIENDLY };
+    }
+    return r;
+  }
   const json = r.json as Partial<SpApiCallSuccess>;
   if (typeof json.operation !== 'string') {
     return {

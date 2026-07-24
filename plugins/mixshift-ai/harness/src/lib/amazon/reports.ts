@@ -48,10 +48,10 @@
  * carried through as `httpStatus` for diagnostics only.
  */
 
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { createWriteStream, type WriteStream } from 'node:fs';
+import { mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip, gunzipSync } from 'node:zlib';
 
@@ -140,6 +140,7 @@ export type ReportFailureKind =
   // --- local-only (this module) ---
   | 'not_authenticated' // no datahub creds on disk; run `mixshift auth login`
   | 'session_expired' // 401 even after a forced refresh
+  | 'download_failed' // presigned document download stalled/dropped after retries
   | 'unknown'; // anything else (500, unparseable body, ...)
 
 export interface ReportFailure {
@@ -327,6 +328,7 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
     case 'report_fatal':
       return 9; // Amazon returned FATAL / CANCELLED
     case 'host_unreachable':
+    case 'download_failed': // transient download failure — retry the fetch
     case 'unknown':
     default:
       return 1;
@@ -708,6 +710,46 @@ export async function getReportDocument(
   };
 }
 
+/** How many times to (re)attempt the presigned download before giving up. A
+ *  large report doc that stalls or drops mid-stream is transient; earlier this
+ *  bucketed as a single-shot `unknown` failure that forced manual re-runs
+ *  (Elevate, 0.8.5, re-ran 3x by hand). */
+export const DEFAULT_DOWNLOAD_ATTEMPTS = 3;
+/** Per-attempt STALL timeout: abort an attempt only after this long with NO
+ *  progress (no headers, no bytes). A download that keeps making progress is
+ *  never killed, however long the whole transfer takes — the fix for the old
+ *  single 120s TOTAL timeout that failed large-but-healthy downloads. */
+export const DEFAULT_DOWNLOAD_STALL_MS = 60_000;
+/** Per-attempt overall backstop: abort even a steadily-progressing attempt past
+ *  this, so a pathological trickle can't run unbounded. Generous — a legitimate
+ *  multi-hundred-MB report at target scale finishes well within it. */
+export const DEFAULT_DOWNLOAD_DEADLINE_MS = 10 * 60_000;
+const DOWNLOAD_BACKOFF_BASE_MS = 500;
+const DOWNLOAD_BACKOFF_CAP_MS = 8_000;
+
+/** Tuning knobs for the streaming download, on top of the shared client opts.
+ *  All optional; the defaults above apply. Injectable for tests. */
+export interface StreamDocumentOptions extends ReportClientOptions {
+  /** Max download attempts (default {@link DEFAULT_DOWNLOAD_ATTEMPTS}). */
+  maxDownloadAttempts?: number;
+  /** Per-attempt inactivity timeout (default {@link DEFAULT_DOWNLOAD_STALL_MS}). */
+  downloadStallMs?: number;
+  /** Per-attempt overall deadline (default {@link DEFAULT_DOWNLOAD_DEADLINE_MS}). */
+  downloadDeadlineMs?: number;
+  /** Backoff sleeper between retries. Defaults to a real timer; tests inject a
+   *  no-op so the retry path runs instantly. */
+  sleepImpl?: (ms: number) => Promise<void>;
+}
+
+/** One attempt's outcome. `retryable` says whether re-attempting could help;
+ *  `expired` marks a presigned-link expiry (403/410) whose fix is a fresh link,
+ *  not a retry of the same URL; `opened` is true once THIS attempt created the
+ *  output file (so the loop only salvages a file we actually wrote, never a
+ *  pre-existing file we failed before touching). */
+type DownloadAttempt =
+  | { ok: true; bytes: number }
+  | { ok: false; retryable: boolean; expired: boolean; opened: boolean; failure: ReportFailure };
+
 /**
  * Stream a presigned report document straight to a file, in chunks, never
  * materializing it as a string. THIS is the large-report-safe path behind
@@ -715,58 +757,242 @@ export async function getReportDocument(
  * body through a gunzip transform (when GZIP) into the destination file, so a
  * report of any size lands on disk without the V8 string-length crash.
  *
+ * Reliability (v2): a large doc can take minutes and can stall or drop
+ * mid-stream. Instead of one 120s TOTAL timeout with no retry (which bucketed
+ * failures as `unknown` and forced manual re-runs), each attempt uses a STALL
+ * timeout (reset on every chunk) plus a generous overall backstop, and a
+ * transient failure (network drop, stall, 5xx, mid-stream error) is retried
+ * with backoff. A link expiry (403/410) is NOT retried against the same URL —
+ * it surfaces the clear "re-run get for a fresh link" message. When every
+ * attempt fails transiently, the result is classed `download_failed` (a real
+ * error_class, never `unknown`) so telemetry and the reliability sweep see a
+ * clean, actionable signature.
+ *
  * Sends NO Authorization header (presigned link; a Bearer makes S3 reject it).
- * A non-2xx (e.g. an expired link) surfaces as a friendly re-fetch failure.
- * The parent directory is created if missing.
+ * The parent directory is created if missing; a partially-written file from the
+ * final failed attempt is renamed to `<outPath>.partial` so no consumer reads a
+ * truncated report as complete.
  */
 export async function streamReportDocumentToFile(
   document: DocumentMeta,
   outPath: string,
-  opts: ReportClientOptions = {},
+  opts: StreamDocumentOptions = {},
 ): Promise<StreamReportDocumentResult | ReportFailure> {
+  const maxAttempts = Math.max(1, opts.maxDownloadAttempts ?? DEFAULT_DOWNLOAD_ATTEMPTS);
+  const stallMs = opts.downloadStallMs ?? DEFAULT_DOWNLOAD_STALL_MS;
+  const deadlineMs = opts.downloadDeadlineMs ?? DEFAULT_DOWNLOAD_DEADLINE_MS;
+  const sleep = opts.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  let last: ReportFailure | null = null;
+  let opened = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const a = await attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs);
+    if (a.ok) {
+      return {
+        ok: true,
+        bytes: a.bytes,
+        compressionAlgorithm: document.compressionAlgorithm,
+        reportDocumentId: document.reportDocumentId,
+      };
+    }
+    last = a.failure;
+    opened = opened || a.opened;
+    // An expired presigned link won't heal by re-fetching the SAME url, and a
+    // non-retryable status (a plain 4xx) won't heal at all — surface at once.
+    if (a.expired || !a.retryable) {
+      if (opened) await renamePartial(outPath);
+      return a.failure;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(downloadBackoffMs(attempt));
+    }
+  }
+  // Every attempt failed transiently. Rename any truncated file and return a
+  // real, retryable error_class (never `unknown`).
+  if (opened) await renamePartial(outPath);
+  return {
+    ok: false,
+    kind: 'download_failed',
+    friendly: defaultFriendly('download_failed'),
+    message:
+      `report document download failed after ${maxAttempts} attempt(s)` +
+      (last?.message ? `: ${last.message}` : last?.friendly ? `: ${last.friendly}` : ''),
+    httpStatus: last?.httpStatus,
+  };
+}
+
+/** Exponential backoff between download retries, capped. */
+function downloadBackoffMs(attempt: number): number {
+  return Math.min(DOWNLOAD_BACKOFF_BASE_MS * 2 ** (attempt - 1), DOWNLOAD_BACKOFF_CAP_MS);
+}
+
+/** One fetch+stream attempt with a stall timeout (reset on progress) and an
+ *  overall backstop, both wired to an AbortController that aborts the fetch (and
+ *  thus the body stream) when it fires. */
+async function attemptDownloadOnce(
+  document: DocumentMeta,
+  outPath: string,
+  opts: StreamDocumentOptions,
+  stallMs: number,
+  deadlineMs: number,
+): Promise<DownloadAttempt> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const controller = new AbortController();
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let abortedReason: 'stall' | 'deadline' | null = null;
+
+  const armStall = (): void => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      abortedReason = 'stall';
+      controller.abort();
+    }, stallMs);
+    // Don't let a pending timer keep the event loop alive on its own.
+    stallTimer.unref?.();
+  };
+  const clearTimers = (): void => {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+  };
 
   let res: Response;
   try {
-    res = await fetchImpl(document.url, { signal: AbortSignal.timeout(timeoutMs) });
+    armStall();
+    deadlineTimer = setTimeout(() => {
+      abortedReason = 'deadline';
+      controller.abort();
+    }, deadlineMs);
+    deadlineTimer.unref?.();
+    res = await fetchImpl(document.url, { signal: controller.signal });
   } catch (err) {
-    return hostUnreachable(err instanceof Error ? err.message : String(err));
-  }
-  if (!res.ok) return presignedFetchFailure(res.status);
-  if (!res.body) {
-    return hostUnreachable('the report download returned an empty response body');
-  }
-
-  await mkdir(dirname(outPath), { recursive: true });
-  const out = createWriteStream(outPath);
-  const source = Readable.fromWeb(
-    res.body as Parameters<typeof Readable.fromWeb>[0],
-  );
-
-  try {
-    if (document.compressionAlgorithm === 'GZIP') {
-      await pipeline(source, createGunzip(), out);
-    } else {
-      await pipeline(source, out);
-    }
-  } catch (err) {
+    clearTimers();
     return {
       ok: false,
-      kind: 'unknown',
-      friendly:
-        'The report download failed while streaming to disk. Try fetching it ' +
-        'again; if it persists, contact MixShift ops.',
-      message: `stream-to-file failed: ${err instanceof Error ? err.message : String(err)}`,
+      retryable: true,
+      expired: false,
+      opened: false,
+      failure: transientDownloadFailure(err, abortedReason),
     };
   }
 
+  if (!res.ok) {
+    clearTimers();
+    const expired = res.status === 403 || res.status === 410;
+    // A 5xx from S3/CDN is worth retrying; other non-2xx (plain 4xx) is not.
+    const retryable = res.status >= 500 && res.status < 600;
+    return { ok: false, retryable, expired, opened: false, failure: presignedFetchFailure(res.status) };
+  }
+  if (!res.body) {
+    clearTimers();
+    return {
+      ok: false,
+      retryable: true,
+      expired: false,
+      opened: false,
+      failure: hostUnreachable('the report download returned an empty response body'),
+    };
+  }
+
+  // mkdir + open + stream are INSIDE the try so a directory/open failure
+  // (EACCES, ENOTDIR, a Windows AV/file-lock EBUSY, ENOSPC) is classified and
+  // retried through the same path as a stream error, rather than throwing out
+  // of the retry loop as a raw, unclassified error. `source` (which wraps the
+  // presigned body) is created immediately before `pipeline` with no `await`
+  // in between, so pipeline attaches its error handling before any stream error
+  // can be delivered — an early await here would let an errored body emit an
+  // UNHANDLED 'error' before a listener exists.
+  let out: WriteStream | undefined;
+  try {
+    await mkdir(dirname(outPath), { recursive: true });
+    out = createWriteStream(outPath);
+    const source = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
+    // Reset the stall timer on every chunk that flows: a steadily-progressing
+    // download never trips the inactivity timeout, only a truly stuck one does.
+    const monitor = new Transform({
+      transform(chunk, _enc, cb) {
+        armStall();
+        cb(null, chunk);
+      },
+    });
+    if (document.compressionAlgorithm === 'GZIP') {
+      await pipeline(source, monitor, createGunzip(), out);
+    } else {
+      await pipeline(source, monitor, out);
+    }
+  } catch (err) {
+    clearTimers();
+    if (out) {
+      // pipeline() destroys the source + `out` on error, but the fd release is
+      // async; on Windows a rename of a still-open handle throws EPERM/EBUSY, so
+      // wait for the writable to actually close before the caller salvages it.
+      await closeWritable(out);
+    } else {
+      // mkdir threw before we wrapped the body into a pipeline — cancel the
+      // presigned stream directly so the connection is not leaked.
+      try {
+        await res.body?.cancel();
+      } catch {
+        /* already locked/consumed — nothing to release */
+      }
+    }
+    return {
+      ok: false,
+      retryable: true,
+      expired: false,
+      // `opened` only when we actually created the file (mkdir succeeded and
+      // createWriteStream ran) — otherwise there is nothing to salvage.
+      opened: out !== undefined,
+      failure: transientDownloadFailure(err, abortedReason),
+    };
+  }
+  clearTimers();
+  // Reached only when the try body completed, so `out` was assigned.
+  return { ok: true, bytes: out!.bytesWritten };
+}
+
+/** Resolve once a write stream is fully closed (fd released). Idempotent:
+ *  returns immediately if already closed, else destroys and awaits 'close'. */
+function closeWritable(out: WriteStream): Promise<void> {
+  if (out.closed) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    out.once('close', () => resolve());
+    if (!out.destroyed) out.destroy();
+  });
+}
+
+/** Build the intermediate failure for a network/stall/stream error (retried;
+ *  only surfaced verbatim if it is the terminal cause and non-retryable, which
+ *  these are not — the loop reclassifies to `download_failed`). Keeps the raw
+ *  cause in `message` for logs. */
+function transientDownloadFailure(
+  err: unknown,
+  abortedReason: 'stall' | 'deadline' | null,
+): ReportFailure {
+  const raw = err instanceof Error ? err.message : String(err);
+  const message =
+    abortedReason === 'stall'
+      ? `download stalled (no progress): ${raw}`
+      : abortedReason === 'deadline'
+        ? `download exceeded the per-attempt deadline: ${raw}`
+        : `download stream error: ${raw}`;
   return {
-    ok: true,
-    bytes: out.bytesWritten,
-    compressionAlgorithm: document.compressionAlgorithm,
-    reportDocumentId: document.reportDocumentId,
+    ok: false,
+    kind: 'download_failed',
+    friendly: defaultFriendly('download_failed'),
+    message,
   };
+}
+
+/** Best-effort: rename a partially-written download to `<outPath>.partial` so a
+ *  truncated report is never mistaken for a complete one. Never throws. */
+async function renamePartial(outPath: string): Promise<void> {
+  try {
+    await rename(outPath, `${outPath}.partial`);
+  } catch {
+    // No file to salvage (attempt failed before opening it), or rename raced —
+    // either way there is nothing complete-looking left behind to worry about.
+  }
 }
 
 /** Amazon's presigned-document descriptor, returned by getReportDocumentMeta
@@ -1293,6 +1519,12 @@ function defaultFriendly(kind: ReportFailureKind): string {
       return (
         'The MixShift service is unreachable. Check your network or try again ' +
         'in a minute.'
+      );
+    case 'download_failed':
+      return (
+        'The report download did not complete (it kept timing out or dropping ' +
+        'the connection). The report itself is still ready; try fetching it ' +
+        'again in a moment.'
       );
     case 'not_authenticated':
       return (

@@ -6,6 +6,12 @@ import { exportTable } from '../lib/data/export.js';
 import { streamQuery } from '../lib/data/query-runner.js';
 import { resolveAsinTitles } from '../lib/data/asin-titles.js';
 import { createCsvFileSink, fmtBytes, type CsvFileSink } from '../lib/output/csv-file-sink.js';
+import {
+  planInlineDelivery,
+  DEFAULT_INLINE_ROW_CEILING,
+  INLINE_BYTE_CEILING,
+  type InlineCeilingOptions,
+} from '../lib/output/inline-ceiling.js';
 import { outputDir } from '../lib/paths/resolve.js';
 
 interface RootOptions {
@@ -231,14 +237,28 @@ export function registerDataCommands(program: Command): void {
     )
     .requiredOption('--sql <sql>', 'the SQL to run')
     .option('--out <path>', 'write results to CSV instead of stdout')
+    .option(
+      '--inline',
+      'render every row inline regardless of size (overrides the default ' +
+        'large-result spill-to-file). Use only when you truly need the full set in context.',
+    )
+    .option(
+      '--rows <n>',
+      'inline up to N rows before spilling a large result to a file ' +
+        `(default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
+      parseInt10,
+    )
     .action(
-      async (opts: { sql: string; out?: string }, cmd: Command) => {
+      async (opts: { sql: string; out?: string; inline?: boolean; rows?: number }, cmd: Command) => {
         const root = cmd.optsWithGlobals<RootOptions>();
         try {
           if (opts.out) {
             await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir);
           } else {
-            await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir);
+            await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir, {
+              inline: opts.inline,
+              rows: opts.rows,
+            });
           }
         } catch (err) {
           emitError(err, !!root.json);
@@ -552,15 +572,19 @@ async function runQueryToFile(
 
 /**
  * `data query` with no `--out`: render a small result inline, but if the
- * result is large enough to page, auto-stream it to a temp CSV and report the
- * path instead of dumping tens of thousands of rows inline or failing. We hold
- * only the first page in memory; the moment a second page arrives we flush to
- * disk and stop buffering.
+ * result is large — either because it paged past the gateway cap, OR because it
+ * cleared the cap yet is still big enough to flood an LLM's context (the
+ * client-side ceiling in inline-ceiling.ts) — auto-stream it to a temp CSV and
+ * return a compact handle (row_count, columns, out_path) plus a short preview
+ * instead of dumping tens of thousands of rows inline. We hold only the first
+ * page in memory; the moment a second page arrives we flush to disk and stop
+ * buffering. `--inline` / `--rows N` (via `ceiling`) tune or bypass the ceiling.
  */
 async function runQueryInlineOrTemp(
   sql: string,
   json: boolean,
   dataDir?: string,
+  ceiling: InlineCeilingOptions = {},
 ): Promise<void> {
   const bufferFirst: Array<Record<string, unknown>> = [];
   // Holder object rather than a bare `let`: the sink is assigned inside the
@@ -663,18 +687,74 @@ async function runQueryInlineOrTemp(
     return;
   }
 
-  // Single-shot small result → render inline (existing behavior).
+  // Single-shot result (fit under the gateway caps, so the whole set is in
+  // bufferFirst). Apply the CLIENT-SIDE context ceiling: a result that cleared
+  // the gateway cap can still be far too large to hand an LLM verbatim. Below
+  // the ceiling → render inline (existing behavior); above it → spill to a temp
+  // CSV and return a compact handle + preview, exactly like the paged path.
+  const plan = planInlineDelivery(bufferFirst, ceiling);
+
+  if (plan.mode === 'inline') {
+    if (json) {
+      process.stdout.write(
+        JSON.stringify(
+          { status: 'ok', row_count: streamed.rowCount, duration_ms: streamed.durationMs, rows: bufferFirst },
+          null,
+          2,
+        ) + '\n',
+      );
+    } else {
+      process.stderr.write(`\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms)\n`);
+      process.stdout.write(renderRowsAsMarkdown(bufferFirst) + '\n');
+    }
+    return;
+  }
+
+  // Over the ceiling → spill the full set to a temp CSV, return a handle.
+  const sink = openTemp();
+  try {
+    await sink.writePage(bufferFirst);
+    await sink.close();
+  } catch (err) {
+    const partial = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure({ kind: 'unknown', friendly: `Write failed: ${message}` }, json, partial);
+    return;
+  }
+
+  const reasonNote =
+    plan.reason === 'byte_ceiling'
+      ? `the result is wide/heavy (over ${Math.round(INLINE_BYTE_CEILING / 1024)} KB serialized)`
+      : `the result has more than ${plan.rowCeiling} rows`;
   if (json) {
     process.stdout.write(
       JSON.stringify(
-        { status: 'ok', row_count: streamed.rowCount, duration_ms: streamed.durationMs, rows: bufferFirst },
+        {
+          status: 'ok',
+          row_count: streamed.rowCount,
+          duration_ms: streamed.durationMs,
+          out_path: state.tempPath,
+          streamed_to_file: true,
+          ceiling_exceeded: plan.reason,
+          columns: plan.columns,
+          preview_row_count: plan.preview.length,
+          preview: plan.preview,
+        },
         null,
         2,
       ) + '\n',
     );
   } else {
-    process.stderr.write(`\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms)\n`);
-    process.stdout.write(renderRowsAsMarkdown(bufferFirst) + '\n');
+    process.stderr.write(
+      `\n✓ ${streamed.rowCount} rows (${streamed.durationMs}ms). Returning a preview because ${reasonNote}; the full result is in a CSV file:\n` +
+        `  ${state.tempPath}\n` +
+        `  Tip: pass --out <path> to choose the destination, --rows <n> for a larger inline preview, or --inline for the full set.\n`,
+    );
+    process.stdout.write(
+      `Preview (first ${plan.preview.length} of ${streamed.rowCount} rows):\n` +
+        renderRowsAsMarkdown(plan.preview) +
+        '\n',
+    );
   }
 }
 

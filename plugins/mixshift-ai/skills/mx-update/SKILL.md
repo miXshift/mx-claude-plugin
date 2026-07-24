@@ -22,7 +22,7 @@ trigger_phrases:
 
 # Update & Catch-Up
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
 Use this whenever the user wants to update the plugin, asks whether they are current, mentions they just updated, or wants to know what to do now that a new version shipped. This skill covers two different moments: guiding an update that has not happened yet, and following up right after one has.
 

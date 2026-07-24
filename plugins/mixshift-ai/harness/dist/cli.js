@@ -3819,7 +3819,7 @@ var require_webidl = __commonJS({
 var require_util2 = __commonJS({
   "node_modules/undici/lib/web/fetch/util.js"(exports, module) {
     "use strict";
-    var { Transform } = __require("node:stream");
+    var { Transform: Transform2 } = __require("node:stream");
     var zlib = __require("node:zlib");
     var { redirectStatusSet, referrerPolicySet: referrerPolicyTokens, badPortsSet } = require_constants3();
     var { getGlobalOrigin } = require_global();
@@ -4507,7 +4507,7 @@ var require_util2 = __commonJS({
       contentRange += isomorphicEncode(`${fullLength}`);
       return contentRange;
     }
-    var InflateStream = class extends Transform {
+    var InflateStream = class extends Transform2 {
       #zlibOptions;
       /** @param {zlib.ZlibOptions} [zlibOptions] */
       constructor(zlibOptions) {
@@ -10833,13 +10833,13 @@ var require_pluralizer = __commonJS({
 var require_pending_interceptors_formatter = __commonJS({
   "node_modules/undici/lib/mock/pending-interceptors-formatter.js"(exports, module) {
     "use strict";
-    var { Transform } = __require("node:stream");
+    var { Transform: Transform2 } = __require("node:stream");
     var { Console } = __require("node:console");
     var PERSISTENT = process.versions.icu ? "\u2705" : "Y ";
     var NOT_PERSISTENT = process.versions.icu ? "\u274C" : "N ";
     module.exports = class PendingInterceptorsFormatter {
       constructor({ disableColors } = {}) {
-        this.transform = new Transform({
+        this.transform = new Transform2({
           transform(chunk, _enc, cb) {
             cb(null, chunk);
           }
@@ -17826,14 +17826,14 @@ var require_util8 = __commonJS({
 var require_eventsource_stream = __commonJS({
   "node_modules/undici/lib/web/eventsource/eventsource-stream.js"(exports, module) {
     "use strict";
-    var { Transform } = __require("node:stream");
+    var { Transform: Transform2 } = __require("node:stream");
     var { isASCIINumber, isValidLastEventId } = require_util8();
     var BOM = [239, 187, 191];
     var LF = 10;
     var CR = 13;
     var COLON = 58;
     var SPACE = 32;
-    var EventSourceStream = class extends Transform {
+    var EventSourceStream = class extends Transform2 {
       /**
        * @type {eventSourceSettings}
        */
@@ -53646,14 +53646,14 @@ var require_streams = __commonJS({
     "use strict";
     var Buffer2 = require_safer().Buffer;
     module.exports = function(streamModule) {
-      var Transform = streamModule.Transform;
+      var Transform2 = streamModule.Transform;
       function IconvLiteEncoderStream(conv, options) {
         this.conv = conv;
         options = options || {};
         options.decodeStrings = false;
-        Transform.call(this, options);
+        Transform2.call(this, options);
       }
-      IconvLiteEncoderStream.prototype = Object.create(Transform.prototype, {
+      IconvLiteEncoderStream.prototype = Object.create(Transform2.prototype, {
         constructor: { value: IconvLiteEncoderStream }
       });
       IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done) {
@@ -53692,9 +53692,9 @@ var require_streams = __commonJS({
         this.conv = conv;
         options = options || {};
         options.encoding = this.encoding = "utf8";
-        Transform.call(this, options);
+        Transform2.call(this, options);
       }
-      IconvLiteDecoderStream.prototype = Object.create(Transform.prototype, {
+      IconvLiteDecoderStream.prototype = Object.create(Transform2.prototype, {
         constructor: { value: IconvLiteDecoderStream }
       });
       IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done) {
@@ -64733,8 +64733,15 @@ async function runQuery(sql, params = [], options = {}) {
   if (!isServiceCapFailure(first)) return first;
   return paginateOverCap(
     sql,
-    (pageSql) => runOnce(pageSql, params, opts)
+    (pageSql) => runOnce(pageSql, params, opts),
+    { sizeHint: sizeHintFromFailure(first) }
   );
+}
+function sizeHintFromFailure(first) {
+  if (first.ok) return void 0;
+  const { actualRowCount, actualBytes } = first;
+  if (actualRowCount === void 0 && actualBytes === void 0) return void 0;
+  return { rowCount: actualRowCount, bytes: actualBytes };
 }
 function withQueryShape(sql, options) {
   if (options.query_shape !== void 0) return options;
@@ -64765,7 +64772,7 @@ async function streamQuery(sql, params = [], options = {}, onPage) {
   const paged = await paginateOverCap(
     sql,
     (pageSql) => runOnce(pageSql, params, opts),
-    { onPage }
+    { onPage, sizeHint: sizeHintFromFailure(first) }
   );
   if (!paged.ok) {
     return {
@@ -64900,6 +64907,11 @@ async function paginateOverCap(sql, exec4, opts = {}) {
   const bounded = hasLimit || Number.isFinite(callerMax);
   const all = [];
   let pageSize = FIRST_PAGE_PROBE_ROWS;
+  const hint = opts.sizeHint;
+  if (hint?.bytes && hint.bytes > 0 && hint.rowCount && hint.rowCount > 0) {
+    const bytesPerRow = Math.max(1, Math.ceil(hint.bytes / hint.rowCount));
+    pageSize = Math.max(1, Math.min(PAGE_MAX_ROWS, Math.floor(PAGE_BYTE_BUDGET / bytesPerRow)));
+  }
   let offset = 0;
   let delivered = 0;
   let pageIndex = 0;
@@ -65327,7 +65339,10 @@ async function runDatahubQuery(creds, sql, params, options) {
       raw_code: json2.raw_code,
       message: json2.message ?? "Query failed",
       friendly: capFriendlyMessage(serverKind, serverFriendly),
-      durationMs
+      durationMs,
+      // Cap-rejection size hints (Track B), when the service provides them.
+      ...typeof json2.actualRowCount === "number" ? { actualRowCount: json2.actualRowCount } : {},
+      ...typeof json2.actualBytes === "number" ? { actualBytes: json2.actualBytes } : {}
     };
     void track(
       {
@@ -80038,6 +80053,49 @@ async function resolveAsinTitles(opts) {
   return { ok: true, titles, missing, durationMs: Date.now() - t0 };
 }
 
+// src/lib/output/inline-ceiling.ts
+var DEFAULT_INLINE_ROW_CEILING = 500;
+var INLINE_BYTE_CEILING = 512 * 1024;
+var INLINE_PREVIEW_ROWS = 20;
+function planInlineDelivery(rows, opts = {}) {
+  const inline = opts.inline === true;
+  const explicitRows = typeof opts.rows === "number" && Number.isFinite(opts.rows) && opts.rows > 0 ? Math.floor(opts.rows) : void 0;
+  const rowCeiling = inline ? Infinity : explicitRows ?? DEFAULT_INLINE_ROW_CEILING;
+  const byteGuardActive = !inline && explicitRows === void 0;
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const spill = (reason) => {
+    const previewCount = Math.min(
+      INLINE_PREVIEW_ROWS,
+      Number.isFinite(rowCeiling) ? rowCeiling : INLINE_PREVIEW_ROWS,
+      rows.length
+    );
+    return { mode: "spill", reason, rowCeiling, columns, preview: rows.slice(0, previewCount) };
+  };
+  if (rows.length > rowCeiling) return spill("row_ceiling");
+  if (byteGuardActive) {
+    const bytes = Buffer.byteLength(JSON.stringify(rows), "utf8");
+    if (bytes > INLINE_BYTE_CEILING) return spill("byte_ceiling");
+  }
+  return { mode: "inline", rowCeiling, columns, preview: [] };
+}
+var DEFAULT_INLINE_DOC_BYTE_CEILING = 256 * 1024;
+var INLINE_DOC_PREVIEW_LINES = 40;
+function planInlineDocument(bytes, opts = {}) {
+  const ceiling = opts.inline === true ? Infinity : DEFAULT_INLINE_DOC_BYTE_CEILING;
+  return { mode: bytes > ceiling ? "spill" : "inline", ceiling };
+}
+function previewLines(text, maxLines = INLINE_DOC_PREVIEW_LINES) {
+  const body = text.endsWith("\n") ? text.slice(0, -1) : text;
+  if (body === "") return { preview: "", truncated: false, totalLines: 0 };
+  const lines = body.split("\n");
+  const truncated = lines.length > maxLines;
+  return {
+    preview: lines.slice(0, maxLines).join("\n"),
+    truncated,
+    totalLines: lines.length
+  };
+}
+
 // src/commands/data.ts
 init_resolve();
 function registerDataCommands(program3) {
@@ -80195,14 +80253,24 @@ function registerDataCommands(program3) {
   );
   data.command("query").description(
     "Run a custom SQL query (read-only creds enforce SELECT). Use --out to write large results to CSV."
-  ).requiredOption("--sql <sql>", "the SQL to run").option("--out <path>", "write results to CSV instead of stdout").action(
+  ).requiredOption("--sql <sql>", "the SQL to run").option("--out <path>", "write results to CSV instead of stdout").option(
+    "--inline",
+    "render every row inline regardless of size (overrides the default large-result spill-to-file). Use only when you truly need the full set in context."
+  ).option(
+    "--rows <n>",
+    `inline up to N rows before spilling a large result to a file (default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
+    parseInt10
+  ).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
         if (opts.out) {
           await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir);
         } else {
-          await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir);
+          await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir, {
+            inline: opts.inline,
+            rows: opts.rows
+          });
         }
       } catch (err) {
         emitError5(err, !!root.json);
@@ -80446,7 +80514,7 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
     );
   }
 }
-async function runQueryInlineOrTemp(sql, json2, dataDir) {
+async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}) {
   const bufferFirst = [];
   const state = { sink: null, tempPath: "" };
   let report = () => {
@@ -80531,19 +80599,65 @@ async function runQueryInlineOrTemp(sql, json2, dataDir) {
     }
     return;
   }
+  const plan = planInlineDelivery(bufferFirst, ceiling);
+  if (plan.mode === "inline") {
+    if (json2) {
+      process.stdout.write(
+        JSON.stringify(
+          { status: "ok", row_count: streamed.rowCount, duration_ms: streamed.durationMs, rows: bufferFirst },
+          null,
+          2
+        ) + "\n"
+      );
+    } else {
+      process.stderr.write(`
+\u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms)
+`);
+      process.stdout.write(renderRowsAsMarkdown(bufferFirst) + "\n");
+    }
+    return;
+  }
+  const sink = openTemp();
+  try {
+    await sink.writePage(bufferFirst);
+    await sink.close();
+  } catch (err) {
+    const partial2 = await sink.finalizePartial();
+    const message = err instanceof Error ? err.message : String(err);
+    emitQueryFailure({ kind: "unknown", friendly: `Write failed: ${message}` }, json2, partial2);
+    return;
+  }
+  const reasonNote = plan.reason === "byte_ceiling" ? `the result is wide/heavy (over ${Math.round(INLINE_BYTE_CEILING / 1024)} KB serialized)` : `the result has more than ${plan.rowCeiling} rows`;
   if (json2) {
     process.stdout.write(
       JSON.stringify(
-        { status: "ok", row_count: streamed.rowCount, duration_ms: streamed.durationMs, rows: bufferFirst },
+        {
+          status: "ok",
+          row_count: streamed.rowCount,
+          duration_ms: streamed.durationMs,
+          out_path: state.tempPath,
+          streamed_to_file: true,
+          ceiling_exceeded: plan.reason,
+          columns: plan.columns,
+          preview_row_count: plan.preview.length,
+          preview: plan.preview
+        },
         null,
         2
       ) + "\n"
     );
   } else {
-    process.stderr.write(`
-\u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms)
-`);
-    process.stdout.write(renderRowsAsMarkdown(bufferFirst) + "\n");
+    process.stderr.write(
+      `
+\u2713 ${streamed.rowCount} rows (${streamed.durationMs}ms). Returning a preview because ${reasonNote}; the full result is in a CSV file:
+  ${state.tempPath}
+  Tip: pass --out <path> to choose the destination, --rows <n> for a larger inline preview, or --inline for the full set.
+`
+    );
+    process.stdout.write(
+      `Preview (first ${plan.preview.length} of ${streamed.rowCount} rows):
+` + renderRowsAsMarkdown(plan.preview) + "\n"
+    );
   }
 }
 function handleAccessDeniedExit(kind) {
@@ -83174,9 +83288,9 @@ import { mkdir as mkdir28, writeFile as writeFile25 } from "node:fs/promises";
 init_credentials();
 init_intent();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir26 } from "node:fs/promises";
+import { mkdir as mkdir26, rename as rename19 } from "node:fs/promises";
 import { dirname as dirname30 } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
 function isReportFailure(x) {
@@ -83211,6 +83325,8 @@ function exitCodeForKind(kind) {
       return 9;
     // Amazon returned FATAL / CANCELLED
     case "host_unreachable":
+    case "download_failed":
+    // transient download failure — retry the fetch
     case "unknown":
     default:
       return 1;
@@ -83398,44 +83514,164 @@ async function getReportDocument(runId, opts = {}) {
     timings: meta3.timings
   };
 }
+var DEFAULT_DOWNLOAD_ATTEMPTS = 3;
+var DEFAULT_DOWNLOAD_STALL_MS = 6e4;
+var DEFAULT_DOWNLOAD_DEADLINE_MS = 10 * 6e4;
+var DOWNLOAD_BACKOFF_BASE_MS = 500;
+var DOWNLOAD_BACKOFF_CAP_MS = 8e3;
 async function streamReportDocumentToFile(document, outPath, opts = {}) {
+  const maxAttempts = Math.max(1, opts.maxDownloadAttempts ?? DEFAULT_DOWNLOAD_ATTEMPTS);
+  const stallMs = opts.downloadStallMs ?? DEFAULT_DOWNLOAD_STALL_MS;
+  const deadlineMs = opts.downloadDeadlineMs ?? DEFAULT_DOWNLOAD_DEADLINE_MS;
+  const sleep2 = opts.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let last = null;
+  let opened = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const a = await attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs);
+    if (a.ok) {
+      return {
+        ok: true,
+        bytes: a.bytes,
+        compressionAlgorithm: document.compressionAlgorithm,
+        reportDocumentId: document.reportDocumentId
+      };
+    }
+    last = a.failure;
+    opened = opened || a.opened;
+    if (a.expired || !a.retryable) {
+      if (opened) await renamePartial(outPath);
+      return a.failure;
+    }
+    if (attempt < maxAttempts) {
+      await sleep2(downloadBackoffMs(attempt));
+    }
+  }
+  if (opened) await renamePartial(outPath);
+  return {
+    ok: false,
+    kind: "download_failed",
+    friendly: defaultFriendly("download_failed"),
+    message: `report document download failed after ${maxAttempts} attempt(s)` + (last?.message ? `: ${last.message}` : last?.friendly ? `: ${last.friendly}` : ""),
+    httpStatus: last?.httpStatus
+  };
+}
+function downloadBackoffMs(attempt) {
+  return Math.min(DOWNLOAD_BACKOFF_BASE_MS * 2 ** (attempt - 1), DOWNLOAD_BACKOFF_CAP_MS);
+}
+async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs) {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 12e4;
+  const controller = new AbortController();
+  let stallTimer;
+  let deadlineTimer;
+  let abortedReason = null;
+  const armStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      abortedReason = "stall";
+      controller.abort();
+    }, stallMs);
+    stallTimer.unref?.();
+  };
+  const clearTimers = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+  };
   let res;
   try {
-    res = await fetchImpl(document.url, { signal: AbortSignal.timeout(timeoutMs) });
+    armStall();
+    deadlineTimer = setTimeout(() => {
+      abortedReason = "deadline";
+      controller.abort();
+    }, deadlineMs);
+    deadlineTimer.unref?.();
+    res = await fetchImpl(document.url, { signal: controller.signal });
   } catch (err) {
-    return hostUnreachable(err instanceof Error ? err.message : String(err));
-  }
-  if (!res.ok) return presignedFetchFailure(res.status);
-  if (!res.body) {
-    return hostUnreachable("the report download returned an empty response body");
-  }
-  await mkdir26(dirname30(outPath), { recursive: true });
-  const out = createWriteStream2(outPath);
-  const source = Readable.fromWeb(
-    res.body
-  );
-  try {
-    if (document.compressionAlgorithm === "GZIP") {
-      await pipeline(source, createGunzip(), out);
-    } else {
-      await pipeline(source, out);
-    }
-  } catch (err) {
+    clearTimers();
     return {
       ok: false,
-      kind: "unknown",
-      friendly: "The report download failed while streaming to disk. Try fetching it again; if it persists, contact MixShift ops.",
-      message: `stream-to-file failed: ${err instanceof Error ? err.message : String(err)}`
+      retryable: true,
+      expired: false,
+      opened: false,
+      failure: transientDownloadFailure(err, abortedReason)
     };
   }
+  if (!res.ok) {
+    clearTimers();
+    const expired = res.status === 403 || res.status === 410;
+    const retryable = res.status >= 500 && res.status < 600;
+    return { ok: false, retryable, expired, opened: false, failure: presignedFetchFailure(res.status) };
+  }
+  if (!res.body) {
+    clearTimers();
+    return {
+      ok: false,
+      retryable: true,
+      expired: false,
+      opened: false,
+      failure: hostUnreachable("the report download returned an empty response body")
+    };
+  }
+  let out;
+  try {
+    await mkdir26(dirname30(outPath), { recursive: true });
+    out = createWriteStream2(outPath);
+    const source = Readable.fromWeb(res.body);
+    const monitor = new Transform({
+      transform(chunk, _enc, cb) {
+        armStall();
+        cb(null, chunk);
+      }
+    });
+    if (document.compressionAlgorithm === "GZIP") {
+      await pipeline(source, monitor, createGunzip(), out);
+    } else {
+      await pipeline(source, monitor, out);
+    }
+  } catch (err) {
+    clearTimers();
+    if (out) {
+      await closeWritable(out);
+    } else {
+      try {
+        await res.body?.cancel();
+      } catch {
+      }
+    }
+    return {
+      ok: false,
+      retryable: true,
+      expired: false,
+      // `opened` only when we actually created the file (mkdir succeeded and
+      // createWriteStream ran) — otherwise there is nothing to salvage.
+      opened: out !== void 0,
+      failure: transientDownloadFailure(err, abortedReason)
+    };
+  }
+  clearTimers();
+  return { ok: true, bytes: out.bytesWritten };
+}
+function closeWritable(out) {
+  if (out.closed) return Promise.resolve();
+  return new Promise((resolve3) => {
+    out.once("close", () => resolve3());
+    if (!out.destroyed) out.destroy();
+  });
+}
+function transientDownloadFailure(err, abortedReason) {
+  const raw = err instanceof Error ? err.message : String(err);
+  const message = abortedReason === "stall" ? `download stalled (no progress): ${raw}` : abortedReason === "deadline" ? `download exceeded the per-attempt deadline: ${raw}` : `download stream error: ${raw}`;
   return {
-    ok: true,
-    bytes: out.bytesWritten,
-    compressionAlgorithm: document.compressionAlgorithm,
-    reportDocumentId: document.reportDocumentId
+    ok: false,
+    kind: "download_failed",
+    friendly: defaultFriendly("download_failed"),
+    message
   };
+}
+async function renamePartial(outPath) {
+  try {
+    await rename19(outPath, `${outPath}.partial`);
+  } catch {
+  }
 }
 function parseDocumentMeta(v) {
   if (typeof v !== "object" || v === null) return void 0;
@@ -83745,6 +83981,8 @@ function defaultFriendly(kind) {
       return "Amazon could not generate this report (it returned a FATAL or CANCELLED status). This usually means the report type does not apply to this merchant, or the requested window is invalid.";
     case "host_unreachable":
       return "The MixShift service is unreachable. Check your network or try again in a minute.";
+    case "download_failed":
+      return "The report download did not complete (it kept timing out or dropping the connection). The report itself is still ready; try fetching it again in a moment.";
     case "not_authenticated":
       return "You're not signed in to MixShift. Run `mixshift auth login` first.";
     case "session_expired":
@@ -83936,7 +84174,7 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir27, readFile as readFile35, rename as rename19, writeFile as writeFile24 } from "node:fs/promises";
+import { mkdir as mkdir27, readFile as readFile35, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
 import { dirname as dirname32 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
@@ -83955,7 +84193,7 @@ async function saveLedger(path2, handles) {
   await mkdir27(dirname32(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile24(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename19(tmp, path2);
+  await rename20(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -84477,6 +84715,15 @@ async function listOperations(family, opts = {}) {
   const operations = Array.isArray(raw) ? raw : [];
   return { ok: true, operations };
 }
+var AWD_REAUTH_FRIENDLY = `This merchant isn't authorized for Amazon Warehousing & Distribution (AWD) yet. AWD is a newly added SP-API role, so the merchant's existing connection does not include it. To enable AWD endpoints for this merchant:
+  1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants
+  2. Find this merchant and click "Update Token".
+  3. Amazon Seller Central will open to add the new role and finish
+     authorization, then redirect you back to MixShift.
+Once the token is updated, this endpoint will work from the plugin. There is no need to retry the call until the token has been updated.`;
+function isAwdOperation(operation) {
+  return operation === "awd" || operation.startsWith("awd.");
+}
 async function spapiCall(input, opts = {}) {
   const body = { operation: input.operation };
   if (input.amazonSellerId) body.sellerId = input.amazonSellerId;
@@ -84494,7 +84741,12 @@ async function spapiCall(input, opts = {}) {
     { method: "POST", path: "/api/amazon/spapi/call", body },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    if (r.kind === "restricted_report" && isAwdOperation(input.operation)) {
+      return { ...r, friendly: AWD_REAUTH_FRIENDLY };
+    }
+    return r;
+  }
   const json2 = r.json;
   if (typeof json2.operation !== "string") {
     return {
@@ -84953,7 +85205,10 @@ Poll again in a few seconds.
 function registerReportGet(report) {
   report.command("get <runId>").description(
     "Fetch the report document. Safe to call before ready (returns ready:false, exit 10, keep polling). With --out, streams the document straight to the file in chunks (any size); without --out, prints a size-capped copy to stdout. Prefer --out so document size is never a concern."
-  ).option("--out <path>", "stream the document to this file (recommended; handles reports of any size)").action(async (runId, opts, cmd) => {
+  ).option("--out <path>", "stream the document to this file (recommended; handles reports of any size)").option(
+    "--inline",
+    "print the full document inline even when large (overrides the default spill-to-file for big docs). Ignored when --out is set."
+  ).action(async (runId, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const clientOpts = { dataDirOverride: root.dataDir };
@@ -84994,6 +85249,41 @@ function registerReportGet(report) {
       const document = result.document ?? "";
       const bytes = result.bytes ?? Buffer.byteLength(document, "utf-8");
       await trackRetrieved(startedAt, bytes, root.dataDir);
+      const plan = planInlineDocument(bytes, { inline: opts.inline });
+      if (plan.mode === "spill") {
+        const spillPath = resolvePath2(
+          `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`
+        );
+        await mkdir28(dirname33(spillPath), { recursive: true });
+        await writeFile25(spillPath, document, "utf-8");
+        const { preview, truncated, totalLines } = previewLines(document);
+        if (root.json) {
+          writeJson3({
+            status: "ok",
+            ready: true,
+            bytes,
+            out_path: spillPath,
+            spilled_to_file: true,
+            preview_truncated: truncated,
+            preview_line_count: preview === "" ? 0 : preview.split("\n").length,
+            total_lines: totalLines,
+            preview
+          });
+        } else {
+          process.stderr.write(
+            `
+\u2713 ${bytes} bytes. Document is large, so I saved it to a file and show a preview below:
+  ${spillPath}
+  Tip: pass --out <path> to choose the destination, or --inline to print the full document.
+`
+          );
+          process.stdout.write(
+            `Preview (first ${preview === "" ? 0 : preview.split("\n").length} of ${totalLines} lines):
+` + preview + (preview.endsWith("\n") || preview === "" ? "" : "\n")
+          );
+        }
+        return;
+      }
       if (root.json) {
         writeJson3({ status: "ok", ready: true, bytes, document });
       } else {
@@ -85674,6 +85964,10 @@ async function defaultOutPath(sellerId, reportType, dataDir) {
 }
 function todayISO6() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function sanitizeForFilename(s) {
+  const cleaned = s.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+  return cleaned || "report";
 }
 function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
@@ -86395,7 +86689,7 @@ var OPTIONAL_ALLOWLIST = [
   },
   {
     domain: "telemetry endpoint",
-    why: "Best-effort anonymized usage events. MIXSHIFT_TELEMETRY=0 disables it entirely."
+    why: "Best-effort anonymized usage events. As of 0.8.6 these ride mcp.mixshift.io (already required above), so no extra domain is needed unless a custom MIXSHIFT_TELEMETRY_ENDPOINT override points elsewhere. MIXSHIFT_TELEMETRY=0 disables telemetry entirely."
   }
 ];
 var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
@@ -87106,8 +87400,13 @@ import { resolve as resolve2, join as join24, relative, basename as basename3 } 
 init_load2();
 var DEFAULT_TIMEOUT_MS3 = 15e3;
 function deriveSubmissionsEndpoint(eventsEndpoint) {
-  if (!/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) return null;
-  return eventsEndpoint.replace(/\/events\/?$/, "/skill_submissions");
+  if (/\/telemetry\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, "/submissions");
+  }
+  if (/\/rest\/v1\/events\/?$/.test(eventsEndpoint)) {
+    return eventsEndpoint.replace(/\/events\/?$/, "/skill_submissions");
+  }
+  return null;
 }
 async function submitSkill(input, timeoutMs = DEFAULT_TIMEOUT_MS3) {
   const defaults = await loadPluginDefaults();
@@ -88605,6 +88904,7 @@ async function runPreflight(brandSlugs, root) {
     let discoveredVia = root.dataDir ? "flag" : process.env.MIXSHIFT_DATA_DIR ? "env" : "default";
     let dataDir = resolvedDir;
     let candidates = [];
+    let scanState = null;
     const isUsable = (env) => Boolean(env?.datahub || env?.service);
     let credentials = null;
     let loadFailure = null;
@@ -88629,6 +88929,7 @@ async function runPreflight(brandSlugs, root) {
       const cwdRoots = [process.cwd(), join25(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
+      scanState = { sessionsHits, scanHits };
       candidates = [
         .../* @__PURE__ */ new Set([
           ...resolvedDirHadFile ? [credentialsPath(resolvedDir)] : [],
@@ -88650,7 +88951,7 @@ async function runPreflight(brandSlugs, root) {
       }
       if (isUsable(credentials)) {
         if (resolvedFailure) {
-          malformedResolvedWarning = `${resolvedFailure.message}; proceeding with the credential discovered under ${dataDir} instead. Delete or repair the malformed file.`;
+          malformedResolvedWarning = `${resolvedFailure.message}; skipped it and proceeded with a credential found by scanning. Delete or repair the malformed file.`;
         }
         loadFailure = null;
       } else if (resolvedFailure) {
@@ -88669,6 +88970,8 @@ async function runPreflight(brandSlugs, root) {
       lines.push(statusLine("warn", malformedResolvedWarning));
     }
     let credentialSummary = null;
+    let mintAttemptsTotal = 0;
+    let fallbackUsed = false;
     let kind = null;
     let credentialLabel;
     let serviceClientId;
@@ -88696,24 +88999,97 @@ async function runPreflight(brandSlugs, root) {
         remediation: "Run `mixshift auth service-setup` (recommended for unattended/scheduled runs) or `mixshift auth login` (interactive) to create one, then re-run this command."
       });
     } else {
-      lines.push(
-        statusLine("ok", `credential: ${kind}${credentialLabel ? ` (${credentialLabel})` : ""}`)
-      );
-      if (kind === "interactive") {
+      const describeSelected = (env) => {
+        if (env?.datahub) {
+          return { kind: "interactive", label: env.datahub.person_label || env.datahub.email };
+        }
+        if (env?.service) {
+          return {
+            kind: "service",
+            label: env.service.label ?? env.service.client_id,
+            serviceClientId: env.service.client_id
+          };
+        }
+        return null;
+      };
+      const materializeAlternates = async (triedDirs2) => {
+        if (!scanState) return [];
+        const out = [];
+        for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
+          const dir = dataDirFromCredentialPath(hit);
+          if (triedDirs2.has(dir)) continue;
+          const attempt = await loadFrom(dir);
+          if (!isUsable(attempt.envelope)) continue;
+          out.push({
+            dir,
+            envelope: attempt.envelope,
+            via: scanState.sessionsHits.includes(hit) ? "sessions_scan" : "cwd_scan"
+          });
+        }
+        return out;
+      };
+      const MAX_MINT_ATTEMPTS = 3;
+      const triedDirs = /* @__PURE__ */ new Set([dataDir]);
+      let current = { dir: dataDir, via: discoveredVia, kind, label: credentialLabel, serviceClientId };
+      let queue = null;
+      let mintAttempts = 0;
+      let verified = false;
+      let firstRejection = null;
+      let extraRejections = 0;
+      let unreachableMessage = null;
+      for (; ; ) {
+        lines.push(
+          statusLine(
+            "ok",
+            `credential: ${current.kind}${current.label ? ` (${current.label})` : ""}`
+          )
+        );
+        mintAttempts++;
+        try {
+          await getValidAccessToken(current.dir, true);
+          verified = true;
+          break;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          lines.push(statusLine("BLOCKED", `auth verify: ${message}`));
+          if (classifyMintError(err) === "endpoint_unreachable") {
+            unreachableMessage = message;
+            break;
+          }
+          if (firstRejection === null) firstRejection = message;
+          else extraRejections++;
+          if (mintAttempts >= MAX_MINT_ATTEMPTS) break;
+          if (queue === null) queue = await materializeAlternates(triedDirs);
+          const next = queue.shift();
+          if (!next) break;
+          const described = describeSelected(next.envelope);
+          if (!described) break;
+          triedDirs.add(next.dir);
+          lines.push(statusLine("warn", "trying the next discovered credential (newest first)"));
+          current = { dir: next.dir, via: next.via, ...described };
+        }
+      }
+      const INVALID_REMEDIATION = "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential).";
+      mintAttemptsTotal = mintAttempts;
+      fallbackUsed = verified && mintAttempts > 1;
+      const effectiveKind = verified ? current.kind : kind;
+      if (effectiveKind === "interactive") {
         const w = "signed in with an interactive credential; scheduled/unattended runs should use a service credential (`mixshift auth service-setup`), because interactive token refresh is unreliable when nobody is present to re-authenticate.";
         warnings.push(w);
         lines.push(statusLine("warn", w));
       }
-      let verified = false;
-      let mintErr;
-      try {
-        await getValidAccessToken(dataDir, true);
-        verified = true;
-      } catch (err) {
-        mintErr = err;
-      }
       if (verified) {
+        dataDir = current.dir;
+        discoveredVia = current.via;
+        kind = current.kind;
+        credentialLabel = current.label;
+        serviceClientId = current.serviceClientId;
         lines.push(statusLine("ok", "auth verify: minted a fresh access token"));
+        if (firstRejection !== null) {
+          const w = `a discovered credential was rejected (revoked or rotated) before this one verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ""}. Delete stale credentials files and revoke unused credentials at /admin so discovery stays unambiguous.`;
+          warnings.push(w);
+          lines.push(statusLine("warn", w));
+        }
         let scopes;
         if (kind === "service" && serviceClientId) {
           const attribution = await readServiceAttributionCache(serviceClientId, dataDir);
@@ -88730,14 +89106,25 @@ async function runPreflight(brandSlugs, root) {
           ...scopes ? { scopes } : {}
         };
       } else {
-        const message = mintErr instanceof Error ? mintErr.message : String(mintErr);
-        const cls = classifyMintError(mintErr);
-        lines.push(statusLine("BLOCKED", `auth verify: ${message}`));
-        blockers.push({
-          class: cls,
-          message,
-          remediation: cls === "credential_invalid" ? "Re-run `mixshift auth service-setup` with a fresh setup code (service credential), or `mixshift auth login` (interactive credential)." : "Check egress connectivity to the MixShift auth service (mcp.mixshift.io must be reachable/allowlisted from this sandbox), then retry."
-        });
+        if (firstRejection !== null) {
+          blockers.push({
+            class: "credential_invalid",
+            message: firstRejection,
+            remediation: INVALID_REMEDIATION
+          });
+          if (extraRejections > 0) {
+            const w = `${extraRejections} other discovered credential(s) were also rejected (revoked or rotated?).`;
+            warnings.push(w);
+            lines.push(statusLine("warn", w));
+          }
+        }
+        if (unreachableMessage !== null) {
+          blockers.push({
+            class: "endpoint_unreachable",
+            message: unreachableMessage,
+            remediation: "Check egress connectivity to the MixShift auth service (mcp.mixshift.io must be reachable/allowlisted from this sandbox), then retry."
+          });
+        }
         credentialSummary = {
           path: credentialsPath(dataDir),
           kind,
@@ -88806,7 +89193,12 @@ async function runPreflight(brandSlugs, root) {
           candidates_found: candidates.length,
           brand_count: brandSlugs.length,
           brands_pulled: brands.filter((b) => b.status === "pulled").length,
-          warnings_count: warnings.length
+          warnings_count: warnings.length,
+          // Fall-through visibility (counts/booleans only): >1 attempts means
+          // a discovered credential was rejected at mint and alternates were
+          // tried; fallback_used means one of them is what verified.
+          mint_attempts: mintAttemptsTotal,
+          fallback_used: fallbackUsed
         }
       },
       // Deviation from the house `track(..., root.dataDir)` pattern,

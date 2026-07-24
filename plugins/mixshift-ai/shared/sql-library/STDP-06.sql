@@ -11,11 +11,18 @@
 -- (correct ad-group placement) and harvest extraction (which ad group
 -- to credit).
 
+-- Group by the STABLE ids (CampaignID, AdGroupID), not the names:
+-- keywordtargetingmetric carries the as-of-day CampaignName/AdGroupName on
+-- every daily row, so a renamed campaign/ad group would otherwise fragment one
+-- location into several rows (each with only part of its lifetime spend/sales/
+-- orders). MAX() picks a single representative name per id. (Same pattern as
+-- ANEG-01.) The frozen MV this query used to read had pre-normalized names, so
+-- this guard is new with the move to the live base table.
 SELECT
     SearchTerm,
-    CampaignName,
+    MAX(CampaignName) AS CampaignName,
     CampaignID,
-    AdGroupName,
+    MAX(AdGroupName)  AS AdGroupName,
     AdGroupID,
     KeywordText,
     MatchType,
@@ -26,9 +33,9 @@ SELECT
          THEN ROUND(SUM(Cost) / SUM(Sales) * 100, 1)
          ELSE NULL
     END AS lifetime_acos
-FROM KW_Target_ST_report_MV
+FROM keywordtargetingmetric
 WHERE SellerID = :seller_id
   AND recordType = 'Keyword Targeting'
   AND SearchTerm IN (:search_term_list)
-GROUP BY SearchTerm, CampaignName, CampaignID, AdGroupName, AdGroupID, KeywordText, MatchType
+GROUP BY SearchTerm, CampaignID, AdGroupID, KeywordText, MatchType
 ORDER BY SearchTerm, lifetime_spend DESC;

@@ -43,7 +43,7 @@ trigger_phrases:
 
 # Amazon Report Pull
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset, use this skill's base directory to locate the plugin root (the base directory is `<plugin root>/skills/<this skill>`) and run `node "<plugin root>/harness/dist/cli.js"` with the same arguments.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
 
 ## About the Amazon report surface (authoritative, do not guess)
@@ -301,9 +301,11 @@ conventions; the full synopsis lives in "Product Pricing pulls" below.
   so you can use it as the poll itself. **With `--out`, it streams the document
   straight to the file in chunks, so a report of ANY size lands on disk** (it
   never buffers the whole thing in memory, so there is no size ceiling and no
-  crash on multi-GB reports). Without `--out`, it prints a size-capped copy to
-  stdout. **Default to `--out`** so document size is never the user's concern;
-  reserve the no-`--out` path for a quick peek at a small result.
+  crash on multi-GB reports). Without `--out`, a small document prints inline
+  and a large one is auto-saved to a file and returned as a handle + preview
+  (pass `--inline` to force the full doc inline). **Default to `--out`** so
+  document size is never the user's concern; reserve the no-`--out` path for a
+  quick peek at a small result.
 - `report run` does start + poll-until-ready + get in one blocking call. It is
   **TERMINAL-ONLY** (see the Cowork constraint below).
 
@@ -747,6 +749,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `throttled` | 8 | Amazon is rate-limiting. This is NORMAL, especially on Brand Analytics search-terms pulls, not a failure: wait and keep polling patiently with backoff (a `retry_after_ms` may be present). Never suggest canceling the pull because of a `throttled` response; it is not a reason to stop. |
 | `report_fatal` | 9 | Amazon returned FATAL / CANCELLED. Usually the report type does not apply to this merchant, or the window is invalid. Check `describe-report` and try a valid window. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
+| `download_failed` | 1 | The report document download stalled or dropped and did not finish after the built-in retries. The report itself is still ready, so just run the same `report get <runId> --out <file>` again in a moment. Not a report or auth problem. |
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
 
 A separate, non-error case: `report get` (and `report run`) use **exit code
@@ -763,14 +766,20 @@ restricted variant.
 **Document size is not a problem when you use `--out`.** The `--out` path
 streams the document straight to disk in chunks, so a report of any size (even
 multi-GB marketplace-wide pulls like Brand Analytics Search Terms) lands on the
-file with no ceiling and no crash. The **only** size limit is on the no-`--out`
-path: when you fetch without `--out`, the inline/stdout copy is capped (~25 MB)
-so it can never overflow, and an oversized document fails cleanly with a
-friendly "re-run with `--out <file>`" message rather than crashing. The fix is
-always the same: add `--out`. This is why you should default to `--out` for any
-real report and reserve the no-`--out` path for a quick peek at a small result.
-You do not need to narrow the window to dodge a size limit when writing to a
-file; only chunk a pull if the user actually wants smaller files.
+file with no ceiling and no crash. If the download stalls or drops partway, the
+harness now retries it automatically and, only if every attempt fails, returns a
+`download_failed` you can simply re-run; you never have to babysit a partial
+download by hand.
+
+The no-`--out` path is safe too, and now graceful about size. When you fetch
+without `--out`, a small document still prints inline. A large one is written to
+a file automatically and comes back as a compact handle (`out_path` + `bytes`)
+plus a short preview, so a big TSV never floods the context; anything past the
+25 MB decode cap still points you at `--out`. Pass `--inline` to force the full
+document inline anyway. Even so, default to `--out` for any real report and
+reserve the no-`--out` path for a quick peek: you do not need to narrow the
+window to dodge a size limit when writing to a file, only chunk a pull if the
+user actually wants smaller files.
 
 ## When a report type is not in the catalog
 

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-service-setup
 display_name: MixShift Service Credential Setup
-version: "0.3.0"
+version: "0.3.1"
 description: >
   Chat-orchestrated setup of an admin-issued service credential (OAuth
   client_credentials) so MixShift skills run unattended: scheduled Cowork

@@ -34,15 +34,60 @@ starts at 0.5.39; earlier versions predate the changelog.
   verifies it against the service for real, fetches brand context for the
   brands the task uses, and either reports READY or tells you exactly what is
   blocking the run and how to fix it, with a distinct exit code per blocker.
+  When the credential it finds turns out to be revoked, it automatically tries
+  the next one it discovered (newest first) instead of failing on a stale
+  leftover, and tells you to clean the stale one up.
 
 ### Fixed
 
+- **Skills reliably find the MixShift CLI on Cowork.** Cowork does not run the
+  plugin's session hook, so `mixshift` is never on the command path there and
+  each skill has to locate the bundled CLI itself. Most skills previously gave
+  up when they could not find it, and sometimes reported the plugin as "not
+  installed" when it was in fact installed and working. Every skill now locates
+  the CLI by scanning for it, so commands run on Cowork the same as anywhere
+  else. This most affects the first thing a new Cowork user does (`mx-welcome`
+  and signing in), which could previously stall.
 - **Service credential setup no longer reports success from a location that
   will not survive.** In a sandboxed session with no persistent folder
   attached, setup used to write the credential somewhere temporary and look
   successful; the next scheduled run then started signed out. Setup now stops
   and walks you through attaching a folder first, and recommends read-only
   scopes unless the scheduled work actually writes.
+- **Search-term data pulls return the full window again.** The search-term
+  data-pull skill (and the negation, harvest, and relevance reviews built on
+  it) had been reading a stale internal table that stopped updating, so recent
+  date ranges came back empty. It now reads the live source table, so a pull
+  returns the complete window of search-term performance.
+- **Clearer message when an AWD call needs a token update.** Amazon Warehousing
+  & Distribution (AWD) is a newer permission. If a merchant was connected before
+  it was added, AWD lookups returned a vague "restricted" error and could get
+  retried in a loop. The plugin now tells you plainly that the merchant needs
+  its token updated to add the AWD role, and points you to the exact place to do
+  it, so the call is not retried until it can succeed.
+- **Feedback and usage reporting now work from sandboxed and scheduled
+  runs.** `mixshift feedback` and the plugin's anonymized usage events used
+  to post to a separate host that sandboxed environments block, so reports
+  queued locally and never arrived. Both now travel through mcp.mixshift.io,
+  the one domain every install already requires, so a bug report sent from a
+  scheduled task actually reaches the MixShift team. Skill sharing
+  (`mixshift share-skill`) rides the same path. No new domains to allowlist,
+  and one less embedded credential in the plugin.
+- **Large query results no longer flood the screen.** When a `data query`
+  returns a lot of rows, the plugin now saves the full result to a CSV and
+  gives you a short summary plus a preview of the first rows, instead of
+  printing every row. Pass `--inline` if you really want the whole result
+  printed, or `--rows N` for a larger inline preview. Writing to a chosen file
+  with `--out` works as before.
+- **Large Amazon report downloads are more reliable, and never dump a huge
+  document on screen.** Fetching a big report to a file (`report get`/`report
+  run` with `--out`) used to fail after a fixed timeout with no retry if the
+  download was slow or the connection hiccuped, so you had to run it again by
+  hand. It now keeps a slow-but-progressing download going, retries a stalled
+  or dropped one automatically, and only gives up with a clear "the report is
+  still ready, just fetch it again" message if every attempt fails. Fetching a
+  large report without `--out` now saves it to a file and shows a preview
+  rather than printing the whole document (pass `--inline` to print it all).
 
 ## 0.8.5
 
