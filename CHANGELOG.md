@@ -5,8 +5,6 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.6
 
-<!-- unreleased: version bump happens at release cut, not in feature PRs. See internal/RELEASE-QUEUE.md -->
-
 ### Added
 
 - **Sessions now let you know when the plugin updated, or when a newer
