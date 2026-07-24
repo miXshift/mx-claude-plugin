@@ -61,7 +61,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **25 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **26 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -69,6 +69,7 @@ The plugin ships **25 skills**. Each is invoked naturally in chat: say what you 
 |---|---|
 | `mx-welcome` | First-run orientation: your current state and suggested next steps. |
 | `mx-help` | Navigation and discovery hub: what the plugin can do, how to fix something, where the docs are. Say "help" or "what can this do". |
+| `mx-update` | Guides updating the plugin for your surface (terminal, Claude Code, or Cowork), shows what changed, and walks any recommended post-update catch-up actions. Say "update the plugin" or "catch me up". |
 | `mx-auth-login` | Sign in via browser, switch accounts, refresh expired sessions. |
 | `mx-auth-service-setup` | Set up an admin-issued service credential for unattended runs: scheduled Cowork tasks, CI, cron. |
 | `mx-scheduled-task` | Build or repair a scheduled MixShift task end to end: durable anchor folder, service credential, task instructions that preflight every run, verified first run. Say "set up a scheduled task" or "fix my scheduled task". |

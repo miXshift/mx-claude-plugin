@@ -16,6 +16,12 @@ starts at 0.5.39; earlier versions predate the changelog.
   `mixshift whatsnew` any time for a rundown of recent releases, or
   `mixshift whatsnew --dismiss` to stop the reminder until the next version
   ships.
+- **Guided update and post-update catch-up.** Say "update the plugin" (or
+  "catch me up" after you already have) and the new `mx-update` skill walks
+  you through the exact update steps for your surface, shows what changed,
+  and offers any recommended follow-up steps for what shipped since you last
+  updated, one at a time, with your confirmation before anything runs.
+  `mixshift update-actions` is the read-only command behind it.
 - **New skill: scheduled task setup (`mx-scheduled-task`).** Say "set up a
   scheduled task" and Claude builds the whole thing so it keeps working with
   nobody at the keyboard: a persistent folder attached to the task, a service

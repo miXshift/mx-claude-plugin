@@ -60983,7 +60983,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join24(tree) {
+      function join26(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61009,7 +61009,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join24(parse4(query));
+        tree = join26(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64352,6 +64352,15 @@ var init_events = __esm({
       // emitted normally through track() from `mixshift whatsnew --dismiss`.
       UpdateBannerShown: "update.banner_shown",
       UpdateDismissed: "update.dismissed",
+      // Guided catch-up actions (P2, lib/update-actions.ts + lib/update-actions-
+      // state.ts + `mixshift update-actions` + the mx-update skill). Privacy:
+      // payloads carry only action ids (stable slugs from releases/actions.yaml,
+      // not user data), version strings, counts, and a status/source
+      // discriminator — never title/teach content or anything skill-specific.
+      // The `record` subcommand fires UpdateActionApplied itself (not the
+      // model), so the ledger and the telemetry can never drift apart.
+      UpdateActionsListed: "update_actions.listed",
+      UpdateActionApplied: "update_actions.action_applied",
       // Scheduled/unattended-run preflight (`mixshift task preflight`). Answers
       // "can this run do MixShift work" for a fresh Cowork sandbox before the
       // task's real work starts. Privacy: payload carries discovered_via (an
@@ -65961,15 +65970,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir22, readFile as readFile29 } from "node:fs/promises";
-import { join as join19, dirname as dirname26 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir24, readFile as readFile31 } from "node:fs/promises";
+import { join as join21, dirname as dirname28 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join19(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join21(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir22(dirname26(path2), { recursive: true });
+    await mkdir24(dirname28(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -65980,7 +65989,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile29(path2, "utf-8");
+    const raw = await readFile31(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -75596,10 +75605,10 @@ function createStore(rl) {
 function withHooks(rl, cb) {
   const store = createStore(rl);
   return hookStorage.run(store, () => {
-    function cycle(render2) {
+    function cycle(render3) {
       store.handleChange = () => {
         store.index = 0;
-        render2();
+        render3();
       };
       store.handleChange();
     }
@@ -81573,6 +81582,453 @@ function render(entries, current, format) {
   return out.join("\n");
 }
 
+// src/commands/update-actions.ts
+init_plugin_version();
+
+// src/lib/update-actions-state.ts
+init_resolve();
+import { readFile as readFile29, writeFile as writeFile21, mkdir as mkdir22, rename as rename18, unlink as unlink8 } from "node:fs/promises";
+import { dirname as dirname26, join as join19 } from "node:path";
+var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
+var ACTION_STATUSES = [
+  "completed",
+  "skipped",
+  "dismissed",
+  "later"
+];
+function isValidActionStatus(v) {
+  return typeof v === "string" && ACTION_STATUSES.includes(v);
+}
+function emptyActionsLedger() {
+  return { caught_up_to: null, actions: {} };
+}
+function actionsLedgerDir(dataDirOverride) {
+  return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
+}
+function actionsLedgerPath(dataDirOverride) {
+  return join19(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
+}
+async function loadActionsLedger(dataDirOverride) {
+  try {
+    const raw = await readFile29(actionsLedgerPath(dataDirOverride), "utf-8");
+    return coerceLedger(JSON.parse(raw));
+  } catch {
+    return emptyActionsLedger();
+  }
+}
+function coerceLedger(parsed) {
+  const p = parsed && typeof parsed === "object" ? parsed : {};
+  const ledger = emptyActionsLedger();
+  if (isValidVersion(p.caught_up_to)) ledger.caught_up_to = p.caught_up_to;
+  if (p.actions && typeof p.actions === "object" && !Array.isArray(p.actions)) {
+    for (const [id, rawEntry] of Object.entries(p.actions)) {
+      if (!rawEntry || typeof rawEntry !== "object") continue;
+      const rec = rawEntry;
+      if (isValidActionStatus(rec.status) && isValidVersion(rec.version) && typeof rec.at === "string") {
+        ledger.actions[id] = { status: rec.status, version: rec.version, at: rec.at };
+      }
+    }
+  }
+  return ledger;
+}
+async function saveActionsLedger(ledger, dataDirOverride) {
+  const path2 = actionsLedgerPath(dataDirOverride);
+  await mkdir22(dirname26(path2), { recursive: true });
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    await writeFile21(tmp, JSON.stringify(ledger, null, 2) + "\n", { encoding: "utf-8" });
+    await rename18(tmp, path2);
+  } catch (err) {
+    try {
+      await unlink8(tmp);
+    } catch {
+    }
+    throw err;
+  }
+}
+function setActionStatus(ledger, id, status, version2) {
+  return {
+    ...ledger,
+    actions: {
+      ...ledger.actions,
+      [id]: { status, version: version2, at: (/* @__PURE__ */ new Date()).toISOString() }
+    }
+  };
+}
+function setCaughtUpTo(ledger, version2) {
+  return { ...ledger, caught_up_to: version2 };
+}
+
+// src/lib/update-actions.ts
+init_zod();
+var import_yaml19 = __toESM(require_dist(), 1);
+init_resolve();
+init_plugin_root();
+import { readFile as readFile30, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
+import { readdir as readdir4 } from "node:fs/promises";
+import { dirname as dirname27, join as join20 } from "node:path";
+init_credentials();
+var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
+var CACHE_TTL_MS3 = 24 * 60 * 60 * 1e3;
+var FETCH_TIMEOUT_MS3 = 5e3;
+var MAX_YAML_BYTES = 256 * 1024;
+var MAX_ACTIONS = 200;
+function actionsUrl() {
+  const override = process.env.MIXSHIFT_ACTIONS_URL;
+  if (!override) return ACTIONS_URL_DEFAULT;
+  try {
+    const u = new URL(override);
+    if (u.protocol === "https:") return override;
+    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) {
+      return override;
+    }
+  } catch {
+  }
+  return ACTIONS_URL_DEFAULT;
+}
+var PREDICATE_KINDS = ["always", "signed_in", "has_brands"];
+var WRITES_TIERS = ["none", "local", "warehouse", "amazon"];
+var MAX_TITLE_CHARS = 120;
+var MAX_TEACH_CHARS = 600;
+var MAX_ARGS_HINT_CHARS = 60;
+var predicateSchema = external_exports.object({
+  kind: external_exports.enum(PREDICATE_KINDS)
+});
+var runSchema = external_exports.object({
+  skill: external_exports.string().min(1).max(120),
+  args_hint: external_exports.string().max(MAX_ARGS_HINT_CHARS).default("")
+});
+var actionSchema = external_exports.object({
+  id: external_exports.string().min(1).max(120),
+  introduced_in: external_exports.string().refine(isValidVersion, "not a valid version shape"),
+  title: external_exports.string().min(1).max(MAX_TITLE_CHARS),
+  teach: external_exports.string().min(1).max(MAX_TEACH_CHARS),
+  applies_if: predicateSchema,
+  detect_done: predicateSchema.optional(),
+  run: runSchema,
+  writes: external_exports.enum(WRITES_TIERS),
+  supersedes: external_exports.array(external_exports.string().min(1).max(120)).default([])
+});
+var actionsFileSchema = external_exports.object({
+  version: external_exports.literal(1),
+  actions: external_exports.array(external_exports.unknown()).default([])
+});
+function stripControl(s, keepNewline) {
+  let out = "";
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c >= 32 && c !== 127) {
+      out += ch;
+    } else if (keepNewline && c === 10) {
+      out += ch;
+    } else {
+      out += " ";
+    }
+  }
+  return out;
+}
+function sanitizeTitle(s) {
+  return stripControl(s, false).replace(/\s+/g, " ").trim();
+}
+function sanitizeTeach(s) {
+  const kept = stripControl(s.replace(/\r/g, ""), true);
+  return kept.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function parseActions(yamlText) {
+  let parsed;
+  try {
+    parsed = (0, import_yaml19.parse)(yamlText);
+  } catch {
+    return [];
+  }
+  const top = actionsFileSchema.safeParse(parsed);
+  if (!top.success) return [];
+  const out = [];
+  for (const raw of top.data.actions.slice(0, MAX_ACTIONS)) {
+    const result = actionSchema.safeParse(raw);
+    if (!result.success) continue;
+    const title = sanitizeTitle(result.data.title);
+    const teach = sanitizeTeach(result.data.teach);
+    if (!title || !teach) continue;
+    out.push({ ...result.data, title, teach });
+  }
+  return out;
+}
+function actionsCachePath(dataDirOverride) {
+  return join20(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
+}
+async function loadActions(opts = {}) {
+  const path2 = actionsCachePath(opts.dataDirOverride);
+  let cached4 = null;
+  try {
+    const raw = await readFile30(path2, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.checked_at === "string" && typeof parsed.yaml === "string") {
+      cached4 = { checked_at: parsed.checked_at, yaml: parsed.yaml };
+    }
+  } catch {
+  }
+  const cacheAge = cached4 ? Date.now() - Date.parse(cached4.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS3;
+  if (cacheFresh && cached4) {
+    return { actions: parseActions(cached4.yaml), source: "cache" };
+  }
+  const fetched = await fetchActionsYaml();
+  if (fetched.yaml !== null) {
+    try {
+      await mkdir23(dirname27(path2), { recursive: true });
+      await writeFile22(
+        path2,
+        JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), yaml: fetched.yaml }, null, 2) + "\n",
+        "utf-8"
+      );
+    } catch {
+    }
+    return { actions: parseActions(fetched.yaml), source: "network" };
+  }
+  if (cached4) {
+    return { actions: parseActions(cached4.yaml), source: "cache", error: fetched.error };
+  }
+  return { actions: [], source: "none", error: fetched.error };
+}
+async function fetchActionsYaml() {
+  try {
+    const res = await fetch(actionsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS3) });
+    if (!res.ok) return { yaml: null, error: `HTTP ${res.status}` };
+    const len = Number(res.headers.get("content-length"));
+    if (Number.isFinite(len) && len > MAX_YAML_BYTES) {
+      return { yaml: null, error: "manifest too large" };
+    }
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf-8") > MAX_YAML_BYTES) {
+      return { yaml: null, error: "manifest too large" };
+    }
+    return { yaml: text };
+  } catch (err) {
+    return { yaml: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+async function evalPredicate(kind, opts = {}) {
+  try {
+    return await evalPredicateInner(kind, opts);
+  } catch {
+    return false;
+  }
+}
+async function evalPredicateInner(kind, opts) {
+  switch (kind) {
+    case "always":
+      return true;
+    case "signed_in": {
+      const { credentials } = await loadCredentials(opts.dataDirOverride);
+      return !!(credentials?.datahub || credentials?.service || credentials?.mysql);
+    }
+    case "has_brands": {
+      const { index } = await readIndex(opts.dataDirOverride);
+      return index.brands.length > 0;
+    }
+    default:
+      return false;
+  }
+}
+async function listInstalledSkillIds() {
+  try {
+    const dir = pluginPath("skills");
+    const entries = await readdir4(dir, { withFileTypes: true });
+    return new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+async function computePending(args) {
+  const { installed, caughtUpTo, ledger, actions } = args;
+  let candidates = actions.filter((a) => {
+    if (compareVersions(a.introduced_in, installed) > 0) return false;
+    if (compareVersions(caughtUpTo, a.introduced_in) >= 0) return false;
+    return true;
+  });
+  candidates = candidates.filter((a) => {
+    const rec = ledger.actions[a.id];
+    return !(rec && (rec.status === "completed" || rec.status === "dismissed"));
+  });
+  const installedSkills = args.installedSkillIds ?? await listInstalledSkillIds();
+  candidates = candidates.filter((a) => installedSkills.has(a.run.skill));
+  const eligible = [];
+  for (const a of candidates) {
+    const applies = await evalPredicate(a.applies_if.kind, { dataDirOverride: args.dataDirOverride });
+    if (!applies) continue;
+    if (a.detect_done) {
+      const done = await evalPredicate(a.detect_done.kind, { dataDirOverride: args.dataDirOverride });
+      if (done) continue;
+    }
+    eligible.push(a);
+  }
+  const supersededIds = /* @__PURE__ */ new Set();
+  for (const a of eligible) for (const s of a.supersedes) supersededIds.add(s);
+  return eligible.filter((a) => !supersededIds.has(a.id)).map((a) => ({ id: a.id, title: a.title, teach: a.teach, run: a.run, writes: a.writes }));
+}
+
+// src/commands/update-actions.ts
+init_telemetry();
+function registerUpdateActionsCommand(program3) {
+  const updateActions = program3.command("update-actions").description(
+    "Guided catch-up actions after an update. Read-only by default (lists what's pending for this install from releases/actions.yaml); `record` and `catch-up` update the local ledger. The engine never executes an action itself \u2014 that always goes through the named skill."
+  ).option(
+    "--format <type>",
+    "output format for the list: `terminal` (default) | `chat` (markdown for Claude/Cowork)",
+    "terminal"
+  ).option("--force-fetch", "bypass the 24h actions.yaml cache and re-fetch", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    await runList(root, opts);
+  });
+  registerRecord(updateActions);
+  registerCatchUp(updateActions);
+}
+async function runList(root, opts) {
+  const installed = getPluginVersion();
+  const ledger = await loadActionsLedger(root.dataDir);
+  const caughtUpTo = ledger.caught_up_to ?? installed;
+  const { actions, source, error: error51 } = await loadActions({
+    dataDirOverride: root.dataDir,
+    forceFetch: opts.forceFetch
+  });
+  const pending = await computePending({
+    installed,
+    caughtUpTo,
+    ledger,
+    actions,
+    dataDirOverride: root.dataDir
+  });
+  await track(
+    {
+      event_name: EventName.UpdateActionsListed,
+      payload: {
+        pending_count: pending.length,
+        installed,
+        source,
+        ...error51 ? { fetch_error: error51 } : {}
+      }
+    },
+    root.dataDir
+  );
+  const checked = source !== "none";
+  if (root.json) {
+    process.stdout.write(
+      JSON.stringify(
+        { status: "ok", installed, caught_up_to: caughtUpTo, checked, source, pending },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  const format = opts.format === "chat" ? "chat" : "terminal";
+  process.stdout.write(render2(pending, checked, format) + "\n");
+}
+function render2(pending, checked, format) {
+  if (pending.length === 0) {
+    if (!checked) {
+      const msg2 = "Could not check for catch-up actions right now (the update service was unreachable). Try again later.";
+      return format === "chat" ? msg2 : `
+${msg2}
+`;
+    }
+    return format === "chat" ? "No catch-up actions pending. You are current." : "\nNo catch-up actions pending. You are current.\n";
+  }
+  if (format === "chat") {
+    const out2 = ["**Catch-up actions for this update:**", ""];
+    for (const a of pending) {
+      out2.push(`### ${a.title}`, "");
+      out2.push(...a.teach.split("\n").map((line) => `> ${line}`));
+      out2.push("");
+      out2.push(`_Runs: ${a.run.skill}${a.run.args_hint ? ` (${a.run.args_hint})` : ""}_`, "");
+    }
+    return out2.join("\n").trimEnd();
+  }
+  const out = ["", "Catch-up actions for this update:"];
+  for (const a of pending) {
+    out.push("", `-- ${a.title} --`, "", a.teach, `(runs: ${a.run.skill}${a.run.args_hint ? ` ${a.run.args_hint}` : ""})`);
+  }
+  out.push("");
+  return out.join("\n");
+}
+function registerRecord(parent) {
+  parent.command("record <id>").description("Record the outcome of one catch-up action in the local ledger.").requiredOption("--status <status>", `outcome: ${ACTION_STATUSES.join(" | ")}`).action(async (id, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    if (!isValidActionStatus(opts.status)) {
+      emitError6(
+        `--status must be one of: ${ACTION_STATUSES.join(", ")} (got '${opts.status}').`,
+        root
+      );
+      return;
+    }
+    const status = opts.status;
+    const installed = getPluginVersion();
+    const ledger = setActionStatus(await loadActionsLedger(root.dataDir), id, status, installed);
+    try {
+      await saveActionsLedger(ledger, root.dataDir);
+    } catch (err) {
+      emitError6(
+        `could not save the actions ledger: ${err instanceof Error ? err.message : String(err)}`,
+        root
+      );
+      return;
+    }
+    await track(
+      {
+        event_name: EventName.UpdateActionApplied,
+        payload: { action_id: id, status, installed }
+      },
+      root.dataDir
+    );
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify({ status: "ok", action_id: id, recorded_status: status }, null, 2) + "\n"
+      );
+      return;
+    }
+    process.stdout.write(`Recorded ${id} as ${status}.
+`);
+  });
+}
+function registerCatchUp(parent) {
+  parent.command("catch-up").description(
+    "Mark the user caught up through a version: actions introduced at or before it never surface as pending again."
+  ).requiredOption("--to <version>", "the version to mark as caught up to").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    if (!isValidVersion(opts.to)) {
+      emitError6(`--to must be a valid version string (got '${opts.to}').`, root);
+      return;
+    }
+    const to = opts.to;
+    const ledger = setCaughtUpTo(await loadActionsLedger(root.dataDir), to);
+    try {
+      await saveActionsLedger(ledger, root.dataDir);
+    } catch (err) {
+      emitError6(
+        `could not save the actions ledger: ${err instanceof Error ? err.message : String(err)}`,
+        root
+      );
+      return;
+    }
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "ok", caught_up_to: to }, null, 2) + "\n");
+      return;
+    }
+    process.stdout.write(`Caught up through ${to}.
+`);
+  });
+}
+function emitError6(message, root) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+
 // src/commands/telemetry.ts
 init_telemetry();
 init_surface();
@@ -81878,8 +82334,8 @@ Context:
 }
 
 // src/lib/calibration/confirm-flow.ts
-var import_yaml19 = __toESM(require_dist(), 1);
-import { readFile as readFile30 } from "node:fs/promises";
+var import_yaml20 = __toESM(require_dist(), 1);
+import { readFile as readFile32 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -82139,8 +82595,8 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile30(path2, "utf-8");
-    return (0, import_yaml19.parse)(raw);
+    const raw = await readFile32(path2, "utf-8");
+    return (0, import_yaml20.parse)(raw);
   } catch {
     return null;
   }
@@ -82299,8 +82755,8 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir23, readFile as readFile31, writeFile as writeFile21 } from "node:fs/promises";
-import { dirname as dirname27 } from "node:path";
+import { mkdir as mkdir25, readFile as readFile33, writeFile as writeFile23 } from "node:fs/promises";
+import { dirname as dirname29 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
@@ -82328,7 +82784,7 @@ function registerSkillCommands(program3) {
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError6(
+          return emitError7(
             root.json,
             `Brand "${opts.brand}" not found in the registry. Run \`node dist/cli.js brand list\` to see available brands. The resolver accepts slugs, display names, acronyms, and prefixes.`
           );
@@ -82403,7 +82859,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError6(root.json, message);
+        return emitError7(root.json, message);
       }
     }
   );
@@ -82419,7 +82875,7 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
       try {
         const brandRow = await resolveBrandRow2(opts.brand, root.dataDir);
         if (brandRow === null) {
-          return emitError6(
+          return emitError7(
             root.json,
             `Brand "${opts.brand}" not in the registry.`
           );
@@ -82486,7 +82942,7 @@ Real Amazon writes will land once the write MCP/API is wired. Same contract.
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return emitError6(root.json, message);
+        return emitError7(root.json, message);
       }
     }
   );
@@ -82560,7 +83016,7 @@ async function runApplyDecision2(args) {
   try {
     decision = JSON.parse(args.decisionJson);
   } catch (err) {
-    return emitError6(
+    return emitError7(
       args.json,
       `--apply must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
     );
@@ -82702,7 +83158,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname27(path2);
+  const runDir = dirname29(path2);
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -82749,8 +83205,8 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir23(dirname27(path2), { recursive: true });
-  await writeFile21(path2, JSON.stringify(body, null, 2), "utf-8");
+  await mkdir25(dirname29(path2), { recursive: true });
+  await writeFile23(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
     row_count: appliedRows.length,
@@ -82779,7 +83235,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile31(path2, "utf-8");
+    const raw = await readFile33(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -82812,7 +83268,7 @@ function stableRowId(row) {
   }
   return null;
 }
-function emitError6(json2, message) {
+function emitError7(json2, message) {
   if (json2) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
@@ -82825,15 +83281,15 @@ function emitError6(json2, message) {
 }
 
 // src/commands/amazon.ts
-import { resolve as resolvePath2, dirname as dirname31 } from "node:path";
-import { mkdir as mkdir26, writeFile as writeFile23 } from "node:fs/promises";
+import { resolve as resolvePath2, dirname as dirname33 } from "node:path";
+import { mkdir as mkdir28, writeFile as writeFile25 } from "node:fs/promises";
 
 // src/lib/amazon/reports.ts
 init_credentials();
 init_intent();
 import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir24, rename as rename18 } from "node:fs/promises";
-import { dirname as dirname28 } from "node:path";
+import { mkdir as mkdir26, rename as rename19 } from "node:fs/promises";
+import { dirname as dirname30 } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -83157,7 +83613,7 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
   }
   let out;
   try {
-    await mkdir24(dirname28(outPath), { recursive: true });
+    await mkdir26(dirname30(outPath), { recursive: true });
     out = createWriteStream2(outPath);
     const source = Readable.fromWeb(res.body);
     const monitor = new Transform({
@@ -83213,7 +83669,7 @@ function transientDownloadFailure(err, abortedReason) {
 }
 async function renamePartial(outPath) {
   try {
-    await rename18(outPath, `${outPath}.partial`);
+    await rename19(outPath, `${outPath}.partial`);
   } catch {
   }
 }
@@ -83552,16 +84008,16 @@ function safeJsonPreview(json2) {
 }
 
 // src/lib/reports/catalog.ts
-var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile32 } from "node:fs/promises";
-import { dirname as dirname29, join as join20 } from "node:path";
+var import_yaml21 = __toESM(require_dist(), 1);
+import { readFile as readFile34 } from "node:fs/promises";
+import { dirname as dirname31, join as join22 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile32(path2, "utf-8");
-      const parsed = (0, import_yaml20.parse)(raw);
+      const raw = await readFile34(path2, "utf-8");
+      const parsed = (0, import_yaml21.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
     } catch (err) {
@@ -83605,12 +84061,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname29(fileURLToPath6(import.meta.url));
+  const here = dirname31(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join20(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname29(dir);
+    candidates.push(join22(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname31(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -83625,7 +84081,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile34 } from "node:fs/promises";
+import { readFile as readFile36 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -83718,12 +84174,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir25, readFile as readFile33, rename as rename19, writeFile as writeFile22 } from "node:fs/promises";
-import { dirname as dirname30 } from "node:path";
+import { mkdir as mkdir27, readFile as readFile35, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
+import { dirname as dirname32 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile33(path2, "utf8");
+    const raw = await readFile35(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -83734,10 +84190,10 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir25(dirname30(path2), { recursive: true });
+  await mkdir27(dirname32(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile22(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename19(tmp, path2);
+  await writeFile24(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename20(tmp, path2);
 }
 async function recordPricingRun(input, dataDirOverride) {
   try {
@@ -84173,7 +84629,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile34(file2, "utf8");
+    const text = await readFile36(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -84245,7 +84701,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile35 } from "node:fs/promises";
+import { readFile as readFile37 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -84345,7 +84801,7 @@ function registerOperations(amazon) {
       }
       return;
     } catch (err) {
-      emitError7(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -84371,10 +84827,10 @@ function registerCall(amazon) {
     try {
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError7(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile35(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile37(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -84422,7 +84878,7 @@ function registerCall(amazon) {
       }
       return;
     } catch (err) {
-      emitError7(err, !!root.json);
+      emitError8(err, !!root.json);
     }
   });
 }
@@ -84468,7 +84924,7 @@ function emitFailure2(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError7(err, json2) {
+function emitError8(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson2({ status: "error", message });
@@ -84569,7 +85025,7 @@ function registerMerchants(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -84596,7 +85052,7 @@ function registerListReports(amazon) {
         }
         return;
       } catch (err) {
-        emitError8(err, !!root.json);
+        emitError9(err, !!root.json);
       }
     }
   );
@@ -84621,7 +85077,7 @@ function registerDescribeReport(amazon) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -84691,7 +85147,7 @@ Next: \`mixshift amazon report poll ${result.runId}\` until ready, then \`amazon
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -84742,7 +85198,7 @@ Poll again in a few seconds.
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -84798,8 +85254,8 @@ function registerReportGet(report) {
         const spillPath = resolvePath2(
           `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`
         );
-        await mkdir26(dirname31(spillPath), { recursive: true });
-        await writeFile23(spillPath, document, "utf-8");
+        await mkdir28(dirname33(spillPath), { recursive: true });
+        await writeFile25(spillPath, document, "utf-8");
         const { preview, truncated, totalLines } = previewLines(document);
         if (root.json) {
           writeJson3({
@@ -84839,7 +85295,7 @@ function registerReportGet(report) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -85072,8 +85528,8 @@ function registerReportRun(report) {
       try {
         const merged = mergeSqpDocuments(docs, fullAsinList);
         bytes = Buffer.byteLength(merged, "utf8");
-        await mkdir26(dirname31(outPath), { recursive: true });
-        await writeFile23(outPath, merged, "utf8");
+        await mkdir28(dirname33(outPath), { recursive: true });
+        await writeFile25(outPath, merged, "utf8");
       } catch (mergeErr) {
         emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
         return;
@@ -85101,7 +85557,7 @@ function registerReportRun(report) {
       }
       return;
     } catch (err) {
-      emitError8(err, !!root.json);
+      emitError9(err, !!root.json);
     }
   });
 }
@@ -85363,7 +85819,7 @@ function renderCandidates(candidates) {
   lines.push("");
   return lines.join("\n") + "\n";
 }
-function emitError8(err, json2) {
+function emitError9(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson3({ status: "error", message });
@@ -85518,7 +85974,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile36 } from "node:fs/promises";
+import { readFile as readFile38 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -85941,7 +86397,7 @@ function registerProfiles(ads) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError10(err, !!root.json);
     }
   });
 }
@@ -85974,7 +86430,7 @@ function registerOperations2(ads) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError10(err, !!root.json);
     }
   });
 }
@@ -86000,7 +86456,7 @@ function registerCall2(ads) {
     const startedAt = Date.now();
     try {
       if (opts.proposalId !== void 0 && !/^[A-Za-z0-9_-]{1,128}$/.test(opts.proposalId)) {
-        return emitError9(
+        return emitError10(
           new Error(
             "--proposal-id must be 1-128 characters of A-Z, a-z, 0-9, underscore, or hyphen (use the audit id printed by the dry run)."
           ),
@@ -86009,10 +86465,10 @@ function registerCall2(ads) {
       }
       let body;
       if (opts.bodyFile && opts.body) {
-        return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile36(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile38(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -86109,7 +86565,7 @@ function registerCall2(ads) {
       }
       return;
     } catch (err) {
-      emitError9(err, !!root.json);
+      emitError10(err, !!root.json);
     }
   });
 }
@@ -86155,7 +86611,7 @@ function emitFailure4(failure, json2) {
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
-function emitError9(err, json2) {
+function emitError10(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
     writeJson4({ status: "error", message });
@@ -86672,7 +87128,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname32, join as join21 } from "node:path";
+import { dirname as dirname34, join as join23 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -86681,7 +87137,8 @@ var CATALOG = [
       { id: "mx-auth-login", say: "sign me in", what: "sign in, or switch MixShift accounts" },
       { id: "mx-auth-service-setup", say: "set up an unattended credential", what: "a service credential for scheduled or CI runs" },
       { id: "mx-scheduled-task", say: "set up a scheduled task", what: "scheduled MixShift runs that survive fresh sandboxes" },
-      { id: "mx-brand-context", say: "set up brand context for <brand>", what: "onboard a brand so the analytical skills know it" }
+      { id: "mx-brand-context", say: "set up brand context for <brand>", what: "onboard a brand so the analytical skills know it" },
+      { id: "mx-update", say: "update the plugin", what: "guide the update and walk post-update catch-up actions" }
     ]
   },
   {
@@ -86806,17 +87263,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join21(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join23(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname32(fileURLToPath7(import.meta.url));
+  let dir = dirname34(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join21(dir, "skills");
+      const candidate = join23(dir, "skills");
       const stat5 = await fs.stat(candidate);
       if (stat5.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname32(dir);
+    const parent = dirname34(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -86930,14 +87387,14 @@ function renderHelpTerminal(args) {
 }
 
 // src/commands/share-skill.ts
-var import_yaml21 = __toESM(require_dist(), 1);
+var import_yaml22 = __toESM(require_dist(), 1);
 init_load();
 init_credentials();
 init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join22, relative, basename as basename3 } from "node:path";
+import { resolve as resolve2, join as join24, relative, basename as basename3 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -87267,7 +87724,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join22(dir, e.name);
+        const abs = join24(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -87291,7 +87748,7 @@ function findFrontmatter(files) {
   const m = skillMd.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return null;
   try {
-    const parsed = (0, import_yaml21.parse)(m[1]);
+    const parsed = (0, import_yaml22.parse)(m[1]);
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
@@ -87316,7 +87773,7 @@ function registerContextCommands(program3) {
       for (const brand of brands) {
         const r = await computeStatus(brand, engineOptions);
         if (!r.ok) {
-          emitError10(r.message, root);
+          emitError11(r.message, root);
           return;
         }
         results.push(r);
@@ -87390,7 +87847,7 @@ function registerContextCommands(program3) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError10(err instanceof Error ? err.message : String(err), root);
+      emitError11(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -87424,7 +87881,7 @@ function registerContextCommands(program3) {
     const t0 = Date.now();
     try {
       if (opts.brand && !await brandDirExists(opts.brand, root.dataDir)) {
-        emitError10(
+        emitError11(
           `brand '${opts.brand}' has no local directory under ~/.mixshift/clients/ \u2014 migrate seeds the org store from local brand dirs`,
           root
         );
@@ -87441,7 +87898,7 @@ function registerContextCommands(program3) {
         client: createContextSyncClient({ dataDirOverride: root.dataDir })
       });
       if (!result.ok) {
-        emitError10(result.message, root);
+        emitError11(result.message, root);
         return;
       }
       const allReports = result.brands.flatMap((b) => b.reports);
@@ -87481,7 +87938,7 @@ function registerContextCommands(program3) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError10(err instanceof Error ? err.message : String(err), root);
+      emitError11(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -87510,7 +87967,7 @@ function registerActionSubcommand(context, spec) {
     const t0 = Date.now();
     try {
       if (spec.hasForce && opts.force && !opts.brand) {
-        emitError10(
+        emitError11(
           `--force requires --brand <slug>: forced ${spec.name} resolution is scoped to one brand at a time.`,
           root
         );
@@ -87526,7 +87983,7 @@ function registerActionSubcommand(context, spec) {
           ...spec.hasForce ? { force: opts.force ?? false } : {}
         });
         if (!r.ok) {
-          emitError10(r.message, root);
+          emitError11(r.message, root);
           return;
         }
         results.push({ brand: r.brand, reports: r.reports });
@@ -87578,7 +88035,7 @@ function registerActionSubcommand(context, spec) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError10(err instanceof Error ? err.message : String(err), root);
+      emitError11(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -87655,7 +88112,7 @@ function registerAutosyncSubcommand(context) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError10(err instanceof Error ? err.message : String(err), root);
+      emitError11(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -87669,14 +88126,14 @@ async function resolveBrandsAndManifest(brandOpt, root) {
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
   const manifest = await client.fetchManifest();
   if (!manifest.ok) {
-    emitError10(manifest.friendly, root);
+    emitError11(manifest.friendly, root);
     return null;
   }
   if (brandOpt) {
     const knownLocally = await brandDirExists(brandOpt, root.dataDir);
     const knownOnServer = manifest.brands.some((b) => b.brand_slug === brandOpt);
     if (!knownLocally && !knownOnServer) {
-      emitError10(
+      emitError11(
         `brand '${brandOpt}' not found locally or in the org store \u2014 check the slug (run \`mixshift context status\` for the known brands)`,
         root
       );
@@ -87727,7 +88184,7 @@ function emitNoBrands(root) {
     );
   }
 }
-function emitError10(message, root) {
+function emitError11(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -87839,7 +88296,7 @@ function registerList(timeline) {
       if (opts.since) {
         const since = parseSince(opts.since);
         if (!since.ok) {
-          emitError11(since.message, root);
+          emitError12(since.message, root);
           return;
         }
         query.since = since.iso;
@@ -87847,7 +88304,7 @@ function registerList(timeline) {
       if (opts.until) {
         const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
         if (!until.ok) {
-          emitError11(until.message, root);
+          emitError12(until.message, root);
           return;
         }
         query.until = until.iso;
@@ -87855,7 +88312,7 @@ function registerList(timeline) {
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
         if (!Number.isInteger(n) || n <= 0) {
-          emitError11(`--limit must be a positive integer, got '${opts.limit}'`, root);
+          emitError12(`--limit must be a positive integer, got '${opts.limit}'`, root);
           return;
         }
         query.limit = n;
@@ -87880,7 +88337,7 @@ function registerList(timeline) {
           },
           root.dataDir
         );
-        emitError11(result.friendly, root);
+        emitError12(result.friendly, root);
         return;
       }
       await track(
@@ -87924,7 +88381,7 @@ function registerList(timeline) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError11(err instanceof Error ? err.message : String(err), root);
+      emitError12(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -87944,14 +88401,14 @@ function registerAdd(timeline) {
     try {
       const family = familyForKind(opts.kind);
       if (family === null) {
-        emitError11(
+        emitError12(
           `--kind must be 'comment' or 'structural.<what>' (got '${opts.kind}'). knowledge.* events are emitted by the context service and action.* events by instrumented write paths; neither can be added by hand.`,
           root
         );
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_NOTE_CHARS) {
-        emitError11(
+        emitError12(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_NOTE_CHARS}). Trim it, or store the full text as a corpus doc and reference it with --target.`,
           root
         );
@@ -87960,42 +88417,42 @@ function registerAdd(timeline) {
       const isStake = opts.category !== void 0;
       if (isStake) {
         if (!STAKE_CATEGORIES.includes(opts.category)) {
-          emitError11(
+          emitError12(
             `--category must be one of: ${STAKE_CATEGORIES.join(", ")} (got '${opts.category}').`,
             root
           );
           return;
         }
         if (family !== "structural") {
-          emitError11(
+          emitError12(
             `a --category stake requires a 'structural.<what>' --kind (got '${opts.kind}').`,
             root
           );
           return;
         }
         if (opts.interpretation === void 0 || opts.interpretation.length === 0) {
-          emitError11(
+          emitError12(
             "--interpretation is required when --category is given (a stake records what the org read into the event).",
             root
           );
           return;
         }
         if (opts.interpretation.length > MAX_INTERPRETATION_CHARS) {
-          emitError11(
+          emitError12(
             `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS}).`,
             root
           );
           return;
         }
         if (opts.source !== void 0 && !STAKE_SOURCES.includes(opts.source)) {
-          emitError11(
+          emitError12(
             `--source must be one of: ${STAKE_SOURCES.join(", ")} (got '${opts.source}').`,
             root
           );
           return;
         }
       } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
-        emitError11(
+        emitError12(
           "--end / --affects / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
         );
@@ -88005,7 +88462,7 @@ function registerAdd(timeline) {
       if (opts.intensity !== void 0) {
         intensity = Number(opts.intensity);
         if (!Number.isFinite(intensity)) {
-          emitError11(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
+          emitError12(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
           return;
         }
       }
@@ -88014,7 +88471,7 @@ function registerAdd(timeline) {
         ["--end", opts.end]
       ]) {
         if (value !== void 0 && Number.isNaN(Date.parse(value))) {
-          emitError11(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
+          emitError12(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
           return;
         }
       }
@@ -88022,7 +88479,7 @@ function registerAdd(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError11(parsed.message, root);
+          emitError12(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -88071,7 +88528,7 @@ function registerAdd(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError11(result.friendly, root);
+        emitError12(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -88096,7 +88553,7 @@ function registerAdd(timeline) {
       }
       return;
     } catch (err) {
-      emitError11(err instanceof Error ? err.message : String(err), root);
+      emitError12(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -88113,25 +88570,25 @@ function registerCorroborate(timeline) {
     const t0 = Date.now();
     try {
       if (opts.status === void 0 && opts.end === void 0 && opts.evidence === void 0) {
-        emitError11(
+        emitError12(
           "a corroboration needs at least one of --status, --end, or --evidence (a --note alone is not a corroboration).",
           root
         );
         return;
       }
       if (opts.status !== void 0 && !STAKE_STATUSES.includes(opts.status)) {
-        emitError11(
+        emitError12(
           `--status must be one of: ${STAKE_STATUSES.join(", ")} (got '${opts.status}').`,
           root
         );
         return;
       }
       if (opts.end !== void 0 && Number.isNaN(Date.parse(opts.end))) {
-        emitError11(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
+        emitError12(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_CORROBORATE_NOTE_CHARS) {
-        emitError11(
+        emitError12(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_CORROBORATE_NOTE_CHARS}).`,
           root
         );
@@ -88141,7 +88598,7 @@ function registerCorroborate(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError11(parsed.message, root);
+          emitError12(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -88171,7 +88628,7 @@ function registerCorroborate(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError11(result.friendly, root);
+        emitError12(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -88196,7 +88653,7 @@ function registerCorroborate(timeline) {
       }
       return;
     } catch (err) {
-      emitError11(err instanceof Error ? err.message : String(err), root);
+      emitError12(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -88309,7 +88766,7 @@ function filtersPayload(query, all) {
     all
   };
 }
-function emitError11(message, root) {
+function emitError12(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -88321,8 +88778,8 @@ function emitError11(message, root) {
 
 // src/commands/task.ts
 init_credentials();
-import { readdir as readdir4, stat as stat4 } from "node:fs/promises";
-import { basename as basename4, dirname as dirname33, join as join23 } from "node:path";
+import { readdir as readdir5, stat as stat4 } from "node:fs/promises";
+import { basename as basename4, dirname as dirname35, join as join25 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -88368,7 +88825,7 @@ async function discoverCredentialFiles(roots, maxDepth) {
 async function walkForCredentials(dir, depth, maxDepth, found) {
   let entries;
   try {
-    entries = await readdir4(dir, { withFileTypes: true });
+    entries = await readdir5(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -88379,14 +88836,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join23(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join25(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename4(dir) !== "auth" || basename4(dirname33(dir)) !== ".mixshift") continue;
-    found.push(join23(dir, entry.name));
+    if (basename4(dir) !== "auth" || basename4(dirname35(dir)) !== ".mixshift") continue;
+    found.push(join25(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -88401,7 +88858,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname33(dirname33(hitPath));
+  return dirname35(dirname35(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -88469,7 +88926,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join23(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join25(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -88861,6 +89318,7 @@ registerFeedbackCommand(program2);
 registerWelcomeCommand(program2);
 registerVersionCommand(program2);
 registerWhatsnewCommand(program2);
+registerUpdateActionsCommand(program2);
 registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 registerAmazonCommands(program2);
