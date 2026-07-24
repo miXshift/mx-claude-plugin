@@ -233,8 +233,9 @@ export function renderUpdateBanner(
     );
     lines.push('>');
     lines.push(
-      '> **In Cowork:** Settings → Plugins → uninstall and reinstall `mixshift-ai`. ' +
-        '(Org-managed installs may auto-sync within ~30 min.)',
+      '> **In Cowork:** Settings → Plugins → click **Update** on `mixshift-ai` ' +
+        '(or uninstall and reinstall if no Update option appears). ' +
+        'Org-managed installs auto-sync within ~30 min.',
     );
     lines.push('>');
     lines.push(
@@ -252,6 +253,12 @@ export function renderUpdateBanner(
     );
     lines.push('>');
     lines.push(
+      '> **Avoid this next time:** turn on auto-sync when you first add the plugin. ' +
+        "If you installed earlier, the toggle is on the plugin's marketplace entry, " +
+        'and org-managed installs already sync on their own.',
+    );
+    lines.push('>');
+    lines.push(
       '> See what changed: run `mixshift whatsnew`' +
         (result.releaseUrl ? ` (or view the release notes at ${result.releaseUrl})` : '') +
         '.',
@@ -266,8 +273,9 @@ export function renderUpdateBanner(
   lines.push(`  You are on ${result.current}; latest is ${result.latest}.`);
   lines.push('');
   lines.push('  In Cowork:');
-  lines.push('    Settings → Plugins → uninstall and reinstall mixshift-ai.');
-  lines.push('    (Org-managed installs may auto-sync within ~30 min.)');
+  lines.push('    Settings → Plugins → click Update on mixshift-ai');
+  lines.push('    (or uninstall and reinstall if no Update option appears).');
+  lines.push('    Org-managed installs auto-sync within ~30 min.');
   lines.push('');
   lines.push('  In Claude Code (run both in your terminal):');
   lines.push('    claude plugin marketplace update mixshift');
@@ -279,6 +287,11 @@ export function renderUpdateBanner(
   lines.push('    A new chat in the same window is not enough: a running session');
   lines.push('    keeps the plugin version it started with, so the update only');
   lines.push('    takes effect in a fresh session.');
+  lines.push('');
+  lines.push('  Avoid this next time:');
+  lines.push('    Turn on auto-sync when you first add the plugin. If you installed');
+  lines.push("    earlier, the toggle is on the plugin's marketplace entry, and");
+  lines.push('    org-managed installs already sync on their own.');
   lines.push('');
   lines.push('  See what changed: run  mixshift whatsnew');
   if (result.releaseUrl) {
