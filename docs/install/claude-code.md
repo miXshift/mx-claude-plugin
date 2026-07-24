@@ -169,9 +169,9 @@ claude plugin update mixshift-ai
 Confirm what your local clone is actually pinned at with `git -C ~/.claude/plugins/marketplaces/mixshift log --oneline -1`, and what's installed in `~/.claude/plugins/installed_plugins.json` (`version` + `gitCommitSha`). As always, the new version only loads after a full restart.
 
 **"command not found: mixshift" after install.**
-The plugin's SessionStart hook adds `harness/bin/` to the Bash tool's PATH when a session starts. If `mixshift` still isn't found (for example, the surface doesn't run plugin hooks), you have two workarounds:
-- Run via the absolute path: `node $CLAUDE_PLUGIN_ROOT/harness/dist/cli.js welcome`
-- Add the bin path to your shell's PATH manually: `export PATH="$HOME/.claude/plugins/cache/mixshift/mixshift-ai/<version>/harness/bin:$PATH"` (exact path may vary)
+The plugin's SessionStart hook adds `harness/bin/` to the Bash tool's PATH and exports `MIXSHIFT_CLI` (the absolute path to the bundled CLI) when a session starts. If `mixshift` still isn't found (for example, the surface doesn't run plugin hooks), you have two workarounds:
+- Run via the exported CLI path: `node "$MIXSHIFT_CLI" welcome`
+- If `$MIXSHIFT_CLI` is empty too (the hook did not run at all), locate the bundled CLI by scanning and run that: `node "$(find "$HOME/.claude/plugins" -type f -path '*/harness/dist/cli.js' | head -1)" welcome`
 
 **Browser didn't open during sign-in.**
 PKCE tries to open your default browser via the OS-native handler. On Linux without a display environment (headless server, container, SSH session), the open call fails. The harness detects this and falls back to device-code, printing a URL you can open on any machine with a browser. To force the device-code flow up front: `mixshift auth login --mode device --person-label you@yourcompany.com`.

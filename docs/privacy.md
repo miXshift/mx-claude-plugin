@@ -77,9 +77,9 @@ This is not a marketing data play. We don't sell it, don't share it with third p
 
 ## Where it goes
 
-- **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering.
+- **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering. The plugin sends events to the `mcp.mixshift.io` gateway (the same domain it already uses to sign in), which records them here; the plugin holds no database credential of its own.
 - **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Data stays inside MixShift infrastructure.
-- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the retired legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table: a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only writes to Supabase. The full event firehose stays in Supabase.
+- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the retired legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table: a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only sends events to the `mcp.mixshift.io` gateway. The full event firehose stays in Supabase.
 
 ## Retention
 
