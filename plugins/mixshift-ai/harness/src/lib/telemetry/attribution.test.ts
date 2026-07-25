@@ -36,6 +36,12 @@ function service(overrides?: Partial<ServiceCreds>): ServiceCreds {
   };
 }
 
+/** Build a JWT-shaped access token carrying the given identity claims. */
+function makeJwt(claims: Record<string, unknown>): string {
+  const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${seg({ alg: 'HS256', typ: 'JWT' })}.${seg(claims)}.sig`;
+}
+
 async function writeCreds(dataDir: string, blocks: Partial<Credentials>): Promise<void> {
   await saveCredentials(
     { schema_version: 2, created_at: new Date().toISOString(), ...blocks },
@@ -76,6 +82,44 @@ describe('resolveAttribution', () => {
     expect(a.automation).toBe(false);
     expect(a.personLabel).toBe('taylor.rivera@example.com');
     expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123' });
+  });
+
+  it('sources actor + tenantEmail + user_id from the token claims, overriding stale/collapsed local copies', async () => {
+    // Regression for the collapse: the stored person_label had diverged to the
+    // shared tenant login, but the token carries the true individual actor.
+    const token = makeJwt({
+      sub: 'user-777',
+      email: 'ops@acmeco.com',
+      actor: 'jordan.lee@example.com',
+    });
+    await writeCreds(dataDir, {
+      datahub: datahub({
+        access_token: token,
+        user_id: 'user-123', // stale local copy
+        email: 'ops@acmeco.com',
+        person_label: 'ops@acmeco.com', // collapsed local value (== tenant login)
+      }),
+    });
+    const a = await resolveAttribution(dataDir);
+    expect(a.personLabel).toBe('jordan.lee@example.com'); // actor claim wins
+    expect(a.tenantEmail).toBe('ops@acmeco.com'); // tenant email claim
+    expect(a.personLabel).not.toBe(a.tenantEmail); // no longer collapsed
+    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-777' }); // sub claim
+  });
+
+  it('falls back to stored datahub fields when the access token is opaque (not a JWT)', async () => {
+    await writeCreds(dataDir, { datahub: datahub({ access_token: 'opaque-not-a-jwt' }) });
+    const a = await resolveAttribution(dataDir);
+    expect(a.personLabel).toBe('taylor.rivera@example.com');
+    expect(a.tenantEmail).toBe('ops@acmeco.com');
+    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123' });
+  });
+
+  it('leaves tenantEmail undefined for a service credential', async () => {
+    await writeCreds(dataDir, { service: service() });
+    const a = await resolveAttribution(dataDir);
+    expect(a.tenantEmail).toBeUndefined();
+    expect(a.automation).toBe(true);
   });
 
   it('resolves a service actor with label + client_id and automation=true', async () => {

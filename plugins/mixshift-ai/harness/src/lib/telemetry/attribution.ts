@@ -21,6 +21,7 @@
  */
 
 import { loadCredentials } from '../auth/credentials.js';
+import { decodeAccessTokenClaims } from '../auth/token-claims.js';
 import { readServiceAttributionCache } from './service-attribution-cache.js';
 
 export type ActorKind = 'human' | 'service' | 'anonymous';
@@ -54,6 +55,13 @@ export interface Actor {
 export interface Attribution {
   /** Backward-compatible person_label: human work email, else svc label/id. */
   personLabel: string | undefined;
+  /**
+   * The TENANT's shared login email (the `email` telemetry column). Distinct
+   * from personLabel (the actor). Sourced from the access-token `email` claim
+   * so the event carries the org login, not the per-employee actor. Undefined
+   * for service credentials (their tokens carry no tenant email) and anonymous.
+   */
+  tenantEmail: string | undefined;
   /** True when a service credential is configured and no human session wins. */
   automation: boolean;
   /** Structured actor stamped onto payload.actor for every event. */
@@ -75,12 +83,19 @@ export async function resolveAttribution(
     const service = credentials?.service;
 
     if (datahub) {
+      // The access token is the source of truth for WHO acted. Prefer its
+      // claims over the locally-stored copies, which can diverge from the
+      // token (see token-claims.ts): `actor` is the per-employee actor
+      // (person_label), `email` the tenant login, `sub`/`user_id` the tenant
+      // id. Fall back to the stored fields when the token is absent/opaque.
+      const claims = decodeAccessTokenClaims(datahub.access_token);
       return {
-        personLabel: datahub.person_label,
+        personLabel: claims.actor ?? datahub.person_label,
+        tenantEmail: claims.email ?? datahub.email,
         // A human session present => not automation, even if a service block
         // also exists on this data dir (preserves prior semantics).
         automation: false,
-        actor: { kind: 'human', user_id: datahub.user_id },
+        actor: { kind: 'human', user_id: claims.user_id ?? datahub.user_id },
       };
     }
 
@@ -91,6 +106,9 @@ export async function resolveAttribution(
       );
       return {
         personLabel: service.label ?? service.client_id,
+        // Service tokens carry no tenant login email (email: '' server-side),
+        // and the fan-out renders automation from svc_label/owner, not email.
+        tenantEmail: undefined,
         automation: true,
         actor: {
           kind: 'service',
@@ -101,8 +119,8 @@ export async function resolveAttribution(
       };
     }
 
-    return { personLabel: undefined, automation: false, actor: { kind: 'anonymous' } };
+    return { personLabel: undefined, tenantEmail: undefined, automation: false, actor: { kind: 'anonymous' } };
   } catch {
-    return { personLabel: undefined, automation: false, actor: { kind: 'anonymous' } };
+    return { personLabel: undefined, tenantEmail: undefined, automation: false, actor: { kind: 'anonymous' } };
   }
 }

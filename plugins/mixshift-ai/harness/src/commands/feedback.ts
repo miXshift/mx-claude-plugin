@@ -72,7 +72,14 @@ export function registerFeedbackCommand(program: Command): void {
           await track(
             {
               event_name: EventName.FeedbackSubmitted,
-              email: userEmail,
+              // Do NOT set email here. track() auto-stamps email = the TENANT
+              // login (from the token) and person_label = the actor. Passing the
+              // resolved actor address as `email` would collapse email ==
+              // person_label for feedback.submitted (which fans out to Discord)
+              // AND re-introduce the shared-login collapse this fix removes,
+              // because resolveActorEmail() reads the person-mirrored
+              // profile.user.email. `userEmail` is still used below for the
+              // `attributed` flag.
               payload: {
                 category: opts.category,
                 message: message.slice(0, 2000),

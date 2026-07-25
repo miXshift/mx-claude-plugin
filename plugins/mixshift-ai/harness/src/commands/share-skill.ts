@@ -240,7 +240,10 @@ export function registerShareSkillCommand(program: Command): void {
           await track(
             {
               event_name: EventName.SkillShared,
-              email,
+              // No email override: track() stamps email = the tenant login and
+              // person_label = the actor (keeping them distinct for the Discord
+              // fan-out). The submitter's identity is still recorded on the
+              // durable skill_submissions row above (email + person_label).
               payload: {
                 skill_name: name,
                 description: description.slice(0, 500),
