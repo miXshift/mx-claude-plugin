@@ -19,6 +19,8 @@
     "check-docs": "node scripts/check-docs.mjs",
     "check-contracts": "node scripts/check-skill-contracts.mjs",
     "check-named-pack": "tsx scripts/check-named-pack.mjs",
+    "check-no-internal-exposure": "node scripts/check-no-internal-exposure.mjs",
+    "check-changelog-marker": "node scripts/check-changelog-marker.mjs",
     "package-zip": "node scripts/package-zip.mjs"
   },
   "dependencies": {

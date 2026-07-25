@@ -56,7 +56,18 @@ export function parseChangelog(md: string): ChangelogEntry[] {
   let current: { version: string; body: string[] } | null = null;
   const flush = () => {
     if (current) {
-      entries.push({ version: current.version, notes: current.body.join('\n').trim() });
+      // Strip HTML comments before storing the notes. The body renders VERBATIM
+      // to users (`mixshift whatsnew` fetches this file live from `main`, where a
+      // maintainer marker like `<!-- unreleased: ... -->` sits under the current
+      // heading for the whole dev cycle). Without this, that marker shows as
+      // literal text to anyone who runs whatsnew between releases (the 0.8.6
+      // leak). Comments can span lines; collapse the blank gap a removal leaves.
+      const notes = current.body
+        .join('\n')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      entries.push({ version: current.version, notes });
     }
   };
   for (const line of md.split(/\r?\n/)) {

@@ -47,6 +47,16 @@ describe('parseChangelog', () => {
   it('returns an empty array for input with no version headings', () => {
     expect(parseChangelog('# Changelog\n\njust intro, no releases\n')).toEqual([]);
   });
+
+  it('strips HTML comments (e.g. the unreleased marker) from notes', () => {
+    const md =
+      '## 0.9.0\n\n<!-- unreleased: version bump happens at release cut -->\n\n### Added\n\n- A real bullet\n';
+    const [entry] = parseChangelog(md);
+    expect(entry.notes).not.toContain('<!--');
+    expect(entry.notes).not.toContain('unreleased');
+    expect(entry.notes).toContain('### Added');
+    expect(entry.notes).toContain('A real bullet');
+  });
 });
 
 describe('entriesSince', () => {
