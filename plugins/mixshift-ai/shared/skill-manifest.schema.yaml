@@ -56,16 +56,17 @@ shapes:
 
   allowed_tools:
     type: list
-    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch, ads_write]
+    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch, ads_write, insight_read]
     note: |
-      db_read    — SQL queries via pre-fetch-data.py
-      file_read  — read context.yaml, narrative.md, sidecars, artifacts
-      file_write — write to tmp/ or shared/clients/<brand>/
-      renderer   — run a deterministic Python renderer script
-      validator  — run validate-context.py or check-sql-drift.py
-      web_search — external web/social searches (Phase 0.5 only)
-      prefetch   — invoke pre-fetch-data.py
-      ads_write  — mutating Amazon Ads API calls via `mixshift ads call ... --commit` (dry-run default; user-confirmed)
+      db_read      — SQL queries via pre-fetch-data.py
+      file_read    — read context.yaml, narrative.md, sidecars, artifacts
+      file_write   — write to tmp/ or shared/clients/<brand>/
+      renderer     — run a deterministic Python renderer script
+      validator    — run validate-context.py or check-sql-drift.py
+      web_search   — external web/social searches (Phase 0.5 only)
+      prefetch     — invoke pre-fetch-data.py
+      ads_write    — mutating Amazon Ads API calls via `mixshift ads call ... --commit` (dry-run default; user-confirmed)
+      insight_read — reads finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run|poll|get`; no warehouse SQL, no writes
 
   side_effect_policy:
     enum: [none, artifact_write, context_write, recommendation_only, write_gated]

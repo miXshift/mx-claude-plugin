@@ -57,6 +57,47 @@ export function pricingRunsPath(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'pricing-runs.json');
 }
 
+/** Local ledger of async MixShift Intelligence run handles (see
+ *  lib/intelligence/ledger.ts). */
+export function intelligenceRunsPath(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'intelligence-runs.json');
+}
+
+/**
+ * Root for saved Intelligence run artifacts when the run has no resolvable
+ * brand context:
+ *   ~/.mixshift/intelligence/
+ * Distinct from `reports/` (fetched SP-API documents) and `output/` (ad-hoc
+ * warehouse exports) so the three surfaces don't collide.
+ */
+export function intelligenceDir(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), 'intelligence');
+}
+
+/**
+ * Default artifact path for one `intelligence run` / `intelligence get`
+ * result:
+ *   - brand known (the run's `params.merchant.brand` was set):
+ *       ~/.mixshift/clients/<brand>/runs/intelligence/<id>-<timestamp>.json
+ *   - brand unknown (seller/marketplace selector, or nothing resolvable):
+ *       ~/.mixshift/intelligence/<id>-<timestamp>.json
+ *
+ * `timestamp` is caller-supplied and must already be filesystem-safe (no
+ * colons) — see fsSafeTimestamp in commands/intelligence.ts.
+ */
+export function intelligenceOutputPath(
+  id: string,
+  timestamp: string,
+  brandSlug: string | undefined,
+  dataDirOverride?: string,
+): string {
+  const filename = `${id}-${timestamp}.json`;
+  if (brandSlug) {
+    return join(brandDir(brandSlug, dataDirOverride), 'runs', 'intelligence', filename);
+  }
+  return join(intelligenceDir(dataDirOverride), filename);
+}
+
 export function brandDir(brandSlug: string, dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), brandSlug);
 }
