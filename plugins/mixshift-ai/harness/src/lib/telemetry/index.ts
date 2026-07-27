@@ -54,7 +54,7 @@ export async function track(
     const surface = detectSurface(readSurfaceFlag());
     const os = detectOs();
     const nowIso = new Date().toISOString();
-    const userEmail = profile.user?.email;
+    const profileEmail = profile.user?.email;
     // Auto-resolve attribution from on-disk credentials (+ the service
     // attribution cache) when the caller didn't pass one. Best-effort —
     // pre-auth events / corrupted creds files fall through silently. Human
@@ -67,6 +67,13 @@ export async function track(
     // previously carried no owner/org/purpose (feedback #10).
     const attribution = await resolveAttribution(dataDirOverride);
     const datahubPersonLabel = attribution.personLabel;
+    // events.email is the TENANT login (from the access-token `email` claim),
+    // NOT the per-employee actor. profile.user.email is a login-time mirror of
+    // person_label, so sourcing email from it collapsed email == person_label
+    // for shared-login tenants; the token's tenant email keeps the org and the
+    // actor distinct. Fall back to the profile email for legacy/pre-token
+    // installs (and service/anonymous, where tenantEmail is undefined).
+    const tenantEmail = attribution.tenantEmail ?? profileEmail;
     const automationPayload = attribution.automation ? { automation: true } : {};
     const actorPayload = { actor: attribution.actor };
     const userAgent = buildUserAgent(pluginVersion, surface, os);
@@ -86,7 +93,7 @@ export async function track(
       const synthetic: TelemetryEventRecord = {
         event_name: EventName.PluginInstalled,
         install_id: installId,
-        email: userEmail,
+        email: tenantEmail,
         person_label: datahubPersonLabel,
         plugin_version: pluginVersion,
         install_path: installPath,
@@ -105,7 +112,7 @@ export async function track(
     const record: TelemetryEventRecord = {
       event_name: input.event_name,
       install_id: installId,
-      email: input.email ?? userEmail,
+      email: input.email ?? tenantEmail,
       person_label: input.person_label ?? datahubPersonLabel,
       plugin_version: pluginVersion,
       install_path: installPath,
