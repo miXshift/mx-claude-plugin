@@ -77,3 +77,9 @@ telemetry:
   apikey: mx-gateway
   batch_size: 10
   flush_interval_ms: 5000
+
+# Gateway base for plugin-metadata fetches (CHANGELOG, marketplace.json, actions.yaml).
+# Rides the ONE domain every install already reaches; sandboxes allow mcp.mixshift.io but
+# block raw.githubusercontent.com. Empty = fetch GitHub-raw directly (fallback stays).
+gateway:
+  base_url: https://mcp.mixshift.io

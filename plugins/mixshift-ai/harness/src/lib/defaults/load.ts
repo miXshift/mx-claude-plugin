@@ -61,6 +61,12 @@ export async function loadPluginDefaults(
  *   MIXSHIFT_TELEMETRY_APIKEY       Supabase anon key (safe to embed —
  *                                   designed for client embedding, RLS
  *                                   does the security work).
+ *   MIXSHIFT_GATEWAY_BASE_URL       Gateway base for plugin-metadata fetches
+ *                                   (CHANGELOG, marketplace.json,
+ *                                   actions.yaml). Still passes through
+ *                                   resolveGatewayBase's SSRF guard before
+ *                                   any fetcher uses it — this override
+ *                                   can't widen the allowed hosts.
  *
  * Removed in v0.4.0: MIXSHIFT_DISCORD_WEBHOOK. The plugin no longer
  * makes direct Discord webhook calls — telemetry events fan out to
@@ -82,6 +88,9 @@ function applyEnvOverrides(defaults: PluginDefaults): PluginDefaults {
   }
   if (env.MIXSHIFT_TELEMETRY_APIKEY) {
     defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
+  }
+  if (env.MIXSHIFT_GATEWAY_BASE_URL) {
+    defaults.gateway.base_url = env.MIXSHIFT_GATEWAY_BASE_URL;
   }
 
   return defaults;

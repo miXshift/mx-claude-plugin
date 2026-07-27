@@ -63866,7 +63866,14 @@ var init_schema3 = __esm({
         apikey: "",
         batch_size: 50,
         flush_interval_ms: 6e4
-      })
+      }),
+      gateway: external_exports.object({
+        // Gateway base for plugin-metadata fetches (CHANGELOG, marketplace.json,
+        // actions.yaml). Empty = "no gateway configured" (fetchers go straight
+        // to GitHub-raw). See lib/net/gateway-url.ts's resolveGatewayBase for the
+        // SSRF guard applied before this value is ever used in a fetch.
+        base_url: external_exports.string().default("")
+      }).default({ base_url: "" })
     });
   }
 });
@@ -63902,6 +63909,9 @@ function applyEnvOverrides(defaults) {
   }
   if (env.MIXSHIFT_TELEMETRY_APIKEY) {
     defaults.telemetry.apikey = env.MIXSHIFT_TELEMETRY_APIKEY;
+  }
+  if (env.MIXSHIFT_GATEWAY_BASE_URL) {
+    defaults.gateway.base_url = env.MIXSHIFT_GATEWAY_BASE_URL;
   }
   return defaults;
 }
@@ -80890,6 +80900,32 @@ async function saveUpdateNoticeState(state, dataDirOverride) {
   }
 }
 
+// src/lib/net/gateway-url.ts
+init_load2();
+function resolveGatewayBase(raw) {
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:") return stripTrailingSlash(raw);
+    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) {
+      return stripTrailingSlash(raw);
+    }
+  } catch {
+  }
+  return "";
+}
+async function resolveGatewayBaseSafe() {
+  try {
+    const { gateway } = await loadPluginDefaults();
+    return resolveGatewayBase(gateway.base_url);
+  } catch {
+    return "";
+  }
+}
+function stripTrailingSlash(s) {
+  return s.replace(/\/+$/, "");
+}
+
 // src/lib/version-check.ts
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
@@ -80955,8 +80991,16 @@ async function readCachedLatestVersion(dataDirOverride) {
   }
 }
 async function fetchLatestVersion() {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    const viaGateway = await fetchLatestVersionFrom(`${base}/plugin/marketplace.json`);
+    if (viaGateway !== null) return viaGateway;
+  }
+  return fetchLatestVersionFrom(MARKETPLACE_URL);
+}
+async function fetchLatestVersionFrom(url2) {
   try {
-    const res = await fetch(MARKETPLACE_URL, {
+    const res = await fetch(url2, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     });
     if (!res.ok) return null;
@@ -81528,8 +81572,18 @@ async function loadChangelog(opts = {}) {
   return { entries: [], source: "none", error: fetched.error };
 }
 async function fetchChangelogMarkdown() {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    const viaGateway = await fetchChangelogFrom(`${base}/plugin/changelog`);
+    if (viaGateway.markdown !== null && parseChangelog(viaGateway.markdown).length > 0) {
+      return viaGateway;
+    }
+  }
+  return fetchChangelogFrom(CHANGELOG_URL);
+}
+async function fetchChangelogFrom(url2) {
   try {
-    const res = await fetch(CHANGELOG_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS2) });
+    const res = await fetch(url2, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS2) });
     if (!res.ok) return { markdown: null, error: `HTTP ${res.status}` };
     return { markdown: await res.text() };
   } catch (err) {
@@ -81845,9 +81899,24 @@ async function loadActions(opts = {}) {
   }
   return { actions: [], source: "none", error: fetched.error };
 }
-async function fetchActionsYaml() {
+function isActionsManifest(yamlText) {
   try {
-    const res = await fetch(actionsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS3) });
+    return actionsFileSchema.safeParse((0, import_yaml19.parse)(yamlText)).success;
+  } catch {
+    return false;
+  }
+}
+async function fetchActionsYaml() {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    const viaGateway = await fetchActionsYamlFrom(`${base}/plugin/actions.yaml`);
+    if (viaGateway.yaml !== null && isActionsManifest(viaGateway.yaml)) return viaGateway;
+  }
+  return fetchActionsYamlFrom(actionsUrl());
+}
+async function fetchActionsYamlFrom(url2) {
+  try {
+    const res = await fetch(url2, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS3) });
     if (!res.ok) return { yaml: null, error: `HTTP ${res.status}` };
     const len = Number(res.headers.get("content-length"));
     if (Number.isFinite(len) && len > MAX_YAML_BYTES) {

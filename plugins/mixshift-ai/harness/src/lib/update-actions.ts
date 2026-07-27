@@ -57,6 +57,7 @@ import { isValidVersion } from './update-notice-state.js';
 import { compareVersions } from './version-check.js';
 import { loadCredentials } from './auth/credentials.js';
 import { readIndex } from './clients/index.js';
+import { resolveGatewayBaseSafe } from './net/gateway-url.js';
 import type { ActionsLedger } from './update-actions-state.js';
 
 const ACTIONS_URL_DEFAULT =
@@ -293,9 +294,44 @@ export async function loadActions(
   return { actions: [], source: 'none', error: fetched.error };
 }
 
-async function fetchActionsYaml(): Promise<{ yaml: string | null; error?: string }> {
+/**
+ * Gateway-first, GitHub-raw-fallback. The gateway route (mx-legacy-auth's
+ * `GET {base}/plugin/actions.yaml`) rides the one domain every install
+ * already reaches — sandboxes that block raw.githubusercontent.com allow
+ * mcp.mixshift.io. When no gateway is configured (or the gateway leg fails
+ * for any reason) this falls through to the existing direct fetch of
+ * `actionsUrl()` unchanged. Same size cap applies to both legs.
+ */
+/**
+ * Structural check for the gateway leg: does the body parse as a valid actions
+ * manifest (`{actions: [...]}`, possibly EMPTY)? This distinguishes the real
+ * file — including a legitimately empty manifest — from a 200 whose body is not
+ * the manifest at all (empty body, HTML captive-portal/WAF interstitial), so
+ * that garbage can't win over, or poison the 24h cache against, the GitHub-raw
+ * fallback. Uses the same schema `parseActions()` gates on; never throws.
+ * (`parseActions(...).length > 0` would be WRONG here — an empty manifest is
+ * valid content, not garbage.)
+ */
+function isActionsManifest(yamlText: string): boolean {
   try {
-    const res = await fetch(actionsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    return actionsFileSchema.safeParse(parseYaml(yamlText)).success;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchActionsYaml(): Promise<{ yaml: string | null; error?: string }> {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    const viaGateway = await fetchActionsYamlFrom(`${base}/plugin/actions.yaml`);
+    if (viaGateway.yaml !== null && isActionsManifest(viaGateway.yaml)) return viaGateway;
+  }
+  return fetchActionsYamlFrom(actionsUrl());
+}
+
+async function fetchActionsYamlFrom(url: string): Promise<{ yaml: string | null; error?: string }> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { yaml: null, error: `HTTP ${res.status}` };
     // Reject an oversized body before materializing it as a string. Trust the
     // content-length when present; otherwise fall back to a post-read byte
