@@ -3,6 +3,15 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.7
+
+### Fixed
+
+- **`mixshift whatsnew` no longer shows an internal maintenance note.** A
+  behind-the-scenes marker in the changelog could surface as a stray line in the
+  "what's new" output between releases; it is now filtered out of the rendered
+  notes.
+
 ## 0.8.6
 
 ### Added

@@ -67,6 +67,9 @@ jobs:
       - name: Docs currency (README skill table + count, plugin/marketplace version sync)
         run: npm run check-docs
 
+      - name: No internal-skill exposure (nothing tracked under .claude/skills/ in the public repo)
+        run: npm run check-no-internal-exposure
+
       - name: Skill contract resolution (sql_ids, context fields, upstream) [ADVISORY — sidecar-compare warnings]
         run: npm run check-contracts
         continue-on-error: true
