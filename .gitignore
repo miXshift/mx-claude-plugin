@@ -31,8 +31,11 @@ internal/
 .env.test
 
 # Internal build/strategy docs — kept local, not for the public repo.
-# (The maintainer skill-author guide now lives under internal/, which is
-# already ignored above; shipped SKILL.md files no longer link to it.)
+# (The maintainer skill-author guide now lives under internal/; its old
+# docs/productization/ path is ignored here too so it cannot be re-added without
+# -f. Shipped SKILL.md files no longer link to it. check-no-internal-exposure
+# also flags any of these if they somehow get tracked.)
+docs/productization/SKILL-AUTHOR-GUIDE.md
 docs/productization/BRAND-MANAGEMENT.md
 docs/productization/HARNESS-REWRITE.md
 docs/productization/MIGRATION-NOTES.md

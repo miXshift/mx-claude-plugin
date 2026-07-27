@@ -42,7 +42,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 
 **Quick checklist:**
 
-- [ ] **Docs & changelog current** (run the `release-docs` skill): `npm run check-docs` passes; `CHANGELOG.md` has the new version's entry; if the skill roster or capability surface changed this release, the README skills table + count and the `plugin.json` / `marketplace.json` descriptions are updated too.
+- [ ] **Docs & changelog current** (run the `release-docs` skill): `npm run check-docs` passes; `CHANGELOG.md` has the new version's entry; the `<!-- unreleased -->` marker under the version heading is stripped (the release workflow's `check-changelog-marker` enforces this — a stale marker renders verbatim in `whatsnew`, the `/releases` page, and the Discord announce); if the skill roster or capability surface changed this release, the README skills table + count and the `plugin.json` / `marketplace.json` descriptions are updated too.
 - [ ] If this release flips any catalog query to `dispatch: named`: `npm run check-named-pack` passes (every named id resolves against the DEPLOYED auth-service pack — deploy the pack entries first, or users hit `unknown_query`)
 - [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
@@ -51,7 +51,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 - [ ] Annotated tag `mixshift-ai--vX.Y.Z`
 - [ ] Branch + tag pushed to origin together
 - [ ] **Release zips attached to the GitHub Release** — the `mixshift-ai--vX.Y.Z` tag push triggers `.github/workflows/release.yml`, which re-runs the gates, runs `npm run package-zip`, and attaches both zips (`mixshift-ai-plugin-X.Y.Z.zip` + `mixshift-ai-marketplace-X.Y.Z.zip`) to the release. **Verify explicitly** — do not assume the tag push worked: `gh release view mixshift-ai--vX.Y.Z --json assets` must show BOTH zips. The final publish step can fail on a transient GitHub API error even when every gate is green (happened on 0.8.3: gates passed, publish returned an HTML error page, and no Release existed until someone noticed). Recovery: `gh run rerun <run-id> --failed`.
-- [ ] **Re-upload the hosted org-console payload** — if the plugin is distributed via the claude.ai org console, upload the new release-asset `mixshift-ai-plugin-X.Y.Z.zip` there (the hosted payload does not track the repo). The release asset is the canonical artifact; do not upload a locally built zip. See [org admin-console install](docs/install/org-admin-console.md). Beware the console's failure mode: on validation failure it can show the plugin list briefly and then render an empty panel with no error.
+- [ ] **Fast-forward the `stable` beta channel** — beta users install pinned to `.git#stable`. Stable is kept on main's line (as of 2026-07-24; it was previously a divergent `--no-ff` merge), so this is a real fast-forward, no merge commit: `git push origin <release-commit>:stable`. Confirm: `gh api repos/miXshift/mx-claude-plugin/branches/stable --jq .commit.sha` equals the release commit. Never delete or prune `stable` (breaks the `.git#stable` install pin).
 - [ ] **Announce the release to the releases Discord** — `node plugins/mixshift-ai/harness/scripts/announce-release.mjs --version X.Y.Z` (one `release.published` per version bump; reads that version's `CHANGELOG.md` entry). Announcements must stay in sync with releases, so reconcile first: compare `SELECT payload->>'version' FROM events WHERE event_name='release.published'` (Supabase `izurufltfnwxsljvtksy`) against the `CHANGELOG.md` `## X.Y.Z` headings, and catch up any gap with one announcement per missing version. Announcements started at 0.6.3; do not retro-announce earlier versions.
 - [ ] Post-release Cowork desktop sanity check
 
@@ -65,6 +65,8 @@ npm run test
 npm run validate-manifests
 npm run check-skills
 npm run check-docs          # README skills table + count, plugin/marketplace version sync
+npm run check-no-internal-exposure  # no maintainer skills tracked under .claude/ (also gated per-push in CI)
+npm run check-changelog-marker      # run AFTER stripping the version's unreleased marker (release CI also enforces)
 npm run check-named-pack   # only gates dispatch:named flips; needs `mixshift auth login`
 npm run build
 ```

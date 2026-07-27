@@ -81418,7 +81418,8 @@ function parseChangelog(md) {
   let current = null;
   const flush = () => {
     if (current) {
-      entries.push({ version: current.version, notes: current.body.join("\n").trim() });
+      const notes = current.body.join("\n").replace(/<!--[\s\S]*?-->/g, "").replace(/\n{3,}/g, "\n\n").trim();
+      entries.push({ version: current.version, notes });
     }
   };
   for (const line of md.split(/\r?\n/)) {

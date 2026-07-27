@@ -4,9 +4,10 @@ name: release
 #
 # Trigger: a tag matching `mixshift-ai--v*` (the tag convention already used for
 # releases, e.g. mixshift-ai--v0.8.0). On that tag this workflow re-runs the
-# deterministic CI gates (the same blocking set as ci.yml — typecheck, tests,
-# manifest validation, telemetry convention, version + docs currency, build),
-# verifies the tag version matches plugin.json, builds the two release zips with
+# deterministic gates (ci.yml's blocking set — typecheck, tests, manifest
+# validation, telemetry convention, version + docs currency, no-internal-
+# exposure, build — plus release-only checks: the tag<->plugin.json version match
+# and the changelog release-ready marker gate), builds the two release zips with
 # `npm run package-zip`, and attaches BOTH to the GitHub Release for the tag.
 #
 # Intentionally NOT here (same as ci.yml): `check-named-pack` needs a live
@@ -55,6 +56,9 @@ jobs:
             exit 1
           fi
 
+      - name: Changelog release-ready (no leftover unreleased marker)
+        run: npm run check-changelog-marker
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -72,6 +76,9 @@ jobs:
 
       - name: Docs currency (README skill table + count, plugin/marketplace version sync)
         run: npm run check-docs
+
+      - name: No internal-skill exposure (nothing tracked under .claude/ or internal docs)
+        run: npm run check-no-internal-exposure
 
       - name: Build CLI bundle
         run: npm run build

@@ -1,0 +1,6 @@
+# Keep the built harness bundle at LF everywhere. The build (esbuild) emits LF;
+# without this, a Windows checkout converts dist to CRLF and then every build
+# shows dist/cli.js as "modified" (LF -> CRLF) with zero real content change,
+# which made release builds look stale and added noise to every diff. Forcing
+# eol=lf on the committed artifacts keeps the working tree matching the build.
+plugins/mixshift-ai/harness/dist/* text eol=lf
