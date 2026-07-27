@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { getPluginVersion } from './plugin-version.js';
 import { resolveDataDir } from './paths/resolve.js';
 import { isValidVersion } from './update-notice-state.js';
+import { resolveGatewayBaseSafe } from './net/gateway-url.js';
 
 const MARKETPLACE_URL =
   'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json';
@@ -157,9 +158,29 @@ export async function readCachedLatestVersion(
   }
 }
 
+/**
+ * Gateway-first, GitHub-raw-fallback. The gateway route (mx-legacy-auth's
+ * `GET {base}/plugin/marketplace.json`) rides the one domain every install
+ * already reaches — sandboxes that block raw.githubusercontent.com allow
+ * mcp.mixshift.io. When no gateway is configured (or the gateway leg fails
+ * for any reason) this falls through to the existing direct GitHub-raw
+ * fetch unchanged.
+ */
 async function fetchLatestVersion(): Promise<string | null> {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    // fetchLatestVersionFrom already returns null on any non-2xx / non-JSON /
+    // missing-entry body, so a garbage 200 from the gateway falls through to
+    // the GitHub-raw leg without a separate content check.
+    const viaGateway = await fetchLatestVersionFrom(`${base}/plugin/marketplace.json`);
+    if (viaGateway !== null) return viaGateway;
+  }
+  return fetchLatestVersionFrom(MARKETPLACE_URL);
+}
+
+async function fetchLatestVersionFrom(url: string): Promise<string | null> {
   try {
-    const res = await fetch(MARKETPLACE_URL, {
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return null;

@@ -80,6 +80,15 @@ export const defaultsSchema = z.object({
       batch_size: 50,
       flush_interval_ms: 60_000,
     }),
+  gateway: z
+    .object({
+      // Gateway base for plugin-metadata fetches (CHANGELOG, marketplace.json,
+      // actions.yaml). Empty = "no gateway configured" (fetchers go straight
+      // to GitHub-raw). See lib/net/gateway-url.ts's resolveGatewayBase for the
+      // SSRF guard applied before this value is ever used in a fetch.
+      base_url: z.string().default(''),
+    })
+    .default({ base_url: '' }),
 });
 
 export type PluginDefaults = z.infer<typeof defaultsSchema>;

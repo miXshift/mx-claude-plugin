@@ -17,6 +17,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { resolveDataDir } from './paths/resolve.js';
 import { compareVersions } from './version-check.js';
+import { resolveGatewayBaseSafe } from './net/gateway-url.js';
 
 const CHANGELOG_URL =
   'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md';
@@ -160,9 +161,32 @@ export async function loadChangelog(
   return { entries: [], source: 'none', error: fetched.error };
 }
 
+/**
+ * Gateway-first, GitHub-raw-fallback. The gateway route (mx-legacy-auth's
+ * `GET {base}/plugin/changelog`) rides the one domain every install already
+ * reaches — sandboxes that block raw.githubusercontent.com allow
+ * mcp.mixshift.io. When no gateway is configured (or the gateway leg fails
+ * for any reason: non-2xx, throw, timeout) this falls through to the
+ * existing direct GitHub-raw fetch unchanged.
+ */
 async function fetchChangelogMarkdown(): Promise<{ markdown: string | null; error?: string }> {
+  const base = await resolveGatewayBaseSafe();
+  if (base) {
+    const viaGateway = await fetchChangelogFrom(`${base}/plugin/changelog`);
+    // Accept the gateway body ONLY if it actually parses as a CHANGELOG (>=1
+    // entry). A bare 200 with an empty body or an HTML captive-portal/WAF
+    // interstitial would otherwise win over — and poison the 24h cache
+    // against — the GitHub-raw fallback. A real CHANGELOG is never empty.
+    if (viaGateway.markdown !== null && parseChangelog(viaGateway.markdown).length > 0) {
+      return viaGateway;
+    }
+  }
+  return fetchChangelogFrom(CHANGELOG_URL);
+}
+
+async function fetchChangelogFrom(url: string): Promise<{ markdown: string | null; error?: string }> {
   try {
-    const res = await fetch(CHANGELOG_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { markdown: null, error: `HTTP ${res.status}` };
     return { markdown: await res.text() };
   } catch (err) {

@@ -1,23 +1,47 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { parseActions, evalPredicate, computePending, type Action } from './update-actions.js';
+// The shipped .mixshift-defaults.yaml now sets gateway.base_url, which would
+// make fetchActionsYaml() try the gateway leg first for every test below.
+// Mock loadPluginDefaults so the default is "no gateway configured" (the
+// "loadActions :: gateway routing" suite overrides this per-case).
+vi.mock('./defaults/load.js', () => ({
+  loadPluginDefaults: vi.fn(),
+}));
+
+import {
+  parseActions,
+  evalPredicate,
+  computePending,
+  loadActions,
+  type Action,
+} from './update-actions.js';
 import { emptyActionsLedger, setActionStatus } from './update-actions-state.js';
 import { saveCredentials } from './auth/credentials.js';
 import { newCredentials, type MysqlCreds } from './auth/schema.js';
 import { saveIndex } from './clients/index.js';
 import { clientsIndexSchema, type ClientsIndex, type IndexBrand } from './clients/index-schema.js';
+import { loadPluginDefaults } from './defaults/load.js';
+import { defaultsSchema, type PluginDefaults } from './defaults/schema.js';
+
+function defaultsWithGatewayBase(baseUrl: string): PluginDefaults {
+  const defaults = defaultsSchema.parse({ schema_version: 1 });
+  defaults.gateway.base_url = baseUrl;
+  return defaults;
+}
 
 let testDir: string;
 
 beforeEach(async () => {
   testDir = await mkdtemp(join(tmpdir(), 'mixshift-update-actions-test-'));
+  vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(''));
 });
 
 afterEach(async () => {
   await rm(testDir, { recursive: true, force: true });
+  vi.unstubAllGlobals();
 });
 
 // ---------------------------------------------------------------------------
@@ -586,5 +610,122 @@ describe('computePending — supersedes collapse runs among eligible only', () =
       installedSkillIds: new Set(['mx-help']),
     });
     expect(pending.map((p) => p.id)).toEqual(['real']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadActions :: gateway routing — fetchActionsYaml() tries the mx-legacy-
+// auth gateway route first (rides the one domain sandboxes already allow)
+// and falls back to the existing GitHub-raw fetch when the gateway leg is
+// unconfigured, errors, or throws.
+// ---------------------------------------------------------------------------
+
+describe('loadActions :: gateway routing', () => {
+  const GATEWAY_BASE = 'https://gw.example.test';
+  const GATEWAY_URL = `${GATEWAY_BASE}/plugin/actions.yaml`;
+  const RAW_URL =
+    'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml';
+
+  it('uses the gateway route and never touches GitHub-raw when the gateway returns 2xx', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(actionYaml({ id: 'via-gateway' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.source).toBe('network');
+    expect(result.actions.map((a) => a.id)).toEqual(['via-gateway']);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(GATEWAY_URL, expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to GitHub-raw when the gateway responds 5xx', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(new Response(actionYaml({ id: 'via-raw' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.actions.map((a) => a.id)).toEqual(['via-raw']);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, GATEWAY_URL, expect.any(Object));
+    expect(mockFetch).toHaveBeenNthCalledWith(2, RAW_URL, expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to GitHub-raw when the gateway fetch throws', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockResolvedValueOnce(new Response(actionYaml({ id: 'via-raw-2' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.actions.map((a) => a.id)).toEqual(['via-raw-2']);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it('goes straight to GitHub-raw (single call) when base_url is empty', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(''));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(actionYaml({ id: 'raw-only' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.actions.map((a) => a.id)).toEqual(['raw-only']);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(RAW_URL, expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  // Regression: a gateway 200 whose body is not a valid actions manifest at
+  // all (an HTML captive-portal/WAF interstitial) must NOT win over the
+  // GitHub-raw fallback and must not poison the cache.
+  it('falls back to GitHub-raw when the gateway returns 200 with non-manifest HTML', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('<html>maintenance</html>', { status: 200 }))
+      .mockResolvedValueOnce(new Response(actionYaml({ id: 'via-raw-3' }), { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.source).toBe('network');
+    expect(result.actions.map((a) => a.id)).toEqual(['via-raw-3']);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, GATEWAY_URL, expect.any(Object));
+    expect(mockFetch).toHaveBeenNthCalledWith(2, RAW_URL, expect.any(Object));
+    vi.unstubAllGlobals();
+  });
+
+  // Regression: an empty manifest (`actions: []`) is VALID content (e.g. the
+  // feed legitimately has nothing pending), not garbage — it must be ACCEPTED
+  // from the gateway leg, and the GitHub-raw leg must NOT be called.
+  it('accepts a valid EMPTY manifest from the gateway and does not call GitHub-raw', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('version: 1\nactions: []\n', { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await loadActions({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.source).toBe('network');
+    expect(result.actions).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(GATEWAY_URL, expect.any(Object));
+    vi.unstubAllGlobals();
   });
 });

@@ -10,17 +10,35 @@ import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// The shipped .mixshift-defaults.yaml now sets gateway.base_url, which would
+// make fetchLatestVersion() try the gateway leg first for every test below.
+// Mock loadPluginDefaults so the existing GitHub-raw-fetch tests keep
+// exercising that path unchanged (default: no gateway configured); the
+// "checkForUpdate :: gateway routing" suite overrides this per-case.
+vi.mock('./defaults/load.js', () => ({
+  loadPluginDefaults: vi.fn(),
+}));
+
 import {
   checkForUpdate,
   compareVersions,
   renderUpdateBanner,
   readCachedLatestVersion,
 } from './version-check.js';
+import { loadPluginDefaults } from './defaults/load.js';
+import { defaultsSchema, type PluginDefaults } from './defaults/schema.js';
+
+function defaultsWithGatewayBase(baseUrl: string): PluginDefaults {
+  const defaults = defaultsSchema.parse({ schema_version: 1 });
+  defaults.gateway.base_url = baseUrl;
+  return defaults;
+}
 
 let testDir: string;
 
 beforeEach(async () => {
   testDir = await mkdtemp(join(tmpdir(), 'mixshift-version-test-'));
+  vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(''));
 });
 
 afterEach(async () => {
@@ -302,6 +320,82 @@ describe('checkForUpdate :: failure modes', () => {
       forceFetch: true,
     });
     expect(result.latest).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkForUpdate :: gateway routing — fetchLatestVersion() tries the
+// mx-legacy-auth gateway route first (rides the one domain sandboxes already
+// allow) and falls back to the existing GitHub-raw fetch when the gateway
+// leg is unconfigured, errors, or throws.
+// ---------------------------------------------------------------------------
+
+describe('checkForUpdate :: gateway routing', () => {
+  const GATEWAY_BASE = 'https://gw.example.test';
+  const GATEWAY_URL = `${GATEWAY_BASE}/plugin/marketplace.json`;
+  const RAW_URL =
+    'https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json';
+
+  it('uses the gateway route and never touches GitHub-raw when the gateway returns 2xx', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, { plugins: [{ name: 'mixshift-ai', version: '5.0.0' }] }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await checkForUpdate({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.latest).toBe('5.0.0');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(GATEWAY_URL, expect.any(Object));
+  });
+
+  it('falls back to GitHub-raw when the gateway responds 5xx', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { plugins: [{ name: 'mixshift-ai', version: '5.0.1' }] }),
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await checkForUpdate({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.latest).toBe('5.0.1');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, GATEWAY_URL, expect.any(Object));
+    expect(mockFetch).toHaveBeenNthCalledWith(2, RAW_URL, expect.any(Object));
+  });
+
+  it('falls back to GitHub-raw when the gateway fetch throws', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(GATEWAY_BASE));
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { plugins: [{ name: 'mixshift-ai', version: '5.0.2' }] }),
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await checkForUpdate({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.latest).toBe('5.0.2');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes straight to GitHub-raw (single call) when base_url is empty', async () => {
+    vi.mocked(loadPluginDefaults).mockResolvedValue(defaultsWithGatewayBase(''));
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, { plugins: [{ name: 'mixshift-ai', version: '5.0.3' }] }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await checkForUpdate({ dataDirOverride: testDir, forceFetch: true });
+
+    expect(result.latest).toBe('5.0.3');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(RAW_URL, expect.any(Object));
   });
 });
 

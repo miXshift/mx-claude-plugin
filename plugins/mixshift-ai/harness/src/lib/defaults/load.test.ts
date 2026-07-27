@@ -53,3 +53,31 @@ describe('loadPluginDefaults', () => {
     await expect(loadPluginDefaults(path)).rejects.toThrow(/invalid/i);
   });
 });
+
+describe('gateway.base_url', () => {
+  afterEach(() => {
+    delete process.env.MIXSHIFT_GATEWAY_BASE_URL;
+  });
+
+  it('defaults to empty string when absent from the file', async () => {
+    const result = await loadPluginDefaults(join(testDir, 'does-not-exist.yaml'));
+    expect(result.gateway.base_url).toBe('');
+  });
+
+  it('loads the value set in the file', async () => {
+    const path = join(testDir, 'custom-defaults.yaml');
+    await writeFile(
+      path,
+      ['schema_version: 1', 'gateway:', '  base_url: https://gw.example.test', ''].join('\n'),
+    );
+
+    const result = await loadPluginDefaults(path);
+    expect(result.gateway.base_url).toBe('https://gw.example.test');
+  });
+
+  it('MIXSHIFT_GATEWAY_BASE_URL overrides the loaded value', async () => {
+    process.env.MIXSHIFT_GATEWAY_BASE_URL = 'https://env-override.example.test';
+    const result = await loadPluginDefaults(join(testDir, 'does-not-exist.yaml'));
+    expect(result.gateway.base_url).toBe('https://env-override.example.test');
+  });
+});
