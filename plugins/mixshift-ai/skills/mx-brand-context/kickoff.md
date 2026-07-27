@@ -38,7 +38,7 @@ Ask in order. "I don't know" is a valid answer. Note it and move on.
 
 **Runtime-only report artifacts**
 - Is there a forecast model, budget planner, or sales forecast that exists outside the DB?
-- Is there an HCAM, H-Bridge, MoM bridge, or dimension bridge export that should be supplied when Monthly Report runs?
+- Is there an H-Bridge, MoM bridge, or dimension bridge export that should be supplied when Monthly Report runs?
 - If yes, should I request those artifacts at report run time rather than marking brand context incomplete?
 
 **Brand-manager wow check**
@@ -123,14 +123,14 @@ After Phase 1, proactively surface the AM-required decisions. This is a required
 
 Ask the smallest numbered set that will let you finalize context. For each question, include the data-derived hypothesis if one exists, then ask the AM to confirm, correct, or mark unknown. Do not ask for items the automated data review can answer by itself.
 
-Runtime-only artifacts are separate from missing context. Forecast models, HCAM/H-Bridge, vertical bridges, and report screenshots should be flagged as required at downstream skill run time unless the AM says they do not exist.
+Runtime-only artifacts are separate from missing context. Forecast models, H-Bridge, vertical bridges, and report screenshots should be flagged as required at downstream skill run time unless the AM says they do not exist.
 
 **Required**
 - **Primary metric**: ACOS or TACOS? TACOS for SC; ACOS default for VC.
 - **ACOS target %**: blended account level; per-sub-brand if they differ materially.
 - **For SC: TACOS target**: monthly and quarterly if quarterly pacing is enabled.
 - **Quarterly or annual revenue target**: if one exists. When `report_quarterly_pacing: true`, remind the AM that this target should be refreshed at each quarter rollover. The Tier 1 freshness preflight catches stale `context.yaml::last_updated`, but if the AM bumps `last_updated` without also updating `quarterly_revenue_target` (or `monthly_revenue_target` at month rollover), daily and weekly skills will pace against a stale anchor and produce verdicts that look on-target when they're actually pacing against last quarter's number.
-- **Forecast / bridge runtime status**: confirm whether forecast, HCAM, H-Bridge, vertical bridge, or screenshots should be requested at downstream skill run time.
+- **Forecast / bridge runtime status**: confirm whether forecast, H-Bridge, vertical bridge, or screenshots should be requested at downstream skill run time.
 - **Spend posture**: scale / efficiency / defend / clear_bleed.
 - **Active promotions or upcoming launches**: 30-60 day horizon.
 - **Objective config**: which campaign types intentionally run above efficiency? Examples: brand defense, SB/SD awareness, acquisition.

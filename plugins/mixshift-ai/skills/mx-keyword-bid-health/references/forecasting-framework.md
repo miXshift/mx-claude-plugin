@@ -1,28 +1,28 @@
 ---
-title: "Intelligence Layer: HCAM + Forecasting (Counterfactuals) Framework"
+title: "Intelligence Layer: Bridge Methodology + Forecasting (Counterfactuals) Framework"
 brain: domain
 owner: mixshift
 status: active
 created: 2026-02-18
-updated: 2026-04-06
-tags: [domain, hcam, intelligence-layer, methodology, forecasting]
+updated: 2026-07-27
+tags: [domain, intelligence-layer, methodology, forecasting]
 ---
 
-# Intelligence Layer: HCAM + Forecasting (Counterfactuals) Framework
+# Intelligence Layer: Bridge Methodology + Forecasting (Counterfactuals) Framework
 *Source: the operator session 2026-02-09*
 *Updated: 2026-04-06 — terminology aligned to intelligence-layer-definition.md*
 
-> ⚠️ **Terminology note:** This document covers two distinct intelligence layer components: (1) **HCAM** — the patent-pending deterministic decomposition / bridge calculation methodology, and (2) **Counterfactuals / Forecasting** — the forecast and scenario modeling layer. These are separate components that work together. See `intelligence-layer-definition.md` for the full five-component intelligence layer definition.
+> ⚠️ **Terminology note:** This document covers two distinct intelligence layer components: (1) **the bridge methodology** — the patent-pending deterministic decomposition / bridge calculation layer, and (2) **Counterfactuals / Forecasting** — the forecast and scenario modeling layer. These are separate components that work together. See `intelligence-layer-definition.md` for the full five-component intelligence layer definition.
 
 ---
 
 ## How These Two Components Work Together
 
-HCAM and the forecasting layer are integrated intelligence layer components, not separate tools:
+The bridge methodology and the forecasting layer are integrated intelligence layer components, not separate tools:
 
 - **Forecasting** establishes the counterfactual baseline (what *should* have happened) using three core inputs: spend, trend, and seasonality
-- **HCAM** provides deterministic decomposition when actual performance deviates from forecast
-- The forecast creates the "expected" that makes HCAM's "actual vs expected" meaningful
+- **The bridge** provides deterministic decomposition when actual performance deviates from forecast
+- The forecast creates the "expected" that makes the bridge's "actual vs expected" meaningful
 
 ## The Ad Coefficient
 
@@ -40,7 +40,7 @@ HCAM and the forecasting layer are integrated intelligence layer components, not
 - Achieves 80-90%+ model fits (91.9%+ R² demonstrated)
 - Promotional events/press hits kept outside model to preserve signal quality — impact measured as forecast deviations
 
-## HCAM Decomposition
+## Bridge Decomposition
 
 - **Horizontal analysis**: Why did ACOS change? (CPC vs ConvR vs AOV)
 - **Vertical analysis**: Where did it change? (Campaign/ASIN/Keyword + proportional impact)

@@ -1,14 +1,14 @@
 ---
-title: "HCAM + Forecast Integration — Concept Brief"
+title: "Bridge Model + Forecast Integration — Concept Brief"
 brain: domain
 owner: mixshift
 status: active
 created: 2026-02-21
-updated: 2026-02-21
-tags: [domain, hcam, methodology]
+updated: 2026-07-27
+tags: [domain, methodology]
 ---
 
-# HCAM + Forecast Integration — Concept Brief
+# Bridge Model + Forecast Integration — Concept Brief
 
 **Status:** Active / In Development  
 **Origin:** an internal strategy session, 2026-02-20  
@@ -18,7 +18,7 @@ tags: [domain, hcam, methodology]
 
 ## Problem Reframe (canonical framing, validated)
 
-**Goal:** Embed the canonical analytical ability to interpret across data sources and data types — deterministic (HCAM/Bridge), probabilistic (forecast + CIs + coefficients), and contextual (event stakes, changelog, user comments) — into the platform in a way that serves users at varying levels of data literacy.
+**Goal:** Embed the canonical analytical ability to interpret across data sources and data types — deterministic (bridge), probabilistic (forecast + CIs + coefficients), and contextual (event stakes, changelog, user comments) — into the platform in a way that serves users at varying levels of data literacy.
 
 **Problem:** Users can't make the analytical leaps themselves. The platform has to do the interpretation for them — not as a one-time onboarding explanation, but persistently and contextually at each layer of the drill-down.
 
@@ -30,7 +30,7 @@ tags: [domain, hcam, methodology]
 
 **Bonus Problem 1:** Users need to understand the different analytical use cases for the forecast: market saturation signal (diminishing coefficient over time), media/press value estimation (organic trend spike during PR), OOS cost estimation (revenue at risk), and the general counterfactual concept as a performance evaluation baseline. These are Phase 2+ analytical lenses, not Phase 1 features.
 
-**Bonus Problem 2:** Users need to understand that HCAM/Bridge (deterministic) and the Probabilistic Counterfactual operate in different paradigms — but they are not separate products. They are sequential analytical layers in the same drill-down. The distinction is carried by visual treatment and AI synthesis language, not by product separation.
+**Bonus Problem 2:** Users need to understand that the bridge (deterministic) and the Probabilistic Counterfactual operate in different paradigms — but they are not separate products. They are sequential analytical layers in the same drill-down. The distinction is carried by visual treatment and AI synthesis language, not by product separation.
 
 ---
 
@@ -44,7 +44,7 @@ Actuals overlaid with forecast band and CIs. Users see whether they beat, missed
 **Layer 2 — Item group sub-forecasts**
 Drill down from the account-level beat/miss to localize where the variance came from. Which item groups overperformed? Which underperformed? This is where a $30K account-level miss becomes attributable to a specific product or segment.
 
-**Layer 3 — HCAM Bridge**
+**Layer 3 — Bridge decomposition**
 From the item group, drill into the deterministic decomposition to understand the causal drivers. Did the miss come from volume, price, mix, or ad contribution? This is where the probabilistic signal (forecast miss) gets explained by deterministic math (bridge attribution).
 
 The AI synthesis layer operates at all three levels, generating contextual plain-language interpretation at each step — informed by model outputs, event stakes, and changelog.
@@ -112,7 +112,7 @@ This is not presented as a corrected model output. It's presented as a signal: "
 
 ## Paradigm Separation — Revised
 
-HCAM/Bridge and the Probabilistic Counterfactual are not separate views. They are sequential layers in the same analytical workflow. The distinction is maintained through:
+The bridge and the Probabilistic Counterfactual are not separate views. They are sequential layers in the same analytical workflow. The distinction is maintained through:
 
 - **Visual treatment:** CI shading on forecast overlays makes the probabilistic nature visible without explanation. Deterministic bridge outputs have no ranges — point estimates with drill-through to source math.
 - **AI synthesis language:** Forecast/coefficient synthesis uses conditional language ("expected," "estimated," "projected"). Bridge synthesis uses declarative past tense ("revenue was," "ad spend drove," "mix accounted for"). Users absorb the distinction through repeated exposure to consistent language, not through one-time education.
