@@ -12,6 +12,12 @@
 // Exits 1 on any named id missing from the deployed pack, or if the
 // deployed manifest can't be fetched (fail closed: don't ship a flip you
 // couldn't verify).
+//
+// Set MIXSHIFT_SKIP_PACK_CHECK=1 to bypass loudly for local/offline use only
+// (e.g. no network, or working on an unrelated change) — never pass silently,
+// and never set it as a repository or organization Actions variable: a
+// skipped gate still renders as a green check, so a standing skip in CI
+// config would hide real plugin/pack skew instead of catching it.
 
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
