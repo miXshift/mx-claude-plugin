@@ -350,9 +350,23 @@ export async function getRunResult(
     rawResult && typeof rawResult === 'object' && !Array.isArray(rawResult)
       ? (rawResult as Record<string, unknown>)
       : {};
-  // Force ok:true regardless of whatever the nested result carried — we've
-  // already confirmed status === 'DONE', so this IS a success envelope.
-  return { ...resultObj, ok: true } as unknown as InsightResult;
+  if (resultObj.ok === false) {
+    // The run finished (status DONE), but the insight computation itself
+    // failed mid-run (bad_params, engine_error, ...). The server nests the
+    // exact same `{ ok:false, kind, friendly, ... }` shape the sync path
+    // gets at the TOP level one level down, inside `result` — route it
+    // through the same mapping (toIntelligenceFailure) rather than
+    // coercing a real failure into a fake success.
+    return toIntelligenceFailure(resultObj, r.httpStatus);
+  }
+  // Force ok:true only when the field is genuinely absent — server success
+  // payloads don't echo `ok` themselves (see InsightResult's module doc).
+  // resultObj.ok, if present here, can only be `true` (an explicit `false`
+  // was already handled above), so this never overwrites a real value.
+  return {
+    ...resultObj,
+    ok: resultObj.ok === undefined ? true : resultObj.ok,
+  } as unknown as InsightResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +380,7 @@ interface RequestSpec {
   body?: Record<string, unknown>;
 }
 
-type RequestSuccess = { ok: true; json: unknown };
+type RequestSuccess = { ok: true; json: unknown; httpStatus: number };
 
 async function intelligenceRequest(
   spec: RequestSpec,
@@ -451,7 +465,7 @@ async function intelligenceRequest(
     return statusOnlyFailure(res.status, safeJsonPreview(json));
   }
 
-  return { ok: true, json };
+  return { ok: true, json, httpStatus: res.status };
 }
 
 interface ResolvedConn {
@@ -635,8 +649,8 @@ function defaultFriendly(kind: IntelligenceFailureKind): string {
       );
     case 'no_data_for_period':
       return (
-        'There is no data for the requested period. This is not an error ' +
-        '— try a different period.'
+        'There is no data for the requested period. This is not an error, ' +
+        'just try a different period.'
       );
     case 'account_too_large_use_async':
       return (

@@ -304,6 +304,86 @@ describe('getRunResult', () => {
     expect(isIntelligenceFailure(r)).toBe(true);
     if (isIntelligenceFailure(r)) expect(r.kind).toBe('engine_error');
   });
+
+  // -------------------------------------------------------------------------
+  // DONE row whose nested `result` is itself a failure envelope. The server
+  // signals "still running" via the not_ready failure kind at the TOP level
+  // (covered above) — but once status is DONE, the *nested* result can also
+  // be `{ ok:false, kind, ... }` when the insight computation itself failed.
+  // getRunResult must route that through the same mapping the sync path
+  // uses (mirrors run (sync)'s failure tests above), not force ok:true onto
+  // it.
+  // -------------------------------------------------------------------------
+
+  it('propagates a nested bad_params failure instead of forcing ok:true', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        status: 'DONE',
+        result: {
+          ok: false,
+          kind: 'bad_params',
+          friendly: 'Bad params on this run.',
+          insightId: 'INS-DUO-01',
+        },
+      }),
+    );
+    const r = await getRunResult('run-1', injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('bad_params');
+      expect(r.friendly).toBe('Bad params on this run.');
+      expect(r.insightId).toBe('INS-DUO-01');
+      expect(exitCodeForKind(r.kind)).toBe(4);
+    }
+  });
+
+  it('propagates a nested engine_error failure instead of forcing ok:true', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        status: 'DONE',
+        result: { ok: false, kind: 'engine_error', message: 'divide by zero in engine' },
+      }),
+    );
+    const r = await getRunResult('run-1', injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('engine_error');
+      expect(r.friendly.length).toBeGreaterThan(0); // no `friendly` sent -> defaultFriendly fallback
+      expect(r.message).toBe('divide by zero in engine');
+      expect(exitCodeForKind(r.kind)).toBe(1);
+    }
+  });
+
+  it('coerces an unrecognized nested failure kind to unknown, same as the sync path', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        status: 'DONE',
+        result: { ok: false, kind: 'some_future_kind' },
+      }),
+    );
+    const r = await getRunResult('run-1', injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) expect(r.kind).toBe('unknown');
+  });
+
+  it('still normalizes to ok:true when `ok` is genuinely absent from the nested result', async () => {
+    // Regression guard: the fix must not start requiring an explicit
+    // `ok:true` on every nested success — most success payloads never echo
+    // `ok` at all (see InsightResult's module doc).
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        status: 'DONE',
+        result: { momOpsDelta: 42, limitations: [], meta: {} },
+      }),
+    );
+    const r = await getRunResult('run-1', injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(false);
+    if (!isIntelligenceFailure(r)) expect(r.ok).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -28838,8 +28838,9 @@ var require_dist = __commonJS({
 });
 
 // src/lib/paths/resolve.ts
+import { randomBytes } from "node:crypto";
 import { homedir as homedir2 } from "node:os";
-import { join as join4, resolve } from "node:path";
+import { basename, join as join4, resolve } from "node:path";
 function resolveDataDir(dataDirOverride) {
   const candidate = dataDirOverride ?? process.env.MIXSHIFT_DATA_DIR ?? join4(homedir2(), ".mixshift");
   return resolve(candidate);
@@ -28865,14 +28866,29 @@ function intelligenceRunsPath(dataDirOverride) {
 function intelligenceDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "intelligence");
 }
-function intelligenceOutputPath(id, timestamp, brandSlug, dataDirOverride) {
-  const filename = `${id}-${timestamp}.json`;
+function intelligenceOutputPath(id, timestamp, brandSlug, dataDirOverride, runId) {
+  const filename = `${id}-${timestamp}-${outputNonce(runId)}.json`;
   if (brandSlug) {
     return join4(brandDir(brandSlug, dataDirOverride), "runs", "intelligence", filename);
   }
   return join4(intelligenceDir(dataDirOverride), filename);
 }
+function outputNonce(runId) {
+  if (runId) {
+    const cleaned = runId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 32);
+    if (cleaned) return cleaned;
+  }
+  return randomBytes(3).toString("hex");
+}
+function isSafeBrandSlugForPathResolution(slug) {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) && !slug.includes("..") && basename(slug) === slug;
+}
 function brandDir(brandSlug, dataDirOverride) {
+  if (!isSafeBrandSlugForPathResolution(brandSlug)) {
+    throw new Error(
+      `internal error: unsafe brand slug ${JSON.stringify(brandSlug)} reached brandDir(). Callers must validate with isSafeBrandSlug() before a brand slug reaches path resolution.`
+    );
+  }
   return join4(clientsDir(dataDirOverride), brandSlug);
 }
 function contextPath(brandSlug, dataDirOverride) {
@@ -66736,7 +66752,7 @@ init_resolve();
 var import_yaml6 = __toESM(require_dist(), 1);
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir5, rename as rename5, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname7, join as join8 } from "node:path";
+import { basename as basename3, dirname as dirname7, join as join8 } from "node:path";
 
 // src/lib/context-sync/client.ts
 init_credentials();
@@ -66906,7 +66922,7 @@ function failureFromException(err) {
 init_resolve();
 import { createHash } from "node:crypto";
 import { readdir, readFile as readFile8 } from "node:fs/promises";
-import { basename, join as join7 } from "node:path";
+import { basename as basename2, join as join7 } from "node:path";
 function hashContent(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
@@ -66960,10 +66976,10 @@ function corpusKey(corpusName) {
   return `corpus/${corpusName}`;
 }
 function isSafeCorpusName(name) {
-  return name.length > 0 && name.length <= 128 && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes("..") && !name.startsWith(".") && basename(name) === name;
+  return name.length > 0 && name.length <= 128 && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes("..") && !name.startsWith(".") && basename2(name) === name;
 }
 function isSafeBrandSlug(slug) {
-  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) && !slug.includes("..") && basename(slug) === slug;
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) && !slug.includes("..") && basename2(slug) === slug;
 }
 function localPathForKey(brandSlug, key, dataDirOverride) {
   switch (key) {
@@ -67273,7 +67289,7 @@ async function writeFileAtomic(path2, content) {
   await mkdir5(dir, { recursive: true });
   const tmpPath = join8(
     dir,
-    `.${basename2(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
+    `.${basename3(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
   );
   try {
     await writeFile5(tmpPath, content, "utf8");
@@ -77369,7 +77385,7 @@ init_schema2();
 // src/lib/auth/login-flow.ts
 init_credentials();
 import { createServer } from "node:http";
-import { randomBytes, createHash as createHash3 } from "node:crypto";
+import { randomBytes as randomBytes2, createHash as createHash3 } from "node:crypto";
 import { hostname as hostname3 } from "node:os";
 import { spawn as spawn2 } from "node:child_process";
 
@@ -77690,11 +77706,11 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
   }
 }
 function generatePkce() {
-  const verifier = base64url3(randomBytes(64));
+  const verifier = base64url3(randomBytes2(64));
   const challenge = base64url3(
     createHash3("sha256").update(verifier).digest()
   );
-  const state = base64url3(randomBytes(32));
+  const state = base64url3(randomBytes2(32));
   return { verifier, challenge, state };
 }
 function base64url3(buf) {
@@ -79392,7 +79408,7 @@ import { readFile as readFile24 } from "node:fs/promises";
 init_resolve();
 import { mkdir as mkdir17, writeFile as writeFile17, rename as rename15 } from "node:fs/promises";
 import { join as join14, dirname as dirname20 } from "node:path";
-import { createHash as createHash4, randomBytes as randomBytes2 } from "node:crypto";
+import { createHash as createHash4, randomBytes as randomBytes3 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
 init_zod();
@@ -79561,7 +79577,7 @@ function sidecarPath(args) {
   );
 }
 function generateRunId() {
-  return randomBytes2(3).toString("hex");
+  return randomBytes3(3).toString("hex");
 }
 function normalizeSqlCalls(calls) {
   return calls.map((c) => ({
@@ -83668,7 +83684,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
   const maxAttempts = Math.max(1, opts.maxDownloadAttempts ?? DEFAULT_DOWNLOAD_ATTEMPTS);
   const stallMs = opts.downloadStallMs ?? DEFAULT_DOWNLOAD_STALL_MS;
   const deadlineMs = opts.downloadDeadlineMs ?? DEFAULT_DOWNLOAD_DEADLINE_MS;
-  const sleep2 = opts.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const sleep3 = opts.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   let last = null;
   let opened = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -83688,7 +83704,7 @@ async function streamReportDocumentToFile(document, outPath, opts = {}) {
       return a.failure;
     }
     if (attempt < maxAttempts) {
-      await sleep2(downloadBackoffMs(attempt));
+      await sleep3(downloadBackoffMs(attempt));
     }
   }
   if (opened) await renamePartial(outPath);
@@ -86923,7 +86939,13 @@ async function getRunResult(runId, opts = {}) {
   }
   const rawResult = json2.result;
   const resultObj = rawResult && typeof rawResult === "object" && !Array.isArray(rawResult) ? rawResult : {};
-  return { ...resultObj, ok: true };
+  if (resultObj.ok === false) {
+    return toIntelligenceFailure(resultObj, r.httpStatus);
+  }
+  return {
+    ...resultObj,
+    ok: resultObj.ok === void 0 ? true : resultObj.ok
+  };
 }
 async function intelligenceRequest(spec, opts) {
   const resolved = await resolveBaseAndToken2(opts);
@@ -86987,7 +87009,7 @@ async function intelligenceRequest(spec, opts) {
   if (!res.ok) {
     return statusOnlyFailure2(res.status, safeJsonPreview2(json2));
   }
-  return { ok: true, json: json2 };
+  return { ok: true, json: json2, httpStatus: res.status };
 }
 async function resolveBaseAndToken2(opts) {
   let apiBase = opts.apiBaseOverride;
@@ -87102,7 +87124,7 @@ function defaultFriendly2(kind) {
     case "merchant_not_resolved":
       return "No merchant matched params.merchant. Double-check the sellerId / marketplaceId or brand.";
     case "no_data_for_period":
-      return "There is no data for the requested period. This is not an error \u2014 try a different period.";
+      return "There is no data for the requested period. This is not an error, just try a different period.";
     case "account_too_large_use_async":
       return "This account is too large to compute synchronously. Retry the same command with --async, then poll the returned runId.";
     case "busy":
@@ -87138,7 +87160,7 @@ function safeJsonPreview2(json2) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir29, readFile as readFile39, rename as rename21, writeFile as writeFile26 } from "node:fs/promises";
+import { mkdir as mkdir29, open, readFile as readFile39, rename as rename21, stat as stat4, unlink as unlink9, writeFile as writeFile26 } from "node:fs/promises";
 import { dirname as dirname34 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
@@ -87159,27 +87181,85 @@ async function saveLedger2(path2, handles) {
   await writeFile26(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename21(tmp, path2);
 }
+var LOCK_RETRY_ATTEMPTS = 15;
+var LOCK_RETRY_DELAY_MS = 100;
+var LOCK_STALE_MS = 2e3;
+function sleep2(ms) {
+  return new Promise((res) => {
+    const t = setTimeout(res, ms);
+    t.unref?.();
+  });
+}
+async function isLockStale(lockPath) {
+  try {
+    const st = await stat4(lockPath);
+    return Date.now() - st.mtimeMs > LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+async function acquireLock(lockPath) {
+  for (let attempt = 0; attempt < LOCK_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const handle = await open(lockPath, "wx");
+      await handle.close();
+      return true;
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        break;
+      }
+      if (await isLockStale(lockPath)) {
+        await unlink9(lockPath).catch(() => {
+        });
+        continue;
+      }
+      await sleep2(LOCK_RETRY_DELAY_MS);
+    }
+  }
+  console.warn(
+    `[intelligence] could not acquire the run ledger lock (${lockPath}) after ${LOCK_RETRY_ATTEMPTS} attempts. Continuing without it. Best-effort: the server remains the source of truth for run state.`
+  );
+  return false;
+}
+async function withLedgerLock(ledgerPath, fn) {
+  const lockPath = `${ledgerPath}.lock`;
+  await mkdir29(dirname34(lockPath), { recursive: true }).catch(() => {
+  });
+  const acquired = await acquireLock(lockPath);
+  try {
+    return await fn();
+  } finally {
+    if (acquired) {
+      await unlink9(lockPath).catch(() => {
+      });
+    }
+  }
+}
 async function recordIntelligenceRun(input, dataDirOverride) {
   try {
     const path2 = intelligenceRunsPath(dataDirOverride);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const ledger = await loadLedger2(path2);
-    const rest = ledger.filter((h) => h.run_id !== input.run_id);
-    await saveLedger2(
-      path2,
-      [{ ...input, submitted_at: now, updated_at: now }, ...rest].slice(0, MAX_HANDLES2)
-    );
+    await withLedgerLock(path2, async () => {
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const ledger = await loadLedger2(path2);
+      const rest = ledger.filter((h) => h.run_id !== input.run_id);
+      await saveLedger2(
+        path2,
+        [{ ...input, submitted_at: now, updated_at: now }, ...rest].slice(0, MAX_HANDLES2)
+      );
+    });
   } catch {
   }
 }
 async function updateIntelligenceRunStatus(runId, status, dataDirOverride) {
   try {
     const path2 = intelligenceRunsPath(dataDirOverride);
-    const ledger = await loadLedger2(path2);
-    const idx = ledger.findIndex((h) => h.run_id === runId);
-    if (idx === -1) return;
-    ledger[idx] = { ...ledger[idx], status, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
-    await saveLedger2(path2, ledger);
+    await withLedgerLock(path2, async () => {
+      const ledger = await loadLedger2(path2);
+      const idx = ledger.findIndex((h) => h.run_id === runId);
+      if (idx === -1) return;
+      ledger[idx] = { ...ledger[idx], status, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+      await saveLedger2(path2, ledger);
+    });
   } catch {
   }
 }
@@ -87332,7 +87412,7 @@ function registerCatalogCommand(intelligence) {
 }
 function registerRunCommand(intelligence) {
   intelligence.command("run <id>").description(
-    "Run one insight (sync by default; --async for large accounts). Params are a single JSON object, server-validated \u2014 run `intelligence catalog` for ids."
+    "Run one insight (sync by default; --async for large accounts). Params are a single JSON object, server-validated: run `intelligence catalog` for ids."
   ).option("--params-file <path>", "JSON params from a file. Mutually exclusive with --params.").option("--params <json>", "inline JSON params (small payloads; prefer --params-file).").option(
     "--async",
     "start the run asynchronously; returns a runId to poll instead of computing inline."
@@ -87532,7 +87612,9 @@ function merchantEcho(params) {
   if (typeof merchant !== "object" || merchant === null || Array.isArray(merchant)) return {};
   const m = merchant;
   const out = {};
-  if (typeof m.brand === "string" && m.brand.trim()) out.brand = m.brand.trim();
+  if (typeof m.brand === "string" && m.brand.trim() && isSafeBrandSlug(m.brand.trim())) {
+    out.brand = m.brand.trim();
+  }
   if (typeof m.sellerId === "string" && m.sellerId.trim()) out.seller_id = m.sellerId.trim();
   return out;
 }
@@ -87542,14 +87624,21 @@ function brandSlugFromParams(params) {
 async function brandForRunId(runId, dataDir) {
   try {
     const { runs } = await listIntelligenceRuns(dataDir);
-    return runs.find((r) => r.run_id === runId)?.brand;
+    const brand = runs.find((r) => r.run_id === runId)?.brand;
+    return brand && isSafeBrandSlug(brand) ? brand : void 0;
   } catch {
     return void 0;
   }
 }
 async function emitInsightResult(id, result, outOverride, startedAt, root, brandSlug, runIdForTracking) {
   const headline = extractRunHeadline(result);
-  const artifactPath = outOverride ? resolvePath3(outOverride) : intelligenceOutputPath(sanitizeForFilename2(id), fsSafeTimestamp(), brandSlug, root.dataDir);
+  const artifactPath = outOverride ? resolvePath3(outOverride) : intelligenceOutputPath(
+    sanitizeForFilename2(id),
+    fsSafeTimestamp(),
+    brandSlug,
+    root.dataDir,
+    runIdForTracking
+  );
   await mkdir30(dirname35(artifactPath), { recursive: true });
   await writeFile27(artifactPath, JSON.stringify(result, null, 2), "utf8");
   await track(
@@ -88258,8 +88347,8 @@ async function findSkillsDir() {
   for (let i = 0; i < 6; i++) {
     try {
       const candidate = join23(dir, "skills");
-      const stat5 = await fs.stat(candidate);
-      if (stat5.isDirectory()) return candidate;
+      const stat6 = await fs.stat(candidate);
+      if (stat6.isDirectory()) return candidate;
     } catch {
     }
     const parent = dirname36(dir);
@@ -88383,7 +88472,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join24, relative, basename as basename3 } from "node:path";
+import { resolve as resolve2, join as join24, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -88517,7 +88606,7 @@ function registerShareSkillCommand(program3) {
           );
         }
         const fm = findFrontmatter(bundle.files);
-        const name = opts.name ?? (typeof fm?.name === "string" ? fm.name : void 0) ?? basename3(abs).replace(/\.md$/i, "");
+        const name = opts.name ?? (typeof fm?.name === "string" ? fm.name : void 0) ?? basename4(abs).replace(/\.md$/i, "");
         const description = opts.description ?? (typeof fm?.description === "string" ? fm.description.trim() : void 0) ?? "(no description provided)";
         if (kind === "modified_plugin_skill" && !opts.baseSkill) {
           throw new Error(
@@ -88667,8 +88756,8 @@ function registerShareSkillCommand(program3) {
   );
 }
 async function collectBundle(path2) {
-  const stat5 = await fs2.stat(path2).catch(() => null);
-  if (!stat5) throw new Error(`Path not found: ${path2}`);
+  const stat6 = await fs2.stat(path2).catch(() => null);
+  if (!stat6) throw new Error(`Path not found: ${path2}`);
   const files = [];
   const skipped = [];
   let totalBytes = 0;
@@ -88687,7 +88776,7 @@ async function collectBundle(path2) {
     }
     const dot = relPath.lastIndexOf(".");
     const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
-    const isSkillMd = basename3(relPath).toLowerCase() === "skill.md";
+    const isSkillMd = basename4(relPath).toLowerCase() === "skill.md";
     if (!isSkillMd && !TEXT_EXT.has(ext)) {
       skipped.push(`${relPath} (not text)`);
       return;
@@ -88706,8 +88795,8 @@ async function collectBundle(path2) {
     files.push({ path: relPath, content, bytes });
     totalBytes += bytes;
   };
-  if (stat5.isFile()) {
-    await addFile(path2, basename3(path2));
+  if (stat6.isFile()) {
+    await addFile(path2, basename4(path2));
   } else {
     const walk = async (dir) => {
       const entries = await fs2.readdir(dir, { withFileTypes: true }).catch(() => []);
@@ -88734,7 +88823,7 @@ async function collectBundle(path2) {
 }
 function findFrontmatter(files) {
   const skillMd = files.find(
-    (f) => basename3(f.path).toLowerCase() === "skill.md"
+    (f) => basename4(f.path).toLowerCase() === "skill.md"
   );
   if (!skillMd) return null;
   const m = skillMd.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -89770,8 +89859,8 @@ function emitError13(message, root) {
 
 // src/commands/task.ts
 init_credentials();
-import { readdir as readdir5, stat as stat4 } from "node:fs/promises";
-import { basename as basename4, dirname as dirname37, join as join25 } from "node:path";
+import { readdir as readdir5, stat as stat5 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname37, join as join25 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -89834,7 +89923,7 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename4(dir) !== "auth" || basename4(dirname37(dir)) !== ".mixshift") continue;
+    if (basename5(dir) !== "auth" || basename5(dirname37(dir)) !== ".mixshift") continue;
     found.push(join25(dir, entry.name));
   }
 }
@@ -89842,7 +89931,7 @@ async function sortCandidatesByMtime(paths) {
   const stated = [];
   for (const p of paths) {
     try {
-      stated.push({ path: p, mtimeMs: (await stat4(p)).mtimeMs });
+      stated.push({ path: p, mtimeMs: (await stat5(p)).mtimeMs });
     } catch {
     }
   }
@@ -89854,7 +89943,7 @@ function dataDirFromCredentialPath(hitPath) {
 }
 async function pathExists(path2) {
   try {
-    await stat4(path2);
+    await stat5(path2);
     return true;
   } catch {
     return false;

@@ -6,8 +6,9 @@
  * data root is settable for tests and self-hosted variations.
  */
 
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 /**
  * Resolve the data directory root. Precedence:
@@ -78,27 +79,73 @@ export function intelligenceDir(dataDirOverride?: string): string {
  * Default artifact path for one `intelligence run` / `intelligence get`
  * result:
  *   - brand known (the run's `params.merchant.brand` was set):
- *       ~/.mixshift/clients/<brand>/runs/intelligence/<id>-<timestamp>.json
+ *       ~/.mixshift/clients/<brand>/runs/intelligence/<id>-<timestamp>-<nonce>.json
  *   - brand unknown (seller/marketplace selector, or nothing resolvable):
- *       ~/.mixshift/intelligence/<id>-<timestamp>.json
+ *       ~/.mixshift/intelligence/<id>-<timestamp>-<nonce>.json
  *
  * `timestamp` is caller-supplied and must already be filesystem-safe (no
- * colons) — see fsSafeTimestamp in commands/intelligence.ts.
+ * colons) — see fsSafeTimestamp in commands/intelligence.ts. `nonce` is the
+ * server runId when the caller has one (the `get` path always does), else a
+ * random 6-hex suffix: `timestamp` alone is ms-resolution, and two runs of
+ * the same insight that land in the same millisecond (two fast sync `run`
+ * calls, or a burst of scheduled runs) would otherwise silently overwrite
+ * one artifact with the other.
  */
 export function intelligenceOutputPath(
   id: string,
   timestamp: string,
   brandSlug: string | undefined,
   dataDirOverride?: string,
+  runId?: string,
 ): string {
-  const filename = `${id}-${timestamp}.json`;
+  const filename = `${id}-${timestamp}-${outputNonce(runId)}.json`;
   if (brandSlug) {
     return join(brandDir(brandSlug, dataDirOverride), 'runs', 'intelligence', filename);
   }
   return join(intelligenceDir(dataDirOverride), filename);
 }
 
+/** Filename-safe collision-avoidance suffix for intelligenceOutputPath: the
+ *  server runId, reduced to filename-safe characters, when the caller has
+ *  one; otherwise a short random id (same 3-byte/6-hex shape as
+ *  lib/sidecar/write.ts's generateRunId). */
+function outputNonce(runId: string | undefined): string {
+  if (runId) {
+    const cleaned = runId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
+    if (cleaned) return cleaned;
+  }
+  return randomBytes(3).toString('hex');
+}
+
+/**
+ * SECURITY: last-line-of-defense guard for the join() below. Every caller is
+ * expected to have already validated the slug with isSafeBrandSlug()
+ * (lib/context-sync/local.ts) before it ever reaches path resolution —
+ * join() does not sanitize '..' or separators, so an unvalidated slug like
+ * '../../evil' or 'a/b' would resolve OUTSIDE clientsDir(). Throwing here is
+ * defense in depth, not the primary guard: a caller bug should fail loudly
+ * instead of silently writing outside the client tree.
+ *
+ * Replicated rather than imported: lib/context-sync/local.ts imports
+ * brandDir/clientsDir/etc. FROM this module, so importing it back here
+ * would be a circular import. Keep this byte-for-byte in sync with
+ * isSafeBrandSlug if either ever changes.
+ */
+function isSafeBrandSlugForPathResolution(slug: string): boolean {
+  return (
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug) &&
+    !slug.includes('..') &&
+    basename(slug) === slug
+  );
+}
+
 export function brandDir(brandSlug: string, dataDirOverride?: string): string {
+  if (!isSafeBrandSlugForPathResolution(brandSlug)) {
+    throw new Error(
+      `internal error: unsafe brand slug ${JSON.stringify(brandSlug)} reached brandDir(). ` +
+        'Callers must validate with isSafeBrandSlug() before a brand slug reaches path resolution.',
+    );
+  }
   return join(clientsDir(dataDirOverride), brandSlug);
 }
 

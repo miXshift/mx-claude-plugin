@@ -53,6 +53,7 @@ import {
 } from '../lib/intelligence/ledger.js';
 import { extractRunHeadline, renderHeadline } from '../lib/intelligence/headline.js';
 import { intelligenceOutputPath } from '../lib/paths/resolve.js';
+import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -129,7 +130,7 @@ function registerRunCommand(intelligence: Command): void {
     .command('run <id>')
     .description(
       'Run one insight (sync by default; --async for large accounts). Params are ' +
-        'a single JSON object, server-validated — run `intelligence catalog` for ids.',
+        'a single JSON object, server-validated: run `intelligence catalog` for ids.',
     )
     .option('--params-file <path>', 'JSON params from a file. Mutually exclusive with --params.')
     .option('--params <json>', 'inline JSON params (small payloads; prefer --params-file).')
@@ -366,13 +367,24 @@ async function loadParams(
 }
 
 /** Best-effort echo of params.merchant for the local ledger + brand-scoped
- *  artifact paths. Never throws on an unexpected shape. */
+ *  artifact paths. Never throws on an unexpected shape.
+ *
+ *  SECURITY: `brand` is caller-supplied and ultimately reaches
+ *  intelligenceOutputPath -> brandDir -> path.join(clientsDir, brand) — a
+ *  value like '../../evil' or 'a/b' must never be treated as a real brand
+ *  slug. isSafeBrandSlug (the same guard lib/context-sync/local.ts uses for
+ *  brand slugs crossing the same trust boundary) rejects anything that
+ *  isn't. An unsafe brand is dropped, not errored: the run still completes,
+ *  just against the flat (no-brand) artifact path — see brandDir in
+ *  lib/paths/resolve.ts for the second, unconditional layer of defense. */
 function merchantEcho(params: IntelligenceRunParams): { brand?: string; seller_id?: string } {
   const merchant = params.merchant;
   if (typeof merchant !== 'object' || merchant === null || Array.isArray(merchant)) return {};
   const m = merchant as Record<string, unknown>;
   const out: { brand?: string; seller_id?: string } = {};
-  if (typeof m.brand === 'string' && m.brand.trim()) out.brand = m.brand.trim();
+  if (typeof m.brand === 'string' && m.brand.trim() && isSafeBrandSlug(m.brand.trim())) {
+    out.brand = m.brand.trim();
+  }
   if (typeof m.sellerId === 'string' && m.sellerId.trim()) out.seller_id = m.sellerId.trim();
   return out;
 }
@@ -384,11 +396,18 @@ function brandSlugFromParams(params: IntelligenceRunParams): string | undefined 
 /** Look up the brand this runId was submitted under, from the local ledger,
  *  so `get` can land its artifact next to where `run --async` would have.
  *  Best-effort: an unrecorded/expired handle just falls back to the flat
- *  (no-brand) artifact path. */
+ *  (no-brand) artifact path.
+ *
+ *  SECURITY: re-validates the stored brand with isSafeBrandSlug rather than
+ *  trusting the ledger file verbatim — defense in depth against a
+ *  hand-edited, pre-fix, or otherwise corrupt ledger entry carrying an
+ *  unsafe value (see merchantEcho, which is what should have kept it out in
+ *  the first place). */
 async function brandForRunId(runId: string, dataDir: string | undefined): Promise<string | undefined> {
   try {
     const { runs } = await listIntelligenceRuns(dataDir);
-    return runs.find((r) => r.run_id === runId)?.brand;
+    const brand = runs.find((r) => r.run_id === runId)?.brand;
+    return brand && isSafeBrandSlug(brand) ? brand : undefined;
   } catch {
     return undefined;
   }
@@ -397,7 +416,13 @@ async function brandForRunId(runId: string, dataDir: string | undefined): Promis
 /** Two-tier output shared by `run` (sync) and `get`: always write the full
  *  envelope to an artifact file, and print either a compact headline (human
  *  mode) or the full JSON (--json) — never the full payload inline in human
- *  mode, however large the envelope is. */
+ *  mode, however large the envelope is.
+ *
+ *  `runIdForTracking` does double duty: besides tagging the telemetry event,
+ *  when present (the `get` path always has one) it also seeds
+ *  intelligenceOutputPath's filename nonce, so the artifact for this run
+ *  never collides with another run's (see resolve.ts for why timestamp
+ *  alone isn't enough). */
 async function emitInsightResult(
   id: string,
   result: InsightResult,
@@ -410,7 +435,13 @@ async function emitInsightResult(
   const headline = extractRunHeadline(result);
   const artifactPath = outOverride
     ? resolvePath(outOverride)
-    : intelligenceOutputPath(sanitizeForFilename(id), fsSafeTimestamp(), brandSlug, root.dataDir);
+    : intelligenceOutputPath(
+        sanitizeForFilename(id),
+        fsSafeTimestamp(),
+        brandSlug,
+        root.dataDir,
+        runIdForTracking,
+      );
 
   await mkdir(dirname(artifactPath), { recursive: true });
   await writeFile(artifactPath, JSON.stringify(result, null, 2), 'utf8');

@@ -10,9 +10,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { registerIntelligenceCommands } from './intelligence.js';
 import {
@@ -299,6 +299,95 @@ describe('intelligence run — sync two-tier output', () => {
     expect(typeof parsed.artifact_path).toBe('string');
     const written = JSON.parse(await readFile(parsed.artifact_path, 'utf8'));
     expect(written.momOpsDelta).toBe(1234.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// run / get — brand slug sanitization (path traversal defense)
+//
+// params.merchant.brand is caller-supplied and feeds both the local ledger
+// and intelligenceOutputPath's brand-scoped artifact directory
+// (clients/<brand>/runs/intelligence/...). A value that isn't a real brand
+// slug — a traversal attempt, an embedded separator — must never reach
+// path.join(); it should just fall back to the flat (no-brand) artifact
+// path instead of erroring the run.
+// ---------------------------------------------------------------------------
+
+describe('intelligence run/get — brand slug sanitization', () => {
+  it('falls back to the flat path when merchant.brand is a path-traversal attempt', async () => {
+    vi.mocked(run).mockResolvedValue(insightResult());
+    await runCli(
+      { dataDir },
+      'run',
+      'INS-OPS-BRIDGE-01',
+      '--params',
+      JSON.stringify({ merchant: { brand: '../../evil' } }),
+    );
+    const out = stdoutText();
+    const pathLine = out.split('\n').find((l) => l.startsWith('Full result:'))!;
+    const artifactPath = resolve(pathLine.replace('Full result:', '').trim());
+    expect(artifactPath.startsWith(resolve(dataDir))).toBe(true);
+    expect(artifactPath).not.toContain('clients');
+    const written = JSON.parse(await readFile(artifactPath, 'utf8'));
+    expect(written.ok).toBe(true);
+  });
+
+  it('falls back to the flat path when merchant.brand contains a path separator', async () => {
+    vi.mocked(run).mockResolvedValue(insightResult());
+    await runCli(
+      { dataDir },
+      'run',
+      'INS-OPS-BRIDGE-01',
+      '--params',
+      JSON.stringify({ merchant: { brand: 'a/b' } }),
+    );
+    const out = stdoutText();
+    const pathLine = out.split('\n').find((l) => l.startsWith('Full result:'))!;
+    const artifactPath = resolve(pathLine.replace('Full result:', '').trim());
+    expect(artifactPath.startsWith(resolve(dataDir))).toBe(true);
+    expect(artifactPath).not.toContain('clients');
+  });
+
+  it('drops an unsafe brand from the async ledger handle too, instead of recording it', async () => {
+    vi.mocked(run).mockResolvedValue(acceptedResult({ runId: 'run-evil' }));
+    await runCli(
+      { dataDir },
+      'run',
+      'INS-MONTHLY-01',
+      '--params',
+      JSON.stringify({ merchant: { brand: '../../evil' } }),
+      '--async',
+    );
+    const { runs } = await listIntelligenceRuns(dataDir);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.brand).toBeUndefined();
+  });
+
+  it('get falls back to the flat path even if the ledger file itself carries an unsafe brand', async () => {
+    // Simulates a hand-edited / pre-fix ledger entry — brandForRunId must
+    // not trust the ledger's `brand` field verbatim.
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(
+      join(dataDir, 'intelligence-runs.json'),
+      JSON.stringify([
+        {
+          run_id: 'run-legacy',
+          insight_id: 'INS-OPS-BRIDGE-01',
+          status: 'IN_QUEUE',
+          brand: '../../evil',
+          submitted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]),
+      'utf8',
+    );
+    vi.mocked(getRunResult).mockResolvedValue(insightResult());
+    await runCli({ dataDir }, 'get', 'run-legacy');
+    const out = stdoutText();
+    const pathLine = out.split('\n').find((l) => l.startsWith('Full result:'))!;
+    const artifactPath = resolve(pathLine.replace('Full result:', '').trim());
+    expect(artifactPath.startsWith(resolve(dataDir))).toBe(true);
+    expect(artifactPath).not.toContain('clients');
   });
 });
 
