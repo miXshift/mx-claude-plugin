@@ -73812,7 +73812,7 @@ function sectionRuntimeInputs(s) {
   if (ctx?.goals?.forecast_tracking) {
     cards.push({
       title: "Forecast model",
-      body: `<p>Forecast tracking enabled. Supply the current month's forecast (HCAM / H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`
+      body: `<p>Forecast tracking enabled. Supply the current month's forecast (H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`
     });
   }
   return renderCard({
@@ -74324,7 +74324,7 @@ function buildBuckets(sources, coverage) {
     brand_voice: { title: "Brand voice & buyer language", description: "Customer-language samples and brand identity prose." },
     product_coverage: { title: "Product & ASIN coverage", description: "Item-group taxonomy, hero SKUs, conquesting catalog." },
     reporting_setup: { title: "Reporting setup", description: "Audience, voice-lint, monthly-report style preferences." },
-    runtime_inputs: { title: "Runtime inputs", description: "Forecast, HCAM, H-Bridge: supplied at skill run time, not during brand setup." },
+    runtime_inputs: { title: "Runtime inputs", description: "Forecast, H-Bridge: supplied at skill run time, not during brand setup." },
     accepted: { title: "Accepted gaps", description: "Explicitly acknowledged; not blocking." }
   };
   for (const [cat, items] of byCategory.entries()) {
