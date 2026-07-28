@@ -338,7 +338,7 @@ export function sectionRuntimeInputs(s: ReportState): string {
   if (ctx?.goals?.forecast_tracking) {
     cards.push({
       title: 'Forecast model',
-      body: `<p>Forecast tracking enabled. Supply the current month's forecast (HCAM / H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`,
+      body: `<p>Forecast tracking enabled. Supply the current month's forecast (H-Bridge / dimension bridge) at mx-monthly-report run time.</p>`,
     });
   }
   // Other runtime cards would come from open_gaps tagged as runtime —
