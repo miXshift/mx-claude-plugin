@@ -10,7 +10,7 @@ tags: [domain, intelligence-layer, methodology, forecasting]
 
 # Intelligence Layer: Bridge Methodology + Forecasting (Counterfactuals) Framework
 *Source: the operator session 2026-02-09*
-*Updated: 2026-04-06 — terminology aligned to intelligence-layer-definition.md*
+*Updated: 2026-07-27 (naming aligned to product-neutral bridge terminology)*
 
 > ⚠️ **Terminology note:** This document covers two distinct intelligence layer components: (1) **the bridge methodology** — the patent-pending deterministic decomposition / bridge calculation layer, and (2) **Counterfactuals / Forecasting** — the forecast and scenario modeling layer. These are separate components that work together. See `intelligence-layer-definition.md` for the full five-component intelligence layer definition.
 

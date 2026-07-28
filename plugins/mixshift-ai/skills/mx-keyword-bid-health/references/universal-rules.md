@@ -12,7 +12,7 @@ tags: [domain, methodology]
 **Status:** Active
 **Owner:** MixShift
 **Created:** 2026-03-19
-**Updated:** 2026-04-06
+**Updated:** 2026-07-27
 **Validated by:** the operator (see individual rule dates)
 **Applies to:** All structured skills in the intelligence layer that perform bridge-style causal analysis (health check, runaway spend, keyword bid health, and any future skill in this family)
 

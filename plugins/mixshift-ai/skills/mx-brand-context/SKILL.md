@@ -315,7 +315,7 @@ without learning the schema.
   in the data so I don't misread them.)*"
 - **Never surface jargon from internal docs.** "Runtime artifacts at
   report time" is a legacy schema term. The AM-facing prompt is: "Do
-  you currently provide reports (forecast, monthly bridges) you'd
+  you currently provide reports (forecast, H-Bridge, monthly bridges) you'd
   like the monthly report to match? Or should I use a default template?"
 - **Don't ask anything answerable from data.** If the brain enumerated the
   catalog item-groups, don't ask the AM to type them — show what was
@@ -335,7 +335,7 @@ without learning the schema.
 | `management.acos_target_pct` | "ACOS target %" | "What ACoS target are you running toward?" |
 | `posture.stance` | "Spend posture: scale / efficiency / defend / clear_bleed" | "What do you primarily optimize this brand for right now?" + plain-language options |
 | `goals.report_quarterly_pacing` | "Quarterly pacing enabled?" | "Do you track quarterly revenue goals for this brand?" |
-| Runtime inputs | "Runtime artifacts at report time" | "Do you currently provide reports (forecast, monthly bridges) you'd like me to match?" |
+| Runtime inputs | "Runtime artifacts at report time" | "Do you currently provide reports (forecast, H-Bridge, monthly bridges) you'd like me to match?" |
 | `structural_events[]` | "Structural events" | "Anything happening right now I should know about? Promos, stockouts, launches, brand migrations, viral moments" |
 | `negation.competitor_brands` | "Competitor brand list" | "Which brands are you most often compared to or compete with on Amazon?" |
 | `negation.protected_terms` | "Protected terms array" | "Are there words my negation skills should NEVER negate? (e.g. generic product nouns that are core to your category)" |
