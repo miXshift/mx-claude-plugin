@@ -43,7 +43,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 **Quick checklist:**
 
 - [ ] **Docs & changelog current** (run the `release-docs` skill): `npm run check-docs` passes; `CHANGELOG.md` has the new version's entry; the `<!-- unreleased -->` marker under the version heading is stripped (the release workflow's `check-changelog-marker` enforces this — a stale marker renders verbatim in `whatsnew`, the `/releases` page, and the Discord announce); if the skill roster or capability surface changed this release, the README skills table + count and the `plugin.json` / `marketplace.json` descriptions are updated too.
-- [ ] If this release flips any catalog query to `dispatch: named`: `npm run check-named-pack` passes (every named id resolves against the DEPLOYED auth-service pack — deploy the pack entries first, or users hit `unknown_query`)
+- [ ] `npm run check-named-pack` passes against the public deployed-pack manifest (every named id resolves against the DEPLOYED auth-service pack — deploy pack entries first, or users hit `unknown_query`). `MIXSHIFT_SKIP_PACK_CHECK=1` bypasses this for local/offline use ONLY — never set it as a repository or organization Actions variable, since a skipped gate still renders as a green check.
 - [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
 - [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed
@@ -67,7 +67,7 @@ npm run check-skills
 npm run check-docs          # README skills table + count, plugin/marketplace version sync
 npm run check-no-internal-exposure  # no maintainer skills tracked under .claude/ (also gated per-push in CI)
 npm run check-changelog-marker      # run AFTER stripping the version's unreleased marker (release CI also enforces)
-npm run check-named-pack   # only gates dispatch:named flips; needs `mixshift auth login`
+npm run check-named-pack   # checks the public deployed-pack manifest; no customer session required
 npm run build
 ```
 

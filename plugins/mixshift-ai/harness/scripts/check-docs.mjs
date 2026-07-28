@@ -26,6 +26,10 @@
  *      [brand] instead). Skill description LENGTH is deliberately NOT checked:
  *      the console only enforces length on the plugin description, and
  *      shortening skill descriptions would degrade skill triggering.
+ *   5. Privacy invariants that must stay aligned with shipped behavior:
+ *      brand-context sync is disclosed separately from telemetry, automatic
+ *      updates after an explicit first share and the kill switch are named,
+ *      and opt-out copy does not claim disabled events are still queued.
  *
  * Companion to check-skill-telemetry.mjs / check-version-consistency.mjs; shares
  * their conventions (skip `_`-prefixed dirs, exit-1-with-report). Prose accuracy
@@ -44,6 +48,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..', '..', '..');
 const skillsDir = join(here, '..', '..', 'skills');
 const readmePath = join(repoRoot, 'README.md');
+const privacyPath = join(repoRoot, 'docs', 'privacy.md');
 const pluginJsonPath = join(repoRoot, 'plugins', 'mixshift-ai', '.claude-plugin', 'plugin.json');
 const marketplaceJsonPath = join(repoRoot, '.claude-plugin', 'marketplace.json');
 
@@ -188,6 +193,35 @@ for (const id of skillIds) {
       `Cannot read/parse skills/${id}/SKILL.md frontmatter (${err instanceof Error ? err.message : String(err)})`,
     );
   }
+}
+
+// 5. Privacy statements whose truth can be checked mechanically against stable
+//    product contracts. This intentionally avoids prose exact-matching beyond
+//    the command/env names that users need in order to control the behavior.
+try {
+  const privacy = await readFile(privacyPath, 'utf-8');
+  if (/brand context[\s\S]{0,240}never leave your machine/i.test(privacy)) {
+    errors.push(
+      'docs/privacy.md says brand context never leaves the machine, but explicit context ' +
+        'sharing and participant-gated auto-publish send document content to the org store.',
+    );
+  }
+  for (const required of [
+    '`mixshift context push',
+    '`MIXSHIFT_CONTEXT_AUTOPUBLISH=off`',
+    'does not enqueue new events',
+  ]) {
+    if (!privacy.includes(required)) {
+      errors.push(
+        `docs/privacy.md must include "${required}" so context sharing and telemetry opt-out ` +
+          'behavior remain accurately disclosed.',
+      );
+    }
+  }
+} catch (err) {
+  errors.push(
+    `Cannot read docs/privacy.md (${err instanceof Error ? err.message : String(err)})`,
+  );
 }
 
 if (errors.length === 0) {

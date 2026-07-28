@@ -11,12 +11,10 @@ name: ci
 #   skill telemetry convention, and the build are BLOCKING (green on main today).
 #   check-versions and check-docs are BLOCKING (check-docs gates the README skill
 #   table + count and the plugin.json <-> marketplace.json version sync).
-#   check-contracts stays ADVISORY (continue-on-error) until the `sidecar compare`
-#   references are resolved (port the drift system or drop the refs); promote it then.
-#
-# Intentionally NOT here: `check-named-pack`. It needs a live `mixshift auth
-# login` against mcp.mixshift.io, which CI cannot do. It stays a manual release
-# gate (see CONTRIBUTING.md "Pre-flight build").
+#   check-contracts is BLOCKING: shipped skills cannot reference missing SQL,
+#   context fields, upstream skills, or unimplemented command surfaces.
+#   check-named-pack is BLOCKING and reads the public tenant-free deployment
+#   manifest. This catches plugin/gateway skew before merge.
 
 on:
   push:
@@ -33,7 +31,7 @@ defaults:
 
 jobs:
   gates:
-    name: Harness gates (typecheck, test, manifests, telemetry, versions, docs, build; contracts advisory)
+    name: Harness gates (typecheck, test, manifests, telemetry, contracts, versions, docs, build)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -70,9 +68,13 @@ jobs:
       - name: No internal-skill exposure (nothing tracked under .claude/skills/ in the public repo)
         run: npm run check-no-internal-exposure
 
-      - name: Skill contract resolution (sql_ids, context fields, upstream) [ADVISORY — sidecar-compare warnings]
+      - name: Skill contract resolution (sql_ids, context fields, upstream, command surfaces)
         run: npm run check-contracts
-        continue-on-error: true
+
+      - name: Deployed named-query pack compatibility
+        run: npm run check-named-pack
+        env:
+          MIXSHIFT_PACK_CHECK_API_BASE: https://mcp.mixshift.io
 
       - name: Build CLI bundle
         run: npm run build

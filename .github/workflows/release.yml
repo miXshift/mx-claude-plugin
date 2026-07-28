@@ -10,9 +10,9 @@ name: release
 # and the changelog release-ready marker gate), builds the two release zips with
 # `npm run package-zip`, and attaches BOTH to the GitHub Release for the tag.
 #
-# Intentionally NOT here (same as ci.yml): `check-named-pack` needs a live
-# `mixshift auth login` against mcp.mixshift.io, which CI cannot do; and
-# `check-contracts` is advisory. Both stay out of the release gate.
+# The deployed named-query check is fail-closed against the public tenant-free
+# compatibility manifest. Skill contracts and deployment compatibility both
+# block every release.
 
 on:
   push:
@@ -79,6 +79,14 @@ jobs:
 
       - name: No internal-skill exposure (nothing tracked under .claude/ or internal docs)
         run: npm run check-no-internal-exposure
+
+      - name: Skill contract resolution (sql_ids, context fields, upstream, command surfaces)
+        run: npm run check-contracts
+
+      - name: Deployed named-query pack compatibility
+        run: npm run check-named-pack
+        env:
+          MIXSHIFT_PACK_CHECK_API_BASE: https://mcp.mixshift.io
 
       - name: Build CLI bundle
         run: npm run build

@@ -282,7 +282,7 @@ The `<YYYY-MM>` segment is the reported month, not the run wall-clock date — e
 
 If `context.yaml::delivery.reports_local_dir` is set, save there instead. Honor that override.
 
-Drift comparison against the prior sidecar is handled by `mixshift sidecar compare` (not yet implemented). For now, you can manually inspect prior sidecars under `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report/` to spot config / verdict drift before publishing.
+Inspect the most recent prior sidecar under `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report/` to spot config or verdict drift before publishing.
 
 ---
 
@@ -376,7 +376,7 @@ mixshift sidecar write --input-file /tmp/mpr-sidecar-input.json
 
 **Verdict rule:** `GREEN` = on or ahead of pace (vs forecast / monthly target). `YELLOW` = pacing within 10% of target. `RED` = pacing >10% behind target. `OBSERVATIONAL` = first month for a new account or insufficient prior-year data; no MoM/YoY claims made.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 
 ## Telemetry (required)

@@ -254,7 +254,7 @@ mixshift sidecar write --input-file /tmp/prc-sidecar-input.json
 
 **Verdict rule:** `GREEN` = clean classification (most terms land in RELEVANT or IRRELEVANT, ambiguous share is small). `YELLOW` = >30% of terms classified AMBIGUOUS (lane rules underspecified — calibration candidates require AM review). `RED` = `lane_rules` conflict detected (a term matches both `relevant` and `mismatch` lanes for the same item group, indicating a context.yaml integrity issue). `OBSERVATIONAL` = brand-context lane_rules incomplete; classification advisory only.
 
-`mixshift sidecar compare` will surface drift against the prior run once implemented; until then, sidecars accumulate read-only for retrospective inspection.
+Sidecars accumulate read-only for retrospective inspection. Compare the current file with the most recent prior run when drift context matters.
 
 
 ## Telemetry (required)
