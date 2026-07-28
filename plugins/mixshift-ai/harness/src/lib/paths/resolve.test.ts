@@ -6,6 +6,7 @@ import {
   profilePath,
   brandDir,
   contextPath,
+  intelligenceOutputPath,
 } from './resolve.js';
 
 describe('resolveDataDir', () => {
@@ -76,6 +77,83 @@ describe('path helpers', () => {
   it('contextPath drills into brand dir', () => {
     expect(contextPath('acmecorp', dataDir)).toBe(
       join(resolvedRoot, 'clients', 'acmecorp', 'context.yaml'),
+    );
+  });
+
+  // ---------------------------------------------------------------------
+  // brandDir SECURITY: reject anything that would escape clients/ via
+  // path.join — every caller is expected to pre-validate with
+  // isSafeBrandSlug (lib/context-sync/local.ts), but brandDir must refuse
+  // unsafe input unconditionally as a second, unbypassable layer.
+  // ---------------------------------------------------------------------
+  describe('brandDir safety', () => {
+    it('throws on a slug containing ..', () => {
+      expect(() => brandDir('../../evil', dataDir)).toThrow();
+    });
+
+    it('throws on a slug containing a forward slash', () => {
+      expect(() => brandDir('a/b', dataDir)).toThrow();
+    });
+
+    it('throws on a slug containing a backslash', () => {
+      expect(() => brandDir('a\\b', dataDir)).toThrow();
+    });
+
+    it('throws on an absolute-path-shaped slug', () => {
+      expect(() => brandDir('/etc/passwd', dataDir)).toThrow();
+    });
+
+    it('throws on an empty slug', () => {
+      expect(() => brandDir('', dataDir)).toThrow();
+    });
+
+    it('still resolves an ordinary slug', () => {
+      expect(brandDir('acme-co', dataDir)).toBe(join(resolvedRoot, 'clients', 'acme-co'));
+    });
+  });
+});
+
+// ---------------------------------------------------------------------
+// intelligenceOutputPath — filename collision avoidance (nonce)
+// ---------------------------------------------------------------------
+describe('intelligenceOutputPath', () => {
+  const dataDir = '/tmp/test-mixshift-intel';
+  const resolvedRoot = resolve(dataDir);
+
+  it('uses the server runId as the filename nonce when provided', () => {
+    const p = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'ts1', undefined, dataDir, 'run-abc123');
+    expect(p).toBe(join(resolvedRoot, 'intelligence', 'INS-OPS-BRIDGE-01-ts1-run-abc123.json'));
+  });
+
+  it('sanitizes an unusual runId before using it as a filename nonce', () => {
+    const p = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'ts1', undefined, dataDir, 'run/weird:id');
+    const filename = p.split(/[\\/]/).pop()!;
+    expect(filename).toBe('INS-OPS-BRIDGE-01-ts1-run_weird_id.json');
+  });
+
+  it('falls back to a random 6-hex suffix when no runId is given', () => {
+    const p = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'ts1', undefined, dataDir);
+    const filename = p.split(/[\\/]/).pop()!;
+    expect(filename).toMatch(/^INS-OPS-BRIDGE-01-ts1-[0-9a-f]{6}\.json$/);
+  });
+
+  it('two calls with the same id/timestamp and no runId do not collide', () => {
+    const a = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'same-ts', undefined, dataDir);
+    const b = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'same-ts', undefined, dataDir);
+    expect(a).not.toBe(b);
+  });
+
+  it('nests under the brand dir when a brand slug is given, nonce included', () => {
+    const p = intelligenceOutputPath('INS-OPS-BRIDGE-01', 'ts1', 'acmecorp', dataDir, 'run-1');
+    expect(p).toBe(
+      join(
+        resolvedRoot,
+        'clients',
+        'acmecorp',
+        'runs',
+        'intelligence',
+        'INS-OPS-BRIDGE-01-ts1-run-1.json',
+      ),
     );
   });
 });

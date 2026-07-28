@@ -76,6 +76,7 @@ update before use.
 | `validator` | Run validate-context.py or check-sql-drift.py |
 | `web_search` | External web/social searches (Phase 0.5 brand scrub only) |
 | `prefetch` | Invoke pre-fetch-data.py to collect and stage query results |
+| `insight_read` | Read finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run\|poll\|get` (no warehouse SQL, no writes) |
 
 No skill has permission to write to the SQL database, push to external APIs,
 modify skill definitions, or alter schedules. Those paths are not in this vocabulary

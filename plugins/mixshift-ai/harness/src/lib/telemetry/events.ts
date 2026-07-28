@@ -194,6 +194,16 @@ export const EventName = {
   AdsOperationsListed: 'ads.operations_listed',
   AdsCalled: 'ads.called',
 
+  // MixShift Intelligence service consumption (lib/intelligence/ +
+  // `mixshift intelligence`). Privacy: capture insight id + run id + duration
+  // + outcome + cache hit/miss + limitation COUNT only — never the insight
+  // envelope itself (customer performance numbers, not telemetry).
+  IntelligenceCatalogListed: 'intelligence.catalog_listed',
+  IntelligenceRunStarted: 'intelligence.run_started',
+  IntelligenceRunPolled: 'intelligence.run_polled',
+  IntelligenceRunRetrieved: 'intelligence.run_retrieved',
+  IntelligenceRunFailed: 'intelligence.run_failed',
+
   // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
   // Privacy: payloads carry brand slugs, per-action doc counts, force flag,
   // duration + outcome — never doc content or file paths.
