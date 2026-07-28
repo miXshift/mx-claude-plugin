@@ -129,7 +129,7 @@ In plain English: MixShift customers and individual users may install, run, modi
 
 ## Productization status
 
-This is a hard fork of MixShift's internal agent system, reorganized for distribution to MixShift customers. Fork point and attribution: [`UPSTREAM.md`](./UPSTREAM.md). The patent-pending HCAM bridge math (App. No. 19/070,768) anchors causal attribution claims; deterministic functional relationships only, not probabilistic statistical inference.
+This is a hard fork of MixShift's internal agent system, reorganized for distribution to MixShift customers. Fork point and attribution: [`UPSTREAM.md`](./UPSTREAM.md). The patent-pending MixShift bridge math (App. No. 19/070,768) anchors causal attribution claims; deterministic functional relationships only, not probabilistic statistical inference.
 
 ## Contributing
 

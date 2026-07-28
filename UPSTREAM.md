@@ -12,7 +12,7 @@ This repository is a hard fork of [`miXshift/mx-claude`](https://github.com/miXs
 
 ## Original authorship
 
-The skill content (prompts, SQL patterns, format conventions, narrative voice) was originally authored by the internal MixShift operator and the team that built the upstream agent system. Their work is the basis for the analytical opinions and patent-pending HCAM bridge methodology (App. No. 19/070,768) that this plugin encodes.
+The skill content (prompts, SQL patterns, format conventions, narrative voice) was originally authored by the internal MixShift operator and the team that built the upstream agent system. Their work is the basis for the analytical opinions and patent-pending MixShift bridge methodology (App. No. 19/070,768) that this plugin encodes.
 
 ## What was carried over
 

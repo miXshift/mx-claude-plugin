@@ -14,7 +14,7 @@ We welcome:
 We do not accept (without prior discussion):
 - New skills (the canonical skill set is curated by MixShift)
 - Forks of existing skills (do this in your own user-scoped namespace)
-- Changes to the patent-relevant HCAM bridge methodology references
+- Changes to the patent-relevant MixShift bridge methodology references
 - License changes
 
 If you have an idea that doesn't fit the "welcome" list, open an issue first to discuss before sending a PR.

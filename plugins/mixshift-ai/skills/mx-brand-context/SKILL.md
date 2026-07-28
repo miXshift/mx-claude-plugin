@@ -284,7 +284,7 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 - Ask numbered questions, not passive "Tell AI" prompts.
 - Include the data-derived hypothesis when useful, then ask the operator to confirm, correct, or mark unknown / not applicable.
 - Prioritize required operating decisions first, then high-impact anomalies, then optional context that would improve downstream skill quality.
-- Keep runtime-only uploads separate. Forecast, HCAM/H-Bridge, monthly-report screenshots are runtime inputs, not Brand Context gaps unless the operator says they do not exist.
+- Keep runtime-only uploads separate. Forecast, H-Bridge, monthly-report screenshots are runtime inputs, not Brand Context gaps unless the operator says they do not exist.
 - If a question can be answered by the automated data review, answer it yourself and cite the finding in context rather than asking the operator.
 - Before asking about stockouts, check the brain's `stockouts` (detected FBA OOS windows) + revenue + session patterns. If data shows an inventory trough but no detected OOS window, record an advisory note instead of asking the operator to confirm a stockout.
 - Before asking whether a promo caused a spike, check revenue, units, ASP/price proxy, spend, conversion. If ASP held while units spiked, treat as deal placement or demand surge rather than discount unless price history proves markdown.
@@ -293,7 +293,7 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 - If TACOS is primary metric, derive ACOS thresholds from posture and the historical SC vs. ad-attributed ratio.
 - Combine catalog-derived brand terms (Phase 1) with AM-supplied variants (Phase 2) into a single `context.yaml::brand_terms` map. Don't keep two lists.
 - If the AM doesn't supply a quarterly revenue target and `goals.report_quarterly_pacing` is false, set `goals.quarterly_revenue_target: null` and do not treat it as missing. If quarterly pacing is true, add a missing-context bucket item.
-- If forecast/HCAM/H-Bridge/dimension bridge artifacts exist outside the DB, record them as runtime inputs required, not static context gaps.
+- If forecast/H-Bridge/dimension bridge artifacts exist outside the DB, record them as runtime inputs required, not static context gaps.
 - Capture promotions and launches as `structural_events[]` entries with appropriate types — not as free prose.
 
 ### Phase 2 voice discipline (user-facing — apply when building intake)
@@ -315,7 +315,7 @@ without learning the schema.
   in the data so I don't misread them.)*"
 - **Never surface jargon from internal docs.** "Runtime artifacts at
   report time" is a legacy schema term. The AM-facing prompt is: "Do
-  you currently provide reports (forecast, HCAM, monthly bridges) you'd
+  you currently provide reports (forecast, H-Bridge, monthly bridges) you'd
   like the monthly report to match? Or should I use a default template?"
 - **Don't ask anything answerable from data.** If the brain enumerated the
   catalog item-groups, don't ask the AM to type them — show what was
@@ -335,7 +335,7 @@ without learning the schema.
 | `management.acos_target_pct` | "ACOS target %" | "What ACoS target are you running toward?" |
 | `posture.stance` | "Spend posture: scale / efficiency / defend / clear_bleed" | "What do you primarily optimize this brand for right now?" + plain-language options |
 | `goals.report_quarterly_pacing` | "Quarterly pacing enabled?" | "Do you track quarterly revenue goals for this brand?" |
-| Runtime inputs | "Runtime artifacts at report time" | "Do you currently provide reports (forecast, HCAM, monthly bridges) you'd like me to match?" |
+| Runtime inputs | "Runtime artifacts at report time" | "Do you currently provide reports (forecast, H-Bridge, monthly bridges) you'd like me to match?" |
 | `structural_events[]` | "Structural events" | "Anything happening right now I should know about? Promos, stockouts, launches, brand migrations, viral moments" |
 | `negation.competitor_brands` | "Competitor brand list" | "Which brands are you most often compared to or compete with on Amazon?" |
 | `negation.protected_terms` | "Protected terms array" | "Are there words my negation skills should NEVER negate? (e.g. generic product nouns that are core to your category)" |

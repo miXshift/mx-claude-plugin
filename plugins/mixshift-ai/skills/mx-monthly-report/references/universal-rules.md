@@ -1,22 +1,22 @@
 ---
-title: "HCAM Universal Rules"
+title: "Universal Rules for Causal Analysis Skills"
 brain: domain
 owner: mixshift
 status: active
 created: 2026-03-19
-updated: 2026-03-19
-tags: [domain, hcam, methodology]
+updated: 2026-07-27
+tags: [domain, methodology]
 ---
 
-# HCAM Universal Rules
+# Universal Rules for Causal Analysis Skills
 **Status:** Active
 **Owner:** MixShift
 **Created:** 2026-03-19
-**Updated:** 2026-04-06
+**Updated:** 2026-07-27
 **Validated by:** the operator (see individual rule dates)
-**Applies to:** All structured skills in the intelligence layer that perform HCAM-style causal analysis (health check, runaway spend, keyword bid health, and any future skill in this family)
+**Applies to:** All structured skills in the intelligence layer that perform bridge-style causal analysis (health check, runaway spend, keyword bid health, and any future skill in this family)
 
-> ⚠️ **Scope note:** These rules govern the execution of structured intelligence layer skills. "HCAM" in this document refers to the causal attribution methodology — bridge calculations, deterministic decomposition, TACOS attribution. Skills that do not perform bridge calculations (e.g., ST negation, harvest extraction) are not "HCAM skills" — they are structured intelligence layer skills. See `intelligence-layer-definition.md` for the full terminology.
+> ⚠️ **Scope note:** These rules govern the execution of structured intelligence layer skills. "Bridge methodology" in this document refers to the causal attribution methodology — bridge calculations, deterministic decomposition, TACOS attribution. Skills that do not perform bridge calculations (e.g., ST negation, harvest extraction) are not bridge-methodology skills — they are structured intelligence layer skills. See `intelligence-layer-definition.md` for the full terminology.
 
 > ⚠️ **This is the canonical home for universal rules.** Do not copy these rules into individual SKILL.md files. Reference this document by section instead. If a rule exists here and in a SKILL.md, the SKILL.md version is the duplicate — update or delete it.
 
@@ -173,7 +173,7 @@ Use brand context to inform analysis. Never recite it back to the reader. "As no
 
 ## 9. Timing and Data Readiness
 
-**Universal rule for all HCAM skills:** Data must be complete before running.
+**Universal rule for all bridge-methodology skills:** Data must be complete before running.
 
 - Do not run before 8:00 AM in the account's local time zone
 - For PST-scheduled crons: 6:30 AM PST covers MST accounts
@@ -203,9 +203,9 @@ Before building any skill output, read the most recent prior run for the same sk
 In each SKILL.md, replace the full rule block with a one-line reference:
 
 ```markdown
-> Causal Integrity: see shared/playbook/hcam-universal-rules.md#1-causal-integrity--non-negotiable
-> Structural Event Check: see shared/playbook/hcam-universal-rules.md#2-structural-event-baseline-check
-> CI Methodology: see shared/playbook/hcam-universal-rules.md#8-ci-methodology--keyword-level-ratio-metrics
+> Causal Integrity: see references/universal-rules.md#1-causal-integrity--non-negotiable
+> Structural Event Check: see references/universal-rules.md#2-structural-event-baseline-check
+> CI Methodology: see references/universal-rules.md#8-ci-methodology--keyword-level-ratio-metrics
 ```
 
 The model loads this file just-in-time at the phase where the rule applies — not in bulk at session start. Loading a 400-line SKILL.md with embedded copies of every universal rule is the architecture that produces drift. Loading a focused SKILL.md that references this file keeps the model's working context small and the rules authoritative.
@@ -217,3 +217,4 @@ The model loads this file just-in-time at the phase where the rule applies — n
 | Date | Change |
 |------|--------|
 | 2026-03-19 | Created. Consolidated from 3 SKILL.md files (health-check v1.6, runaway-spend v1.5, mx-keyword-bid-health v1.7). Author: MixShift. |
+| 2026-07-27 | Retitled and file renamed; internal methodology codename replaced with product-neutral bridge terminology. Self-reference paths updated to references/universal-rules.md. |
