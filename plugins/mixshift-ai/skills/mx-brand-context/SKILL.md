@@ -597,7 +597,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Current version: v2.6.0.*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.6.0*
 
 ## Telemetry (required)
 

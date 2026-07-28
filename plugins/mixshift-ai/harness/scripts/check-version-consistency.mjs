@@ -18,9 +18,18 @@
  * shorthand like `1.1` matches a manifest `1.1.0`, but a stale `1.1` against
  * a manifest `1.2.0` is correctly flagged.
  *
+ * A skill whose SKILL.md matches NONE of those four patterns is itself an
+ * error. Otherwise the per-source comparison loop never executes and the skill
+ * silently opts out of the gate: it passes no matter what its manifest says.
+ * That is not hypothetical — `mx-brand-context` sat in exactly that hole until
+ * 2026-07-28, because its footer read "Current version:" rather than the
+ * "Skill version:" the four skills with footers use. Rather than teach the
+ * regex a second phrasing (which would leave two footer dialects in the tree
+ * forever), the footer was normalized and this zero-source check added so the
+ * next format outlier fails loudly instead of passing vacuously.
+ *
  * Exit 0 on clean pass; exit 1 with a per-skill drift report otherwise.
- * Wired into CI as an ADVISORY (non-blocking) job until the existing drift
- * is cleared; flip it to blocking once green.
+ * Wired into CI as a BLOCKING step (`npm run check-versions` in ci.yml).
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -99,6 +108,18 @@ async function checkSkill(skillId) {
   for (const m of raw.matchAll(/[Ss]kill version:?\s*(v?\d[0-9A-Za-z.-]*)/g))
     sources.push(['footer "Skill version"', m[1]]);
 
+  // No recognized source => nothing below this line can ever fail, so the skill
+  // would pass the gate vacuously. Fail instead: declaring a version somewhere
+  // the linter reads is the price of being covered by it.
+  if (sources.length === 0) {
+    result.errors.push(
+      'SKILL.md declares no version in any recognized place, so this skill is NOT actually ' +
+        'covered by the gate. Add one of: frontmatter `version:`, frontmatter `metadata.version:`, ' +
+        'a body `"skill_version": "X"`, or a footer `*Skill version: X ...*`.',
+    );
+    return result;
+  }
+
   for (const [label, value] of sources) {
     if (normVersion(value) !== canonKey) {
       result.errors.push(`${label} = "${value}" but manifest = "${result.canonical}"`);
@@ -117,7 +138,8 @@ if (failures.length === 0) {
 }
 
 console.error(
-  `✗ ${failures.length}/${checks.length} skills have version drift (skill.manifest.yaml is canonical):\n`,
+  `✗ ${failures.length}/${checks.length} skills have version drift or no declared version ` +
+    `(skill.manifest.yaml is canonical):\n`,
 );
 for (const f of failures) {
   console.error(`  ${f.skillId}  (manifest v${f.canonical ?? '?'})`);
@@ -126,6 +148,8 @@ for (const f of failures) {
 }
 console.error(
   'Fix: align every SKILL.md version string (frontmatter version / metadata.version,\n' +
-    'body "skill_version", footer "Skill version") to the manifest version.',
+    'body "skill_version", footer "Skill version") to the manifest version. A skill\n' +
+    'reported as declaring no version needs one ADDED in one of those places — the\n' +
+    'linter cannot check a version it cannot find.',
 );
 process.exit(1);
