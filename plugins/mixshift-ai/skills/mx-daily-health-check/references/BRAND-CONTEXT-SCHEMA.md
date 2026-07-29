@@ -1,3 +1,8 @@
+<!-- SOURCE OF TRUTH: shared/BRAND-CONTEXT-SCHEMA.md. The copies under
+skills/*/references/ are synced verbatim so each skill folder stays
+self-contained; edit the shared file and re-sync all copies together.
+scripts/check-docs.mjs enforces parity. -->
+
 # Brand Context Schema — Canonical Standard
 **Version:** 1.0.0
 **Date:** 2026-04-01
@@ -176,14 +181,21 @@ Upcoming events (known future conditions):
 ## Section 8 — Spend Posture (REQUIRED)
 
 ```
-Current posture: Growth | Neutral | Pullback | Efficiency
+Current posture: scale | efficiency | defend | clear_bleed
 Posture rationale: [one sentence — why this posture]
 Re-entry trigger: [what data signal triggers posture change, e.g. "Sales AND TACOS both rebounding"]
 Re-entry sequence: [order of campaign types to re-enter, e.g. NONBRAND EXACT → BRAND → DISCOVERY]
 House-on-fire protocol: [what to do when account ACOS materially exceeds target — budget cut first, then bids]
 ```
 
-**Gap trigger:** Wrong posture = Scale Opportunity recommendations are wrong (should be "Hold" in Pullback, "Raise" in Growth).
+**Vocabulary note:** these four values are the enforced `posture.stance` enum in
+`context.yaml` — `mixshift brand validate` rejects anything else. Rough intent:
+`scale` = push for growth, `efficiency` = optimize toward the ACOS/TACOS target,
+`defend` = hold position, `clear_bleed` = cut losses hard. (Earlier drafts of this
+document used Growth/Neutral/Pullback/Efficiency; that vocabulary was never valid
+in the validator — do not write it into context.yaml.)
+
+**Gap trigger:** Wrong posture = Scale Opportunity recommendations are wrong (should be "Hold" under `defend`/`clear_bleed`, "Raise" under `scale`).
 
 ---
 

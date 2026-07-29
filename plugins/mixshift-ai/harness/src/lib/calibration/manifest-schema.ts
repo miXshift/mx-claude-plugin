@@ -30,6 +30,24 @@
  *      tries to leave them empty.
  *
  * --------------------------------------------------------------------------
+ * The `percent` unit bridge (read before declaring a percent range)
+ * --------------------------------------------------------------------------
+ *
+ * `type: percent` fields live in TWO unit conventions at once, by design:
+ *   - INTERNAL/storage + `range` checking: normalized fractions in [0,1].
+ *     A manifest `range: {min: 0.05, max: 1.0}` means 5%..100%.
+ *   - USER-FACING (chat card display, typed input, `effective_config` handed
+ *     to the skill, context.yaml seeds like acos_target_pct): whole-number
+ *     percents (45 = 45%).
+ * parseFieldInput() normalizes any typed value > 1 by /100 BEFORE the range
+ * check, normalizeSeedForField() does the same for seeds, and
+ * toConsumableConfig()/formatFieldValue() denormalize back to whole numbers
+ * on the way out. So "26.9" passing a {0.05, 1.0} range is CORRECT (it is
+ * stored as 0.269) — an auditor reading only the manifest will think the
+ * range contradicts the whole-number docs; it does not. Declare ranges in
+ * fractions; document prompts/help in whole percents.
+ *
+ * --------------------------------------------------------------------------
  * Extra fields (user-added)
  * --------------------------------------------------------------------------
  *

@@ -6,10 +6,15 @@
 -- Params: :seller_id, :lookback_days, :run_date
 -- Consumers: keyword-bid-health (Round 1 -- Batch 1)
 -- Tier: 1
+-- Note: MatchType is LOWER()-normalized because keywordtargetingmetric stores
+--       keyword match types in a different letter case than keywordtargeting
+--       (KBH-02) in real tenant data; without normalization the documented
+--       app-layer join on (KeywordText, MatchType, CampaignName, AdGroupName)
+--       can match zero rows. All KBH-* queries normalize the same way.
 
 SELECT
     ktm.KeywordText,
-    ktm.MatchType,
+    LOWER(ktm.MatchType)                                                   AS MatchType,
     ktm.CampaignName,
     ktm.AdGroupName,
     ROUND(SUM(ktm.Cost), 2)                                                AS spend_t30,
@@ -29,6 +34,6 @@ WHERE ktm.SellerID = :seller_id
   AND c.State = 'enabled'
   AND ktm.costType IN ('cpc', '')
   AND ktm.recordType = 'Keyword Targeting'
-GROUP BY ktm.KeywordText, ktm.MatchType, ktm.CampaignName, ktm.AdGroupName
+GROUP BY ktm.KeywordText, LOWER(ktm.MatchType), ktm.CampaignName, ktm.AdGroupName
 HAVING SUM(ktm.Cost) > 0
 ORDER BY spend_t30 DESC;

@@ -581,7 +581,11 @@ async function applyDryRun(args: {
   if (!suggestions) {
     throw new Error(
       `No suggestions.json found at ${runDir}. ` +
-        `Apply-gate requires a completed skill run with structured output.`,
+        `Heads up: the apply-gate is not wired to any shipped skill yet (no ` +
+        `skill currently emits suggestions.json), so this command cannot ` +
+        `complete for today's skills. To apply approved changes now, use ` +
+        `the mx-amazon-ads write path: it previews by default and only ` +
+        `reaches Amazon with --commit after you confirm the exact change set.`,
     );
   }
   const overrides = (await readJsonIfExists(`${runDir}/overrides.json`)) ?? {

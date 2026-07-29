@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-keyword-bid-health
 display_name: Keyword Bid Health Review
-version: "0.5.0"
+version: "0.5.1"
 description: >
   Weekly keyword-level bid optimization analysis surfacing high-ACOS bid reduction candidates
   and scale opportunities with proven conversion volume. Uses the Excess Spend formula to
@@ -44,7 +44,7 @@ optional_context_fields:
 artifacts:
   - name: mx-keyword-bid-health.html
     type: report_html
-verdict_range: [GREEN, YELLOW, RED]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - run keyword bid review

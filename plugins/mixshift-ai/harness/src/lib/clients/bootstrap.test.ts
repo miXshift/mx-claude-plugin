@@ -72,6 +72,7 @@ describe('bootstrapBrand', () => {
       expect(validated.data.accounts[0]!.role).toBe('primary');
       expect(validated.data.accounts[0]!.merchant_type).toBe('seller');
       expect(validated.data.management.acos_target_pct).toBe(22); // from warehouse
+      expect(validated.data.management.acos_target_source).toBe('warehouse');
       expect(validated.data.sources.ops_revenue).toBe('business_reports_dpst_date');
     }
 
@@ -121,6 +122,23 @@ describe('bootstrapBrand', () => {
     const yaml = parseYaml(await readFile(result.context_path, 'utf-8')) as Record<string, unknown>;
     const management = yaml.management as Record<string, unknown>;
     expect(management.acos_target_pct).toBe(20);
+    // The fallback must be labeled as a placeholder, not brand-derived truth:
+    // skills key off this to avoid steering bid direction from a guessed 20.
+    expect(management.acos_target_source).toBe('default');
+  });
+
+  it('context.yaml without acos_target_source still validates (pre-provenance files)', async () => {
+    const result = await bootstrapBrand(
+      suggestion([row({ acos_target: null })]),
+      { dataDirOverride: testDir },
+    );
+    const parsed = parseYaml(await readFile(result.context_path, 'utf-8')) as {
+      management: Record<string, unknown>;
+    };
+    // Simulate a context.yaml written before the provenance field existed.
+    delete parsed.management.acos_target_source;
+    const validated = contextSchema.safeParse(parsed);
+    expect(validated.success).toBe(true);
   });
 
   it('throws when slug directory already exists and force is not set', async () => {

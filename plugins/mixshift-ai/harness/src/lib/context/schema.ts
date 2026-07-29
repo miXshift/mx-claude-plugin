@@ -53,6 +53,11 @@ const sourcesSchema = z.object({
 const managementSchema = z.object({
   primary_metric: z.enum(['ACOS', 'TACOS']),
   acos_target_pct: z.number().positive(),
+  // Provenance of acos_target_pct: 'warehouse' = derived from the account's
+  // own data at bootstrap; 'default' = the bootstrap fallback nobody has
+  // confirmed. Optional so pre-existing customer context.yaml files keep
+  // validating; absent = unknown provenance (treat as unconfirmed).
+  acos_target_source: z.enum(['warehouse', 'default']).optional(),
   attribution_window_days: z.number().int().positive(),
   // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: z.number().positive().optional(),

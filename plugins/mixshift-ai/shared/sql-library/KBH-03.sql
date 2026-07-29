@@ -9,10 +9,11 @@
 --       Scoped to currently-enabled campaigns to stay consistent with
 --       KBH-01/KBH-01a. CPC computed from SUM(Cost)/SUM(Clicks) to avoid
 --       averaging pre-computed daily CPC values (which would weight incorrectly).
+--       MatchType is LOWER()-normalized (see KBH-01 note).
 
 SELECT
     ktm.KeywordText,
-    ktm.MatchType,
+    LOWER(ktm.MatchType)                                                   AS MatchType,
     ktm.CampaignName,
     ktm.AdGroupName,
     ROUND(SUM(ktm.Cost), 2)                                                AS lifetime_spend,
@@ -29,6 +30,6 @@ WHERE ktm.SellerID = :seller_id
   AND c.State = 'enabled'
   AND ktm.costType IN ('cpc', '')
   AND ktm.recordType = 'Keyword Targeting'
-GROUP BY ktm.KeywordText, ktm.MatchType, ktm.CampaignName, ktm.AdGroupName
+GROUP BY ktm.KeywordText, LOWER(ktm.MatchType), ktm.CampaignName, ktm.AdGroupName
 HAVING SUM(ktm.Cost) > 0
 ORDER BY lifetime_spend DESC;

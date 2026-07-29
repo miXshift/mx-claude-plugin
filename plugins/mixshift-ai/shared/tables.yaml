@@ -518,6 +518,17 @@ tables:
       - { name: LastUpdatedDate, type: "datetime" }
       - { name: IsNegative, type: "tinyint(1)" }
       - { name: StateUpdateDate, type: "datetime" }
+    notes: |
+      Keyword/target RECORD table (current state: bid, Amazon bid guidance,
+      state) — one row per targeting record. CASING TRAP: MatchType letter
+      case here differs from keywordtargetingmetric in real tenant data
+      (keyword match types observed lowercase here, uppercase there; PAT
+      expression values stay camelCase in both). Any join or comparison
+      across the two tables on MatchType must case-fold (LOWER()) or it can
+      silently match zero rows — the shipped KBH-* library queries already
+      normalize with LOWER(). Robust id join: keywordtargeting.ID =
+      keywordtargetingmetric.RecordID (metric rows point back at this
+      table's record).
   keywordtargetingmetric:
     columns:
       - { name: RecordID, type: "int" }
@@ -634,6 +645,13 @@ tables:
       - { name: roas, type: "decimal(15,10)" }
       - { name: salesViews, type: "decimal(10,2)" }
       - { name: unitsSoldViews, type: "int" }
+    notes: |
+      Keyword/target daily METRIC table — one row per (record, day).
+      RecordID points at keywordtargeting.ID (the robust join key). CASING
+      TRAP: MatchType letter case here differs from keywordtargeting in real
+      tenant data — case-fold (LOWER()) before joining or comparing across
+      the two tables, as the shipped KBH-* library queries do; an exact-case
+      join can silently match zero rows.
   mws_inventory_health:
     columns:
       - { name: ID, type: "int" }

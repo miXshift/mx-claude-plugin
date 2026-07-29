@@ -66461,6 +66461,11 @@ var sourcesSchema = external_exports.object({
 var managementSchema = external_exports.object({
   primary_metric: external_exports.enum(["ACOS", "TACOS"]),
   acos_target_pct: external_exports.number().positive(),
+  // Provenance of acos_target_pct: 'warehouse' = derived from the account's
+  // own data at bootstrap; 'default' = the bootstrap fallback nobody has
+  // confirmed. Optional so pre-existing customer context.yaml files keep
+  // validating; absent = unknown provenance (treat as unconfirmed).
+  acos_target_source: external_exports.enum(["warehouse", "default"]).optional(),
   attribution_window_days: external_exports.number().int().positive(),
   // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: external_exports.number().positive().optional(),
@@ -67914,6 +67919,7 @@ function buildContext(suggestion, accounts, asOfDate) {
   const primaryType = primaryAccount.account_type;
   const acosFromWarehouse = accounts.map((a) => a.acos_target).find((v) => typeof v === "number" && v > 0);
   const acosTargetPct = acosFromWarehouse ?? 20;
+  const acosTargetSource = acosFromWarehouse !== void 0 ? "warehouse" : "default";
   return {
     schema_version: 1,
     brand_slug: suggestion.slug,
@@ -67924,6 +67930,7 @@ function buildContext(suggestion, accounts, asOfDate) {
     management: {
       primary_metric: "ACOS",
       acos_target_pct: acosTargetPct,
+      acos_target_source: acosTargetSource,
       attribution_window_days: 14
     }
   };
@@ -78874,7 +78881,11 @@ var allowedToolEnum = external_exports.enum([
   "prefetch",
   // Mutating Amazon Ads API calls via `mixshift ads call ... --commit`
   // (dry-run/preview by default; every commit is user-confirmed).
-  "ads_write"
+  "ads_write",
+  // Read access to MixShift Intelligence insights (gateway /api/intelligence).
+  // Already valid in shared/skill-manifest.schema.yaml; kept in sync here so
+  // the first skill to declare it passes this Zod mirror too.
+  "insight_read"
 ]);
 var artifactSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -82942,7 +82953,7 @@ function renderSourceHint2(entry) {
     case "stored":
       return null;
     case "seed":
-      return `(from your brand setup notes: confirm or edit)`;
+      return `(pre-filled from your brand context: confirm or edit)`;
     case "default":
       return `(default \u2014 set explicitly if this isn't right)`;
     case "missing":
@@ -83408,7 +83419,7 @@ async function applyDryRun(args) {
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
-      `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
+      `No suggestions.json found at ${runDir}. Heads up: the apply-gate is not wired to any shipped skill yet (no skill currently emits suggestions.json), so this command cannot complete for today's skills. To apply approved changes now, use the mx-amazon-ads write path: it previews by default and only reaches Amazon with --commit after you confirm the exact change set.`
     );
   }
   const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {

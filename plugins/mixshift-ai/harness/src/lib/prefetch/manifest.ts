@@ -29,6 +29,10 @@ const allowedToolEnum = z.enum([
   // Mutating Amazon Ads API calls via `mixshift ads call ... --commit`
   // (dry-run/preview by default; every commit is user-confirmed).
   'ads_write',
+  // Read access to MixShift Intelligence insights (gateway /api/intelligence).
+  // Already valid in shared/skill-manifest.schema.yaml; kept in sync here so
+  // the first skill to declare it passes this Zod mirror too.
+  'insight_read',
 ]);
 
 const artifactSchema = z.object({

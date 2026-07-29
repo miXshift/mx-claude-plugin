@@ -7,6 +7,35 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Keyword bid health now matches keywords reliably when combining its
+  data pulls.** The two warehouse tables behind the review store the keyword
+  match type with different capitalization, so combining their results the
+  way the skill describes could silently match nothing and report far fewer
+  keywords than you actually have. The queries now normalize match type
+  before returning, and the table reference documents the trap for anyone
+  writing their own queries.
+- **A brand's ACOS target now says where it came from.** When a brand is
+  first added and the warehouse has no ACOS target for it, the setup writes
+  a starting value of 20 percent. That number was previously shown as if it
+  came from your own brand setup, and bid recommendations were quietly
+  measured against it. Brand context now records whether the target came
+  from your account data or is the unconfirmed starting default, the
+  calibration card labels it accordingly, and keyword bid health will not
+  treat an unconfirmed default as your real target.
+- **Skill verdict declarations now allow the low-data verdict.** Keyword bid
+  health, daily health check, runaway spend check, and portfolio quick scan
+  can all legitimately return an OBSERVATIONAL verdict when there is not
+  enough data to judge; their declared verdict ranges now say so.
+- **`mixshift skill apply` explains itself honestly.** The command requires
+  a structured suggestions file that no shipped skill produces yet. Instead
+  of a confusing error, it now says the apply path is not wired up yet and
+  points at the mx-amazon-ads preview-and-confirm flow for applying approved
+  changes today.
+- **Corrected the posture vocabulary in the bundled brand-context
+  reference.** The reference document listed posture values the validator
+  rejects. It now shows the real vocabulary (scale, efficiency, defend,
+  clear_bleed), and the copies bundled with each skill are kept in sync
+  automatically so they cannot drift apart again.
 - **`mixshift whatsnew` no longer shows an internal maintenance note.** A
   behind-the-scenes marker in the changelog could surface as a stray line in the
   "what's new" output between releases; it is now filtered out of the rendered
