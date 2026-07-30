@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.1.1"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -263,8 +263,20 @@ The most-used read operations:
 - `sp.list_negative_keywords`, `sp.list_campaign_negative_keywords`,
   `sp.list_negative_targets`, `sp.list_campaign_negative_targets` (the existing
   negatives, the conflict-check input for the negation skills).
-- `sb.list_campaigns`, `sb.list_ad_groups`, `sb.list_ads`.
+- `sb.list_campaigns`, `sb.list_ad_groups`, `sb.list_ads`, `sb.list_keywords`,
+  `sb.list_targets` (SB product/category targets with current bids and states),
+  `sb.list_negative_targets`.
 - `portfolios.list`.
+
+`sb.list_targets` and `sb.list_negative_targets` take a **different filter
+shape** from their SP cousins: an ARRAY of `{ filterType, values }` rather than
+a named include object.
+
+```jsonc
+// sb.list_targets  (POST /sb/targets/list)
+{ "filters": [ { "filterType": "TARGETING_STATE", "values": ["enabled", "paused"] } ],
+  "maxResults": 100 }
+```
 
 Paging: the response carries a `nextToken`; pass it back in the next body to
 get the following page.
@@ -556,22 +568,59 @@ The pre-delete snapshot stored in the audit row (`before_state` / `audit_id`)
 is exactly what you recreate from if a delete was a mistake. Tell the user the
 audit id is their undo path.
 
+**Sponsored Brands (keywords, and now product targets):**
+
+- Updates: `sb.update_keywords` (bid and state), `sb.update_targets` (bid and
+  state on SB product and category targets), `sb.update_negative_targets`
+  (state, which is how you retire one).
+- Creation: `sb.create_campaigns`, `sb.create_ad_groups`, `sb.create_ads`,
+  `sb.create_keywords`, `sb.create_negative_keywords`, `sb.create_targets`,
+  `sb.create_negative_targets`.
+
+`sb.update_targets` is what to route a Sponsored Brands product-target bid
+change to. Before it existed, an account running SB product targeting had no
+programmatic path for those rows and they had to be keyed into Amazon's console
+by hand, so if a plan mixes SP and SB target changes, all of it can now be
+applied through the same preview-then-commit flow.
+
+```jsonc
+// sb.update_targets  (PUT, max 200) - only send fields you change
+{ "targets": [ { "targetId": "123", "bid": 2.1, "state": "enabled" } ] }
+
+// sb.create_targets - one ASIN per targeting clause
+{ "targets": [ { "campaignId": "1", "adGroupId": "2",
+    "expressions": [ { "type": "asinSameAs", "value": "B0XXXXXXXX" } ], "bid": 1.5 } ] }
+```
+
+Two notes on the SB target family. Its bodies are plain-JSON **object
+wrappers** (`{ targets: [...] }`), not the raw arrays SB keywords use, so do not
+copy the keyword body shape here. And **video is not a separate surface**: SB
+video (SBV) campaigns are a creative type inside Sponsored Brands, so their
+product targets go through these same operations, not an `sbv.*` namespace.
+Theme-based targeting is genuinely different and lives on its own theme
+operations, not here.
+
 ### Sponsored Brands and Sponsored Display writes (extra caution)
 
 SB and SD writes exist in the catalog, but with **lower wire-shape
 confidence** than SP. Two reasons:
 
-- **Mixed eras and body shapes.** SB campaigns and ad groups are v4
-  object-wrapped batches (vnd media types), while SB keywords and negatives and
-  the **whole SD surface** take **raw JSON ARRAY** bodies. Those array-body
-  requests are sent as plain `application/json`, but the two families differ on
-  the response: **SB keyword/negative** writes reply with a versioned SB media
-  type (the catalog pins `Accept: application/vnd.sbkeywordresponse.v3+json`;
-  sending a plain `application/json` Accept fails with "No match for accept
-  header"), whereas **SD** is genuinely plain JSON end to end. Both use
-  **lowercase** enums (`exact`, `negativePhrase`, `daily`, `asinSameAs`) where
-  SP uses uppercase. The catalog handles the media types; read the per-operation
-  notes and match the body shape and enums exactly.
+- **Mixed eras and body shapes.** There are three of them on SB alone. SB
+  campaigns and ad groups are v4 object-wrapped batches (vnd media types). SB
+  **keywords and negative keywords**, plus the **whole SD surface**, take **raw
+  JSON ARRAY** bodies. SB **product targets and negative product targets** take
+  plain-JSON **object wrappers** (`{ targets: [...] }` /
+  `{ negativeTargets: [...] }`). All of the array-body and object-wrapper
+  requests are sent as plain `application/json`, but the families differ on the
+  response: **SB keyword/negative** writes reply with a versioned SB media type
+  (the catalog pins `Accept: application/vnd.sbkeywordresponse.v3+json`; sending
+  a plain `application/json` Accept fails with "No match for accept header"), the
+  **SB target** writes reply with their own versioned types (irregular enough
+  that they cannot be guessed, which is why the catalog pins them per
+  operation), whereas **SD** is genuinely plain JSON end to end. All SB and SD
+  families use **lowercase** enums (`exact`, `negativePhrase`, `daily`,
+  `asinSameAs`) where SP uses uppercase. The catalog handles every media type;
+  read the per-operation notes and match the body shape and enums exactly.
 - **SB v4 creates especially** often need brand assets and a precise payload;
   expect per-item validation errors until the body matches the SB v4 spec.
 
