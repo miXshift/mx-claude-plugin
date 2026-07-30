@@ -182,18 +182,18 @@ Upcoming events (known future conditions):
 
 ```
 Current posture: scale | efficiency | defend | clear_bleed
-Posture rationale: [one sentence — why this posture]
+Posture rationale: [one sentence: why this posture]
 Re-entry trigger: [what data signal triggers posture change, e.g. "Sales AND TACOS both rebounding"]
 Re-entry sequence: [order of campaign types to re-enter, e.g. NONBRAND EXACT → BRAND → DISCOVERY]
-House-on-fire protocol: [what to do when account ACOS materially exceeds target — budget cut first, then bids]
+House-on-fire protocol: [what to do when account ACOS materially exceeds target: budget cut first, then bids]
 ```
 
 **Vocabulary note:** these four values are the enforced `posture.stance` enum in
-`context.yaml` — `mixshift brand validate` rejects anything else. Rough intent:
+`context.yaml`; `mixshift brand validate` rejects anything else. Rough intent:
 `scale` = push for growth, `efficiency` = optimize toward the ACOS/TACOS target,
 `defend` = hold position, `clear_bleed` = cut losses hard. (Earlier drafts of this
 document used Growth/Neutral/Pullback/Efficiency; that vocabulary was never valid
-in the validator — do not write it into context.yaml.)
+in the validator, so do not write it into context.yaml.)
 
 **Gap trigger:** Wrong posture = Scale Opportunity recommendations are wrong (should be "Hold" under `defend`/`clear_bleed`, "Raise" under `scale`).
 

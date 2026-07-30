@@ -18,10 +18,14 @@ starts at 0.5.39; earlier versions predate the changelog.
   first added and the warehouse has no ACOS target for it, the setup writes
   a starting value of 20 percent. That number was previously shown as if it
   came from your own brand setup, and bid recommendations were quietly
-  measured against it. Brand context now records whether the target came
-  from your account data or is the unconfirmed starting default, the
-  calibration card labels it accordingly, and keyword bid health will not
-  treat an unconfirmed default as your real target.
+  measured against it. For brands added from this version on, brand context
+  records whether the target came from your account data or is the
+  unconfirmed starting default, and keyword bid health will not treat an
+  unconfirmed default as your real target. For brands added earlier, the
+  target cannot be told apart from a real one yet, so keyword bid health
+  keeps working as before but labels the target unverified and asks you to
+  confirm it once on the calibration card. Setting the target yourself with
+  `mixshift brand config` marks it as confirmed either way.
 - **Skill verdict declarations now allow the low-data verdict.** Keyword bid
   health, daily health check, runaway spend check, and portfolio quick scan
   can all legitimately return an OBSERVATIONAL verdict when there is not

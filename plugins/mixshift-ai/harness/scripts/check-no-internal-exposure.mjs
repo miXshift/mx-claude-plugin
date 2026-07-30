@@ -54,4 +54,42 @@ if (offenders.length) {
   );
   process.exit(1);
 }
-console.log('✓ check-no-internal-exposure: no maintainer skills or internal docs tracked');
+
+// 3. COMMIT MESSAGES on the branch must not carry email addresses. This repo
+//    is public and squash-merge writes the full commit body into main's
+//    permanent history; a reporter's email in an `originator:` trailer is
+//    customer PII that no content gate sees (git ls-files scans the tree,
+//    never the log). Originator tags belong in the INTERNAL feedback backlog
+//    (FEEDBACK-OPS §7), not in commit messages. Pattern-based on purpose: a
+//    list of customer names/domains would itself be exposure if kept here.
+//    Scans origin/main..HEAD (empty range on main itself = no-op).
+const EMAIL_ALLOWLIST = /@(mixshift\.io|example\.com|anthropic\.com|users\.noreply\.github\.com)\b/i;
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+try {
+  const log = execFileSync('git', ['log', 'origin/main..HEAD', '--format=%H%x00%B%x01'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  const bad = [];
+  for (const entry of log.split('\x01').filter(Boolean)) {
+    const [sha, body = ''] = entry.split('\0');
+    for (const m of body.match(EMAIL_RE) ?? []) {
+      if (!EMAIL_ALLOWLIST.test(m)) bad.push(`  ${sha.slice(0, 9).trim()}: ${m}`);
+    }
+  }
+  if (bad.length) {
+    console.error(
+      `check-no-internal-exposure: commit message(s) on this branch contain email addresses.\n` +
+      `This repo is PUBLIC and squash-merge writes commit bodies into main permanently.\n` +
+      bad.join('\n') +
+      `\nMove originator/reporter identity to the internal feedback backlog and reword the commit\n` +
+      `(git commit --amend / rebase -i), then force-push the branch.`,
+    );
+    process.exit(1);
+  }
+} catch {
+  // origin/main unavailable (shallow clone without the ref, detached tarball).
+  // The tree rules above already ran; skip the log rule rather than fail.
+  console.log('✓ check-no-internal-exposure: commit-message scan skipped (origin/main not resolvable)');
+}
+console.log('✓ check-no-internal-exposure: no maintainer skills or internal docs tracked, no emails in branch commit messages');

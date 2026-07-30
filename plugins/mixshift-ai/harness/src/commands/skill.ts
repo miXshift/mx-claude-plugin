@@ -58,8 +58,8 @@ export function registerSkillCommands(program: Command): void {
     .command('skill')
     .description(
       'Per-skill OCL (Objective Level Configuration) management and ' +
-        'the apply-gate. See `mixshift skill config --help` and ' +
-        '`mixshift skill apply --help`.',
+        'the apply-gate (the apply-gate is not yet wired to any shipped ' +
+        'skill). See `mixshift skill config --help`.',
     );
 
   // ----------------------------------------------------------------------
@@ -204,21 +204,24 @@ export function registerSkillCommands(program: Command): void {
     );
 
   // ----------------------------------------------------------------------
-  // `mixshift skill apply <skill-id>` — apply-gate (dry-run for 0.5.0)
+  // `mixshift skill apply <skill-id>` — apply-gate (NOT YET WIRED: no
+  // shipped skill emits the suggestions.json it consumes)
   // ----------------------------------------------------------------------
   skill
     .command('apply <skill-id>')
     .description(
-      'Apply-gate: reconciles suggestions.json + overrides.json from a run ' +
-        'and writes applied.json. In 0.5.0 this is dry-run only (status: ' +
-        '"dry_run" per row). Real writes ship when the Amazon write MCP/API ' +
-        'lands — same contract, status flips to "applied" | "failed".',
+      'Apply-gate (not yet wired to any shipped skill): will reconcile ' +
+        'suggestions.json + overrides.json from a run and write applied.json ' +
+        'once skills emit structured suggestions. No shipped skill does yet, ' +
+        'so this command cannot complete today. To apply approved changes ' +
+        'now, use the mx-amazon-ads write path (preview by default, then ' +
+        '--commit after you confirm the exact change set).',
     )
     .requiredOption('--brand <slug>', 'brand slug from the registry')
     .requiredOption('--run <date>', 'run date directory under runs/<skill>/')
     .option(
       '--dry-run',
-      'write applied.json with status="dry_run" (default for 0.5.0)',
+      'write applied.json with status="dry_run" (the only mode until the gate is wired)',
       true,
     )
     .action(
@@ -580,12 +583,12 @@ async function applyDryRun(args: {
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
-      `No suggestions.json found at ${runDir}. ` +
-        `Heads up: the apply-gate is not wired to any shipped skill yet (no ` +
-        `skill currently emits suggestions.json), so this command cannot ` +
-        `complete for today's skills. To apply approved changes now, use ` +
-        `the mx-amazon-ads write path: it previews by default and only ` +
-        `reaches Amazon with --commit after you confirm the exact change set.`,
+      `The apply-gate is not wired to any shipped skill yet: no skill ` +
+        `currently emits the suggestions.json this command consumes, so it ` +
+        `cannot complete for today's skills (nothing you did wrong). ` +
+        `Looked in ${runDir}. To apply approved changes now, use the ` +
+        `mx-amazon-ads write path: it previews by default and only reaches ` +
+        `Amazon with --commit after you confirm the exact change set.`,
     );
   }
   const overrides = (await readJsonIfExists(`${runDir}/overrides.json`)) ?? {

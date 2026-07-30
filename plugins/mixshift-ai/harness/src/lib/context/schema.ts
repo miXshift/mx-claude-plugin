@@ -55,9 +55,13 @@ const managementSchema = z.object({
   acos_target_pct: z.number().positive(),
   // Provenance of acos_target_pct: 'warehouse' = derived from the account's
   // own data at bootstrap; 'default' = the bootstrap fallback nobody has
-  // confirmed. Optional so pre-existing customer context.yaml files keep
-  // validating; absent = unknown provenance (treat as unconfirmed).
-  acos_target_source: z.enum(['warehouse', 'default']).optional(),
+  // confirmed; 'user' = explicitly set by the user (the context editor stamps
+  // this when management.acos_target_pct is edited). Optional so pre-existing
+  // customer context.yaml files keep validating. ABSENT = written before
+  // provenance existed: consumers must surface the value for confirmation
+  // ("unverified") but must NOT downgrade behavior, because a pre-provenance
+  // file may hold a genuinely user-set target.
+  acos_target_source: z.enum(['warehouse', 'default', 'user']).optional(),
   attribution_window_days: z.number().int().positive(),
   // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: z.number().positive().optional(),
