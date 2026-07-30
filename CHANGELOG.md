@@ -7,6 +7,13 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **The Brand Context page's seasonality card no longer presents generic
+  assumptions as brand facts.** The card previously showed a fixed tentpole
+  calendar that ignored your brand's own curated events and asserted a
+  specific Prime Day window as fact even though the dates change every
+  year. It now shows your brand's structural_events first, clearly labels
+  the generic calendar as typical windows rather than brand data, and stops
+  asserting exact dates for events that move.
 - **Keyword bid health now matches keywords reliably when combining its
   data pulls.** The two warehouse tables behind the review store the keyword
   match type with different capitalization, so combining their results the
