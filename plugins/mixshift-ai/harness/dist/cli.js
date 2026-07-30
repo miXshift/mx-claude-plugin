@@ -68979,6 +68979,16 @@ body { background: var(--rc-bg); }
   color: var(--rc-text-sub);
   background: var(--rc-card);
 }
+/* In-card block subheading \u2014 separates data groups inside one card (e.g.
+   brand events vs the generic marketplace calendar on the seasonality card). */
+.rc-subhead {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--rc-text-sub);
+}
 /* Status pills (uppercase, tight) \u2014 for schema-status / readiness states.
    Distinct from rc-pill (sentence-case, label-style). Both can coexist. */
 .rc-status-pill {
@@ -74123,24 +74133,53 @@ function sectionAsinCorpora(s) {
     body: renderLaneGrid(cards)
   });
 }
-function sectionSeasonality(_s) {
-  const tentpoles = [
-    { event: "Prime Day", window: "mid-July", notes: "Spend + ASP spike across SP and SD; reset baselines after." },
-    { event: "Prime Big Deal Days", window: "October", notes: "Second Prime event; check year-over-year against July." },
-    { event: "Black Friday / Cyber Monday", window: "late November", notes: "Highest-volume week; spend caps often hit." },
-    { event: "Holiday peak", window: "Dec 1\u201320", notes: "Sustained elevated traffic; conversion ramps then declines." },
-    { event: "January reset", window: "first 2 weeks of January", notes: "Traffic + conversion drop; ACoS often inflated." }
+function sectionSeasonality(s) {
+  const ctx = s.sources.context;
+  const rawEvents = ctx?.structural_events;
+  const brandEvents = Array.isArray(rawEvents) ? rawEvents : [];
+  const columns = [
+    { key: "event", label: "Event" },
+    { key: "window", label: "Window" },
+    { key: "notes", label: "Notes" }
   ];
+  const brandRows = brandEvents.map((e) => ({
+    event: e.id ?? "(unnamed event)",
+    window: e.start ? `${e.start}${e.end ? ` to ${e.end}` : " (open-ended)"}` : e.active_through ? `through ${e.active_through}` : "\u2014",
+    notes: [e.type ? e.type.replace(/_/g, " ") : null, e.interpretation].filter(Boolean).join(": ")
+  }));
+  const genericTentpoles = [
+    {
+      event: "Prime Day",
+      window: "usually July; exact dates change every year",
+      notes: "Spend + ASP spike across SP and SD; reset baselines after. Verify the current year's announced dates."
+    },
+    {
+      event: "Prime Big Deal Days",
+      window: "usually October; dates change every year",
+      notes: "Second Prime event; compare year over year against the summer event."
+    },
+    {
+      event: "Black Friday / Cyber Monday",
+      window: "late November",
+      notes: "Highest-volume week; spend caps often hit."
+    },
+    {
+      event: "Holiday peak",
+      window: "roughly Dec 1-20",
+      notes: "Sustained elevated traffic; conversion ramps then declines."
+    },
+    {
+      event: "January reset",
+      window: "first 2 weeks of January",
+      notes: "Traffic + conversion drop; ACoS often inflated."
+    }
+  ];
+  const brandBlock = brandRows.length ? `<div class="rc-subhead">Brand events (from structural_events)</div>` + renderTable(columns, brandRows) : `<div class="rc-empty">No brand-specific events curated yet. Add promotions, media spikes, launches, or price tests to structural_events in context.yaml so skills can explain anomalies.</div>`;
+  const genericBlock = `<div class="rc-subhead">General marketplace calendar (typical windows, not brand data; dates vary by year)</div>` + renderTable(columns, genericTentpoles);
   return renderCard({
     title: "Seasonality & tentpole calendar",
-    body: renderTable(
-      [
-        { key: "event", label: "Event" },
-        { key: "window", label: "Window" },
-        { key: "notes", label: "Notes" }
-      ],
-      tentpoles
-    )
+    title_accessory: renderConfidenceMarker({ level: presenceConfidence(brandRows.length > 0) }),
+    body: brandBlock + genericBlock
   });
 }
 function sectionCalibration(s) {

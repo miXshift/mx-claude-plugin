@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { stringify as stringifyYaml } from 'yaml';
 import { composeBrandContextReport } from './brand-context-composer.js';
 import {
+  sectionSeasonality,
   sectionSubBrands,
   type ReportState,
   type ResolvedFieldMap,
@@ -350,6 +351,44 @@ function stateWithSubBrands(
     resolved_fields: resolved,
   };
 }
+
+describe('brand-context render — seasonality honesty', () => {
+  const seasonalityState = (events?: unknown): ReportState => {
+    const s = stateWithSubBrands([]);
+    (s.sources.context as Record<string, unknown>).structural_events = events;
+    return s;
+  };
+
+  it('renders curated structural_events as brand rows with a confirmed marker', () => {
+    const html = sectionSeasonality(
+      seasonalityState([
+        {
+          id: 'prime-day-2026',
+          type: 'promotional_window',
+          interpretation: 'Prime Day participation; spend spike expected.',
+          start: '2026-06-23',
+          end: '2026-06-26',
+        },
+      ]),
+    );
+    expect(html).toContain('Brand events (from structural_events)');
+    expect(html).toContain('prime-day-2026');
+    expect(html).toContain('2026-06-23 to 2026-06-26');
+    expect(html).toContain('promotional window: Prime Day participation');
+  });
+
+  it('labels the generic calendar as defaults and never asserts a specific Prime Day date', () => {
+    const html = sectionSeasonality(seasonalityState(undefined));
+    // The review page must not present a generic assumption as a brand fact.
+    expect(html).toContain('General marketplace calendar');
+    expect(html).toContain('not brand data');
+    expect(html).toContain('dates change every year');
+    expect(html).not.toContain('mid-July');
+    // No curated events -> honest empty state prompting curation.
+    expect(html).toContain('rc-empty');
+    expect(html).toContain('structural_events');
+  });
+});
 
 describe('brand-context render — scale-aware sub-brands', () => {
   it('1 sub-brand → inline one-liner (no list, no table)', () => {

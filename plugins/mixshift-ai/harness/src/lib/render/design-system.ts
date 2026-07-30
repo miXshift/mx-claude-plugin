@@ -375,6 +375,16 @@ body { background: var(--rc-bg); }
   color: var(--rc-text-sub);
   background: var(--rc-card);
 }
+/* In-card block subheading — separates data groups inside one card (e.g.
+   brand events vs the generic marketplace calendar on the seasonality card). */
+.rc-subhead {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--rc-text-sub);
+}
 /* Status pills (uppercase, tight) — for schema-status / readiness states.
    Distinct from rc-pill (sentence-case, label-style). Both can coexist. */
 .rc-status-pill {

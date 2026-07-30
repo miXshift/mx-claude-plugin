@@ -7,6 +7,14 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **The Brand Context page's seasonality card no longer presents generic
+  assumptions as brand facts.** The card previously showed a fixed tentpole
+  calendar that ignored your brand's own curated events and asserted a
+  specific Prime Day window as fact even though the dates change every
+  year. It now shows your brand's structural_events first, clearly labels
+  the generic calendar as typical windows rather than brand data, and stops
+  asserting exact dates for events that move.
+
 - **`mixshift whatsnew` no longer shows an internal maintenance note.** A
   behind-the-scenes marker in the changelog could surface as a stray line in the
   "what's new" output between releases; it is now filtered out of the rendered

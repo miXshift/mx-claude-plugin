@@ -715,27 +715,85 @@ export function sectionAsinCorpora(s: ReportState): string {
 // 12. SEASONALITY — tentpole calendar
 // ---------------------------------------------------------------------------
 
-export function sectionSeasonality(_s: ReportState): string {
-  // Static tentpole calendar plus any brand-specific seasonality from
-  // context.yaml (when we add that field). For 0.5.x: render the static
-  // tentpoles only.
-  const tentpoles: Array<{ event: string; window: string; notes: string }> = [
-    { event: 'Prime Day', window: 'mid-July', notes: 'Spend + ASP spike across SP and SD; reset baselines after.' },
-    { event: 'Prime Big Deal Days', window: 'October', notes: 'Second Prime event; check year-over-year against July.' },
-    { event: 'Black Friday / Cyber Monday', window: 'late November', notes: 'Highest-volume week; spend caps often hit.' },
-    { event: 'Holiday peak', window: 'Dec 1–20', notes: 'Sustained elevated traffic; conversion ramps then declines.' },
-    { event: 'January reset', window: 'first 2 weeks of January', notes: 'Traffic + conversion drop; ACoS often inflated.' },
+export function sectionSeasonality(s: ReportState): string {
+  // This card sits on the human-review page, so it must never present a
+  // generic assumption as a brand fact. Brand-specific events render from
+  // context.yaml structural_events (curated data, marked confirmed); the
+  // generic tentpole rows are marketplace-wide DEFAULTS whose dates move
+  // year to year (Prime Day is not a fixed week), labeled as such. A
+  // server-maintained marketplace event calendar is designed to replace the
+  // static list; until it ships this card asserts no specific dates.
+  const ctx = s.sources.context as {
+    structural_events?: Array<{
+      id?: string;
+      type?: string;
+      interpretation?: string;
+      start?: string;
+      end?: string;
+      active_through?: string;
+    }>;
+  } | null;
+  const rawEvents = ctx?.structural_events;
+  const brandEvents = Array.isArray(rawEvents) ? rawEvents : [];
+  const columns = [
+    { key: 'event', label: 'Event' },
+    { key: 'window', label: 'Window' },
+    { key: 'notes', label: 'Notes' },
   ];
+
+  const brandRows = brandEvents.map((e) => ({
+    event: e.id ?? '(unnamed event)',
+    window: e.start
+      ? `${e.start}${e.end ? ` to ${e.end}` : ' (open-ended)'}`
+      : e.active_through
+        ? `through ${e.active_through}`
+        : '—',
+    notes: [e.type ? e.type.replace(/_/g, ' ') : null, e.interpretation]
+      .filter(Boolean)
+      .join(': '),
+  }));
+
+  const genericTentpoles: Array<{ event: string; window: string; notes: string }> = [
+    {
+      event: 'Prime Day',
+      window: 'usually July; exact dates change every year',
+      notes: 'Spend + ASP spike across SP and SD; reset baselines after. Verify the current year\'s announced dates.',
+    },
+    {
+      event: 'Prime Big Deal Days',
+      window: 'usually October; dates change every year',
+      notes: 'Second Prime event; compare year over year against the summer event.',
+    },
+    {
+      event: 'Black Friday / Cyber Monday',
+      window: 'late November',
+      notes: 'Highest-volume week; spend caps often hit.',
+    },
+    {
+      event: 'Holiday peak',
+      window: 'roughly Dec 1-20',
+      notes: 'Sustained elevated traffic; conversion ramps then declines.',
+    },
+    {
+      event: 'January reset',
+      window: 'first 2 weeks of January',
+      notes: 'Traffic + conversion drop; ACoS often inflated.',
+    },
+  ];
+
+  const brandBlock = brandRows.length
+    ? `<div class="rc-subhead">Brand events (from structural_events)</div>` +
+      renderTable(columns, brandRows as unknown as Array<Record<string, unknown>>)
+    : `<div class="rc-empty">No brand-specific events curated yet. Add promotions, media spikes, launches, or price tests to structural_events in context.yaml so skills can explain anomalies.</div>`;
+
+  const genericBlock =
+    `<div class="rc-subhead">General marketplace calendar (typical windows, not brand data; dates vary by year)</div>` +
+    renderTable(columns, genericTentpoles as unknown as Array<Record<string, unknown>>);
+
   return renderCard({
     title: 'Seasonality & tentpole calendar',
-    body: renderTable(
-      [
-        { key: 'event', label: 'Event' },
-        { key: 'window', label: 'Window' },
-        { key: 'notes', label: 'Notes' },
-      ],
-      tentpoles as unknown as Array<Record<string, unknown>>,
-    ),
+    title_accessory: renderConfidenceMarker({ level: presenceConfidence(brandRows.length > 0) }),
+    body: brandBlock + genericBlock,
   });
 }
 
