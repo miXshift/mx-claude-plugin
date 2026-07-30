@@ -264,7 +264,11 @@ function renderSourceHint(entry: ConfirmationFieldEntry): string | null {
     case 'stored':
       return null;
     case 'seed':
-      return `(from your brand setup notes: confirm or edit)`;
+      // Deliberately does not claim the value came from the user's own data:
+      // a seeded value can trace to a bootstrap placeholder (e.g.
+      // management.acos_target_source: 'default'). The skill-side guidance
+      // owns surfacing that distinction; this hint stays provenance-neutral.
+      return `(pre-filled from your brand context: confirm or edit)`;
     case 'default':
       return `(default — set explicitly if this isn't right)`;
     case 'missing':

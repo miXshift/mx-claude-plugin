@@ -300,6 +300,13 @@ export async function applyBrandConfigEdit(
     if (!deepEqual(before, edit.value)) {
       setNested(ctxObj, edit.path, edit.value);
       changedCount += 1;
+      // An explicit user edit of the ACOS target supersedes bootstrap
+      // provenance: stamp it user-confirmed so skills stop treating the
+      // value as an unconfirmed placeholder, and so a stale 'default'
+      // can never stick to a number the user actually set.
+      if (edit.path === 'management.acos_target_pct') {
+        setNested(ctxObj, 'management.acos_target_source', 'user');
+      }
     }
   }
 

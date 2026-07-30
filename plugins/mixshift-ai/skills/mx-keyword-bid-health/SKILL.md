@@ -6,7 +6,7 @@ description: >
   keyword-level bid optimization review. Surfaces high-ACOS bid reduction
   candidates and scale opportunities with proven conversion volume.
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   author: "MixShift"
 trigger_phrases:
   - run keyword bid review
@@ -82,7 +82,7 @@ The bid thresholds (`scale_threshold_pct`, `pullback_threshold_pct`) and `acos_t
 
 Read `narrative.md` for prose context only.
 
-**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires full brand setup. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); `posture.stance` → `scale`; the bid thresholds → resolved in Step 1.5 (your set value, else derived from `acos_target`, else a fixed fallback — labeled). Load the non-threshold fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
+**Brand context is optional — never fail closed on it.** Run on whatever context is present (the snapshot / `context.yaml`, with the Tier-2 Brand Brain as fallback: `mixshift brand brain status <brand-slug> --json`); the skill sharpens as context accrues but never requires full brand setup. The only hard requirement is `accounts[].seller_id` + `account_type` (from `mixshift brand add`) — if both are absent, stop and say so. When a brand-context field is missing, use the documented default and label it in output rather than stopping: `management.primary_metric` → assume ACoS ("assumed; tell me if it's TACoS"); `management.acos_target_pct` → observational (report ACoS as-is, don't flag vs target; "no ACoS target configured — set with `mixshift brand config <brand-slug>`"); **check the target's provenance via `management.acos_target_source` (in the context snapshot, and resolvable via `mixshift brand context resolve`): `default` means a bootstrap placeholder, not the brand's own number. Treat it as unconfirmed: either the user confirms it on the Step 1.5 card or you run observational and label the value "bootstrap default, not from your data". If the field is ABSENT (context written before provenance existed), do NOT downgrade to observational, because the value may be a genuinely set target: keep normal flagging, label the target "unverified", and ask the user to confirm it once on the Step 1.5 card. A card confirm, or an explicit `mixshift brand config` edit (which stamps `acos_target_source: user`), settles it permanently**; `posture.stance` → `scale`; the bid thresholds → resolved in Step 1.5 (your set value, else derived from `acos_target`, else a fixed fallback — labeled). Load the non-threshold fields in one call via `mixshift brand context resolve <brand-slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default above).
 
 ### Step 1.5 — Confirm calibration
 
@@ -101,7 +101,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 **Resolve the working thresholds (whole-number percents) from the returned `effective_config`:**
 - `pullback_threshold_pct` — if present, use it; else `acos_target × 1.5`; else (no target) `45`. Label any default in the Bottom Line ("default — set to sharpen").
 - `scale_threshold_pct` — if present, use it; else `acos_target × 0.7`; else `30`. Label any default.
-- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1.
+- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1. If it is present only via the bootstrap placeholder (`management.acos_target_source: default` in the context snapshot) and the user has not confirmed it on this card, treat it as absent for flagging purposes and say so: thresholds derived from an unconfirmed placeholder must be labeled, never presented as the brand's target. If `acos_target_source` is absent entirely (pre-provenance context), keep normal flagging but label the target "unverified" and ask for a one-time confirmation on this card.
 
 Never block on this step — confirm-as-is is always available.
 
@@ -125,7 +125,7 @@ Read `data.md` for analysis. If any query failed (exit code 2), surface the fail
 
 ### Step 3 — Classify keywords
 
-For each keyword, join the four query outputs on `(KeywordText, MatchType, CampaignName, AdGroupName)` and classify.
+For each keyword, join the four query outputs on `(KeywordText, MatchType, CampaignName, AdGroupName)` and classify. `MatchType` arrives lowercase from every KBH query (normalized with `LOWER()` at the SQL layer, because the two warehouse source tables disagree on letter case; an exact-case join across them matches zero rows). If you write any ad-hoc variant of these queries, apply the same normalization before joining.
 
 **Excess Spend formula:**
 ```
@@ -249,7 +249,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/kbh-sidecar-input.json
 {
   "skill": "mx-keyword-bid-health",
-  "skill_version": "0.5.0",
+  "skill_version": "0.5.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",   // T-1 (yesterday) for daily-recency analyses

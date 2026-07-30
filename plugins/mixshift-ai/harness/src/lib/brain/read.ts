@@ -184,6 +184,10 @@ const BRAND_FIELD_REGISTRY = {
   marketplace: { contextPath: 'accounts.0.marketplace', brainPath: 'seller.marketplace', brainSource: 'seller' },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: 'management.primary_metric' },
+  // Provenance of acos_target_pct (warehouse|default|user; absent on
+  // pre-provenance files). Exposed so skills can label an unconfirmed
+  // bootstrap default without parsing context.yaml directly.
+  acos_target_source: { contextPath: 'management.acos_target_source' },
   attribution_window_days: { contextPath: 'management.attribution_window_days' },
   // Canonical field. lib/context/load.ts normalizes the deprecated
   // management.tacos_target_pct alias onto this path before any consumer

@@ -44,7 +44,7 @@ optional_context_fields:
 artifacts:
   - name: runaway-spend.html
     type: report_html
-verdict_range: [GREEN, YELLOW, RED]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: pro
 trigger_phrases:
   - run runaway spend check

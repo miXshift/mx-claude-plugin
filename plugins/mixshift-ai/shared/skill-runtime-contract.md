@@ -64,7 +64,10 @@ are not optional for the assigned tier.
 ## Allowed Tools Vocabulary
 
 The `allowed_tools` field in `skill.manifest.yaml` declares which tool categories
-a skill may invoke. The harness enforces this list; unlisted tools require manifest
+a skill may invoke. The harness validates declared tokens against this vocabulary
+when it parses the manifest (a schema check — misspelled or unknown tokens fail
+validation); it does NOT yet enforce tool access at runtime. The declaration is
+the contract of record, kept honest by review; unlisted tools require a manifest
 update before use.
 
 | Token | What it permits |
@@ -77,10 +80,12 @@ update before use.
 | `web_search` | External web/social searches (Phase 0.5 brand scrub only) |
 | `prefetch` | Invoke pre-fetch-data.py to collect and stage query results |
 | `insight_read` | Read finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run\|poll\|get` (no warehouse SQL, no writes) |
+| `ads_write` | Gated mutating Amazon Ads API calls via `mixshift ads call ... --commit`. Preview/dry-run by default; nothing reaches Amazon until the user confirms the exact change set; every commit is audited server-side. Skills carrying this token pair it with `side_effect_policy: write_gated`. |
 
-No skill has permission to write to the SQL database, push to external APIs,
-modify skill definitions, or alter schedules. Those paths are not in this vocabulary
-and must be human-initiated.
+No skill has permission to write to the SQL database, modify skill definitions,
+or alter schedules — those paths are not in this vocabulary and must be
+human-initiated. External API writes exist in exactly one sanctioned form: the
+`ads_write` gate above, which is preview-first and user-confirmed per commit.
 
 ---
 
@@ -94,6 +99,7 @@ The `side_effect_policy` field declares what durable state a skill changes.
 | `artifact_write` | Writes to `tmp/` only. Transient, human-reviewable, not consumed by other skills. |
 | `context_write` | Writes to `shared/clients/<brand>/`. Durable — consumed by downstream skills. Requires human review before downstream execution. |
 | `recommendation_only` | Writes report artifact to `tmp/`. Output is a recommendation; no execution without explicit human approval. |
+| `write_gated` | Like `recommendation_only`, plus the skill may execute the approved changes against the Amazon Ads API through the `ads_write` gate (dry-run preview first, explicit user-confirmed `--commit`, server-side audit trail). Never writes silently. |
 
 ---
 
@@ -183,10 +189,10 @@ mechanism (email, Slack, UI) is out of scope for this contract; the rules are no
 
 | Primitive | Implemented | Notes |
 |---|---|---|
-| risk_tier | ❌ | Add to skill-manifest.schema.yaml and all 13 manifests |
-| allowed_tools | ❌ | Add to manifest schema and all 13 manifests |
-| side_effect_policy | ❌ | Add to manifest schema and all 13 manifests |
-| review_required | ❌ | Add to manifest schema and all 13 manifests |
+| risk_tier | ✅ | In skill-manifest.schema.yaml; declared on all current manifests |
+| allowed_tools | ✅ (declaration) | In manifest schema + all current manifests; validated at parse time. Runtime access enforcement NOT implemented — see the Allowed Tools section. |
+| side_effect_policy | ✅ (declaration) | In manifest schema + all current manifests (incl. `write_gated`, added 2026-06-18 with `ads_write`) |
+| review_required | ✅ | In manifest schema; declared where applicable |
 | Preflight checklist | Partial | Tier 3 hard gates exist in prose; template not standardized |
 | Artifact spill threshold | ❌ | Add to pre-fetch-data.py |
 | Run sidecar | ✅ | Schema defined; mx-brand-context emits; not all skills emit |

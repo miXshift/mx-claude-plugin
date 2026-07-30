@@ -9,10 +9,11 @@
 -- Note: Same grain and filters as KBH-01. Lookback window hardcoded to 7 days.
 --       Column aliases use _t7 suffix to distinguish from KBH-01 results
 --       when both are held in memory simultaneously.
+--       MatchType is LOWER()-normalized (see KBH-01 note).
 
 SELECT
     ktm.KeywordText,
-    ktm.MatchType,
+    LOWER(ktm.MatchType)                                                   AS MatchType,
     ktm.CampaignName,
     ktm.AdGroupName,
     ROUND(SUM(ktm.Cost), 2)                                                AS spend_t7,
@@ -31,6 +32,6 @@ WHERE ktm.SellerID = :seller_id
   AND c.State = 'enabled'
   AND ktm.costType IN ('cpc', '')
   AND ktm.recordType = 'Keyword Targeting'
-GROUP BY ktm.KeywordText, ktm.MatchType, ktm.CampaignName, ktm.AdGroupName
+GROUP BY ktm.KeywordText, LOWER(ktm.MatchType), ktm.CampaignName, ktm.AdGroupName
 HAVING SUM(ktm.Cost) > 0
 ORDER BY spend_t7 DESC;
