@@ -1369,6 +1369,30 @@ tables:
       - { name: roas, type: "decimal(15,10)" }
       - { name: salesViews, type: "decimal(10,2)" }
       - { name: unitsSoldViews, type: "int" }
+    notes: |
+      Product Attribute Targeting (PAT) daily metrics: one row per (target, day)
+      for non-keyword targeting. `targetingExpression` / `targetingText` hold
+      MIXED EXPRESSION KINDS, and this is the trap that has burned a real
+      account:
+        - ASIN targets:      asin="B0XXXXXXXX"
+        - Category targets:  category="3774941" (often with brand / price /
+                             review-rating refinements attached)
+        - Auto-targeting:    close-match, loose-match, substitutes, complements
+      DO NOT filter to `asin=` (or to values that look like `B0...`) when the
+      output is meant to represent an ACCOUNT or SEGMENT roll-up. Category and
+      auto rows are real spend, they frequently move INDEPENDENTLY of the ASIN
+      rows, and excluding them silently has inverted the direction of an
+      account-level trend read (field-reported 2026-07: two category targets had
+      grown to roughly half of account spend, so a filtered roll-up reported
+      ad sales down about 9% when the account was actually up about 43%).
+      Filter by expression kind only when the SKILL's scope genuinely is one
+      kind, and say so in the output label; otherwise pull all kinds and branch
+      the ENTITY LABEL by expression kind (catalog-membership branding applies
+      to ASIN rows only, so applying it to category or auto rows either drops
+      them or yields a blank label). If a roll-up is deliberately partial, label
+      it partial: never call it "account". `targetingType` distinguishes the
+      kinds; cross-check totals against productadmetric or campaignmetric when
+      a trend looks surprising.
   # DEPRECATED / DO NOT USE for date-windowed or lifetime metric pulls: this is a
   # frozen dashboard rollup snapshot, not a refreshed table. Its dtCreatedOn is a
   # one-time materialization timestamp and its Period column holds text labels

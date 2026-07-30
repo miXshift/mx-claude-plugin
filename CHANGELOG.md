@@ -5,7 +5,27 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.7
 
+### Added
+
+- **Sponsored Brands product target bids can now be changed through
+  MixShift.** Sponsored Brands was the one ad type with no way to apply a
+  product target bid or state change, so those rows had to be entered in
+  Amazon's console by hand while everything else in the same plan applied
+  automatically. Ask for a Sponsored Brands target bid change and it now goes
+  through the usual preview, confirm, and commit flow alongside your Sponsored
+  Products and Sponsored Display changes, video campaigns included. Listing
+  Sponsored Brands targets and creating or retiring negative product targets
+  work too.
+
 ### Fixed
+
+- **Product-attribute targeting pulls now warn against a filter that can flip
+  a trend.** Targeting data holds ASIN targets, category targets, and
+  automatic-match rows together. Filtering it to ASIN rows for an account-wide
+  view quietly drops the rest, and because those rows can move in the opposite
+  direction, an account read can come back pointing the wrong way. The table
+  reference now spells out the different kinds of targeting rows and says
+  plainly not to filter to ASIN rows for account-level roll-ups.
 
 - **The Brand Context page's seasonality card no longer presents generic
   assumptions as brand facts.** The card previously showed a fixed tentpole
