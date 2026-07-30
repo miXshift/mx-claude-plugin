@@ -723,35 +723,41 @@ export function sectionSeasonality(s: ReportState): string {
   // year to year (Prime Day is not a fixed week), labeled as such. A
   // server-maintained marketplace event calendar is designed to replace the
   // static list; until it ships this card asserts no specific dates.
-  const ctx = s.sources.context as {
-    structural_events?: Array<{
-      id?: string;
-      type?: string;
-      interpretation?: string;
-      start?: string;
-      end?: string;
-      active_through?: string;
-    }>;
-  } | null;
+  // Entries are deliberately typed unknown[]: this is raw YAML, and each
+  // field is re-validated per row below (see the malformed-entry note).
+  const ctx = s.sources.context as { structural_events?: unknown[] } | null;
   const rawEvents = ctx?.structural_events;
-  const brandEvents = Array.isArray(rawEvents) ? rawEvents : [];
+  // The render path feeds RAW parseYaml output (no zod gate), and this card's
+  // own empty-state invites hand-editing context.yaml — so tolerate malformed
+  // entries (non-object rows, non-string fields) instead of throwing and
+  // taking the whole review page down with a TypeError.
+  const brandEvents = (Array.isArray(rawEvents) ? rawEvents : []).filter(
+    (e): e is Record<string, unknown> => e !== null && typeof e === 'object' && !Array.isArray(e),
+  );
   const columns = [
     { key: 'event', label: 'Event' },
     { key: 'window', label: 'Window' },
     { key: 'notes', label: 'Notes' },
   ];
 
-  const brandRows = brandEvents.map((e) => ({
-    event: e.id ?? '(unnamed event)',
-    window: e.start
-      ? `${e.start}${e.end ? ` to ${e.end}` : ' (open-ended)'}`
-      : e.active_through
-        ? `through ${e.active_through}`
-        : '—',
-    notes: [e.type ? e.type.replace(/_/g, ' ') : null, e.interpretation]
-      .filter(Boolean)
-      .join(': '),
-  }));
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 ? v : typeof v === 'number' ? String(v) : null;
+  const brandRows = brandEvents.map((e) => {
+    const start = str(e.start);
+    const end = str(e.end);
+    const activeThrough = str(e.active_through);
+    return {
+      event: str(e.id) ?? '(unnamed event)',
+      window: start
+        ? `${start}${end ? ` to ${end}` : ' (open-ended)'}`
+        : activeThrough
+          ? `through ${activeThrough}`
+          : end
+            ? `until ${end}`
+            : '—',
+      notes: [str(e.type)?.replace(/_/g, ' '), str(e.interpretation)].filter(Boolean).join(': '),
+    };
+  });
 
   const genericTentpoles: Array<{ event: string; window: string; notes: string }> = [
     {
@@ -792,6 +798,12 @@ export function sectionSeasonality(s: ReportState): string {
 
   return renderCard({
     title: 'Seasonality & tentpole calendar',
+    // Presence-based ON PURPOSE (not markerFor): the marker must describe what
+    // THIS card actually renders. markerFor routes through schema validation
+    // and reports a gap whenever context.yaml fails validation on any
+    // unrelated field, which would contradict the brand rows shown right
+    // below it. Divergence from sectionActiveConditions' markerFor is known
+    // and accepted (red-team 2026-07-30).
     title_accessory: renderConfidenceMarker({ level: presenceConfidence(brandRows.length > 0) }),
     body: brandBlock + genericBlock,
   });

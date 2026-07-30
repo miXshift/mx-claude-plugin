@@ -375,6 +375,26 @@ describe('brand-context render — seasonality honesty', () => {
     expect(html).toContain('prime-day-2026');
     expect(html).toContain('2026-06-23 to 2026-06-26');
     expect(html).toContain('promotional window: Prime Day participation');
+    // The title marker itself, not just the table: curated events => confirmed.
+    expect(html).toContain('is-confirmed');
+  });
+
+  it('malformed structural_events entries degrade instead of killing the page', () => {
+    // Raw YAML can hold anything (`type: 2026` parses as a number; a stray
+    // `- ` is null). The card must render, not throw a TypeError that takes
+    // the whole Brand Context build down.
+    const html = sectionSeasonality(
+      seasonalityState([
+        null,
+        'not-an-object',
+        { id: 'weird-type', type: 2026, interpretation: 'numeric type survives' },
+        { id: 'end-only', type: 'stockout', interpretation: 'resolved', end: '2026-05-10' },
+      ]),
+    );
+    expect(html).toContain('weird-type');
+    expect(html).toContain('2026: numeric type survives');
+    // End-only windows keep their date instead of collapsing to a dash.
+    expect(html).toContain('until 2026-05-10');
   });
 
   it('labels the generic calendar as defaults and never asserts a specific Prime Day date', () => {
@@ -384,9 +404,11 @@ describe('brand-context render — seasonality honesty', () => {
     expect(html).toContain('not brand data');
     expect(html).toContain('dates change every year');
     expect(html).not.toContain('mid-July');
-    // No curated events -> honest empty state prompting curation.
+    // No curated events -> honest empty state prompting curation, and the
+    // title marker reports the gap.
     expect(html).toContain('rc-empty');
     expect(html).toContain('structural_events');
+    expect(html).toContain('is-gap');
   });
 });
 

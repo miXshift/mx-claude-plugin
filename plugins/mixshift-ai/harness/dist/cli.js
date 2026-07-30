@@ -74136,17 +74136,25 @@ function sectionAsinCorpora(s) {
 function sectionSeasonality(s) {
   const ctx = s.sources.context;
   const rawEvents = ctx?.structural_events;
-  const brandEvents = Array.isArray(rawEvents) ? rawEvents : [];
+  const brandEvents = (Array.isArray(rawEvents) ? rawEvents : []).filter(
+    (e) => e !== null && typeof e === "object" && !Array.isArray(e)
+  );
   const columns = [
     { key: "event", label: "Event" },
     { key: "window", label: "Window" },
     { key: "notes", label: "Notes" }
   ];
-  const brandRows = brandEvents.map((e) => ({
-    event: e.id ?? "(unnamed event)",
-    window: e.start ? `${e.start}${e.end ? ` to ${e.end}` : " (open-ended)"}` : e.active_through ? `through ${e.active_through}` : "\u2014",
-    notes: [e.type ? e.type.replace(/_/g, " ") : null, e.interpretation].filter(Boolean).join(": ")
-  }));
+  const str = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
+  const brandRows = brandEvents.map((e) => {
+    const start = str(e.start);
+    const end = str(e.end);
+    const activeThrough = str(e.active_through);
+    return {
+      event: str(e.id) ?? "(unnamed event)",
+      window: start ? `${start}${end ? ` to ${end}` : " (open-ended)"}` : activeThrough ? `through ${activeThrough}` : end ? `until ${end}` : "\u2014",
+      notes: [str(e.type)?.replace(/_/g, " "), str(e.interpretation)].filter(Boolean).join(": ")
+    };
+  });
   const genericTentpoles = [
     {
       event: "Prime Day",
@@ -74178,6 +74186,12 @@ function sectionSeasonality(s) {
   const genericBlock = `<div class="rc-subhead">General marketplace calendar (typical windows, not brand data; dates vary by year)</div>` + renderTable(columns, genericTentpoles);
   return renderCard({
     title: "Seasonality & tentpole calendar",
+    // Presence-based ON PURPOSE (not markerFor): the marker must describe what
+    // THIS card actually renders. markerFor routes through schema validation
+    // and reports a gap whenever context.yaml fails validation on any
+    // unrelated field, which would contradict the brand rows shown right
+    // below it. Divergence from sectionActiveConditions' markerFor is known
+    // and accepted (red-team 2026-07-30).
     title_accessory: renderConfidenceMarker({ level: presenceConfidence(brandRows.length > 0) }),
     body: brandBlock + genericBlock
   });
