@@ -151,29 +151,23 @@ tables:
   # DSP (Display) advertising
   # ---------------------------------------------------------------------
 
+  # `dsp_campaigns_metric` is the only live DSP table. The former
+  # `dsp_audience_metric`, `dsp_products_metric`, and `dsp_geography_metric`
+  # entries were deprecated upstream and no longer exist in tenant databases;
+  # they were removed from this catalog so the skill stops offering them.
+
   dsp_campaigns_metric:
-    description: "DSP (Display) campaign-level metrics: totalCost, sales14d, purchases14d, unitsSold14d, impressions, click-throughs, dpv14d. Separate from sponsored ads. Filter by advertiserId."
-    category: ad_metrics
-    time_series: true
-    requires_seller_id: false
-    date_column: DateTime
-
-  dsp_audience_metric:
-    description: "DSP audience-segment performance."
-    category: ad_metrics
-    time_series: true
-    requires_seller_id: false
-    date_column: DateTime
-
-  dsp_products_metric:
-    description: "DSP product-level performance (per-ASIN within DSP campaigns)."
-    category: ad_metrics
-    time_series: true
-    requires_seller_id: false
-    date_column: DateTime
-
-  dsp_geography_metric:
-    description: "DSP performance by geography (state / country)."
+    description: >-
+      DSP (Display) campaign-level metrics: totalCost, sales14d, purchases14d,
+      unitsSold14d, impressions, click-throughs, dpv14d. Separate from sponsored ads.
+      KEYED BY DSP SEAT, NOT BY THE BRAND'S SELLER ROW: SellerID here is the agency or
+      seat account, so filtering on the brand's usual SellerID returns 0 rows. Filter
+      by advertiserId or advertiserName instead. Do not assume the dspAdvertiserId
+      returned by the Amazon accounts API matches this table; resolve the advertiserId
+      by name from dsp_advertisers_list, or by grouping this table on advertiserId,
+      advertiserName, entityId. A brand that exists on the seat can still have 0 rows
+      here if its DSP data is not ingested, which is not the same as the table being
+      empty: check the table-wide count before concluding nothing is syncing.
     category: ad_metrics
     time_series: true
     requires_seller_id: false
