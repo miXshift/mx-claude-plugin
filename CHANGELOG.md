@@ -7,6 +7,17 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Asking for a brand's DSP numbers no longer comes back empty when the data is
+  there.** DSP performance is filed under your DSP seat rather than under each
+  brand's individual seller account, so the natural way to ask for one brand's
+  DSP could return nothing even when months of data were present. MixShift now
+  knows to look it up by advertiser, resolves the right advertiser by name
+  instead of trusting the id Amazon returns alongside your account list, and
+  tells you when a brand genuinely has no DSP data rather than leaving you to
+  guess. Three DSP tables that no longer exist (audience, product, and geography
+  performance) have been dropped from the data catalog so they are no longer
+  offered.
+
 - **`mixshift whatsnew` no longer shows an internal maintenance note.** A
   behind-the-scenes marker in the changelog could surface as a stray line in the
   "what's new" output between releases; it is now filtered out of the rendered
