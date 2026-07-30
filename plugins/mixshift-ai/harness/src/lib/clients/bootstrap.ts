@@ -137,11 +137,17 @@ function buildContext(
   // primaryAccount.account_type is 'SC' or 'VC' (we already filtered 'unknown')
   const primaryType = primaryAccount.account_type as 'SC' | 'VC';
 
-  // ACOS target: use any non-null acos_target from accounts, else default 20
+  // ACOS target: use any non-null acos_target from accounts, else default 20.
+  // acos_target_source records which case happened: 'default' means the number
+  // is a bootstrap placeholder nobody confirmed, and downstream consumers
+  // (calibration seed labels, bid-direction thresholds) must not present it
+  // as brand-derived truth.
   const acosFromWarehouse = accounts
     .map((a) => a.acos_target)
     .find((v): v is number => typeof v === 'number' && v > 0);
   const acosTargetPct = acosFromWarehouse ?? 20.0;
+  const acosTargetSource: 'warehouse' | 'default' =
+    acosFromWarehouse !== undefined ? 'warehouse' : 'default';
 
   return {
     schema_version: 1,
@@ -153,6 +159,7 @@ function buildContext(
     management: {
       primary_metric: 'ACOS',
       acos_target_pct: acosTargetPct,
+      acos_target_source: acosTargetSource,
       attribution_window_days: 14,
     },
   };

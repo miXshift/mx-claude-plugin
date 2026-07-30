@@ -150,6 +150,7 @@ ${renderConfidenceLegend()}`;
 /** Human labels for the registered brand fields (sentence case). */
 const FIELD_LABELS: Record<BrandFieldKey, string> = {
   acos_target_pct: 'ACoS target',
+  acos_target_source: 'ACoS target provenance',
   sub_brands: 'Sub-brands',
   marketplace: 'Marketplace',
   primary_metric: 'Primary metric',

@@ -66461,6 +66461,15 @@ var sourcesSchema = external_exports.object({
 var managementSchema = external_exports.object({
   primary_metric: external_exports.enum(["ACOS", "TACOS"]),
   acos_target_pct: external_exports.number().positive(),
+  // Provenance of acos_target_pct: 'warehouse' = derived from the account's
+  // own data at bootstrap; 'default' = the bootstrap fallback nobody has
+  // confirmed; 'user' = explicitly set by the user (the context editor stamps
+  // this when management.acos_target_pct is edited). Optional so pre-existing
+  // customer context.yaml files keep validating. ABSENT = written before
+  // provenance existed: consumers must surface the value for confirmation
+  // ("unverified") but must NOT downgrade behavior, because a pre-provenance
+  // file may hold a genuinely user-set target.
+  acos_target_source: external_exports.enum(["warehouse", "default", "user"]).optional(),
   attribution_window_days: external_exports.number().int().positive(),
   // Canonical field for the TACOS-primary account-level goal.
   tacos_goal_pct: external_exports.number().positive().optional(),
@@ -67914,6 +67923,7 @@ function buildContext(suggestion, accounts, asOfDate) {
   const primaryType = primaryAccount.account_type;
   const acosFromWarehouse = accounts.map((a) => a.acos_target).find((v) => typeof v === "number" && v > 0);
   const acosTargetPct = acosFromWarehouse ?? 20;
+  const acosTargetSource = acosFromWarehouse !== void 0 ? "warehouse" : "default";
   return {
     schema_version: 1,
     brand_slug: suggestion.slug,
@@ -67924,6 +67934,7 @@ function buildContext(suggestion, accounts, asOfDate) {
     management: {
       primary_metric: "ACOS",
       acos_target_pct: acosTargetPct,
+      acos_target_source: acosTargetSource,
       attribution_window_days: 14
     }
   };
@@ -71718,6 +71729,10 @@ var BRAND_FIELD_REGISTRY = {
   marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller" },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: "management.primary_metric" },
+  // Provenance of acos_target_pct (warehouse|default|user; absent on
+  // pre-provenance files). Exposed so skills can label an unconfirmed
+  // bootstrap default without parsing context.yaml directly.
+  acos_target_source: { contextPath: "management.acos_target_source" },
   attribution_window_days: { contextPath: "management.attribution_window_days" },
   // Canonical field. lib/context/load.ts normalizes the deprecated
   // management.tacos_target_pct alias onto this path before any consumer
@@ -73100,6 +73115,9 @@ async function applyBrandConfigEdit(payload, decision, opts) {
     if (!deepEqual(before, edit.value)) {
       setNested(ctxObj, edit.path, edit.value);
       changedCount += 1;
+      if (edit.path === "management.acos_target_pct") {
+        setNested(ctxObj, "management.acos_target_source", "user");
+      }
     }
   }
   if (changedCount > 0) {
@@ -73781,6 +73799,7 @@ ${renderConfidenceLegend()}`;
 }
 var FIELD_LABELS = {
   acos_target_pct: "ACoS target",
+  acos_target_source: "ACoS target provenance",
   sub_brands: "Sub-brands",
   marketplace: "Marketplace",
   primary_metric: "Primary metric",
@@ -78927,7 +78946,11 @@ var allowedToolEnum = external_exports.enum([
   "prefetch",
   // Mutating Amazon Ads API calls via `mixshift ads call ... --commit`
   // (dry-run/preview by default; every commit is user-confirmed).
-  "ads_write"
+  "ads_write",
+  // Read access to MixShift Intelligence insights (gateway /api/intelligence).
+  // Already valid in shared/skill-manifest.schema.yaml; kept in sync here so
+  // the first skill to declare it passes this Zod mirror too.
+  "insight_read"
 ]);
 var artifactSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -82995,7 +83018,7 @@ function renderSourceHint2(entry) {
     case "stored":
       return null;
     case "seed":
-      return `(from your brand setup notes: confirm or edit)`;
+      return `(pre-filled from your brand context: confirm or edit)`;
     case "default":
       return `(default \u2014 set explicitly if this isn't right)`;
     case "missing":
@@ -83058,7 +83081,7 @@ import { mkdir as mkdir25, readFile as readFile33, writeFile as writeFile23 } fr
 import { dirname as dirname29 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
-    "Per-skill OCL (Objective Level Configuration) management and the apply-gate. See `mixshift skill config --help` and `mixshift skill apply --help`."
+    "Per-skill OCL (Objective Level Configuration) management and the apply-gate (the apply-gate is not yet wired to any shipped skill). See `mixshift skill config --help`."
   );
   skill.command("config <skill-id>").description(
     "Show or edit the per-brand calibration for one skill. Default prints the confirmation card. Pair with --apply to persist edits, --reset to wipe, or --json to emit a machine-readable payload."
@@ -83163,10 +83186,10 @@ ${manifest.display_name} has no calibration to configure. It runs with whatever 
     }
   );
   skill.command("apply <skill-id>").description(
-    'Apply-gate: reconciles suggestions.json + overrides.json from a run and writes applied.json. In 0.5.0 this is dry-run only (status: "dry_run" per row). Real writes ship when the Amazon write MCP/API lands \u2014 same contract, status flips to "applied" | "failed".'
+    "Apply-gate (not yet wired to any shipped skill): will reconcile suggestions.json + overrides.json from a run and write applied.json once skills emit structured suggestions. No shipped skill does yet, so this command cannot complete today. To apply approved changes now, use the mx-amazon-ads write path (preview by default, then --commit after you confirm the exact change set)."
   ).requiredOption("--brand <slug>", "brand slug from the registry").requiredOption("--run <date>", "run date directory under runs/<skill>/").option(
     "--dry-run",
-    'write applied.json with status="dry_run" (default for 0.5.0)',
+    'write applied.json with status="dry_run" (the only mode until the gate is wired)',
     true
   ).action(
     async (skillId, opts, cmd) => {
@@ -83461,7 +83484,7 @@ async function applyDryRun(args) {
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
-      `No suggestions.json found at ${runDir}. Apply-gate requires a completed skill run with structured output.`
+      `The apply-gate is not wired to any shipped skill yet: no skill currently emits the suggestions.json this command consumes, so it cannot complete for today's skills (nothing you did wrong). Looked in ${runDir}. To apply approved changes now, use the mx-amazon-ads write path: it previews by default and only reaches Amazon with --commit after you confirm the exact change set.`
     );
   }
   const overrides = await readJsonIfExists(`${runDir}/overrides.json`) ?? {

@@ -138,6 +138,33 @@ describe('percent unit bridging — whole-number context storage', () => {
     expect(acos.display).toBe('32%');
     expect(acos.effective_value).toBe(0.32);
   });
+
+  it('editing acos_target_pct stamps acos_target_source: user (provenance supersedes bootstrap)', async () => {
+    // A brand bootstrapped with the placeholder default must not keep looking
+    // like a placeholder after the user explicitly sets the real target.
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      baseContextYaml.replace(
+        /acos_target_pct: 28/,
+        'acos_target_pct: 20\n  acos_target_source: default',
+      ),
+      'utf-8',
+    );
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    await applyBrandConfigEdit(
+      payload,
+      { action: 'edit', edits: { acos_target_pct: '32' } },
+      { dataDirOverride: testDir },
+    );
+    const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
+    expect(raw).toMatch(/acos_target_pct: 32\b/);
+    expect(raw).toMatch(/acos_target_source: user\b/);
+    expect(raw).not.toMatch(/acos_target_source: default\b/);
+  });
 });
 
 describe('applyBrandConfigEdit — confirm action', () => {

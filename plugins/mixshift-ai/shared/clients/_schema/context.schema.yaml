@@ -56,10 +56,11 @@ shapes:
 
   management:
     required: [primary_metric, acos_target_pct, attribution_window_days]
-    optional: [tacos_goal_pct, tacos_target_pct, tacos_in_bottom_line,
-               implied_tacos_pct, tacos_reference_line]
+    optional: [acos_target_source, tacos_goal_pct, tacos_target_pct,
+               tacos_in_bottom_line, implied_tacos_pct, tacos_reference_line]
     enums:
       primary_metric: [ACOS, TACOS]
+      acos_target_source: [warehouse, default, user]
     note: |
       tacos_goal_pct is the canonical field for a TACOS-primary account's
       managed account-level goal. tacos_target_pct is a DEPRECATED ALIAS kept

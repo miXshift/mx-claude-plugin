@@ -33,7 +33,7 @@ upstream_skills:
 artifacts:
   - name: portfolio-scan.html
     type: report_html
-verdict_range: [GREEN, YELLOW, RED]
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: enterprise
 trigger_phrases:
   - run portfolio scan

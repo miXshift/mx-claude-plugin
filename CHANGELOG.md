@@ -14,7 +14,49 @@ starts at 0.5.39; earlier versions predate the changelog.
   year. It now shows your brand's structural_events first, clearly labels
   the generic calendar as typical windows rather than brand data, and stops
   asserting exact dates for events that move.
-
+- **Keyword bid health now matches keywords reliably when combining its
+  data pulls.** The two warehouse tables behind the review store the keyword
+  match type with different capitalization, so combining their results the
+  way the skill describes could silently match nothing and report far fewer
+  keywords than you actually have. The queries now normalize match type
+  before returning, and the table reference documents the trap for anyone
+  writing their own queries.
+- **A brand's ACOS target now says where it came from.** When a brand is
+  first added and the warehouse has no ACOS target for it, the setup writes
+  a starting value of 20 percent. That number was previously shown as if it
+  came from your own brand setup, and bid recommendations were quietly
+  measured against it. For brands added from this version on, brand context
+  records whether the target came from your account data or is the
+  unconfirmed starting default, and keyword bid health will not treat an
+  unconfirmed default as your real target. For brands added earlier, the
+  target cannot be told apart from a real one yet, so keyword bid health
+  keeps working as before but labels the target unverified and asks you to
+  confirm it once on the calibration card. Setting the target yourself with
+  `mixshift brand config` marks it as confirmed either way.
+- **Skill verdict declarations now allow the low-data verdict.** Keyword bid
+  health, daily health check, runaway spend check, and portfolio quick scan
+  can all legitimately return an OBSERVATIONAL verdict when there is not
+  enough data to judge; their declared verdict ranges now say so.
+- **`mixshift skill apply` explains itself honestly.** The command requires
+  a structured suggestions file that no shipped skill produces yet. Instead
+  of a confusing error, it now says the apply path is not wired up yet and
+  points at the mx-amazon-ads preview-and-confirm flow for applying approved
+  changes today.
+- **Corrected the posture vocabulary in the bundled brand-context
+  reference.** The reference document listed posture values the validator
+  rejects. It now shows the real vocabulary (scale, efficiency, defend,
+  clear_bleed), and the copies bundled with each skill are kept in sync
+  automatically so they cannot drift apart again.
+- **Asking for a brand's DSP numbers no longer comes back empty when the data is
+  there.** DSP performance is filed under your DSP seat rather than under each
+  brand's individual seller account, so the natural way to ask for one brand's
+  DSP could return nothing even when months of data were present. MixShift now
+  knows to look it up by advertiser, resolves the right advertiser by name
+  instead of trusting the id Amazon returns alongside your account list, and
+  tells you when a brand genuinely has no DSP data rather than leaving you to
+  guess. Three DSP tables that no longer exist (audience, product, and geography
+  performance) have been dropped from the data catalog so they are no longer
+  offered.
 - **`mixshift whatsnew` no longer shows an internal maintenance note.** A
   behind-the-scenes marker in the changelog could surface as a stray line in the
   "what's new" output between releases; it is now filtered out of the rendered

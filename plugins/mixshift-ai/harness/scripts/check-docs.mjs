@@ -224,6 +224,39 @@ try {
   );
 }
 
+// 6. BRAND-CONTEXT-SCHEMA.md parity: shared/BRAND-CONTEXT-SCHEMA.md is the
+//    source of truth; every per-skill references/ copy must match it verbatim.
+//    The copies exist so each skill folder stays self-contained when packaged,
+//    but they historically drifted (12 copies shipped a posture vocabulary the
+//    validator rejects for over a month). Byte-parity makes the next drift a CI
+//    failure instead of a customer bug report. Compare with normalized line
+//    endings so a checkout's CRLF smudge cannot false-positive the gate.
+try {
+  const sharedSchemaPath = join(here, '..', '..', 'shared', 'BRAND-CONTEXT-SCHEMA.md');
+  const normalizeEol = (s) => s.replace(/\r\n/g, '\n');
+  const sharedSchema = normalizeEol(await readFile(sharedSchemaPath, 'utf-8'));
+  for (const id of skillIds) {
+    const copyPath = join(skillsDir, id, 'references', 'BRAND-CONTEXT-SCHEMA.md');
+    let copy;
+    try {
+      copy = normalizeEol(await readFile(copyPath, 'utf-8'));
+    } catch {
+      continue; // not every skill bundles the schema reference
+    }
+    if (copy !== sharedSchema) {
+      errors.push(
+        `skills/${id}/references/BRAND-CONTEXT-SCHEMA.md differs from ` +
+          'shared/BRAND-CONTEXT-SCHEMA.md (the source of truth). Edit the shared ' +
+          'file and sync every per-skill copy verbatim.',
+      );
+    }
+  }
+} catch (err) {
+  errors.push(
+    `Cannot read shared/BRAND-CONTEXT-SCHEMA.md for the parity check (${err instanceof Error ? err.message : String(err)})`,
+  );
+}
+
 if (errors.length === 0) {
   console.log(
     `✓ Docs are current: README lists all ${skillIds.length} skills, version fields agree, ` +
