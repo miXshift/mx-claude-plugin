@@ -1,9 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Feedback reports now preserve the complete submitted message instead of silently truncating it.
-
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
@@ -22,6 +18,11 @@ starts at 0.5.39; earlier versions predate the changelog.
   work too.
 
 ### Fixed
+
+- **Long feedback reports are no longer cut short.** A report longer than
+  about 2,000 characters was quietly trimmed before it was sent, so the end of
+  a detailed bug report could be lost with nothing to tell you it had happened.
+  Reports now go through complete, however long they run.
 
 - **Product-attribute targeting pulls now warn against a filter that can flip
   a trend.** Targeting data holds ASIN targets, category targets, and
