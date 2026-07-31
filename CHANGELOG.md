@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Feedback reports now preserve the complete submitted message instead of silently truncating it.
+
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
