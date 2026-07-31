@@ -80965,7 +80965,11 @@ function registerFeedbackCommand(program3) {
             // `attributed` flag.
             payload: {
               category: opts.category,
-              message: message.slice(0, 2e3),
+              // Feedback is a primary evidence channel. Preserve the complete
+              // report for telemetry storage and downstream triage; any
+              // presentation-specific bound belongs in the Discord fan-out,
+              // not at capture time.
+              message,
               skill_id: opts.skill,
               command: opts.command,
               brand_slug: opts.brand

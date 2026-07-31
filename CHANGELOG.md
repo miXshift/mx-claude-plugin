@@ -19,6 +19,11 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Long feedback reports are no longer cut short.** A report longer than
+  about 2,000 characters was quietly trimmed before it was sent, so the end of
+  a detailed bug report could be lost with nothing to tell you it had happened.
+  Reports now go through complete, however long they run.
+
 - **Product-attribute targeting pulls now warn against a filter that can flip
   a trend.** Targeting data holds ASIN targets, category targets, and
   automatic-match rows together. Filtering it to ASIN rows for an account-wide
