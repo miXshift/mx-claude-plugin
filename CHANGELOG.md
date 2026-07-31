@@ -17,7 +17,39 @@ starts at 0.5.39; earlier versions predate the changelog.
   Sponsored Brands targets and creating or retiring negative product targets
   work too.
 
+- **New: MixShift Intelligence, in closed beta.** A new `mixshift
+  intelligence` command family runs MixShift's analysis engine over a merchant
+  and a period and hands back a finished read instead of raw rows. Browse what
+  is available with `intelligence catalog`, start a run with `intelligence
+  run`, and pick a long one back up later with `intelligence poll` and
+  `intelligence get`; `intelligence runs` lists what you have going. The
+  opening set covers an operations read, an advertising read, a combined view
+  of TACOS and paid pressure, a month over month and year over year bundle,
+  and lost sales. This is a closed beta: it is switched on per account, so the
+  commands will tell you the service is not enabled until yours is added. To
+  ask for early access, write to support@mixshift.io or mention it to your
+  MixShift contact.
+
+### Changed
+
+- **Built-in skill queries no longer send their SQL in usage reporting.** The
+  queries that ship inside MixShift skills used to include their SQL text, and
+  the values filled into it, alongside the anonymized usage event. Those
+  queries are already identified by name, so the text added nothing we did not
+  already have, and it could carry account identifiers such as a seller id.
+  It is now left out entirely. Queries you write yourself with `mixshift data
+  query` are unchanged, and exactly what they do and do not report is now
+  spelled out in the privacy documentation.
+
 ### Fixed
+
+- **`whatsnew`, update checks, and the guided update now work in sandboxed
+  sessions.** All three read the plugin's published release files, and they
+  fetched them from a GitHub address that Cowork and Claude Code sandboxes
+  block, so they quietly did nothing in those environments. They now fetch
+  through mcp.mixshift.io, the one domain every install already reaches, and
+  fall back to the old address if that is unavailable. Nothing new to
+  allowlist.
 
 - **Long feedback reports are no longer cut short.** A report longer than
   about 2,000 characters was quietly trimmed before it was sent, so the end of
