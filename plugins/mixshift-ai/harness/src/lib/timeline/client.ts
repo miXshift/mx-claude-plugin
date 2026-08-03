@@ -164,7 +164,11 @@ export function createTimelineClient(
         );
         const json = await parseEnvelope(res);
         if (json.ok === true && typeof json.id === 'string') {
-          return { ok: true, id: json.id };
+          return {
+            ok: true,
+            id: json.id,
+            ...(json.duplicate === true ? { duplicate: true } : {}),
+          };
         }
         return failureFromEnvelope(json, res.status);
       } catch (err) {
@@ -262,6 +266,7 @@ interface WireEnvelope {
   events?: unknown;
   next_cursor?: unknown;
   id?: unknown;
+  duplicate?: unknown;
   event?: unknown;
   corroboration_id?: unknown;
 }

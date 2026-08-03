@@ -935,3 +935,109 @@ describe('formatEventLine', () => {
     expect(line).toContain('disputed');
   });
 });
+
+// ---------------------------------------------------------------------------
+// timeline list/add --tag + timeline sync (#37499)
+// ---------------------------------------------------------------------------
+
+vi.mock('../lib/timeline/stake-sync.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/timeline/stake-sync.js')>();
+  return { ...actual, syncStakes: vi.fn() };
+});
+
+describe('--tag wiring (#37499)', () => {
+  it('list --tag forwards the tag filter', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('list', '--tag', 'mmm');
+    expect(state.listQueries[0].tag).toBe('mmm');
+  });
+
+  it('add --tag (repeatable) lands tags on the stake POST', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline(
+      'add',
+      '--brand', 'acme',
+      '--kind', 'structural.demand_gen',
+      '--category', 'off_amazon_media',
+      '--interpretation', 'Backbone Media runs off-Amazon demand gen.',
+      '--tag', 'mmm',
+      '--tag', 'backbone-media',
+    );
+    expect(state.posts[0].tags).toEqual(['mmm', 'backbone-media']);
+    expect(state.posts[0].category).toBe('off_amazon_media');
+  });
+
+  it('a non-stake add carrying --tag fails fast naming the fix', async () => {
+    const { client, state } = fakeClient([[]]);
+    vi.mocked(createTimelineClient).mockReturnValue(client);
+    await runTimeline('add', '--brand', 'acme', '--kind', 'comment', '--note', 'x', '--tag', 'mmm');
+    expect(state.posts).toHaveLength(0);
+    expect(stderrText()).toContain('add --category to record one');
+  });
+});
+
+describe('timeline sync (#37499)', () => {
+  it('reports per-event outcomes and the summary line', async () => {
+    const { syncStakes } = await import('../lib/timeline/stake-sync.js');
+    vi.mocked(syncStakes).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      total: 2,
+      created: 1,
+      duplicates: 1,
+      failed: 0,
+      reports: [
+        { id: 'dsp-ramp', outcome: 'created', event_id: 'evt-1', category: 'launch', date_known: true },
+        { id: 'rotation', outcome: 'duplicate', event_id: 'evt-2', category: 'assortment_change', date_known: false },
+      ],
+    });
+    await runTimeline('sync', '--brand', 'acme');
+    expect(vi.mocked(syncStakes)).toHaveBeenCalledWith('acme', {
+      dataDirOverride: undefined,
+      dryRun: false,
+    });
+    const out = stdoutText();
+    expect(out).toContain('created   [launch] dsp-ramp  evt-1');
+    expect(out).toContain('(no event date; recorded as of now)');
+    expect(out).toContain('✓ Synced acme: 1 created, 1 already on the timeline.');
+  });
+
+  it('--dry-run passes through and prints the plan summary', async () => {
+    const { syncStakes } = await import('../lib/timeline/stake-sync.js');
+    vi.mocked(syncStakes).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      total: 1,
+      created: 0,
+      duplicates: 0,
+      failed: 0,
+      reports: [
+        { id: 'dsp-ramp', outcome: 'planned', category: 'launch', date_known: true },
+      ],
+    });
+    await runTimeline('sync', '--brand', 'acme', '--dry-run');
+    expect(vi.mocked(syncStakes)).toHaveBeenCalledWith('acme', {
+      dataDirOverride: undefined,
+      dryRun: true,
+    });
+    expect(stdoutText()).toContain('Dry run: 1 event(s) would sync');
+  });
+
+  it('a whole-run error goes to the error surface', async () => {
+    const { syncStakes } = await import('../lib/timeline/stake-sync.js');
+    vi.mocked(syncStakes).mockResolvedValue({
+      ok: false,
+      brand: 'nope',
+      total: 0,
+      created: 0,
+      duplicates: 0,
+      failed: 0,
+      reports: [],
+      error: 'No brand context found for "nope".',
+    });
+    await runTimeline('sync', '--brand', 'nope');
+    expect(stderrText()).toContain('No brand context found');
+  });
+});

@@ -64472,6 +64472,7 @@ var init_events = __esm({
       TimelineListed: "timeline.listed",
       TimelineEventAdded: "timeline.event_added",
       TimelineEventCorroborated: "timeline.event_corroborated",
+      TimelineStakesSynced: "timeline.stakes_synced",
       // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
       WarmStartServed: "warm_start.served",
       // Proactive update notice (SessionStart hook stage 2, hooks/session-start.mjs
@@ -66505,16 +66506,34 @@ var structuralEventTypes = [
   "promotional_window_recurring",
   "stockout",
   "price_test",
-  "launch"
+  "launch",
+  "off_amazon_media",
+  "assortment_change",
+  "other"
 ];
 var structuralEventSchema = external_exports.object({
   id: external_exports.string().min(1),
   type: external_exports.enum(structuralEventTypes),
+  // Freeform idiom axis mirroring the server timeline's `kind` (there it
+  // syncs as `structural.<kind>`): what THIS event specifically is, in the
+  // team's own words, when the fixed type is broader than the event.
+  // REQUIRED when type is 'other' (see the refine below).
+  kind: external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "kind must be a lowercase snake_case slug").max(64).optional(),
+  // Freeform team-idiom tags; sync to the timeline stake's tags[] axis.
+  tags: external_exports.array(
+    external_exports.string().regex(
+      /^[a-z0-9][a-z0-9_-]{0,63}$/,
+      "tags must be lowercase slugs (a-z, 0-9, -, _; max 64 chars)"
+    )
+  ).max(16).optional(),
   affects: external_exports.array(external_exports.unknown()).default([]),
   interpretation: external_exports.string().min(1),
   start: external_exports.string().optional(),
   end: external_exports.string().optional(),
   active_through: external_exports.string().optional()
+}).refine((e) => e.type !== "other" || e.kind !== void 0 && e.kind.length > 0, {
+  message: "a structural event of type 'other' requires a kind (what the event is, as a lowercase snake_case slug)",
+  path: ["kind"]
 });
 var campaignStructureSchema = external_exports.object({
   naming_pattern: external_exports.string().min(1),
@@ -67170,11 +67189,17 @@ async function loadState(brandSlug, dataDirOverride, currentIdentity) {
         };
       }
     }
+    const storedStakes = parsed.stakes;
+    const stakes = typeof storedStakes === "object" && storedStakes !== null && typeof storedStakes.last_synced_hash === "string" && typeof storedStakes.last_synced_at === "string" ? {
+      last_synced_hash: storedStakes.last_synced_hash,
+      last_synced_at: storedStakes.last_synced_at
+    } : void 0;
     const identity = currentIdentity ?? (typeof storedIdentity === "string" ? storedIdentity : void 0);
     return {
       schema: 2,
       ...identity ? { identity } : {},
       ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {},
+      ...stakes !== void 0 ? { stakes } : {},
       docs
     };
   } catch {
@@ -67752,14 +67777,395 @@ async function raceDeadline(op, ms) {
   }
 }
 
+// src/lib/timeline/stake-sync.ts
+import { createHash as createHash2 } from "node:crypto";
+
+// src/lib/timeline/client.ts
+init_credentials();
+init_intent();
+var TIMELINE_TIMEOUT_MS = 3e4;
+var LIST_ALL_CAP = 2e3;
+var UNREACHABLE_FRIENDLY2 = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
+var TimelineNetworkError = class extends Error {
+  constructor(msg2) {
+    super(msg2);
+    this.name = "TimelineNetworkError";
+  }
+};
+function createTimelineClient(options = {}) {
+  const { dataDirOverride } = options;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  async function authedRequest(method, path2, body, timeoutMs) {
+    const apiBase = await resolveApiBase2(dataDirOverride);
+    const doFetch = async (bearer) => {
+      try {
+        return await fetchImpl(`${apiBase}${path2}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            ...body !== void 0 ? { "Content-Type": "application/json" } : {},
+            ...intentHeader()
+          },
+          ...body !== void 0 ? { body: JSON.stringify(body) } : {},
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new TimelineNetworkError(message);
+      }
+    };
+    let token = await getValidAccessToken(dataDirOverride);
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      token = await getValidAccessToken(dataDirOverride, true);
+      res = await doFetch(token);
+      if (res.status === 401) {
+        throw new Error(
+          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
+        );
+      }
+    }
+    return res;
+  }
+  return {
+    async listEvents(query = {}) {
+      try {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(query)) {
+          if (value === void 0) continue;
+          params.set(key, String(value));
+        }
+        const qs = params.toString();
+        const res = await authedRequest(
+          "GET",
+          `/api/timeline${qs ? `?${qs}` : ""}`,
+          void 0,
+          TIMELINE_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope2(res);
+        if (json2.ok === true && Array.isArray(json2.events)) {
+          return {
+            ok: true,
+            events: json2.events,
+            ...typeof json2.next_cursor === "string" ? { next_cursor: json2.next_cursor } : {}
+          };
+        }
+        return failureFromEnvelope2(json2, res.status);
+      } catch (err) {
+        return failureFromException2(err);
+      }
+    },
+    async postEvent(input, opts = {}) {
+      try {
+        const res = await authedRequest(
+          "POST",
+          "/api/timeline/event",
+          input,
+          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope2(res);
+        if (json2.ok === true && typeof json2.id === "string") {
+          return {
+            ok: true,
+            id: json2.id,
+            ...json2.duplicate === true ? { duplicate: true } : {}
+          };
+        }
+        return failureFromEnvelope2(json2, res.status);
+      } catch (err) {
+        return failureFromException2(err);
+      }
+    },
+    async corroborateEvent(eventId, input, opts = {}) {
+      try {
+        const res = await authedRequest(
+          "POST",
+          `/api/timeline/event/${encodeURIComponent(eventId)}/corroborate`,
+          input,
+          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope2(res);
+        if (json2.ok === true && typeof json2.event === "object" && json2.event !== null && typeof json2.corroboration_id === "string") {
+          return {
+            ok: true,
+            event: json2.event,
+            corroboration_id: json2.corroboration_id
+          };
+        }
+        return failureFromEnvelope2(json2, res.status);
+      } catch (err) {
+        return failureFromException2(err);
+      }
+    }
+  };
+}
+async function listAllEvents(client, query = {}, cap = LIST_ALL_CAP) {
+  const events = [];
+  let cursor;
+  do {
+    const page = await client.listEvents({
+      ...query,
+      ...cursor !== void 0 ? { cursor } : {}
+    });
+    if (!page.ok) return page;
+    events.push(...page.events);
+    cursor = page.next_cursor;
+    if (page.events.length === 0) break;
+  } while (cursor !== void 0 && events.length < cap);
+  return { ok: true, events: events.slice(0, cap) };
+}
+async function resolveApiBase2(dataDirOverride) {
+  const { credentials } = await loadCredentials(dataDirOverride);
+  const apiBase = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+  if (!apiBase) {
+    throw new Error(
+      "No credentials found. Run `mixshift auth login` to sign in, or `mixshift auth service-setup` to configure a service credential for unattended runs."
+    );
+  }
+  return apiBase;
+}
+async function parseEnvelope2(res) {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+var KNOWN_FAILURE_KINDS2 = /* @__PURE__ */ new Set([
+  "bad_params",
+  "too_large",
+  "reserved_kind",
+  "insufficient_scope",
+  "not_found"
+]);
+function failureFromEnvelope2(json2, httpStatus) {
+  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS2.has(json2.kind) ? json2.kind : "unknown";
+  const friendly = json2.friendly ?? json2.message ?? `Timeline service returned HTTP ${httpStatus}.`;
+  return {
+    ok: false,
+    kind,
+    message: json2.message ?? friendly,
+    friendly
+  };
+}
+function failureFromException2(err) {
+  if (err instanceof TimelineNetworkError) {
+    return {
+      ok: false,
+      kind: "host_unreachable",
+      message: err.message,
+      friendly: UNREACHABLE_FRIENDLY2
+    };
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return { ok: false, kind: "unknown", message, friendly: message };
+}
+
+// src/lib/timeline/stake-sync.ts
+var STAKE_POST_TIMEOUT_MS = 1e4;
+function stakeIdempotencyKey(brandSlug, eventId) {
+  const plain = `ctxev:${brandSlug}:${eventId}`;
+  if (plain.length <= 255) return plain;
+  const digest = createHash2("sha256").update(eventId, "utf8").digest("hex");
+  return `ctxev:${brandSlug}:${digest}`;
+}
+function hashStructuralEvents(events) {
+  return createHash2("sha256").update(JSON.stringify(events), "utf8").digest("hex");
+}
+var DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+function normalizeStartTs(value) {
+  return DATE_ONLY_RE.test(value) ? `${value}T00:00:00Z` : value;
+}
+function normalizeEndTs(value) {
+  return DATE_ONLY_RE.test(value) ? `${value}T23:59:59Z` : value;
+}
+function mapAffectsRef(entry) {
+  if (typeof entry === "string") return entry.length > 0 ? entry : null;
+  if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) {
+    const pairs = Object.entries(entry);
+    if (pairs.length === 1) {
+      const [key, value] = pairs[0];
+      if (typeof value === "string" || typeof value === "number") {
+        return `${key}:${value}`;
+      }
+    }
+  }
+  return null;
+}
+function mapEventToStake(brandSlug, event) {
+  const start = event.start;
+  const end = event.end ?? event.active_through;
+  const dateKnown = start !== void 0;
+  const affects = (event.affects ?? []).map(mapAffectsRef).filter((r) => r !== null);
+  return {
+    brand_slug: brandSlug,
+    family: "structural",
+    kind: `structural.${event.kind ?? event.type}`,
+    category: event.type,
+    source: "declared",
+    interpretation: event.interpretation,
+    ...dateKnown ? { ts: normalizeStartTs(start) } : {},
+    ...end !== void 0 ? { end_ts: normalizeEndTs(end) } : {},
+    ...affects.length > 0 ? { affects } : {},
+    ...event.tags && event.tags.length > 0 ? { tags: event.tags } : {},
+    // Provenance: where the record came from, and — for an undated event —
+    // that ts is the moment of RECORDING, not occurrence.
+    evidence: {
+      recorded_from: "context.yaml",
+      event_date_known: dateKnown
+    },
+    idempotency_key: stakeIdempotencyKey(brandSlug, event.id)
+  };
+}
+async function syncStakes(brandSlug, options = {}) {
+  const base = {
+    brand: brandSlug,
+    total: 0,
+    created: 0,
+    duplicates: 0,
+    failed: 0,
+    reports: []
+  };
+  let validated;
+  try {
+    validated = await validateBrandContext(brandSlug, options.dataDirOverride);
+  } catch (err) {
+    return {
+      ...base,
+      ok: false,
+      error: `Could not read the brand context: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  if (!validated.ok) {
+    return {
+      ...base,
+      ok: false,
+      error: validated.kind === "file_missing" ? `No brand context found for "${brandSlug}".` : `Brand context for "${brandSlug}" failed validation; fix it before syncing events (mixshift brand validate ${brandSlug}).`
+    };
+  }
+  const events = validated.context.structural_events ?? [];
+  if (events.length === 0) return { ...base, ok: true };
+  const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
+  const result = { ...base, ok: true, total: events.length };
+  for (const event of events) {
+    const body = mapEventToStake(brandSlug, event);
+    const reportBase = {
+      id: event.id,
+      category: event.type,
+      date_known: body.ts !== void 0
+    };
+    if (options.dryRun) {
+      result.reports.push({ ...reportBase, outcome: "planned" });
+      continue;
+    }
+    const posted = await client.postEvent(body, {
+      timeoutMs: options.postTimeoutMs ?? STAKE_POST_TIMEOUT_MS
+    });
+    if (posted.ok) {
+      if (posted.duplicate) {
+        result.duplicates += 1;
+        result.reports.push({ ...reportBase, outcome: "duplicate", event_id: posted.id });
+      } else {
+        result.created += 1;
+        result.reports.push({ ...reportBase, outcome: "created", event_id: posted.id });
+      }
+    } else {
+      result.failed += 1;
+      result.ok = false;
+      result.reports.push({ ...reportBase, outcome: "failed", detail: posted.friendly });
+    }
+  }
+  if (!options.dryRun && result.ok) {
+    try {
+      const identity = await resolveLedgerIdentity(options.dataDirOverride);
+      const state = await loadState(brandSlug, options.dataDirOverride, identity);
+      state.stakes = {
+        last_synced_hash: hashStructuralEvents(events),
+        last_synced_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await saveState(brandSlug, state, options.dataDirOverride);
+    } catch {
+    }
+  }
+  return result;
+}
+
 // src/lib/context-sync/push-after-write.ts
 var PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
+var STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2e3;
 var PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
 async function pushAfterWrite(brandSlug, options = {}) {
   const env = options.env ?? process.env;
-  const result = await computePushResult(brandSlug, options, env);
+  let result = await computePushResult(brandSlug, options, env);
+  if (result.published) {
+    const stakeLeg = await runStakeLeg(brandSlug, options, env);
+    result = { ...result, stake_events: stakeLeg };
+  }
   emitNotice(brandSlug, result, options.notify ?? true);
   return result;
+}
+async function runStakeLeg(brandSlug, options, env) {
+  const none = { created: 0, duplicates: 0, failed: 0 };
+  try {
+    const validated = await validateBrandContext(brandSlug, options.dataDirOverride);
+    if (!validated.ok) {
+      return { skipped: true, ...none, detail: "context not readable" };
+    }
+    const events = validated.context.structural_events ?? [];
+    if (events.length === 0) return { skipped: true, ...none, detail: "no structural events" };
+    const hash2 = hashStructuralEvents(events);
+    const identity = await resolveLedgerIdentity(options.dataDirOverride);
+    const state = await loadState(brandSlug, options.dataDirOverride, identity);
+    if (state.stakes?.last_synced_hash === hash2) {
+      return { skipped: true, ...none, detail: "unchanged since last sync" };
+    }
+    const budgetMs = options.stakeBudgetMs ?? STAKE_SYNC_AFTER_WRITE_BUDGET_MS;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = ((input, init) => baseFetch(input, { ...init, signal: controller.signal }));
+      const client = options.stakeClient ?? createTimelineClient({
+        dataDirOverride: options.dataDirOverride,
+        fetchImpl: budgetedFetch
+      });
+      const syncPromise = syncStakes(brandSlug, {
+        ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {},
+        client,
+        postTimeoutMs: budgetMs
+      });
+      syncPromise.catch((err) => {
+        debugLog(
+          env,
+          `stake-sync(${brandSlug}): abandoned sync rejected: ${err instanceof Error ? err.message : String(err)}`
+        );
+      });
+      const raced = await raceDeadline(syncPromise, budgetMs);
+      if (raced === DEADLINE) {
+        controller.abort();
+        debugLog(env, `stake-sync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        return { skipped: false, ...none, detail: `timed out after ${budgetMs}ms` };
+      }
+      if (raced.error) {
+        debugLog(env, `stake-sync(${brandSlug}): ${raced.error}`);
+        return { skipped: false, ...none, detail: raced.error };
+      }
+      return {
+        skipped: false,
+        created: raced.created,
+        duplicates: raced.duplicates,
+        failed: raced.failed,
+        ...raced.failed > 0 ? { detail: `${raced.failed} event(s) failed to sync` } : {}
+      };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog(env, `stake-sync(${brandSlug}): swallowed error: ${message}`);
+    return { skipped: true, ...none, detail: message };
+  }
 }
 async function computePushResult(brandSlug, options, env) {
   try {
@@ -67852,8 +68258,13 @@ function emitNotice(brandSlug, result, notify) {
 function noticeLineFor(brandSlug, result) {
   if (result.published) {
     const shared = result.pushed + result.created;
-    if (shared <= 0) return null;
-    return `\u2713 Shared ${brandSlug} to your team's brand context (${shared} doc(s)).`;
+    const staked = result.stake_events?.created ?? 0;
+    const stakeNote = staked > 0 ? ` Recorded ${staked} brand event(s) on the team timeline.` : "";
+    if (shared <= 0 && staked <= 0) return null;
+    if (shared <= 0) {
+      return `\u2713 ${brandSlug}:${stakeNote.trimStart()}`;
+    }
+    return `\u2713 Shared ${brandSlug} to your team's brand context (${shared} doc(s)).${stakeNote}`;
   }
   switch (result.reason) {
     case "disabled":
@@ -70512,7 +70923,7 @@ init_plugin_version();
 init_telemetry();
 
 // src/lib/brain/assemble.ts
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 
 // src/lib/brain/schema.ts
 init_zod();
@@ -71533,7 +71944,7 @@ function hashRows(rows) {
       (r) => Object.keys(r).sort().map((k) => [k, normalizeForHash(r[k])])
     )
   );
-  return createHash2("sha256").update(canonical).digest("hex");
+  return createHash3("sha256").update(canonical).digest("hex");
 }
 function normalizeForHash(v) {
   if (v instanceof Date) return v.toISOString();
@@ -74346,7 +74757,11 @@ function friendlyEventType(t) {
     promotional_window_recurring: "Recurring promo",
     stockout: "Stockout",
     price_test: "Price test",
-    launch: "Launch"
+    launch: "Launch",
+    // #37499 additions (schema.ts structuralEventTypes).
+    off_amazon_media: "Off-Amazon media",
+    assortment_change: "Assortment change",
+    other: "Other event"
   };
   return map2[t] ?? sentenceCase2(t);
 }
@@ -77547,7 +77962,7 @@ init_schema2();
 // src/lib/auth/login-flow.ts
 init_credentials();
 import { createServer } from "node:http";
-import { randomBytes as randomBytes2, createHash as createHash3 } from "node:crypto";
+import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
 import { hostname as hostname3 } from "node:os";
 import { spawn as spawn2 } from "node:child_process";
 
@@ -77870,7 +78285,7 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
 function generatePkce() {
   const verifier = base64url3(randomBytes2(64));
   const challenge = base64url3(
-    createHash3("sha256").update(verifier).digest()
+    createHash4("sha256").update(verifier).digest()
   );
   const state = base64url3(randomBytes2(32));
   return { verifier, challenge, state };
@@ -79574,7 +79989,7 @@ import { readFile as readFile24 } from "node:fs/promises";
 init_resolve();
 import { mkdir as mkdir17, writeFile as writeFile17, rename as rename15 } from "node:fs/promises";
 import { join as join14, dirname as dirname20 } from "node:path";
-import { createHash as createHash4, randomBytes as randomBytes3 } from "node:crypto";
+import { createHash as createHash5, randomBytes as randomBytes3 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
 init_zod();
@@ -79759,7 +80174,7 @@ function hashParams(params) {
       return acc;
     }, {})
   );
-  return createHash4("sha1").update(canonical).digest("hex");
+  return createHash5("sha1").update(canonical).digest("hex");
 }
 async function writeAtomic3(path2, content) {
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
@@ -86370,183 +86785,6 @@ async function adsCall(input, opts = {}) {
   };
 }
 
-// src/lib/timeline/client.ts
-init_credentials();
-init_intent();
-var TIMELINE_TIMEOUT_MS = 3e4;
-var LIST_ALL_CAP = 2e3;
-var UNREACHABLE_FRIENDLY2 = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
-var TimelineNetworkError = class extends Error {
-  constructor(msg2) {
-    super(msg2);
-    this.name = "TimelineNetworkError";
-  }
-};
-function createTimelineClient(options = {}) {
-  const { dataDirOverride } = options;
-  const fetchImpl = options.fetchImpl ?? fetch;
-  async function authedRequest(method, path2, body, timeoutMs) {
-    const apiBase = await resolveApiBase2(dataDirOverride);
-    const doFetch = async (bearer) => {
-      try {
-        return await fetchImpl(`${apiBase}${path2}`, {
-          method,
-          headers: {
-            Authorization: `Bearer ${bearer}`,
-            ...body !== void 0 ? { "Content-Type": "application/json" } : {},
-            ...intentHeader()
-          },
-          ...body !== void 0 ? { body: JSON.stringify(body) } : {},
-          signal: AbortSignal.timeout(timeoutMs)
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new TimelineNetworkError(message);
-      }
-    };
-    let token = await getValidAccessToken(dataDirOverride);
-    let res = await doFetch(token);
-    if (res.status === 401) {
-      token = await getValidAccessToken(dataDirOverride, true);
-      res = await doFetch(token);
-      if (res.status === 401) {
-        throw new Error(
-          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate."
-        );
-      }
-    }
-    return res;
-  }
-  return {
-    async listEvents(query = {}) {
-      try {
-        const params = new URLSearchParams();
-        for (const [key, value] of Object.entries(query)) {
-          if (value === void 0) continue;
-          params.set(key, String(value));
-        }
-        const qs = params.toString();
-        const res = await authedRequest(
-          "GET",
-          `/api/timeline${qs ? `?${qs}` : ""}`,
-          void 0,
-          TIMELINE_TIMEOUT_MS
-        );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && Array.isArray(json2.events)) {
-          return {
-            ok: true,
-            events: json2.events,
-            ...typeof json2.next_cursor === "string" ? { next_cursor: json2.next_cursor } : {}
-          };
-        }
-        return failureFromEnvelope2(json2, res.status);
-      } catch (err) {
-        return failureFromException2(err);
-      }
-    },
-    async postEvent(input, opts = {}) {
-      try {
-        const res = await authedRequest(
-          "POST",
-          "/api/timeline/event",
-          input,
-          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
-        );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && typeof json2.id === "string") {
-          return { ok: true, id: json2.id };
-        }
-        return failureFromEnvelope2(json2, res.status);
-      } catch (err) {
-        return failureFromException2(err);
-      }
-    },
-    async corroborateEvent(eventId, input, opts = {}) {
-      try {
-        const res = await authedRequest(
-          "POST",
-          `/api/timeline/event/${encodeURIComponent(eventId)}/corroborate`,
-          input,
-          opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
-        );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && typeof json2.event === "object" && json2.event !== null && typeof json2.corroboration_id === "string") {
-          return {
-            ok: true,
-            event: json2.event,
-            corroboration_id: json2.corroboration_id
-          };
-        }
-        return failureFromEnvelope2(json2, res.status);
-      } catch (err) {
-        return failureFromException2(err);
-      }
-    }
-  };
-}
-async function listAllEvents(client, query = {}, cap = LIST_ALL_CAP) {
-  const events = [];
-  let cursor;
-  do {
-    const page = await client.listEvents({
-      ...query,
-      ...cursor !== void 0 ? { cursor } : {}
-    });
-    if (!page.ok) return page;
-    events.push(...page.events);
-    cursor = page.next_cursor;
-    if (page.events.length === 0) break;
-  } while (cursor !== void 0 && events.length < cap);
-  return { ok: true, events: events.slice(0, cap) };
-}
-async function resolveApiBase2(dataDirOverride) {
-  const { credentials } = await loadCredentials(dataDirOverride);
-  const apiBase = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-  if (!apiBase) {
-    throw new Error(
-      "No credentials found. Run `mixshift auth login` to sign in, or `mixshift auth service-setup` to configure a service credential for unattended runs."
-    );
-  }
-  return apiBase;
-}
-async function parseEnvelope2(res) {
-  try {
-    return await res.json();
-  } catch {
-    return {};
-  }
-}
-var KNOWN_FAILURE_KINDS2 = /* @__PURE__ */ new Set([
-  "bad_params",
-  "too_large",
-  "reserved_kind",
-  "insufficient_scope",
-  "not_found"
-]);
-function failureFromEnvelope2(json2, httpStatus) {
-  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS2.has(json2.kind) ? json2.kind : "unknown";
-  const friendly = json2.friendly ?? json2.message ?? `Timeline service returned HTTP ${httpStatus}.`;
-  return {
-    ok: false,
-    kind,
-    message: json2.message ?? friendly,
-    friendly
-  };
-}
-function failureFromException2(err) {
-  if (err instanceof TimelineNetworkError) {
-    return {
-      ok: false,
-      kind: "host_unreachable",
-      message: err.message,
-      friendly: UNREACHABLE_FRIENDLY2
-    };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return { ok: false, kind: "unknown", message, friendly: message };
-}
-
 // src/lib/timeline/ads-emit.ts
 var ADS_EMIT_TIMEOUT_MS = 2e3;
 var ENTITY_IDS_CAP = 50;
@@ -89132,10 +89370,11 @@ function registerContextCommands(program3) {
   });
   registerActionSubcommand(context, {
     name: "push",
-    description: "Upload local changes to the org store. Only touches docs edited locally; server-side moves are skipped (pull them instead). --force overwrites diverged docs with the local version.",
+    description: "Upload local changes to the org store. Only touches docs edited locally; server-side moves are skipped (pull them instead). --force overwrites diverged docs with the local version. Also publishes the brand's structural_events to the timeline as declared stakes (idempotent).",
     hasForce: true,
     run: (brand, opts) => push(brand, opts),
-    eventName: EventName.ContextPushCompleted
+    eventName: EventName.ContextPushCompleted,
+    syncStakesAfter: true
   });
   registerActionSubcommand(context, {
     name: "sync",
@@ -89143,7 +89382,8 @@ function registerContextCommands(program3) {
     hasForce: false,
     hasQuiet: true,
     run: (brand, opts) => sync(brand, opts),
-    eventName: EventName.ContextSyncCompleted
+    eventName: EventName.ContextSyncCompleted,
+    syncStakesAfter: true
   });
   registerAutosyncSubcommand(context);
   context.command("migrate").description(
@@ -89173,6 +89413,13 @@ function registerContextCommands(program3) {
         emitError12(result.message, root);
         return;
       }
+      const stakeRuns = [];
+      for (const b of result.brands) {
+        stakeRuns.push({
+          brand: b.brand,
+          result: await syncStakes(b.brand, { dataDirOverride: root.dataDir })
+        });
+      }
       const allReports = result.brands.flatMap((b) => b.reports);
       const counts = countActions(allReports);
       await track(
@@ -89180,14 +89427,25 @@ function registerContextCommands(program3) {
           event_name: EventName.ContextMigrateCompleted,
           outcome: counts.error > 0 ? "failed" : "ok",
           duration_ms: Date.now() - t0,
-          payload: { brands: result.brands.length, ...counts }
+          payload: {
+            brands: result.brands.length,
+            ...counts,
+            stake_created: stakeRuns.reduce((n, s) => n + s.result.created, 0),
+            stake_duplicates: stakeRuns.reduce((n, s) => n + s.result.duplicates, 0),
+            stake_failed: stakeRuns.reduce((n, s) => n + s.result.failed, 0)
+          }
         },
         root.dataDir
       );
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
-            { status: "ok", brands: result.brands, counts },
+            {
+              status: "ok",
+              brands: result.brands,
+              counts,
+              stake_events: stakeRuns.map((s) => s.result)
+            },
             null,
             2
           ) + "\n"
@@ -89203,6 +89461,7 @@ function registerContextCommands(program3) {
             lines.push(formatReportLine(b.brand, r));
           }
         }
+        for (const line of stakeLines(stakeRuns)) lines.push(line);
         lines.push("");
         lines.push(summaryLine(counts));
         process.stdout.write(lines.join("\n") + "\n");
@@ -89260,6 +89519,20 @@ function registerActionSubcommand(context, spec) {
         }
         results.push({ brand: r.brand, reports: r.reports });
       }
+      const stakeRuns = [];
+      if (spec.syncStakesAfter) {
+        for (const r of results) {
+          stakeRuns.push({
+            brand: r.brand,
+            result: await syncStakes(r.brand, { dataDirOverride: root.dataDir })
+          });
+        }
+      }
+      const stakeCounts = {
+        stake_created: stakeRuns.reduce((n, s) => n + s.result.created, 0),
+        stake_duplicates: stakeRuns.reduce((n, s) => n + s.result.duplicates, 0),
+        stake_failed: stakeRuns.reduce((n, s) => n + s.result.failed, 0)
+      };
       const allReports = results.flatMap((r) => r.reports);
       const counts = countActions(allReports);
       await track(
@@ -89270,7 +89543,8 @@ function registerActionSubcommand(context, spec) {
           payload: {
             brands: results.length,
             force: opts.force ?? false,
-            ...counts
+            ...counts,
+            ...spec.syncStakesAfter ? stakeCounts : {}
           }
         },
         root.dataDir
@@ -89283,13 +89557,14 @@ function registerActionSubcommand(context, spec) {
               action: spec.name,
               force: opts.force ?? false,
               brands: results,
-              counts
+              counts,
+              ...spec.syncStakesAfter ? { stake_events: stakeRuns.map((s) => s.result) } : {}
             },
             null,
             2
           ) + "\n"
         );
-      } else if (!(spec.hasQuiet && opts.quiet && !allReports.some((r) => QUIET_NOISY_ACTIONS.has(r.action)))) {
+      } else if (!(spec.hasQuiet && opts.quiet && !allReports.some((r) => QUIET_NOISY_ACTIONS.has(r.action)) && stakeCounts.stake_created === 0 && stakeCounts.stake_failed === 0)) {
         const lines = [];
         for (const r of results) {
           if (r.reports.length === 0) {
@@ -89300,6 +89575,7 @@ function registerActionSubcommand(context, spec) {
             lines.push(formatReportLine(r.brand, report));
           }
         }
+        for (const line of stakeLines(stakeRuns)) lines.push(line);
         lines.push("");
         lines.push(summaryLine(counts));
         process.stdout.write(lines.join("\n") + "\n");
@@ -89445,6 +89721,22 @@ function formatReportLine(brand, r) {
     r.detail ?? ""
   ].join("  ").trimEnd();
 }
+function stakeLines(runs) {
+  const lines = [];
+  for (const { brand, result } of runs) {
+    if (result.error !== void 0) {
+      lines.push(`${brand.padEnd(20)}  structural events          error  ${result.error}`);
+      continue;
+    }
+    if (result.total === 0) continue;
+    const bits = [];
+    if (result.created > 0) bits.push(`${result.created} recorded on the timeline`);
+    if (result.duplicates > 0) bits.push(`${result.duplicates} already on the timeline`);
+    if (result.failed > 0) bits.push(`${result.failed} FAILED`);
+    lines.push(`${brand.padEnd(20)}  structural events  ${bits.join(", ")}`);
+  }
+  return lines;
+}
 function emitNoBrands(root) {
   if (root.json) {
     process.stdout.write(
@@ -89517,7 +89809,10 @@ var STAKE_CATEGORIES = [
   "launch",
   "content_change",
   "strategy_change",
-  "platform_external"
+  "platform_external",
+  "off_amazon_media",
+  "assortment_change",
+  "other"
 ];
 var STAKE_SOURCES = ["declared", "system", "suggested"];
 var STAKE_STATUSES = [
@@ -89536,6 +89831,7 @@ function registerTimelineCommands(program3) {
   registerList(timeline);
   registerAdd(timeline);
   registerCorroborate(timeline);
+  registerSync(timeline);
 }
 function registerList(timeline) {
   timeline.command("list").description(
@@ -89553,7 +89849,7 @@ function registerList(timeline) {
   ).option("--stakes", "restrict to stakes (structural events carrying a category)", false).option("--category <enum>", "filter to one stake category").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested'").option(
     "--status <status>",
     "verification axis: 'unverified' | 'corroborated' | 'disputed' | 'no_effect'"
-  ).option("--affects <ref>", "match stakes whose affects contains this ref (e.g. 'marketplace:US')").option(
+  ).option("--affects <ref>", "match stakes whose affects contains this ref (e.g. 'marketplace:US')").option("--tag <slug>", "match stakes whose tags contain this slug (e.g. 'mmm')").option(
     "--overlap",
     "treat --since/--until as an interval overlap against the stake range, not a point window",
     false
@@ -89594,6 +89890,7 @@ function registerList(timeline) {
       if (opts.source) query.source = opts.source;
       if (opts.status) query.status = opts.status;
       if (opts.affects) query.affects = opts.affects;
+      if (opts.tag) query.tag = opts.tag;
       if (opts.overlap) query.overlap = true;
       if (opts.includeFuture) query.include_future = true;
       const client = createTimelineClient({ dataDirOverride: root.dataDir });
@@ -89667,7 +89964,7 @@ function registerAdd(timeline) {
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -89723,9 +90020,9 @@ function registerAdd(timeline) {
           );
           return;
         }
-      } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
+      } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || (opts.tag?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
         emitError13(
-          "--end / --affects / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
+          "--end / --affects / --tag / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
         );
         return;
@@ -89767,6 +90064,7 @@ function registerAdd(timeline) {
         ...isStake ? { interpretation: opts.interpretation } : {},
         ...opts.end !== void 0 ? { end_ts: opts.end } : {},
         ...opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {},
+        ...opts.tag && opts.tag.length > 0 ? { tags: opts.tag } : {},
         ...intensity !== void 0 ? { intensity } : {},
         ...opts.source !== void 0 ? { source: opts.source } : {},
         ...evidence !== void 0 ? { evidence } : {}
@@ -89791,6 +90089,7 @@ function registerAdd(timeline) {
               ...opts.source !== void 0 ? { source: opts.source } : {},
               has_end: opts.end !== void 0,
               affects_count: opts.affects?.length ?? 0,
+              tags_count: opts.tag?.length ?? 0,
               has_evidence: evidence !== void 0,
               has_intensity: intensity !== void 0,
               has_ts: opts.ts !== void 0
@@ -89930,6 +90229,77 @@ function registerCorroborate(timeline) {
     }
   });
 }
+function registerSync(timeline) {
+  timeline.command("sync").description(
+    "Publish a brand's curated context.yaml structural_events to the timeline as declared stakes. Idempotent: an already-synced event reports duplicate and creates nothing. Events sync automatically after context writes; use this for the first publish, a backfill, or a --dry-run preview."
+  ).requiredOption("--brand <slug>", "the brand whose events to publish").option("--dry-run", "map and report without posting anything", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const t0 = Date.now();
+    try {
+      const result = await syncStakes(opts.brand, {
+        dataDirOverride: root.dataDir,
+        dryRun: opts.dryRun ?? false
+      });
+      await track(
+        {
+          event_name: EventName.TimelineStakesSynced,
+          outcome: result.ok ? "ok" : "failed",
+          duration_ms: Date.now() - t0,
+          ...result.ok ? {} : { error_class: result.error !== void 0 ? "context" : "post_failed" },
+          payload: {
+            brand: opts.brand,
+            dry_run: opts.dryRun ?? false,
+            total: result.total,
+            created: result.created,
+            duplicates: result.duplicates,
+            failed: result.failed
+          }
+        },
+        root.dataDir
+      );
+      if (result.error !== void 0) {
+        emitError13(result.error, root);
+        return;
+      }
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: result.ok ? "ok" : "partial",
+              brand: result.brand,
+              total: result.total,
+              created: result.created,
+              duplicates: result.duplicates,
+              failed: result.failed,
+              reports: result.reports
+            },
+            null,
+            2
+          ) + "\n"
+        );
+        return;
+      }
+      if (result.total === 0) {
+        process.stdout.write(
+          `No structural events in ${opts.brand}'s context.yaml; nothing to sync.
+`
+        );
+        return;
+      }
+      const lines = result.reports.map((r) => {
+        const date5 = r.date_known ? "" : "  (no event date; recorded as of now)";
+        const tail = r.outcome === "failed" ? `  ${r.detail ?? ""}` : r.event_id !== void 0 ? `  ${r.event_id}` : "";
+        return `${r.outcome.padEnd(9)} [${r.category}] ${r.id}${tail}${date5}`;
+      });
+      const summary = opts.dryRun ? `Dry run: ${result.total} event(s) would sync to the timeline.` : `\u2713 Synced ${opts.brand}: ${result.created} created, ${result.duplicates} already on the timeline` + (result.failed > 0 ? `, ${result.failed} FAILED` : "") + ".";
+      process.stdout.write(lines.join("\n") + "\n" + summary + "\n");
+      return;
+    } catch (err) {
+      emitError13(err instanceof Error ? err.message : String(err), root);
+      return;
+    }
+  });
+}
 function collect2(value, prev) {
   return [...prev, value];
 }
@@ -89980,6 +90350,9 @@ function summarizeStake(e) {
   if (isNonEmpty(e.interpretation)) parts.push(truncate(e.interpretation, 60));
   if (Array.isArray(e.affects) && e.affects.length > 0) {
     parts.push(`affects\xD7${e.affects.length}`);
+  }
+  if (Array.isArray(e.tags) && e.tags.length > 0) {
+    parts.push(truncate(e.tags.map((t) => `#${t}`).join(" "), 40));
   }
   const evidenceKeys = e.evidence && typeof e.evidence === "object" ? Object.keys(e.evidence).length : 0;
   if (evidenceKeys > 0) parts.push(`evidence(${evidenceKeys})`);
@@ -90033,6 +90406,7 @@ function filtersPayload(query, all) {
     ...query.source !== void 0 ? { source: query.source } : {},
     ...query.status !== void 0 ? { status: query.status } : {},
     ...query.affects !== void 0 ? { affects: query.affects } : {},
+    ...query.tag !== void 0 ? { tag: query.tag } : {},
     ...query.overlap !== void 0 ? { overlap: query.overlap } : {},
     ...query.include_future !== void 0 ? { include_future: query.include_future } : {},
     all

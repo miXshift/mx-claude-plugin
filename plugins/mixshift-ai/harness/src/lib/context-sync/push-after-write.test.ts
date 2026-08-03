@@ -229,6 +229,15 @@ describe('participant gate (sync ledger)', () => {
       conflicts: 0,
       errors: 0,
       reports: [],
+      // Stake leg (#37499): the fixture brand dir has no context.yaml, so
+      // the leg is an intentional local no-op.
+      stake_events: {
+        skipped: true,
+        created: 0,
+        duplicates: 0,
+        failed: 0,
+        detail: 'context not readable',
+      },
     });
     expect(vi.mocked(push)).toHaveBeenCalledTimes(1);
   });
@@ -385,6 +394,14 @@ describe('success shape', () => {
       conflicts: 1,
       errors: 1,
       reports,
+      // Stake leg (#37499): no context.yaml in the fixture dir.
+      stake_events: {
+        skipped: true,
+        created: 0,
+        duplicates: 0,
+        failed: 0,
+        detail: 'context not readable',
+      },
     });
   });
 });
@@ -511,5 +528,193 @@ describe('user-facing notice (stderr)', () => {
 
     expect(result.published).toBe(true);
     expect(stderrText()).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stake-sync leg (#37499): after a successful doc push, structural_events
+// publish to the timeline as declared stakes — budgeted, hash-skipped,
+// never demoting the doc result.
+// ---------------------------------------------------------------------------
+
+describe('stake-sync leg', () => {
+  const BRAND_CONTEXT = `
+schema_version: 1
+brand_slug: acme
+brand_name: Acme
+last_updated: "2026-08-03"
+accounts:
+  - seller_id: 1
+    seller_name: Acme Seller
+    account_type: SC
+    status: active
+    role: primary
+sources:
+  ad_metrics: campaignmetric
+  ops_revenue: business_reports_dpst_date
+  ops_revenue_field: SalesAmount
+  ops_units_field: UnitsOrdered
+  ops_date_field: DateTime
+management:
+  primary_metric: ACOS
+  acos_target_pct: 20.0
+  attribution_window_days: 14
+structural_events:
+  - id: dsp-ramp
+    type: launch
+    affects: []
+    interpretation: DSP ramp.
+    start: "2026-01-01"
+`;
+
+  async function writeBrandContext(slug: string, yaml: string = BRAND_CONTEXT): Promise<void> {
+    await writeFile(join(brandDir(slug, testDir), 'context.yaml'), yaml, 'utf8');
+  }
+
+  function stubStakeClient(
+    result: { ok: true; id: string; duplicate?: boolean } | { ok: false },
+  ) {
+    const postEvent = vi.fn(async () =>
+      result.ok
+        ? result
+        : {
+            ok: false as const,
+            kind: 'host_unreachable' as const,
+            message: 'down',
+            friendly: 'The MixShift auth service is unreachable.',
+          },
+    );
+    return {
+      client: { postEvent, listEvents: vi.fn(), corroborateEvent: vi.fn() } as never,
+      postEvent,
+    };
+  }
+
+  it('fires after a successful push and reports created stakes (result + notice)', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    await writeBrandContext('acme');
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [{ key: 'context', docType: 'context', action: 'pushed', detail: 'rev 2' }],
+    });
+    const { client, postEvent } = stubStakeClient({ ok: true, id: 'evt-1' });
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: client,
+    });
+
+    expect(postEvent).toHaveBeenCalledTimes(1);
+    expect(result.published && result.stake_events).toEqual({
+      skipped: false,
+      created: 1,
+      duplicates: 0,
+      failed: 0,
+    });
+    expect(stderrText()).toContain('Recorded 1 brand event(s) on the team timeline');
+  });
+
+  it('hash-skip: a second write with unchanged events makes zero timeline posts', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    await writeBrandContext('acme');
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'acme', reports: [] });
+    const first = stubStakeClient({ ok: true, id: 'evt-1' });
+    await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: first.client,
+    });
+    expect(first.postEvent).toHaveBeenCalledTimes(1);
+
+    const second = stubStakeClient({ ok: true, id: 'never' });
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: second.client,
+    });
+    expect(second.postEvent).not.toHaveBeenCalled();
+    expect(result.published && result.stake_events).toMatchObject({
+      skipped: true,
+      detail: 'unchanged since last sync',
+    });
+  });
+
+  it('a failed stake post never demotes the doc result, does not stamp, and stays off stderr', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    await writeBrandContext('acme');
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'acme', reports: [] });
+    const failing = stubStakeClient({ ok: false });
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: failing.client,
+    });
+    expect(result.published).toBe(true);
+    expect(result.published && result.stake_events).toMatchObject({
+      skipped: false,
+      failed: 1,
+    });
+    expect(stderrText()).not.toContain('brand event');
+
+    // No stamp -> the NEXT write retries (no silent wedge on failure).
+    const retry = stubStakeClient({ ok: true, id: 'evt-1' });
+    await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: retry.client,
+    });
+    expect(retry.postEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('a sync that hangs past the stake budget resolves as a timed-out leg, doc push intact', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    await writeBrandContext('acme');
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'acme', reports: [] });
+    const hanging = {
+      postEvent: vi.fn(() => new Promise(() => {})),
+      listEvents: vi.fn(),
+      corroborateEvent: vi.fn(),
+    } as never;
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: hanging,
+      stakeBudgetMs: 50,
+    });
+    expect(result.published).toBe(true);
+    expect(result.published && result.stake_events).toMatchObject({
+      skipped: false,
+      detail: 'timed out after 50ms',
+    });
+  });
+
+  it('a brand with no structural_events skips the leg without touching the network', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    await writeBrandContext(
+      'acme',
+      BRAND_CONTEXT.slice(0, BRAND_CONTEXT.indexOf('structural_events:')),
+    );
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'acme', reports: [] });
+    const { client, postEvent } = stubStakeClient({ ok: true, id: 'never' });
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      stakeClient: client,
+    });
+    expect(postEvent).not.toHaveBeenCalled();
+    expect(result.published && result.stake_events).toMatchObject({
+      skipped: true,
+      detail: 'no structural events',
+    });
   });
 });

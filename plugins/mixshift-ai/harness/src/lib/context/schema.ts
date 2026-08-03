@@ -92,6 +92,16 @@ const goalsSchema = z.object({
   tacos_goal_pct: z.number().positive().optional(),
 });
 
+// Mirrors the server stake category enum (mx-legacy-auth migration 018) MINUS
+// the three server-side kinds (content_change / strategy_change /
+// platform_external are minted by server write seams, not curated here), so
+// every local type maps 1:1 onto a server category when events sync to the
+// brand timeline. #37499 additions: off_amazon_media (a STANDING off-Amazon
+// media condition — outside demand gen, MMM attribution, non-Amazon ad
+// lines), assortment_change (products rotating in/out of the catalog as
+// expected behavior — seasonal flavors, planned discontinuations), and
+// `other` (the explicit escape: record what the user said, under a specific
+// `kind`, instead of forcing a wrong type).
 const structuralEventTypes = [
   'brand_migration',
   'media_spike',
@@ -102,17 +112,51 @@ const structuralEventTypes = [
   'stockout',
   'price_test',
   'launch',
+  'off_amazon_media',
+  'assortment_change',
+  'other',
 ] as const;
 
-const structuralEventSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(structuralEventTypes),
-  affects: z.array(z.unknown()).default([]),
-  interpretation: z.string().min(1),
-  start: z.string().optional(),
-  end: z.string().optional(),
-  active_through: z.string().optional(),
-});
+const structuralEventSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.enum(structuralEventTypes),
+    // Freeform idiom axis mirroring the server timeline's `kind` (there it
+    // syncs as `structural.<kind>`): what THIS event specifically is, in the
+    // team's own words, when the fixed type is broader than the event.
+    // REQUIRED when type is 'other' (see the refine below).
+    kind: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/, 'kind must be a lowercase snake_case slug')
+      .max(64)
+      .optional(),
+    // Freeform team-idiom tags; sync to the timeline stake's tags[] axis.
+    tags: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^[a-z0-9][a-z0-9_-]{0,63}$/,
+            'tags must be lowercase slugs (a-z, 0-9, -, _; max 64 chars)',
+          ),
+      )
+      .max(16)
+      .optional(),
+    affects: z.array(z.unknown()).default([]),
+    interpretation: z.string().min(1),
+    start: z.string().optional(),
+    end: z.string().optional(),
+    active_through: z.string().optional(),
+  })
+  // `other` must not lose the specificity the fixed enum could not hold —
+  // that is the whole point of the escape (#37499).
+  .refine((e) => e.type !== 'other' || (e.kind !== undefined && e.kind.length > 0), {
+    message: "a structural event of type 'other' requires a kind (what the event is, as a lowercase snake_case slug)",
+    path: ['kind'],
+  });
+
+/** One curated Tier-3 structural event (the stake-sync input shape). */
+export type StructuralEvent = z.infer<typeof structuralEventSchema>;
 
 const campaignStructureSchema = z.object({
   naming_pattern: z.string().min(1),

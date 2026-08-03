@@ -336,7 +336,7 @@ without learning the schema.
 | `posture.stance` | "Spend posture: scale / efficiency / defend / clear_bleed" | "What do you primarily optimize this brand for right now?" + plain-language options |
 | `goals.report_quarterly_pacing` | "Quarterly pacing enabled?" | "Do you track quarterly revenue goals for this brand?" |
 | Runtime inputs | "Runtime artifacts at report time" | "Do you currently provide reports (forecast, H-Bridge, monthly bridges) you'd like me to match?" |
-| `structural_events[]` | "Structural events" | "Anything happening right now I should know about? Promos, stockouts, launches, brand migrations, viral moments" |
+| `structural_events[]` | "Structural events" | "Anything happening right now I should know about? Promos, stockouts, launches, brand migrations, viral moments, off-Amazon media programs, assortment rotations" |
 | `negation.competitor_brands` | "Competitor brand list" | "Which brands are you most often compared to or compete with on Amazon?" |
 | `negation.protected_terms` | "Protected terms array" | "Are there words my negation skills should NEVER negate? (e.g. generic product nouns that are core to your category)" |
 
@@ -387,7 +387,7 @@ Populate every required and applicable optional section per the Zod schema (run 
 | `bid_health` | Phase 2 | `scale_threshold_pct`, `pullback_threshold_pct`. |
 | `posture` | Phase 2 | `stance ∈ {scale, efficiency, defend, clear_bleed}`. `multiplier ∈ [0.0, 1.0]`. |
 | `goals` | Phase 2 | Use explicit `null` for absent targets — never omit the key. |
-| `structural_events[]` | Phase 0 (+ brain `stockouts` advisories, AM-confirmed) | Type from enum. Always include `interpretation`. |
+| `structural_events[]` | Phase 0 (+ brain `stockouts` advisories, AM-confirmed) | Type from the 12-value enum (see `_schema/context.schema.yaml`), incl. `off_amazon_media` (standing off-Amazon media condition, MMM attribution), `assortment_change` (expected catalog rotation), and `other` as the explicit escape. NEVER force a wrong type on what the user told you: use `other` plus a specific `kind` (lowercase snake_case slug; required with `other`). Optional `tags[]` for team idiom. Always include `interpretation`. Events publish to the org brand timeline automatically after context writes; an event with no `start` date syncs with an event_date_known:false marker. |
 | `objective_calibration` | Phase 1 (CS-24) | Per-objective expected ACOS — used by health-check skills. |
 | `campaign_structure` | Phase 1 (CS-24 naming) + brain shape | `naming_pattern` with `{Token}` placeholders. `objectives` token map. Distinct objectives/groups/brands + `objective_tag_completeness_pct` come from the brain. |
 | `paused_campaigns[]` | Brain (`paused_campaign_count`) + Phase 2 | The brain gives the paused count; capture specific campaign names from AM input when the names matter. |
@@ -571,7 +571,7 @@ The sidecar is auto-emitted by the renderer in Phase 3b; no manual `sidecar writ
 ## Next Steps After Brand Setup
 
 1. The operator reviews `brand-context.html` (link from the Bottom Line). Missing-context buckets show what still needs brand input; runtime-input cards show artifacts supplied manually when downstream skills run.
-2. Share it with your team: run `mixshift context push --brand <brand-slug>` once to publish this brand context to your MixShift org store so teammates work from the same brand setup instead of rebuilding it, after which your later edits keep the shared copy fresh automatically. (This is the build then share then auto-enrich path; until you publish, the brand context lives only on this machine.)
+2. Share it with your team: run `mixshift context push --brand <brand-slug>` once to publish this brand context to your MixShift org store so teammates work from the same brand setup instead of rebuilding it, after which your later edits keep the shared copy fresh automatically. (This is the build then share then auto-enrich path; until you publish, the brand context lives only on this machine.) The push also records the brand's structural events on the org brand timeline as declared stakes, and later event edits sync automatically; `mixshift timeline sync --brand <brand-slug> --dry-run` previews what will be recorded.
 3. After approval, downstream skills can run: Daily Health Check → Runaway Spend Check → Keyword Bid Health → Monthly Performance Report → others.
 
 ---
@@ -597,7 +597,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.6.0*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.7.0*
 
 ## Telemetry (required)
 

@@ -137,6 +137,7 @@ shapes:
 
   structural_event:
     required: [id, type, affects, interpretation]
+    optional: [kind, tags, start, end, active_through]
     enums:
       type:
         - brand_migration
@@ -148,6 +149,25 @@ shapes:
         - stockout
         - price_test
         - launch
+        - off_amazon_media       # standing off-Amazon media condition: outside
+                                 # demand gen, MMM attribution, non-Amazon ad lines
+        - assortment_change      # expected catalog rotation: seasonal flavors,
+                                 # planned discontinuations
+        - other                  # explicit escape — REQUIRES kind; never force a
+                                 # wrong type on what the user told you
+    note: |
+      kind (optional; REQUIRED when type is `other`): freeform lowercase
+      snake_case slug naming what THIS event specifically is when the fixed
+      type is broader than the event (e.g. type: off_amazon_media,
+      kind: mmm_attributed_demand_gen). Mirrors the timeline's freeform kind
+      axis; the event syncs as `structural.<kind>`.
+      tags (optional): freeform lowercase slug list (max 16, each ≤64 chars of
+      a-z 0-9 - _), the team-idiom axis; sync to the timeline stake's tags.
+      Events sync AUTOMATICALLY to the org brand timeline as declared stakes
+      after context writes (and on `mixshift context push` / `migrate`);
+      `mixshift timeline sync --brand <slug>` is the explicit backfill. An
+      event with no `start` date syncs with "recorded now" semantics and an
+      event_date_known:false marker.
 
   posture:
     required: [stance, multiplier]

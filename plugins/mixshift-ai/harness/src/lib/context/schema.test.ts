@@ -272,6 +272,119 @@ describe('contextSchema — drift check against canonical YAML schema', () => {
     const zodSorted = [...REQUIRED_TOP_LEVEL_FIELDS].sort();
     expect(zodSorted).toEqual(yamlSorted);
   });
+
+  it('structural_event type enum matches the canonical YAML schema (#37499)', async () => {
+    const raw = await readFile(yamlSchemaPath, 'utf-8');
+    const yamlSchema = parseYaml(raw) as {
+      shapes: { structural_event: { enums: { type: string[] } } };
+    };
+    const yamlTypes = [...yamlSchema.shapes.structural_event.enums.type].sort();
+    // Probe the zod enum through parsing: every YAML value must be accepted
+    // and one made-up value must not.
+    for (const t of yamlTypes) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e', type: t, interpretation: 'x', kind: 'probe' }),
+      );
+      expect(r.success, `type '${t}' should validate`).toBe(true);
+    }
+    const bad = contextSchema.safeParse(
+      contextWithEvent({ id: 'e', type: 'made_up_type', interpretation: 'x' }),
+    );
+    expect(bad.success).toBe(false);
+    // Pin the count so an addition on either side forces this test open.
+    expect(yamlTypes).toHaveLength(12);
+  });
+});
+
+// A minimal valid context wrapping one structural event (shared by the
+// #37499 taxonomy tests below).
+function contextWithEvent(event: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    brand_slug: 'acme',
+    brand_name: 'Acme',
+    last_updated: '2026-08-03',
+    accounts: [
+      {
+        seller_id: 1,
+        seller_name: 'Acme Seller',
+        account_type: 'SC',
+        status: 'active',
+        role: 'primary',
+      },
+    ],
+    sources: {
+      ad_metrics: 'campaignmetric',
+      ops_revenue: 'business_reports_dpst_date',
+      ops_revenue_field: 'SalesAmount',
+      ops_units_field: 'UnitsOrdered',
+      ops_date_field: 'DateTime',
+    },
+    management: {
+      primary_metric: 'ACOS',
+      acos_target_pct: 20.0,
+      attribution_window_days: 14,
+    },
+    structural_events: [event],
+  };
+}
+
+describe('structural_events — #37499 taxonomy flexibility', () => {
+  it.each(['off_amazon_media', 'assortment_change'])(
+    'accepts the new type %s without a kind',
+    (type) => {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type, interpretation: 'why it matters' }),
+      );
+      expect(r.success).toBe(true);
+    },
+  );
+
+  it("type 'other' REQUIRES a kind (the escape must not lose specificity)", () => {
+    const without = contextSchema.safeParse(
+      contextWithEvent({ id: 'e1', type: 'other', interpretation: 'x' }),
+    );
+    expect(without.success).toBe(false);
+    if (!without.success) {
+      expect(JSON.stringify(without.error.issues)).toContain('requires a kind');
+    }
+    const withKind = contextSchema.safeParse(
+      contextWithEvent({
+        id: 'e1',
+        type: 'other',
+        kind: 'retail_media_network_test',
+        interpretation: 'x',
+      }),
+    );
+    expect(withKind.success).toBe(true);
+  });
+
+  it('kind must be a lowercase snake_case slug', () => {
+    for (const bad of ['Has Caps', 'kebab-case', '1leading', 'a'.repeat(65)]) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', kind: bad, interpretation: 'x' }),
+      );
+      expect(r.success, `kind '${bad}' should be rejected`).toBe(false);
+    }
+  });
+
+  it('tags accept lowercase slugs and reject shape violations', () => {
+    const ok = contextSchema.safeParse(
+      contextWithEvent({
+        id: 'e1',
+        type: 'launch',
+        interpretation: 'x',
+        tags: ['mmm', 'backbone-media', 'q3_2026'],
+      }),
+    );
+    expect(ok.success).toBe(true);
+    for (const bad of [['UPPER'], ['has space'], ['x'.repeat(65)], Array.from({ length: 17 }, (_v, i) => `t${i}`)]) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', interpretation: 'x', tags: bad }),
+      );
+      expect(r.success, `tags ${JSON.stringify(bad).slice(0, 40)} should be rejected`).toBe(false);
+    }
+  });
 });
 
 describe('contextSchema — template is structurally valid', () => {

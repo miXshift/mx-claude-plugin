@@ -1025,6 +1025,10 @@ function friendlyEventType(t: string): string {
     stockout: 'Stockout',
     price_test: 'Price test',
     launch: 'Launch',
+    // #37499 additions (schema.ts structuralEventTypes).
+    off_amazon_media: 'Off-Amazon media',
+    assortment_change: 'Assortment change',
+    other: 'Other event',
   };
   return map[t] ?? sentenceCase(t);
 }

@@ -3,6 +3,32 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.8
+
+### Added
+
+- **Your brand's events now reach your team's timeline automatically.** The
+  structural events you record during brand setup (promos, stockouts,
+  launches, migrations) used to live only in that machine's brand context
+  file, invisible to reporting and to teammates. They now publish to your
+  org's brand timeline as declared stakes: automatically after context edits,
+  when you run `mixshift context push` or `migrate`, and on demand with the
+  new `mixshift timeline sync --brand <slug>` (add `--dry-run` to preview).
+  Publishing is idempotent, so nothing is ever recorded twice, and an event
+  with no start date is marked "recorded as of now" so a reader can tell when
+  you learned about it apart from when it happened.
+
+- **Brand events no longer have to fit a fixed list.** Three new structural
+  event types: `off_amazon_media` for a standing off-Amazon media program
+  (outside demand generation, media mix modeling attribution, non-Amazon ad
+  lines), `assortment_change` for expected catalog rotation (seasonal
+  flavors, planned discontinuations), and `other` as an explicit escape so
+  you can record anything you consider an event; `other` asks for a short
+  `kind` slug naming what it is, so the specifics are never lost. Every event
+  can also carry freeform `tags`. The same three categories and tags work on
+  timeline stakes: `mixshift timeline add --category ... --tag ...`, and
+  `timeline list --tag <slug>` filters by them.
+
 ## 0.8.7
 
 ### Added

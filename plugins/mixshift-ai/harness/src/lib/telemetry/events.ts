@@ -222,6 +222,7 @@ export const EventName = {
   TimelineListed: 'timeline.listed',
   TimelineEventAdded: 'timeline.event_added',
   TimelineEventCorroborated: 'timeline.event_corroborated',
+  TimelineStakesSynced: 'timeline.stakes_synced',
 
   // Chat-surface signals (fired from SKILL.md by Claude, not the harness)
   WarmStartServed: 'warm_start.served',

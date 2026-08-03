@@ -1,12 +1,12 @@
 /**
- * `mixshift timeline <list|add|corroborate>` — the brand timeline
+ * `mixshift timeline <list|add|corroborate|sync>` — the brand timeline
  * (ORG-BRAIN.md 2b).
  *
  * list        — read the per-brand event stream (knowledge revisions, audited
  *               Ads actions, structural stakes, comments), filterable by brand
  *               / family / kind / time window, plus the stake filters
  *               (--stakes / --category / --source / --status / --affects /
- *               --overlap / --include-future).
+ *               --tag / --overlap / --include-future).
  * add         — append a human annotation: a `structural.*` stake in the
  *               ground (price change, stockout, Prime Day, creative refresh)
  *               or a `comment` attached to any target ref. Passing --category
@@ -15,6 +15,12 @@
  *               instrumented write paths — both are rejected here.
  * corroborate — append a corroboration to an existing stake, moving its
  *               verification status / closing its range / attaching evidence.
+ * sync        — publish a brand's curated context.yaml structural_events[]
+ *               to the timeline as declared stakes (#37499). Idempotent
+ *               (server-side keys), so re-runs are convergent; the normal
+ *               path is AUTOMATIC via the auto-publish seam after context
+ *               writes — this command is the explicit backfill / first-run /
+ *               dry-run surface.
  *
  * All wire logic lives in lib/timeline/; this file parses options and
  * formats results (house pattern: commands/context.ts).
@@ -27,6 +33,7 @@ import {
   LIST_ALL_CAP,
 } from '../lib/timeline/client.js';
 import { parseSince } from '../lib/timeline/since.js';
+import { syncStakes } from '../lib/timeline/stake-sync.js';
 import {
   STAKE_CATEGORIES,
   STAKE_SOURCES,
@@ -58,6 +65,7 @@ export function registerTimelineCommands(program: Command): void {
   registerList(timeline);
   registerAdd(timeline);
   registerCorroborate(timeline);
+  registerSync(timeline);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +86,7 @@ interface ListCliOptions {
   source?: string;
   status?: string;
   affects?: string;
+  tag?: string;
   overlap?: boolean;
   includeFuture?: boolean;
 }
@@ -116,6 +125,7 @@ function registerList(timeline: Command): void {
       "verification axis: 'unverified' | 'corroborated' | 'disputed' | 'no_effect'",
     )
     .option('--affects <ref>', "match stakes whose affects contains this ref (e.g. 'marketplace:US')")
+    .option('--tag <slug>', "match stakes whose tags contain this slug (e.g. 'mmm')")
     .option(
       '--overlap',
       'treat --since/--until as an interval overlap against the stake range, not a point window',
@@ -165,6 +175,7 @@ function registerList(timeline: Command): void {
         if (opts.source) query.source = opts.source as StakeSource;
         if (opts.status) query.status = opts.status as StakeStatus;
         if (opts.affects) query.affects = opts.affects;
+        if (opts.tag) query.tag = opts.tag;
         if (opts.overlap) query.overlap = true;
         if (opts.includeFuture) query.include_future = true;
 
@@ -262,6 +273,7 @@ interface AddCliOptions {
   end?: string;
   category?: string;
   affects?: string[];
+  tag?: string[];
   intensity?: string;
   source?: string;
   interpretation?: string;
@@ -290,6 +302,7 @@ function registerAdd(timeline: Command): void {
     .option('--end <iso>', 'range close for a ranged stake (>= --ts)')
     .option('--category <enum>', 'stake category (makes this a typed stake; requires --interpretation)')
     .option('--affects <ref>', 'type-prefixed ref the stake touches (repeatable)', collect, [] as string[])
+    .option('--tag <slug>', 'freeform lowercase slug tag for the stake (repeatable)', collect, [] as string[])
     .option('--intensity <number>', 'optional magnitude scalar for the stake')
     .option('--source <src>', "trust axis: 'declared' | 'system' | 'suggested' (default declared)")
     .option('--interpretation <text>', 'what the org read into the stake (required on a stake)')
@@ -367,6 +380,7 @@ function registerAdd(timeline: Command): void {
         } else if (
           opts.end !== undefined ||
           (opts.affects?.length ?? 0) > 0 ||
+          (opts.tag?.length ?? 0) > 0 ||
           opts.intensity !== undefined ||
           opts.source !== undefined ||
           opts.interpretation !== undefined ||
@@ -375,8 +389,9 @@ function registerAdd(timeline: Command): void {
           // A non-stake carrying stake fields is a 400 server-side; name the
           // missing flag rather than bounce.
           emitError(
-            '--end / --affects / --intensity / --source / --interpretation / ' +
-              '--evidence describe a stake; add --category to record one.',
+            '--end / --affects / --tag / --intensity / --source / ' +
+              '--interpretation / --evidence describe a stake; add --category ' +
+              'to record one.',
             root,
           );
           return;
@@ -426,6 +441,7 @@ function registerAdd(timeline: Command): void {
           ...(isStake ? { interpretation: opts.interpretation } : {}),
           ...(opts.end !== undefined ? { end_ts: opts.end } : {}),
           ...(opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {}),
+          ...(opts.tag && opts.tag.length > 0 ? { tags: opts.tag } : {}),
           ...(intensity !== undefined ? { intensity } : {}),
           ...(opts.source !== undefined ? { source: opts.source as StakeSource } : {}),
           ...(evidence !== undefined ? { evidence } : {}),
@@ -453,6 +469,7 @@ function registerAdd(timeline: Command): void {
                     ...(opts.source !== undefined ? { source: opts.source } : {}),
                     has_end: opts.end !== undefined,
                     affects_count: opts.affects?.length ?? 0,
+                    tags_count: opts.tag?.length ?? 0,
                     has_evidence: evidence !== undefined,
                     has_intensity: intensity !== undefined,
                     has_ts: opts.ts !== undefined,
@@ -641,6 +658,106 @@ function registerCorroborate(timeline: Command): void {
 }
 
 // ---------------------------------------------------------------------------
+// timeline sync
+// ---------------------------------------------------------------------------
+
+interface SyncCliOptions {
+  brand: string;
+  dryRun?: boolean;
+}
+
+function registerSync(timeline: Command): void {
+  timeline
+    .command('sync')
+    .description(
+      "Publish a brand's curated context.yaml structural_events to the " +
+        'timeline as declared stakes. Idempotent: an already-synced event ' +
+        'reports duplicate and creates nothing. Events sync automatically ' +
+        'after context writes; use this for the first publish, a backfill, ' +
+        'or a --dry-run preview.',
+    )
+    .requiredOption('--brand <slug>', 'the brand whose events to publish')
+    .option('--dry-run', 'map and report without posting anything', false)
+    .action(async (opts: SyncCliOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const t0 = Date.now();
+      try {
+        const result = await syncStakes(opts.brand, {
+          dataDirOverride: root.dataDir,
+          dryRun: opts.dryRun ?? false,
+        });
+
+        await track(
+          {
+            event_name: EventName.TimelineStakesSynced,
+            outcome: result.ok ? 'ok' : 'failed',
+            duration_ms: Date.now() - t0,
+            ...(result.ok ? {} : { error_class: result.error !== undefined ? 'context' : 'post_failed' }),
+            payload: {
+              brand: opts.brand,
+              dry_run: opts.dryRun ?? false,
+              total: result.total,
+              created: result.created,
+              duplicates: result.duplicates,
+              failed: result.failed,
+            },
+          },
+          root.dataDir,
+        );
+
+        if (result.error !== undefined) {
+          emitError(result.error, root);
+          return;
+        }
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: result.ok ? 'ok' : 'partial',
+                brand: result.brand,
+                total: result.total,
+                created: result.created,
+                duplicates: result.duplicates,
+                failed: result.failed,
+                reports: result.reports,
+              },
+              null,
+              2,
+            ) + '\n',
+          );
+          return;
+        }
+        if (result.total === 0) {
+          process.stdout.write(
+            `No structural events in ${opts.brand}'s context.yaml; nothing to sync.\n`,
+          );
+          return;
+        }
+        const lines = result.reports.map((r) => {
+          const date = r.date_known ? '' : '  (no event date; recorded as of now)';
+          const tail =
+            r.outcome === 'failed'
+              ? `  ${r.detail ?? ''}`
+              : r.event_id !== undefined
+                ? `  ${r.event_id}`
+                : '';
+          return `${r.outcome.padEnd(9)} [${r.category}] ${r.id}${tail}${date}`;
+        });
+        const summary = opts.dryRun
+          ? `Dry run: ${result.total} event(s) would sync to the timeline.`
+          : `✓ Synced ${opts.brand}: ${result.created} created, ${result.duplicates} already on the timeline` +
+            (result.failed > 0 ? `, ${result.failed} FAILED` : '') +
+            '.';
+        process.stdout.write(lines.join('\n') + '\n' + summary + '\n');
+        return;
+      } catch (err) {
+        emitError(err instanceof Error ? err.message : String(err), root);
+        return;
+      }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -722,6 +839,9 @@ function summarizeStake(e: WireTimelineEvent): string {
   if (Array.isArray(e.affects) && e.affects.length > 0) {
     parts.push(`affects×${e.affects.length}`);
   }
+  if (Array.isArray(e.tags) && e.tags.length > 0) {
+    parts.push(truncate(e.tags.map((t) => `#${t}`).join(' '), 40));
+  }
   const evidenceKeys =
     e.evidence && typeof e.evidence === 'object' ? Object.keys(e.evidence).length : 0;
   if (evidenceKeys > 0) parts.push(`evidence(${evidenceKeys})`);
@@ -785,6 +905,7 @@ function filtersPayload(
     ...(query.source !== undefined ? { source: query.source } : {}),
     ...(query.status !== undefined ? { status: query.status } : {}),
     ...(query.affects !== undefined ? { affects: query.affects } : {}),
+    ...(query.tag !== undefined ? { tag: query.tag } : {}),
     ...(query.overlap !== undefined ? { overlap: query.overlap } : {}),
     ...(query.include_future !== undefined ? { include_future: query.include_future } : {}),
     all,
