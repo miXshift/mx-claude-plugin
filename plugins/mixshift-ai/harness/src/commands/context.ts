@@ -185,8 +185,10 @@ export function registerContextCommands(program: Command): void {
         'machine-friendly post-run form for skill flows (the preflight ' +
         'auto-sync is pull-only; pushing local changes stays an explicit ' +
         'opt-in via this command): silent unless something was pulled, ' +
-        'pushed, created, conflicted, or errored. Conflicts still ' +
-        'exit 0 (only per-doc errors are non-zero).',
+        'pushed, created, conflicted, or errored, or a structural event was ' +
+        'recorded on the timeline or failed to reach it. Conflicts still ' +
+        "exit 0 (only per-doc errors are non-zero). Also publishes the brand's " +
+        'structural_events to the timeline as declared stakes (idempotent).',
     hasForce: false,
     hasQuiet: true,
     run: (brand, opts) => sync(brand, opts),
@@ -347,7 +349,8 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
     sub.option(
       '--quiet',
       'machine-friendly: print nothing unless a doc was pulled/pushed/' +
-        'created, conflicted, or errored (--json output is unaffected)',
+        'created, conflicted, or errored, or a structural event was recorded ' +
+        'or failed (--json output is unaffected)',
       false,
     );
   }

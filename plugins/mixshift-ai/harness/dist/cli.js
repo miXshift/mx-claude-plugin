@@ -66497,28 +66497,18 @@ var goalsSchema = external_exports.object({
   quarterly_total_sales_target: external_exports.number().nonnegative().optional(),
   tacos_goal_pct: external_exports.number().positive().optional()
 });
-var structuralEventTypes = [
-  "brand_migration",
-  "media_spike",
-  "media_spike_recurring",
-  "portfolio_decision",
-  "promotional_window",
-  "promotional_window_recurring",
-  "stockout",
-  "price_test",
-  "launch",
-  "off_amazon_media",
-  "assortment_change",
-  "other"
-];
+var RESERVED_EVENT_KINDS = ["content_change", "ads_change", "corroboration"];
+var structuralEventTypeSchema = external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "type must be a lowercase snake_case slug").max(64);
 var structuralEventSchema = external_exports.object({
   id: external_exports.string().min(1),
-  type: external_exports.enum(structuralEventTypes),
+  type: structuralEventTypeSchema,
   // Freeform idiom axis mirroring the server timeline's `kind` (there it
   // syncs as `structural.<kind>`): what THIS event specifically is, in the
   // team's own words, when the fixed type is broader than the event.
   // REQUIRED when type is 'other' (see the refine below).
-  kind: external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "kind must be a lowercase snake_case slug").max(64).optional(),
+  kind: external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "kind must be a lowercase snake_case slug").max(64).refine((k) => !RESERVED_EVENT_KINDS.includes(k), {
+    message: `kind cannot be one of ${RESERVED_EVENT_KINDS.join(", ")} (the timeline reserves those for MixShift's own audited write records). Pick a more specific slug, e.g. manual_content_change.`
+  }).optional(),
   // Freeform team-idiom tags; sync to the timeline stake's tags[] axis.
   tags: external_exports.array(
     external_exports.string().regex(
@@ -67961,8 +67951,42 @@ function failureFromException2(err) {
   return { ok: false, kind: "unknown", message, friendly: message };
 }
 
+// src/lib/timeline/types.ts
+var STAKE_CATEGORIES = [
+  "brand_migration",
+  "media_spike",
+  "media_spike_recurring",
+  "portfolio_decision",
+  "promotional_window",
+  "promotional_window_recurring",
+  "stockout",
+  "price_test",
+  "launch",
+  "content_change",
+  "strategy_change",
+  "platform_external",
+  "off_amazon_media",
+  "assortment_change",
+  "other"
+];
+var STAKE_SOURCES = ["declared", "system", "suggested"];
+var STAKE_STATUSES = [
+  "unverified",
+  "corroborated",
+  "disputed",
+  "no_effect"
+];
+
 // src/lib/timeline/stake-sync.ts
 var STAKE_POST_TIMEOUT_MS = 1e4;
+var MAX_INTERPRETATION_CHARS = 4e3;
+var MAX_AFFECTS = 64;
+var MAX_AFFECT_CHARS = 256;
+var PERMANENT_FAILURE_KINDS = [
+  "bad_params",
+  "reserved_kind",
+  "too_large"
+];
 function stakeIdempotencyKey(brandSlug, eventId) {
   const plain = `ctxev:${brandSlug}:${eventId}`;
   if (plain.length <= 255) return plain;
@@ -67973,11 +67997,16 @@ function hashStructuralEvents(events) {
   return createHash2("sha256").update(JSON.stringify(events), "utf8").digest("hex");
 }
 var DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+var ZONELESS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 function normalizeStartTs(value) {
-  return DATE_ONLY_RE.test(value) ? `${value}T00:00:00Z` : value;
+  if (DATE_ONLY_RE.test(value)) return `${value}T00:00:00Z`;
+  if (ZONELESS_RE.test(value)) return `${value}Z`;
+  return value;
 }
 function normalizeEndTs(value) {
-  return DATE_ONLY_RE.test(value) ? `${value}T23:59:59Z` : value;
+  if (DATE_ONLY_RE.test(value)) return `${value}T23:59:59Z`;
+  if (ZONELESS_RE.test(value)) return `${value}Z`;
+  return value;
 }
 function mapAffectsRef(entry) {
   if (typeof entry === "string") return entry.length > 0 ? entry : null;
@@ -67992,35 +68021,70 @@ function mapAffectsRef(entry) {
   }
   return null;
 }
+function resolveCategory(event) {
+  const known = STAKE_CATEGORIES.includes(event.type);
+  if (known) {
+    return {
+      category: event.type,
+      kindLeaf: event.kind ?? event.type
+    };
+  }
+  return { category: "other", kindLeaf: event.kind ?? event.type };
+}
 function mapEventToStake(brandSlug, event) {
-  const start = event.start;
   const end = event.end ?? event.active_through;
-  const dateKnown = start !== void 0;
+  const dateKnown = event.start !== void 0;
+  const ts = dateKnown ? normalizeStartTs(event.start) : end !== void 0 ? normalizeStartTs(dateOnlyPart(end)) : void 0;
   const affects = (event.affects ?? []).map(mapAffectsRef).filter((r) => r !== null);
+  const { category, kindLeaf } = resolveCategory(event);
   return {
     brand_slug: brandSlug,
     family: "structural",
-    kind: `structural.${event.kind ?? event.type}`,
-    category: event.type,
+    kind: `structural.${kindLeaf}`,
+    category,
     source: "declared",
     interpretation: event.interpretation,
-    ...dateKnown ? { ts: normalizeStartTs(start) } : {},
+    ...ts !== void 0 ? { ts } : {},
     ...end !== void 0 ? { end_ts: normalizeEndTs(end) } : {},
     ...affects.length > 0 ? { affects } : {},
     ...event.tags && event.tags.length > 0 ? { tags: event.tags } : {},
-    // Provenance: where the record came from, and — for an undated event —
-    // that ts is the moment of RECORDING, not occurrence.
+    // Provenance: where the record came from, whether the event's own date is
+    // known (when false, ts is a recording/anchor time, not an occurrence),
+    // and the original local type whenever it had to be folded into `other`.
     evidence: {
       recorded_from: "context.yaml",
-      event_date_known: dateKnown
+      event_date_known: dateKnown,
+      ...category === "other" && event.type !== "other" ? { local_type: event.type } : {}
     },
     idempotency_key: stakeIdempotencyKey(brandSlug, event.id)
   };
+}
+function dateOnlyPart(value) {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  return m ? m[1] : value;
+}
+function preflightEvent(event, seenIds) {
+  if (seenIds.has(event.id)) {
+    return `duplicate id '${event.id}' in structural_events; ids must be unique (both events would resolve to the same timeline record)`;
+  }
+  if (event.interpretation.length > MAX_INTERPRETATION_CHARS) {
+    return `interpretation is ${event.interpretation.length} characters; the limit is ${MAX_INTERPRETATION_CHARS}`;
+  }
+  const refs = (event.affects ?? []).map(mapAffectsRef).filter((r) => r !== null);
+  if (refs.length > MAX_AFFECTS) {
+    return `affects has ${refs.length} entries; the limit is ${MAX_AFFECTS}`;
+  }
+  const tooLong = refs.find((r) => r.length > MAX_AFFECT_CHARS);
+  if (tooLong !== void 0) {
+    return `an affects entry is ${tooLong.length} characters; the limit is ${MAX_AFFECT_CHARS}`;
+  }
+  return null;
 }
 async function syncStakes(brandSlug, options = {}) {
   const base = {
     brand: brandSlug,
     total: 0,
+    permanent_failures: 0,
     created: 0,
     duplicates: 0,
     failed: 0,
@@ -68047,13 +68111,30 @@ async function syncStakes(brandSlug, options = {}) {
   if (events.length === 0) return { ...base, ok: true };
   const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
   const result = { ...base, ok: true, total: events.length };
+  const seenIds = /* @__PURE__ */ new Set();
   for (const event of events) {
     const body = mapEventToStake(brandSlug, event);
     const reportBase = {
       id: event.id,
-      category: event.type,
-      date_known: body.ts !== void 0
+      category: body.category,
+      date_known: event.start !== void 0
     };
+    const rejected = preflightEvent(event, seenIds);
+    seenIds.add(event.id);
+    if (rejected !== null) {
+      if (!options.dryRun) {
+        result.failed += 1;
+        result.permanent_failures += 1;
+        result.ok = false;
+      }
+      result.reports.push({
+        ...reportBase,
+        outcome: options.dryRun ? "planned" : "failed",
+        detail: rejected,
+        ...options.dryRun ? {} : { permanent: true }
+      });
+      continue;
+    }
     if (options.dryRun) {
       result.reports.push({ ...reportBase, outcome: "planned" });
       continue;
@@ -68070,12 +68151,20 @@ async function syncStakes(brandSlug, options = {}) {
         result.reports.push({ ...reportBase, outcome: "created", event_id: posted.id });
       }
     } else {
+      const permanent = PERMANENT_FAILURE_KINDS.includes(posted.kind);
       result.failed += 1;
+      if (permanent) result.permanent_failures += 1;
       result.ok = false;
-      result.reports.push({ ...reportBase, outcome: "failed", detail: posted.friendly });
+      result.reports.push({
+        ...reportBase,
+        outcome: "failed",
+        detail: posted.friendly,
+        ...permanent ? { permanent: true } : {}
+      });
     }
   }
-  if (!options.dryRun && result.ok) {
+  const stampable = result.failed === result.permanent_failures;
+  if (!options.dryRun && stampable) {
     try {
       const identity = await resolveLedgerIdentity(options.dataDirOverride);
       const state = await loadState(brandSlug, options.dataDirOverride, identity);
@@ -68151,12 +68240,23 @@ async function runStakeLeg(brandSlug, options, env) {
         debugLog(env, `stake-sync(${brandSlug}): ${raced.error}`);
         return { skipped: false, ...none, detail: raced.error };
       }
+      if (raced.failed > 0) {
+        for (const r of raced.reports) {
+          if (r.outcome !== "failed") continue;
+          debugLog(
+            env,
+            `stake-sync(${brandSlug}): event '${r.id}' failed${r.permanent ? " PERMANENTLY (needs a context.yaml edit)" : " (will retry)"}: ${r.detail ?? "no detail"}`
+          );
+        }
+      }
       return {
         skipped: false,
         created: raced.created,
         duplicates: raced.duplicates,
         failed: raced.failed,
-        ...raced.failed > 0 ? { detail: `${raced.failed} event(s) failed to sync` } : {}
+        ...raced.failed > 0 ? {
+          detail: `${raced.failed} event(s) failed to sync` + (raced.permanent_failures > 0 ? ` (${raced.permanent_failures} need a context.yaml edit: ` + raced.reports.filter((r) => r.outcome === "failed" && r.permanent).map((r) => r.id).join(", ") + ")" : "")
+        } : {}
       };
     } finally {
       clearTimeout(abortTimer);
@@ -68262,7 +68362,7 @@ function noticeLineFor(brandSlug, result) {
     const stakeNote = staked > 0 ? ` Recorded ${staked} brand event(s) on the team timeline.` : "";
     if (shared <= 0 && staked <= 0) return null;
     if (shared <= 0) {
-      return `\u2713 ${brandSlug}:${stakeNote.trimStart()}`;
+      return `\u2713 ${brandSlug}:${stakeNote}`;
     }
     return `\u2713 Shared ${brandSlug} to your team's brand context (${shared} doc(s)).${stakeNote}`;
   }
@@ -89378,7 +89478,7 @@ function registerContextCommands(program3) {
   });
   registerActionSubcommand(context, {
     name: "sync",
-    description: "Two-way non-destructive sync: pull every non-conflicting server change, push every non-conflicting local change, and list diverged docs as conflicts. Never merges content. --quiet is the machine-friendly post-run form for skill flows (the preflight auto-sync is pull-only; pushing local changes stays an explicit opt-in via this command): silent unless something was pulled, pushed, created, conflicted, or errored. Conflicts still exit 0 (only per-doc errors are non-zero).",
+    description: "Two-way non-destructive sync: pull every non-conflicting server change, push every non-conflicting local change, and list diverged docs as conflicts. Never merges content. --quiet is the machine-friendly post-run form for skill flows (the preflight auto-sync is pull-only; pushing local changes stays an explicit opt-in via this command): silent unless something was pulled, pushed, created, conflicted, or errored, or a structural event was recorded on the timeline or failed to reach it. Conflicts still exit 0 (only per-doc errors are non-zero). Also publishes the brand's structural_events to the timeline as declared stakes (idempotent).",
     hasForce: false,
     hasQuiet: true,
     run: (brand, opts) => sync(brand, opts),
@@ -89489,7 +89589,7 @@ function registerActionSubcommand(context, spec) {
   if (spec.hasQuiet) {
     sub.option(
       "--quiet",
-      "machine-friendly: print nothing unless a doc was pulled/pushed/created, conflicted, or errored (--json output is unaffected)",
+      "machine-friendly: print nothing unless a doc was pulled/pushed/created, conflicted, or errored, or a structural event was recorded or failed (--json output is unaffected)",
       false
     );
   }
@@ -89796,32 +89896,6 @@ function parseSince(input, now = /* @__PURE__ */ new Date(), flag = "--since") {
   return { ok: true, iso: parsed.toISOString() };
 }
 
-// src/lib/timeline/types.ts
-var STAKE_CATEGORIES = [
-  "brand_migration",
-  "media_spike",
-  "media_spike_recurring",
-  "portfolio_decision",
-  "promotional_window",
-  "promotional_window_recurring",
-  "stockout",
-  "price_test",
-  "launch",
-  "content_change",
-  "strategy_change",
-  "platform_external",
-  "off_amazon_media",
-  "assortment_change",
-  "other"
-];
-var STAKE_SOURCES = ["declared", "system", "suggested"];
-var STAKE_STATUSES = [
-  "unverified",
-  "corroborated",
-  "disputed",
-  "no_effect"
-];
-
 // src/commands/timeline.ts
 init_telemetry();
 function registerTimelineCommands(program3) {
@@ -89956,7 +90030,7 @@ function registerList(timeline) {
   });
 }
 var MAX_NOTE_CHARS = 32768;
-var MAX_INTERPRETATION_CHARS = 4e3;
+var MAX_INTERPRETATION_CHARS2 = 4e3;
 var MAX_EVIDENCE_CHARS = 4096;
 function registerAdd(timeline) {
   timeline.command("add").description(
@@ -90006,9 +90080,9 @@ function registerAdd(timeline) {
           );
           return;
         }
-        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS) {
+        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS2) {
           emitError13(
-            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS}).`,
+            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS2}).`,
             root
           );
           return;

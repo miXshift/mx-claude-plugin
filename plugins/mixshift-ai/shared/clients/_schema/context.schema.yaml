@@ -153,14 +153,22 @@ shapes:
                                  # demand gen, MMM attribution, non-Amazon ad lines
         - assortment_change      # expected catalog rotation: seasonal flavors,
                                  # planned discontinuations
-        - other                  # explicit escape — REQUIRES kind; never force a
+        - other                  # explicit escape - REQUIRES kind; never force a
                                  # wrong type on what the user told you
     note: |
+      The type list above is the KNOWN, recommended set and the values
+      consumers key on, but validation TOLERATES any lowercase snake_case slug
+      so a newer plugin's taxonomy cannot hard-fail a brand on an older client
+      (context.yaml travels between machines through the org store). An
+      unrecognized type still syncs: it lands under the timeline's `other`
+      category carrying the original slug as the kind.
       kind (optional; REQUIRED when type is `other`): freeform lowercase
       snake_case slug naming what THIS event specifically is when the fixed
       type is broader than the event (e.g. type: off_amazon_media,
       kind: mmm_attributed_demand_gen). Mirrors the timeline's freeform kind
-      axis; the event syncs as `structural.<kind>`.
+      axis; the event syncs as `structural.<kind>`. Cannot be
+      content_change / ads_change / corroboration: the timeline reserves those
+      for MixShift's own audited write records.
       tags (optional): freeform lowercase slug list (max 16, each ≤64 chars of
       a-z 0-9 - _), the team-idiom axis; sync to the timeline stake's tags.
       Events sync AUTOMATICALLY to the org brand timeline as declared stakes

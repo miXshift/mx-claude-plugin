@@ -8,6 +8,8 @@ import {
   contextSchema,
   normalizeLegacyTacosFields,
   REQUIRED_TOP_LEVEL_FIELDS,
+  RESERVED_EVENT_KINDS,
+  STRUCTURAL_EVENT_TYPES,
 } from './schema.js';
 import { validateBrandContext } from './load.js';
 
@@ -273,26 +275,22 @@ describe('contextSchema — drift check against canonical YAML schema', () => {
     expect(zodSorted).toEqual(yamlSorted);
   });
 
-  it('structural_event type enum matches the canonical YAML schema (#37499)', async () => {
+  it('the known structural_event types match the canonical YAML schema (#37499)', async () => {
     const raw = await readFile(yamlSchemaPath, 'utf-8');
     const yamlSchema = parseYaml(raw) as {
       shapes: { structural_event: { enums: { type: string[] } } };
     };
     const yamlTypes = [...yamlSchema.shapes.structural_event.enums.type].sort();
-    // Probe the zod enum through parsing: every YAML value must be accepted
-    // and one made-up value must not.
+    // The documented/known set must match in BOTH directions.
+    expect([...STRUCTURAL_EVENT_TYPES].sort()).toEqual(yamlTypes);
+    // Pin the count so an addition on either side forces this test open.
+    expect(yamlTypes).toHaveLength(12);
     for (const t of yamlTypes) {
       const r = contextSchema.safeParse(
         contextWithEvent({ id: 'e', type: t, interpretation: 'x', kind: 'probe' }),
       );
       expect(r.success, `type '${t}' should validate`).toBe(true);
     }
-    const bad = contextSchema.safeParse(
-      contextWithEvent({ id: 'e', type: 'made_up_type', interpretation: 'x' }),
-    );
-    expect(bad.success).toBe(false);
-    // Pin the count so an addition on either side forces this test open.
-    expect(yamlTypes).toHaveLength(12);
   });
 });
 
@@ -358,6 +356,39 @@ describe('structural_events — #37499 taxonomy flexibility', () => {
     );
     expect(withKind.success).toBe(true);
   });
+
+  it('an UNKNOWN type slug is tolerated, not rejected (forward compatibility)', () => {
+    // A newer plugin may add a type this build has never heard of, and
+    // context.yaml travels between machines via the org store. Hard-failing
+    // would take the whole brand down for every skill on the older client
+    // (exactly what the 0.8.7 enum did when this release added three values).
+    const r = contextSchema.safeParse(
+      contextWithEvent({ id: 'e1', type: 'some_future_type', interpretation: 'x' }),
+    );
+    expect(r.success).toBe(true);
+  });
+
+  it('a non-slug type is still rejected (typo protection survives)', () => {
+    for (const bad of ['Promotional Window', 'promo-window', '2026_promo', '']) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: bad, interpretation: 'x' }),
+      );
+      expect(r.success, `type '${bad}' should be rejected`).toBe(false);
+    }
+  });
+
+  it.each([...RESERVED_EVENT_KINDS])(
+    'kind cannot be the server-reserved slug %s',
+    (reserved) => {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', kind: reserved, interpretation: 'x' }),
+      );
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(JSON.stringify(r.error.issues)).toContain('reserves those');
+      }
+    },
+  );
 
   it('kind must be a lowercase snake_case slug', () => {
     for (const bad of ['Has Caps', 'kebab-case', '1leading', 'a'.repeat(65)]) {

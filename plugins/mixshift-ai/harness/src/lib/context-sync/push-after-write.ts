@@ -224,14 +224,44 @@ async function runStakeLeg(
         debugLog(env, `stake-sync(${brandSlug}): ${raced.error}`);
         return { skipped: false, ...none, detail: raced.error };
       }
-      // syncStakes stamps the ledger itself on a fully-clean run (and only
-      // then), so the next write's hash-skip fires with zero network.
+      // syncStakes owns the ledger stamp (clean run, or one whose only
+      // remaining failures are permanent), so the next write's hash-skip
+      // fires with zero network.
+      //
+      // Name the FAILING EVENTS in the debug log. The stderr notice stays
+      // quiet about failures by design (the write already succeeded and the
+      // events remain locally), but a permanently-rejected event would
+      // otherwise be undiagnosable without running `timeline sync` by hand.
+      if (raced.failed > 0) {
+        for (const r of raced.reports) {
+          if (r.outcome !== 'failed') continue;
+          debugLog(
+            env,
+            `stake-sync(${brandSlug}): event '${r.id}' failed${
+              r.permanent ? ' PERMANENTLY (needs a context.yaml edit)' : ' (will retry)'
+            }: ${r.detail ?? 'no detail'}`,
+          );
+        }
+      }
       return {
         skipped: false,
         created: raced.created,
         duplicates: raced.duplicates,
         failed: raced.failed,
-        ...(raced.failed > 0 ? { detail: `${raced.failed} event(s) failed to sync` } : {}),
+        ...(raced.failed > 0
+          ? {
+              detail:
+                `${raced.failed} event(s) failed to sync` +
+                (raced.permanent_failures > 0
+                  ? ` (${raced.permanent_failures} need a context.yaml edit: ` +
+                    raced.reports
+                      .filter((r) => r.outcome === 'failed' && r.permanent)
+                      .map((r) => r.id)
+                      .join(', ') +
+                    ')'
+                  : ''),
+            }
+          : {}),
       };
     } finally {
       clearTimeout(abortTimer);
@@ -444,7 +474,9 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
     // no news to report, unless events landed.
     if (shared <= 0 && staked <= 0) return null;
     if (shared <= 0) {
-      return `✓ ${brandSlug}:${stakeNote.trimStart()}`;
+      // stakeNote carries its own leading space, which supplies the separator
+      // after the colon (do not trim it away).
+      return `✓ ${brandSlug}:${stakeNote}`;
     }
     return `✓ Shared ${brandSlug} to your team's brand context (${shared} doc(s)).${stakeNote}`;
   }

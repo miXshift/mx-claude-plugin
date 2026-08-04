@@ -8,6 +8,7 @@ import {
   mapEventToStake,
   normalizeEndTs,
   normalizeStartTs,
+  preflightEvent,
   stakeIdempotencyKey,
   syncStakes,
 } from './stake-sync.js';
@@ -21,8 +22,8 @@ import type { StructuralEvent } from '../context/schema.js';
 const DATED_EVENT: StructuralEvent = {
   id: 'dsp-ramp-2026-01',
   type: 'launch',
-  affects: [{ sub_brand: 'skratch-labs' }],
-  interpretation: 'DSP began in earnest in January 2026.',
+  affects: [{ sub_brand: 'house-blend' }],
+  interpretation: 'DSP began in earnest in January 2026 (fixture).',
   start: '2026-01-01',
 };
 
@@ -35,18 +36,18 @@ const UNDATED_EVENT: StructuralEvent = {
 
 describe('mapEventToStake', () => {
   it('maps a dated event: type→category, kind fallback, date pinned to start of day', () => {
-    const body = mapEventToStake('sports-unlimited-nutrition', DATED_EVENT);
+    const body = mapEventToStake('example-brand', DATED_EVENT);
     expect(body).toEqual({
-      brand_slug: 'sports-unlimited-nutrition',
+      brand_slug: 'example-brand',
       family: 'structural',
       kind: 'structural.launch',
       category: 'launch',
       source: 'declared',
-      interpretation: 'DSP began in earnest in January 2026.',
+      interpretation: 'DSP began in earnest in January 2026 (fixture).',
       ts: '2026-01-01T00:00:00Z',
-      affects: ['sub_brand:skratch-labs'],
+      affects: ['sub_brand:house-blend'],
       evidence: { recorded_from: 'context.yaml', event_date_known: true },
-      idempotency_key: 'ctxev:sports-unlimited-nutrition:dsp-ramp-2026-01',
+      idempotency_key: 'ctxev:example-brand:dsp-ramp-2026-01',
     });
   });
 
@@ -64,11 +65,11 @@ describe('mapEventToStake', () => {
       ...UNDATED_EVENT,
       type: 'other',
       kind: 'mmm_attributed_demand_gen',
-      tags: ['mmm', 'backbone-media'],
+      tags: ['mmm', 'agency-partner'],
     });
     expect(body.kind).toBe('structural.mmm_attributed_demand_gen');
     expect(body.category).toBe('other');
-    expect(body.tags).toEqual(['mmm', 'backbone-media']);
+    expect(body.tags).toEqual(['mmm', 'agency-partner']);
   });
 
   it('end / active_through map to end_ts pinned to END of day (end wins)', () => {
@@ -95,7 +96,7 @@ describe('mapEventToStake', () => {
 
 describe('mapAffectsRef', () => {
   it.each([
-    [{ sub_brand: 'skratch-labs' }, 'sub_brand:skratch-labs'],
+    [{ sub_brand: 'house-blend' }, 'sub_brand:house-blend'],
     [{ item_group: 'Unsweetened Hydration' }, 'item_group:Unsweetened Hydration'],
     [{ seller_id: 71 }, 'seller_id:71'],
     ['marketplace:US', 'marketplace:US'],
@@ -167,7 +168,7 @@ structural_events:
   - id: dsp-ramp
     type: launch
     affects:
-      - sub_brand: skratch
+      - sub_brand: house-blend
     interpretation: DSP ramp.
     start: "2026-01-01"
   - id: seasonal-rotation
@@ -176,9 +177,11 @@ structural_events:
     interpretation: Seasonal flavors rotate.
 `;
 
-function stubClient(
-  results: Array<{ ok: true; id: string; duplicate?: boolean } | { ok: false }>,
-): TimelineClient {
+type StubResult =
+  | { ok: true; id: string; duplicate?: boolean }
+  | { ok: false; kind?: 'bad_params' | 'reserved_kind' | 'host_unreachable' };
+
+function stubClient(results: StubResult[]): TimelineClient {
   let i = 0;
   return {
     listEvents: vi.fn(),
@@ -187,11 +190,15 @@ function stubClient(
       const r = results[Math.min(i, results.length - 1)];
       i += 1;
       if (r.ok) return r;
+      const kind = r.kind ?? 'bad_params';
       return {
         ok: false as const,
-        kind: 'bad_params' as const,
+        kind,
         message: 'nope',
-        friendly: 'The event violates a field constraint.',
+        friendly:
+          kind === 'host_unreachable'
+            ? 'The MixShift auth service is unreachable.'
+            : 'The event violates a field constraint.',
       };
     }),
   } as unknown as TimelineClient;
@@ -261,24 +268,47 @@ describe('syncStakes', () => {
     expect(result.total).toBe(0);
   });
 
-  it('stamps the sync ledger on a fully-clean run, and only then', async () => {
+  it('stamps the sync ledger on a fully-clean run', async () => {
     await writeBrand();
     const statePath = join(testDir, 'clients', 'acme', '.context-sync-state.json');
-
-    // Partial failure: no stamp.
-    await syncStakes('acme', {
-      dataDirOverride: testDir,
-      client: stubClient([{ ok: false }, { ok: true, id: 'evt-2' }]),
-    });
-    await expect(readFile(statePath, 'utf8')).rejects.toThrow();
-
-    // Clean run: stamped with the events hash.
     await syncStakes('acme', {
       dataDirOverride: testDir,
       client: stubClient([{ ok: true, id: 'evt-1' }, { ok: true, id: 'evt-2' }]),
     });
     const state = JSON.parse(await readFile(statePath, 'utf8')) as {
       stakes?: { last_synced_hash: string; last_synced_at: string };
+    };
+    expect(state.stakes?.last_synced_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('a TRANSIENT failure does NOT stamp (the next write retries it)', async () => {
+    await writeBrand();
+    const statePath = join(testDir, 'clients', 'acme', '.context-sync-state.json');
+    const result = await syncStakes('acme', {
+      dataDirOverride: testDir,
+      client: stubClient([{ ok: false, kind: 'host_unreachable' }, { ok: true, id: 'evt-2' }]),
+    });
+    expect(result.failed).toBe(1);
+    expect(result.permanent_failures).toBe(0);
+    expect(result.reports[0].permanent).toBeUndefined();
+    await expect(readFile(statePath, 'utf8')).rejects.toThrow();
+  });
+
+  it('an all-PERMANENT failure DOES stamp, so one bad event cannot wedge the brand forever', async () => {
+    await writeBrand();
+    const statePath = join(testDir, 'clients', 'acme', '.context-sync-state.json');
+    const result = await syncStakes('acme', {
+      dataDirOverride: testDir,
+      client: stubClient([{ ok: false, kind: 'reserved_kind' }, { ok: true, id: 'evt-2' }]),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failed).toBe(1);
+    expect(result.permanent_failures).toBe(1);
+    expect(result.reports[0].permanent).toBe(true);
+    // Stamped despite the failure: retrying cannot help, and re-posting the
+    // whole set on every future context write would never make progress.
+    const state = JSON.parse(await readFile(statePath, 'utf8')) as {
+      stakes?: { last_synced_hash: string };
     };
     expect(state.stakes?.last_synced_hash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -292,5 +322,110 @@ describe('syncStakes', () => {
       dryRun: true,
     });
     await expect(readFile(statePath, 'utf8')).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Red-team remediations (#37499 review)
+// ---------------------------------------------------------------------------
+
+describe('mapEventToStake — review fixes', () => {
+  it('an UNDATED event with an end anchors ts to the end day (never a backwards range)', () => {
+    // Omitting ts here would let the server pin ts=now, putting the close
+    // BEFORE the start and 400ing 'end_ts must be at or after ts' forever.
+    const body = mapEventToStake('acme', {
+      ...UNDATED_EVENT,
+      active_through: '2025-09-30',
+    });
+    expect(body.ts).toBe('2025-09-30T00:00:00Z');
+    expect(body.end_ts).toBe('2025-09-30T23:59:59Z');
+    expect(Date.parse(body.end_ts as string)).toBeGreaterThanOrEqual(
+      Date.parse(body.ts as string),
+    );
+    // The event's own date is still unknown; ts is only an anchor.
+    expect((body.evidence as Record<string, unknown>).event_date_known).toBe(false);
+  });
+
+  it('a zone-less timestamp is stamped UTC (the server requires an offset)', () => {
+    const body = mapEventToStake('acme', {
+      ...DATED_EVENT,
+      start: '2026-01-15T09:00:00',
+      end: '2026-01-16T17:30',
+    });
+    expect(body.ts).toBe('2026-01-15T09:00:00Z');
+    expect(body.end_ts).toBe('2026-01-16T17:30Z');
+  });
+
+  it('an UNKNOWN local type folds into the server `other` category, losslessly', () => {
+    const body = mapEventToStake('acme', {
+      ...UNDATED_EVENT,
+      type: 'some_future_type',
+    });
+    expect(body.category).toBe('other');
+    // The original slug survives on both the kind axis and the evidence.
+    expect(body.kind).toBe('structural.some_future_type');
+    expect((body.evidence as Record<string, unknown>).local_type).toBe('some_future_type');
+  });
+
+  it('a known type never records local_type (no noise on the common path)', () => {
+    const body = mapEventToStake('acme', DATED_EVENT);
+    expect((body.evidence as Record<string, unknown>).local_type).toBeUndefined();
+  });
+});
+
+describe('preflightEvent', () => {
+  const base = { ...UNDATED_EVENT };
+
+  it('passes a normal event', () => {
+    expect(preflightEvent(base, new Set())).toBeNull();
+  });
+
+  it('rejects a duplicate id (both events would collapse to one stake)', () => {
+    const reason = preflightEvent(base, new Set([base.id]));
+    expect(reason).toContain('duplicate id');
+    expect(reason).toContain(base.id);
+  });
+
+  it('rejects an over-long interpretation before any round trip', () => {
+    const reason = preflightEvent({ ...base, interpretation: 'x'.repeat(4001) }, new Set());
+    expect(reason).toContain('4001');
+    expect(reason).toContain('4000');
+  });
+
+  it('rejects too many affects and an over-long affects ref', () => {
+    expect(
+      preflightEvent(
+        { ...base, affects: Array.from({ length: 65 }, (_v, i) => ({ asin: `B${i}` })) },
+        new Set(),
+      ),
+    ).toContain('65 entries');
+    expect(
+      preflightEvent({ ...base, affects: [{ note: 'x'.repeat(300) }] }, new Set()),
+    ).toContain('limit is 256');
+  });
+});
+
+describe('syncStakes — preflight integration', () => {
+  let testDir: string;
+  afterEach(async () => {
+    if (testDir) await rm(testDir, { recursive: true, force: true });
+  });
+
+  it('a duplicate id is reported as a permanent failure and never posted', async () => {
+    testDir = await mkdtemp(join(tmpdir(), 'mx-stake-dup-'));
+    const brandDir = join(testDir, 'clients', 'acme');
+    await mkdir(brandDir, { recursive: true });
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      CONTEXT_YAML.replace('id: seasonal-rotation', 'id: dsp-ramp'),
+      'utf8',
+    );
+    const client = stubClient([{ ok: true, id: 'evt-1' }]);
+    const result = await syncStakes('acme', { dataDirOverride: testDir, client });
+    expect(client.postEvent).toHaveBeenCalledTimes(1); // only the first
+    expect(result.failed).toBe(1);
+    expect(result.permanent_failures).toBe(1);
+    expect(result.reports[1]).toMatchObject({ outcome: 'failed', permanent: true });
+    expect(result.reports[1].detail).toContain('duplicate id');
   });
 });

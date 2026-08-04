@@ -961,11 +961,11 @@ describe('--tag wiring (#37499)', () => {
       '--brand', 'acme',
       '--kind', 'structural.demand_gen',
       '--category', 'off_amazon_media',
-      '--interpretation', 'Backbone Media runs off-Amazon demand gen.',
+      '--interpretation', 'An outside agency runs off-Amazon demand gen.',
       '--tag', 'mmm',
-      '--tag', 'backbone-media',
+      '--tag', 'agency-partner',
     );
-    expect(state.posts[0].tags).toEqual(['mmm', 'backbone-media']);
+    expect(state.posts[0].tags).toEqual(['mmm', 'agency-partner']);
     expect(state.posts[0].category).toBe('off_amazon_media');
   });
 
@@ -988,6 +988,7 @@ describe('timeline sync (#37499)', () => {
       created: 1,
       duplicates: 1,
       failed: 0,
+      permanent_failures: 0,
       reports: [
         { id: 'dsp-ramp', outcome: 'created', event_id: 'evt-1', category: 'launch', date_known: true },
         { id: 'rotation', outcome: 'duplicate', event_id: 'evt-2', category: 'assortment_change', date_known: false },
@@ -1013,6 +1014,7 @@ describe('timeline sync (#37499)', () => {
       created: 0,
       duplicates: 0,
       failed: 0,
+      permanent_failures: 0,
       reports: [
         { id: 'dsp-ramp', outcome: 'planned', category: 'launch', date_known: true },
       ],
@@ -1034,6 +1036,7 @@ describe('timeline sync (#37499)', () => {
       created: 0,
       duplicates: 0,
       failed: 0,
+      permanent_failures: 0,
       reports: [],
       error: 'No brand context found for "nope".',
     });

@@ -102,7 +102,7 @@ const goalsSchema = z.object({
 // expected behavior — seasonal flavors, planned discontinuations), and
 // `other` (the explicit escape: record what the user said, under a specific
 // `kind`, instead of forcing a wrong type).
-const structuralEventTypes = [
+export const STRUCTURAL_EVENT_TYPES = [
   'brand_migration',
   'media_spike',
   'media_spike_recurring',
@@ -117,10 +117,37 @@ const structuralEventTypes = [
   'other',
 ] as const;
 
+/**
+ * Kind slugs the SERVER reserves for its own machine-attested audit events
+ * (mx-legacy-auth routes/timeline.ts RESERVED_KINDS, minus the knowledge
+ * family). A curated event syncs as `structural.<kind>`, so a local kind of
+ * `content_change` would collide with the guarded listings-write provenance
+ * kind and be rejected 400 reserved_kind forever. Rejected at authoring time
+ * so the user gets a clear message instead of a permanently failing sync.
+ * Safe as a hard schema rule: `kind` is new in this release, so no existing
+ * context.yaml can carry one.
+ */
+export const RESERVED_EVENT_KINDS = ['content_change', 'ads_change', 'corroboration'] as const;
+
+/**
+ * FORWARD TOLERANCE (#37499 review): `type` accepts a KNOWN value or any
+ * lowercase slug. The 12 known values stay the documented, recommended set
+ * (and the ones consumers key on), but an unrecognized slug must not hard-fail
+ * the whole brand for every skill — that is exactly what a stricter enum did
+ * to 0.8.7 clients when this release added three values, and context.yaml
+ * travels between machines through the org store. An unknown type still syncs
+ * losslessly: stake-sync maps it to the server's `other` category carrying the
+ * original slug as `kind` (see lib/timeline/stake-sync.ts).
+ */
+const structuralEventTypeSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/, 'type must be a lowercase snake_case slug')
+  .max(64);
+
 const structuralEventSchema = z
   .object({
     id: z.string().min(1),
-    type: z.enum(structuralEventTypes),
+    type: structuralEventTypeSchema,
     // Freeform idiom axis mirroring the server timeline's `kind` (there it
     // syncs as `structural.<kind>`): what THIS event specifically is, in the
     // team's own words, when the fixed type is broader than the event.
@@ -129,6 +156,9 @@ const structuralEventSchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/, 'kind must be a lowercase snake_case slug')
       .max(64)
+      .refine((k) => !(RESERVED_EVENT_KINDS as readonly string[]).includes(k), {
+        message: `kind cannot be one of ${RESERVED_EVENT_KINDS.join(', ')} (the timeline reserves those for MixShift's own audited write records). Pick a more specific slug, e.g. manual_content_change.`,
+      })
       .optional(),
     // Freeform team-idiom tags; sync to the timeline stake's tags[] axis.
     tags: z
