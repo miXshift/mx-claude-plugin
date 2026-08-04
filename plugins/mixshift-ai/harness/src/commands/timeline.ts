@@ -34,6 +34,7 @@ import {
 } from '../lib/timeline/client.js';
 import { parseSince } from '../lib/timeline/since.js';
 import { syncStakes } from '../lib/timeline/stake-sync.js';
+import { listLocalBrands } from '../lib/context-sync/local.js';
 import {
   STAKE_CATEGORIES,
   STAKE_SOURCES,
@@ -662,7 +663,7 @@ function registerCorroborate(timeline: Command): void {
 // ---------------------------------------------------------------------------
 
 interface SyncCliOptions {
-  brand: string;
+  brand?: string;
   dryRun?: boolean;
 }
 
@@ -670,56 +671,85 @@ function registerSync(timeline: Command): void {
   timeline
     .command('sync')
     .description(
-      "Publish a brand's curated context.yaml structural_events to the " +
-        'timeline as declared stakes. Idempotent: an already-synced event ' +
-        'reports duplicate and creates nothing. Events sync automatically ' +
-        'after context writes; use this for the first publish, a backfill, ' +
-        'or a --dry-run preview.',
+      'Publish curated context.yaml structural_events to the timeline as ' +
+        'declared stakes. Without --brand it covers EVERY local brand (the ' +
+        'one-time backfill after updating). Idempotent: an already-synced ' +
+        'event reports duplicate and creates nothing. Events also sync ' +
+        'automatically after context writes and before skill reads.',
     )
-    .requiredOption('--brand <slug>', 'the brand whose events to publish')
+    .option('--brand <slug>', 'one brand (default: every local brand, the backfill form)')
     .option('--dry-run', 'map and report without posting anything', false)
     .action(async (opts: SyncCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const t0 = Date.now();
       try {
-        const result = await syncStakes(opts.brand, {
-          dataDirOverride: root.dataDir,
-          dryRun: opts.dryRun ?? false,
-        });
+        // No --brand = the FLEET form (same convention as `context push`):
+        // every local brand syncs, which is exactly the one-time backfill an
+        // existing install owes after updating to 0.8.8.
+        const brands =
+          opts.brand !== undefined ? [opts.brand] : await listLocalBrands(root.dataDir);
+        if (brands.length === 0) {
+          process.stdout.write(
+            root.json
+              ? JSON.stringify({ status: 'ok', brands: [], message: 'no local brands' }, null, 2) +
+                  '\n'
+              : 'No local brands found under ~/.mixshift/clients/.\n',
+          );
+          return;
+        }
+        const results = [] as Awaited<ReturnType<typeof syncStakes>>[];
+        for (const brand of brands) {
+          results.push(
+            await syncStakes(brand, {
+              dataDirOverride: root.dataDir,
+              dryRun: opts.dryRun ?? false,
+            }),
+          );
+        }
 
+        const totals = {
+          total: results.reduce((n, r) => n + r.total, 0),
+          created: results.reduce((n, r) => n + r.created, 0),
+          duplicates: results.reduce((n, r) => n + r.duplicates, 0),
+          failed: results.reduce((n, r) => n + r.failed, 0),
+        };
+        const anyFailed = results.some((r) => !r.ok);
         await track(
           {
             event_name: EventName.TimelineStakesSynced,
-            outcome: result.ok ? 'ok' : 'failed',
+            outcome: anyFailed ? 'failed' : 'ok',
             duration_ms: Date.now() - t0,
-            ...(result.ok ? {} : { error_class: result.error !== undefined ? 'context' : 'post_failed' }),
+            ...(anyFailed
+              ? {
+                  error_class: results.some((r) => r.error !== undefined)
+                    ? 'context'
+                    : 'post_failed',
+                }
+              : {}),
             payload: {
-              brand: opts.brand,
+              brand: opts.brand ?? 'ALL',
+              brands: results.length,
               dry_run: opts.dryRun ?? false,
-              total: result.total,
-              created: result.created,
-              duplicates: result.duplicates,
-              failed: result.failed,
+              ...totals,
             },
           },
           root.dataDir,
         );
 
-        if (result.error !== undefined) {
-          emitError(result.error, root);
+        // A single-brand whole-run error (no/invalid context) stays a plain
+        // error; on the fleet form it is reported per brand instead, since
+        // one unreadable brand must not hide everyone else's sync.
+        if (opts.brand !== undefined && results[0].error !== undefined) {
+          emitError(results[0].error, root);
           return;
         }
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
               {
-                status: result.ok ? 'ok' : 'partial',
-                brand: result.brand,
-                total: result.total,
-                created: result.created,
-                duplicates: result.duplicates,
-                failed: result.failed,
-                reports: result.reports,
+                status: anyFailed ? 'partial' : 'ok',
+                brands: results,
+                ...totals,
               },
               null,
               2,
@@ -727,28 +757,39 @@ function registerSync(timeline: Command): void {
           );
           return;
         }
-        if (result.total === 0) {
-          process.stdout.write(
-            `No structural events in ${opts.brand}'s context.yaml; nothing to sync.\n`,
-          );
-          return;
+        const lines: string[] = [];
+        for (const result of results) {
+          if (result.error !== undefined) {
+            lines.push(`${result.brand}: ${result.error}`);
+            continue;
+          }
+          if (result.total === 0) {
+            if (opts.brand !== undefined) {
+              lines.push(
+                `No structural events in ${result.brand}'s context.yaml; nothing to sync.`,
+              );
+            }
+            continue;
+          }
+          for (const r of result.reports) {
+            const date = r.date_known ? '' : '  (no event date; recorded as of now)';
+            const tail =
+              r.outcome === 'failed'
+                ? `  ${r.detail ?? ''}`
+                : r.event_id !== undefined
+                  ? `  ${r.event_id}`
+                  : '';
+            lines.push(
+              `${r.outcome.padEnd(9)} [${r.category}] ${result.brand}/${r.id}${tail}${date}`,
+            );
+          }
         }
-        const lines = result.reports.map((r) => {
-          const date = r.date_known ? '' : '  (no event date; recorded as of now)';
-          const tail =
-            r.outcome === 'failed'
-              ? `  ${r.detail ?? ''}`
-              : r.event_id !== undefined
-                ? `  ${r.event_id}`
-                : '';
-          return `${r.outcome.padEnd(9)} [${r.category}] ${r.id}${tail}${date}`;
-        });
         const summary = opts.dryRun
-          ? `Dry run: ${result.total} event(s) would sync to the timeline.`
-          : `✓ Synced ${opts.brand}: ${result.created} created, ${result.duplicates} already on the timeline` +
-            (result.failed > 0 ? `, ${result.failed} FAILED` : '') +
+          ? `Dry run: ${totals.total} event(s) across ${results.length} brand(s) would sync to the timeline.`
+          : `✓ Synced ${results.length} brand(s): ${totals.created} created, ${totals.duplicates} already on the timeline` +
+            (totals.failed > 0 ? `, ${totals.failed} FAILED` : '') +
             '.';
-        process.stdout.write(lines.join('\n') + '\n' + summary + '\n');
+        process.stdout.write((lines.length > 0 ? lines.join('\n') + '\n' : '') + summary + '\n');
         return;
       } catch (err) {
         emitError(err instanceof Error ? err.message : String(err), root);

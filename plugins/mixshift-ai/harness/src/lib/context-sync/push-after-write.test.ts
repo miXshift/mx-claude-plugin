@@ -180,38 +180,34 @@ describe('write-path safety', () => {
 // Participant gate: enrich only brands already in the org store
 // ---------------------------------------------------------------------------
 
-describe('participant gate (sync ledger)', () => {
-  it('brand dir exists but no ledger file: skipped with the participant reason, no push', async () => {
+describe('always-on first publish (participant gate removed, Sam 2026-08-04)', () => {
+  it('brand dir exists but no ledger file: the FIRST publish happens automatically', async () => {
     await makeBrandDir('newbie');
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'newbie',
+      reports: [{ key: 'context', docType: 'context', action: 'created', detail: 'rev 1' }],
+    });
     const result = await pushAfterWrite('newbie', {
       dataDirOverride: testDir,
       env: LIVE_ENV,
     });
-    expect(result).toEqual({
-      published: false,
-      reason: 'skipped',
-      detail:
-        'brand not yet in the org store; publish it explicitly first ' +
-        '(context push / context migrate)',
-    });
-    expect(vi.mocked(push)).not.toHaveBeenCalled();
+    expect(result.published).toBe(true);
+    expect(vi.mocked(push)).toHaveBeenCalledTimes(1);
+    // The share is VISIBLE — the notice line replaces the old opt-in nudge.
+    expect(stderrText()).toContain('✓ Shared newbie');
   });
 
-  it('ledger present but with zero tracked docs: skipped, no push', async () => {
+  it('ledger present but with zero tracked docs: publishes all the same', async () => {
     await makeBrandDir('newbie');
     await writeLedger('newbie', {});
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'newbie', reports: [] });
     const result = await pushAfterWrite('newbie', {
       dataDirOverride: testDir,
       env: LIVE_ENV,
     });
-    expect(result.published).toBe(false);
-    if (!result.published) {
-      expect(result.reason).toBe('skipped');
-      if (result.reason === 'skipped') {
-        expect(result.detail).toContain('not yet in the org store');
-      }
-    }
-    expect(vi.mocked(push)).not.toHaveBeenCalled();
+    expect(result.published).toBe(true);
+    expect(vi.mocked(push)).toHaveBeenCalledTimes(1);
   });
 
   it('a brand with tracked docs passes the gate and reaches engine.push', async () => {
@@ -435,15 +431,13 @@ describe('user-facing notice (stderr)', () => {
     expect(stderrText()).toBe(`✓ Shared acme to your team's brand context (2 doc(s)).\n`);
   });
 
-  it('participant-gate skip (brand not yet shared): prints the "context push" nudge', async () => {
-    await makeBrandDir('newbie'); // brand dir but no ledger → participant gate skip
+  it('a first-time brand (no ledger) prints the SHARE confirmation, not the old nudge', async () => {
+    await makeBrandDir('newbie'); // brand dir but no ledger — always-on publishes it
+    stubSharedPush();
 
     await pushAfterWrite('newbie', { dataDirOverride: testDir, env: LIVE_ENV });
 
-    expect(stderrText()).toBe(
-      'Saved locally. newbie is not shared with your team yet. ' +
-        'Run `mixshift context push --brand newbie` to commit it.\n',
-    );
+    expect(stderrText()).toBe(`✓ Shared newbie to your team's brand context (2 doc(s)).\n`);
   });
 
   it('failed push: prints the "could not sync, saved locally" line', async () => {

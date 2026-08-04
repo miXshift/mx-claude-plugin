@@ -68178,22 +68178,9 @@ async function syncStakes(brandSlug, options = {}) {
   }
   return result;
 }
-
-// src/lib/context-sync/push-after-write.ts
-var PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
-var STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2e3;
-var PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
-async function pushAfterWrite(brandSlug, options = {}) {
+var STAKE_LEG_BUDGET_MS = 2e3;
+async function runBudgetedStakeLeg(brandSlug, options = {}) {
   const env = options.env ?? process.env;
-  let result = await computePushResult(brandSlug, options, env);
-  if (result.published) {
-    const stakeLeg = await runStakeLeg(brandSlug, options, env);
-    result = { ...result, stake_events: stakeLeg };
-  }
-  emitNotice(brandSlug, result, options.notify ?? true);
-  return result;
-}
-async function runStakeLeg(brandSlug, options, env) {
   const none = { created: 0, duplicates: 0, failed: 0 };
   try {
     const validated = await validateBrandContext(brandSlug, options.dataDirOverride);
@@ -68208,14 +68195,14 @@ async function runStakeLeg(brandSlug, options, env) {
     if (state.stakes?.last_synced_hash === hash2) {
       return { skipped: true, ...none, detail: "unchanged since last sync" };
     }
-    const budgetMs = options.stakeBudgetMs ?? STAKE_SYNC_AFTER_WRITE_BUDGET_MS;
+    const budgetMs = options.budgetMs ?? STAKE_LEG_BUDGET_MS;
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), budgetMs);
     abortTimer.unref?.();
     try {
       const baseFetch = options.fetchImpl ?? fetch;
       const budgetedFetch = ((input, init) => baseFetch(input, { ...init, signal: controller.signal }));
-      const client = options.stakeClient ?? createTimelineClient({
+      const client = options.client ?? createTimelineClient({
         dataDirOverride: options.dataDirOverride,
         fetchImpl: budgetedFetch
       });
@@ -68225,7 +68212,7 @@ async function runStakeLeg(brandSlug, options, env) {
         postTimeoutMs: budgetMs
       });
       syncPromise.catch((err) => {
-        debugLog(
+        debugLogLeg(
           env,
           `stake-sync(${brandSlug}): abandoned sync rejected: ${err instanceof Error ? err.message : String(err)}`
         );
@@ -68233,17 +68220,17 @@ async function runStakeLeg(brandSlug, options, env) {
       const raced = await raceDeadline(syncPromise, budgetMs);
       if (raced === DEADLINE) {
         controller.abort();
-        debugLog(env, `stake-sync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        debugLogLeg(env, `stake-sync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
         return { skipped: false, ...none, detail: `timed out after ${budgetMs}ms` };
       }
       if (raced.error) {
-        debugLog(env, `stake-sync(${brandSlug}): ${raced.error}`);
+        debugLogLeg(env, `stake-sync(${brandSlug}): ${raced.error}`);
         return { skipped: false, ...none, detail: raced.error };
       }
       if (raced.failed > 0) {
         for (const r of raced.reports) {
           if (r.outcome !== "failed") continue;
-          debugLog(
+          debugLogLeg(
             env,
             `stake-sync(${brandSlug}): event '${r.id}' failed${r.permanent ? " PERMANENTLY (needs a context.yaml edit)" : " (will retry)"}: ${r.detail ?? "no detail"}`
           );
@@ -68263,9 +68250,37 @@ async function runStakeLeg(brandSlug, options, env) {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    debugLog(env, `stake-sync(${brandSlug}): swallowed error: ${message}`);
+    debugLogLeg(env, `stake-sync(${brandSlug}): swallowed error: ${message}`);
     return { skipped: true, ...none, detail: message };
   }
+}
+function debugLogLeg(env, message) {
+  if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
+`);
+}
+
+// src/lib/context-sync/push-after-write.ts
+var PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
+var STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2e3;
+var PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
+async function pushAfterWrite(brandSlug, options = {}) {
+  const env = options.env ?? process.env;
+  let result = await computePushResult(brandSlug, options, env);
+  if (result.published) {
+    const stakeLeg = await runStakeLeg(brandSlug, options, env);
+    result = { ...result, stake_events: stakeLeg };
+  }
+  emitNotice(brandSlug, result, options.notify ?? true);
+  return result;
+}
+async function runStakeLeg(brandSlug, options, env) {
+  return runBudgetedStakeLeg(brandSlug, {
+    ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {},
+    ...options.stakeClient !== void 0 ? { client: options.stakeClient } : {},
+    ...options.fetchImpl !== void 0 ? { fetchImpl: options.fetchImpl } : {},
+    budgetMs: options.stakeBudgetMs ?? STAKE_SYNC_AFTER_WRITE_BUDGET_MS,
+    env
+  });
 }
 async function computePushResult(brandSlug, options, env) {
   try {
@@ -68286,14 +68301,6 @@ async function computePushResult(brandSlug, options, env) {
         published: false,
         reason: "skipped",
         detail: "no local brand directory"
-      };
-    }
-    const state = await loadState(brandSlug, options.dataDirOverride);
-    if (Object.keys(state.docs).length === 0) {
-      return {
-        published: false,
-        reason: "skipped",
-        detail: "brand not yet in the org store; publish it explicitly first (context push / context migrate)"
       };
     }
     const controller = new AbortController();
@@ -68371,9 +68378,6 @@ function noticeLineFor(brandSlug, result) {
       return null;
     // kill switch: intentional-off, say nothing
     case "skipped":
-      if (result.detail.includes("not yet in the org store")) {
-        return `Saved locally. ${brandSlug} is not shared with your team yet. Run \`mixshift context push --brand ${brandSlug}\` to commit it.`;
-      }
       return null;
     case "failed":
       return `Could not sync ${brandSlug} to your team just now; your work is saved locally. Retry with \`mixshift context push --brand ${brandSlug}\`.`;
@@ -72153,8 +72157,11 @@ async function maybeAutoSync(brandSlug, options = {}) {
         dataDirOverride: options.dataDirOverride,
         fetchImpl: budgetedFetch
       });
+      const publishFlag = (env[PUSH_AFTER_WRITE_ENV] ?? "").toLowerCase();
+      const publishDisabled = publishFlag === "off" || publishFlag === "0" || publishFlag === "false";
+      const op = publishDisabled ? pull : sync;
       const raced = await raceDeadline(
-        pull(brandSlug, {
+        op(brandSlug, {
           client,
           dataDirOverride: options.dataDirOverride
           // NEVER force: diverged docs stay untouched by design.
@@ -72171,9 +72178,28 @@ async function maybeAutoSync(brandSlug, options = {}) {
         return { ran: false, reason: "failed", detail: raced.message };
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
+      const pushed = raced.reports.filter((r) => r.action === "pushed").length;
+      const created = raced.reports.filter((r) => r.action === "created").length;
       const conflicts = raced.reports.filter((r) => r.action === "conflict").length;
       const errors = raced.reports.filter((r) => r.action === "error").length;
-      return { ran: true, pulled, conflicts, errors, reports: raced.reports };
+      let stakeLeg;
+      if (!publishDisabled) {
+        stakeLeg = await runBudgetedStakeLeg(brandSlug, {
+          ...options.dataDirOverride !== void 0 ? { dataDirOverride: options.dataDirOverride } : {},
+          ...options.fetchImpl !== void 0 ? { fetchImpl: options.fetchImpl } : {},
+          env
+        });
+      }
+      return {
+        ran: true,
+        pulled,
+        pushed,
+        created,
+        conflicts,
+        errors,
+        reports: raced.reports,
+        ...stakeLeg !== void 0 ? { stake_events: stakeLeg } : {}
+      };
     } finally {
       clearTimeout(abortTimer);
     }
@@ -90305,47 +90331,62 @@ function registerCorroborate(timeline) {
 }
 function registerSync(timeline) {
   timeline.command("sync").description(
-    "Publish a brand's curated context.yaml structural_events to the timeline as declared stakes. Idempotent: an already-synced event reports duplicate and creates nothing. Events sync automatically after context writes; use this for the first publish, a backfill, or a --dry-run preview."
-  ).requiredOption("--brand <slug>", "the brand whose events to publish").option("--dry-run", "map and report without posting anything", false).action(async (opts, cmd) => {
+    "Publish curated context.yaml structural_events to the timeline as declared stakes. Without --brand it covers EVERY local brand (the one-time backfill after updating). Idempotent: an already-synced event reports duplicate and creates nothing. Events also sync automatically after context writes and before skill reads."
+  ).option("--brand <slug>", "one brand (default: every local brand, the backfill form)").option("--dry-run", "map and report without posting anything", false).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
-      const result = await syncStakes(opts.brand, {
-        dataDirOverride: root.dataDir,
-        dryRun: opts.dryRun ?? false
-      });
+      const brands = opts.brand !== void 0 ? [opts.brand] : await listLocalBrands(root.dataDir);
+      if (brands.length === 0) {
+        process.stdout.write(
+          root.json ? JSON.stringify({ status: "ok", brands: [], message: "no local brands" }, null, 2) + "\n" : "No local brands found under ~/.mixshift/clients/.\n"
+        );
+        return;
+      }
+      const results = [];
+      for (const brand of brands) {
+        results.push(
+          await syncStakes(brand, {
+            dataDirOverride: root.dataDir,
+            dryRun: opts.dryRun ?? false
+          })
+        );
+      }
+      const totals = {
+        total: results.reduce((n, r) => n + r.total, 0),
+        created: results.reduce((n, r) => n + r.created, 0),
+        duplicates: results.reduce((n, r) => n + r.duplicates, 0),
+        failed: results.reduce((n, r) => n + r.failed, 0)
+      };
+      const anyFailed = results.some((r) => !r.ok);
       await track(
         {
           event_name: EventName.TimelineStakesSynced,
-          outcome: result.ok ? "ok" : "failed",
+          outcome: anyFailed ? "failed" : "ok",
           duration_ms: Date.now() - t0,
-          ...result.ok ? {} : { error_class: result.error !== void 0 ? "context" : "post_failed" },
+          ...anyFailed ? {
+            error_class: results.some((r) => r.error !== void 0) ? "context" : "post_failed"
+          } : {},
           payload: {
-            brand: opts.brand,
+            brand: opts.brand ?? "ALL",
+            brands: results.length,
             dry_run: opts.dryRun ?? false,
-            total: result.total,
-            created: result.created,
-            duplicates: result.duplicates,
-            failed: result.failed
+            ...totals
           }
         },
         root.dataDir
       );
-      if (result.error !== void 0) {
-        emitError13(result.error, root);
+      if (opts.brand !== void 0 && results[0].error !== void 0) {
+        emitError13(results[0].error, root);
         return;
       }
       if (root.json) {
         process.stdout.write(
           JSON.stringify(
             {
-              status: result.ok ? "ok" : "partial",
-              brand: result.brand,
-              total: result.total,
-              created: result.created,
-              duplicates: result.duplicates,
-              failed: result.failed,
-              reports: result.reports
+              status: anyFailed ? "partial" : "ok",
+              brands: results,
+              ...totals
             },
             null,
             2
@@ -90353,20 +90394,30 @@ function registerSync(timeline) {
         );
         return;
       }
-      if (result.total === 0) {
-        process.stdout.write(
-          `No structural events in ${opts.brand}'s context.yaml; nothing to sync.
-`
-        );
-        return;
+      const lines = [];
+      for (const result of results) {
+        if (result.error !== void 0) {
+          lines.push(`${result.brand}: ${result.error}`);
+          continue;
+        }
+        if (result.total === 0) {
+          if (opts.brand !== void 0) {
+            lines.push(
+              `No structural events in ${result.brand}'s context.yaml; nothing to sync.`
+            );
+          }
+          continue;
+        }
+        for (const r of result.reports) {
+          const date5 = r.date_known ? "" : "  (no event date; recorded as of now)";
+          const tail = r.outcome === "failed" ? `  ${r.detail ?? ""}` : r.event_id !== void 0 ? `  ${r.event_id}` : "";
+          lines.push(
+            `${r.outcome.padEnd(9)} [${r.category}] ${result.brand}/${r.id}${tail}${date5}`
+          );
+        }
       }
-      const lines = result.reports.map((r) => {
-        const date5 = r.date_known ? "" : "  (no event date; recorded as of now)";
-        const tail = r.outcome === "failed" ? `  ${r.detail ?? ""}` : r.event_id !== void 0 ? `  ${r.event_id}` : "";
-        return `${r.outcome.padEnd(9)} [${r.category}] ${r.id}${tail}${date5}`;
-      });
-      const summary = opts.dryRun ? `Dry run: ${result.total} event(s) would sync to the timeline.` : `\u2713 Synced ${opts.brand}: ${result.created} created, ${result.duplicates} already on the timeline` + (result.failed > 0 ? `, ${result.failed} FAILED` : "") + ".";
-      process.stdout.write(lines.join("\n") + "\n" + summary + "\n");
+      const summary = opts.dryRun ? `Dry run: ${totals.total} event(s) across ${results.length} brand(s) would sync to the timeline.` : `\u2713 Synced ${results.length} brand(s): ${totals.created} created, ${totals.duplicates} already on the timeline` + (totals.failed > 0 ? `, ${totals.failed} FAILED` : "") + ".";
+      process.stdout.write((lines.length > 0 ? lines.join("\n") + "\n" : "") + summary + "\n");
       return;
     } catch (err) {
       emitError13(err instanceof Error ? err.message : String(err), root);

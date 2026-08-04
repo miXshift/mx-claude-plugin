@@ -171,9 +171,10 @@ shapes:
       for MixShift's own audited write records.
       tags (optional): freeform lowercase slug list (max 16, each ≤64 chars of
       a-z 0-9 - _), the team-idiom axis; sync to the timeline stake's tags.
-      Events sync AUTOMATICALLY to the org brand timeline as declared stakes
-      after context writes (and on `mixshift context push` / `migrate`);
-      `mixshift timeline sync --brand <slug>` is the explicit backfill. An
+      Events sync AUTOMATICALLY to the org brand timeline as declared stakes:
+      after context writes, before skill reads (the autosync preflight), and
+      on `mixshift context push` / `migrate`. `mixshift timeline sync` is the
+      explicit backfill (without --brand it covers every local brand). An
       event with no `start` date syncs with "recorded now" semantics and an
       event_date_known:false marker.
 

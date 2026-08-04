@@ -47,6 +47,7 @@ import { createHash } from 'node:crypto';
 import { validateBrandContext } from '../context/load.js';
 import type { StructuralEvent } from '../context/schema.js';
 import { loadState, resolveLedgerIdentity, saveState } from '../context-sync/state.js';
+import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import { createTimelineClient, type TimelineClient } from './client.js';
 import { STAKE_CATEGORIES, type StakeCategory, type TimelineFailureKind } from './types.js';
 import type { PostTimelineEventInput } from './types.js';
@@ -407,4 +408,151 @@ export async function syncStakes(
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// The budgeted best-effort leg (shared by the auto-publish write seam and the
+// autosync read preflight)
+// ---------------------------------------------------------------------------
+
+/** Outcome of one budgeted stake leg. `skipped: true` covers the intentional
+ *  no-ops (no events, hash unchanged, unreadable context); a run that reached
+ *  the network reports its counts, with `detail` naming a timeout / partial
+ *  failure. */
+export interface StakeLegSummary {
+  skipped: boolean;
+  created: number;
+  duplicates: number;
+  failed: number;
+  detail?: string;
+}
+
+/** Default wall-clock budget for one automatic stake leg; matched to the
+ *  other best-effort side-channels (autosync, push-after-write, ads-emit). */
+export const STAKE_LEG_BUDGET_MS = 2_000;
+
+export interface StakeLegOptions {
+  dataDirOverride?: string;
+  /** Injectable for tests; defaults to the real timeline client (budgeted). */
+  client?: TimelineClient;
+  /** Injectable for tests; the real path wraps this with the budget signal. */
+  fetchImpl?: typeof fetch;
+  budgetMs?: number;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * One bounded, never-throws stake-sync attempt for automatic seams: cheap
+ * local pre-checks first (no events / unchanged hash mean ZERO network), then
+ * a budgeted syncStakes raced against a wall clock with one shared
+ * AbortSignal over every request. syncStakes owns the ledger stamp (clean
+ * run, or one whose only remaining failures are permanent), so the next
+ * attempt's hash-skip fires with zero network. Failing events are named in
+ * the debug log; a failure never propagates to the caller's own outcome.
+ */
+export async function runBudgetedStakeLeg(
+  brandSlug: string,
+  options: StakeLegOptions = {},
+): Promise<StakeLegSummary> {
+  const env = options.env ?? process.env;
+  const none = { created: 0, duplicates: 0, failed: 0 };
+  try {
+    const validated = await validateBrandContext(brandSlug, options.dataDirOverride);
+    if (!validated.ok) {
+      return { skipped: true, ...none, detail: 'context not readable' };
+    }
+    const events = validated.context.structural_events ?? [];
+    if (events.length === 0) return { skipped: true, ...none, detail: 'no structural events' };
+    const hash = hashStructuralEvents(events);
+    const identity = await resolveLedgerIdentity(options.dataDirOverride);
+    const state = await loadState(brandSlug, options.dataDirOverride, identity);
+    if (state.stakes?.last_synced_hash === hash) {
+      return { skipped: true, ...none, detail: 'unchanged since last sync' };
+    }
+
+    const budgetMs = options.budgetMs ?? STAKE_LEG_BUDGET_MS;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        baseFetch(input, { ...init, signal: controller.signal })) as typeof fetch;
+      const client =
+        options.client ??
+        createTimelineClient({
+          dataDirOverride: options.dataDirOverride,
+          fetchImpl: budgetedFetch,
+        });
+      const syncPromise = syncStakes(brandSlug, {
+        ...(options.dataDirOverride !== undefined
+          ? { dataDirOverride: options.dataDirOverride }
+          : {}),
+        client,
+        postTimeoutMs: budgetMs,
+      });
+      // Pre-attach a catch for the abandoned-on-deadline case: a late
+      // rejection with no awaiter would crash the CLI after the caller's own
+      // work already succeeded.
+      syncPromise.catch((err: unknown) => {
+        debugLogLeg(
+          env,
+          `stake-sync(${brandSlug}): abandoned sync rejected: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+      const raced = await raceDeadline(syncPromise, budgetMs);
+      if (raced === DEADLINE) {
+        controller.abort();
+        debugLogLeg(env, `stake-sync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        return { skipped: false, ...none, detail: `timed out after ${budgetMs}ms` };
+      }
+      if (raced.error) {
+        debugLogLeg(env, `stake-sync(${brandSlug}): ${raced.error}`);
+        return { skipped: false, ...none, detail: raced.error };
+      }
+      if (raced.failed > 0) {
+        for (const r of raced.reports) {
+          if (r.outcome !== 'failed') continue;
+          debugLogLeg(
+            env,
+            `stake-sync(${brandSlug}): event '${r.id}' failed${
+              r.permanent ? ' PERMANENTLY (needs a context.yaml edit)' : ' (will retry)'
+            }: ${r.detail ?? 'no detail'}`,
+          );
+        }
+      }
+      return {
+        skipped: false,
+        created: raced.created,
+        duplicates: raced.duplicates,
+        failed: raced.failed,
+        ...(raced.failed > 0
+          ? {
+              detail:
+                `${raced.failed} event(s) failed to sync` +
+                (raced.permanent_failures > 0
+                  ? ` (${raced.permanent_failures} need a context.yaml edit: ` +
+                    raced.reports
+                      .filter((r) => r.outcome === 'failed' && r.permanent)
+                      .map((r) => r.id)
+                      .join(', ') +
+                    ')'
+                  : ''),
+            }
+          : {}),
+      };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLogLeg(env, `stake-sync(${brandSlug}): swallowed error: ${message}`);
+    return { skipped: true, ...none, detail: message };
+  }
+}
+
+function debugLogLeg(env: NodeJS.ProcessEnv, message: string): void {
+  if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}\n`);
 }

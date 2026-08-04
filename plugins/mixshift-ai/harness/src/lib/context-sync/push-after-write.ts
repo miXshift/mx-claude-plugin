@@ -36,13 +36,16 @@
  *     pattern (brandDir() joins it into a filesystem path verbatim) AND the
  *     brand directory must already exist locally — which it always does right
  *     after a write. A typo'd or hostile slug is skipped with no side effect.
- *   - Participant-gated: enriches only a brand ALREADY in the org store (its
- *     sync ledger has tracked docs). A brand with an empty ledger has never
- *     been published, so it is skipped — the first publish stays an explicit
- *     `context push` / `context migrate`. Mirrors autosync, which pulls only
- *     for brands it already tracks.
+ *   - ALWAYS-ON (Sam, 2026-08-04 — supersedes the 0.8.0 participant gate):
+ *     every write publishes, including a brand's FIRST. The 0.8.0 design made
+ *     the first share an explicit `context push` / `migrate`; in practice
+ *     unshared brands piled up locally (the exact telemetry signal the gate's
+ *     own docs said would argue for always-on) and their curated events never
+ *     reached the team timeline. engine.push creates the sync ledger on the
+ *     first publish; the notice line makes every share visible.
  *   - Kill switch: MIXSHIFT_CONTEXT_AUTOPUBLISH=off (also '0'/'false')
- *     disables it entirely, before any file or network activity.
+ *     disables it entirely, before any file or network activity — this is
+ *     also the opt-out for anyone who wants first-share-stays-manual back.
  *
  * No telemetry is emitted here (the context-sync events belong to the explicit
  * `mixshift context` commands; a passive write side-channel stays silent, the
@@ -52,13 +55,15 @@
 import { push } from './engine.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
-import { loadState, resolveLedgerIdentity } from './state.js';
 import { DEADLINE, raceDeadline } from '../utils/deadline.js';
-import { validateBrandContext } from '../context/load.js';
-import { hashStructuralEvents, syncStakes } from '../timeline/stake-sync.js';
+import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import type { TimelineClient } from '../timeline/client.js';
-import { createTimelineClient } from '../timeline/client.js';
 import type { DocActionReport } from './types.js';
+
+// Re-exported for existing consumers; the canonical definition moved to
+// lib/timeline/stake-sync.ts when the autosync read preflight gained the
+// same leg.
+export type { StakeLegSummary } from '../timeline/stake-sync.js';
 
 /** Overall wall-clock budget for one auto-publish attempt (network inclusive).
  *  Matched to the other best-effort side-channels (autosync + ads-emit + the
@@ -95,18 +100,6 @@ export interface PushAfterWriteOptions {
   notify?: boolean;
 }
 
-/** Outcome of the stake-sync leg that follows a successful doc push
- *  (#37499). `skipped: true` covers the intentional no-ops (no events, hash
- *  unchanged, unreadable context); a run that reached the network reports
- *  its counts, with `detail` naming a timeout / partial failure. */
-export interface StakeLegSummary {
-  skipped: boolean;
-  created: number;
-  duplicates: number;
-  failed: number;
-  detail?: string;
-}
-
 export type PushAfterWriteResult =
   | { published: false; reason: 'disabled' }
   /** Preconditions not met (unsafe/unknown slug). Nothing touched. */
@@ -128,8 +121,8 @@ export type PushAfterWriteResult =
  * Safe to call from any write path: never throws, and the worst outcome of any
  * failure is "the write is durable locally and will publish on the next
  * explicit sync". Emits ONE concise user-facing line to STDERR (opt out with
- * `notify: false`) confirming the share, nudging an unshared brand toward
- * `context push`, or noting a transient sync failure; STDOUT/--json stay clean.
+ * `notify: false`) confirming the share or noting a transient sync failure; STDOUT/--json stay
+ * clean.
  */
 export async function pushAfterWrite(
   brandSlug: string,
@@ -140,8 +133,8 @@ export async function pushAfterWrite(
   // Stake-sync leg (#37499): after a successful doc push, publish the
   // brand's context.yaml structural_events to the timeline as declared
   // stakes. Runs ONLY on published:true, so it inherits every gate above it
-  // (kill switch, VITEST, slug safety, participant gate) with no re-checks.
-  // Same never-throws discipline; a stake failure never demotes the doc push.
+  // (kill switch, VITEST, slug safety) with no re-checks. Same never-throws
+  // discipline; a stake failure never demotes the doc push.
   if (result.published) {
     const stakeLeg = await runStakeLeg(brandSlug, options, env);
     result = { ...result, stake_events: stakeLeg };
@@ -155,122 +148,27 @@ export async function pushAfterWrite(
 }
 
 /**
- * The stake-sync leg. Bounded exactly like the doc push above it (own
- * wall-clock race + one shared AbortSignal over every request), never
- * throws, and stamps the sync ledger's `stakes` hash ONLY on a fully
- * successful run so the next write can skip the leg with zero network.
+ * The stake-sync leg — delegates to the shared budgeted implementation in
+ * lib/timeline/stake-sync.ts (also used by the autosync read preflight), so
+ * both automatic seams stay behaviorally identical: cheap local pre-checks
+ * (no events / unchanged hash = zero network), one wall-clock race + shared
+ * AbortSignal, never throws, failing events named in the debug log, ledger
+ * stamp owned by syncStakes.
  */
 async function runStakeLeg(
   brandSlug: string,
   options: PushAfterWriteOptions,
   env: NodeJS.ProcessEnv,
 ): Promise<StakeLegSummary> {
-  const none = { created: 0, duplicates: 0, failed: 0 };
-  try {
-    // Cheap local pre-checks first: no events, or the same events already
-    // synced, and the leg never touches the network.
-    const validated = await validateBrandContext(brandSlug, options.dataDirOverride);
-    if (!validated.ok) {
-      return { skipped: true, ...none, detail: 'context not readable' };
-    }
-    const events = validated.context.structural_events ?? [];
-    if (events.length === 0) return { skipped: true, ...none, detail: 'no structural events' };
-    const hash = hashStructuralEvents(events);
-    const identity = await resolveLedgerIdentity(options.dataDirOverride);
-    const state = await loadState(brandSlug, options.dataDirOverride, identity);
-    if (state.stakes?.last_synced_hash === hash) {
-      return { skipped: true, ...none, detail: 'unchanged since last sync' };
-    }
-
-    const budgetMs = options.stakeBudgetMs ?? STAKE_SYNC_AFTER_WRITE_BUDGET_MS;
-    const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
-    abortTimer.unref?.();
-    try {
-      const baseFetch = options.fetchImpl ?? fetch;
-      const budgetedFetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
-        baseFetch(input, { ...init, signal: controller.signal })) as typeof fetch;
-      const client =
-        options.stakeClient ??
-        createTimelineClient({
-          dataDirOverride: options.dataDirOverride,
-          fetchImpl: budgetedFetch,
-        });
-      const syncPromise = syncStakes(brandSlug, {
-        ...(options.dataDirOverride !== undefined
-          ? { dataDirOverride: options.dataDirOverride }
-          : {}),
-        client,
-        postTimeoutMs: budgetMs,
-      });
-      // Pre-attach a catch for the abandoned-on-deadline case, same reasoning
-      // as the doc-push promise above: a late rejection with no awaiter would
-      // crash the CLI after the user's write already succeeded.
-      syncPromise.catch((err: unknown) => {
-        debugLog(
-          env,
-          `stake-sync(${brandSlug}): abandoned sync rejected: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
-      const raced = await raceDeadline(syncPromise, budgetMs);
-      if (raced === DEADLINE) {
-        controller.abort();
-        debugLog(env, `stake-sync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
-        return { skipped: false, ...none, detail: `timed out after ${budgetMs}ms` };
-      }
-      if (raced.error) {
-        debugLog(env, `stake-sync(${brandSlug}): ${raced.error}`);
-        return { skipped: false, ...none, detail: raced.error };
-      }
-      // syncStakes owns the ledger stamp (clean run, or one whose only
-      // remaining failures are permanent), so the next write's hash-skip
-      // fires with zero network.
-      //
-      // Name the FAILING EVENTS in the debug log. The stderr notice stays
-      // quiet about failures by design (the write already succeeded and the
-      // events remain locally), but a permanently-rejected event would
-      // otherwise be undiagnosable without running `timeline sync` by hand.
-      if (raced.failed > 0) {
-        for (const r of raced.reports) {
-          if (r.outcome !== 'failed') continue;
-          debugLog(
-            env,
-            `stake-sync(${brandSlug}): event '${r.id}' failed${
-              r.permanent ? ' PERMANENTLY (needs a context.yaml edit)' : ' (will retry)'
-            }: ${r.detail ?? 'no detail'}`,
-          );
-        }
-      }
-      return {
-        skipped: false,
-        created: raced.created,
-        duplicates: raced.duplicates,
-        failed: raced.failed,
-        ...(raced.failed > 0
-          ? {
-              detail:
-                `${raced.failed} event(s) failed to sync` +
-                (raced.permanent_failures > 0
-                  ? ` (${raced.permanent_failures} need a context.yaml edit: ` +
-                    raced.reports
-                      .filter((r) => r.outcome === 'failed' && r.permanent)
-                      .map((r) => r.id)
-                      .join(', ') +
-                    ')'
-                  : ''),
-            }
-          : {}),
-      };
-    } finally {
-      clearTimeout(abortTimer);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    debugLog(env, `stake-sync(${brandSlug}): swallowed error: ${message}`);
-    return { skipped: true, ...none, detail: message };
-  }
+  return runBudgetedStakeLeg(brandSlug, {
+    ...(options.dataDirOverride !== undefined
+      ? { dataDirOverride: options.dataDirOverride }
+      : {}),
+    ...(options.stakeClient !== undefined ? { client: options.stakeClient } : {}),
+    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+    budgetMs: options.stakeBudgetMs ?? STAKE_SYNC_AFTER_WRITE_BUDGET_MS,
+    env,
+  });
 }
 
 async function computePushResult(
@@ -312,29 +210,12 @@ async function computePushResult(
       };
     }
 
-    // PARTICIPANT GATE: auto-publish only ENRICHES a brand already in the org
-    // store; it never bootstraps a brand's first publish. A brand's FIRST
-    // publish stays explicit (the mx-brand-context skill's closing `context
-    // push`, or `context migrate`), which is what creates this ledger; only
-    // AFTER that do writes auto-enrich. An empty ledger means the brand has
-    // never been synced — pushing now would surprise-publish the whole
-    // local-ahead doc set for a user who never opted into org-brain, and would
-    // charge every non-participant an awaited network round-trip on every
-    // write. This makes pushAfterWrite the mirror image of autosync (which
-    // pulls only for brands it already tracks; see autosync.ts). Load the
-    // ledger RAW (no identity binding) — presence of tracked docs is all we
-    // gate on; push itself owns tenant-identity handling. Skip is a safe
-    // no-op, never a throw.
-    const state = await loadState(brandSlug, options.dataDirOverride);
-    if (Object.keys(state.docs).length === 0) {
-      return {
-        published: false,
-        reason: 'skipped',
-        detail:
-          'brand not yet in the org store; publish it explicitly first ' +
-          '(context push / context migrate)',
-      };
-    }
+    // ALWAYS-ON (Sam, 2026-08-04): the 0.8.0 participant gate — skip brands
+    // whose sync ledger had no tracked docs, keeping the FIRST publish an
+    // explicit act — is removed. Every write now publishes, first ones
+    // included; engine.push creates the ledger as part of that first publish,
+    // and the stderr notice keeps each share visible. The kill switch above
+    // remains the opt-out.
 
     // Fetch-level budget: one shared abort across every request the push
     // makes (manifest + per-doc PUTs). The per-request timeouts inside the
@@ -484,16 +365,9 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
     case 'disabled':
       return null; // kill switch: intentional-off, say nothing
     case 'skipped':
-      // Only the PARTICIPANT-GATE skip (brand not yet in the org store) earns a
-      // nudge — that is the "(a) I thought this was accruing to the team" +
-      // "(b) I don't know how to commit it" case the notice exists for. The
-      // other 'skipped' details (unsafe slug, no local dir) are silent no-ops.
-      if (result.detail.includes('not yet in the org store')) {
-        return (
-          `Saved locally. ${brandSlug} is not shared with your team yet. ` +
-          `Run \`mixshift context push --brand ${brandSlug}\` to commit it.`
-        );
-      }
+      // The remaining 'skipped' details (unsafe slug, no local dir) are
+      // silent no-ops. (The 0.8.0 participant-gate nudge lived here until
+      // Sam made auto-publish always-on, 2026-08-04.)
       return null;
     case 'failed':
       return (

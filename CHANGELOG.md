@@ -11,12 +11,24 @@ starts at 0.5.39; earlier versions predate the changelog.
   structural events you record during brand setup (promos, stockouts,
   launches, migrations) used to live only in that machine's brand context
   file, invisible to reporting and to teammates. They now publish to your
-  org's brand timeline as declared stakes: automatically after context edits,
-  when you run `mixshift context push` or `migrate`, and on demand with the
-  new `mixshift timeline sync --brand <slug>` (add `--dry-run` to preview).
-  Publishing is idempotent, so nothing is ever recorded twice, and an event
-  with no start date is marked "recorded as of now" so a reader can tell when
-  you learned about it apart from when it happened.
+  org's brand timeline as declared stakes: automatically after context edits
+  and before skill reads, when you run `mixshift context push` or `migrate`,
+  and on demand with the new `mixshift timeline sync` (add `--dry-run` to
+  preview; without `--brand` it covers every local brand, which is the
+  one-time backfill for brands you set up before this version). Publishing is
+  idempotent, so nothing is ever recorded twice, and an event with no start
+  date is marked "recorded as of now" so a reader can tell when you learned
+  about it apart from when it happened.
+
+- **Brand context now shares itself, both directions.** Before a skill reads
+  a brand, MixShift already pulled your team's newer copy; it now also sends
+  your newer local changes back, and edits publish on every write, including
+  a brand's very first share (previously the first share required an explicit
+  `mixshift context push`). Nothing is ever overwritten: a doc edited in both
+  places is reported as a conflict for you to resolve, exactly as before.
+  Every automatic share prints a one-line notice so you always know when
+  something left this machine, and setting `MIXSHIFT_CONTEXT_AUTOPUBLISH=off`
+  restores the old keep-it-manual behavior.
 
 - **Brand events no longer have to fit a fixed list.** Three new structural
   event types: `off_amazon_media` for a standing off-Amazon media program

@@ -1000,9 +1000,9 @@ describe('timeline sync (#37499)', () => {
       dryRun: false,
     });
     const out = stdoutText();
-    expect(out).toContain('created   [launch] dsp-ramp  evt-1');
+    expect(out).toContain('created   [launch] acme/dsp-ramp  evt-1');
     expect(out).toContain('(no event date; recorded as of now)');
-    expect(out).toContain('✓ Synced acme: 1 created, 1 already on the timeline.');
+    expect(out).toContain('✓ Synced 1 brand(s): 1 created, 1 already on the timeline.');
   });
 
   it('--dry-run passes through and prints the plan summary', async () => {
@@ -1024,7 +1024,7 @@ describe('timeline sync (#37499)', () => {
       dataDirOverride: undefined,
       dryRun: true,
     });
-    expect(stdoutText()).toContain('Dry run: 1 event(s) would sync');
+    expect(stdoutText()).toContain('Dry run: 1 event(s) across 1 brand(s) would sync');
   });
 
   it('a whole-run error goes to the error surface', async () => {
