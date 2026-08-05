@@ -18,6 +18,12 @@
 -- account's spend simply absent from the health check. Unlabelled spend now
 -- lands in an explicit '(unclassified)' bucket instead. Keep at parity with
 -- the server-side query pack entry (dhc-07.ts); fix both or neither.
+--
+-- The GROUP BY repeats the full COALESCE expression ON PURPOSE. The SELECT
+-- alias shadows the raw column name, and MySQL resolves a bare `Objective`
+-- in GROUP BY to the TABLE COLUMN in that case, which would split NULL and
+-- '' into two rows that both render as '(unclassified)'. Do not simplify it
+-- back to GROUP BY Objective.
 
 SELECT
     COALESCE(NULLIF(c.Objective, ''), '(unclassified)') AS Objective,
@@ -38,5 +44,5 @@ JOIN campaign c ON m.CampaignID = c.ID
 WHERE m.SellerID = :seller_id
   AND m.DateTime >= DATE_SUB(:yesterday, INTERVAL 29 DAY)
   AND m.DateTime <= :yesterday
-GROUP BY Objective
+GROUP BY COALESCE(NULLIF(c.Objective, ''), '(unclassified)')
 ORDER BY spend_t1 DESC;

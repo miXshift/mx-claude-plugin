@@ -17,6 +17,12 @@
 -- partially labelled accounts. Unlabelled spend now lands in an explicit
 -- '(unclassified)' bucket. Keep at parity with the server-side query pack
 -- entry (dhc-08.ts); fix both or neither.
+--
+-- The GROUP BY repeats the full COALESCE expression ON PURPOSE (same as
+-- DHC-07): a bare alias in GROUP BY resolves to the raw table column when
+-- the alias shadows it, splitting NULL and '' into two '(unclassified)'
+-- rows. ItemGroup is NOT NULL today so only '' occurs; the expression form
+-- is defensive parity. Do not simplify it back.
 
 SELECT
     COALESCE(NULLIF(c.ItemGroup, ''), '(unclassified)') AS ItemGroup,
@@ -34,5 +40,5 @@ JOIN campaign c ON m.CampaignID = c.ID
 WHERE m.SellerID = :seller_id
   AND m.DateTime >= DATE_SUB(:yesterday, INTERVAL 29 DAY)
   AND m.DateTime <= :yesterday
-GROUP BY ItemGroup
+GROUP BY COALESCE(NULLIF(c.ItemGroup, ''), '(unclassified)')
 ORDER BY spend_t1 DESC;
