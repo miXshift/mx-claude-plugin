@@ -1,6 +1,8 @@
 -- ID: DHC-07
 -- Purpose: Per-Objective metrics (campaign-level via campaignmetric JOIN
---          campaign) for T-1, T-7 total, T-30 averages.
+--          campaign) for T-1, T-7 total, T-30 averages. Campaigns without an
+--          Objective label roll up under '(unclassified)' so the table always
+--          adds up to the account total.
 -- Params: :seller_id, :yesterday
 -- Consumers: daily-health-check (Batch F)
 -- Tier: 1
@@ -8,9 +10,23 @@
 -- Uses campaignmetric JOIN campaign — matches Report Center. Do NOT
 -- substitute keywordtargetingmetric here; keyword-level data lags
 -- differently and produces different totals.
+--
+-- campaign.Objective is an operator-filled free-text column, not a
+-- guaranteed dimension, and most accounts never fill it. This query used to
+-- require it (c.Objective IS NOT NULL AND c.Objective != ''), which returned
+-- ZERO ROWS for unlabelled accounts: no error, no disclosure, and the
+-- account's spend simply absent from the health check. Unlabelled spend now
+-- lands in an explicit '(unclassified)' bucket instead. Keep at parity with
+-- the server-side query pack entry (dhc-07.ts); fix both or neither.
+--
+-- The GROUP BY repeats the full COALESCE expression ON PURPOSE. The SELECT
+-- alias shadows the raw column name, and MySQL resolves a bare `Objective`
+-- in GROUP BY to the TABLE COLUMN in that case, which would split NULL and
+-- '' into two rows that both render as '(unclassified)'. Do not simplify it
+-- back to GROUP BY Objective.
 
 SELECT
-    c.Objective,
+    COALESCE(NULLIF(c.Objective, ''), '(unclassified)') AS Objective,
     -- T-1
     SUM(CASE WHEN m.DateTime = :yesterday THEN m.Cost  ELSE 0 END) AS spend_t1,
     SUM(CASE WHEN m.DateTime = :yesterday THEN m.Sales ELSE 0 END) AS adsales_t1,
@@ -28,6 +44,5 @@ JOIN campaign c ON m.CampaignID = c.ID
 WHERE m.SellerID = :seller_id
   AND m.DateTime >= DATE_SUB(:yesterday, INTERVAL 29 DAY)
   AND m.DateTime <= :yesterday
-  AND c.Objective IS NOT NULL AND c.Objective != ''
-GROUP BY c.Objective
+GROUP BY COALESCE(NULLIF(c.Objective, ''), '(unclassified)')
 ORDER BY spend_t1 DESC;

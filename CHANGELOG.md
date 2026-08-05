@@ -41,6 +41,20 @@ starts at 0.5.39; earlier versions predate the changelog.
   timeline stakes: `mixshift timeline add --category ... --tag ...`, and
   `timeline list --tag <slug>` filters by them.
 
+### Fixed
+
+- **The daily health check no longer silently drops unlabeled campaign
+  spend.** The Objective and Item Group tables previously skipped any
+  campaign whose Objective or ItemGroup label was never filled in. Accounts
+  that do not label campaigns (most accounts) got empty sections with no
+  explanation, and partially labeled accounts saw totals that quietly missed
+  the unlabeled share of spend. Unlabeled spend now appears as an explicit
+  `(unclassified)` row, so every table adds up to the account total and the
+  report says when objective-level analysis is limited instead of hiding it.
+  The fix is server-side and applies regardless of plugin version; this
+  release keeps the bundled fallback queries and the health-check guidance in
+  sync with it.
+
 ## 0.8.7
 
 ### Added

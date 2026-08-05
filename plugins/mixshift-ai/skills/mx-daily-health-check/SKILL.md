@@ -176,8 +176,8 @@ This file contains pre-executed results for all queries, keyed by query ID:
 - `DHC-04` — Anomaly Detection Settings: `UpperSensitivityLimit, LowerSensitivityLimit` by SellerID
 - `DHC-05` — T-30 Daily Actuals (anomaly_detection_MV): daily `spend, adsales, acos, total_sales, tacos` for CI computation
 - `DHC-06` — Campaign Type Performance (T-1, T-7, T-30): `campaign_type, spend, adsales, acos`
-- `DHC-07` — Objective Performance (T-1, T-7, T-30): `objective, spend, adsales, acos`
-- `DHC-08` — Item Group Performance (T-1, T-7, T-30): `item_group, spend, adsales, acos`
+- `DHC-07` — Objective Performance (T-1, T-7, T-30): `objective, spend, adsales, acos`. Campaigns without an Objective label roll up under an `(unclassified)` row, so this table always foots to account spend.
+- `DHC-08` — Item Group Performance (T-1, T-7, T-30): `item_group, spend, adsales, acos`. Campaigns without an ItemGroup label roll up under an `(unclassified)` row, same as DHC-07.
 - `DHC-09` — Brand Performance (conditional — present only when sub-brand segmentation is active): `brand_label, spend, adsales, acos`
 - `DHC-10` — Data lag check (campaign-level vs. keyword-level spend comparison): `campaign_spend_t1, keyword_spend_t1`
 - `DHC-11` — Keyword-level spend comparison supplemental data
@@ -414,8 +414,10 @@ Table first, then narrative. Lead with plain-language verdict ("This type is cle
 #### Performance by Objective
 Same structure as Campaign Type. When per-objective CI distributions exist (stored in SQL-REFERENCE.md), use those thresholds instead of account-level CI.
 
+An `(unclassified)` row means those campaigns carry no Objective label in the account. Treat it as unlabeled spend, not as a real objective: never invent an objective for it, never apply per-objective thresholds to it, and when it holds most of the spend, say plainly that objective-level analysis is limited because the account does not label campaign objectives.
+
 #### Performance by Item Group
-Same structure. When brand context documents a price test on any item group, add a sub-section within this table:
+Same structure. An `(unclassified)` row follows the same rule as in the Objective table: unlabeled spend, not a real item group. When brand context documents a price test on any item group, add a sub-section within this table:
 
 **Price Test Sub-Section:**
 - Use same-day-count prior period comparison (e.g., 9 test days vs 9 prior days)
