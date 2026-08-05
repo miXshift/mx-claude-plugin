@@ -8,6 +8,8 @@ import {
   contextSchema,
   normalizeLegacyTacosFields,
   REQUIRED_TOP_LEVEL_FIELDS,
+  RESERVED_EVENT_KINDS,
+  STRUCTURAL_EVENT_TYPES,
 } from './schema.js';
 import { validateBrandContext } from './load.js';
 
@@ -271,6 +273,148 @@ describe('contextSchema — drift check against canonical YAML schema', () => {
     const yamlSorted = [...yamlSchema.required_top_level].sort();
     const zodSorted = [...REQUIRED_TOP_LEVEL_FIELDS].sort();
     expect(zodSorted).toEqual(yamlSorted);
+  });
+
+  it('the known structural_event types match the canonical YAML schema (#37499)', async () => {
+    const raw = await readFile(yamlSchemaPath, 'utf-8');
+    const yamlSchema = parseYaml(raw) as {
+      shapes: { structural_event: { enums: { type: string[] } } };
+    };
+    const yamlTypes = [...yamlSchema.shapes.structural_event.enums.type].sort();
+    // The documented/known set must match in BOTH directions.
+    expect([...STRUCTURAL_EVENT_TYPES].sort()).toEqual(yamlTypes);
+    // Pin the count so an addition on either side forces this test open.
+    expect(yamlTypes).toHaveLength(12);
+    for (const t of yamlTypes) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e', type: t, interpretation: 'x', kind: 'probe' }),
+      );
+      expect(r.success, `type '${t}' should validate`).toBe(true);
+    }
+  });
+});
+
+// A minimal valid context wrapping one structural event (shared by the
+// #37499 taxonomy tests below).
+function contextWithEvent(event: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    brand_slug: 'acme',
+    brand_name: 'Acme',
+    last_updated: '2026-08-03',
+    accounts: [
+      {
+        seller_id: 1,
+        seller_name: 'Acme Seller',
+        account_type: 'SC',
+        status: 'active',
+        role: 'primary',
+      },
+    ],
+    sources: {
+      ad_metrics: 'campaignmetric',
+      ops_revenue: 'business_reports_dpst_date',
+      ops_revenue_field: 'SalesAmount',
+      ops_units_field: 'UnitsOrdered',
+      ops_date_field: 'DateTime',
+    },
+    management: {
+      primary_metric: 'ACOS',
+      acos_target_pct: 20.0,
+      attribution_window_days: 14,
+    },
+    structural_events: [event],
+  };
+}
+
+describe('structural_events — #37499 taxonomy flexibility', () => {
+  it.each(['off_amazon_media', 'assortment_change'])(
+    'accepts the new type %s without a kind',
+    (type) => {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type, interpretation: 'why it matters' }),
+      );
+      expect(r.success).toBe(true);
+    },
+  );
+
+  it("type 'other' REQUIRES a kind (the escape must not lose specificity)", () => {
+    const without = contextSchema.safeParse(
+      contextWithEvent({ id: 'e1', type: 'other', interpretation: 'x' }),
+    );
+    expect(without.success).toBe(false);
+    if (!without.success) {
+      expect(JSON.stringify(without.error.issues)).toContain('requires a kind');
+    }
+    const withKind = contextSchema.safeParse(
+      contextWithEvent({
+        id: 'e1',
+        type: 'other',
+        kind: 'retail_media_network_test',
+        interpretation: 'x',
+      }),
+    );
+    expect(withKind.success).toBe(true);
+  });
+
+  it('an UNKNOWN type slug is tolerated, not rejected (forward compatibility)', () => {
+    // A newer plugin may add a type this build has never heard of, and
+    // context.yaml travels between machines via the org store. Hard-failing
+    // would take the whole brand down for every skill on the older client
+    // (exactly what the 0.8.7 enum did when this release added three values).
+    const r = contextSchema.safeParse(
+      contextWithEvent({ id: 'e1', type: 'some_future_type', interpretation: 'x' }),
+    );
+    expect(r.success).toBe(true);
+  });
+
+  it('a non-slug type is still rejected (typo protection survives)', () => {
+    for (const bad of ['Promotional Window', 'promo-window', '2026_promo', '']) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: bad, interpretation: 'x' }),
+      );
+      expect(r.success, `type '${bad}' should be rejected`).toBe(false);
+    }
+  });
+
+  it.each([...RESERVED_EVENT_KINDS])(
+    'kind cannot be the server-reserved slug %s',
+    (reserved) => {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', kind: reserved, interpretation: 'x' }),
+      );
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(JSON.stringify(r.error.issues)).toContain('reserves those');
+      }
+    },
+  );
+
+  it('kind must be a lowercase snake_case slug', () => {
+    for (const bad of ['Has Caps', 'kebab-case', '1leading', 'a'.repeat(65)]) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', kind: bad, interpretation: 'x' }),
+      );
+      expect(r.success, `kind '${bad}' should be rejected`).toBe(false);
+    }
+  });
+
+  it('tags accept lowercase slugs and reject shape violations', () => {
+    const ok = contextSchema.safeParse(
+      contextWithEvent({
+        id: 'e1',
+        type: 'launch',
+        interpretation: 'x',
+        tags: ['mmm', 'backbone-media', 'q3_2026'],
+      }),
+    );
+    expect(ok.success).toBe(true);
+    for (const bad of [['UPPER'], ['has space'], ['x'.repeat(65)], Array.from({ length: 17 }, (_v, i) => `t${i}`)]) {
+      const r = contextSchema.safeParse(
+        contextWithEvent({ id: 'e1', type: 'launch', interpretation: 'x', tags: bad }),
+      );
+      expect(r.success, `tags ${JSON.stringify(bad).slice(0, 40)} should be rejected`).toBe(false);
+    }
   });
 });
 

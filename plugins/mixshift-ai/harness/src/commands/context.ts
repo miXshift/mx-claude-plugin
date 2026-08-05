@@ -24,6 +24,7 @@ import {
 } from '../lib/context-sync/autosync.js';
 import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
 import type { DocActionReport, DocStatusReport, WireManifestBrand } from '../lib/context-sync/types.js';
+import { syncStakes, type StakeSyncResult } from '../lib/timeline/stake-sync.js';
 import { track, EventName, type EventNameValue } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -166,10 +167,13 @@ export function registerContextCommands(program: Command): void {
     description:
       'Upload local changes to the org store. Only touches docs edited ' +
         'locally; server-side moves are skipped (pull them instead). --force ' +
-        'overwrites diverged docs with the local version.',
+        'overwrites diverged docs with the local version. Also publishes the ' +
+        "brand's structural_events to the timeline as declared stakes " +
+        '(idempotent).',
     hasForce: true,
     run: (brand, opts) => push(brand, opts),
     eventName: EventName.ContextPushCompleted,
+    syncStakesAfter: true,
   });
 
   registerActionSubcommand(context, {
@@ -181,12 +185,15 @@ export function registerContextCommands(program: Command): void {
         'machine-friendly post-run form for skill flows (the preflight ' +
         'auto-sync is pull-only; pushing local changes stays an explicit ' +
         'opt-in via this command): silent unless something was pulled, ' +
-        'pushed, created, conflicted, or errored. Conflicts still ' +
-        'exit 0 (only per-doc errors are non-zero).',
+        'pushed, created, conflicted, or errored, or a structural event was ' +
+        'recorded on the timeline or failed to reach it. Conflicts still ' +
+        "exit 0 (only per-doc errors are non-zero). Also publishes the brand's " +
+        'structural_events to the timeline as declared stakes (idempotent).',
     hasForce: false,
     hasQuiet: true,
     run: (brand, opts) => sync(brand, opts),
     eventName: EventName.ContextSyncCompleted,
+    syncStakesAfter: true,
   });
 
   registerAutosyncSubcommand(context);
@@ -232,6 +239,16 @@ export function registerContextCommands(program: Command): void {
           return;
         }
 
+        // Migrate is the FIRST-publish flow, so it is exactly where a brand's
+        // curated structural_events first reach the timeline (#37499).
+        const stakeRuns: Array<{ brand: string; result: StakeSyncResult }> = [];
+        for (const b of result.brands) {
+          stakeRuns.push({
+            brand: b.brand,
+            result: await syncStakes(b.brand, { dataDirOverride: root.dataDir }),
+          });
+        }
+
         const allReports = result.brands.flatMap((b) => b.reports);
         const counts = countActions(allReports);
         await track(
@@ -239,7 +256,13 @@ export function registerContextCommands(program: Command): void {
             event_name: EventName.ContextMigrateCompleted,
             outcome: counts.error > 0 ? 'failed' : 'ok',
             duration_ms: Date.now() - t0,
-            payload: { brands: result.brands.length, ...counts },
+            payload: {
+              brands: result.brands.length,
+              ...counts,
+              stake_created: stakeRuns.reduce((n, s) => n + s.result.created, 0),
+              stake_duplicates: stakeRuns.reduce((n, s) => n + s.result.duplicates, 0),
+              stake_failed: stakeRuns.reduce((n, s) => n + s.result.failed, 0),
+            },
           },
           root.dataDir,
         );
@@ -247,7 +270,12 @@ export function registerContextCommands(program: Command): void {
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
-              { status: 'ok', brands: result.brands, counts },
+              {
+                status: 'ok',
+                brands: result.brands,
+                counts,
+                stake_events: stakeRuns.map((s) => s.result),
+              },
               null,
               2,
             ) + '\n',
@@ -263,6 +291,7 @@ export function registerContextCommands(program: Command): void {
               lines.push(formatReportLine(b.brand, r));
             }
           }
+          for (const line of stakeLines(stakeRuns)) lines.push(line);
           lines.push('');
           lines.push(summaryLine(counts));
           process.stdout.write(lines.join('\n') + '\n');
@@ -291,6 +320,11 @@ interface ActionSpec {
     opts: EngineOptions & { force?: boolean },
   ) => Promise<BrandActionResult>;
   eventName: EventNameValue;
+  /** push/sync only (#37499): after the doc run, publish each brand's
+   *  structural_events to the timeline as declared stakes. Idempotent and
+   *  advisory — stake failures are reported but never change the exit code
+   *  (the doc contract stays exactly what it was). */
+  syncStakesAfter?: boolean;
 }
 
 /** The report actions --quiet considers "something happened": content moved
@@ -315,7 +349,8 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
     sub.option(
       '--quiet',
       'machine-friendly: print nothing unless a doc was pulled/pushed/' +
-        'created, conflicted, or errored (--json output is unaffected)',
+        'created, conflicted, or errored, or a structural event was recorded ' +
+        'or failed (--json output is unaffected)',
       false,
     );
   }
@@ -350,6 +385,25 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
         results.push({ brand: r.brand, reports: r.reports });
       }
 
+      // Stake sync (#37499): after the doc run, publish each brand's
+      // structural_events as declared stakes. Runs before track/output so
+      // both can carry the counts. Idempotent server-side, so re-running the
+      // command is always safe.
+      const stakeRuns: Array<{ brand: string; result: StakeSyncResult }> = [];
+      if (spec.syncStakesAfter) {
+        for (const r of results) {
+          stakeRuns.push({
+            brand: r.brand,
+            result: await syncStakes(r.brand, { dataDirOverride: root.dataDir }),
+          });
+        }
+      }
+      const stakeCounts = {
+        stake_created: stakeRuns.reduce((n, s) => n + s.result.created, 0),
+        stake_duplicates: stakeRuns.reduce((n, s) => n + s.result.duplicates, 0),
+        stake_failed: stakeRuns.reduce((n, s) => n + s.result.failed, 0),
+      };
+
       const allReports = results.flatMap((r) => r.reports);
       const counts = countActions(allReports);
       await track(
@@ -361,6 +415,7 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
             brands: results.length,
             force: opts.force ?? false,
             ...counts,
+            ...(spec.syncStakesAfter ? stakeCounts : {}),
           },
         },
         root.dataDir,
@@ -375,6 +430,9 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
               force: opts.force ?? false,
               brands: results,
               counts,
+              ...(spec.syncStakesAfter
+                ? { stake_events: stakeRuns.map((s) => s.result) }
+                : {}),
             },
             null,
             2,
@@ -384,7 +442,9 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
         !(
           spec.hasQuiet &&
           opts.quiet &&
-          !allReports.some((r) => QUIET_NOISY_ACTIONS.has(r.action))
+          !allReports.some((r) => QUIET_NOISY_ACTIONS.has(r.action)) &&
+          stakeCounts.stake_created === 0 &&
+          stakeCounts.stake_failed === 0
         )
       ) {
         const lines: string[] = [];
@@ -397,6 +457,7 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
             lines.push(formatReportLine(r.brand, report));
           }
         }
+        for (const line of stakeLines(stakeRuns)) lines.push(line);
         lines.push('');
         lines.push(summaryLine(counts));
         process.stdout.write(lines.join('\n') + '\n');
@@ -614,6 +675,27 @@ function formatReportLine(brand: string, r: DocActionReport): string {
   ]
     .join('  ')
     .trimEnd();
+}
+
+/** Human lines for the post-run stake sync (#37499). One line per brand that
+ *  HAS structural events; a whole-run error (unreadable context) reports as
+ *  such, and an all-duplicates run says so rather than staying silent (the
+ *  user asked for a push; "already on the timeline" is the answer). */
+function stakeLines(runs: Array<{ brand: string; result: StakeSyncResult }>): string[] {
+  const lines: string[] = [];
+  for (const { brand, result } of runs) {
+    if (result.error !== undefined) {
+      lines.push(`${brand.padEnd(20)}  structural events          error  ${result.error}`);
+      continue;
+    }
+    if (result.total === 0) continue;
+    const bits: string[] = [];
+    if (result.created > 0) bits.push(`${result.created} recorded on the timeline`);
+    if (result.duplicates > 0) bits.push(`${result.duplicates} already on the timeline`);
+    if (result.failed > 0) bits.push(`${result.failed} FAILED`);
+    lines.push(`${brand.padEnd(20)}  structural events  ${bits.join(', ')}`);
+  }
+  return lines;
 }
 
 function emitNoBrands(root: RootOptions): void {

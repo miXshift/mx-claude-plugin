@@ -51,6 +51,17 @@ export interface ContextSyncState {
    * of tenant, so a stale stamp only ever means FEWER attempts.
    */
   last_autosync_at?: string;
+  /**
+   * Structural-events sync stamp (#37499): content hash of the brand's
+   * context.yaml structural_events block at the last FULLY-successful stake
+   * sync, plus when. The auto-publish seam skips its stake leg when the
+   * hash is unchanged (zero network on the common no-events-changed write).
+   * Advisory like everything here: a stale/absent stamp only ever means one
+   * extra sync, and the server's idempotency keys make that a no-op.
+   * Identity-bound like `docs` — dropped on a tenant rebind (a hash proves
+   * sync to THAT tenant's timeline only).
+   */
+  stakes?: { last_synced_hash: string; last_synced_at: string };
   docs: Record<string, ContextSyncDocState>;
 }
 
@@ -147,12 +158,26 @@ export async function loadState(
         };
       }
     }
+    // Stake-sync stamp (#37499): same explicit reconstruction as docs — a
+    // malformed value degrades to "no stamp" (one extra idempotent sync).
+    const storedStakes = (parsed as { stakes?: unknown }).stakes;
+    const stakes =
+      typeof storedStakes === 'object' &&
+      storedStakes !== null &&
+      typeof (storedStakes as { last_synced_hash?: unknown }).last_synced_hash === 'string' &&
+      typeof (storedStakes as { last_synced_at?: unknown }).last_synced_at === 'string'
+        ? {
+            last_synced_hash: (storedStakes as { last_synced_hash: string }).last_synced_hash,
+            last_synced_at: (storedStakes as { last_synced_at: string }).last_synced_at,
+          }
+        : undefined;
     const identity =
       currentIdentity ?? (typeof storedIdentity === 'string' ? storedIdentity : undefined);
     return {
       schema: 2,
       ...(identity ? { identity } : {}),
       ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+      ...(stakes !== undefined ? { stakes } : {}),
       docs,
     };
   } catch {

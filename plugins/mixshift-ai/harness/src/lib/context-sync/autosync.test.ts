@@ -11,6 +11,7 @@ import {
 } from './autosync.js';
 import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
+import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
 import { contextSyncStatePath, brandDir, credentialsPath } from '../paths/resolve.js';
 import type { ContextSyncState } from './state.js';
 import type { WireManifestBrand } from './types.js';
@@ -44,13 +45,15 @@ async function makeBrandDir(slug: string): Promise<void> {
 interface FakeClientState {
   manifestCalls: number;
   docFetches: string[];
+  /** Docs the two-way half pushed (empty in pull-only mode). */
+  docPushes: string[];
 }
 
 function countingClient(
   brands: WireManifestBrand[],
   docs: Record<string, { content: string; revision: number }>,
 ): { client: ContextSyncClient; state: FakeClientState } {
-  const state: FakeClientState = { manifestCalls: 0, docFetches: [] };
+  const state: FakeClientState = { manifestCalls: 0, docFetches: [], docPushes: [] };
   const client: ContextSyncClient = {
     fetchManifest: async () => {
       state.manifestCalls += 1;
@@ -78,8 +81,14 @@ function countingClient(
         },
       };
     },
-    putDoc: async () => {
-      throw new Error('autosync must NEVER push');
+    // TWO-WAY since 0.8.8 (Sam 2026-08-04): the push half is legitimate now.
+    // Record instead of throwing, so tests can assert exactly WHEN pushes
+    // happen (never in pull-only mode; only local-ahead docs otherwise).
+    putDoc: async (input) => {
+      state.docPushes.push(
+        input.doc_type === 'corpus' ? `corpus/${input.corpus_name}` : input.doc_type,
+      );
+      return { ok: true, status: 'updated', revision: (input.base_revision ?? 0) + 1 };
     },
     putAssignment: async () => ({ ok: true }),
   };
@@ -481,7 +490,77 @@ describe('pull safety', () => {
     expect(await readFile(join(dir, 'corpora', 'tone.md'), 'utf8')).toBe('local tone edit\n');
     // And the diverged doc's content was never even fetched.
     expect(state.docFetches).not.toContain('corpus/tone.md');
-    // putDoc throwing inside the fake proves nothing attempted a push.
+    // Two-way rule: a DIVERGED doc is never pushed either (no force, ever).
+    expect(state.docPushes).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two-way + stake leg (Sam 2026-08-04): autosync pushes non-conflicting local
+// changes and backfills structural_events, pull-only when publishing is off.
+// ---------------------------------------------------------------------------
+
+describe('two-way sync + stake leg', () => {
+  const LOCAL_ONLY_CONTEXT = 'schema_version: 1\nbrand_slug: acme\n';
+
+  async function writeLocalOnlyDoc(): Promise<void> {
+    const dir = brandDir('acme', testDir);
+    await mkdir(dir, { recursive: true });
+    // A doc the server has never seen: local-only → the push half creates it.
+    await writeFile(join(dir, 'narrative.md'), 'local-only narrative\n', 'utf8');
+  }
+
+  it('pushes a local-only doc (the two-way half) and reports pushed/created', async () => {
+    await writeLocalOnlyDoc();
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(state.docPushes).toContain('narrative');
+      expect(result.created + result.pushed).toBeGreaterThan(0);
+      // No context.yaml in this fixture → the stake leg is a local no-op,
+      // but it RAN (the publish half was enabled).
+      expect(result.stake_events).toMatchObject({ skipped: true });
+    }
+  });
+
+  it(`${PUSH_AFTER_WRITE_ENV}=off degrades to the original pull-only behavior`, async () => {
+    await writeLocalOnlyDoc();
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: { ...LIVE_ENV, [PUSH_AFTER_WRITE_ENV]: 'off' },
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(state.docPushes).toEqual([]); // nothing pushed
+      expect(result.stake_events).toBeUndefined(); // no stake leg either
+    }
+  });
+
+  it('a brand with no structural_events skips the stake leg with zero network', async () => {
+    const dir = brandDir('acme', testDir);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'context.yaml'), LOCAL_ONLY_CONTEXT, 'utf8');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      // Partial context fails validation → 'context not readable'; a VALID
+      // context without events reports 'no structural events'. Either way:
+      // skipped, no timeline traffic.
+      expect(result.stake_events?.skipped).toBe(true);
+      expect(result.stake_events?.created).toBe(0);
+    }
   });
 });
 

@@ -31,17 +31,24 @@
  *     persisted (e.g. read-only brand dir) the network attempt is skipped
  *     too — otherwise every skill step would stall for the full budget
  *     with zero signal.
- *   - Pull-only and conservative: delegates to engine.pull WITHOUT force,
- *     which only writes docs whose verdict is 'server-ahead' or
- *     'server-only' (no local modification by construction). Diverged /
- *     conflicting docs are never touched; nothing is ever pushed. Post-run
- *     push-after is deliberately NOT automatic in this phase — flows opt
- *     in explicitly via `mixshift context sync --quiet`.
+ *   - TWO-WAY since 0.8.8 (Sam, 2026-08-04 — supersedes the P2 pull-only
+ *     design): delegates to engine.sync WITHOUT force, which pulls every
+ *     non-conflicting server change AND pushes every non-conflicting local
+ *     change; diverged docs stay conflicts, nothing is ever overwritten.
+ *     After a successful doc sync it also runs the budgeted stake leg
+ *     (lib/timeline/stake-sync.ts), so a brand's curated structural_events
+ *     reach the team timeline even when nobody EDITS the brand — this is
+ *     the zero-touch initial backfill for already-onboarded brands. The
+ *     push half + the stake leg honor the MIXSHIFT_CONTEXT_AUTOPUBLISH
+ *     kill switch: with publishing off, autosync degrades to the original
+ *     pull-only behavior.
  *   - Kill switch: MIXSHIFT_CONTEXT_AUTOSYNC=off (also '0'/'false')
  *     disables it entirely, before any file or network activity.
  */
 
-import { pull } from './engine.js';
+import { pull, sync } from './engine.js';
+import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
+import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
 import { loadState, resolveLedgerIdentity, saveState } from './state.js';
@@ -81,13 +88,24 @@ export type AutoSyncResult =
    *  unpersistable stamp). Nothing was touched; detail says why. */
   | { ran: false; reason: 'skipped'; detail: string }
   | { ran: false; reason: 'failed'; detail: string }
-  | { ran: true; pulled: number; conflicts: number; errors: number; reports: DocActionReport[] };
+  | {
+      ran: true;
+      pulled: number;
+      /** Docs pushed/created by the two-way half; 0 in pull-only mode. */
+      pushed: number;
+      created: number;
+      conflicts: number;
+      errors: number;
+      reports: DocActionReport[];
+      /** Present when the publish half ran (see PUSH_AFTER_WRITE_ENV). */
+      stake_events?: StakeLegSummary;
+    };
 
 /**
- * Attempt one throttled, budgeted, pull-only sync for a brand. Safe to call
- * from any read path: never throws, never prints (MIXSHIFT_DEBUG stderr
- * lines at most), and the worst outcome of any failure is "the local cache
- * stays as it was".
+ * Attempt one throttled, budgeted, two-way sync for a brand (pull-only when
+ * publishing is switched off). Safe to call from any read path: never
+ * throws, never prints (MIXSHIFT_DEBUG stderr lines at most), and the worst
+ * outcome of any failure is "the local cache stays as it was".
  */
 export async function maybeAutoSync(
   brandSlug: string,
@@ -218,8 +236,13 @@ export async function maybeAutoSync(
       // left to finish on its own: its errors are already swallowed by the
       // result-envelope contract, and a pull that completes after this
       // read returned just updates the local cache for the NEXT read.
+      // Publishing half: honored kill switch = the original pull-only mode.
+      const publishFlag = (env[PUSH_AFTER_WRITE_ENV] ?? '').toLowerCase();
+      const publishDisabled =
+        publishFlag === 'off' || publishFlag === '0' || publishFlag === 'false';
+      const op = publishDisabled ? pull : sync;
       const raced = await raceDeadline(
-        pull(brandSlug, {
+        op(brandSlug, {
           client,
           dataDirOverride: options.dataDirOverride,
           // NEVER force: diverged docs stay untouched by design.
@@ -236,9 +259,34 @@ export async function maybeAutoSync(
         return { ran: false, reason: 'failed', detail: raced.message };
       }
       const pulled = raced.reports.filter((r) => r.action === 'pulled').length;
+      const pushed = raced.reports.filter((r) => r.action === 'pushed').length;
+      const created = raced.reports.filter((r) => r.action === 'created').length;
       const conflicts = raced.reports.filter((r) => r.action === 'conflict').length;
       const errors = raced.reports.filter((r) => r.action === 'error').length;
-      return { ran: true, pulled, conflicts, errors, reports: raced.reports };
+      // Stake leg (zero-touch backfill): publish the brand's curated
+      // structural_events even when nobody edits the brand. Cheap in the
+      // steady state (the ledger hash skips with zero network) and bounded
+      // by its own budget; a failure never demotes the doc result.
+      let stakeLeg: StakeLegSummary | undefined;
+      if (!publishDisabled) {
+        stakeLeg = await runBudgetedStakeLeg(brandSlug, {
+          ...(options.dataDirOverride !== undefined
+            ? { dataDirOverride: options.dataDirOverride }
+            : {}),
+          ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+          env,
+        });
+      }
+      return {
+        ran: true,
+        pulled,
+        pushed,
+        created,
+        conflicts,
+        errors,
+        reports: raced.reports,
+        ...(stakeLeg !== undefined ? { stake_events: stakeLeg } : {}),
+      };
     } finally {
       clearTimeout(abortTimer);
     }

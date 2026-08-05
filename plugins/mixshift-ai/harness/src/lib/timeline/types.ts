@@ -33,10 +33,16 @@
 export type PostableTimelineFamily = 'action' | 'structural' | 'comment';
 
 /**
- * The 12-value stake category enum (org brain P2.5). A `structural.*` event
- * that carries a `category` is a "stake"; a structural event with no category
- * behaves exactly as it did in P2. FROZEN — mirrors the server enum. The
- * recurring categories are labels; recurrence is not occurrence-expanded.
+ * The 15-value stake category enum (org brain P2.5; widened by server
+ * migration 018 / feedback #37499). A `structural.*` event that carries a
+ * `category` is a "stake"; a structural event with no category behaves
+ * exactly as it did in P2. FROZEN — mirrors the server enum. The recurring
+ * categories are labels; recurrence is not occurrence-expanded. The #37499
+ * additions: `off_amazon_media` (a standing off-Amazon media condition:
+ * outside demand gen, MMM attribution, non-Amazon ad lines),
+ * `assortment_change` (products rotating in/out of the catalog as expected
+ * behavior), and `other` (the explicit escape — pair it with a specific
+ * freeform `kind` instead of forcing a wrong fixed category).
  */
 export const STAKE_CATEGORIES = [
   'brand_migration',
@@ -51,6 +57,9 @@ export const STAKE_CATEGORIES = [
   'content_change',
   'strategy_change',
   'platform_external',
+  'off_amazon_media',
+  'assortment_change',
+  'other',
 ] as const;
 export type StakeCategory = (typeof STAKE_CATEGORIES)[number];
 
@@ -99,6 +108,8 @@ export interface WireTimelineEvent {
   intensity?: number;
   evidence?: Record<string, unknown>;
   affects?: string[];
+  /** Freeform lowercase slug tags (#37499); present only when non-empty. */
+  tags?: string[];
 }
 
 /** Filter set for GET /api/timeline (all optional; wire param names). */
@@ -122,6 +133,8 @@ export interface TimelineListQuery {
   status?: StakeStatus;
   /** A single type-prefixed ref; matches stakes whose `affects` contains it. */
   affects?: string;
+  /** A single lowercase slug; matches stakes whose `tags` contains it. */
+  tag?: string;
   /** Reinterpret since/until as an interval overlap against [ts, end_ts]. */
   overlap?: boolean;
   /** Lift the default now+24h upper bound (show scheduled stakes). */
@@ -154,6 +167,16 @@ export interface PostTimelineEventInput {
   intensity?: number;
   interpretation?: string;
   evidence?: Record<string, unknown>;
+  /** Freeform lowercase slug tags, ≤16 × 64 chars (#37499). Stake-only. */
+  tags?: string[];
+  /**
+   * Server-side idempotency key (org brain P3.1, contract R10): a duplicate
+   * (same tenant + key) returns 200 with the EXISTING id + duplicate:true
+   * instead of a second row. The stake-sync path derives it deterministically
+   * (`ctxev:<brand>:<event.id>`) so re-syncs are convergent with no local
+   * ledger.
+   */
+  idempotency_key?: string;
 }
 
 /** Body for POST /api/timeline/event/:id/corroborate. At least one of
@@ -192,7 +215,15 @@ export type ListTimelineResult =
   | { ok: true; events: WireTimelineEvent[]; next_cursor?: string }
   | TimelineFailure;
 
-export type PostTimelineEventResult = { ok: true; id: string } | TimelineFailure;
+export type PostTimelineEventResult =
+  | {
+      ok: true;
+      id: string;
+      /** Present (true) exactly when an idempotency_key re-POST resolved to
+       *  an existing event instead of creating a new row. */
+      duplicate?: boolean;
+    }
+  | TimelineFailure;
 
 /** Corroborate returns the updated stake (mapped like a list row) plus the
  *  id of the appended `structural.corroboration` child event. */

@@ -1,12 +1,12 @@
 /**
- * `mixshift timeline <list|add|corroborate>` — the brand timeline
+ * `mixshift timeline <list|add|corroborate|sync>` — the brand timeline
  * (ORG-BRAIN.md 2b).
  *
  * list        — read the per-brand event stream (knowledge revisions, audited
  *               Ads actions, structural stakes, comments), filterable by brand
  *               / family / kind / time window, plus the stake filters
  *               (--stakes / --category / --source / --status / --affects /
- *               --overlap / --include-future).
+ *               --tag / --overlap / --include-future).
  * add         — append a human annotation: a `structural.*` stake in the
  *               ground (price change, stockout, Prime Day, creative refresh)
  *               or a `comment` attached to any target ref. Passing --category
@@ -15,6 +15,12 @@
  *               instrumented write paths — both are rejected here.
  * corroborate — append a corroboration to an existing stake, moving its
  *               verification status / closing its range / attaching evidence.
+ * sync        — publish a brand's curated context.yaml structural_events[]
+ *               to the timeline as declared stakes (#37499). Idempotent
+ *               (server-side keys), so re-runs are convergent; the normal
+ *               path is AUTOMATIC via the auto-publish seam after context
+ *               writes — this command is the explicit backfill / first-run /
+ *               dry-run surface.
  *
  * All wire logic lives in lib/timeline/; this file parses options and
  * formats results (house pattern: commands/context.ts).
@@ -27,6 +33,8 @@ import {
   LIST_ALL_CAP,
 } from '../lib/timeline/client.js';
 import { parseSince } from '../lib/timeline/since.js';
+import { syncStakes } from '../lib/timeline/stake-sync.js';
+import { listLocalBrands } from '../lib/context-sync/local.js';
 import {
   STAKE_CATEGORIES,
   STAKE_SOURCES,
@@ -58,6 +66,7 @@ export function registerTimelineCommands(program: Command): void {
   registerList(timeline);
   registerAdd(timeline);
   registerCorroborate(timeline);
+  registerSync(timeline);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +87,7 @@ interface ListCliOptions {
   source?: string;
   status?: string;
   affects?: string;
+  tag?: string;
   overlap?: boolean;
   includeFuture?: boolean;
 }
@@ -116,6 +126,7 @@ function registerList(timeline: Command): void {
       "verification axis: 'unverified' | 'corroborated' | 'disputed' | 'no_effect'",
     )
     .option('--affects <ref>', "match stakes whose affects contains this ref (e.g. 'marketplace:US')")
+    .option('--tag <slug>', "match stakes whose tags contain this slug (e.g. 'mmm')")
     .option(
       '--overlap',
       'treat --since/--until as an interval overlap against the stake range, not a point window',
@@ -165,6 +176,7 @@ function registerList(timeline: Command): void {
         if (opts.source) query.source = opts.source as StakeSource;
         if (opts.status) query.status = opts.status as StakeStatus;
         if (opts.affects) query.affects = opts.affects;
+        if (opts.tag) query.tag = opts.tag;
         if (opts.overlap) query.overlap = true;
         if (opts.includeFuture) query.include_future = true;
 
@@ -262,6 +274,7 @@ interface AddCliOptions {
   end?: string;
   category?: string;
   affects?: string[];
+  tag?: string[];
   intensity?: string;
   source?: string;
   interpretation?: string;
@@ -290,6 +303,7 @@ function registerAdd(timeline: Command): void {
     .option('--end <iso>', 'range close for a ranged stake (>= --ts)')
     .option('--category <enum>', 'stake category (makes this a typed stake; requires --interpretation)')
     .option('--affects <ref>', 'type-prefixed ref the stake touches (repeatable)', collect, [] as string[])
+    .option('--tag <slug>', 'freeform lowercase slug tag for the stake (repeatable)', collect, [] as string[])
     .option('--intensity <number>', 'optional magnitude scalar for the stake')
     .option('--source <src>', "trust axis: 'declared' | 'system' | 'suggested' (default declared)")
     .option('--interpretation <text>', 'what the org read into the stake (required on a stake)')
@@ -367,6 +381,7 @@ function registerAdd(timeline: Command): void {
         } else if (
           opts.end !== undefined ||
           (opts.affects?.length ?? 0) > 0 ||
+          (opts.tag?.length ?? 0) > 0 ||
           opts.intensity !== undefined ||
           opts.source !== undefined ||
           opts.interpretation !== undefined ||
@@ -375,8 +390,9 @@ function registerAdd(timeline: Command): void {
           // A non-stake carrying stake fields is a 400 server-side; name the
           // missing flag rather than bounce.
           emitError(
-            '--end / --affects / --intensity / --source / --interpretation / ' +
-              '--evidence describe a stake; add --category to record one.',
+            '--end / --affects / --tag / --intensity / --source / ' +
+              '--interpretation / --evidence describe a stake; add --category ' +
+              'to record one.',
             root,
           );
           return;
@@ -426,6 +442,7 @@ function registerAdd(timeline: Command): void {
           ...(isStake ? { interpretation: opts.interpretation } : {}),
           ...(opts.end !== undefined ? { end_ts: opts.end } : {}),
           ...(opts.affects && opts.affects.length > 0 ? { affects: opts.affects } : {}),
+          ...(opts.tag && opts.tag.length > 0 ? { tags: opts.tag } : {}),
           ...(intensity !== undefined ? { intensity } : {}),
           ...(opts.source !== undefined ? { source: opts.source as StakeSource } : {}),
           ...(evidence !== undefined ? { evidence } : {}),
@@ -453,6 +470,7 @@ function registerAdd(timeline: Command): void {
                     ...(opts.source !== undefined ? { source: opts.source } : {}),
                     has_end: opts.end !== undefined,
                     affects_count: opts.affects?.length ?? 0,
+                    tags_count: opts.tag?.length ?? 0,
                     has_evidence: evidence !== undefined,
                     has_intensity: intensity !== undefined,
                     has_ts: opts.ts !== undefined,
@@ -641,6 +659,146 @@ function registerCorroborate(timeline: Command): void {
 }
 
 // ---------------------------------------------------------------------------
+// timeline sync
+// ---------------------------------------------------------------------------
+
+interface SyncCliOptions {
+  brand?: string;
+  dryRun?: boolean;
+}
+
+function registerSync(timeline: Command): void {
+  timeline
+    .command('sync')
+    .description(
+      'Publish curated context.yaml structural_events to the timeline as ' +
+        'declared stakes. Without --brand it covers EVERY local brand (the ' +
+        'one-time backfill after updating). Idempotent: an already-synced ' +
+        'event reports duplicate and creates nothing. Events also sync ' +
+        'automatically after context writes and before skill reads.',
+    )
+    .option('--brand <slug>', 'one brand (default: every local brand, the backfill form)')
+    .option('--dry-run', 'map and report without posting anything', false)
+    .action(async (opts: SyncCliOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const t0 = Date.now();
+      try {
+        // No --brand = the FLEET form (same convention as `context push`):
+        // every local brand syncs, which is exactly the one-time backfill an
+        // existing install owes after updating to 0.8.8.
+        const brands =
+          opts.brand !== undefined ? [opts.brand] : await listLocalBrands(root.dataDir);
+        if (brands.length === 0) {
+          process.stdout.write(
+            root.json
+              ? JSON.stringify({ status: 'ok', brands: [], message: 'no local brands' }, null, 2) +
+                  '\n'
+              : 'No local brands found under ~/.mixshift/clients/.\n',
+          );
+          return;
+        }
+        const results = [] as Awaited<ReturnType<typeof syncStakes>>[];
+        for (const brand of brands) {
+          results.push(
+            await syncStakes(brand, {
+              dataDirOverride: root.dataDir,
+              dryRun: opts.dryRun ?? false,
+            }),
+          );
+        }
+
+        const totals = {
+          total: results.reduce((n, r) => n + r.total, 0),
+          created: results.reduce((n, r) => n + r.created, 0),
+          duplicates: results.reduce((n, r) => n + r.duplicates, 0),
+          failed: results.reduce((n, r) => n + r.failed, 0),
+        };
+        const anyFailed = results.some((r) => !r.ok);
+        await track(
+          {
+            event_name: EventName.TimelineStakesSynced,
+            outcome: anyFailed ? 'failed' : 'ok',
+            duration_ms: Date.now() - t0,
+            ...(anyFailed
+              ? {
+                  error_class: results.some((r) => r.error !== undefined)
+                    ? 'context'
+                    : 'post_failed',
+                }
+              : {}),
+            payload: {
+              brand: opts.brand ?? 'ALL',
+              brands: results.length,
+              dry_run: opts.dryRun ?? false,
+              ...totals,
+            },
+          },
+          root.dataDir,
+        );
+
+        // A single-brand whole-run error (no/invalid context) stays a plain
+        // error; on the fleet form it is reported per brand instead, since
+        // one unreadable brand must not hide everyone else's sync.
+        if (opts.brand !== undefined && results[0].error !== undefined) {
+          emitError(results[0].error, root);
+          return;
+        }
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: anyFailed ? 'partial' : 'ok',
+                brands: results,
+                ...totals,
+              },
+              null,
+              2,
+            ) + '\n',
+          );
+          return;
+        }
+        const lines: string[] = [];
+        for (const result of results) {
+          if (result.error !== undefined) {
+            lines.push(`${result.brand}: ${result.error}`);
+            continue;
+          }
+          if (result.total === 0) {
+            if (opts.brand !== undefined) {
+              lines.push(
+                `No structural events in ${result.brand}'s context.yaml; nothing to sync.`,
+              );
+            }
+            continue;
+          }
+          for (const r of result.reports) {
+            const date = r.date_known ? '' : '  (no event date; recorded as of now)';
+            const tail =
+              r.outcome === 'failed'
+                ? `  ${r.detail ?? ''}`
+                : r.event_id !== undefined
+                  ? `  ${r.event_id}`
+                  : '';
+            lines.push(
+              `${r.outcome.padEnd(9)} [${r.category}] ${result.brand}/${r.id}${tail}${date}`,
+            );
+          }
+        }
+        const summary = opts.dryRun
+          ? `Dry run: ${totals.total} event(s) across ${results.length} brand(s) would sync to the timeline.`
+          : `✓ Synced ${results.length} brand(s): ${totals.created} created, ${totals.duplicates} already on the timeline` +
+            (totals.failed > 0 ? `, ${totals.failed} FAILED` : '') +
+            '.';
+        process.stdout.write((lines.length > 0 ? lines.join('\n') + '\n' : '') + summary + '\n');
+        return;
+      } catch (err) {
+        emitError(err instanceof Error ? err.message : String(err), root);
+        return;
+      }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -722,6 +880,9 @@ function summarizeStake(e: WireTimelineEvent): string {
   if (Array.isArray(e.affects) && e.affects.length > 0) {
     parts.push(`affects×${e.affects.length}`);
   }
+  if (Array.isArray(e.tags) && e.tags.length > 0) {
+    parts.push(truncate(e.tags.map((t) => `#${t}`).join(' '), 40));
+  }
   const evidenceKeys =
     e.evidence && typeof e.evidence === 'object' ? Object.keys(e.evidence).length : 0;
   if (evidenceKeys > 0) parts.push(`evidence(${evidenceKeys})`);
@@ -785,6 +946,7 @@ function filtersPayload(
     ...(query.source !== undefined ? { source: query.source } : {}),
     ...(query.status !== undefined ? { status: query.status } : {}),
     ...(query.affects !== undefined ? { affects: query.affects } : {}),
+    ...(query.tag !== undefined ? { tag: query.tag } : {}),
     ...(query.overlap !== undefined ? { overlap: query.overlap } : {}),
     ...(query.include_future !== undefined ? { include_future: query.include_future } : {}),
     all,

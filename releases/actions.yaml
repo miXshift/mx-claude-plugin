@@ -25,6 +25,22 @@
 
 version: 1
 actions:
+  - id: publish-brand-events
+    introduced_in: "0.8.8"
+    title: "Publish your brand events to the team timeline"
+    teach: |
+      The promotions, stockouts, launches, and other events recorded in your
+      brand context now publish to your team's shared brand timeline, so
+      reporting and teammates can see them. New edits share automatically.
+      Brands you set up before this version have events that are still only
+      on this machine: run `mixshift timeline sync` once to publish them all
+      (add `--dry-run` first to preview). Publishing is idempotent, so
+      nothing is ever recorded twice.
+    applies_if: { kind: has_brands }
+    run: { skill: mx-help, args_hint: "publish my brand events to the team timeline" }
+    writes: warehouse
+    supersedes: []
+
   - id: brand-context-refresh
     introduced_in: "0.8.0"
     title: "Bring your brand context up to date"
