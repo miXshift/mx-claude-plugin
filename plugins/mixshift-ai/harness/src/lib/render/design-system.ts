@@ -1410,23 +1410,40 @@ export function formatRoas(
  *   framing='roas': { label: 'RoAS target',  value: '3.57x' }
  *
  * Pass `kind` to control whether the metric is ad-attributed (acos/roas)
- * or total-sales (tacos/troas). Same canonical storage (ACoS-style
- * percent); display flips at this layer.
+ * or total-sales (tacos/troas).
+ *
+ * Callers pass `management.acos_target_pct` / `tacos_goal_pct`, which are
+ * target-setting fields stored as WHOLE numbers (22 means 22%) — the same
+ * convention `formatWholePct` bridges. Both downstream branches expect a
+ * [0,1] fraction (`formatPct` multiplies by 100; `formatRoas` inverts
+ * directly), so the whole-number target is normalized to a fraction ONCE
+ * here, before dispatching to either branch. This is deliberately NOT
+ * pushed into `formatRoas` itself: unlike target-setting fields,
+ * `formatRoas` is also used on ACoS *actuals* elsewhere, which can
+ * legitimately sit below 1% or above 100%, so the `value > 1 ? value/100
+ * : value` heuristic is only safe at this boundary, not inside a formatter
+ * shared with actuals.
  */
 export function frameMetric(
   acosValue: number | null | undefined,
   kind: 'ad' | 'total',
   framing: 'acos' | 'roas',
 ): { label: string; value: string } {
+  const fraction =
+    acosValue === null || acosValue === undefined || Number.isNaN(acosValue)
+      ? acosValue
+      : acosValue > 1
+        ? acosValue / 100
+        : acosValue;
   if (framing === 'roas') {
     return {
       label: kind === 'ad' ? 'RoAS target' : 'TRoAS target',
-      value: formatRoas(acosValue),
+      value: formatRoas(fraction),
     };
   }
   return {
     label: kind === 'ad' ? 'ACoS target' : 'TACoS target',
-    value: formatPct(acosValue, 0),
+    value: formatPct(fraction, 0),
   };
 }
 

@@ -117,15 +117,15 @@ Get this run's knobs (and let the user sharpen them) via the confirm card:
 mixshift skill config mx-asin-target-negation --brand <brand-slug> --json
 ```
 
-The `confirmation` payload's `effective_config` holds the values this run will use: `pre_check_lifetime_orders` (an integer count — the minimum lifetime orders at a location before an ASIN target is eligible to negate) and `acos_target` (a WHOLE-number percent, e.g. `22` = 22%, an optional override of the brand target). Each is seeded from brand context where set, else absent.
+The `confirmation.fields[]` array holds one entry per manifest field (find yours by `field.id`); read `effective_value` for the value this run will use. `pre_check_lifetime_orders` (an integer count, the minimum lifetime orders at a location before an ASIN target is eligible to negate) and `acos_target` (a fraction in [0,1], e.g. `0.22` = 22%, not the whole number, an optional override of the brand target). Each is seeded from brand context where set, else absent.
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-asin-target-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"pre_check_lifetime_orders":"40"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review); the pre-check floor persists to this skill.
 
-**Resolve the working values from the returned `effective_config`:**
-- `pre_check_lifetime_orders` — use `effective_config.pre_check_lifetime_orders` (the minimum lifetime orders at a location before an ASIN target is eligible to negate); defaults to 25 when unset.
-- `acos_target` — if absent, run observational (report ACoS as-is, do not flag vs target).
+**Resolve the working values from `confirmation.fields[]` (`effective_value`):**
+- `pre_check_lifetime_orders`: the minimum lifetime orders at a location before an ASIN target is eligible to negate; defaults to 25 when unset.
+- `acos_target`: a fraction in [0,1]. If absent, run observational (report ACoS as-is, do not flag vs target).
 
 Never block on this step — confirm-as-is is always available.
 

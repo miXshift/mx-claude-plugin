@@ -82,14 +82,14 @@ Get this run's knobs (and let the user sharpen them) via the confirm card:
 mixshift skill config mx-search-term-negation --brand <brand-slug> --json
 ```
 
-The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `45` = 45%): `acos_target` (the reference ACoS used to judge efficiency — an optional override of the brand target). Seeded from brand context where set, else absent.
+The `confirmation.fields[]` array holds one entry per manifest field (find yours by `field.id`); read `effective_value` for the value this run will use. `acos_target` (the reference ACoS used to judge efficiency, an optional override of the brand target) comes back as a fraction in [0,1] (e.g. `0.45` = 45%, not the whole number). Seeded from brand context where set, else absent.
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-search-term-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and is proposed for brand-wide promotion (recorded for review).
 
-**Resolve the working reference (whole-number percent) from the returned `effective_config`:**
-- `acos_target` — if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
+**Resolve the working reference (a fraction in [0,1]) from `confirmation.fields[]` (`effective_value`):**
+- `acos_target`: if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
 
 Never block on this step — confirm-as-is is always available.
 
