@@ -32,6 +32,7 @@ function brand(overrides: Partial<BrandSuggestion>): BrandSuggestion {
     ads_active: true,
     retail_active: true,
     accounts: [seller({})],
+    alias_labels: [],
     ...overrides,
   };
 }
@@ -147,6 +148,55 @@ describe('resolveBrandName', () => {
     const r = resolveBrandName('function-101', INDEX);
     expect(r.status).toBe('found');
     if (r.status === 'found') expect(r.brand.slug).toBe('function-101');
+  });
+});
+
+describe('resolveBrandName — alias / retired-slug matching (feedback #37278)', () => {
+  // Simulates the post-flip registry state: this brand's slug was kept
+  // stable at its OLD alias-derived value ("foragers-pantry") even
+  // though its current Name-derived label is "Aspen Outdoor Provisions";
+  // the new would-be slug is recorded as a retained alias.
+  const ALIAS_INDEX = buildIndexFromBrands(
+    [
+      brand({
+        slug: 'foragers-pantry',
+        display_name: 'Aspen Outdoor Provisions',
+        accounts: [seller({ seller_id: 501 })],
+        alias_labels: ['aspen-outdoor-provisions'],
+      }),
+    ],
+    null,
+  );
+
+  it('still resolves the kept (old) slug directly', () => {
+    const r = resolveBrandName('foragers-pantry', ALIAS_INDEX);
+    expect(r.status).toBe('found');
+    if (r.status === 'found') expect(r.brand.slug).toBe('foragers-pantry');
+  });
+
+  it('resolves the new Name-derived slug via the aliases array', () => {
+    const r = resolveBrandName('aspen-outdoor-provisions', ALIAS_INDEX);
+    expect(r.status).toBe('found');
+    if (r.status === 'found') expect(r.brand.slug).toBe('foragers-pantry');
+  });
+
+  it('resolves a raw (non-slug-shaped) old storefront name by canonicalizing it', () => {
+    // "Forager's Pantry" is not slug-shaped and is no longer the display
+    // name, so it can only resolve via the canonicalized-alias stage.
+    const r = resolveBrandName("Forager's Pantry", ALIAS_INDEX);
+    expect(r.status).toBe('found');
+    if (r.status === 'found') expect(r.brand.slug).toBe('foragers-pantry');
+  });
+
+  it('resolves the current display name unaffected by the alias stage', () => {
+    const r = resolveBrandName('Aspen Outdoor Provisions', ALIAS_INDEX);
+    expect(r.status).toBe('found');
+    if (r.status === 'found') expect(r.brand.slug).toBe('foragers-pantry');
+  });
+
+  it('returns none for a brand with no aliases recorded (unaffected regression check)', () => {
+    const r = resolveBrandName('some-old-name-nobody-used', INDEX);
+    expect(r.status).toBe('none');
   });
 });
 

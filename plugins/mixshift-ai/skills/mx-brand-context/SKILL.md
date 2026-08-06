@@ -109,10 +109,8 @@ mixshift brand add <brand-slug>
 ```
 This is the normal onboarding path. It reads warehouse seller rows for the slug, builds a context.yaml skeleton (schema_version, brand_slug, brand_name, last_updated, accounts[], sources, management with sensible defaults), and writes it to `~/.mixshift/clients/<brand-slug>/`.
 
-**B. If you need to build the shell manually for an edge-case account:**
-```bash
-mixshift bootstrap --brand <brand-slug> --brand-name "<Brand Name>" --seller-id <seller-id> --account-type <SC|VC>
-```
+**B. If you need to build the shell manually for an edge-case account (discovery has not mapped the SellerID):**
+`mixshift bootstrap` is registered as a CLI command but not yet implemented (it returns `not_implemented`, exit code 2). Until it ships, hand-author the shell directly: create `~/.mixshift/clients/<brand-slug>/context.yaml` and `narrative.md` with the minimum shell fields below, matching the shape `mixshift brand add` produces. Confirm the SellerID(s) and account type with the AM first; never invent them.
 
 The shell exists so prefetch can bind SellerID(s), run date, and account type. It is allowed to be schema-incomplete at this point — Phase 3a finalizes it. The shell must be completed before validation or downstream skill consumption.
 
@@ -468,7 +466,7 @@ Do not put SellerIDs, targets, thresholds, or SQL in this file. It is public/sou
 Run the renderer. It reads `context.yaml` + `narrative.md` + `corpora/*.csv` + the schema and audit-labels map, and writes the Brand Context HTML, a compact `headline.json`, the `review.json`, and the run sidecar — all in one call.
 
 ```bash
-mixshift brand render-context --brand <brand-slug> --date <YYYY-MM-DD>
+mixshift brand render-context <brand-slug> --date <YYYY-MM-DD>
 ```
 
 **Outputs (renderer is the only writer):**

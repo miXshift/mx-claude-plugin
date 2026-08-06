@@ -57,6 +57,25 @@ export type IndexAccount = z.infer<typeof indexAccountSchema>;
  * `cold_started` flips to `true` once the brand goes through
  * mx-brand-context (and stays true even if the brand later goes dormant,
  * so the on-disk context isn't lost across transient lapses).
+ *
+ * `aliases` (optional, feedback #37278) records retired identifiers for
+ * this brand: slugs it used to be filed under, and canonicalized
+ * MerchantAlias labels retained on its accounts. Populated by
+ * `buildIndexFromBrands`'s identity-stability path — when a brand's
+ * Name-derived slug changes (e.g. after a storefront rename, or after
+ * this version's alias-first-to-Name-first flip) but its warehouse
+ * seller_ids overlap a brand already in the registry, the OLD slug is
+ * kept as `slug` and the new would-be slug + retained aliases land here
+ * instead, so `mixshift brand key add <old name>` and friends keep
+ * resolving. Absent (not merely empty) on brands that have never had a
+ * slug/alias change — this is additive, and OMITTING the field (rather
+ * than always writing `[]`) keeps a plugin version that predates this
+ * field from ever seeing it on the common case. A version that predates
+ * this field ignores it entirely either way: zod's default `z.object`
+ * behavior strips unrecognized keys instead of failing, so an old
+ * harness reading a NEW index.yaml with `aliases` present still parses
+ * successfully (see index.ts buildIndexFromBrands and the harness
+ * CHANGELOG for the #117 precedent on additive schema fields).
  */
 export const indexBrandSchema = z.object({
   slug: z.string().regex(/^[a-z][a-z0-9-]*$/),
@@ -69,6 +88,8 @@ export const indexBrandSchema = z.object({
   cold_started: z.boolean(),
   cold_started_at: z.iso.datetime().nullable(),
   accounts: z.array(indexAccountSchema).min(1),
+  // Optional + forward/backward tolerant — see comment above.
+  aliases: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).optional(),
 });
 
 export type IndexBrand = z.infer<typeof indexBrandSchema>;

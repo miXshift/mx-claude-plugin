@@ -215,6 +215,7 @@ export function registerBrandCommands(program: Command): void {
               display_name: `${prefix}${b.display_name}`,
               ads_active: b.ads_active,
               retail_active: b.retail_active,
+              alias_labels: b.aliases ?? [],
               accounts: b.accounts.map((a) => ({
                 seller_id: a.seller_id,
                 seller_name: a.seller_name,
@@ -529,6 +530,7 @@ export function registerBrandCommands(program: Command): void {
           display_name: b.display_name,
           ads_active: b.ads_active,
           retail_active: b.retail_active,
+          alias_labels: b.aliases ?? [],
           accounts: b.accounts.map((a) => ({
             seller_id: a.seller_id,
             seller_name: a.seller_name,

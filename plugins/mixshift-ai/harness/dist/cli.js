@@ -65915,9 +65915,10 @@ function groupIntoBrands(rows) {
     bucket.push(r);
     byCanonical.set(key, bucket);
   }
+  const groups = mergeStaleAliasSiblings(byCanonical);
   const suggestions = [];
   const usedSlugs = /* @__PURE__ */ new Set();
-  const entries = [...byCanonical.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const entries = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [canonical, accounts] of entries) {
     const display = pickDisplayName(accounts);
     const baseSlug = canonical || "brand";
@@ -65928,13 +65929,59 @@ function groupIntoBrands(rows) {
       display_name: display,
       accounts,
       ads_active: accounts.some((a) => a.ads_active),
-      retail_active: accounts.some((a) => a.retail_active)
+      retail_active: accounts.some((a) => a.retail_active),
+      alias_labels: aliasLabelsFor(accounts, canonical)
     });
   }
   return suggestions;
 }
 function brandLabel(r) {
-  return r.merchant_alias || r.seller_name;
+  return r.seller_name;
+}
+function mergeStaleAliasSiblings(byCanonical) {
+  const isActiveGroup = (accounts) => accounts.some((a) => a.ads_active || a.retail_active);
+  const aliasToActiveGroups = /* @__PURE__ */ new Map();
+  for (const [canonical, accounts] of byCanonical) {
+    if (!isActiveGroup(accounts)) continue;
+    for (const a of accounts) {
+      if (!a.merchant_alias) continue;
+      const aliasKey = canonicalBrandKey(a.merchant_alias);
+      const set2 = aliasToActiveGroups.get(aliasKey) ?? /* @__PURE__ */ new Set();
+      set2.add(canonical);
+      aliasToActiveGroups.set(aliasKey, set2);
+    }
+  }
+  const mergeTargetOf = /* @__PURE__ */ new Map();
+  for (const [canonical, accounts] of byCanonical) {
+    if (isActiveGroup(accounts)) continue;
+    let target;
+    let ambiguous = false;
+    for (const a of accounts) {
+      if (!a.merchant_alias) continue;
+      const aliasKey = canonicalBrandKey(a.merchant_alias);
+      const candidates = aliasToActiveGroups.get(aliasKey);
+      if (!candidates) continue;
+      for (const cand of candidates) {
+        if (target === void 0) target = cand;
+        else if (target !== cand) ambiguous = true;
+      }
+    }
+    if (target !== void 0 && !ambiguous) {
+      mergeTargetOf.set(canonical, target);
+    }
+  }
+  const merged = /* @__PURE__ */ new Map();
+  for (const [canonical, accounts] of byCanonical) {
+    if (mergeTargetOf.has(canonical)) continue;
+    merged.set(canonical, [...accounts]);
+  }
+  for (const [staleCanonical, target] of mergeTargetOf) {
+    const staleAccounts = byCanonical.get(staleCanonical);
+    const targetAccounts = merged.get(target);
+    if (!targetAccounts) continue;
+    targetAccounts.push(...staleAccounts);
+  }
+  return merged;
 }
 function canonicalBrandKey(name) {
   let s = name.split(/\s+[-–—]\s+|,\s+/)[0] ?? name;
@@ -65947,12 +65994,21 @@ function canonicalBrandKey(name) {
   return s;
 }
 function pickDisplayName(accounts) {
-  const aliases = accounts.map((a) => a.merchant_alias).filter((a) => Boolean(a));
-  const pool = aliases.length > 0 ? aliases : accounts.map((a) => a.seller_name).filter(Boolean);
+  const activeNames = accounts.filter((a) => a.ads_active || a.retail_active).map((a) => a.seller_name).filter(Boolean);
+  const pool = activeNames.length > 0 ? activeNames : accounts.map((a) => a.seller_name).filter(Boolean);
   if (pool.length === 0) return "Unknown brand";
   return pool.reduce(
     (best, cur) => cur.length < best.length ? cur : best
   );
+}
+function aliasLabelsFor(accounts, nameCanonical) {
+  const keys = /* @__PURE__ */ new Set();
+  for (const a of accounts) {
+    if (!a.merchant_alias) continue;
+    const aliasKey = canonicalBrandKey(a.merchant_alias);
+    if (aliasKey && aliasKey !== nameCanonical) keys.add(aliasKey);
+  }
+  return [...keys].sort();
 }
 function slugify2(input) {
   let s = input.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -68609,7 +68665,9 @@ var indexBrandSchema = external_exports.object({
   // Cold-start state (independent of dormancy — preserved through lapses)
   cold_started: external_exports.boolean(),
   cold_started_at: external_exports.iso.datetime().nullable(),
-  accounts: external_exports.array(indexAccountSchema).min(1)
+  accounts: external_exports.array(indexAccountSchema).min(1),
+  // Optional + forward/backward tolerant — see comment above.
+  aliases: external_exports.array(external_exports.string().regex(/^[a-z][a-z0-9-]*$/)).optional()
 });
 var clientsIndexSchema = external_exports.object({
   schema_version: external_exports.literal(1),
@@ -68671,8 +68729,31 @@ async function saveIndex(index, dataDirOverride) {
 function buildIndexFromBrands(brands, prev) {
   const prevBySlug = /* @__PURE__ */ new Map();
   if (prev) for (const b of prev.brands) prevBySlug.set(b.slug, b);
-  const indexBrands = brands.map((b) => {
-    const prior = prevBySlug.get(b.slug);
+  const prevBySellerId = /* @__PURE__ */ new Map();
+  if (prev) {
+    for (const b of prev.brands) {
+      for (const a of b.accounts) prevBySellerId.set(a.seller_id, b);
+    }
+  }
+  const usedSlugs = /* @__PURE__ */ new Set();
+  const indexBrands = [];
+  for (const b of brands) {
+    let prior = prevBySlug.get(b.slug);
+    let slug = b.slug;
+    if (!prior) {
+      const identityMatches = /* @__PURE__ */ new Set();
+      for (const a of b.accounts) {
+        const match = prevBySellerId.get(a.seller_id);
+        if (match) identityMatches.add(match);
+      }
+      if (identityMatches.size === 1) {
+        const candidate = [...identityMatches][0];
+        if (!usedSlugs.has(candidate.slug)) {
+          prior = candidate;
+          slug = candidate.slug;
+        }
+      }
+    }
     const accounts = b.accounts.map((a) => ({
       seller_id: a.seller_id,
       seller_name: a.seller_name,
@@ -68692,17 +68773,24 @@ function buildIndexFromBrands(brands, prev) {
     }));
     const adsActive = accounts.some((a) => a.ads_active);
     const retailActive = accounts.some((a) => a.retail_active);
-    return {
-      slug: b.slug,
+    const aliasSet = new Set(prior?.aliases ?? []);
+    if (b.slug !== slug) aliasSet.add(b.slug);
+    for (const label of b.alias_labels) aliasSet.add(label);
+    aliasSet.delete(slug);
+    const aliases = [...aliasSet].sort();
+    usedSlugs.add(slug);
+    indexBrands.push({
+      slug,
       display_name: b.display_name,
       ads_active: adsActive,
       retail_active: retailActive,
       is_dormant: !adsActive && !retailActive,
       cold_started: prior?.cold_started ?? false,
       cold_started_at: prior?.cold_started_at ?? null,
-      accounts
-    };
-  });
+      accounts,
+      ...aliases.length > 0 ? { aliases } : {}
+    });
+  }
   return {
     schema_version: 1,
     discovered_at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -68774,6 +68862,7 @@ init_save();
 init_schema();
 
 // src/lib/clients/resolve-brand.ts
+init_brand_grouping();
 var SLUG_REGEX = /^[a-z][a-z0-9-]*$/;
 function normalizeForMatch(s) {
   return s.toLowerCase().normalize("NFKD").replace(/['‘’]+/g, "").replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
@@ -68806,6 +68895,20 @@ function resolveBrandName(input, index) {
     return {
       status: "ambiguous",
       candidates: exactDisplayMatches,
+      normalized_input: raw
+    };
+  }
+  const aliasRawCanonical = SLUG_REGEX.test(raw) ? raw : canonicalBrandKey(raw);
+  const aliasCandidates = index.brands.filter(
+    (b) => b.slug === aliasRawCanonical || (b.aliases?.includes(aliasRawCanonical) ?? false)
+  );
+  if (aliasCandidates.length === 1) {
+    return { status: "found", brand: aliasCandidates[0] };
+  }
+  if (aliasCandidates.length > 1) {
+    return {
+      status: "ambiguous",
+      candidates: aliasCandidates,
       normalized_input: raw
     };
   }
@@ -75751,6 +75854,7 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
             display_name: `${prefix}${b.display_name}`,
             ads_active: b.ads_active,
             retail_active: b.retail_active,
+            alias_labels: b.aliases ?? [],
             accounts: b.accounts.map((a) => ({
               seller_id: a.seller_id,
               seller_name: a.seller_name,
@@ -75988,6 +76092,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
         display_name: b.display_name,
         ads_active: b.ads_active,
         retail_active: b.retail_active,
+        alias_labels: b.aliases ?? [],
         accounts: b.accounts.map((a) => ({
           seller_id: a.seller_id,
           seller_name: a.seller_name,

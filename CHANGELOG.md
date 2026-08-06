@@ -69,6 +69,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
+- **Brand names and slugs now follow the name you actually curate, not an
+  old Amazon storefront label.** Brand discovery used to build a brand's
+  display name and slug from a retained storefront name that can go stale
+  (it stays fixed even after you rename or clean up an account), instead of
+  the name you edit and keep current. Brands are now labeled from that
+  curated name, and grouping no longer splits a brand into two entries just
+  because one of its accounts never got the same edit. The old storefront
+  name still resolves: anything you already type to find a brand (`brand key
+  add`, `brand resolve`, chat lookups) keeps working, and existing brand
+  folders and registries are unaffected, no migration needed.
+
 ## 0.8.7
 
 ### Added

@@ -1063,7 +1063,9 @@ tables:
       semantically but the surrounding listing/inventory fields are
       SC-specific. mws_items.Brand is AM-set (no CustomBrand in this table).
       SellerName is denormalized and can be stale across rows for the same
-      SellerID -- use seller.MerchantAlias as the canonical brand display.
+      SellerID -- use seller.Name as the canonical brand display (seller.
+      MerchantAlias retains the original Amazon storefront name and is not
+      the canonical brand identity; see data-tables.yaml's seller entry).
       One row per SKU, not per ASIN -- a single ASIN commonly has many rows.
       When joining ASIN to ItemName/Brand/title, pick exactly ONE row per
       ASIN: latest dtUpdatedOn, tie-broken on ID (batch refreshes stamp many
