@@ -43,6 +43,20 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Brand setup no longer assumes your campaigns are named the way ours are.**
+  Two brand-context queries used to sort campaigns into objectives, and brand
+  versus non-brand, by looking for specific text fragments in campaign names.
+  Those fragments come from one particular naming scheme, so any account that
+  names campaigns differently had every campaign filed as "unknown" or as
+  non-brand. Because the queries still returned rows, the report looked
+  complete while the numbers underneath it were wrong. Brand setup now reads
+  your campaigns' spend and performance and works out the grouping for your
+  account: it uses the campaign format Amazon already reports, and matches
+  campaign names against the naming vocabulary recorded for your brand rather
+  than against a fixed list. It also tells you what share of your spend it
+  could confidently group, so a partial answer reads as partial instead of as
+  fact.
+
 - **The daily health check no longer silently drops unlabeled campaign
   spend.** The Objective and Item Group tables previously skipped any
   campaign whose Objective or ItemGroup label was never filled in. Accounts

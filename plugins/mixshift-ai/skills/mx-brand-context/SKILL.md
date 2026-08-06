@@ -210,8 +210,8 @@ moving on silently; if it fails partway, say which round or query failed.
 A multi-minute wait only reads as broken when it arrives unannounced.
 
 The runner executes the baseline queries in two rounds (see manifest `batch_plan`):
-- **Round 1:** `CS-02..CS-15` covering revenue baselines, ACOS history, VC sub-brand/item-group structure + ASP, brand-vs-nonbrand split, spend trend.
-- **Round 2:** `CS-17, CS-18, CS-22, CS-23, CS-24, CS-26` covering cross-sell ratio, ads-share/TACOS stability, budget utilization, keyword spend concentration, per-campaign objective classification, VC active-subset revenue.
+- **Round 1:** `CS-02..CS-15` covering revenue baselines, ACOS history, VC sub-brand/item-group structure + ASP, per-campaign monthly spend/ACOS (CS-14 — dimensions only, no brand split), spend trend.
+- **Round 2:** `CS-17, CS-18, CS-22, CS-23, CS-24, CS-26` covering cross-sell ratio, ads-share/TACOS stability, budget utilization, keyword spend concentration, per-campaign spend/ACOS dimensions for objective resolution, VC active-subset revenue.
 
 Artifacts:
 - `~/.mixshift/clients/<brand-slug>/runs/mx-brand-context/<date>/data.json` — full machine-readable
@@ -232,7 +232,7 @@ Read `data.md` for synthesis; load `data.json` directly when you need rows the m
 - Brand term dictionary: from the **brain** catalog (sub-brands) + Phase 2 AM variants
 - Attribution / capture-rate calibration (+ daily settlement curve): from the **brain** (`capture_rate_calibration`)
 - Budget utilization and keyword spend concentration (CS-22/CS-23)
-- Objective classification (CS-24); objective-tag completeness from the **brain** (`objective_tag_completeness_pct`)
+- Objective resolution from CS-24's per-campaign rows (you classify — the query returns dimensions only); objective-tag completeness from the **brain** (`objective_tag_completeness_pct`)
 - Stockout windows and brand-term typo clusters: from the **brain** (`stockouts`, `brand_term_typos`)
 
 ---
@@ -388,16 +388,26 @@ Populate every required and applicable optional section per the Zod schema (run 
 | `posture` | Phase 2 | `stance ∈ {scale, efficiency, defend, clear_bleed}`. `multiplier ∈ [0.0, 1.0]`. |
 | `goals` | Phase 2 | Use explicit `null` for absent targets — never omit the key. |
 | `structural_events[]` | Phase 0 (+ brain `stockouts` advisories, AM-confirmed) | Type from the 12-value enum (see `_schema/context.schema.yaml`), incl. `off_amazon_media` (standing off-Amazon media condition, MMM attribution), `assortment_change` (expected catalog rotation), and `other` as the explicit escape. NEVER force a wrong type on what the user told you: use `other` plus a specific `kind` (lowercase snake_case slug; required with `other`). Optional `tags[]` for team idiom. Always include `interpretation`. Events publish to the org brand timeline automatically after context writes; an event with no `start` date syncs with an event_date_known:false marker. |
-| `objective_calibration` | Phase 1 (CS-24) | Per-objective expected ACOS — used by health-check skills. |
-| `campaign_structure` | Phase 1 (CS-24 naming) + brain shape | `naming_pattern` with `{Token}` placeholders. `objectives` token map. Distinct objectives/groups/brands + `objective_tag_completeness_pct` come from the brain. |
+| `objective_calibration` | Phase 1 (CS-24, objectives you resolved) | Per-objective expected ACOS — used by health-check skills. Only fill it for objectives you actually resolved; record `coverage_spend_pct` alongside so a consumer can tell a thin calibration from a complete one. |
+| `campaign_structure` | Phase 1 (CS-24 names) + brain shape | `naming_pattern` with `{Token}` placeholders. `objectives` token map — the vocabulary you match name **segments** against, not positions. Distinct objectives/groups/brands + `objective_tag_completeness_pct` come from the brain. |
 | `paused_campaigns[]` | Brain (`paused_campaign_count`) + Phase 2 | The brain gives the paused count; capture specific campaign names from AM input when the names matter. |
 | `negation` | Phase 0.5 + Phase 2 | `protected_terms[]`, `lane_rules{}`, `asin_negation.pre_check_lifetime_orders_threshold`. |
 | `reporting` | Phase 2 | `audience ∈ {executive, account_manager, analyst}`. `voice_lint[]` regexes. |
 | `delivery` | Phase 2 + Phase 3 setup | Local reports dir, archive path. |
 | `open_gaps[]` | Whatever you couldn't populate | Explicit list — do not silently omit. |
 
-**Standardized gap text for label_completeness (CS-24):** When all campaigns show `objective_class=unknown`, write the gap as:
-`campaign_structure.label_completeness: all <N> active campaigns have objective_class=unknown; custom classifier needed for <brand> naming convention — objective-level analysis unavailable until resolved`
+**Standardized gap text for label_completeness (CS-24):** CS-24 returns per-campaign dimensions (`CampaignName`, `CampaignType`, spend, sales, ACOS) and does **not** assign an objective — you do, per brand. Resolve each campaign's objective in this order, and stop at the first that works:
+
+1. Sponsored Brands / Sponsored Display format, which is `CampaignType` and needs no name parsing at all;
+2. membership of a delimited **name segment** in this brand's declared objective vocabulary (`campaign_structure.objectives`). Match on segment membership, never on segment position — accounts routinely carry the same token at different positions across their own campaigns.
+
+**Not available to this skill today:** the account's own per-campaign `campaign.Objective` label. Prefetch carries no per-campaign objective map, and the brain supplies only aggregates (`distinct_objectives`, `objective_tag_completeness_pct`). Do **not** run ad hoc SQL to obtain it — that violates the Hard Rule above. Where an account does tag its campaigns, those values reach you as vocabulary via `campaign_structure.objectives`, so step 2 already benefits from them; `coverage_spend_pct` will simply understate true coverage on a well-tagged account, which is the safe direction.
+
+Then compute `coverage_spend_pct` = share of T-30 spend you could assign, and write the gap whenever it falls below the floor. Do **not** substitute the brain's `objective_tag_completeness_pct` for it: that number is **count**-weighted, and this gap must be spend-weighted. Compute it from CS-24's own `t30_spend`.
+
+`campaign_structure.label_completeness: objective resolved for <P>% of trailing-30-day spend (<N> of <M> active campaigns); <brand> naming convention not yet established — objective-level analysis limited until resolved`
+
+Report the percentage by **spend**, not by campaign count: archived and paused campaigns inflate a count-based number while carrying no spend. Never invent an objective for an unresolved campaign, and never apply per-objective thresholds to one.
 
 Use "objective-level analysis" (not "objective-level reporting") — the word "reporting" in gap text causes the renderer's bucket classifier to route this gap to `reporting_setup` instead of `operating_rules`, where it belongs.
 
