@@ -490,10 +490,16 @@ describe('renderUpdateBanner', () => {
     expect(banner).toContain('claude plugin update mixshift-ai@mixshift');
     expect(banner).toContain('--scope local');
     expect(banner).toContain('mixshift whatsnew');
-    // The critical "load it" step: a running session is frozen to its snapshot.
+    // The critical "load it" step: a running app process is frozen to the
+    // payload it loaded at launch, so a full quit (not just a new chat or
+    // session) and relaunch is what actually loads the update, and a
+    // surviving process is the next thing to check if that doesn't fix it
+    // (feedback 36645/36672/36728).
     expect(banner).toContain('Then load it');
-    expect(banner).toContain('new session');
+    expect(banner).toContain('Fully quit the application');
+    expect(banner).toContain('relaunch');
     expect(banner).toContain('not enough');
+    expect(banner).toContain('running in the background');
     expect(banner).toContain(
       'https://github.com/foo/bar/releases/tag/v0.5.4',
     );
@@ -519,10 +525,16 @@ describe('renderUpdateBanner', () => {
     expect(banner).toContain('`claude plugin update mixshift-ai@mixshift`');
     expect(banner).toContain('--scope local');
     expect(banner).toContain('mixshift whatsnew');
-    // The critical "load it" step: a running session is frozen to its snapshot.
+    // The critical "load it" step: a running app process is frozen to the
+    // payload it loaded at launch, so a full quit (not just a new chat or
+    // session) and relaunch is what actually loads the update, and a
+    // surviving process is the next thing to check if that doesn't fix it
+    // (feedback 36645/36672/36728).
     expect(banner).toContain('**Then load it:**');
-    expect(banner).toContain('new conversation');
+    expect(banner).toContain('fully quit the application');
+    expect(banner).toContain('relaunch');
     expect(banner).toContain('not enough');
+    expect(banner).toContain('running in the background');
   });
 });
 

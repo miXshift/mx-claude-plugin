@@ -69,6 +69,21 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
+- **`mixshift version` and `mixshift doctor` now check what your host
+  actually has installed, not just what this session loaded.** Both commands
+  used to compare only the running session's payload against the latest
+  published release and called that comparison the whole picture. A host
+  installs an update once per app launch, so a session that was already
+  running when the update landed keeps serving the old payload until the
+  application is fully quit, not just until you start a new chat. When that
+  happened, both commands told people who had already updated to update
+  again, with no explanation. They now also read the host's own install
+  record and say plainly when the installed version and the running session
+  disagree: fully quit the application (not just start a new session) and
+  relaunch it, and if the old version still shows after that, an earlier
+  application process may still be running in the background and needs to
+  be closed too.
+
 ## 0.8.7
 
 ### Added
