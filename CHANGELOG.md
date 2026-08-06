@@ -101,6 +101,16 @@ starts at 0.5.39; earlier versions predate the changelog.
   percent sign is always taken at face value, so `1%` is one percent and
   `100%` is one hundred. Every other input is unchanged.
 
+- **Two dead tables no longer masquerade as live data sources.** The data
+  catalog described `business_reports_dpst_item` and
+  `business_reports_dpst_total` as usable daily sales tables, but neither has
+  received new rows in years, so queries against them quietly returned stale
+  history as if it were current. Both are now marked deprecated in the
+  catalog with a pointer to the live equivalents
+  (`business_reports_dpst_sku` for item/ASIN-level daily sales,
+  `business_reports_dpst_date` aggregated for account-level totals), so
+  anything reading the catalog steers to tables that are actually updated.
+
 - **Brand setup no longer assumes your campaigns are named the way ours are.**
   Two brand-context queries used to sort campaigns into objectives, and brand
   versus non-brand, by looking for specific text fragments in campaign names.

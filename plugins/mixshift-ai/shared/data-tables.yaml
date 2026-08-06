@@ -219,20 +219,22 @@ tables:
     date_column: DateTime
 
   business_reports_dpst_total:
-    description: "Daily total sales aggregated across all SKUs. Coarsest granularity. Use for portfolio-level dashboards."
+    description: "DEPRECATED - no longer populated (no new rows since 2022). Do not use. For account-level daily totals, aggregate business_reports_dpst_date instead."
     category: ops_revenue
     account_types: [SC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    deprecated: true
 
   business_reports_dpst_item:
-    description: "Daily item-level sales report (parent-item granularity, distinct from SKU)."
+    description: "DEPRECATED - no longer populated (no new rows since 2021). Do not use. For item/ASIN-level daily sales, use business_reports_dpst_sku instead."
     category: ops_revenue
     account_types: [SC]
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    deprecated: true
 
   mws_orders_metric:
     description: "Order-level data with PurchaseDate, ASIN, SKU, Quantity, ItemPrice, ItemPromotionDiscount, PromotionIds, BuyerEmail, IsRepeatCustomer, OrderStatus, SalesChannel. Filter OrderStatus NOT LIKE 'Cancel%' and SalesChannel NOT LIKE 'Non%' for clean revenue."
