@@ -175,7 +175,7 @@ queries:
   - id: CS-14
     file: CS-14.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
-    purpose: Brand vs NonBrand spend split (trailing 6 months) via CampaignName tags.
+    purpose: Per-campaign monthly spend, ad sales and ACOS (trailing 6 months). Dimensions only — the brand vs non-brand split is resolved by the skill per brand.
     consumers: [mx-brand-context]
     tier: 1
 
@@ -217,7 +217,7 @@ queries:
   - id: CS-24
     file: CS-24.sql
     dispatch: named   # Phase 8 S3b: server-side query pack; committed .sql is the contract + repo-fallback until registered
-    purpose: Campaign-level T-30 objective classification via CampaignName tags.
+    purpose: Per-campaign T-30 spend, sales and ACOS. Dimensions only — objective classification is resolved by the skill per brand.
     consumers: [mx-brand-context]
     tier: 1
 

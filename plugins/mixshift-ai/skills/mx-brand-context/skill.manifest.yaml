@@ -34,9 +34,10 @@ context_freshness_max_days: null
 # enrichment family CS-06/CS-07/CS-08/CS-28/CS-29/CS-30/CS-31 (→ brain
 # capture_rate_calibration / stockouts / brand_term_typos). CS-09 (VC
 # sub-brand × item-group cross + per-pair target ACOS) and CS-24 (per-campaign
-# objective_class classification) are KEPT: the brain's flat distinct sets lose
-# the cross-structure CS-09 carries and the CampaignName-pattern classification
-# CS-24 carries (the latter drives the eval's label_completeness gap text).
+# spend/ACOS dimensions) are KEPT: the brain's flat distinct sets lose the
+# cross-structure CS-09 carries and the per-campaign grain CS-24 carries, which
+# is what the skill resolves objectives from (and what drives the
+# label_completeness coverage gap text).
 # The remaining queries are the historical baselines the deep skill still pulls
 # at runtime. Catalog entries for the retired enrichment queries are KEPT —
 # the brain consumes them.
@@ -74,10 +75,12 @@ pre_execution:
       parallel: [CS-17, CS-18, CS-22, CS-23, CS-24, CS-26]
       notes: >
         Independent structure + calibration baselines. CS-26 applies to VC
-        accounts only. CS-24 is the per-campaign objective_class classification
-        (CampaignName tag patterns) that drives the standardized
-        label_completeness gap text; the brain's distinct_objectives +
-        objective_tag_completeness_pct do not reproduce it. Taxonomy, brand
+        accounts only. CS-24 returns per-campaign spend/ACOS dimensions; the
+        SKILL resolves each campaign's objective from them (account label, then
+        CampaignType, then name-segment vocabulary) and reports a spend-weighted
+        coverage percentage as the standardized label_completeness gap text. The
+        brain's distinct_objectives + objective_tag_completeness_pct do not
+        reproduce the per-campaign grain. Taxonomy, brand
         terms, attribution/settlement calibration, stockout windows, and
         brand-term typos are read from the Brand Brain, not re-pulled here.
 post_execution:
@@ -144,9 +147,10 @@ notes: >
 
   CS-02 applies to SC; CS-03 applies to VC (model picks based on account_type).
   CS-09/CS-11/CS-12/CS-13/CS-26 apply to VC only.
-  CS-24 is the per-campaign objective_class classification (CampaignName tag
-  patterns) that drives the standardized label_completeness gap text — the
-  brain's distinct_objectives do not reproduce it, so it stays a runtime pull.
+  CS-24 returns per-campaign spend/ACOS dimensions that the skill resolves
+  objectives from, and drives the standardized label_completeness coverage gap
+  text — the brain's distinct_objectives do not reproduce that per-campaign
+  grain, so it stays a runtime pull.
 
   This skill writes durable artifacts under ~/.mixshift/clients/<brand-slug>/:
   context.yaml, narrative.md, corpora/, plus a human-reviewable brand-context.html
