@@ -69,6 +69,14 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
+- **Your ACoS and TACoS targets now display correctly on the brand summary
+  card, in both view modes.** Your target is stored as a whole number (22
+  means 22%), but the card was treating that number as if it were already a
+  fraction. Viewed as a percent, a 22% target showed as 2200%; viewed as its
+  return-on-spend equivalent, the same target showed 0.05x instead of the
+  correct 4.55x. Both views now read your target correctly, whichever one you
+  have set as your default.
+
 - **`mixshift version` and `mixshift doctor` now check what your host
   actually has installed, not just what this session loaded.** Both commands
   used to compare only the running session's payload against the latest

@@ -70218,15 +70218,16 @@ function formatRoas(acosValue, precision = 2) {
   return `${(1 / acosValue).toFixed(precision)}x`;
 }
 function frameMetric(acosValue, kind, framing) {
+  const fraction = acosValue === null || acosValue === void 0 || Number.isNaN(acosValue) ? acosValue : acosValue > 1 ? acosValue / 100 : acosValue;
   if (framing === "roas") {
     return {
       label: kind === "ad" ? "RoAS target" : "TRoAS target",
-      value: formatRoas(acosValue)
+      value: formatRoas(fraction)
     };
   }
   return {
     label: kind === "ad" ? "ACoS target" : "TACoS target",
-    value: formatPct(acosValue, 0)
+    value: formatPct(fraction, 0)
   };
 }
 function formatInt(value) {
