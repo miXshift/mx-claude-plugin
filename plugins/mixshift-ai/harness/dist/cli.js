@@ -73283,6 +73283,16 @@ function formatFieldValue(field, value) {
     }
   }
 }
+function coerceEditValue(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return null;
+}
+function describeJsonType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
 function parseFieldInput(field, raw, opts) {
   const trimmed = raw.trim();
   switch (field.type) {
@@ -73751,16 +73761,6 @@ async function applyBrandConfigEdit(payload, decision, opts) {
 }
 function hasDefault2(field) {
   return field.default !== void 0;
-}
-function coerceEditValue(value) {
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return String(value);
-  return null;
-}
-function describeJsonType(value) {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  return typeof value;
 }
 function normalizePercentForDisplay(field, v) {
   if (field.type === "percent" && typeof v === "number") {
@@ -83607,15 +83607,71 @@ async function applyConfirmation(payload, decision, opts) {
       validation_issues: []
     };
   }
+  if (decision.action !== "edit") {
+    return {
+      status: "validation_failed",
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: "action",
+          message: `Unknown action ${JSON.stringify(decision.action)}. Expected "edit", "confirm" or "cancel".`
+        }
+      ]
+    };
+  }
+  const rawEdits = decision.edits;
+  if (rawEdits === null || rawEdits === void 0 || typeof rawEdits !== "object" || Array.isArray(rawEdits)) {
+    return {
+      status: "validation_failed",
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: "edits",
+          message: `Expected an object of field edits, got ${describeJsonType(rawEdits)}. Example: {"action":"edit","edits":{"acos_target":20},"save":true}`
+        }
+      ]
+    };
+  }
+  const rawSave = decision.save;
+  if (rawSave !== void 0 && typeof rawSave !== "boolean") {
+    return {
+      status: "validation_failed",
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: "save",
+          message: `Expected true or false, got ${describeJsonType(rawSave)}. Use true to persist the edits, false (or omit) to use them for this run only.`
+        }
+      ]
+    };
+  }
   const issues = [];
   const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
-  for (const [key, raw] of Object.entries(decision.edits)) {
+  for (const [key, rawEdit] of Object.entries(
+    rawEdits
+  )) {
     const field = fieldsById.get(key);
     if (!field) {
       issues.push({ field: key, message: "unknown field (not in manifest)" });
       continue;
     }
-    const parsed = parseFieldInput(field, raw);
+    const raw = coerceEditValue(rawEdit);
+    if (raw === null) {
+      issues.push({
+        field: key,
+        message: `Expected a string or number, got ${describeJsonType(rawEdit)}`
+      });
+      continue;
+    }
+    const parsed = parseFieldInput(field, raw, {
+      fromJsonNumber: typeof rawEdit === "number"
+    });
     if (!parsed.ok) {
       issues.push({ field: key, message: parsed.error });
       continue;
@@ -84215,6 +84271,8 @@ async function runApplyDecision2(args) {
       args.dataDir
     );
   } else if (decision.action === "edit") {
+    const rawEdits = decision.edits;
+    const editCount = rawEdits !== null && typeof rawEdits === "object" && !Array.isArray(rawEdits) ? Object.keys(rawEdits).length : 0;
     await track(
       {
         event_name: EventName.SkillCalibrationEdited,
@@ -84222,7 +84280,7 @@ async function runApplyDecision2(args) {
         outcome: result.status === "ok" ? "ok" : "failed",
         payload: {
           brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
+          edit_count: editCount,
           persisted: result.did_persist
         }
       },

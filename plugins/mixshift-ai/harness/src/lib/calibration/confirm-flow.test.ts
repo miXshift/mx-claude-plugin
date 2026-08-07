@@ -8,6 +8,7 @@ import {
   applyConfirmation,
   selectCaptureCandidates,
   writeRunOclSnapshot,
+  type ConfirmationDecision,
 } from './confirm-flow.js';
 import type { CalibrationManifest } from './manifest-schema.js';
 import { assembleBrain } from '../brain/assemble.js';
@@ -511,6 +512,218 @@ describe('applyConfirmation — edit action', () => {
     );
     expect(result.status).toBe('validation_failed');
     expect(result.validation_issues.some((i) => i.field === 'not_a_field')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Malformed `--apply` decisions (feedback 47801)
+//
+// `runApplyDecision` in commands/skill.ts does `JSON.parse(raw) as
+// ConfirmationDecision` — an unchecked cast — so nothing here is guaranteed at
+// runtime no matter what the union says. These decisions are therefore built as
+// `unknown` and cast at the call site, which is exactly the shape JSON.parse
+// hands applyConfirmation in production.
+// ---------------------------------------------------------------------------
+describe('applyConfirmation — malformed decisions fail closed', () => {
+  const asDecision = (d: unknown): ConfirmationDecision =>
+    d as ConfirmationDecision;
+
+  /** Seed the brand so an empty-edit save has a complete, valid config. */
+  async function seedContext(): Promise<void> {
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `posture:\n  stance: growth\n`,
+      'utf-8',
+    );
+  }
+
+  async function prep() {
+    return await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+  }
+
+  const configExists = async (): Promise<boolean> => {
+    try {
+      await readFile(join(brandDir, 'config.yaml'), 'utf-8');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it('rejects an unrecognized action instead of taking the write path', async () => {
+    await seedContext();
+    const result = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edt', edits: {}, save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_persist).toBe(false);
+    expect(result.saved_to).toBeNull();
+    const issue = result.validation_issues.find((i) => i.field === 'action');
+    expect(issue).toBeDefined();
+    expect(issue!.message).toContain('"edt"');
+    expect(issue!.message).toContain('confirm');
+    // Nothing was written, so nothing could have been published either.
+    expect(await configExists()).toBe(false);
+  });
+
+  it('names the field when `edits` is missing entirely', async () => {
+    const result = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_persist).toBe(false);
+    const issue = result.validation_issues.find((i) => i.field === 'edits');
+    expect(issue).toBeDefined();
+    expect(issue!.message).toContain('undefined');
+    expect(await configExists()).toBe(false);
+  });
+
+  it('names the field when `edits` is null or an array', async () => {
+    const nullEdits = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', edits: null, save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(nullEdits.status).toBe('validation_failed');
+    expect(
+      nullEdits.validation_issues.find((i) => i.field === 'edits')?.message,
+    ).toContain('null');
+
+    const arrayEdits = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', edits: ['objective'], save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(arrayEdits.status).toBe('validation_failed');
+    expect(
+      arrayEdits.validation_issues.find((i) => i.field === 'edits')?.message,
+    ).toContain('array');
+    expect(await configExists()).toBe(false);
+  });
+
+  it('rejects a non-boolean `save` rather than reading it for truthiness', async () => {
+    const result = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', edits: { objective: 'growth' }, save: 'false' }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_persist).toBe(false);
+    expect(
+      result.validation_issues.find((i) => i.field === 'save')?.message,
+    ).toContain('string');
+    expect(await configExists()).toBe(false);
+  });
+
+  it('names the field for an edit value with no usable string form', async () => {
+    const result = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', edits: { objective: true }, save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_persist).toBe(false);
+    const issue = result.validation_issues.find((i) => i.field === 'objective');
+    expect(issue).toBeDefined();
+    expect(issue!.message).toContain('boolean');
+    expect(await configExists()).toBe(false);
+  });
+
+  it('still accepts a legitimately empty edits object', async () => {
+    await seedContext();
+    const result = await applyConfirmation(
+      await prep(),
+      asDecision({ action: 'edit', edits: {}, save: true }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('ok');
+    expect(result.did_persist).toBe(true);
+    expect(result.validation_issues).toEqual([]);
+    const raw = await readFile(join(brandDir, 'config.yaml'), 'utf-8');
+    expect(raw).toMatch(/objective: growth/);
+  });
+});
+
+describe('applyConfirmation — JSON-number edit values (feedback 47801)', () => {
+  const asDecision = (d: unknown): ConfirmationDecision =>
+    d as ConfirmationDecision;
+
+  it('accepts a JSON number for a numeric field instead of crashing', async () => {
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+    const result = await applyConfirmation(
+      payload,
+      asDecision({
+        action: 'edit',
+        edits: { objective: 'growth', dampening: 0.4 },
+        save: true,
+      }),
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('ok');
+    expect(result.did_persist).toBe(true);
+    expect(result.effective_config).toMatchObject({ dampening: 0.4 });
+  });
+
+  it('treats a JSON-number percent as already canonical (--json -> --apply round trip)', async () => {
+    // range.min 0.01 makes BOTH readings of a bare `1` land in range: 1% and
+    // 100%. A human typing "1" is genuinely ambiguous and gets asked. A JSON
+    // number came from our own --json output, where percents are emitted in
+    // the stored [0,1] form, so `1` there can only mean 100% (#126).
+    const ambiguousPct: CalibrationManifest = {
+      schema_version: 1,
+      fields: [
+        {
+          id: 'acos_target',
+          prompt: 'ACoS?',
+          type: 'percent',
+          range: { min: 0.01, max: 1 },
+          required: false,
+          deprecated: false,
+        },
+      ],
+    };
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: ambiguousPct,
+      dataDirOverride: testDir,
+    });
+    const fromJson = await applyConfirmation(
+      payload,
+      asDecision({ action: 'edit', edits: { acos_target: 1 }, save: false }),
+      { dataDirOverride: testDir },
+    );
+    expect(fromJson.status).toBe('ok');
+    expect(fromJson.effective_config.acos_target).toBe(100); // consumed whole
+
+    // The typed-string path stays guarded — this is the ambiguity #126 kept.
+    const fromString = await applyConfirmation(
+      payload,
+      asDecision({ action: 'edit', edits: { acos_target: '1' }, save: false }),
+      { dataDirOverride: testDir },
+    );
+    expect(fromString.status).toBe('validation_failed');
+    expect(
+      fromString.validation_issues.find((i) => i.field === 'acos_target')
+        ?.message,
+    ).toMatch(/Ambiguous/);
   });
 });
 

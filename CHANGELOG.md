@@ -62,6 +62,20 @@ starts at 0.5.39; earlier versions predate the changelog.
   shows the expected form. Asking to edit with an empty set of changes is
   still a valid way to do nothing.
 
+- **Changing a skill setting to a plain number no longer fails with a raw
+  error.** Every per-skill setting is edited by sending MixShift a small
+  instruction describing the change. Writing a number the natural way, as
+  `20` rather than `"20"`, produced an internal error message that named
+  nothing and told you nothing about how to fix it. Plain numbers are now
+  accepted, and any value that genuinely cannot be used says which setting it
+  belongs to and what was expected. Two related problems are fixed at the same
+  time: a mistyped instruction, including a simple misspelling of "edit", used
+  to be treated as an edit and could save settings and share them to your
+  team's shared brand context without ever being an instruction MixShift
+  understood, and asking to edit without actually supplying any changes
+  crashed. Both now stop and explain what is wrong, and nothing is saved or
+  shared. Sending no changes on purpose still works.
+
 - **A 1% goal is no longer saved as 100%.** Percent settings accept both a
   whole number and a decimal ("20", "20%" and "0.20" all mean twenty
   percent), and the value `1` sits exactly where those two readings collide:
