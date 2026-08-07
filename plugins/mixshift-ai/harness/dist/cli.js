@@ -61096,7 +61096,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join26(tree) {
+      function join27(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61122,7 +61122,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join26(parse4(query));
+        tree = join27(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -66145,10 +66145,10 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir24, readFile as readFile31 } from "node:fs/promises";
-import { join as join21, dirname as dirname28 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir24, readFile as readFile32 } from "node:fs/promises";
+import { join as join22, dirname as dirname28 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join21(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join22(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
@@ -66164,7 +66164,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile31(path2, "utf-8");
+    const raw = await readFile32(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -81791,7 +81791,7 @@ function renderUpdateBanner(result, format = "terminal") {
     );
     lines2.push(">");
     lines2.push(
-      "> **Then load it:** start a new conversation (in Cowork, fully quit and reopen the app). A new chat in the same window is not enough: a running session keeps the plugin version it started with, so the update only takes effect in a fresh session."
+      "> **Then load it:** fully quit the application (not just this chat or session), then relaunch it. A new chat in the same window is not enough: a running app process keeps the plugin payload it loaded at launch, so the update only takes effect after a full quit and relaunch. Still shows the old version after that? An earlier application process may still be running in the background; find and quit it too."
     );
     lines2.push(">");
     lines2.push(
@@ -81820,10 +81820,12 @@ function renderUpdateBanner(result, format = "terminal") {
   lines.push("    (installed it for this project only? add: --scope local)");
   lines.push("");
   lines.push("  Then load it:");
-  lines.push("    Start a new session (in Cowork, fully quit and reopen the app).");
-  lines.push("    A new chat in the same window is not enough: a running session");
-  lines.push("    keeps the plugin version it started with, so the update only");
-  lines.push("    takes effect in a fresh session.");
+  lines.push("    Fully quit the application (not just this chat or session), then");
+  lines.push("    relaunch it. A new chat in the same window is not enough: a running");
+  lines.push("    app process keeps the plugin payload it loaded at launch, so the");
+  lines.push("    update only takes effect after a full quit and relaunch.");
+  lines.push("    Still shows the old version after that? An earlier application");
+  lines.push("    process may still be running in the background; find and quit it too.");
   lines.push("");
   lines.push("  Avoid this next time:");
   lines.push("    Turn on auto-sync when you first add the plugin. If you installed");
@@ -82175,6 +82177,238 @@ function renderWelcomeChat(args) {
 
 // src/commands/version.ts
 init_plugin_version();
+
+// src/lib/install-record.ts
+import { readFile as readFile28 } from "node:fs/promises";
+import { homedir as homedir3 } from "node:os";
+import { join as join18 } from "node:path";
+init_surface();
+var PLUGIN_KEY = "mixshift-ai@mixshift";
+var SURFACES_WITHOUT_INSTALL_RECORD = /* @__PURE__ */ new Set(["cowork"]);
+function installedPluginsPath(homeOverride) {
+  return join18(homeOverride ?? homedir3(), ".claude", "plugins", "installed_plugins.json");
+}
+function isPlausibleSha(v) {
+  return typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);
+}
+function isPlausibleTimestamp(v) {
+  return typeof v === "string" && v.length > 0 && v.length <= 64 && !Number.isNaN(Date.parse(v));
+}
+function isPlausiblePath(v) {
+  return typeof v === "string" && v.length > 0 && v.length <= 1024 && // eslint-disable-next-line no-control-regex
+  !/[\x00-\x1f]/.test(v);
+}
+async function probeInstallRecord(opts = {}) {
+  const surface = opts.surfaceOverride ?? detectSurface();
+  if (SURFACES_WITHOUT_INSTALL_RECORD.has(surface)) {
+    return fail(
+      "unsupported_surface",
+      `surface ${surface} has no host-side plugin store to read`
+    );
+  }
+  const path2 = installedPluginsPath(opts.homeOverride);
+  let raw;
+  try {
+    raw = await readFile28(path2, "utf-8");
+  } catch (err) {
+    const code = err?.code;
+    if (code === "ENOENT") {
+      return fail("not_found", `no file at ${path2}`);
+    }
+    return fail(
+      "read_error",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return fail(
+      "malformed_json",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return fail("unexpected_shape", "top-level value is not an object");
+  }
+  const pluginsField = parsed.plugins;
+  if (!pluginsField || typeof pluginsField !== "object" || Array.isArray(pluginsField)) {
+    return fail("unexpected_shape", '"plugins" is missing or not an object');
+  }
+  const entriesField = pluginsField[PLUGIN_KEY];
+  if (entriesField === void 0) {
+    return fail("no_entries", `no "${PLUGIN_KEY}" key under "plugins"`);
+  }
+  if (!Array.isArray(entriesField)) {
+    return fail(
+      "unexpected_shape",
+      `"plugins"."${PLUGIN_KEY}" is not an array`
+    );
+  }
+  if (entriesField.length === 0) {
+    return fail("no_entries", `"plugins"."${PLUGIN_KEY}" is an empty array`);
+  }
+  const valid = entriesField.filter((e) => isValidVersion(e?.version));
+  if (valid.length === 0) {
+    return fail(
+      "invalid_version",
+      `every entry's version field failed isValidVersion (${entriesField.length} entries checked)`
+    );
+  }
+  const chosen = selectEntry(valid, opts.cwdOverride);
+  if (!chosen) {
+    return fail(
+      "no_matching_entry",
+      `${valid.length} valid entries for "${PLUGIN_KEY}"; none matched the current project and no single/user-scope entry to prefer`
+    );
+  }
+  return {
+    record: {
+      // Re-validated by selectEntry's input filter; isValidVersion narrows.
+      installedVersion: chosen.version,
+      installPath: isPlausiblePath(chosen.installPath) ? chosen.installPath : null,
+      gitCommitSha: isPlausibleSha(chosen.gitCommitSha) ? chosen.gitCommitSha : null,
+      lastUpdated: isPlausibleTimestamp(chosen.lastUpdated) ? chosen.lastUpdated : null
+    }
+  };
+}
+function selectEntry(entries, cwdOverride) {
+  if (entries.length === 1) return entries[0];
+  const cwd = cwdOverride ?? process.cwd();
+  const localMatch = entries.find(
+    (e) => e.scope === "local" && typeof e.projectPath === "string" && e.projectPath === cwd
+  );
+  if (localMatch) return localMatch;
+  const userScoped = entries.filter((e) => e.scope === "user");
+  if (userScoped.length === 1) return userScoped[0];
+  return null;
+}
+function fail(reason, detail) {
+  debugLog3(`install-record unavailable (${reason}): ${detail}`);
+  return { record: null, reason, detail };
+}
+function debugLog3(message) {
+  if (process.env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
+`);
+}
+async function readInstallRecord(opts = {}) {
+  return (await probeInstallRecord(opts)).record;
+}
+var RELEASE_TAG_URL_PREFIX = "https://github.com/miXshift/mx-claude-plugin/releases/tag/mixshift-ai--v";
+function renderSessionBehindInstall(opts) {
+  const lines = [];
+  lines.push("");
+  lines.push(`  Installed: ${opts.installed}`);
+  lines.push(`  This session is running: ${opts.current}`);
+  lines.push("");
+  if (opts.installIsStale) {
+    lines.push("  Part of the update already succeeded: a build newer than this session");
+    lines.push("  is already on disk. Fully quit the application (not just start a new");
+    lines.push("  session or chat), then relaunch to pick it up. If this message persists");
+    lines.push("  after a full quit and relaunch, an earlier application process is still");
+    lines.push("  running and still serving the old payload: find and quit it too.");
+    lines.push("");
+    lines.push("  That installed build is not the newest one either: a further update is");
+    lines.push("  available (see below). Relaunch first, then run the update again to");
+    lines.push("  reach it.");
+  } else {
+    lines.push("  The update already succeeded. Fully quit the application (not just");
+    lines.push("  start a new session or chat), then relaunch. If this message persists");
+    lines.push("  after a full quit and relaunch, an earlier application process is still");
+    lines.push("  running and still serving the old payload: find and quit it too.");
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function evaluateInstallSituation(opts) {
+  const { current, installed, latest } = opts;
+  if (installed === null) {
+    const isStale3 = latest !== null && compareVersions(current, latest) < 0;
+    return {
+      sessionBehindInstall: false,
+      staleBasis: "current",
+      isStale: isStale3,
+      releaseUrl: isStale3 && latest ? `${RELEASE_TAG_URL_PREFIX}${latest}` : null
+    };
+  }
+  const sessionBehindInstall = compareVersions(current, installed) < 0;
+  const isStale2 = latest !== null && compareVersions(installed, latest) < 0;
+  return {
+    sessionBehindInstall,
+    staleBasis: "installed",
+    isStale: isStale2,
+    releaseUrl: isStale2 && latest ? `${RELEASE_TAG_URL_PREFIX}${latest}` : null
+  };
+}
+
+// src/commands/version.ts
+function buildVersionReport(opts) {
+  const situation = evaluateInstallSituation({
+    current: opts.current,
+    installed: opts.installed,
+    latest: opts.latest
+  });
+  return {
+    current: opts.current,
+    installed: opts.installed,
+    latest: opts.latest,
+    isStale: situation.isStale,
+    staleBasis: situation.staleBasis,
+    session_behind_install: situation.sessionBehindInstall,
+    releaseUrl: situation.releaseUrl,
+    fetched: opts.fetched
+  };
+}
+function displayVersion(report) {
+  return report.staleBasis === "installed" && report.installed !== null ? report.installed : report.current;
+}
+var INSTALL_UNVERIFIED_LINE = "  (install state could not be verified on this surface)\n";
+function renderVersionOutput(report) {
+  const out = [];
+  out.push(`mixshift-ai v${report.current}
+`);
+  if (report.session_behind_install) {
+    out.push(
+      renderSessionBehindInstall({
+        installed: report.installed,
+        current: report.current,
+        installIsStale: report.isStale
+      })
+    );
+  }
+  if (report.latest === null) {
+    out.push("  (could not check for updates; run with --force-fetch to retry)\n");
+    if (report.installed === null) {
+      out.push(INSTALL_UNVERIFIED_LINE);
+    }
+    return out.join("");
+  }
+  if (report.isStale) {
+    out.push(
+      renderUpdateBanner(
+        {
+          current: displayVersion(report),
+          latest: report.latest,
+          isStale: true,
+          releaseUrl: report.releaseUrl,
+          fetched: report.fetched
+        },
+        "terminal"
+      )
+    );
+  } else if (displayVersion(report) === report.latest) {
+    out.push(`  up to date (latest is v${report.latest})
+`);
+  } else {
+    out.push(`  ahead of public release (latest published is v${report.latest})
+`);
+  }
+  if (report.installed === null) {
+    out.push(INSTALL_UNVERIFIED_LINE);
+  }
+  return out.join("");
+}
 function registerVersionCommand(program3) {
   program3.command("version").description(
     "Show the installed mixshift-ai plugin version and check for updates against the public marketplace.json. Cache: 24h."
@@ -82201,33 +82435,24 @@ function registerVersionCommand(program3) {
         }
         return;
       }
-      const result = await checkForUpdate({
-        dataDirOverride: root.dataDir,
-        forceFetch: opts.forceFetch
+      const [result, installRecord] = await Promise.all([
+        checkForUpdate({
+          dataDirOverride: root.dataDir,
+          forceFetch: opts.forceFetch
+        }),
+        readInstallRecord()
+      ]);
+      const report = buildVersionReport({
+        current,
+        installed: installRecord?.installedVersion ?? null,
+        latest: result.latest,
+        fetched: result.fetched
       });
       if (root.json) {
-        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
         return;
       }
-      process.stdout.write(`mixshift-ai v${result.current}
-`);
-      if (result.latest === null) {
-        process.stdout.write(
-          "  (could not check for updates; run with --force-fetch to retry)\n"
-        );
-        return;
-      }
-      if (result.isStale) {
-        process.stdout.write(renderUpdateBanner(result, "terminal"));
-      } else if (result.current === result.latest) {
-        process.stdout.write(`  up to date (latest is v${result.latest})
-`);
-      } else {
-        process.stdout.write(
-          `  ahead of public release (latest published is v${result.latest})
-`
-        );
-      }
+      process.stdout.write(renderVersionOutput(report));
     }
   );
 }
@@ -82238,8 +82463,8 @@ init_telemetry();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile28, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
-import { dirname as dirname25, join as join18 } from "node:path";
+import { readFile as readFile29, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
+import { dirname as dirname25, join as join19 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -82280,13 +82505,13 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join18(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join19(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile28(path2, "utf-8");
+    const raw = await readFile29(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
       cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
@@ -82440,8 +82665,8 @@ init_plugin_version();
 
 // src/lib/update-actions-state.ts
 init_resolve();
-import { readFile as readFile29, writeFile as writeFile21, mkdir as mkdir22, rename as rename18, unlink as unlink8 } from "node:fs/promises";
-import { dirname as dirname26, join as join19 } from "node:path";
+import { readFile as readFile30, writeFile as writeFile21, mkdir as mkdir22, rename as rename18, unlink as unlink8 } from "node:fs/promises";
+import { dirname as dirname26, join as join20 } from "node:path";
 var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
 var ACTION_STATUSES = [
   "completed",
@@ -82459,11 +82684,11 @@ function actionsLedgerDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function actionsLedgerPath(dataDirOverride) {
-  return join19(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
+  return join20(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
 }
 async function loadActionsLedger(dataDirOverride) {
   try {
-    const raw = await readFile29(actionsLedgerPath(dataDirOverride), "utf-8");
+    const raw = await readFile30(actionsLedgerPath(dataDirOverride), "utf-8");
     return coerceLedger(JSON.parse(raw));
   } catch {
     return emptyActionsLedger();
@@ -82517,9 +82742,9 @@ init_zod();
 var import_yaml19 = __toESM(require_dist(), 1);
 init_resolve();
 init_plugin_root();
-import { readFile as readFile30, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
+import { readFile as readFile31, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
 import { readdir as readdir4 } from "node:fs/promises";
-import { dirname as dirname27, join as join20 } from "node:path";
+import { dirname as dirname27, join as join21 } from "node:path";
 init_credentials();
 var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
 var CACHE_TTL_MS3 = 24 * 60 * 60 * 1e3;
@@ -82608,13 +82833,13 @@ function parseActions(yamlText) {
   return out;
 }
 function actionsCachePath(dataDirOverride) {
-  return join20(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
+  return join21(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
 }
 async function loadActions(opts = {}) {
   const path2 = actionsCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile30(path2, "utf-8");
+    const raw = await readFile31(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.yaml === "string") {
       cached4 = { checked_at: parsed.checked_at, yaml: parsed.yaml };
@@ -83203,7 +83428,7 @@ Context:
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile32 } from "node:fs/promises";
+import { readFile as readFile33 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -83463,7 +83688,7 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile32(path2, "utf-8");
+    const raw = await readFile33(path2, "utf-8");
     return (0, import_yaml20.parse)(raw);
   } catch {
     return null;
@@ -83623,7 +83848,7 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir25, readFile as readFile33, writeFile as writeFile23 } from "node:fs/promises";
+import { mkdir as mkdir25, readFile as readFile34, writeFile as writeFile23 } from "node:fs/promises";
 import { dirname as dirname29 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
@@ -84103,7 +84328,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile33(path2, "utf-8");
+    const raw = await readFile34(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -84878,14 +85103,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml21 = __toESM(require_dist(), 1);
-import { readFile as readFile34 } from "node:fs/promises";
-import { dirname as dirname31, join as join22 } from "node:path";
+import { readFile as readFile35 } from "node:fs/promises";
+import { dirname as dirname31, join as join23 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile34(path2, "utf-8");
+      const raw = await readFile35(path2, "utf-8");
       const parsed = (0, import_yaml21.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
@@ -84934,7 +85159,7 @@ function candidatePaths4() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join22(dir, "shared", "reports", "catalog.yaml"));
+    candidates.push(join23(dir, "shared", "reports", "catalog.yaml"));
     const parent = dirname31(dir);
     if (parent === dir) break;
     dir = parent;
@@ -84950,7 +85175,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile36 } from "node:fs/promises";
+import { readFile as readFile37 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -85043,12 +85268,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir27, readFile as readFile35, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
+import { mkdir as mkdir27, readFile as readFile36, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
 import { dirname as dirname32 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile35(path2, "utf8");
+    const raw = await readFile36(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -85498,7 +85723,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile36(file2, "utf8");
+    const text = await readFile37(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -85570,7 +85795,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile37 } from "node:fs/promises";
+import { readFile as readFile38 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -85699,7 +85924,7 @@ function registerCall(amazon) {
         return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile37(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile38(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -86843,7 +87068,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile38 } from "node:fs/promises";
+import { readFile as readFile39 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -86924,7 +87149,7 @@ async function emitAdsCommitEvent(input, options = {}) {
       options.dataDirOverride
     );
     if (brandSlug === null) {
-      debugLog3(env, `ads-emit: no unique brand for seller ${input.legacySellerId}; skipped`);
+      debugLog4(env, `ads-emit: no unique brand for seller ${input.legacySellerId}; skipped`);
       return { posted: false, reason: "no_brand" };
     }
     const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
@@ -86944,7 +87169,7 @@ async function emitAdsCommitEvent(input, options = {}) {
     const timeoutMs = options.timeoutMs ?? ADS_EMIT_TIMEOUT_MS;
     const raced = await raceDeadline(client.postEvent(event, { timeoutMs }), timeoutMs);
     if (raced === DEADLINE) {
-      debugLog3(env, `ads-emit: post exceeded the ${timeoutMs}ms budget; detached`);
+      debugLog4(env, `ads-emit: post exceeded the ${timeoutMs}ms budget; detached`);
       return {
         posted: false,
         reason: "post_failed",
@@ -86952,13 +87177,13 @@ async function emitAdsCommitEvent(input, options = {}) {
       };
     }
     if (!raced.ok) {
-      debugLog3(env, `ads-emit: post failed (${raced.kind}): ${raced.message}`);
+      debugLog4(env, `ads-emit: post failed (${raced.kind}): ${raced.message}`);
       return { posted: false, reason: "post_failed", detail: raced.friendly };
     }
     return { posted: true, id: raced.id, brand_slug: brandSlug };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    debugLog3(env, `ads-emit: swallowed error: ${message}`);
+    debugLog4(env, `ads-emit: swallowed error: ${message}`);
     return { posted: false, reason: "error", detail: message };
   }
 }
@@ -87036,7 +87261,7 @@ function truncatedJson(value, maxChars) {
   }
   return json2.length > maxChars ? `${json2.slice(0, maxChars)}\u2026` : json2;
 }
-function debugLog3(env, message) {
+function debugLog4(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
 }
@@ -87160,7 +87385,7 @@ function registerCall2(ads) {
         return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile38(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile39(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -87363,7 +87588,7 @@ function mdCell2(s) {
 }
 
 // src/commands/intelligence.ts
-import { readFile as readFile40, mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
+import { readFile as readFile41, mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
 import { resolve as resolvePath3, dirname as dirname35 } from "node:path";
 
 // src/lib/intelligence/client.ts
@@ -87691,12 +87916,12 @@ function safeJsonPreview2(json2) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir29, open, readFile as readFile39, rename as rename21, stat as stat4, unlink as unlink9, writeFile as writeFile26 } from "node:fs/promises";
+import { mkdir as mkdir29, open, readFile as readFile40, rename as rename21, stat as stat4, unlink as unlink9, writeFile as writeFile26 } from "node:fs/promises";
 import { dirname as dirname34 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
   try {
-    const raw = await readFile39(path2, "utf8");
+    const raw = await readFile40(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -88116,7 +88341,7 @@ async function loadParams(file2, inline) {
   }
   let raw;
   if (file2) {
-    raw = await readFile40(file2, "utf8");
+    raw = await readFile41(file2, "utf8");
   } else if (inline) {
     raw = inline;
   } else {
@@ -88472,6 +88697,23 @@ function msg(err) {
 }
 
 // src/commands/doctor.ts
+function buildDoctorBuildSection(opts) {
+  const situation = evaluateInstallSituation({
+    current: opts.version,
+    installed: opts.installed,
+    latest: opts.latest
+  });
+  return {
+    version: opts.version,
+    installed: opts.installed,
+    sessionBehindInstall: situation.sessionBehindInstall,
+    latest: opts.latest,
+    stale: situation.isStale,
+    staleBasis: situation.staleBasis,
+    releaseUrl: situation.releaseUrl,
+    checkedRemote: opts.fetched
+  };
+}
 function registerDoctorCommand(program3) {
   program3.command("doctor").description(
     "One-shot environment diagnostic: runtime version (+ staleness), channel, auth state, query-pack compatibility, telemetry, and the network preflight (egress proxy + /health + allowlist remediation). Run this first when anything seems wrong. --network-only keeps the original preflight-only scope."
@@ -88522,6 +88764,19 @@ async function assembleFullReport(opts) {
   } catch {
     update = null;
   }
+  let installedVersion = null;
+  try {
+    const record2 = await readInstallRecord();
+    installedVersion = record2?.installedVersion ?? null;
+  } catch {
+    installedVersion = null;
+  }
+  const build = buildDoctorBuildSection({
+    version: version2,
+    installed: installedVersion,
+    latest: update?.latest ?? null,
+    fetched: update?.fetched ?? false
+  });
   const auth = await summarizeAuth(opts.dataDirOverride);
   const network = await runNetworkDoctor({
     apiBase: opts.apiBase,
@@ -88559,13 +88814,7 @@ async function assembleFullReport(opts) {
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
   const ok = network.ok && namedPack.ok;
   return {
-    build: {
-      version: version2,
-      latest: update?.latest ?? null,
-      stale: update?.isStale ?? false,
-      releaseUrl: update?.releaseUrl ?? null,
-      checkedRemote: update?.fetched ?? false
-    },
+    build,
     channel,
     auth,
     telemetry: {
@@ -88621,21 +88870,64 @@ async function summarizeAuth(dataDirOverride) {
   }
   return { signedIn: false, kind: "none" };
 }
+function renderBuildSection(build) {
+  const out = [];
+  out.push("Build:");
+  out.push(`  version:   ${build.version}  (this session's running payload)`);
+  const installedCmp = build.installed === null ? null : compareVersions(build.installed, build.version);
+  if (build.installed === null) {
+    out.push("  installed: (could not be verified on this surface)");
+  } else if (installedCmp !== null && installedCmp > 0) {
+    out.push(`  installed: ${build.installed}  (NEWER than this session)`);
+  } else if (installedCmp !== null && installedCmp < 0) {
+    out.push(
+      `  installed: ${build.installed}  (OLDER than this session; the install record on disk hasn't caught up to what this session is running)`
+    );
+  } else {
+    out.push(`  installed: ${build.installed}  (matches this session)`);
+  }
+  if (build.latest === null) {
+    out.push("  latest:    (could not check, offline or version check unavailable)");
+  } else if (build.stale) {
+    out.push(`  latest:    ${build.latest}  (UPDATE AVAILABLE, see below)`);
+  } else {
+    out.push(`  latest:    ${build.latest}  (up to date)`);
+  }
+  if (installedCmp !== null && installedCmp < 0 && build.latest !== null) {
+    out.push(
+      `  note:      the line above is judged against the OLDER install record (${build.installed}), not the ${build.version} this session is running.`
+    );
+  }
+  if (build.sessionBehindInstall) {
+    out.push(
+      renderSessionBehindInstall({
+        installed: build.installed,
+        current: build.version,
+        installIsStale: build.stale
+      })
+    );
+  }
+  return out;
+}
+function renderBuildStaleBanner(build) {
+  if (!build.stale || !build.latest) return "";
+  const basisVersion = build.staleBasis === "installed" && build.installed !== null ? build.installed : build.version;
+  return renderUpdateBanner(
+    {
+      current: basisVersion,
+      latest: build.latest,
+      isStale: true,
+      releaseUrl: build.releaseUrl,
+      fetched: build.checkedRemote
+    },
+    "terminal"
+  );
+}
 function renderFull(r) {
   const out = [];
   out.push("mixshift doctor");
   out.push("");
-  out.push("Build:");
-  out.push(
-    `  version: ${r.build.version}  (the TRUE running build \u2014 trust this over the host's plugin label)`
-  );
-  if (r.build.latest === null) {
-    out.push("  latest:  (could not check \u2014 offline or version check unavailable)");
-  } else if (r.build.stale) {
-    out.push(`  latest:  ${r.build.latest}  \u2014 UPDATE AVAILABLE (see below)`);
-  } else {
-    out.push(`  latest:  ${r.build.latest}  \u2014 up to date`);
-  }
+  out.push(...renderBuildSection(r.build));
   out.push("");
   out.push(`Channel: ${r.channel}`);
   if (r.channel === "plugin_host_unknown") {
@@ -88702,8 +88994,9 @@ function renderFull(r) {
   }
   out.push("");
   out.push(renderNetwork(r.network));
-  if (r.update && r.update.isStale) {
-    out.push(renderUpdateBanner(r.update, "terminal"));
+  const staleBanner = renderBuildStaleBanner(r.build);
+  if (staleBanner) {
+    out.push(staleBanner);
   }
   return out.join("\n").replace(/\n+$/, "\n");
 }
@@ -88762,7 +89055,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname36, join as join23 } from "node:path";
+import { dirname as dirname36, join as join24 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -88897,12 +89190,12 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join23(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join24(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
   let dir = dirname36(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join23(dir, "skills");
+      const candidate = join24(dir, "skills");
       const stat6 = await fs.stat(candidate);
       if (stat6.isDirectory()) return candidate;
     } catch {
@@ -89028,7 +89321,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join24, relative, basename as basename4 } from "node:path";
+import { resolve as resolve2, join as join25, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -89361,7 +89654,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join24(dir, e.name);
+        const abs = join25(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -90551,7 +90844,7 @@ function emitError13(message, root) {
 // src/commands/task.ts
 init_credentials();
 import { readdir as readdir5, stat as stat5 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname37, join as join25 } from "node:path";
+import { basename as basename5, dirname as dirname37, join as join26 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -90608,14 +90901,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join25(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join26(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
     if (basename5(dir) !== "auth" || basename5(dirname37(dir)) !== ".mixshift") continue;
-    found.push(join25(dir, entry.name));
+    found.push(join26(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -90698,7 +90991,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join25(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join26(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
