@@ -451,12 +451,32 @@ export function assembleCaptureRateSection(
 }
 
 /**
- * Detected FBA stockout windows (advisory). Direct pass-through of
- * detectStockoutWindows; StockoutCandidate is structurally BrainStockout.
- * Returns [] when the source ran and found none.
+ * Detected FBA stockout windows (advisory). Pass-through of
+ * detectStockoutWindows (StockoutCandidate is structurally BrainStockout)
+ * plus a serialization compat shim. Returns [] when the source ran and
+ * found none.
+ *
+ * COMPAT SHIM (fb 37350 red team, reverse direction): shipped builds
+ * 0.6.0-0.8.7 declare `impacted_revenue_usd` as a REQUIRED z.number() in
+ * their brain schema, brand-brain.yaml is a two-way synced doc, and the
+ * sync engine validates pulled brain docs as YAML only. A brain written
+ * WITHOUT the key would therefore fail an old build's whole-document
+ * parse (schema_violation), silently degrading that teammate to "no
+ * brain" for EVERY section until they update. So the brain is written
+ * WITH the key as a literal 0 purely for pre-0.8.8 readers: no build,
+ * old or new, ever displayed the value (renderers show item/asin/days
+ * only), old builds only used it as a detection-time sort key on their
+ * own refreshes, and this build's schema strips it on read. Remove the
+ * shim when the installed fleet ages past 0.8.7 or when the rigorous
+ * period- and ASIN-gated lost-sales replacement lands.
  */
 export function assembleStockoutSection(cs29Rows: CS29Row[]): BrainStockout[] {
-  return detectStockoutWindows(cs29Rows);
+  const windows: Array<BrainStockout & { impacted_revenue_usd: 0 }> =
+    detectStockoutWindows(cs29Rows).map((w) => ({
+      ...w,
+      impacted_revenue_usd: 0,
+    }));
+  return windows;
 }
 
 /**

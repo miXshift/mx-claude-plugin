@@ -254,10 +254,11 @@ export type BrainCaptureRateCalibration = z.infer<
  * confirm into structural_events[], NOT a confirmed fact. Mirrors
  * StockoutCandidate (lib/enrichment/types.ts).
  *
- * Older persisted brains carry a removed `impacted_revenue_usd` key
- * (multiply-counted account-wide revenue; fb 37350). z.object strips
- * unknown keys by default, so those documents still load and the stale
- * key silently drops; the next refresh rewrites the file without it.
+ * Persisted brains carry an `impacted_revenue_usd` key this schema no
+ * longer declares (the removed multiply-counted account-wide revenue,
+ * fb 37350, on pre-0.8.8 brains; a compat-shim literal 0 on newer ones,
+ * see assemble.ts::assembleStockoutSection). z.object strips unknown
+ * keys by default, so the key silently drops on read either way.
  */
 export const brainStockoutSchema = z.object({
   asin: z.string(),

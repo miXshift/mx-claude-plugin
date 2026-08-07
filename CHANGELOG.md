@@ -48,12 +48,14 @@ starts at 0.5.39; earlier versions predate the changelog.
   to each out-of-stock window, computed by summing account-wide daily ad
   sales over the window's dates. Because windows for different ASINs
   overlap, the same day's revenue was counted once per overlapping window,
-  which inflated the total severalfold. No report or page ever displayed the
-  number, so nothing you see changes; the field is simply gone from the
-  data. The windows themselves (ASIN, item, dates, days out of stock) are
-  unchanged, and existing brand files that still contain the old field keep
-  loading normally. A rigorous lost-sales estimate, scoped to the ASIN and
-  period, is planned as a replacement.
+  which inflated the total severalfold. The dollar figure was never
+  displayed anywhere; the advisory list now orders by days out of stock
+  instead of the removed revenue score, so the ten candidates shown on the
+  brand context page can differ for accounts with many concurrent
+  stockouts. The windows themselves (ASIN, item, dates, days out of stock)
+  are unchanged, and brand files written by older and newer versions keep
+  loading on either side. A rigorous lost-sales estimate, scoped to the
+  ASIN and period, is planned as a replacement.
 
 - **A mistyped `brand config --apply` command no longer saves and shares
   changes you did not confirm.** The command reads a JSON instruction telling

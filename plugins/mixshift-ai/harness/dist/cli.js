@@ -72005,7 +72005,11 @@ function assembleCaptureRateSection(input) {
   return curve ? { ...base, daily_settlement_curve: curve } : base;
 }
 function assembleStockoutSection(cs29Rows) {
-  return detectStockoutWindows(cs29Rows);
+  const windows = detectStockoutWindows(cs29Rows).map((w) => ({
+    ...w,
+    impacted_revenue_usd: 0
+  }));
+  return windows;
 }
 function assembleBrandTypoSection(input) {
   if (!input.brandTypos || !input.brandTermsInput) return void 0;

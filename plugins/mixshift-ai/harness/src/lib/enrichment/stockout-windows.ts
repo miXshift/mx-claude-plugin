@@ -12,7 +12,10 @@
  * the same revenue and the totals were wildly inflated; nothing rendered
  * it. A rigorous period- and ASIN-gated lost-sales estimate is planned as
  * a separate analysis. Until then the windows themselves (asin, dates,
- * days) are the advisory signal.
+ * days) are the advisory signal. (A serialization-only compat shim in
+ * brain/assemble.ts still WRITES the key as a literal 0, because
+ * pre-0.8.8 builds require it to parse a synced brain; it never enters
+ * this module's types or output.)
  *
  * **Key signal sources:**
  *   - sellable_zero       — SellableQuantity = 0 on that snapshot day
