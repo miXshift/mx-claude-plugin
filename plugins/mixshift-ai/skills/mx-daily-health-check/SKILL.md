@@ -121,18 +121,18 @@ Get this run's knobs (and let the user sharpen them) via the confirm card:
 mixshift skill config mx-daily-health-check --brand <brand-slug> --json
 ```
 
-The `confirmation` payload's `effective_config` holds the values this run will use: the two ACoS/TACoS targets come back as WHOLE-number percents (e.g. `22` = 22%); the rest are int/list/bool. The fields: `acos_target`, `tacos_target` (the targets DHC flags against), `min_spend_to_flag` (int dollar floor), `hero_skus` (ASIN protect list), `quiet_paused` (bool). Each is seeded from brand context where set, else absent (falls back to the documented default below).
+The show command above returns `confirmation.fields[]`, one entry per manifest field (find yours by `field.id`). Its `effective_value` is the calibration layer's internal [0,1] fraction, useful only for the confirm card display, not the shape this skill consumes. After the user confirms or edits below, resolve the working values from `effective_config` in that `--apply` response instead: percent fields come back denormalized to whole numbers there (e.g. `22` = 22%), matching every formula in this skill. `acos_target` and `tacos_target` (the targets DHC flags against) resolve this way; `min_spend_to_flag` is int dollars, `hero_skus` is an ASIN list, `quiet_paused` is bool. Each is seeded from brand context where set, else absent (falls back to the documented default below).
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-daily-health-check --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"min_spend_to_flag":"10"},"save":true}' --json`. A shared field (`acos_target`, `tacos_target`) is proposed for brand-wide promotion (recorded for review); the DHC-specific knobs (`min_spend_to_flag`, `hero_skus`, `quiet_paused`) persist to this skill.
 
-**Resolve the working values from the returned `effective_config`:**
-- `acos_target` — whole-number percent. If absent, run observational (report ACoS as-is, do not flag vs target) per Step 0. Label any default in the report.
-- `tacos_target` — whole-number percent. If absent, run observational (report TACoS as-is, do not flag vs target). Label any default.
-- `min_spend_to_flag` — int dollars; if absent, default `5`. Campaigns spending less than this on the analysis day are suppressed from the exception list.
-- `hero_skus` — ASIN list; if absent, default empty (no SKUs protected).
-- `quiet_paused` — bool; if absent, default `true` (paused campaigns hidden from the exception list).
+**Resolve the working values from `effective_config` (the `--apply` response):**
+- `acos_target`: a whole-number percent (e.g. `22` = 22%). If absent, run observational (report ACoS as-is, do not flag vs target) per Step 0. Label any default in the report.
+- `tacos_target`: a whole-number percent. If absent, run observational (report TACoS as-is, do not flag vs target). Label any default.
+- `min_spend_to_flag`: int dollars; if absent, default `5`. Campaigns spending less than this on the analysis day are suppressed from the exception list.
+- `hero_skus`: ASIN list; if absent, default empty (no SKUs protected).
+- `quiet_paused`: bool; if absent, default `true` (paused campaigns hidden from the exception list).
 
 Never block on this step — confirm-as-is is always available.
 

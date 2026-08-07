@@ -87,14 +87,14 @@ Get this run's knob (and let the user sharpen it) via the confirm card:
 mixshift skill config mx-search-term-harvest --brand <brand-slug> --json
 ```
 
-The `confirmation` payload's `effective_config` holds the value this run will use, as a WHOLE-number percent (e.g. `22` = 22%): `acos_target` — the ACoS ceiling a converting term must beat to be a harvest candidate; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target). It is seeded from brand context where set, else absent.
+The show command above returns `confirmation.fields[]`, one entry per manifest field (find yours by `field.id`). Its `effective_value` is the calibration layer's internal [0,1] fraction, useful only for the confirm card display, not the shape this skill consumes. After the user confirms or edits below, resolve the working values from `effective_config` in that `--apply` response instead: percent fields come back denormalized to whole numbers there (e.g. `22` = 22%), matching every formula in this skill. `acos_target` (the ACoS ceiling a converting term must beat to be a harvest candidate) resolves this way; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target). It is seeded from brand context where set, else absent.
 
 Show the user the card — it lists the field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown value: `mixshift skill config mx-search-term-harvest --brand <brand-slug> --apply '{"action":"confirm"}' --json`
-- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is a shared field — it is proposed for brand-wide promotion (recorded for review).
+- **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is a shared field, it is proposed for brand-wide promotion (recorded for review).
 
-**Resolve the working ACoS ceiling (whole-number percent) from the returned `effective_config`:**
-- `acos_target` — if present, use it; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target).
+**Resolve the working ACoS ceiling (a whole-number percent) from `effective_config` (the `--apply` response):**
+- `acos_target`: if present, use it; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target).
 
 Never block on this step — confirm-as-is is always available.
 
