@@ -185,6 +185,104 @@ describe('applyBrandConfigEdit — confirm action', () => {
   });
 });
 
+describe('applyBrandConfigEdit — malformed decisions fail closed (backlog #24)', () => {
+  // `decision` arrives from `JSON.parse(...) as BrandConfigDecision` in
+  // commands/brand-config.ts, an unchecked cast, so the compile-time union is
+  // not a runtime guarantee. These drive the shapes that cast lets through.
+
+  it('does NOT take the write path for an unknown action', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    const before = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
+
+    const result = await applyBrandConfigEdit(
+      payload,
+      // A plausible typo. This used to fall through to the edit path, which
+      // persists AND calls pushAfterWrite(), publishing unconfirmed edits to
+      // the shared org store.
+      { action: 'edt', edits: { acos_target_pct: '32' } } as never,
+      { dataDirOverride: testDir },
+    );
+
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_write).toBe(false);
+    expect(result.written_to).toBeNull();
+    expect(result.changed_field_count).toBe(0);
+    expect(result.validation_issues[0]?.field).toBe('action');
+    // Names what was received and what is allowed, rather than failing mutely.
+    expect(result.validation_issues[0]?.message).toContain('edt');
+    expect(result.validation_issues[0]?.message).toContain('edit');
+
+    // The strongest assertion: disk is byte-identical, so nothing was written
+    // and therefore nothing could have been published.
+    expect(await readFile(join(brandDir, 'context.yaml'), 'utf-8')).toBe(before);
+  });
+
+  it('does not crash when edits is missing entirely', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    // `{"action":"edit"}` used to reach Object.entries(undefined) and throw a
+    // bare TypeError. #125 hardened the VALUES; this is the CONTAINER.
+    const result = await applyBrandConfigEdit(payload, { action: 'edit' } as never, {
+      dataDirOverride: testDir,
+    });
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_write).toBe(false);
+    expect(result.validation_issues[0]?.field).toBe('edits');
+    expect(result.validation_issues[0]?.message).toContain('undefined');
+  });
+
+  it('rejects non-object edits containers by type, naming what arrived', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    for (const [edits, described] of [
+      [null, 'null'],
+      ['acos_target_pct=32', 'string'],
+      [42, 'number'],
+      // An array would "work" in Object.entries and silently treat indices as
+      // field names, so it is rejected rather than half-accepted.
+      [[{ acos_target_pct: '32' }], 'array'],
+    ] as Array<[unknown, string]>) {
+      const result = await applyBrandConfigEdit(payload, { action: 'edit', edits } as never, {
+        dataDirOverride: testDir,
+      });
+      expect(result.status, `edits=${described}`).toBe('validation_failed');
+      expect(result.did_write, `edits=${described}`).toBe(false);
+      expect(result.validation_issues[0]?.message, `edits=${described}`).toContain(described);
+    }
+  });
+
+  it('still accepts an empty edits object as a valid no-op', async () => {
+    await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    // The guard must reject malformed containers without also rejecting a
+    // legitimately empty one.
+    const result = await applyBrandConfigEdit(
+      payload,
+      { action: 'edit', edits: {} },
+      { dataDirOverride: testDir },
+    );
+    expect(result.status).toBe('ok');
+    expect(result.changed_field_count).toBe(0);
+  });
+});
+
 describe('applyBrandConfigEdit — edit action', () => {
   it('writes edits to context.yaml at the dotted paths', async () => {
     await writeFile(join(brandDir, 'context.yaml'), baseContextYaml, 'utf-8');

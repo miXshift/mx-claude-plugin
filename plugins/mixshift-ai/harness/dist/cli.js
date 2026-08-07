@@ -73625,9 +73625,40 @@ async function applyBrandConfigEdit(payload, decision, opts) {
       validation_issues: []
     };
   }
+  if (decision.action !== "edit") {
+    return {
+      status: "validation_failed",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: [
+        {
+          field: "action",
+          message: `Unknown action ${JSON.stringify(decision.action)}. Expected "edit", "confirm" or "cancel".`
+        }
+      ]
+    };
+  }
+  const rawEdits = decision.edits;
+  if (rawEdits === null || rawEdits === void 0 || typeof rawEdits !== "object" || Array.isArray(rawEdits)) {
+    return {
+      status: "validation_failed",
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: [
+        {
+          field: "edits",
+          message: `Expected an object of field edits, got ${describeJsonType(rawEdits)}. Example: {"action":"edit","edits":{"acos_target_pct":20}}`
+        }
+      ]
+    };
+  }
   const issues = [];
   const parsedEdits = [];
-  for (const [fieldId, rawEdit] of Object.entries(decision.edits)) {
+  for (const [fieldId, rawEdit] of Object.entries(rawEdits)) {
     const entry = findContextEntry(fieldId);
     if (!entry) {
       issues.push({ field: fieldId, message: "unknown brand-config field" });
@@ -73899,13 +73930,14 @@ async function runApplyDecision(args) {
     dataDirOverride: args.dataDir
   });
   if (decision.action === "edit") {
+    const editCount = decision.edits !== null && typeof decision.edits === "object" ? Object.keys(decision.edits).length : 0;
     await track(
       {
         event_name: "brand_config.edited",
         outcome: result.status === "ok" ? "ok" : "failed",
         payload: {
           brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
+          edit_count: editCount,
           changed_count: result.changed_field_count
         }
       },

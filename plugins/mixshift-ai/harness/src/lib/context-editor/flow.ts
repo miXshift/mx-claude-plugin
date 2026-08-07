@@ -247,10 +247,59 @@ export async function applyBrandConfigEdit(
     };
   }
 
+  // Positive dispatch. `decision` reaches us from `JSON.parse(...) as
+  // BrandConfigDecision` in commands/brand-config.ts — an unchecked cast — so
+  // the compile-time union is NOT a runtime guarantee. Falling through to the
+  // edit path for anything that merely is not 'cancel' or 'confirm' meant a
+  // typo'd action (`{"action":"edt"}`) silently took the WRITE path, which
+  // persists AND calls pushAfterWrite(), publishing to the shared org store
+  // edits the user never confirmed. Unknown actions must fail closed.
+  if (decision.action !== 'edit') {
+    return {
+      status: 'validation_failed',
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: [
+        {
+          field: 'action',
+          message:
+            `Unknown action ${JSON.stringify((decision as { action?: unknown }).action)}. ` +
+            'Expected "edit", "confirm" or "cancel".',
+        },
+      ],
+    };
+  }
+
+  // Container guard. #125 hardened the edit VALUES; the container itself was
+  // still unchecked, so `{"action":"edit"}` with edits missing, null, or a
+  // non-object reached Object.entries() and threw the same bare TypeError that
+  // #125 set out to remove. An array is rejected too: Object.entries would
+  // "work" on it and silently treat indices as field names.
+  const rawEdits: unknown = (decision as { edits?: unknown }).edits;
+  if (rawEdits === null || rawEdits === undefined || typeof rawEdits !== 'object' || Array.isArray(rawEdits)) {
+    return {
+      status: 'validation_failed',
+      updated_context: null,
+      did_write: false,
+      written_to: null,
+      changed_field_count: 0,
+      validation_issues: [
+        {
+          field: 'edits',
+          message:
+            `Expected an object of field edits, got ${describeJsonType(rawEdits)}. ` +
+            'Example: {"action":"edit","edits":{"acos_target_pct":20}}',
+        },
+      ],
+    };
+  }
+
   // Edit path: parse + validate every input, bail if any fail.
   const issues: Array<{ field: string; message: string }> = [];
   const parsedEdits: Array<{ path: string; value: unknown; field_id: string }> = [];
-  for (const [fieldId, rawEdit] of Object.entries(decision.edits)) {
+  for (const [fieldId, rawEdit] of Object.entries(rawEdits as Record<string, unknown>)) {
     const entry = findContextEntry(fieldId);
     if (!entry) {
       issues.push({ field: fieldId, message: 'unknown brand-config field' });

@@ -43,6 +43,25 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **A mistyped `brand config --apply` command no longer saves and shares
+  changes you did not confirm.** The command reads a JSON instruction telling
+  it whether to confirm, cancel, or edit. It positively recognised only
+  "confirm" and "cancel", so anything else, including a simple misspelling of
+  "edit", fell through to the editing path: your changes were written to the
+  brand file and published to your team's shared brand context without the
+  command ever being one MixShift understood. It now stops and tells you which
+  actions are valid.
+
+- **`brand config --apply` no longer reports a malformed edit as a success.**
+  If the edits were sent in the wrong shape, for example a number or a list
+  where a set of field changes was expected, the command answered "ok" and
+  reported nothing changed, so anything reading that result had no way to tell
+  a saved edit from a silently discarded one. Sending no edits at all, or an
+  empty value, failed with a raw internal error instead of naming what was
+  missing. Both now come back as a validation failure that names the field and
+  shows the expected form. Asking to edit with an empty set of changes is
+  still a valid way to do nothing.
+
 - **A 1% goal is no longer saved as 100%.** Percent settings accept both a
   whole number and a decimal ("20", "20%" and "0.20" all mean twenty
   percent), and the value `1` sits exactly where those two readings collide:

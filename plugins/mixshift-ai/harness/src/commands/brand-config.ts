@@ -175,13 +175,25 @@ async function runApplyDecision(args: {
   });
 
   if (decision.action === 'edit') {
+    // `decision` came from an unchecked `JSON.parse(...) as BrandConfigDecision`
+    // above, so `edits` can be missing, null, or any non-object here. This line
+    // used to be unreachable for those shapes because applyBrandConfigEdit threw
+    // first, inside its own Object.entries(). Now that it validates and RETURNS
+    // instead, an unguarded Object.keys() here would throw the very TypeError
+    // the validation was added to replace, and it would do so before the
+    // validation_failed JSON ever reached stdout: the user would get a generic
+    // exit 1 rather than the itemized exit 4.
+    const editCount =
+      decision.edits !== null && typeof decision.edits === 'object'
+        ? Object.keys(decision.edits).length
+        : 0;
     await track(
       {
         event_name: 'brand_config.edited',
         outcome: result.status === 'ok' ? 'ok' : 'failed',
         payload: {
           brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
+          edit_count: editCount,
           changed_count: result.changed_field_count,
         },
       },
