@@ -50,7 +50,8 @@ export function registerBrandConfigCommand(brandCmd: Command): void {
     .option(
       '--apply <decision>',
       'apply a decision (JSON). Schema: {"action":"confirm"} | ' +
-        '{"action":"edit","edits":{...}} | {"action":"cancel"}',
+        '{"action":"edit","edits":{...}} | {"action":"cancel"}. Edit ' +
+        'values may be a string or a number (e.g. 20 or "20").',
     )
     .option(
       '--show',

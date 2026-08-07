@@ -69,6 +69,13 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
+- **`brand config --apply` no longer crashes on a numeric edit value.**
+  Editing a field like an ACoS target with a plain JSON number (`20` instead
+  of `"20"`) used to throw a raw error and save nothing. Numbers are now
+  accepted the same as the equivalent quoted string, and a value that truly
+  cannot be used names the field and what was expected instead of failing
+  with no explanation.
+
 ## 0.8.7
 
 ### Added
