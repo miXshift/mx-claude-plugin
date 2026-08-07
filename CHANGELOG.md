@@ -50,9 +50,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   "edit", fell through to the editing path: your changes were written to the
   brand file and published to your team's shared brand context without the
   command ever being one MixShift understood. It now stops and tells you which
-  actions are valid. A related crash is fixed too: asking to edit without
-  supplying any edits (or supplying them in the wrong shape) reported a raw
-  internal error instead of naming the problem.
+  actions are valid.
+
+- **`brand config --apply` no longer reports a malformed edit as a success.**
+  If the edits were sent in the wrong shape, for example a number or a list
+  where a set of field changes was expected, the command answered "ok" and
+  reported nothing changed, so anything reading that result had no way to tell
+  a saved edit from a silently discarded one. Sending no edits at all, or an
+  empty value, failed with a raw internal error instead of naming what was
+  missing. Both now come back as a validation failure that names the field and
+  shows the expected form. Asking to edit with an empty set of changes is
+  still a valid way to do nothing.
 
 - **A 1% goal is no longer saved as 100%.** Percent settings accept both a
   whole number and a decimal ("20", "20%" and "0.20" all mean twenty

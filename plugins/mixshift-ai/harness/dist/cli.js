@@ -73930,13 +73930,14 @@ async function runApplyDecision(args) {
     dataDirOverride: args.dataDir
   });
   if (decision.action === "edit") {
+    const editCount = decision.edits !== null && typeof decision.edits === "object" ? Object.keys(decision.edits).length : 0;
     await track(
       {
         event_name: "brand_config.edited",
         outcome: result.status === "ok" ? "ok" : "failed",
         payload: {
           brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
+          edit_count: editCount,
           changed_count: result.changed_field_count
         }
       },
