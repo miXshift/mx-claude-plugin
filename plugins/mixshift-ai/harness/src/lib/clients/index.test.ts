@@ -54,7 +54,6 @@ function brand(overrides: Partial<BrandSuggestion>): BrandSuggestion {
     ads_active: true,
     retail_active: true,
     accounts: [seller({})],
-    alias_labels: [],
     ...overrides,
   };
 }
@@ -157,124 +156,6 @@ describe('buildIndexFromBrands', () => {
     const next = buildIndexFromBrands([brand({ slug: 'fresh-co' })], prior);
     expect(next.brands[0]!.cold_started).toBe(false);
     expect(next.brands[0]!.cold_started_at).toBeNull();
-    expect(next.brands[0]!.aliases).toBeUndefined();
-  });
-});
-
-describe('buildIndexFromBrands — slug stability via seller_id identity (feedback #37278)', () => {
-  it('keeps the prior slug when the new suggestion has no direct slug match but overlaps seller_ids', () => {
-    // Simulates the alias-first-to-Name-first flip: this brand was
-    // persisted under its old alias-derived slug/display_name. The
-    // SAME warehouse seller_id now derives a different (Name-based)
-    // slug/display_name, but it must not silently re-key.
-    const prior = buildIndexFromBrands(
-      [
-        brand({
-          slug: 'foragers-pantry',
-          display_name: "Forager's Pantry",
-          accounts: [seller({ seller_id: 1 })],
-        }),
-      ],
-      null,
-    );
-    prior.brands[0]!.cold_started = true;
-    prior.brands[0]!.cold_started_at = '2026-05-01T00:00:00.000Z';
-
-    const newSuggestion = brand({
-      slug: 'aspen-outdoor-provisions',
-      display_name: 'Aspen Outdoor Provisions',
-      accounts: [seller({ seller_id: 1 })],
-      alias_labels: ['foragers-pantry'],
-    });
-    const next = buildIndexFromBrands([newSuggestion], prior);
-
-    expect(next.brands).toHaveLength(1);
-    const b = next.brands[0]!;
-    expect(b.slug).toBe('foragers-pantry'); // kept, not re-keyed
-    expect(b.display_name).toBe('Aspen Outdoor Provisions'); // updated
-    expect(b.cold_started).toBe(true); // carried forward
-    expect(b.cold_started_at).toBe('2026-05-01T00:00:00.000Z');
-    // The suggestion's own would-be slug is recorded as an alias. Its
-    // alias_labels entry ("foragers-pantry") equals the kept slug, so it
-    // is excluded rather than duplicated.
-    expect(b.aliases).toEqual(['aspen-outdoor-provisions']);
-  });
-
-  it('carries forward previously-recorded aliases across another slug-stable rebuild', () => {
-    const prior = buildIndexFromBrands(
-      [
-        brand({
-          slug: 'aspen-outdoor-provisions',
-          display_name: 'Aspen Outdoor Provisions',
-          accounts: [seller({ seller_id: 1 })],
-        }),
-      ],
-      null,
-    );
-    prior.brands[0]!.aliases = ['foragers-pantry'];
-
-    // Next discovery: same identity, same derived slug as last time, a
-    // NEW retained alias shows up (e.g. a second storefront rename).
-    const newSuggestion = brand({
-      slug: 'aspen-outdoor-provisions',
-      display_name: 'Aspen Outdoor Provisions',
-      accounts: [seller({ seller_id: 1 })],
-      alias_labels: ['northbound-gear'],
-    });
-    const next = buildIndexFromBrands([newSuggestion], prior);
-
-    // Direct slug match this time (slug unchanged from last rebuild) —
-    // both the carried-forward alias and the new one are present.
-    expect(next.brands[0]!.slug).toBe('aspen-outdoor-provisions');
-    expect(next.brands[0]!.aliases).toEqual(
-      ['foragers-pantry', 'northbound-gear'].sort(),
-    );
-  });
-
-  it('treats overlap with MORE THAN ONE prior brand as a new entry rather than guessing', () => {
-    const prior = buildIndexFromBrands(
-      [
-        brand({ slug: 'brand-a', accounts: [seller({ seller_id: 1 })] }),
-        brand({ slug: 'brand-b', accounts: [seller({ seller_id: 2 })] }),
-      ],
-      null,
-    );
-
-    const combined = brand({
-      slug: 'combined-brand',
-      accounts: [seller({ seller_id: 1 }), seller({ seller_id: 2 })],
-    });
-    const next = buildIndexFromBrands([combined], prior);
-
-    expect(next.brands).toHaveLength(1);
-    expect(next.brands[0]!.slug).toBe('combined-brand');
-    expect(next.brands[0]!.cold_started).toBe(false);
-    expect(next.brands[0]!.aliases).toBeUndefined();
-  });
-
-  it('does not carry forward an identity-claimed slug already used earlier in the same run', () => {
-    // Contrived (a real discovery pass would never put the same
-    // seller_id in two suggestions) but exercises the guard directly:
-    // both new suggestions identity-match the SAME prior brand. Only
-    // the first one processed gets to keep the prior slug; the second
-    // falls back to its own slug rather than duplicating it.
-    const prior = buildIndexFromBrands(
-      [brand({ slug: 'shared-legacy', accounts: [seller({ seller_id: 1 })] })],
-      null,
-    );
-
-    const first = brand({
-      slug: 'first-new-name',
-      accounts: [seller({ seller_id: 1 })],
-    });
-    const second = brand({
-      slug: 'second-new-name',
-      accounts: [seller({ seller_id: 1 })],
-    });
-    const next = buildIndexFromBrands([first, second], prior);
-
-    expect(next.brands[0]!.slug).toBe('shared-legacy');
-    expect(next.brands[1]!.slug).toBe('second-new-name');
   });
 });
 

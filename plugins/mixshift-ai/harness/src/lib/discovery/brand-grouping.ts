@@ -10,40 +10,44 @@
  * never repointed at the brand identity; it is a historical label, not
  * a curation target.
  *
- * Grouping signal: a CANONICAL KEY derived from `Name` (`seller_name`),
- * which is always non-empty (seller-query.ts's normalizeRow falls back
- * to `seller-${id}` only when the warehouse column itself is blank — a
- * data-quality gap, not the normal case). Two rows land in the same
- * brand entry when their Names collapse to the same canonical key (see
- * `canonicalBrandKey`).
+ * DISPLAY LABEL vs IDENTITY — these are deliberately decoupled here.
  *
- * (Previously keyed MerchantAlias-first, task #62, 2026-06-10. That read
- * the relationship backwards: MerchantAlias is the retained storefront
- * label, not an AM-curated override of Name. The header at the time
- * cited a brand-brain-doc claim that does not generalize here — the only
- * concrete warehouse note in that vein (shared/tables.yaml's mws_items
- * notes) is a warning that `mws_items.SellerName` is a denormalized,
- * staleness-prone column on a DIFFERENT table (many SKU rows per
- * SellerID, arbitrary row picked without an explicit tie-break). It says
- * nothing about `seller.Name` vs `seller.MerchantAlias`, and has been
- * corrected to point readers at `seller.Name` for the canonical brand
- * label instead.)
+ * The DISPLAY NAME comes from `Name`: that is the field a user curates,
+ * so it is the one they should see. (Corrects task #62, 2026-06-10,
+ * which read the relationship backwards and labeled brands from
+ * MerchantAlias. The header at the time cited a brand-brain-doc claim
+ * that does not generalize here — the only concrete warehouse note in
+ * that vein, shared/tables.yaml's mws_items notes, is a warning that
+ * `mws_items.SellerName` is a denormalized, staleness-prone column on a
+ * DIFFERENT table. It says nothing about `seller.Name` vs
+ * `seller.MerchantAlias`, and has been corrected to point readers at
+ * `seller.Name` for the canonical brand label.)
  *
- * Consequence worth knowing: a brand whose storefront was renamed on
- * Amazon shows the new `Name` once it is updated, but a sibling account
- * row that never got the same edit can still carry the OLD `Name` — and,
- * having lost ads/retail access around the same time as the rename,
- * never resurfaces in an active discovery pass on its own, so it would
- * otherwise sit as its own stale, unreachable brand entry forever. The
- * merge pass below (`mergeStaleAliasSiblings`) recovers that case: a
- * group with NO active rows folds into a group WITH active rows when the
- * two share a non-null `MerchantAlias` canonical key — the one field
- * that stayed consistent across the rename — and the merged entry is
- * labeled by the active group's `Name`. Retained alias labels that
- * differ from a brand's own Name-derived key are surfaced on
- * `BrandSuggestion.alias_labels` so downstream consumers (the registry's
- * `buildIndexFromBrands` and the brand resolver) can keep resolving a
- * brand by an old storefront name after a rename like this.
+ * The GROUPING KEY — and therefore the SLUG — deliberately still derives
+ * MerchantAlias-first. This is NOT an oversight, and changing it here
+ * would be a mistake:
+ *
+ *   Persisted state is keyed by slug EVERYWHERE (`clients/<slug>/`
+ *   directories, org-store documents, timeline idempotency keys), and
+ *   the org store is slug-namespaced and SHARED across machines. Slug
+ *   carry-forward can only ever be machine-local, because it needs a
+ *   prior `index.yaml` on that machine to carry forward FROM. So a
+ *   re-key that looks seamless on the machine that performed it
+ *   silently re-keys every brand for a teammate on a fresh machine, and
+ *   cuts them off from the shared brand documents. On top of that,
+ *   `brand add <slug>` would match the NEW derived slug while
+ *   `brand list` still showed the CARRIED-FORWARD old one, so the only
+ *   identifier a user ever sees is the one that command cannot accept.
+ *
+ * Brand identity re-keying is therefore its own designed change (Sam,
+ * 2026-08-07 — option C), sequenced with the brand-identity resolver,
+ * where the server can be the source of truth for identity rather than
+ * each machine's local registry. Until then: the label a user reads is
+ * curated and current, and the identifier everything is filed under is
+ * unchanged and stable. A brand whose Name and MerchantAlias disagree
+ * displays the curated name while keeping its existing (alias-derived)
+ * slug — visibly inconsistent for those brands, and accepted as the
+ * lesser evil against silently orphaning shared state.
  *
  * Warehouse labels also vary across marketplaces and account types for
  * the same legal brand, independent of the Name/MerchantAlias question.
@@ -65,15 +69,11 @@
  *   4. Strip trailing corporate suffix (LLC / Inc / etc.)
  *   5. Strip non-alphanumeric to hyphens
  *
- * The same canonicalization is applied to `MerchantAlias` values for the
- * merge pass and for `alias_labels` — a renamed-with-marketplace-suffix
- * alias still collapses the same way a renamed Name would.
- *
  * Display name prefers the shortest `Name` among the group's ACTIVE
  * rows, falling back to the shortest `Name` overall when no row in the
- * group is active. It never prefers the alias — `MerchantAlias` is
- * surfaced separately via `alias_labels`, not folded into the picked
- * display string.
+ * group is active. It never prefers the alias: an inactive row's `Name`
+ * is the one most likely to have gone stale, so a live row's curated
+ * name is the better label.
  *
  * Slug suggestions come from the canonical key (already slug-shaped).
  * Collisions (rare — would require two legally-distinct brands with the
@@ -93,17 +93,6 @@ export interface BrandSuggestion {
   ads_active: boolean;
   /** Whether any account in the group has retail_active. */
   retail_active: boolean;
-  /**
-   * Distinct `MerchantAlias` canonical keys retained on this brand's
-   * accounts, EXCLUDING the group's own Name-derived canonical key
-   * (`slug`). Surfaces old/retained storefront identities — an alias
-   * that outlived a Name-side rename, or the alias that linked a stale
-   * sibling row back in via the merge pass — so callers (the registry's
-   * `buildIndexFromBrands`, the brand resolver) can still find this
-   * brand by a name it no longer canonically uses. Empty when no account
-   * in the group carries a MerchantAlias distinct from the Name.
-   */
-  alias_labels: string[];
 }
 
 export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
@@ -118,16 +107,11 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
     byCanonical.set(key, bucket);
   }
 
-  // Fold stale (no active rows) Name-groups into an active Name-group
-  // they share a MerchantAlias with. See the module header and
-  // `mergeStaleAliasSiblings` for why this exists.
-  const groups = mergeStaleAliasSiblings(byCanonical);
-
   const suggestions: BrandSuggestion[] = [];
   const usedSlugs = new Set<string>();
 
   // Stable alpha order by canonical key
-  const entries = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const entries = [...byCanonical.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [canonical, accounts] of entries) {
     // Display name = the shortest non-truncated active-row Name in the
     // group. This picks "Ridgepak" over "Ridgepak - DE Sporting Goods -
@@ -144,7 +128,6 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
       accounts,
       ads_active: accounts.some((a) => a.ads_active),
       retail_active: accounts.some((a) => a.retail_active),
-      alias_labels: aliasLabelsFor(accounts, canonical),
     });
   }
 
@@ -152,88 +135,19 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
 }
 
 /**
- * The brand label a row groups under: the user-curated `Name`. Always
- * non-empty — see seller-query.ts's normalizeRow. Single source of
- * truth for both the grouping key and the display-name picker.
+ * The label a row GROUPS under (and therefore the slug it lands on):
+ * `MerchantAlias` when present, else `Name`.
+ *
+ * Deliberately NOT switched to Name-first alongside the display-label
+ * fix. Changing this re-keys existing brands, and slug is the key that
+ * `clients/<slug>/` directories, org-store documents, and timeline
+ * idempotency keys are all filed under. See the module header for the
+ * full reasoning and the sequencing decision. The display-name picker
+ * no longer shares this function precisely because the two questions
+ * are now answered differently.
  */
 function brandLabel(r: SellerRow): string {
-  return r.seller_name;
-}
-
-/**
- * Merge pass: fold a stale (no active rows) Name-group into an active
- * Name-group when the two share a non-null `MerchantAlias` canonical
- * key.
- *
- * Why this exists: `Name` can lag a storefront rename on a sibling
- * account row that lost ads/retail access around the same time —
- * nobody circles back to fix the Name on a dormant row. `MerchantAlias`
- * is the field the warehouse never repoints, so it is the reliable link
- * back to the still-live brand.
- *
- * A stale group only merges when its alias key resolves to EXACTLY ONE
- * active group. If it resolves to more than one (the alias itself was
- * reused across two live brands — unusual but not impossible data), the
- * groups are left separate rather than guessed at. Deterministic:
- * depends only on the alias-key relationships between groups, not on
- * Map iteration order.
- *
- * Pure function — the input map is not mutated; returns a new map.
- */
-function mergeStaleAliasSiblings(
-  byCanonical: Map<string, SellerRow[]>,
-): Map<string, SellerRow[]> {
-  const isActiveGroup = (accounts: SellerRow[]): boolean =>
-    accounts.some((a) => a.ads_active || a.retail_active);
-
-  // alias canonical key -> set of ACTIVE group canonical keys carrying it.
-  const aliasToActiveGroups = new Map<string, Set<string>>();
-  for (const [canonical, accounts] of byCanonical) {
-    if (!isActiveGroup(accounts)) continue;
-    for (const a of accounts) {
-      if (!a.merchant_alias) continue;
-      const aliasKey = canonicalBrandKey(a.merchant_alias);
-      const set = aliasToActiveGroups.get(aliasKey) ?? new Set<string>();
-      set.add(canonical);
-      aliasToActiveGroups.set(aliasKey, set);
-    }
-  }
-
-  // Resolve at most one merge target per stale group.
-  const mergeTargetOf = new Map<string, string>(); // stale canonical -> target canonical
-  for (const [canonical, accounts] of byCanonical) {
-    if (isActiveGroup(accounts)) continue;
-    let target: string | undefined;
-    let ambiguous = false;
-    for (const a of accounts) {
-      if (!a.merchant_alias) continue;
-      const aliasKey = canonicalBrandKey(a.merchant_alias);
-      const candidates = aliasToActiveGroups.get(aliasKey);
-      if (!candidates) continue;
-      for (const cand of candidates) {
-        if (target === undefined) target = cand;
-        else if (target !== cand) ambiguous = true;
-      }
-    }
-    if (target !== undefined && !ambiguous) {
-      mergeTargetOf.set(canonical, target);
-    }
-  }
-
-  const merged = new Map<string, SellerRow[]>();
-  for (const [canonical, accounts] of byCanonical) {
-    if (mergeTargetOf.has(canonical)) continue; // absorbed below
-    merged.set(canonical, [...accounts]);
-  }
-  for (const [staleCanonical, target] of mergeTargetOf) {
-    const staleAccounts = byCanonical.get(staleCanonical)!;
-    const targetAccounts = merged.get(target);
-    // Defensive: target is always present — it was an active group, and
-    // active groups are never keys in mergeTargetOf.
-    if (!targetAccounts) continue;
-    targetAccounts.push(...staleAccounts);
-  }
-  return merged;
+  return r.merchant_alias || r.seller_name;
 }
 
 /**
@@ -279,8 +193,10 @@ export function canonicalBrandKey(name: string): string {
  * canonical key. Prefers the shortest `Name` among ACTIVE accounts
  * (least marketplace/corporate-suffix noise); falls back to the
  * shortest `Name` overall when no account in the group is active. Never
- * considers `merchant_alias` — see `BrandSuggestion.alias_labels` for
- * that.
+ * considers `merchant_alias`: that is the retained storefront label, and
+ * showing it was the defect this change fixes. Note this is the one
+ * place Name is consulted — the grouping key above still comes from
+ * `brandLabel`, which stays alias-first on purpose.
  *
  *   names ["Ridgepak", "Ridgepak - CA", "Ridgepak, LLC"] (all active) → "Ridgepak"
  *   ["Aspen Outdoor Provisions"] (×4, all active)          → "Aspen Outdoor Provisions"
@@ -297,21 +213,6 @@ function pickDisplayName(accounts: SellerRow[]): string {
   return pool.reduce((best, cur) =>
     cur.length < best.length ? cur : best,
   );
-}
-
-/**
- * Distinct MerchantAlias canonical keys on `accounts` that differ from
- * the group's own Name-derived canonical key (`nameCanonical`). Sorted
- * for deterministic output. See `BrandSuggestion.alias_labels`.
- */
-function aliasLabelsFor(accounts: SellerRow[], nameCanonical: string): string[] {
-  const keys = new Set<string>();
-  for (const a of accounts) {
-    if (!a.merchant_alias) continue;
-    const aliasKey = canonicalBrandKey(a.merchant_alias);
-    if (aliasKey && aliasKey !== nameCanonical) keys.add(aliasKey);
-  }
-  return [...keys].sort();
 }
 
 /**

@@ -235,12 +235,22 @@ export function compareVersions(a: string, b: string): number {
  * first with `claude plugin marketplace update mixshift`, then
  * `claude plugin update mixshift-ai@mixshift` — the refresh avoids a stale-catalog race
  * where the update reinstalls the same old version), and closes with the
- * critical "start a new session" step: a running session keeps the plugin
- * binary it materialized at startup, so an in-place update never takes effect
- * until the user opens a fresh session (a new chat in the same window is not
- * enough). Other surfaces fall through to the same content; CLI users updating
- * from source don't usually see this banner anyway (their `current` matches
- * what they just built).
+ * critical "load it" step.
+ *
+ * FEEDBACK 36645/36672/36728: that step used to say a new session was enough
+ * on its own ("start a new session ... a new chat in the same window is not
+ * enough"), with a full quit-and-relaunch called out only for Cowork. That
+ * undersold what is actually required everywhere: a plugin host extracts the
+ * payload once per APP LAUNCH, and a new chat or session inside the SAME
+ * running app process reuses that exact extracted payload — so the update
+ * only takes effect once the application itself is fully quit (not just a
+ * new chat or session) and relaunched. Worse, a leaked/orphaned app process
+ * can survive what looks like a full quit (a second window opens, the old
+ * process never exits) and keep serving the old payload invisibly; the copy
+ * below names that as the next thing to check when a full quit and relaunch
+ * doesn't fix it. Other surfaces fall through to the same content; CLI users
+ * updating from source don't usually see this banner anyway (their `current`
+ * matches what they just built).
  */
 export function renderUpdateBanner(
   result: VersionCheckResult,
@@ -267,10 +277,12 @@ export function renderUpdateBanner(
     );
     lines.push('>');
     lines.push(
-      '> **Then load it:** start a new conversation (in Cowork, fully quit and ' +
-        'reopen the app). A new chat in the same window is not enough: a running ' +
-        'session keeps the plugin version it started with, so the update only ' +
-        'takes effect in a fresh session.',
+      '> **Then load it:** fully quit the application (not just this chat or ' +
+        'session), then relaunch it. A new chat in the same window is not enough: ' +
+        'a running app process keeps the plugin payload it loaded at launch, so ' +
+        'the update only takes effect after a full quit and relaunch. Still shows ' +
+        'the old version after that? An earlier application process may still be ' +
+        'running in the background; find and quit it too.',
     );
     lines.push('>');
     lines.push(
@@ -304,10 +316,12 @@ export function renderUpdateBanner(
   lines.push('    (installed it for this project only? add: --scope local)');
   lines.push('');
   lines.push('  Then load it:');
-  lines.push('    Start a new session (in Cowork, fully quit and reopen the app).');
-  lines.push('    A new chat in the same window is not enough: a running session');
-  lines.push('    keeps the plugin version it started with, so the update only');
-  lines.push('    takes effect in a fresh session.');
+  lines.push('    Fully quit the application (not just this chat or session), then');
+  lines.push('    relaunch it. A new chat in the same window is not enough: a running');
+  lines.push('    app process keeps the plugin payload it loaded at launch, so the');
+  lines.push('    update only takes effect after a full quit and relaunch.');
+  lines.push('    Still shows the old version after that? An earlier application');
+  lines.push('    process may still be running in the background; find and quit it too.');
   lines.push('');
   lines.push('  Avoid this next time:');
   lines.push('    Turn on auto-sync when you first add the plugin. If you installed');

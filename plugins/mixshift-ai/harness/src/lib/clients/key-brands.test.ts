@@ -51,7 +51,6 @@ function brand(overrides: Partial<BrandSuggestion>): BrandSuggestion {
     ads_active: true,
     retail_active: true,
     accounts: [seller({})],
-    alias_labels: [],
     ...overrides,
   };
 }

@@ -113,28 +113,6 @@ export async function saveIndex(
  * accounts have since gone dormant. This protects against transient
  * access lapses — a brand that pauses then resumes shouldn't lose its
  * cold-start work. Slug match drives the carry-forward.
- *
- * Slug STABILITY (feedback #37278): a brand's Name-derived slug can
- * change between discovery runs — most notably right after this
- * version's alias-first-to-Name-first flip, where every previously
- * alias-keyed brand suddenly derives a different canonical key from the
- * same warehouse rows. Persisted state is keyed by slug everywhere
- * (`clients/<slug>/` directories, org-store docs, timeline idempotency
- * keys), so silently adopting the new slug would orphan all of that for
- * every existing brand.
- *
- * When an incoming suggestion has no direct slug match in `prev`, this
- * falls back to an IDENTITY check: does the suggestion's account
- * seller_ids overlap exactly one prior brand's seller_ids? If so, it is
- * the SAME brand under a new derived slug, not a new brand — the prior
- * slug is kept, `display_name` still updates to the new Name-derived
- * label, `cold_started` / `cold_started_at` still carry forward as
- * usual, and the suggestion's own would-be slug (plus any
- * `alias_labels` the grouping pass surfaced) is recorded in the
- * `aliases[]` field so `resolveBrandName` can still find the brand by
- * its old derived slug or a retained storefront alias. An overlap with
- * more than one prior brand is left untouched (treated as a new entry)
- * rather than guessing which prior identity should win.
  */
 export function buildIndexFromBrands(
   brands: BrandSuggestion[],
@@ -143,48 +121,8 @@ export function buildIndexFromBrands(
   const prevBySlug = new Map<string, IndexBrand>();
   if (prev) for (const b of prev.brands) prevBySlug.set(b.slug, b);
 
-  // seller_id -> prior brand, for the identity-overlap fallback below.
-  const prevBySellerId = new Map<number, IndexBrand>();
-  if (prev) {
-    for (const b of prev.brands) {
-      for (const a of b.accounts) prevBySellerId.set(a.seller_id, b);
-    }
-  }
-
-  const usedSlugs = new Set<string>();
-  const indexBrands: IndexBrand[] = [];
-
-  for (const b of brands) {
-    let prior = prevBySlug.get(b.slug);
-    let slug = b.slug;
-
-    if (!prior) {
-      // No direct slug hit — check whether this suggestion's accounts
-      // identify with exactly one prior brand via overlapping seller_ids.
-      const identityMatches = new Set<IndexBrand>();
-      for (const a of b.accounts) {
-        const match = prevBySellerId.get(a.seller_id);
-        if (match) identityMatches.add(match);
-      }
-      if (identityMatches.size === 1) {
-        const candidate = [...identityMatches][0]!;
-        // Guard against THIS carry-forward claiming a slug an earlier
-        // suggestion in this same run already claimed (via its own
-        // groupIntoBrands-assigned slug, or via its own earlier
-        // carry-forward). Does not (and cannot, without a second full
-        // pass) protect against the reverse ordering — a later
-        // suggestion's own Name-derived slug coincidentally equalling an
-        // old slug this suggestion is carrying forward. That would
-        // require two distinct legally-different brands to collide on
-        // both an old AND a new canonical key simultaneously; treated
-        // as an accepted rare edge case rather than solved here.
-        if (!usedSlugs.has(candidate.slug)) {
-          prior = candidate;
-          slug = candidate.slug;
-        }
-      }
-    }
-
+  const indexBrands: IndexBrand[] = brands.map((b): IndexBrand => {
+    const prior = prevBySlug.get(b.slug);
     const accounts: IndexAccount[] = b.accounts.map((a) => ({
       seller_id: a.seller_id,
       seller_name: a.seller_name,
@@ -203,21 +141,8 @@ export function buildIndexFromBrands(
     }));
     const adsActive = accounts.some((a) => a.ads_active);
     const retailActive = accounts.some((a) => a.retail_active);
-
-    // Alias bookkeeping: carry forward any aliases already recorded on
-    // the prior entry, add the suggestion's own would-be slug when it
-    // differs from the slug we're keeping, and add any alias_labels the
-    // grouping pass surfaced (retained MerchantAlias canonical keys) —
-    // deduped, excluding the kept slug itself.
-    const aliasSet = new Set<string>(prior?.aliases ?? []);
-    if (b.slug !== slug) aliasSet.add(b.slug);
-    for (const label of b.alias_labels) aliasSet.add(label);
-    aliasSet.delete(slug);
-    const aliases = [...aliasSet].sort();
-
-    usedSlugs.add(slug);
-    indexBrands.push({
-      slug,
+    return {
+      slug: b.slug,
       display_name: b.display_name,
       ads_active: adsActive,
       retail_active: retailActive,
@@ -225,9 +150,8 @@ export function buildIndexFromBrands(
       cold_started: prior?.cold_started ?? false,
       cold_started_at: prior?.cold_started_at ?? null,
       accounts,
-      ...(aliases.length > 0 ? { aliases } : {}),
-    });
-  }
+    };
+  });
 
   return {
     schema_version: 1,

@@ -46,7 +46,6 @@ function suggestion(rows: SellerRow[]): BrandSuggestion {
     accounts: rows,
     ads_active: rows.some((r) => r.ads_active),
     retail_active: rows.some((r) => r.retail_active),
-    alias_labels: [],
   };
 }
 
@@ -187,7 +186,6 @@ describe('bootstrapBrand', () => {
       ],
       ads_active: true,
       retail_active: true,
-      alias_labels: [],
     };
     const result = await bootstrapBrand(s, { dataDirOverride: testDir });
     const yaml = parseYaml(await readFile(result.context_path, 'utf-8')) as Record<string, unknown>;

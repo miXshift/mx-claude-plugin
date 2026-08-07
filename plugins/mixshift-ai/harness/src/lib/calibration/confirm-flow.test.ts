@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import {
   prepareConfirmation,
@@ -11,6 +12,8 @@ import {
 import type { CalibrationManifest } from './manifest-schema.js';
 import { assembleBrain } from '../brain/assemble.js';
 import { saveBrain } from '../brain/read.js';
+
+const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'skills');
 
 const manifest: CalibrationManifest = {
   schema_version: 1,
@@ -762,6 +765,105 @@ describe('selectCaptureCandidates', () => {
     const c = selectCaptureCandidates(await prep(), { limit: 2 });
     expect(c.map((x) => x.field.id)).toEqual(['objective', 'scale_threshold_pct']);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Regression guard for the 2026-08 unit-inversion doc bug (feedback 40901):
+// seven SKILL.md files told the agent to resolve a skill's WORKING calibration
+// values from `confirmation.fields[]`'s `effective_value` (the calibration
+// layer's internal [0,1] fraction, meant only for the confirm-card display),
+// while every downstream formula in those same files consumed whole-number
+// percents. `effective_config` (emitted only by the `--apply` response, see
+// `toConsumableConfig` above and `runApplyDecision` in commands/skill.ts) is
+// the shape that is actually whole. These tests pin BOTH sides of that split
+// so the docs cannot silently drift back to citing the wrong invocation/shape.
+// ---------------------------------------------------------------------------
+describe('confirm-flow contract shape (ground truth for the SKILL.md docs)', () => {
+  it('`effective_config` (ApplyResult) and `effective_value` (ConfirmationPayload.fields[]) live on different objects with different units', async () => {
+    const pctManifest: CalibrationManifest = {
+      schema_version: 1,
+      fields: [
+        {
+          id: 'acos_target',
+          prompt: 'ACoS?',
+          type: 'percent',
+          range: { min: 0.05, max: 1 },
+          seed_from: 'context.management.acos_target_pct',
+          required: false,
+          deprecated: false,
+        },
+      ],
+    };
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      `management:\n  acos_target_pct: 22\n`,
+      'utf-8',
+    );
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'contract-check-skill',
+      manifest: pctManifest,
+      dataDirOverride: testDir,
+    });
+    // The show-command payload has NO `effective_config` key anywhere on it.
+    expect(payload).not.toHaveProperty('effective_config');
+    expect(payload.fields[0]).toHaveProperty('effective_value');
+    expect(payload.fields[0]!.effective_value).toBeCloseTo(0.22, 5); // internal fraction
+
+    const result = await applyConfirmation(
+      payload,
+      { action: 'confirm' },
+      { dataDirOverride: testDir },
+    );
+    // The --apply response has NO `confirmation` key: a doc that reads
+    // `confirmation.fields[]` off of it is targeting the wrong response.
+    expect(result).not.toHaveProperty('confirmation');
+    expect(result.effective_config.acos_target).toBe(22); // whole, for the skill
+  });
+
+  const SKILLS_WITH_PERCENT_CALIBRATION = [
+    'mx-asin-target-negation',
+    'mx-daily-health-check',
+    'mx-keyword-bid-health',
+    'mx-monthly-report',
+    'mx-runaway-spend-check',
+    'mx-search-term-harvest',
+    'mx-search-term-negation',
+  ];
+
+  it.each(SKILLS_WITH_PERCENT_CALIBRATION)(
+    '%s/SKILL.md resolves working calibration values from `effective_config`, not `confirmation.fields[]`',
+    async (skillId) => {
+      const md = await readFile(join(skillsDir, skillId, 'SKILL.md'), 'utf-8');
+      const resolveBlock = md.match(/\*\*Resolve the working[^*]*\*\*/);
+      expect(
+        resolveBlock,
+        `${skillId}/SKILL.md has no "Resolve the working ..." calibration heading`,
+      ).not.toBeNull();
+      const heading = resolveBlock![0];
+      // Must attribute the working value(s) to `effective_config` (the
+      // `--apply` response - whole-number percents, matching every
+      // downstream formula in the skill).
+      expect(heading).toContain('effective_config');
+      // Must NOT attribute it to `confirmation.fields[]` (the show-command
+      // payload - internal [0,1] fractions, display-only).
+      expect(heading).not.toContain('confirmation.fields[]');
+      expect(heading).not.toMatch(/\(`effective_value`\)/);
+    },
+  );
+
+  it.each(SKILLS_WITH_PERCENT_CALIBRATION)(
+    '%s/SKILL.md never describes a consumed calibration value as a raw [0,1] fraction',
+    async (skillId) => {
+      const md = await readFile(join(skillsDir, skillId, 'SKILL.md'), 'utf-8');
+      // "fraction in [0,1]" is only ever true of the calibration layer's
+      // INTERNAL representation. It must never describe the value a skill's
+      // own formulas consume - every shipped downstream formula across these
+      // seven skills expects whole-number percents.
+      expect(md).not.toMatch(/fraction in \[0,1\]/);
+    },
+  );
 });
 
 describe('writeRunOclSnapshot', () => {

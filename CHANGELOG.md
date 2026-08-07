@@ -69,16 +69,44 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
-- **Brand names and slugs now follow the name you actually curate, not an
-  old Amazon storefront label.** Brand discovery used to build a brand's
-  display name and slug from a retained storefront name that can go stale
-  (it stays fixed even after you rename or clean up an account), instead of
-  the name you edit and keep current. Brands are now labeled from that
-  curated name, and grouping no longer splits a brand into two entries just
-  because one of its accounts never got the same edit. The old storefront
-  name still resolves: anything you already type to find a brand (`brand key
-  add`, `brand resolve`, chat lookups) keeps working, and existing brand
-  folders and registries are unaffected, no migration needed.
+- **Brands are now labeled with the name you actually curate, not an old
+  Amazon storefront label.** Brand discovery built a brand's display name
+  from a retained storefront name that can go stale: it stays fixed even
+  after you rename or clean up an account, so the label you saw could be a
+  name you stopped using a long time ago. The label now comes from the name
+  you edit and keep current. Only the label changes. Brands are still filed
+  exactly where they were, so your existing brand folders, registries, and
+  everything you already type to find a brand keep working with no migration.
+
+- **Your ACoS and TACoS targets now display correctly on the brand summary
+  card, in both view modes.** Your target is stored as a whole number (22
+  means 22%), but the card was treating that number as if it were already a
+  fraction. Viewed as a percent, a 22% target showed as 2200%; viewed as its
+  return-on-spend equivalent, the same target showed 0.05x instead of the
+  correct 4.55x. Both views now read your target correctly, whichever one you
+  have set as your default.
+
+- **`mixshift version` and `mixshift doctor` now check what your host
+  actually has installed, not just what this session loaded.** Both commands
+  used to compare only the running session's payload against the latest
+  published release and called that comparison the whole picture. A host
+  installs an update once per app launch, so a session that was already
+  running when the update landed keeps serving the old payload until the
+  application is fully quit, not just until you start a new chat. When that
+  happened, both commands told people who had already updated to update
+  again, with no explanation. They now also read the host's own install
+  record and say plainly when the installed version and the running session
+  disagree: fully quit the application (not just start a new session) and
+  relaunch it, and if the old version still shows after that, an earlier
+  application process may still be running in the background and needs to
+  be closed too.
+
+- **`brand config --apply` no longer crashes on a numeric edit value.**
+  Editing a field like an ACoS target with a plain JSON number (`20` instead
+  of `"20"`) used to throw a raw error and save nothing. Numbers are now
+  accepted the same as the equivalent quoted string, and a value that truly
+  cannot be used names the field and what was expected instead of failing
+  with no explanation.
 
 ## 0.8.7
 

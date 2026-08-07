@@ -10,29 +10,16 @@
  * Resolution order (first hit wins):
  *   1. Slug-shape input (kebab-case) → exact slug match in registry
  *   2. Display name match (case-insensitive, punctuation-stripped)
- *   3. Alias match (retired slug or retained storefront name — feedback
- *      #37278, see below)
- *   4. Acronym match (first letter of each word in display name)
- *   5. Prefix match on normalized display name
- *   6. Substring match on normalized display name
+ *   3. Acronym match (first letter of each word in display name)
+ *   4. Prefix match on normalized display name
+ *   5. Substring match on normalized display name
  *
  * Returns `found` (unique match), `ambiguous` (multiple candidates), or
  * `none` (no match). Callers decide what to do — `key add` reports the
  * ambiguity to the user for disambiguation; CI / scripted callers
  * surface the non-zero exit.
- *
- * Stage 3 (alias match) exists so a brand whose registry slug changed
- * identity-preserving (see index.ts's buildIndexFromBrands) — most
- * notably every brand that existed before the alias-first-to-Name-first
- * grouping flip — keeps resolving under names a user still remembers:
- * the brand's own old derived slug, or a MerchantAlias-derived storefront
- * name retained on its accounts. It sits BELOW slug and display-name
- * matching (those are the CURRENT identity and should always win) but
- * ABOVE the generic fuzzy stages (acronym/prefix/substring), since an
- * alias is a specific historical identifier, not a guess.
  */
 
-import { canonicalBrandKey } from '../discovery/brand-grouping.js';
 import type { ClientsIndex, IndexBrand } from './index-schema.js';
 
 export type ResolveResult =
@@ -125,33 +112,7 @@ export function resolveBrandName(
     };
   }
 
-  // 3. Alias match — a specific historical identifier, not a fuzzy guess,
-  //    so no length floor. `aliases[]` holds slug-shaped canonical keys
-  //    (the brand's own retired slug plus retained MerchantAlias keys);
-  //    canonicalize non-slug-shaped raw input the same way the discovery
-  //    layer canonicalizes brand labels so a raw storefront name like
-  //    "Forager's Pantry" still matches the stored "foragers-pantry".
-  //    Also checked against `slug` itself: the canonicalized form of a
-  //    retained alias can equal the CURRENT slug (e.g. the alias that
-  //    was the old slug before an identity-preserving carry-forward),
-  //    which stage 1 would have missed because raw input was not
-  //    already slug-shaped.
-  const aliasRawCanonical = SLUG_REGEX.test(raw) ? raw : canonicalBrandKey(raw);
-  const aliasCandidates = index.brands.filter(
-    (b) => b.slug === aliasRawCanonical || (b.aliases?.includes(aliasRawCanonical) ?? false),
-  );
-  if (aliasCandidates.length === 1) {
-    return { status: 'found', brand: aliasCandidates[0]! };
-  }
-  if (aliasCandidates.length > 1) {
-    return {
-      status: 'ambiguous',
-      candidates: aliasCandidates,
-      normalized_input: raw,
-    };
-  }
-
-  // 4. Acronym match. Only consider acronyms ≥2 chars and where the user
+  // 3. Acronym match. Only consider acronyms ≥2 chars and where the user
   //    input is ALL UPPERCASE in the original raw form (e.g., "AOP") OR
   //    matches an obvious acronym pattern (e.g., 3-4 chars, no spaces).
   //    This prevents "ca" (could be Canada region) from matching every
@@ -182,7 +143,7 @@ export function resolveBrandName(
     return { status: 'none', normalized_input: raw };
   }
 
-  // 5. Prefix match on the normalized display name. "Summit" matches
+  // 4. Prefix match on the normalized display name. "Summit" matches
   //    "Summit Labs" via prefix; "Hearth IQ" matches "Hearth IQ USA".
   const prefixCandidates = index.brands.filter((b) =>
     normalizeForMatch(b.display_name).startsWith(normalized),
@@ -198,7 +159,7 @@ export function resolveBrandName(
     };
   }
 
-  // 6. Substring match on display name. Last-resort — "glacier" might match
+  // 5. Substring match on display name. Last-resort — "glacier" might match
   //    Glacier Bottle, Glacier Bottle® (legacy variant), etc. Returns ambiguous
   //    if many; callers should consider this signal weak.
   const substringCandidates = index.brands.filter((b) =>

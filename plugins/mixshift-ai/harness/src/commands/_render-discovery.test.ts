@@ -34,7 +34,6 @@ function suggestion(overrides: Partial<BrandSuggestion> = {}): BrandSuggestion {
     accounts: [account()],
     ads_active: true,
     retail_active: false,
-    alias_labels: [],
     ...overrides,
   };
 }

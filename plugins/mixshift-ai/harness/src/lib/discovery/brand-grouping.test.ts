@@ -135,11 +135,17 @@ describe('groupIntoBrands — AOP-style same-name grouping (no regression)', () 
 
 });
 
-describe('groupIntoBrands Name-first keying (feedback #37278, supersedes task #62)', () => {
-  it('groups by curated Name, not the retained storefront alias', () => {
-    // Storefront alias is "Forager's Pantry" (retained, never the brand
-    // identity); the AM-curated Name "Aspen Outdoor Provisions" is the
-    // canonical label and grouping key.
+describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
+  // NOTE (feedback #37278, 2026-08-07): the KEYING behavior in this block is
+  // unchanged and deliberately so — slug is the identifier that clients/<slug>/
+  // directories, org-store documents, and timeline idempotency keys are all
+  // filed under, and the org store is slug-namespaced and shared across
+  // machines. Only the DISPLAY NAME moved to the curated `Name`. See the
+  // brand-grouping.ts module header for the sequencing decision.
+  it('keys on the curated alias while DISPLAYING the curated Name', () => {
+    // Storefront Name is "Aspen Outdoor Provisions"; the retained
+    // MerchantAlias is "Forager's Pantry". The brand stays FILED under the
+    // alias-derived slug (no re-keying), but the user now READS the Name.
     const rows = [
       row({
         seller_id: 1,
@@ -156,174 +162,162 @@ describe('groupIntoBrands Name-first keying (feedback #37278, supersedes task #6
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
-    expect(groups[0]!.slug).toBe('aspen-outdoor-provisions');
+    // Identity: unchanged.
+    expect(groups[0]!.slug).toBe('foragers-pantry');
+    // Label: now the curated Name, not the retained storefront alias.
     expect(groups[0]!.display_name).toBe('Aspen Outdoor Provisions');
-    // The retained alias is still surfaced, just not as the identity.
-    expect(groups[0]!.alias_labels).toEqual(['foragers-pantry']);
   });
 
-  it('collapses alias variants with marketplace suffixes for alias_labels, same as Name', () => {
+  it('collapses alias variants with marketplace suffixes like Name variants', () => {
     const rows = [
-      row({
-        seller_id: 1,
-        seller_name: 'Aspen Outdoor Provisions',
-        merchant_alias: "Forager's Pantry",
-        marketplace: 'US',
-      }),
-      row({
-        seller_id: 2,
-        seller_name: 'Aspen Outdoor Provisions',
-        merchant_alias: "Forager's Pantry - CA",
-        marketplace: 'CA',
-      }),
+      row({ seller_id: 1, merchant_alias: "Forager's Pantry", marketplace: 'US' }),
+      row({ seller_id: 2, merchant_alias: "Forager's Pantry - CA", marketplace: 'CA' }),
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
-    // Both alias variants canonicalize to the same key — one alias_labels entry.
-    expect(groups[0]!.alias_labels).toEqual(['foragers-pantry']);
+    expect(groups[0]!.slug).toBe('foragers-pantry');
   });
 
-  it('no longer splits when alias curation is partial across a brand\'s rows', () => {
-    // Regression fixed by the flip: grouping keys on Name (always
-    // populated, consistent across rows), so a sibling row missing its
-    // MerchantAlias no longer splits the brand into two entries.
+  it('splits on genuinely distinct aliases (bare suffix without separator)', () => {
+    // "forager's pantry CA" has no " - " or ", " separator, so the CA
+    // is treated as part of the brand label. Distinct keys → two entries.
+    // Self-heals when the AM normalizes the alias and re-discovers.
     const rows = [
-      row({
-        seller_id: 1,
-        seller_name: 'Aspen Outdoor Provisions',
-        merchant_alias: "Forager's Pantry",
-        marketplace: 'US',
-      }),
-      row({
-        seller_id: 2,
-        seller_name: 'Aspen Outdoor Provisions',
-        merchant_alias: null,
-        marketplace: 'CA',
-      }),
-    ];
-    const groups = groupIntoBrands(rows);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.slug).toBe('aspen-outdoor-provisions');
-    expect(groups[0]!.accounts).toHaveLength(2);
-    expect(groups[0]!.alias_labels).toEqual(['foragers-pantry']);
-  });
-
-  it('prefers the shortest active-row Name for display, never the alias', () => {
-    const rows = [
-      row({
-        seller_id: 1,
-        seller_name: 'Ridgepak, LLC',
-        merchant_alias: 'RP', // deliberately short — must NOT win display
-        marketplace: 'US',
-      }),
-      row({
-        seller_id: 2,
-        seller_name: 'Ridgepak',
-        merchant_alias: null,
-        marketplace: 'CA',
-      }),
-    ];
-    const groups = groupIntoBrands(rows);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.display_name).toBe('Ridgepak');
-    expect(groups[0]!.alias_labels).toEqual(['rp']);
-  });
-});
-
-describe('groupIntoBrands — stale-Name inactive siblings merge via retained alias', () => {
-  it('folds an inactive stale-Name group into the active group sharing its MerchantAlias', () => {
-    // The renamed-storefront scenario from feedback #37278: the account
-    // was renamed from "Old Trailhead Supply" to "Northbound Gear" on
-    // Amazon; the US row got the new Name, but the CA row never got the
-    // edit AND lost access around the same time, so it would otherwise
-    // sit unreachable as its own dormant, stale-Name brand forever.
-    // MerchantAlias retained "Old Trailhead Supply" on both rows — the
-    // one field the rename never touched — so the merge pass can still
-    // link them.
-    const rows = [
-      row({
-        seller_id: 1,
-        seller_name: 'Northbound Gear',
-        merchant_alias: 'Old Trailhead Supply',
-        marketplace: 'US',
-        ads_active: true,
-        retail_active: true,
-      }),
-      row({
-        seller_id: 2,
-        seller_name: 'Old Trailhead Supply',
-        merchant_alias: 'Old Trailhead Supply',
-        marketplace: 'CA',
-        ads_active: false,
-        retail_active: false,
-      }),
-    ];
-    const groups = groupIntoBrands(rows);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.slug).toBe('northbound-gear');
-    expect(groups[0]!.display_name).toBe('Northbound Gear');
-    expect(groups[0]!.accounts).toHaveLength(2);
-    expect(groups[0]!.ads_active).toBe(true);
-    expect(groups[0]!.retail_active).toBe(true);
-    expect(groups[0]!.alias_labels).toEqual(['old-trailhead-supply']);
-  });
-
-  it('does NOT merge two fully-inactive stale-Name groups into each other', () => {
-    // No active group anywhere shares the alias — nothing to fold into.
-    const rows = [
-      row({
-        seller_id: 1,
-        seller_name: 'Old Trailhead Supply',
-        merchant_alias: 'Old Trailhead Supply',
-        ads_active: false,
-        retail_active: false,
-      }),
-      row({
-        seller_id: 2,
-        seller_name: 'Second Stale Brand',
-        merchant_alias: 'Old Trailhead Supply',
-        ads_active: false,
-        retail_active: false,
-      }),
+      row({ seller_id: 1, merchant_alias: "forager's pantry", marketplace: 'US' }),
+      row({ seller_id: 2, merchant_alias: "forager's pantry CA", marketplace: 'CA' }),
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(2);
   });
 
-  it('does NOT merge when the shared alias resolves to more than one active group (ambiguous)', () => {
+  it('splits when alias curation is partial across a brand\'s rows', () => {
+    // Documented consequence: one row aliased, sibling row not → the
+    // aliased row keys on the alias, the bare row falls back to Name.
+    // Two entries until the AM fills in the missing alias.
     const rows = [
       row({
         seller_id: 1,
-        seller_name: 'Brand One',
-        merchant_alias: 'Shared Alias',
-        ads_active: true,
-        retail_active: true,
+        seller_name: 'Aspen Outdoor Provisions',
+        merchant_alias: "Forager's Pantry",
+        marketplace: 'US',
       }),
       row({
         seller_id: 2,
-        seller_name: 'Brand Two',
-        merchant_alias: 'Shared Alias',
-        ads_active: true,
-        retail_active: true,
+        seller_name: 'Aspen Outdoor Provisions',
+        merchant_alias: null,
+        marketplace: 'CA',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.slug).sort()).toEqual([
+      'aspen-outdoor-provisions',
+      'foragers-pantry',
+    ]);
+  });
+
+  it('prefers the shortest Name for display, never the alias', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'Ridgepak, LLC',
+        merchant_alias: 'Ridgepak',
+        marketplace: 'US',
       }),
       row({
-        seller_id: 3,
-        seller_name: 'Stale Sibling',
-        merchant_alias: 'Shared Alias',
+        seller_id: 2,
+        seller_name: 'Ridgepak - CA',
+        merchant_alias: 'Ridgepak - CA',
+        marketplace: 'CA',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    // Still keyed on the alias...
+    expect(groups[0]!.slug).toBe('ridgepak');
+    // ...but the label is the shortest Name, not the (shorter) alias.
+    expect(groups[0]!.display_name).toBe('Ridgepak, LLC');
+  });
+});
+
+// Feedback #37278 (Sam, option C 2026-08-07): the DISPLAY LABEL moves to the
+// user-curated `seller.Name`. Brand IDENTITY (the grouping key, and therefore
+// the slug) deliberately does NOT move — see the brand-grouping.ts header.
+// These lock the label behavior so the later identity change cannot quietly
+// take the label with it.
+describe('groupIntoBrands — display label comes from the curated Name', () => {
+  it('never shows a retained storefront alias, even when it is much shorter', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: 'BP', // retained storefront label, deliberately tiny
+        marketplace: 'US',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups[0]!.display_name).toBe('American Outdoor Products');
+  });
+
+  it('prefers an ACTIVE row Name: a dormant row is the one most likely to be stale', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'Stale Old Name',
+        merchant_alias: 'Shared',
+        ads_active: false,
+        retail_active: false,
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'Northbound Gear Company',
+        merchant_alias: 'Shared',
+        ads_active: true,
+        retail_active: false,
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    // The active Name wins despite being LONGER than the dormant one.
+    expect(groups[0]!.display_name).toBe('Northbound Gear Company');
+  });
+
+  it('falls back to the shortest Name overall when no row in the group is active', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'Dormant Brand Co',
+        merchant_alias: 'Shared',
+        ads_active: false,
+        retail_active: false,
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'Dormant Brand',
+        merchant_alias: 'Shared',
         ads_active: false,
         retail_active: false,
       }),
     ];
     const groups = groupIntoBrands(rows);
-    // Brand One and Brand Two stay separate (both active, no fold logic
-    // applies between two active groups); Stale Sibling stays separate
-    // too because its alias is ambiguous between them.
-    expect(groups).toHaveLength(3);
-    expect(groups.map((g) => g.slug).sort()).toEqual([
-      'brand-one',
-      'brand-two',
-      'stale-sibling',
-    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.display_name).toBe('Dormant Brand');
+  });
+
+  it('IDENTITY IS UNCHANGED: the slug still derives from the alias, not the Name', () => {
+    // The guard on option C. If a later change moves keying to Name, this
+    // fails and forces the migration conversation rather than silently
+    // re-keying every brand and orphaning slug-namespaced org-store state.
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: "Forager's Pantry",
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups[0]!.slug).toBe('foragers-pantry');
+    expect(groups[0]!.display_name).toBe('American Outdoor Products');
   });
 });
 
