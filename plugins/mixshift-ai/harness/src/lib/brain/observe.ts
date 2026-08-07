@@ -6,7 +6,7 @@
  * Today the applier runs locally against the yaml cache; at P2 the same
  * envelopes POST to the brain service and the aggregation runs there.
  *
- * Design rules (internal/BRAND-BRAIN-STRATEGY.md §5):
+ * Design rules:
  *   - Single observations never present as facts: `count` and
  *     `confidence` ride along, and consumers render observation-backed
  *     values as suggestions.

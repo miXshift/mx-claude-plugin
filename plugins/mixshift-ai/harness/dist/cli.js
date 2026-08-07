@@ -63941,7 +63941,7 @@ var init_schema3 = __esm({
         // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
         // removed when Discord routing moved server-side — telemetry
         // events fan out to Discord via a Supabase database trigger +
-        // Edge Function. See internal/SUPABASE-SETUP.md §10.
+        // Edge Function.
         public_ip_lookup_url: external_exports.url().default("https://api.ipify.org?format=json"),
         mysql: mysqlDefaults.default({
           host: "db.mydashapplications.studio",
@@ -63968,7 +63968,7 @@ var init_schema3 = __esm({
       }),
       telemetry: external_exports.object({
         // Supabase REST endpoint for the events table. Empty = "configured off"
-        // (events buffered locally, never flushed). See internal/SUPABASE-SETUP.md.
+        // (events buffered locally, never flushed).
         endpoint: external_exports.string().default(""),
         // Supabase anon key. Empty = "configured off" same as endpoint.
         apikey: external_exports.string().default(""),
@@ -72292,8 +72292,8 @@ var BRAND_FIELD_REGISTRY = {
   recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity" },
   item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc" },
   hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc" },
-  // Phase 8 enrichment (2+ skills each; see internal/BRAND-BRAIN.md audit
-  // 2026-06-27). capture_rate is both-tier (AM-confirmed context wins; brain
+  // Phase 8 enrichment (each value serves 2+ skills).
+  // capture_rate is both-tier (AM-confirmed context wins; brain
   // pre-fills from CS-06/07/08 + CS-28); daily_settlement_curve is the nested
   // sub-block monthly-report prefers. stockouts + brand_term_typos are
   // Tier-2-only advisories (no Tier-3 home; the AM confirms them into

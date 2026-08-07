@@ -1,17 +1,15 @@
 /**
  * Structured actor attribution for telemetry events.
  *
- * Beta stance (see internal/TELEMETRY-ATTRIBUTION.md + memory
- * feedback_beta_telemetry_aggressive): every event must answer WHO the actor
- * is. We stamp a uniform `actor` object into payload on every event:
+ * Every event answers WHO the actor is: a uniform `actor` object is
+ * stamped into payload on every event:
  *
  *   { kind: 'human' | 'service' | 'anonymous', ...identity }
  *
- * Human actors are already identifiable via the lifted `email` (shared tenant
- * login) + `person_label` (per-employee work email) columns; we still stamp
- * `kind:'human'` (+ user_id) for uniform filtering. Service credentials had NO
- * owner/org/purpose on their events before this — only `svc:<label>` — which is
- * the gap feedback #10 exists to close. We stamp the svc label + client_id
+ * Human actors are already identifiable via the lifted `email` (tenant
+ * login) + `person_label` (self-attested work email) columns; we still stamp
+ * `kind:'human'` (+ user_id) for uniform filtering. Service-credential events
+ * previously carried only `svc:<label>`. We stamp the svc label + client_id
  * always (P1, from the on-disk creds); the owning tenant + minted-by + purpose
  * are enriched at emit time from the service-token attribution cache once the
  * token mint surfaces them (P2).

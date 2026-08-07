@@ -8,13 +8,25 @@
 // tracked here. This is a backstop against a re-add re-introducing the leak that
 // shipped release-docs + SKILL-AUTHOR-GUIDE publicly (cleaned up 2026-07-24).
 //
-// Two zero-false-positive rules:
+// Three tree rules + one log rule:
 //   1. Nothing tracked under .claude/ — the whole dir is gitignored + internal
 //      (maintainer skills, agents, commands, hooks, settings.local.json).
 //   2. Known internal-material paths OUTSIDE .claude/ that are only path-ignored,
 //      so a plain `git add` (no -f) could silently re-track them. SKILL-AUTHOR-
 //      GUIDE.md is the concrete case: it previously lived (tracked) at
 //      docs/productization/ before being relocated to internal/.
+//   3. CONTENT deny-scan: no tracked text file may REFERENCE an internal design
+//      doc (an `internal/<DOC>.md` path, or a known internal-doc basename).
+//      Rules 1-2 only look at WHICH paths are tracked, never at file content,
+//      so source comments citing internal docs sailed through every prior run.
+//      This is a DENY-pattern by design: an allowlist of "known clean" paths
+//      would go green the moment a new path class appeared (the 2026-07-31
+//      supabase/ incident), whereas a deny-pattern fails on the content itself
+//      wherever it shows up. dist/ IS scanned: dist/cli.js + cli.js.map are
+//      tracked and shipped, and bundled comments/sourcesContent carry source
+//      comments verbatim, so a reference scrubbed from src but not rebuilt
+//      would still ship.
+//   4. Commit messages on the branch must not carry non-MixShift emails.
 
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -55,7 +67,75 @@ if (offenders.length) {
   process.exit(1);
 }
 
-// 3. COMMIT MESSAGES on the branch must not carry email addresses. This repo
+// 3. CONTENT deny-scan over every tracked file (including dist/, see header).
+//    Two pattern classes:
+//      a. Any `internal/<UPPERCASE-DOC>.md` path reference. internal/ is the
+//         gitignored home of MixShift design docs; naming one in a public file
+//         both leaks the doc's existence and invites the next edit to quote it.
+//      b. Known internal design-doc basenames, with or without the internal/
+//         prefix (comments sometimes cite the bare filename).
+//    The scan skips binary files (NUL sniff) and this script itself (the deny
+//    list below would match its own source; the script is the enforcement
+//    point, not an exposure).
+const CONTENT_DENY = [
+  {
+    label: 'internal design-doc path reference',
+    re: /\binternal\/[A-Z][A-Z0-9_-]*\.md\b/,
+  },
+  {
+    label: 'internal design-doc basename reference',
+    re: /\b(?:SUPABASE-SETUP|BACKGROUND-DISCOVERY|BRAND-BRAIN-STRATEGY|BRAND-BRAIN|SP-MIGRATION|TELEMETRY-ATTRIBUTION|SECRETS)\.md\b/,
+  },
+];
+const SELF = 'plugins/mixshift-ai/harness/scripts/check-no-internal-exposure.mjs';
+
+try {
+  const { readFileSync } = await import('node:fs');
+  const allTracked = execFileSync('git', ['ls-files', '-z'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  }).split('\0').filter(Boolean);
+
+  const contentHits = [];
+  for (const rel of allTracked) {
+    if (rel === SELF) continue;
+    let buf;
+    try {
+      buf = readFileSync(join(REPO_ROOT, rel));
+    } catch {
+      continue; // deleted-but-staged edge; tree rules already cover tracking
+    }
+    if (buf.subarray(0, 8192).includes(0)) continue; // binary
+    const text = buf.toString('utf8');
+    if (!CONTENT_DENY.some((p) => p.re.test(text))) continue;
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      for (const p of CONTENT_DENY) {
+        const m = p.re.exec(lines[i]);
+        if (m) {
+          contentHits.push(`  ${rel}:${i + 1}: ${p.label} (${m[0]})`);
+          break; // one report per line is enough
+        }
+      }
+    }
+  }
+  if (contentHits.length) {
+    console.error(
+      `check-no-internal-exposure: ${contentHits.length} internal design-doc reference(s) in tracked files of the PUBLIC repo:\n` +
+      contentHits.join('\n') +
+      `\nRewrite the comment to describe what the code does locally; deep rationale belongs INSIDE the\n` +
+      `internal doc (gitignored), not cited from public source. If a hit is in dist/, rebuild from the\n` +
+      `harness directory after scrubbing src. See CONTRIBUTING.md.`,
+    );
+    process.exit(1);
+  }
+} catch (err) {
+  // No git context (extracted tarball): tree scan impossible, same stance as
+  // rule 1-2 above.
+  console.log(`✓ check-no-internal-exposure: content scan skipped (${err?.code || 'no git context'})`);
+}
+
+// 4. COMMIT MESSAGES on the branch must not carry email addresses. This repo
 //    is public and squash-merge writes the full commit body into main's
 //    permanent history; a reporter's email in an `originator:` trailer is
 //    customer PII that no content gate sees (git ls-files scans the tree,
@@ -92,4 +172,4 @@ try {
   // The tree rules above already ran; skip the log rule rather than fail.
   console.log('✓ check-no-internal-exposure: commit-message scan skipped (origin/main not resolvable)');
 }
-console.log('✓ check-no-internal-exposure: no maintainer skills or internal docs tracked, no emails in branch commit messages');
+console.log('✓ check-no-internal-exposure: no internal paths tracked, no internal design-doc references in tracked content, no emails in branch commit messages');

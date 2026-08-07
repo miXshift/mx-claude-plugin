@@ -7,7 +7,6 @@
  * served by a MixShift endpoint (GET /api/brain/:brand) assembled
  * server-side. Skills never read the file directly; they go through
  * lib/brain/read.ts, so the transport swap never touches skill code.
- * Strategy: internal/BRAND-BRAIN-STRATEGY.md (main checkout).
  *
  * Layer boundaries (the litmus, applied in order):
  *   1. Two unrelated skills want the same value      → not OCL
@@ -43,7 +42,7 @@ export type BrainSourceMeta = z.infer<typeof brainSourceMetaSchema>;
 
 /**
  * Seller-level facts (source class S1, platform facts). First-slice
- * fields per internal/BACKGROUND-DISCOVERY.md; everything nullable
+ * field set; everything nullable
  * because warehouse rows are sparse and the brain must tolerate partial
  * data without failing assembly.
  *
@@ -142,8 +141,8 @@ export type BrainCatalog = z.infer<typeof brainCatalogSchema>;
 
 /**
  * Recent ad-activity baseline (source class S1, cached from
- * BRAIN-RECENT-ACTIVITY at brain-fetch time per BACKGROUND-DISCOVERY.md:
- * "skill no longer re-pulls"). Brand-wide: trailing-30d ad spend + ad
+ * BRAIN-RECENT-ACTIVITY at brain-fetch time so skills need not
+ * re-pull it). Brand-wide: trailing-30d ad spend + ad
  * sales summed across ALL the brand's sellers (not a single account —
  * the brand's ad activity may sit on any seat). acos is null when ad
  * sales are zero (no division).

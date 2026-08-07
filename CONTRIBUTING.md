@@ -146,4 +146,4 @@ Things that **never** belong in commits:
 - Supabase `service_role` keys (the `anon` key is fine — designed for client embedding)
 - Customer email addresses or other PII
 
-If you accidentally commit a secret: do **not** just `git revert` (history retains it). Rotate the secret immediately at its source (Discord settings, DB password reset, etc.). See `internal/SECRETS.md` for the incident-response playbook (gitignored — for MixShift internal use; the policy itself is enforced by the gitleaks config above).
+If you accidentally commit a secret: do **not** just `git revert` (history retains it). Rotate the secret immediately at its source (Discord settings, DB password reset, etc.). MixShift maintains the incident-response playbook internally (it is not part of this repo); the policy itself is enforced by the gitleaks config above.

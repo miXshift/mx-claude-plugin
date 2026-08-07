@@ -209,8 +209,8 @@ const BRAND_FIELD_REGISTRY = {
   recent_acos_30d: { brainPath: 'recent_activity.acos_30d', brainSource: 'recent_activity' },
   item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc' },
   hero_asins: { brainPath: 'catalog.top_asins', brainSource: 'hero_sc' },
-  // Phase 8 enrichment (2+ skills each; see internal/BRAND-BRAIN.md audit
-  // 2026-06-27). capture_rate is both-tier (AM-confirmed context wins; brain
+  // Phase 8 enrichment (each value serves 2+ skills).
+  // capture_rate is both-tier (AM-confirmed context wins; brain
   // pre-fills from CS-06/07/08 + CS-28); daily_settlement_curve is the nested
   // sub-block monthly-report prefers. stockouts + brand_term_typos are
   // Tier-2-only advisories (no Tier-3 home; the AM confirms them into
