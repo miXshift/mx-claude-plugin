@@ -89,7 +89,11 @@ export interface BrandConfigPayload {
 
 export type BrandConfigDecision =
   | { action: 'confirm' }
-  | { action: 'edit'; edits: Record<string, string> }
+  // `--apply` delivers this as parsed JSON, so a value can arrive as any
+  // JSON type (string, number, boolean, null, array, object) — not just a
+  // string. `Record<string, unknown>` reflects that; coerceEditValue()
+  // below is where the narrowing to a string actually happens.
+  | { action: 'edit'; edits: Record<string, unknown> }
   | { action: 'cancel' };
 
 export interface ApplyBrandConfigResult {
@@ -246,10 +250,28 @@ export async function applyBrandConfigEdit(
   // Edit path: parse + validate every input, bail if any fail.
   const issues: Array<{ field: string; message: string }> = [];
   const parsedEdits: Array<{ path: string; value: unknown; field_id: string }> = [];
-  for (const [fieldId, raw] of Object.entries(decision.edits)) {
+  for (const [fieldId, rawEdit] of Object.entries(decision.edits)) {
     const entry = findContextEntry(fieldId);
     if (!entry) {
       issues.push({ field: fieldId, message: 'unknown brand-config field' });
+      continue;
+    }
+    // parseFieldInput's contract is a string — it was written for chat
+    // input, which is always text. `--apply` edits come from JSON.parse
+    // instead, so a semantically-numeric field like acos_target_pct
+    // naturally arrives as a real number (feedback 47801:
+    // `--apply '{"action":"edit","edits":{"acos_target_pct":20}}'`), and
+    // parseFieldInput's unconditional `raw.trim()` would throw on it. Coerce
+    // the JSON scalar types that have an unambiguous string form (same
+    // string-or-number convention as stableRowId() in commands/skill.ts)
+    // and name the field for anything that genuinely cannot be accepted,
+    // instead of letting a bare runtime crash reach the user.
+    const raw = coerceEditValue(rawEdit);
+    if (raw === null) {
+      issues.push({
+        field: fieldId,
+        message: `Expected a string or number, got ${describeJsonType(rawEdit)}`,
+      });
       continue;
     }
     const parsed = parseFieldInput(entry.field, raw);
@@ -348,6 +370,27 @@ export async function applyBrandConfigEdit(
 
 function hasDefault(field: CalibrationField): boolean {
   return (field as { default?: unknown }).default !== undefined;
+}
+
+/**
+ * Narrow a JSON-sourced edit value to the string parseFieldInput expects.
+ * Strings pass through; numbers get an unambiguous string form (matching
+ * the string-or-number convention `stableRowId()` uses in
+ * commands/skill.ts). Anything else (null, boolean, array, object) has no
+ * single obvious string reading, so it's rejected by the caller with a
+ * field-scoped message rather than guessed at.
+ */
+function coerceEditValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return null;
+}
+
+/** Human-readable type name for an "expected X, got ..." validation message. */
+function describeJsonType(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
 }
 
 /**

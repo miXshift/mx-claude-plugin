@@ -73602,10 +73602,18 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   }
   const issues = [];
   const parsedEdits = [];
-  for (const [fieldId, raw] of Object.entries(decision.edits)) {
+  for (const [fieldId, rawEdit] of Object.entries(decision.edits)) {
     const entry = findContextEntry(fieldId);
     if (!entry) {
       issues.push({ field: fieldId, message: "unknown brand-config field" });
+      continue;
+    }
+    const raw = coerceEditValue(rawEdit);
+    if (raw === null) {
+      issues.push({
+        field: fieldId,
+        message: `Expected a string or number, got ${describeJsonType(rawEdit)}`
+      });
       continue;
     }
     const parsed = parseFieldInput(entry.field, raw);
@@ -73686,6 +73694,16 @@ async function applyBrandConfigEdit(payload, decision, opts) {
 function hasDefault2(field) {
   return field.default !== void 0;
 }
+function coerceEditValue(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return null;
+}
+function describeJsonType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
 function normalizePercentForDisplay(field, v) {
   if (field.type === "percent" && typeof v === "number") {
     return v > 1 ? v / 100 : v;
@@ -73761,7 +73779,7 @@ function registerBrandConfigCommand(brandCmd) {
     "Edit brand-level context fields (ACoS/TACoS targets, attribution window, goals). Shows the confirmation card by default. Pair with --apply <decision-json> to persist edits."
   ).option(
     "--apply <decision>",
-    'apply a decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{...}} | {"action":"cancel"}'
+    'apply a decision (JSON). Schema: {"action":"confirm"} | {"action":"edit","edits":{...}} | {"action":"cancel"}. Edit values may be a string or a number (e.g. 20 or "20").'
   ).option(
     "--show",
     "read-only inspect \u2014 alias for the default action when no flags pass",
