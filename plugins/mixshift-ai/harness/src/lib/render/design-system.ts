@@ -1418,11 +1418,15 @@ export function formatRoas(
  * [0,1] fraction (`formatPct` multiplies by 100; `formatRoas` inverts
  * directly), so the whole-number target is normalized to a fraction ONCE
  * here, before dispatching to either branch. This is deliberately NOT
- * pushed into `formatRoas` itself: unlike target-setting fields,
- * `formatRoas` is also used on ACoS *actuals* elsewhere, which can
- * legitimately sit below 1% or above 100%, so the `value > 1 ? value/100
- * : value` heuristic is only safe at this boundary, not inside a formatter
- * shared with actuals.
+ * pushed into `formatRoas` itself: it is an exported, general-purpose
+ * formatter, not private to `frameMetric`, and has no other call site in
+ * this codebase today. Baking the `value > 1 ? value/100 : value` guess
+ * into it would apply a target-field-only convention to any future
+ * caller — including one formatting ACoS *actuals*, which are not
+ * guaranteed to follow the whole-number convention target-setting fields
+ * do and can legitimately sit below 1% or above 100%. Keeping the guess
+ * scoped to this boundary, where the input's provenance is known, keeps
+ * the shared formatter's contract simple: always a [0,1] fraction in.
  */
 export function frameMetric(
   acosValue: number | null | undefined,

@@ -116,13 +116,13 @@ Get this run's knobs (and let the user sharpen them) via the confirm card:
 mixshift skill config mx-monthly-report --brand <brand-slug> --json
 ```
 
-The `confirmation.fields[]` array holds one entry per manifest field (find yours by `field.id`); read `effective_value` for the value this run will use. `acos_target` (reference ACoS for the efficiency narrative / beat-miss framing, an optional override of the brand target) comes back as a fraction in [0,1] (e.g. `0.22` = 22%, not the whole number). Seeded from brand context where set, else absent.
+The show command above returns `confirmation.fields[]`, one entry per manifest field (find yours by `field.id`). Its `effective_value` is the calibration layer's internal [0,1] fraction, useful only for the confirm card display, not the shape this skill consumes. After the user confirms or edits below, resolve the working values from `effective_config` in that `--apply` response instead: percent fields come back denormalized to whole numbers there (e.g. `22` = 22%), matching every formula in this skill. `acos_target` (reference ACoS for the efficiency narrative / beat-miss framing, an optional override of the brand target) resolves this way. Seeded from brand context where set, else absent.
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-monthly-report --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review).
 
-**Resolve the working value (a fraction in [0,1]) from `confirmation.fields[]` (`effective_value`):**
+**Resolve the working value (a whole-number percent) from `effective_config` (the `--apply` response):**
 - `acos_target`: reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target).
 
 Never block on this step — confirm-as-is is always available.
