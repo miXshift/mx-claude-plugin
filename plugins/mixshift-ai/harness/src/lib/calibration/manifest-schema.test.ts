@@ -183,6 +183,29 @@ describe('parseFieldInput', () => {
     expect(parseFieldInput(acosField, '1')).toEqual({ ok: true, value: 1.0 });
   });
 
+  it('accepts a JSON-number 1 without asking, so --json output round-trips through --apply', () => {
+    // `brand config --json` emits a stored 100% goal as the bare number 1.
+    // A script that reads that and hands it straight back to --apply must not
+    // be told to "write 1% or 100%": we emitted the value, so we must accept
+    // it. Without the provenance flag the whole batch is rejected (exit 4)
+    // because ONE echoed field became unparseable.
+    expect(parseFieldInput(tacosField, '1', { fromJsonNumber: true })).toEqual({
+      ok: true,
+      value: 1.0,
+    });
+  });
+
+  it('still asks a HUMAN who types 1, even though a machine would not be asked', () => {
+    // The provenance flag must not become a blanket escape hatch: the typed
+    // path is the one that corrupts, and it stays guarded.
+    expect(parseFieldInput(tacosField, '1').ok).toBe(false);
+  });
+
+  it('range-checks JSON numbers rather than trusting them blindly', () => {
+    const tight = { ...percentField, range: { min: 0.1, max: 0.5 } };
+    expect(parseFieldInput(tight, '0.9', { fromJsonNumber: true }).ok).toBe(false);
+  });
+
   it('keeps the documented readings intact around the boundary', () => {
     // Bare decimals below 1 stay fractions; whole numbers above 1 stay percents.
     expect(parseFieldInput(tacosField, '0.5')).toEqual({ ok: true, value: 0.5 });

@@ -274,7 +274,13 @@ export async function applyBrandConfigEdit(
       });
       continue;
     }
-    const parsed = parseFieldInput(entry.field, raw);
+    // Preserve provenance: a JSON number came from a machine reading our own
+    // `--json` output, where percents are already in stored form. Losing that
+    // through coerceEditValue's String() would make a value we emitted fail to
+    // parse when handed straight back.
+    const parsed = parseFieldInput(entry.field, raw, {
+      fromJsonNumber: typeof rawEdit === 'number',
+    });
     if (!parsed.ok) {
       issues.push({ field: fieldId, message: parsed.error });
       continue;

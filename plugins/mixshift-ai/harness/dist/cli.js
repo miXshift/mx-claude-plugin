@@ -73283,7 +73283,7 @@ function formatFieldValue(field, value) {
     }
   }
 }
-function parseFieldInput(field, raw) {
+function parseFieldInput(field, raw, opts) {
   const trimmed = raw.trim();
   switch (field.type) {
     case "enum": {
@@ -73325,6 +73325,9 @@ function parseFieldInput(field, raw) {
         return inRange(asPercent) ? { ok: true, value: asPercent } : outOfRange;
       }
       if (n < 1) {
+        return inRange(asFraction) ? { ok: true, value: asFraction } : outOfRange;
+      }
+      if (opts?.fromJsonNumber) {
         return inRange(asFraction) ? { ok: true, value: asFraction } : outOfRange;
       }
       const percentFits = inRange(asPercent);
@@ -73638,7 +73641,9 @@ async function applyBrandConfigEdit(payload, decision, opts) {
       });
       continue;
     }
-    const parsed = parseFieldInput(entry.field, raw);
+    const parsed = parseFieldInput(entry.field, raw, {
+      fromJsonNumber: typeof rawEdit === "number"
+    });
     if (!parsed.ok) {
       issues.push({ field: fieldId, message: parsed.error });
       continue;

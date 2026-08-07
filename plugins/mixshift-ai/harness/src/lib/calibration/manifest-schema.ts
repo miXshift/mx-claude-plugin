@@ -337,9 +337,24 @@ export type ParseResult<T = unknown> =
   | { ok: true; value: T }
   | { ok: false; error: string };
 
+/**
+ * Provenance of a value handed to parseFieldInput.
+ *
+ * The parser was written for CHAT input, which is always text a human typed.
+ * `--apply` feeds it JSON instead, and the difference matters for percents:
+ * our own `--json` output emits percents in the stored [0,1] form, so a JSON
+ * number is already canonical and must never be second-guessed, while a typed
+ * string may be either convention.
+ */
+export interface ParseFieldInputOptions {
+  /** The value arrived as a JSON number, i.e. already in the stored form. */
+  fromJsonNumber?: boolean;
+}
+
 export function parseFieldInput(
   field: CalibrationField,
   raw: string,
+  opts?: ParseFieldInputOptions,
 ): ParseResult {
   const trimmed = raw.trim();
 
@@ -421,6 +436,17 @@ export function parseFieldInput(
       // one that corrupted TACoS goals: as a fraction it is 100% (the top of
       // the scale), as a percent it is 1% (the floor the error message
       // advertises). Only ask when the field's range actually admits both.
+      //
+      // ...and only when a HUMAN typed it. A JSON number arrives from a
+      // machine that read our own `--json` output, where percents are emitted
+      // in the stored [0,1] form, so `1` there unambiguously means 1.0. Asking
+      // it to "write 1% or 100%" breaks the show -> apply round trip: a script
+      // patching one field while echoing the rest would have its whole batch
+      // rejected because a value WE emitted is no longer one we accept.
+      if (opts?.fromJsonNumber) {
+        return inRange(asFraction) ? { ok: true, value: asFraction } : outOfRange;
+      }
+
       const percentFits = inRange(asPercent);
       const fractionFits = inRange(asFraction);
       if (percentFits && fractionFits) {
