@@ -1,25 +1,57 @@
 /**
  * Group discovered seller rows into proposed brand entries.
  *
- * Grouping signal: a CANONICAL KEY derived from the warehouse
- * `MerchantAlias` column when present, falling back to `Name`
- * (`seller_name`) when the alias is null/empty. Per the BRAND-BRAIN.md
- * spec, `MerchantAlias` is the AM-curated canonical brand display;
- * e.g. alias "Forager's Pantry" on seller rows whose storefront
- * `Name` is "Aspen Outdoor Provisions". When an AM has curated the
- * alias, it is the brand identity; `Name` is the storefront/legal
- * label and only used when no alias exists. (Switched from Name-first
- * 2026-06-10, task #62.)
+ * CANONICAL SEMANTICS (feedback #37278): `seller.Name` is the
+ * user-curated canonical brand name. It defaults to `MerchantAlias` on
+ * the first warehouse pull, then an AM edits it directly as the account
+ * gets cleaned up — it is the field that is SUPPOSED to drift from the
+ * original storefront label over time. `seller.MerchantAlias`
+ * deliberately RETAINS the original Amazon storefront/legal name and is
+ * never repointed at the brand identity; it is a historical label, not
+ * a curation target.
  *
- * Consequence worth knowing: alias curation should be CONSISTENT
- * across a brand's seller rows. If one marketplace row has the alias
- * set and a sibling row has it empty, the two derive different keys
- * and split into separate brand entries. That split is visible (two
- * entries in the discover list) and self-heals when the AM fills in
- * the missing alias and re-discovers.
+ * DISPLAY LABEL vs IDENTITY — these are deliberately decoupled here.
  *
- * Warehouse labels vary across marketplaces and account types for the
- * same legal brand. Examples observed in `Name`:
+ * The DISPLAY NAME comes from `Name`: that is the field a user curates,
+ * so it is the one they should see. (Corrects task #62, 2026-06-10,
+ * which read the relationship backwards and labeled brands from
+ * MerchantAlias. The header at the time cited a brand-brain-doc claim
+ * that does not generalize here — the only concrete warehouse note in
+ * that vein, shared/tables.yaml's mws_items notes, is a warning that
+ * `mws_items.SellerName` is a denormalized, staleness-prone column on a
+ * DIFFERENT table. It says nothing about `seller.Name` vs
+ * `seller.MerchantAlias`, and has been corrected to point readers at
+ * `seller.Name` for the canonical brand label.)
+ *
+ * The GROUPING KEY — and therefore the SLUG — deliberately still derives
+ * MerchantAlias-first. This is NOT an oversight, and changing it here
+ * would be a mistake:
+ *
+ *   Persisted state is keyed by slug EVERYWHERE (`clients/<slug>/`
+ *   directories, org-store documents, timeline idempotency keys), and
+ *   the org store is slug-namespaced and SHARED across machines. Slug
+ *   carry-forward can only ever be machine-local, because it needs a
+ *   prior `index.yaml` on that machine to carry forward FROM. So a
+ *   re-key that looks seamless on the machine that performed it
+ *   silently re-keys every brand for a teammate on a fresh machine, and
+ *   cuts them off from the shared brand documents. On top of that,
+ *   `brand add <slug>` would match the NEW derived slug while
+ *   `brand list` still showed the CARRIED-FORWARD old one, so the only
+ *   identifier a user ever sees is the one that command cannot accept.
+ *
+ * Brand identity re-keying is therefore its own designed change (Sam,
+ * 2026-08-07 — option C), sequenced with the brand-identity resolver,
+ * where the server can be the source of truth for identity rather than
+ * each machine's local registry. Until then: the label a user reads is
+ * curated and current, and the identifier everything is filed under is
+ * unchanged and stable. A brand whose Name and MerchantAlias disagree
+ * displays the curated name while keeping its existing (alias-derived)
+ * slug — visibly inconsistent for those brands, and accepted as the
+ * lesser evil against silently orphaning shared state.
+ *
+ * Warehouse labels also vary across marketplaces and account types for
+ * the same legal brand, independent of the Name/MerchantAlias question.
+ * Examples observed in `Name`:
  *   - "Ridgepak" (VC US)
  *   - "Ridgepak - CA" (VC Canada — marketplace suffix)
  *   - "Ridgepak - DE Sporting Goods - (Pan-EU)" (VC Germany)
@@ -27,8 +59,7 @@
  *
  * Exact-name grouping (the original behavior) split these into six
  * separate brand entries. The canonical key strips marketplace +
- * corporate suffixes so they collapse to one entry, whichever source
- * column the label came from.
+ * corporate suffixes so they collapse to one entry.
  *
  * Canonical key derivation (see `canonicalBrandKey`):
  *   1. Lowercase, normalize unicode
@@ -38,11 +69,11 @@
  *   4. Strip trailing corporate suffix (LLC / Inc / etc.)
  *   5. Strip non-alphanumeric to hyphens
  *
- * Display name prefers the shortest curated alias in the group, then
- * the shortest `Name` when no row has an alias. The slug uses the
- * canonical key directly. Users still see all the underlying accounts
- * via the per-row marketplace + account_type, so no information is
- * lost.
+ * Display name prefers the shortest `Name` among the group's ACTIVE
+ * rows, falling back to the shortest `Name` overall when no row in the
+ * group is active. It never prefers the alias: an inactive row's `Name`
+ * is the one most likely to have gone stale, so a live row's curated
+ * name is the better label.
  *
  * Slug suggestions come from the canonical key (already slug-shaped).
  * Collisions (rare — would require two legally-distinct brands with the
@@ -54,7 +85,7 @@ import type { SellerRow } from './seller-query.js';
 export interface BrandSuggestion {
   /** Proposed slug — lowercase, hyphenated, unique within the suggestion set. */
   slug: string;
-  /** Human-friendly display name (longest variant from the grouped Names). */
+  /** Human-friendly display name (shortest active-row Name in the group). */
   display_name: string;
   /** All seller rows that group under this brand. */
   accounts: SellerRow[];
@@ -65,7 +96,7 @@ export interface BrandSuggestion {
 }
 
 export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
-  // Bucket rows by canonical brand key. Different marketplace-suffixed
+  // Bucket rows by canonical Name key. Different marketplace-suffixed
   // labels ("Ridgepak", "Ridgepak - CA", "Ridgepak, LLC") collapse to
   // the same key ("ridgepak") and land in one brand entry.
   const byCanonical = new Map<string, SellerRow[]>();
@@ -82,10 +113,10 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
   // Stable alpha order by canonical key
   const entries = [...byCanonical.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [canonical, accounts] of entries) {
-    // Display name = the shortest non-truncated name in the group. This
-    // picks "Ridgepak" over "Ridgepak - DE Sporting Goods - (Pan-EU)" —
-    // the marketplace suffix is captured per-account via account.marketplace
-    // so showing it twice in the brand label is noise.
+    // Display name = the shortest non-truncated active-row Name in the
+    // group. This picks "Ridgepak" over "Ridgepak - DE Sporting Goods -
+    // (Pan-EU)" — the marketplace suffix is captured per-account via
+    // account.marketplace so showing it twice in the brand label is noise.
     const display = pickDisplayName(accounts);
     // Slug FROM the canonical key — already slug-shaped, no need to re-slugify.
     const baseSlug = canonical || 'brand';
@@ -104,9 +135,16 @@ export function groupIntoBrands(rows: SellerRow[]): BrandSuggestion[] {
 }
 
 /**
- * The brand label a row groups under: the AM-curated `MerchantAlias`
- * when present, else the warehouse `Name`. Single source of truth for
- * both the grouping key and the display-name picker.
+ * The label a row GROUPS under (and therefore the slug it lands on):
+ * `MerchantAlias` when present, else `Name`.
+ *
+ * Deliberately NOT switched to Name-first alongside the display-label
+ * fix. Changing this re-keys existing brands, and slug is the key that
+ * `clients/<slug>/` directories, org-store documents, and timeline
+ * idempotency keys are all filed under. See the module header for the
+ * full reasoning and the sequencing decision. The display-name picker
+ * no longer shares this function precisely because the two questions
+ * are now answered differently.
  */
 function brandLabel(r: SellerRow): string {
   return r.merchant_alias || r.seller_name;
@@ -114,7 +152,7 @@ function brandLabel(r: SellerRow): string {
 
 /**
  * Strip marketplace + corporate suffixes from a warehouse brand label
- * (MerchantAlias or Name) to produce a canonical brand grouping key.
+ * (Name or MerchantAlias) to produce a canonical brand grouping key.
  * Exported for unit tests.
  *
  * The shape of the key is also a valid slug (matches /^[a-z][a-z0-9-]*$/)
@@ -152,20 +190,24 @@ export function canonicalBrandKey(name: string): string {
 
 /**
  * Pick the cleanest display name from a group of accounts that share a
- * canonical key. Prefers curated aliases (shortest one, least
- * marketplace suffix noise); falls back to the shortest `Name` when no
- * row in the group has an alias.
+ * canonical key. Prefers the shortest `Name` among ACTIVE accounts
+ * (least marketplace/corporate-suffix noise); falls back to the
+ * shortest `Name` overall when no account in the group is active. Never
+ * considers `merchant_alias`: that is the retained storefront label, and
+ * showing it was the defect this change fixes. Note this is the one
+ * place Name is consulted — the grouping key above still comes from
+ * `brandLabel`, which stays alias-first on purpose.
  *
- *   aliases ["Forager's Pantry"] (×4)           → "Forager's Pantry"
- *   names ["Ridgepak", "Ridgepak - CA", "Ridgepak, LLC"] → "Ridgepak"
- *   ["Aspen Outdoor Provisions"] (×4)             → "Aspen Outdoor Provisions"
+ *   names ["Ridgepak", "Ridgepak - CA", "Ridgepak, LLC"] (all active) → "Ridgepak"
+ *   ["Aspen Outdoor Provisions"] (×4, all active)          → "Aspen Outdoor Provisions"
  */
 function pickDisplayName(accounts: SellerRow[]): string {
-  const aliases = accounts
-    .map((a) => a.merchant_alias)
-    .filter((a): a is string => Boolean(a));
-  const pool = aliases.length > 0
-    ? aliases
+  const activeNames = accounts
+    .filter((a) => a.ads_active || a.retail_active)
+    .map((a) => a.seller_name)
+    .filter(Boolean);
+  const pool = activeNames.length > 0
+    ? activeNames
     : accounts.map((a) => a.seller_name).filter(Boolean);
   if (pool.length === 0) return 'Unknown brand';
   return pool.reduce((best, cur) =>

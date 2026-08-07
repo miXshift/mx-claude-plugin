@@ -136,9 +136,16 @@ describe('groupIntoBrands — AOP-style same-name grouping (no regression)', () 
 });
 
 describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
-  it('groups by curated alias, not Name: AOP rows aliased Forager\'s Pantry', () => {
-    // The canonical real-world case from BRAND-BRAIN.md: storefront Name
-    // is "Aspen Outdoor Provisions", AM-curated alias is the brand.
+  // NOTE (feedback #37278, 2026-08-07): the KEYING behavior in this block is
+  // unchanged and deliberately so — slug is the identifier that clients/<slug>/
+  // directories, org-store documents, and timeline idempotency keys are all
+  // filed under, and the org store is slug-namespaced and shared across
+  // machines. Only the DISPLAY NAME moved to the curated `Name`. See the
+  // brand-grouping.ts module header for the sequencing decision.
+  it('keys on the curated alias while DISPLAYING the curated Name', () => {
+    // Storefront Name is "Aspen Outdoor Provisions"; the retained
+    // MerchantAlias is "Forager's Pantry". The brand stays FILED under the
+    // alias-derived slug (no re-keying), but the user now READS the Name.
     const rows = [
       row({
         seller_id: 1,
@@ -155,8 +162,10 @@ describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
+    // Identity: unchanged.
     expect(groups[0]!.slug).toBe('foragers-pantry');
-    expect(groups[0]!.display_name).toBe("Forager's Pantry");
+    // Label: now the curated Name, not the retained storefront alias.
+    expect(groups[0]!.display_name).toBe('Aspen Outdoor Provisions');
   });
 
   it('collapses alias variants with marketplace suffixes like Name variants', () => {
@@ -207,7 +216,7 @@ describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
     ]);
   });
 
-  it('prefers the shortest alias over any Name for display', () => {
+  it('prefers the shortest Name for display, never the alias', () => {
     const rows = [
       row({
         seller_id: 1,
@@ -224,7 +233,91 @@ describe('groupIntoBrands MerchantAlias-first keying (task #62)', () => {
     ];
     const groups = groupIntoBrands(rows);
     expect(groups).toHaveLength(1);
-    expect(groups[0]!.display_name).toBe('Ridgepak');
+    // Still keyed on the alias...
+    expect(groups[0]!.slug).toBe('ridgepak');
+    // ...but the label is the shortest Name, not the (shorter) alias.
+    expect(groups[0]!.display_name).toBe('Ridgepak, LLC');
+  });
+});
+
+// Feedback #37278 (Sam, option C 2026-08-07): the DISPLAY LABEL moves to the
+// user-curated `seller.Name`. Brand IDENTITY (the grouping key, and therefore
+// the slug) deliberately does NOT move — see the brand-grouping.ts header.
+// These lock the label behavior so the later identity change cannot quietly
+// take the label with it.
+describe('groupIntoBrands — display label comes from the curated Name', () => {
+  it('never shows a retained storefront alias, even when it is much shorter', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: 'BP', // retained storefront label, deliberately tiny
+        marketplace: 'US',
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups[0]!.display_name).toBe('American Outdoor Products');
+  });
+
+  it('prefers an ACTIVE row Name: a dormant row is the one most likely to be stale', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'Stale Old Name',
+        merchant_alias: 'Shared',
+        ads_active: false,
+        retail_active: false,
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'Northbound Gear Company',
+        merchant_alias: 'Shared',
+        ads_active: true,
+        retail_active: false,
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    // The active Name wins despite being LONGER than the dormant one.
+    expect(groups[0]!.display_name).toBe('Northbound Gear Company');
+  });
+
+  it('falls back to the shortest Name overall when no row in the group is active', () => {
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'Dormant Brand Co',
+        merchant_alias: 'Shared',
+        ads_active: false,
+        retail_active: false,
+      }),
+      row({
+        seller_id: 2,
+        seller_name: 'Dormant Brand',
+        merchant_alias: 'Shared',
+        ads_active: false,
+        retail_active: false,
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.display_name).toBe('Dormant Brand');
+  });
+
+  it('IDENTITY IS UNCHANGED: the slug still derives from the alias, not the Name', () => {
+    // The guard on option C. If a later change moves keying to Name, this
+    // fails and forces the migration conversation rather than silently
+    // re-keying every brand and orphaning slug-namespaced org-store state.
+    const rows = [
+      row({
+        seller_id: 1,
+        seller_name: 'American Outdoor Products',
+        merchant_alias: "Forager's Pantry",
+      }),
+    ];
+    const groups = groupIntoBrands(rows);
+    expect(groups[0]!.slug).toBe('foragers-pantry');
+    expect(groups[0]!.display_name).toBe('American Outdoor Products');
   });
 });
 

@@ -69,6 +69,15 @@ starts at 0.5.39; earlier versions predate the changelog.
   release keeps the bundled fallback queries and the health-check guidance in
   sync with it.
 
+- **Brands are now labeled with the name you actually curate, not an old
+  Amazon storefront label.** Brand discovery built a brand's display name
+  from a retained storefront name that can go stale: it stays fixed even
+  after you rename or clean up an account, so the label you saw could be a
+  name you stopped using a long time ago. The label now comes from the name
+  you edit and keep current. Only the label changes. Brands are still filed
+  exactly where they were, so your existing brand folders, registries, and
+  everything you already type to find a brand keep working with no migration.
+
 - **Your ACoS and TACoS targets now display correctly on the brand summary
   card, in both view modes.** Your target is stored as a whole number (22
   means 22%), but the card was treating that number as if it were already a

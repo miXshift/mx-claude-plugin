@@ -65947,8 +65947,8 @@ function canonicalBrandKey(name) {
   return s;
 }
 function pickDisplayName(accounts) {
-  const aliases = accounts.map((a) => a.merchant_alias).filter((a) => Boolean(a));
-  const pool = aliases.length > 0 ? aliases : accounts.map((a) => a.seller_name).filter(Boolean);
+  const activeNames = accounts.filter((a) => a.ads_active || a.retail_active).map((a) => a.seller_name).filter(Boolean);
+  const pool = activeNames.length > 0 ? activeNames : accounts.map((a) => a.seller_name).filter(Boolean);
   if (pool.length === 0) return "Unknown brand";
   return pool.reduce(
     (best, cur) => cur.length < best.length ? cur : best
