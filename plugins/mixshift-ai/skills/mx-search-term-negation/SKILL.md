@@ -82,14 +82,14 @@ Get this run's knobs (and let the user sharpen them) via the confirm card:
 mixshift skill config mx-search-term-negation --brand <brand-slug> --json
 ```
 
-The `confirmation` payload's `effective_config` holds the values this run will use, as WHOLE-number percents (e.g. `45` = 45%): `acos_target` (the reference ACoS used to judge efficiency — an optional override of the brand target). Seeded from brand context where set, else absent.
+The show command above returns `confirmation.fields[]`, one entry per manifest field (find yours by `field.id`). Its `effective_value` is the calibration layer's internal [0,1] fraction, useful only for the confirm card display, not the shape this skill consumes. After the user confirms or edits below, resolve the working values from `effective_config` in that `--apply` response instead: percent fields come back denormalized to whole numbers there (e.g. `22` = 22%), matching every formula in this skill. `acos_target` (the reference ACoS used to judge efficiency, an optional override of the brand target) resolves this way. Seeded from brand context where set, else absent.
 
 Show the user the card — it lists every field with its source, and on a brand's FIRST run it leads with a `capture_note` nudging the top unset fields. They can:
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-search-term-negation --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and is proposed for brand-wide promotion (recorded for review).
 
-**Resolve the working reference (whole-number percent) from the returned `effective_config`:**
-- `acos_target` — if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
+**Resolve the working reference (a whole-number percent) from `effective_config` (the `--apply` response):**
+- `acos_target`: if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
 
 Never block on this step — confirm-as-is is always available.
 

@@ -45,7 +45,7 @@ Run:
 ```bash
 mixshift version --json
 ```
-This reports `current`, `latest`, and `isStale`.
+This reports `current` (what this session loaded at launch), `installed` (what the host's own install record says is on disk right now, when it can be read), `latest`, `isStale`, and `session_behind_install` (true when `installed` is newer than `current`: the update already landed on disk, and this session just has not picked it up yet).
 
 Also run:
 ```bash
@@ -53,26 +53,29 @@ mixshift update-actions --json
 ```
 This reports `pending`: post-update catch-up actions still owed to this install, computed against a persisted watermark, not a re-derivation of every historical release.
 
-- **If `isStale` is false and `pending` is empty:** tell the user briefly they are current and there is nothing to catch up on, then stop. Do not walk the remaining steps.
-- **If `isStale` is true:** go to Step 2 (guide the update), then stop for this session; see the note at the end of Step 2.
-- **If `isStale` is false but `pending` is non-empty:** skip Step 2 and go straight to Step 3 (what changed) then Step 4 (catch-up actions). This is the "I just updated" case in a fresh session.
+`session_behind_install` and `isStale` are independent facts, not mutually exclusive: the install record can itself be behind `latest` even while it is ahead of this session, so both can be true at once. Check these in order:
+- **If `session_behind_install` is true and `isStale` is false:** the update already succeeded and the install is already at `latest`. Do not walk Step 2's update commands, there is nothing further to update. Tell the user plainly: installed is `installed`, this session is running `current`, so they need to fully quit the application (not just start a new chat or session) and relaunch it. If the old version still shows after a full quit and relaunch, an earlier application process may still be running in the background and needs to be closed too. Then stop for this session.
+- **If `session_behind_install` is true and `isStale` is also true:** tell the user both facts in one pass, do not stop after only the first one. Part of the update already succeeded (installed, `installed`, is ahead of what this session, `current`, is running), but the install itself has not caught up to `latest` either, so a further release is still pending beyond what already landed. Do not walk Step 2's update commands in this session: relaunch first (fully quit the application, not just start a new chat or session), then a fresh `mixshift version`/`mixshift update-actions` check in the new session will show the remaining update to `latest` cleanly against the right baseline. If the old version still shows after a full quit and relaunch, an earlier application process may still be running in the background and needs to be closed too. Then stop for this session.
+- **If `session_behind_install` is false, `isStale` is false, and `pending` is empty:** tell the user briefly they are current and there is nothing to catch up on, then stop. Do not walk the remaining steps.
+- **If `session_behind_install` is false and `isStale` is true:** go to Step 2 (guide the update), then stop for this session; see the note at the end of Step 2.
+- **If `session_behind_install` is false, `isStale` is false, but `pending` is non-empty:** skip Step 2 and go straight to Step 3 (what changed) then Step 4 (catch-up actions). This is the "I just updated" case in a fresh session.
 
-## Step 2 - Guide the actual update (only when stale)
+## Step 2 - Guide the actual update (only when `isStale` is true and `session_behind_install` is false; the combined behind-install-and-stale state is handled entirely in Step 1, above)
 
 Give the exact steps for the surface the user is on. Do not paraphrase away the specifics below; a vague "go update it" leaves the user guessing.
 
 **Terminal / Claude Code:**
 1. `claude plugin marketplace update mixshift` (refreshes the catalog first, avoiding a stale-catalog race)
 2. `claude plugin update mixshift-ai@mixshift` (add `--scope local` if it was installed for one project only)
-3. Start a **new session**. A new chat in the same window is not enough: a running session keeps the plugin version it started with, so only a fresh session loads the update. On Claude Code's terminal surface, `/reload-plugins` may also pick it up without a full restart.
+3. **Fully quit the `claude` process (not just start a new chat or session), then relaunch it.** This step is required even after the commands above succeed: a running process keeps the plugin payload it loaded at launch, and a new chat or session inside that same process reuses the exact same payload, so nothing short of a full quit and relaunch loads the update. On Claude Code's terminal surface, `/reload-plugins` may also pick it up without a full restart. If the old version still shows after a full quit and relaunch, an earlier `claude` process may still be running in the background and still serving the old payload; find and quit it too, then relaunch once more.
 
 **Claude Code desktop app:**
-- Try the same two commands above first; the desktop app shares the same plugin store.
-- If that does not take, fall back to the GUI: fully quit the app (not just close the window) and relaunch it, which offers the update. After it installs, fully quit and relaunch again to load it.
+- Run the same two commands above first; the desktop app shares the same plugin store. Either way, the step that actually loads the update is the same one as above: fully quit the app (not just close the window), then relaunch it. If the CLI commands did not already pick up the update, relaunching offers it through the GUI instead; once it installs, fully quit and relaunch again to load it.
+- Still shows the old version after a full quit and relaunch? An earlier application process may still be running in the background (a second window opened but the previous process never actually exited); find and quit that process, then relaunch once more.
 
 **Cowork:**
 - Settings, then Plugins, then uninstall and reinstall `mixshift-ai`. Org-managed installs may auto-sync within about 30 minutes instead.
-- Hooks do not run in Cowork, so none of this happens automatically. After updating, open a **new** Cowork session (not just a new message) before doing anything else with the plugin.
+- Hooks do not run in Cowork, so none of this happens automatically. After updating, fully quit and start a **new** Cowork session (not just a new message) before doing anything else with the plugin.
 
 **This session's view goes stale the moment you tell them to update.** Whatever `mixshift update-actions` showed in Step 1 reflects the version this session started with, not the one they are about to move to. Do not try to walk Step 3 or Step 4 in this same session after guiding an update. Close with something like: "Once that is done and you have started a fresh session, say 'catch me up' and I will show you what is new and anything worth doing next."
 

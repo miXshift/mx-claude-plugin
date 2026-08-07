@@ -4,11 +4,15 @@
  * Started life as a network-only preflight (the bare {"ok":false,
  * "error":"fetch failed"} sign-in failure whose real cause is a sandbox
  * egress proxy refusing our host). Extended into the single command support
- * points people at: it reports the TRUE runtime version (and whether it's
- * stale — the antidote to the Cowork version-label drift, where the host's
- * plugin label claims one version while the runtime is another), the detected
- * channel, auth state, query-pack compatibility, telemetry status, and the
- * network preflight, plus the right "how to update" copy when stale.
+ * points people at: it reports the running session's version alongside what
+ * the host's own install record says is actually on disk (feedback
+ * 36645/36672/36728 — this section used to call the running version "the
+ * TRUE build" and tell people to trust it over the host's label, which is
+ * backwards: the running process only knows what it loaded at launch, and an
+ * update can land on disk without a currently-running session ever seeing
+ * it), the detected channel, auth state, query-pack compatibility, telemetry
+ * status, and the network preflight, plus the right "how to update" copy
+ * when stale.
  *
  * Local sections (Build / Channel / Auth / Telemetry) always render. Network-
  * dependent sections (staleness, /health, named-pack) degrade gracefully when
@@ -22,8 +26,15 @@ import { getPluginVersion } from '../lib/plugin-version.js';
 import {
   checkForUpdate,
   renderUpdateBanner,
+  compareVersions,
   type VersionCheckResult,
 } from '../lib/version-check.js';
+import {
+  readInstallRecord,
+  evaluateInstallSituation,
+  renderSessionBehindInstall,
+  type InstallSituation,
+} from '../lib/install-record.js';
 import { detectSurface, type Surface } from '../lib/telemetry/surface.js';
 import { loadCredentials, getValidAccessToken } from '../lib/auth/credentials.js';
 import type { Credentials } from '../lib/auth/schema.js';
@@ -64,9 +75,21 @@ interface AuthSummary {
 
 interface DoctorFullReport {
   build: {
+    /** The TRUE running build — what this process actually loaded. */
     version: string;
+    /** The host's on-disk install record's version, or null if unreadable
+     *  on this surface (feedback 36645/36672/36728). */
+    installed: string | null;
+    /** True iff `installed` is readable and newer than `version` — the
+     *  update already succeeded and this session just hasn't reloaded it.
+     *  Computed locally; never depends on `latest`. */
+    sessionBehindInstall: boolean;
     latest: string | null;
+    /** Judged against `installed` when readable, else against `version`
+     *  (see `staleBasis`). */
     stale: boolean;
+    /** Which version `stale` was judged against. */
+    staleBasis: 'installed' | 'current';
     releaseUrl: string | null;
     checkedRemote: boolean;
   };
@@ -82,10 +105,43 @@ interface DoctorFullReport {
   };
   namedPack: NamedPackResult;
   network: DoctorReport;
-  /** Raw version-check result, for the --json consumer + the stale banner. */
+  /** Raw version-check result (current vs latest only), kept for the --json
+   *  consumer's back-compat. The renderer's stale banner now reads `build`
+   *  instead, since `build.stale`/`build.releaseUrl` are judged against the
+   *  corrected basis (installed, when readable) rather than this raw value. */
   update: VersionCheckResult | null;
   /** Broken-environment summary: service reachable AND no query-pack skew. */
   ok: boolean;
+}
+
+/**
+ * Assemble the `build` section of the report: the running session's version,
+ * the host's install record (when readable), and the resulting staleness
+ * judged against the right basis. Pure and exported so the comparison logic
+ * (feedback 36645/36672/36728) is unit-testable without the network/auth
+ * side effects the rest of `assembleFullReport` carries.
+ */
+export function buildDoctorBuildSection(opts: {
+  version: string;
+  installed: string | null;
+  latest: string | null;
+  fetched: boolean;
+}): DoctorFullReport['build'] {
+  const situation: InstallSituation = evaluateInstallSituation({
+    current: opts.version,
+    installed: opts.installed,
+    latest: opts.latest,
+  });
+  return {
+    version: opts.version,
+    installed: opts.installed,
+    sessionBehindInstall: situation.sessionBehindInstall,
+    latest: opts.latest,
+    stale: situation.isStale,
+    staleBasis: situation.staleBasis,
+    releaseUrl: situation.releaseUrl,
+    checkedRemote: opts.fetched,
+  };
 }
 
 export function registerDoctorCommand(program: Command): void {
@@ -165,6 +221,23 @@ async function assembleFullReport(opts: {
     update = null;
   }
 
+  // Installed-vs-running (feedback 36645/36672/36728) — local, best-effort;
+  // never breaks the diagnostic. readInstallRecord() itself never throws,
+  // but keep the same defensive shape as the update check above.
+  let installedVersion: string | null = null;
+  try {
+    const record = await readInstallRecord();
+    installedVersion = record?.installedVersion ?? null;
+  } catch {
+    installedVersion = null;
+  }
+  const build = buildDoctorBuildSection({
+    version,
+    installed: installedVersion,
+    latest: update?.latest ?? null,
+    fetched: update?.fetched ?? false,
+  });
+
   // Auth — local read of the credentials file.
   const auth = await summarizeAuth(opts.dataDirOverride);
 
@@ -213,13 +286,7 @@ async function assembleFullReport(opts: {
   const ok = network.ok && namedPack.ok;
 
   return {
-    build: {
-      version,
-      latest: update?.latest ?? null,
-      stale: update?.isStale ?? false,
-      releaseUrl: update?.releaseUrl ?? null,
-      checkedRemote: update?.fetched ?? false,
-    },
+    build,
     channel,
     auth,
     telemetry: {
@@ -284,23 +351,113 @@ async function summarizeAuth(dataDirOverride?: string): Promise<AuthSummary> {
 // Rendering
 // ---------------------------------------------------------------------------
 
-function renderFull(r: DoctorFullReport): string {
+/**
+ * Render the `Build:` block of `mixshift doctor`'s terminal output. Pure and
+ * exported (mirrors `buildDoctorBuildSection`'s data/render split) so this is
+ * unit-testable off a constructed `build` value alone, without the
+ * auth/network/telemetry fixture the rest of `DoctorFullReport` needs.
+ *
+ * FEEDBACK 36645/36672/36728: this section used to call `version` "the TRUE
+ * running build — trust this over the host's plugin label." That claim is
+ * exactly what this fix disproves: `version` is only what THIS PROCESS
+ * loaded at launch, and a host installs updates independently of any
+ * already-running session. `installed` (the host's own record) is what's
+ * actually on disk right now; when the two disagree, name both rather than
+ * asserting either one is "the truth."
+ *
+ * FIX: the `installed` line below does a REAL three-way comparison
+ * (compareVersions against `version`), not just a check of
+ * `sessionBehindInstall`. That flag is only true when installed is NEWER, so
+ * branching on `installed === null` then `sessionBehindInstall` then an
+ * unconditional `else` also caught installed being OLDER than this session
+ * and mislabeled that "matches" too — printing two different version numbers
+ * one line apart under a claim they agree.
+ */
+export function renderBuildSection(build: DoctorFullReport['build']): string[] {
+  const out: string[] = [];
+  out.push('Build:');
+  out.push(`  version:   ${build.version}  (this session's running payload)`);
+  const installedCmp =
+    build.installed === null ? null : compareVersions(build.installed, build.version);
+  if (build.installed === null) {
+    out.push('  installed: (could not be verified on this surface)');
+  } else if (installedCmp !== null && installedCmp > 0) {
+    out.push(`  installed: ${build.installed}  (NEWER than this session)`);
+  } else if (installedCmp !== null && installedCmp < 0) {
+    out.push(
+      `  installed: ${build.installed}  (OLDER than this session; the install record on disk hasn't caught up to what this session is running)`,
+    );
+  } else {
+    out.push(`  installed: ${build.installed}  (matches this session)`);
+  }
+  if (build.latest === null) {
+    out.push('  latest:    (could not check, offline or version check unavailable)');
+  } else if (build.stale) {
+    out.push(`  latest:    ${build.latest}  (UPDATE AVAILABLE, see below)`);
+  } else {
+    out.push(`  latest:    ${build.latest}  (up to date)`);
+  }
+  // `installed` OLDER than this session means the `latest` line above is
+  // judged against a stale install record (staleBasis is always 'installed'
+  // whenever installed is readable), not against what this session is
+  // actually running — name that explicitly so the block as a whole doesn't
+  // quietly describe a state the user isn't in.
+  if (installedCmp !== null && installedCmp < 0 && build.latest !== null) {
+    out.push(
+      `  note:      the line above is judged against the OLDER install record (${build.installed}), not the ${build.version} this session is running.`,
+    );
+  }
+  if (build.sessionBehindInstall) {
+    out.push(
+      renderSessionBehindInstall({
+        installed: build.installed,
+        current: build.version,
+        installIsStale: build.stale,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Render the trailing "update available" banner off `build` alone, or ''
+ * when not stale. Pure and exported so the F2 fix (the banner must render
+ * whenever `build.stale`, independent of `sessionBehindInstall`) is
+ * unit-testable without the full `DoctorFullReport` fixture.
+ *
+ * FIX: this used to also require `!build.sessionBehindInstall`, on the
+ * theory that re-running doctor after relaunching would surface any
+ * remaining installed-vs-latest gap normally, so showing both at once was
+ * unnecessary. That assumed the two facts were mutually exclusive; they
+ * aren't — current < installed < latest is a real, test-covered state.
+ * Suppressing the banner there hid a real available update AND left the
+ * "(see below)" text in `renderBuildSection`'s `latest` line pointing at
+ * nothing. Render it whenever stale, regardless of `sessionBehindInstall`.
+ */
+export function renderBuildStaleBanner(build: DoctorFullReport['build']): string {
+  if (!build.stale || !build.latest) return '';
+  const basisVersion =
+    build.staleBasis === 'installed' && build.installed !== null
+      ? build.installed
+      : build.version;
+  return renderUpdateBanner(
+    {
+      current: basisVersion,
+      latest: build.latest,
+      isStale: true,
+      releaseUrl: build.releaseUrl,
+      fetched: build.checkedRemote,
+    },
+    'terminal',
+  );
+}
+
+export function renderFull(r: DoctorFullReport): string {
   const out: string[] = [];
   out.push('mixshift doctor');
   out.push('');
 
-  // Build — lead with version + staleness (the Cowork-drift answer).
-  out.push('Build:');
-  out.push(
-    `  version: ${r.build.version}  (the TRUE running build — trust this over the host's plugin label)`,
-  );
-  if (r.build.latest === null) {
-    out.push('  latest:  (could not check — offline or version check unavailable)');
-  } else if (r.build.stale) {
-    out.push(`  latest:  ${r.build.latest}  — UPDATE AVAILABLE (see below)`);
-  } else {
-    out.push(`  latest:  ${r.build.latest}  — up to date`);
-  }
+  out.push(...renderBuildSection(r.build));
   out.push('');
 
   // Channel.
@@ -378,9 +535,11 @@ function renderFull(r: DoctorFullReport): string {
   // Network — the original preflight section.
   out.push(renderNetwork(r.network));
 
-  // Channel-aware update guidance — only when stale.
-  if (r.update && r.update.isStale) {
-    out.push(renderUpdateBanner(r.update, 'terminal'));
+  // Channel-aware update guidance — see renderBuildStaleBanner for the F2
+  // fix (renders whenever stale, independent of sessionBehindInstall).
+  const staleBanner = renderBuildStaleBanner(r.build);
+  if (staleBanner) {
+    out.push(staleBanner);
   }
 
   return out.join('\n').replace(/\n+$/, '\n');

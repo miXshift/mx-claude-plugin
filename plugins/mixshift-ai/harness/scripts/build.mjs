@@ -19,6 +19,14 @@ await mkdir(outDir, { recursive: true });
 
 const result = await esbuild.build({
   entryPoints: [entryPoint],
+  // Pin the directory esbuild resolves relative paths against (module-path
+  // comments, CJS wrapper keys) to the harness root, NOT process.cwd(). Without
+  // this, running `npm run build` from the repo root (rather than from
+  // plugins/mixshift-ai/harness/) embeds `plugins/mixshift-ai/harness/src/...`
+  // module paths instead of `src/...`, which diffs the entire bundle against
+  // what CI produces (CI always builds with harness/ as the working directory)
+  // and fails the release-tag `git diff --exit-code -- dist/cli.js` gate.
+  absWorkingDir: rootDir,
   bundle: true,
   platform: 'node',
   target: 'node20',
