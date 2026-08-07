@@ -73303,19 +73303,41 @@ function parseFieldInput(field, raw) {
       };
     }
     case "percent": {
-      const cleaned = trimmed.replace(/%$/, "");
+      const hasPercentSign = /%$/.test(trimmed);
+      const cleaned = trimmed.replace(/%$/, "").trim();
       const n = Number(cleaned);
       if (!Number.isFinite(n)) {
         return { ok: false, error: 'Expected a number (e.g. "32" or "32%")' };
       }
-      const normalized = n > 1 ? n / 100 : n;
-      if (normalized < field.range.min || normalized > field.range.max) {
+      const { min, max } = field.range;
+      const inRange = (v) => v >= min && v <= max;
+      const asPercent = n / 100;
+      const asFraction = n;
+      const outOfRange = {
+        ok: false,
+        error: `Out of range. Must be between ${(min * 100).toFixed(0)}% and ${(max * 100).toFixed(0)}%`
+      };
+      const show = (v) => `${Number((v * 100).toFixed(4))}%`;
+      if (hasPercentSign) {
+        return inRange(asPercent) ? { ok: true, value: asPercent } : outOfRange;
+      }
+      if (n > 1) {
+        return inRange(asPercent) ? { ok: true, value: asPercent } : outOfRange;
+      }
+      if (n < 1) {
+        return inRange(asFraction) ? { ok: true, value: asFraction } : outOfRange;
+      }
+      const percentFits = inRange(asPercent);
+      const fractionFits = inRange(asFraction);
+      if (percentFits && fractionFits) {
         return {
           ok: false,
-          error: `Out of range. Must be between ${(field.range.min * 100).toFixed(0)}% and ${(field.range.max * 100).toFixed(0)}%`
+          error: `Ambiguous: "${trimmed}" could mean ${show(asPercent)} or ${show(asFraction)}. Write "${show(asPercent)}" or "${show(asFraction)}" to say which.`
         };
       }
-      return { ok: true, value: normalized };
+      if (fractionFits) return { ok: true, value: asFraction };
+      if (percentFits) return { ok: true, value: asPercent };
+      return outOfRange;
     }
     case "float": {
       const n = Number(trimmed);

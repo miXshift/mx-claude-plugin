@@ -365,19 +365,78 @@ export function parseFieldInput(
 
     case 'percent': {
       // Accept "32", "32%", "0.32" — all mean 32%.
-      const cleaned = trimmed.replace(/%$/, '');
+      //
+      // The old form of this was `n > 1 ? n / 100 : n`, which stripped the "%"
+      // BEFORE branching and so threw away the one signal that says which
+      // reading the user meant. That silently corrupted the low end of any
+      // field whose range reaches below 1%: TACoS goals declare
+      // `min: 0.01, max: 1.0`, the out-of-range message tells the user
+      // "between 1% and 100%", and typing the advertised floor of `1` stored
+      // 1.0, i.e. 100%. No error, 100x wrong, on the value the UI just
+      // recommended.
+      //
+      // So: an explicit "%" is honoured as the user's stated intent, a bare
+      // number above 1 can only be a whole percent, and a bare number in
+      // (0, 1] is resolved against the field's own range. If BOTH readings
+      // land in range the input is genuinely ambiguous and we ask rather than
+      // guess. Guessing is what caused the defect.
+      //
+      // This narrows the guess; it does not bless it. The percent-unit
+      // convergence project removes the dual convention outright, at which
+      // point this branch collapses to a single reading.
+      const hasPercentSign = /%$/.test(trimmed);
+      const cleaned = trimmed.replace(/%$/, '').trim();
       const n = Number(cleaned);
       if (!Number.isFinite(n)) {
         return { ok: false, error: 'Expected a number (e.g. "32" or "32%")' };
       }
-      const normalized = n > 1 ? n / 100 : n;
-      if (normalized < field.range.min || normalized > field.range.max) {
+
+      const { min, max } = field.range;
+      const inRange = (v: number): boolean => v >= min && v <= max;
+      const asPercent = n / 100; // "1" or "1%" read as one percent
+      const asFraction = n; // "0.01" read as one percent
+      const outOfRange = {
+        ok: false as const,
+        error: `Out of range. Must be between ${(min * 100).toFixed(0)}% and ${(max * 100).toFixed(0)}%`,
+      };
+      const show = (v: number): string => `${Number((v * 100).toFixed(4))}%`;
+
+      // An explicit "%" states the reading. Take the user at their word.
+      if (hasPercentSign) {
+        return inRange(asPercent) ? { ok: true, value: asPercent } : outOfRange;
+      }
+      // Above 1 there is only one sane reading: a whole percent.
+      if (n > 1) {
+        return inRange(asPercent) ? { ok: true, value: asPercent } : outOfRange;
+      }
+
+      // Bare decimal strictly between 0 and 1: the documented convention is
+      // that this is a fraction ("0.32" means 32%), and nobody types "0.32"
+      // meaning 0.32%. Keep that reading.
+      if (n < 1) {
+        return inRange(asFraction) ? { ok: true, value: asFraction } : outOfRange;
+      }
+
+      // Exactly 1, bare. This is the ONE genuinely ambiguous input, and the
+      // one that corrupted TACoS goals: as a fraction it is 100% (the top of
+      // the scale), as a percent it is 1% (the floor the error message
+      // advertises). Only ask when the field's range actually admits both.
+      const percentFits = inRange(asPercent);
+      const fractionFits = inRange(asFraction);
+      if (percentFits && fractionFits) {
+        // Offer BOTH alternatives in explicit percent form. Suggesting the
+        // decimal reading here would echo back the exact string the user just
+        // typed, which is not a usable instruction.
         return {
           ok: false,
-          error: `Out of range. Must be between ${(field.range.min * 100).toFixed(0)}% and ${(field.range.max * 100).toFixed(0)}%`,
+          error:
+            `Ambiguous: "${trimmed}" could mean ${show(asPercent)} or ${show(asFraction)}. ` +
+            `Write "${show(asPercent)}" or "${show(asFraction)}" to say which.`,
         };
       }
-      return { ok: true, value: normalized };
+      if (fractionFits) return { ok: true, value: asFraction };
+      if (percentFits) return { ok: true, value: asPercent };
+      return outOfRange;
     }
 
     case 'float': {

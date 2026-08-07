@@ -153,6 +153,43 @@ describe('parseFieldInput', () => {
     expect(r.ok).toBe(false);
   });
 
+  // --------------------------------------------------------------------
+  // The bare "1" boundary. TACoS goal fields declare min 0.01 / max 1.0 and
+  // their out-of-range message advertises "between 1% and 100%". Typing the
+  // advertised floor used to store 1.0, i.e. 100% -- silently, and 100x
+  // wrong, on the value the message had just recommended.
+  // --------------------------------------------------------------------
+  const tacosField = { ...percentField, range: { min: 0.01, max: 1.0 } };
+
+  it('does not silently read a bare "1" as 100% when the field also admits 1%', () => {
+    const r = parseFieldInput(tacosField, '1');
+    expect(r.ok).toBe(false);
+    // and it must offer a way out, in both readings
+    expect(r.ok === false && r.error).toContain('1%');
+    expect(r.ok === false && r.error).toContain('100%');
+  });
+
+  it('honours an explicit "%" on the ambiguous value: "1%" is one percent', () => {
+    expect(parseFieldInput(tacosField, '1%')).toEqual({ ok: true, value: 0.01 });
+  });
+
+  it('honours an explicit "%" for the other reading: "100%" is one hundred percent', () => {
+    expect(parseFieldInput(tacosField, '100%')).toEqual({ ok: true, value: 1.0 });
+  });
+
+  it('leaves a bare "1" alone where the field CANNOT mean 1% (no false ambiguity)', () => {
+    // ACoS-style floor of 5%: 1% is out of range, so "1" can only be 100%.
+    const acosField = { ...percentField, range: { min: 0.05, max: 1.0 } };
+    expect(parseFieldInput(acosField, '1')).toEqual({ ok: true, value: 1.0 });
+  });
+
+  it('keeps the documented readings intact around the boundary', () => {
+    // Bare decimals below 1 stay fractions; whole numbers above 1 stay percents.
+    expect(parseFieldInput(tacosField, '0.5')).toEqual({ ok: true, value: 0.5 });
+    expect(parseFieldInput(tacosField, '20')).toEqual({ ok: true, value: 0.2 });
+    expect(parseFieldInput(tacosField, '20%')).toEqual({ ok: true, value: 0.2 });
+  });
+
   const asinField = {
     id: 'h',
     prompt: '?',

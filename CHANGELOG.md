@@ -43,6 +43,17 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **A 1% goal is no longer saved as 100%.** Percent settings accept both a
+  whole number and a decimal ("20", "20%" and "0.20" all mean twenty
+  percent), and the value `1` sits exactly where those two readings collide:
+  it can mean one percent or one hundred percent. MixShift used to pick one
+  silently, so a TACoS goal of 1%, which is the lowest value the field itself
+  says it accepts, was stored as 100% with no warning and quietly skewed every
+  report and health check that read it. Typing `1` where both readings are
+  possible now asks which you meant instead of guessing, and an explicit
+  percent sign is always taken at face value, so `1%` is one percent and
+  `100%` is one hundred. Every other input is unchanged.
+
 - **Brand setup no longer assumes your campaigns are named the way ours are.**
   Two brand-context queries used to sort campaigns into objectives, and brand
   versus non-brand, by looking for specific text fragments in campaign names.
