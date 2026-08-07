@@ -153,6 +153,66 @@ describe('parseFieldInput', () => {
     expect(r.ok).toBe(false);
   });
 
+  // --------------------------------------------------------------------
+  // The bare "1" boundary. TACoS goal fields declare min 0.01 / max 1.0 and
+  // their out-of-range message advertises "between 1% and 100%". Typing the
+  // advertised floor used to store 1.0, i.e. 100% -- silently, and 100x
+  // wrong, on the value the message had just recommended.
+  // --------------------------------------------------------------------
+  const tacosField = { ...percentField, range: { min: 0.01, max: 1.0 } };
+
+  it('does not silently read a bare "1" as 100% when the field also admits 1%', () => {
+    const r = parseFieldInput(tacosField, '1');
+    expect(r.ok).toBe(false);
+    // and it must offer a way out, in both readings
+    expect(r.ok === false && r.error).toContain('1%');
+    expect(r.ok === false && r.error).toContain('100%');
+  });
+
+  it('honours an explicit "%" on the ambiguous value: "1%" is one percent', () => {
+    expect(parseFieldInput(tacosField, '1%')).toEqual({ ok: true, value: 0.01 });
+  });
+
+  it('honours an explicit "%" for the other reading: "100%" is one hundred percent', () => {
+    expect(parseFieldInput(tacosField, '100%')).toEqual({ ok: true, value: 1.0 });
+  });
+
+  it('leaves a bare "1" alone where the field CANNOT mean 1% (no false ambiguity)', () => {
+    // ACoS-style floor of 5%: 1% is out of range, so "1" can only be 100%.
+    const acosField = { ...percentField, range: { min: 0.05, max: 1.0 } };
+    expect(parseFieldInput(acosField, '1')).toEqual({ ok: true, value: 1.0 });
+  });
+
+  it('accepts a JSON-number 1 without asking, so --json output round-trips through --apply', () => {
+    // `brand config --json` emits a stored 100% goal as the bare number 1.
+    // A script that reads that and hands it straight back to --apply must not
+    // be told to "write 1% or 100%": we emitted the value, so we must accept
+    // it. Without the provenance flag the whole batch is rejected (exit 4)
+    // because ONE echoed field became unparseable.
+    expect(parseFieldInput(tacosField, '1', { fromJsonNumber: true })).toEqual({
+      ok: true,
+      value: 1.0,
+    });
+  });
+
+  it('still asks a HUMAN who types 1, even though a machine would not be asked', () => {
+    // The provenance flag must not become a blanket escape hatch: the typed
+    // path is the one that corrupts, and it stays guarded.
+    expect(parseFieldInput(tacosField, '1').ok).toBe(false);
+  });
+
+  it('range-checks JSON numbers rather than trusting them blindly', () => {
+    const tight = { ...percentField, range: { min: 0.1, max: 0.5 } };
+    expect(parseFieldInput(tight, '0.9', { fromJsonNumber: true }).ok).toBe(false);
+  });
+
+  it('keeps the documented readings intact around the boundary', () => {
+    // Bare decimals below 1 stay fractions; whole numbers above 1 stay percents.
+    expect(parseFieldInput(tacosField, '0.5')).toEqual({ ok: true, value: 0.5 });
+    expect(parseFieldInput(tacosField, '20')).toEqual({ ok: true, value: 0.2 });
+    expect(parseFieldInput(tacosField, '20%')).toEqual({ ok: true, value: 0.2 });
+  });
+
   const asinField = {
     id: 'h',
     prompt: '?',
