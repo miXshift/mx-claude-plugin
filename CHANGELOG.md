@@ -43,6 +43,17 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **A mistyped `brand config --apply` command no longer saves and shares
+  changes you did not confirm.** The command reads a JSON instruction telling
+  it whether to confirm, cancel, or edit. It positively recognised only
+  "confirm" and "cancel", so anything else, including a simple misspelling of
+  "edit", fell through to the editing path: your changes were written to the
+  brand file and published to your team's shared brand context without the
+  command ever being one MixShift understood. It now stops and tells you which
+  actions are valid. A related crash is fixed too: asking to edit without
+  supplying any edits (or supplying them in the wrong shape) reported a raw
+  internal error instead of naming the problem.
+
 - **A 1% goal is no longer saved as 100%.** Percent settings accept both a
   whole number and a decimal ("20", "20%" and "0.20" all mean twenty
   percent), and the value `1` sits exactly where those two readings collide:
