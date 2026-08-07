@@ -351,6 +351,33 @@ export interface ParseFieldInputOptions {
   fromJsonNumber?: boolean;
 }
 
+/**
+ * Narrow a JSON-sourced edit value to the string parseFieldInput expects.
+ * Strings pass through; numbers get an unambiguous string form (matching the
+ * string-or-number convention `stableRowId()` uses in commands/skill.ts).
+ * Anything else (null, boolean, array, object) has no single obvious string
+ * reading, so it's rejected by the caller with a field-scoped message rather
+ * than guessed at.
+ *
+ * Lives here, next to parseFieldInput, because it exists solely to bridge
+ * parseFieldInput's string contract to the JSON that `--apply` actually
+ * delivers. Both `--apply` surfaces (brand config via lib/context-editor/flow.ts
+ * and skill config via lib/calibration/confirm-flow.ts) need the identical
+ * narrowing, and a bug fixed in one copy would otherwise stay live in the other.
+ */
+export function coerceEditValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return null;
+}
+
+/** Human-readable type name for an "expected X, got ..." validation message. */
+export function describeJsonType(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
 export function parseFieldInput(
   field: CalibrationField,
   raw: string,

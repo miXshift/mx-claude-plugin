@@ -46,6 +46,8 @@ import {
   type CalibrationField,
   parseFieldInput,
   formatFieldValue,
+  coerceEditValue,
+  describeJsonType,
 } from '../calibration/manifest-schema.js';
 import {
   BRAND_CONTEXT_MANIFEST,
@@ -427,26 +429,10 @@ function hasDefault(field: CalibrationField): boolean {
   return (field as { default?: unknown }).default !== undefined;
 }
 
-/**
- * Narrow a JSON-sourced edit value to the string parseFieldInput expects.
- * Strings pass through; numbers get an unambiguous string form (matching
- * the string-or-number convention `stableRowId()` uses in
- * commands/skill.ts). Anything else (null, boolean, array, object) has no
- * single obvious string reading, so it's rejected by the caller with a
- * field-scoped message rather than guessed at.
- */
-function coerceEditValue(value: unknown): string | null {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number') return String(value);
-  return null;
-}
-
-/** Human-readable type name for an "expected X, got ..." validation message. */
-function describeJsonType(value: unknown): string {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
-  return typeof value;
-}
+// coerceEditValue() and describeJsonType() used to live here. They moved to
+// lib/calibration/manifest-schema.ts (imported above) so the skill-config
+// `--apply` path can reuse them instead of growing a second copy that would
+// drift from this one.
 
 /**
  * context.yaml stores percentages as WHOLE numbers (acos_target_pct: 22) — the

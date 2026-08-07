@@ -443,6 +443,15 @@ async function runApplyDecision(args: {
       args.dataDir,
     );
   } else if (decision.action === 'edit') {
+    // `decision` came from an unchecked cast, so `edits` may not be an object
+    // at runtime. applyConfirmation already rejected that case above; counting
+    // it here anyway must not turn a clean validation failure back into a bare
+    // crash on the telemetry line.
+    const rawEdits: unknown = (decision as { edits?: unknown }).edits;
+    const editCount =
+      rawEdits !== null && typeof rawEdits === 'object' && !Array.isArray(rawEdits)
+        ? Object.keys(rawEdits).length
+        : 0;
     await track(
       {
         event_name: EventName.SkillCalibrationEdited,
@@ -450,7 +459,7 @@ async function runApplyDecision(args: {
         outcome: result.status === 'ok' ? 'ok' : 'failed',
         payload: {
           brand_slug: args.brandSlug,
-          edit_count: Object.keys(decision.edits).length,
+          edit_count: editCount,
           persisted: result.did_persist,
         },
       },

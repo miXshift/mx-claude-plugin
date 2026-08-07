@@ -56,6 +56,8 @@ import {
   type CalibrationField,
   parseFieldInput,
   formatFieldValue,
+  coerceEditValue,
+  describeJsonType,
 } from './manifest-schema.js';
 import {
   buildSkillConfigView,
@@ -125,7 +127,11 @@ export type ConfirmationDecision =
   | { action: 'confirm' }
   | {
       action: 'edit';
-      edits: Record<string, string>; // raw string inputs, parsed via parseFieldInput
+      // `--apply` delivers this as parsed JSON, so a value can arrive as any
+      // JSON type (string, number, boolean, null, array, object) — not just a
+      // string. `Record<string, unknown>` reflects that; coerceEditValue()
+      // is where the narrowing to parseFieldInput's string contract happens.
+      edits: Record<string, unknown>;
       save: boolean; // true = persist to config.yaml; false = use once
     }
   | { action: 'cancel' };
@@ -315,16 +321,114 @@ export async function applyConfirmation(
     };
   }
 
+  // Positive dispatch. `decision` reaches us from `JSON.parse(...) as
+  // ConfirmationDecision` in commands/skill.ts — an unchecked cast — so the
+  // compile-time union is NOT a runtime guarantee. Falling through to the edit
+  // path for anything that merely is not 'cancel' or 'confirm' meant a typo'd
+  // action (`{"action":"edt","edits":{},"save":true}`) silently took the WRITE
+  // path: it persisted config.yaml AND called pushAfterWrite(), publishing to
+  // the shared org store under an action MixShift never understood. Unknown
+  // actions must fail closed.
+  if (decision.action !== 'edit') {
+    return {
+      status: 'validation_failed',
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: 'action',
+          message:
+            `Unknown action ${JSON.stringify((decision as { action?: unknown }).action)}. ` +
+            'Expected "edit", "confirm" or "cancel".',
+        },
+      ],
+    };
+  }
+
+  // Container guard. `edits` is typed as an object but arrives from JSON, so it
+  // can be missing, null, or a non-object at runtime — all of which reached
+  // Object.entries() and threw a bare TypeError with no field named. An array
+  // is rejected too: Object.entries would "work" on it and silently treat the
+  // indices as field names, producing nonsense "unknown field 0" issues.
+  const rawEdits: unknown = (decision as { edits?: unknown }).edits;
+  if (
+    rawEdits === null ||
+    rawEdits === undefined ||
+    typeof rawEdits !== 'object' ||
+    Array.isArray(rawEdits)
+  ) {
+    return {
+      status: 'validation_failed',
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: 'edits',
+          message:
+            `Expected an object of field edits, got ${describeJsonType(rawEdits)}. ` +
+            'Example: {"action":"edit","edits":{"acos_target":20},"save":true}',
+        },
+      ],
+    };
+  }
+
+  // `save` decides whether this write is durable, so a non-boolean must not be
+  // read for truthiness: the string "false" would persist. Absent stays legal
+  // and means use-once (the no-write direction), which is what it has always
+  // meant; only a present-but-wrong-typed value is an error.
+  const rawSave: unknown = (decision as { save?: unknown }).save;
+  if (rawSave !== undefined && typeof rawSave !== 'boolean') {
+    return {
+      status: 'validation_failed',
+      effective_config: {},
+      did_persist: false,
+      saved_to: null,
+      validation_issues: [
+        {
+          field: 'save',
+          message:
+            `Expected true or false, got ${describeJsonType(rawSave)}. ` +
+            'Use true to persist the edits, false (or omit) to use them for this run only.',
+        },
+      ],
+    };
+  }
+
   // Edit path: parse each edit, accumulate issues, bail on any failure.
   const issues: Array<{ field: string; message: string }> = [];
   const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
-  for (const [key, raw] of Object.entries(decision.edits)) {
+  for (const [key, rawEdit] of Object.entries(
+    rawEdits as Record<string, unknown>,
+  )) {
     const field = fieldsById.get(key);
     if (!field) {
       issues.push({ field: key, message: 'unknown field (not in manifest)' });
       continue;
     }
-    const parsed = parseFieldInput(field, raw);
+    // parseFieldInput's contract is a string — it was written for chat input,
+    // which is always text. `--apply` edits come from JSON.parse instead, so a
+    // semantically-numeric field naturally arrives as a real number
+    // (feedback 47801: `--apply '{"action":"edit","edits":{"acos_target":20}}'`)
+    // and parseFieldInput's unconditional `raw.trim()` threw a bare TypeError.
+    // Coerce the JSON scalar types with an unambiguous string form and name the
+    // field for anything that genuinely cannot be accepted.
+    const raw = coerceEditValue(rawEdit);
+    if (raw === null) {
+      issues.push({
+        field: key,
+        message: `Expected a string or number, got ${describeJsonType(rawEdit)}`,
+      });
+      continue;
+    }
+    // Preserve provenance: a JSON number came from a machine reading our own
+    // `--json` output, where percents are already in the stored [0,1] form.
+    // Losing that through coerceEditValue's String() would make a value WE
+    // emitted fail to parse when handed straight back (#126).
+    const parsed = parseFieldInput(field, raw, {
+      fromJsonNumber: typeof rawEdit === 'number',
+    });
     if (!parsed.ok) {
       issues.push({ field: key, message: parsed.error });
       continue;
