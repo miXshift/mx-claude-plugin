@@ -107,7 +107,7 @@ shapes:
       context.yaml directly), so the AM-curated context.yaml stays clean.
 
       stockout_candidates[]: list of {asin, item_name, started, ended,
-        days_in_window, days_at_zero, impacted_revenue_usd, signal_source} —
+        days_in_window, days_at_zero, signal_source} —
         pulled from mws_inventory_health snapshots (CS-29). signal_source in
         {sellable_zero, alert_active, days_of_supply_low, multi}. Limitation:
         ASIN-suppression-for-profitability events are NOT detected here (no

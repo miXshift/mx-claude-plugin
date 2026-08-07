@@ -249,10 +249,15 @@ export type BrainCaptureRateCalibration = z.infer<
 
 /**
  * One ADVISORY stockout window (source class S2, Phase 8 enrichment).
- * Auto-detected from CS-29 (FBA OOS ASIN-days) + CS-30 (daily ad sales)
- * by lib/enrichment/stockout-windows.ts. Advisory: a finding for an AM to
+ * Auto-detected from CS-29 (FBA OOS ASIN-days) by
+ * lib/enrichment/stockout-windows.ts. Advisory: a finding for an AM to
  * confirm into structural_events[], NOT a confirmed fact. Mirrors
  * StockoutCandidate (lib/enrichment/types.ts).
+ *
+ * Older persisted brains carry a removed `impacted_revenue_usd` key
+ * (multiply-counted account-wide revenue; fb 37350). z.object strips
+ * unknown keys by default, so those documents still load and the stale
+ * key silently drops; the next refresh rewrites the file without it.
  */
 export const brainStockoutSchema = z.object({
   asin: z.string(),
@@ -261,7 +266,6 @@ export const brainStockoutSchema = z.object({
   ended: z.string(),
   days_in_window: z.number().int(),
   days_at_zero: z.number().int(),
-  impacted_revenue_usd: z.number(),
   signal_source: z.enum([
     'sellable_zero',
     'alert_active',
@@ -357,7 +361,7 @@ export const brandBrainSchema = z.object({
   /** Attribution-window calibration scalars (+ nested daily curve).
    *  Present when CS-06/07/08 and/or CS-28 produced usable signal. */
   capture_rate_calibration: brainCaptureRateCalibrationSchema.optional(),
-  /** ADVISORY: detected FBA stockout windows (CS-29 + CS-30). Present
+  /** ADVISORY: detected FBA stockout windows (CS-29). Present
    *  when the stockout source ran; empty array when it ran and found
    *  none. AM confirms these into structural_events[]. */
   stockouts: z.array(brainStockoutSchema).optional(),

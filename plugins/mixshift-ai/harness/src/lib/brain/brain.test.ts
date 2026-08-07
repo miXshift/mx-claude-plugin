@@ -593,6 +593,62 @@ describe('saveBrain + loadBrain round-trip', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('still loads an OLD brain whose stockouts carry the removed impacted_revenue_usd key', async () => {
+    // Persisted brand-brain.yaml files written before the field's removal
+    // (fb 37350) carry impacted_revenue_usd on every stockout window, both
+    // locally and in org-store copies. z.object strips unknown keys by
+    // default (no .strict() on this path), so those documents must keep
+    // loading, with the stale key silently dropped.
+    const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
+    try {
+      const brandDir = join(dir, 'clients', 'foragers-pantry');
+      await mkdir(brandDir, { recursive: true });
+      const oldBrain = {
+        ...assembledAop(),
+        sources: {
+          ...assembledAop().sources,
+          stockout: {
+            sproc: 'CS-29',
+            fetched_at: NOW.toISOString(),
+            row_count: 3,
+            source_hash: 'a'.repeat(64),
+          },
+        },
+        stockouts: [
+          {
+            asin: 'B07X',
+            item_name: 'Widget',
+            started: '2026-05-01',
+            ended: '2026-05-03',
+            days_in_window: 3,
+            days_at_zero: 3,
+            impacted_revenue_usd: 12345.67, // removed field, still on disk
+            signal_source: 'sellable_zero',
+          },
+        ],
+      };
+      await writeFile(
+        join(brandDir, 'brand-brain.yaml'),
+        stringifyYaml(oldBrain),
+        'utf-8',
+      );
+      const loaded = await loadBrain('foragers-pantry', dir);
+      expect(loaded.ok).toBe(true);
+      if (loaded.ok) {
+        expect(loaded.brain.stockouts).toHaveLength(1);
+        expect(loaded.brain.stockouts![0]).toMatchObject({
+          asin: 'B07X',
+          days_in_window: 3,
+        });
+        expect(loaded.brain.stockouts![0]).not.toHaveProperty(
+          'impacted_revenue_usd',
+        );
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('getBrandField / resolveBrandFields (accessor seam)', () => {

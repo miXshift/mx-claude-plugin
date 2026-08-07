@@ -5,7 +5,7 @@
  * <date>.enrichment.json`:
  *
  *   1. daily_settlement_curve  — from CS-28 (attribution settlement math)
- *   2. stockout_candidates     — from CS-29 + CS-30 (inventory-window stitching)
+ *   2. stockout_candidates     — from CS-29 (inventory-window stitching)
  *   3. brand_term_typo_candidates — from CS-31 (search-term typo clustering)
  *
  * Delta-mode merge (Phase C.6) patches `daily_settlement_curve` into
@@ -60,7 +60,7 @@ export interface SettlementCurve {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Stockout candidates (CS-29 + CS-30)
+// 2. Stockout candidates (CS-29)
 // ---------------------------------------------------------------------------
 
 export type StockoutSignalSource =
@@ -80,8 +80,6 @@ export interface StockoutCandidate {
   days_in_window: number;
   /** Days within the window where SellableQuantity = 0 (subset of days_in_window). */
   days_at_zero: number;
-  /** Estimated ad-attributed revenue lost across the window (USD). */
-  impacted_revenue_usd: number;
   /** Which signal(s) caught the window — 'multi' when more than one fired. */
   signal_source: StockoutSignalSource;
 }
