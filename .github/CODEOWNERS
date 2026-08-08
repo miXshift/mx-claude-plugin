@@ -1,0 +1,3 @@
+# Merge control: the 'protect-main' ruleset requires code-owner review on PRs to main.
+# Repo admins bypass by design (release flow + emergencies).
+* @shiftymix
