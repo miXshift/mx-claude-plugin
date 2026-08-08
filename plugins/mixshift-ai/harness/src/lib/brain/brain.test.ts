@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { z } from 'zod';
 
 import { brandBrainSchema } from './schema.js';
 import {
@@ -591,6 +592,125 @@ describe('saveBrain + loadBrain round-trip', () => {
       if (!loaded.ok) expect(loaded.kind).toBe('schema_violation');
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('still loads an OLD brain whose stockouts carry the removed impacted_revenue_usd key', async () => {
+    // Persisted brand-brain.yaml files written before the field's removal
+    // (fb 37350) carry impacted_revenue_usd on every stockout window, both
+    // locally and in org-store copies. z.object strips unknown keys by
+    // default (no .strict() on this path), so those documents must keep
+    // loading, with the stale key silently dropped.
+    const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
+    try {
+      const brandDir = join(dir, 'clients', 'foragers-pantry');
+      await mkdir(brandDir, { recursive: true });
+      const oldBrain = {
+        ...assembledAop(),
+        sources: {
+          ...assembledAop().sources,
+          stockout: {
+            sproc: 'CS-29',
+            fetched_at: NOW.toISOString(),
+            row_count: 3,
+            source_hash: 'a'.repeat(64),
+          },
+        },
+        stockouts: [
+          {
+            asin: 'B07X',
+            item_name: 'Widget',
+            started: '2026-05-01',
+            ended: '2026-05-03',
+            days_in_window: 3,
+            days_at_zero: 3,
+            impacted_revenue_usd: 12345.67, // removed field, still on disk
+            signal_source: 'sellable_zero',
+          },
+        ],
+      };
+      await writeFile(
+        join(brandDir, 'brand-brain.yaml'),
+        stringifyYaml(oldBrain),
+        'utf-8',
+      );
+      const loaded = await loadBrain('foragers-pantry', dir);
+      expect(loaded.ok).toBe(true);
+      if (loaded.ok) {
+        expect(loaded.brain.stockouts).toHaveLength(1);
+        expect(loaded.brain.stockouts![0]).toMatchObject({
+          asin: 'B07X',
+          days_in_window: 3,
+        });
+        expect(loaded.brain.stockouts![0]).not.toHaveProperty(
+          'impacted_revenue_usd',
+        );
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes brains whose stockouts still satisfy the pre-0.8.8 REQUIRED-field schema', () => {
+    // Reverse-direction compat guard (fb 37350 red team): brand-brain.yaml
+    // is a two-way synced doc and the sync engine validates pulled brain
+    // docs as YAML only, so a brain written by THIS build gets auto-pulled
+    // by teammates on shipped builds 0.6.0-0.8.7, whose brainStockoutSchema
+    // declares impacted_revenue_usd as a REQUIRED z.number(). Without the
+    // assemble-side compat shim (literal 0), their ENTIRE brain document
+    // would fail safeParse and every consumer would silently degrade to
+    // "no brain". This reconstruction of the OLD stockout schema exists
+    // solely to pin that wire contract; delete it together with the shim.
+    const preRemovalStockoutSchema = z.object({
+      asin: z.string(),
+      item_name: z.string(),
+      started: z.string(),
+      ended: z.string(),
+      days_in_window: z.number().int(),
+      days_at_zero: z.number().int(),
+      impacted_revenue_usd: z.number(),
+      signal_source: z.enum([
+        'sellable_zero',
+        'alert_active',
+        'days_of_supply_low',
+        'multi',
+      ]),
+    });
+
+    const brain = assembleBrain({
+      brandSlug: 'foragers-pantry',
+      sellerRows: [aopRow],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@0.5.21-test',
+      now: NOW,
+      stockout: {
+        sproc: 'CS-29',
+        rows: [
+          { ASIN: 'B07X', ItemName: 'Widget', snapshot_date: '2026-05-01', SellableQuantity: 0 },
+          { ASIN: 'B07X', ItemName: 'Widget', snapshot_date: '2026-05-02', SellableQuantity: 0 },
+          { ASIN: 'B07X', ItemName: 'Widget', snapshot_date: '2026-05-03', SellableQuantity: 0 },
+        ],
+      },
+    });
+
+    // Round-trip through the wire format old builds actually read.
+    const serialized = parseYaml(stringifyYaml(brain)) as {
+      stockouts?: Array<Record<string, unknown>>;
+    };
+    expect(serialized.stockouts).toBeDefined();
+    expect(serialized.stockouts!.length).toBeGreaterThan(0);
+    for (const w of serialized.stockouts!) {
+      expect(w.impacted_revenue_usd).toBe(0);
+      const parsed = preRemovalStockoutSchema.safeParse(w);
+      expect(parsed.success).toBe(true);
+    }
+    // And this build's own schema still accepts (and strips) what it wrote.
+    const reparsed = brandBrainSchema.safeParse(serialized);
+    expect(reparsed.success).toBe(true);
+    if (reparsed.success) {
+      expect(reparsed.data.stockouts![0]).not.toHaveProperty(
+        'impacted_revenue_usd',
+      );
     }
   });
 });

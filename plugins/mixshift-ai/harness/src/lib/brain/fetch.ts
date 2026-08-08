@@ -429,8 +429,11 @@ export async function fetchBrandBrain(
     // Phase 8 enrichment (reused CS-* named queries, native binds). All
     // best-effort: a failure just omits that section. Settlement (CS-28) spans
     // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
-    // channel seat; stockout (CS-29) + its impact-$ helper (CS-30) are
-    // SC-FBA-scoped; the typo corpus (CS-31) spans all seats.
+    // channel seat; stockout (CS-29) + CS-30 are SC-FBA-scoped (CS-30's
+    // rows are currently unused by assembly since the stockout
+    // impacted-revenue field was removed; the fetch stays pending a
+    // rigorous lost-sales replacement); the typo corpus (CS-31) spans
+    // all seats.
     runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
     scPrimary != null
       ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary })

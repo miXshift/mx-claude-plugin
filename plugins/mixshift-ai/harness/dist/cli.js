@@ -71174,7 +71174,6 @@ var brainStockoutSchema = external_exports.object({
   ended: external_exports.string(),
   days_in_window: external_exports.number().int(),
   days_at_zero: external_exports.number().int(),
-  impacted_revenue_usd: external_exports.number(),
   signal_source: external_exports.enum([
     "sellable_zero",
     "alert_active",
@@ -71238,7 +71237,7 @@ var brandBrainSchema = external_exports.object({
   /** Attribution-window calibration scalars (+ nested daily curve).
    *  Present when CS-06/07/08 and/or CS-28 produced usable signal. */
   capture_rate_calibration: brainCaptureRateCalibrationSchema.optional(),
-  /** ADVISORY: detected FBA stockout windows (CS-29 + CS-30). Present
+  /** ADVISORY: detected FBA stockout windows (CS-29). Present
    *  when the stockout source ran; empty array when it ran and found
    *  none. AM confirms these into structural_events[]. */
   stockouts: external_exports.array(brainStockoutSchema).optional(),
@@ -71396,7 +71395,7 @@ function insufficientCell() {
 }
 
 // src/lib/enrichment/stockout-windows.ts
-function detectStockoutWindows(cs29Rows, cs30Rows, options = {}) {
+function detectStockoutWindows(cs29Rows, options = {}) {
   const minDays = options.min_days ?? 3;
   const gapTolerance = options.gap_tolerance_days ?? 2;
   if (cs29Rows.length === 0) return [];
@@ -71406,12 +71405,6 @@ function detectStockoutWindows(cs29Rows, cs30Rows, options = {}) {
     if (!asin) continue;
     if (!byAsin.has(asin)) byAsin.set(asin, []);
     byAsin.get(asin).push(r);
-  }
-  const revByDate = /* @__PURE__ */ new Map();
-  for (const r of cs30Rows) {
-    const d = parseDate(r.metric_date);
-    if (!d) continue;
-    revByDate.set(d, (revByDate.get(d) ?? 0) + safeFloat2(r.ad_sales));
   }
   const candidates = [];
   for (const [asin, rawRows] of byAsin.entries()) {
@@ -71451,12 +71444,6 @@ function detectStockoutWindows(cs29Rows, cs30Rows, options = {}) {
       const started = w[0].date;
       const ended = w[w.length - 1].date;
       const days_in_window = daysBetween(started, ended) + 1;
-      let impacted = 0;
-      let cursor = started;
-      while (cursor <= ended) {
-        impacted += revByDate.get(cursor) ?? 0;
-        cursor = addOneDay(cursor);
-      }
       const item_name = typeof w[0].row.ItemName === "string" ? w[0].row.ItemName : "";
       candidates.push({
         asin,
@@ -71465,12 +71452,13 @@ function detectStockoutWindows(cs29Rows, cs30Rows, options = {}) {
         ended,
         days_in_window,
         days_at_zero: zeroDays,
-        impacted_revenue_usd: Math.round(impacted * 100) / 100,
         signal_source
       });
     }
   }
-  candidates.sort((a, b) => b.impacted_revenue_usd - a.impacted_revenue_usd);
+  candidates.sort(
+    (a, b) => b.days_in_window - a.days_in_window || (a.started < b.started ? -1 : a.started > b.started ? 1 : 0) || (a.asin < b.asin ? -1 : a.asin > b.asin ? 1 : 0)
+  );
   return candidates;
 }
 function parseDate(v) {
@@ -71490,16 +71478,6 @@ function daysBetween(startISO, endISO) {
   const start = /* @__PURE__ */ new Date(startISO + "T00:00:00Z");
   const end = /* @__PURE__ */ new Date(endISO + "T00:00:00Z");
   return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1e3));
-}
-function addOneDay(isoDate) {
-  const d = /* @__PURE__ */ new Date(isoDate + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-function safeFloat2(v) {
-  if (v === null || v === void 0 || v === "") return 0;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
 }
 function numOrNull(v) {
   if (v === null || v === void 0 || v === "") return null;
@@ -71559,8 +71537,8 @@ function detectBrandTermTypos(cs31Rows, brandTerms, options = {}) {
         root_token: membershipHit.variant,
         match_type: "token_membership",
         clicks: intOrZero(row.clicks),
-        spend: safeFloat3(row.spend),
-        sales: safeFloat3(row.sales),
+        spend: safeFloat2(row.spend),
+        sales: safeFloat2(row.sales),
         orders: intOrZero(row.orders)
       });
       continue;
@@ -71595,8 +71573,8 @@ function detectBrandTermTypos(cs31Rows, brandTerms, options = {}) {
       root_token: rootToken(termL, bestMatch),
       match_type: "levenshtein",
       clicks: intOrZero(row.clicks),
-      spend: safeFloat3(row.spend),
-      sales: safeFloat3(row.sales),
+      spend: safeFloat2(row.spend),
+      sales: safeFloat2(row.sales),
       orders: intOrZero(row.orders)
     });
   }
@@ -71721,7 +71699,7 @@ function rootToken(term, canonical) {
   }
   return bestTok;
 }
-function safeFloat3(v) {
+function safeFloat2(v) {
   if (v === null || v === void 0 || v === "") return 0;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -71859,10 +71837,7 @@ function assembleBrain(input) {
   if (input.stockout) sources.stockout = meta3(input.stockout);
   if (input.brandTypos) sources.brand_typos = meta3(input.brandTypos);
   const captureRate = assembleCaptureRateSection(input);
-  const stockouts = input.stockout ? assembleStockoutSection(
-    input.stockout.rows,
-    input.stockoutImpact?.rows ?? []
-  ) : void 0;
+  const stockouts = input.stockout ? assembleStockoutSection(input.stockout.rows) : void 0;
   const brandTermTypos = assembleBrandTypoSection(input);
   const hasCatalog = input.catalogSc || input.catalogVc || input.heroSc || input.heroVc;
   return {
@@ -72029,8 +72004,12 @@ function assembleCaptureRateSection(input) {
   };
   return curve ? { ...base, daily_settlement_curve: curve } : base;
 }
-function assembleStockoutSection(cs29Rows, cs30Rows) {
-  return detectStockoutWindows(cs29Rows, cs30Rows);
+function assembleStockoutSection(cs29Rows) {
+  const windows = detectStockoutWindows(cs29Rows).map((w) => ({
+    ...w,
+    impacted_revenue_usd: 0
+  }));
+  return windows;
 }
 function assembleBrandTypoSection(input) {
   if (!input.brandTypos || !input.brandTermsInput) return void 0;
@@ -72527,8 +72506,11 @@ async function fetchBrandBrain(opts) {
     // Phase 8 enrichment (reused CS-* named queries, native binds). All
     // best-effort: a failure just omits that section. Settlement (CS-28) spans
     // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
-    // channel seat; stockout (CS-29) + its impact-$ helper (CS-30) are
-    // SC-FBA-scoped; the typo corpus (CS-31) spans all seats.
+    // channel seat; stockout (CS-29) + CS-30 are SC-FBA-scoped (CS-30's
+    // rows are currently unused by assembly since the stockout
+    // impacted-revenue field was removed; the fetch stays pending a
+    // rigorous lost-sales replacement); the typo corpus (CS-31) spans
+    // all seats.
     runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
     scPrimary != null ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary }) : Promise.resolve(null),
     vcPrimary != null ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary }) : Promise.resolve(null),

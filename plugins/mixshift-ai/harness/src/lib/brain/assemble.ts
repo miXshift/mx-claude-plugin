@@ -29,7 +29,6 @@ import {
 import {
   detectStockoutWindows,
   type CS29Row,
-  type CS30Row,
 } from '../enrichment/stockout-windows.js';
 import {
   detectBrandTermTypos,
@@ -98,9 +97,13 @@ export interface AssembleBrainInput {
   captureRateDaily?: SourceInput<CS08Row>;
   /** CS-29 FBA out-of-stock ASIN-day rows (stockout windows). */
   stockout?: SourceInput<CS29Row>;
-  /** CS-30 daily ad-sales rows — impact-$ helper for stockout windows
-   *  (NOT a brain section of its own; structural_events is descoped). */
-  stockoutImpact?: SourceInput<CS30Row>;
+  /** CS-30 daily ad-sales rows. ACCEPTED BUT IGNORED since the stockout
+   *  impacted-revenue field was removed (fb 37350: account-wide revenue
+   *  summed over overlapping per-ASIN windows multiply-counted the same
+   *  dollars). The property (and the CS-30 fetch feeding it) stays in
+   *  place pending a rigorous period- and ASIN-gated lost-sales
+   *  replacement; removing the fetch is deliberately out of scope. */
+  stockoutImpact?: SourceInput<Record<string, unknown>>;
   /** CS-31 converting search-term corpus rows (brand-term typos). */
   brandTypos?: SourceInput<CS31Row>;
   /** Tier-3 brand_terms (+ competitor_brands) for the typo detector. Absent
@@ -139,18 +142,16 @@ export function assembleBrain(input: AssembleBrainInput): BrandBrain {
   if (input.recentActivity) sources.recent_activity = meta(input.recentActivity);
   // Phase 8 enrichment source metas. capture_rate is canonically the CS-28
   // settlement source (richest; drives the nested curve); the CS-06/07/08
-  // scalar sources fold into the same section without their own meta keys,
-  // mirroring how CS-30 helps stockout without its own key.
+  // scalar sources fold into the same section without their own meta keys.
+  // CS-30 (stockoutImpact) never had a meta key and is currently ignored
+  // (see AssembleBrainInput.stockoutImpact).
   if (input.settlement) sources.capture_rate = meta(input.settlement);
   if (input.stockout) sources.stockout = meta(input.stockout);
   if (input.brandTypos) sources.brand_typos = meta(input.brandTypos);
 
   const captureRate = assembleCaptureRateSection(input);
   const stockouts = input.stockout
-    ? assembleStockoutSection(
-        input.stockout.rows,
-        input.stockoutImpact?.rows ?? [],
-      )
+    ? assembleStockoutSection(input.stockout.rows)
     : undefined;
   const brandTermTypos = assembleBrandTypoSection(input);
 
@@ -450,15 +451,32 @@ export function assembleCaptureRateSection(
 }
 
 /**
- * Detected FBA stockout windows (advisory). Direct pass-through of
- * detectStockoutWindows; StockoutCandidate is structurally BrainStockout.
- * Returns [] when the source ran and found none.
+ * Detected FBA stockout windows (advisory). Pass-through of
+ * detectStockoutWindows (StockoutCandidate is structurally BrainStockout)
+ * plus a serialization compat shim. Returns [] when the source ran and
+ * found none.
+ *
+ * COMPAT SHIM (fb 37350 red team, reverse direction): shipped builds
+ * 0.6.0-0.8.7 declare `impacted_revenue_usd` as a REQUIRED z.number() in
+ * their brain schema, brand-brain.yaml is a two-way synced doc, and the
+ * sync engine validates pulled brain docs as YAML only. A brain written
+ * WITHOUT the key would therefore fail an old build's whole-document
+ * parse (schema_violation), silently degrading that teammate to "no
+ * brain" for EVERY section until they update. So the brain is written
+ * WITH the key as a literal 0 purely for pre-0.8.8 readers: no build,
+ * old or new, ever displayed the value (renderers show item/asin/days
+ * only), old builds only used it as a detection-time sort key on their
+ * own refreshes, and this build's schema strips it on read. Remove the
+ * shim when the installed fleet ages past 0.8.7 or when the rigorous
+ * period- and ASIN-gated lost-sales replacement lands.
  */
-export function assembleStockoutSection(
-  cs29Rows: CS29Row[],
-  cs30Rows: CS30Row[],
-): BrainStockout[] {
-  return detectStockoutWindows(cs29Rows, cs30Rows);
+export function assembleStockoutSection(cs29Rows: CS29Row[]): BrainStockout[] {
+  const windows: Array<BrainStockout & { impacted_revenue_usd: 0 }> =
+    detectStockoutWindows(cs29Rows).map((w) => ({
+      ...w,
+      impacted_revenue_usd: 0,
+    }));
+  return windows;
 }
 
 /**

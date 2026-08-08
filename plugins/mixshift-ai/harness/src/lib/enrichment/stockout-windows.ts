@@ -3,10 +3,19 @@
  *
  * Ported from the upstream's `enrich-context.py::detect_stockout_windows`. Reads
  * CS-29 (mws_inventory_history FBA out-of-stock ASIN-days, pre-filtered) and
- * CS-30 (daily account-level ad metrics), and groups consecutive in-trouble
- * days per ASIN into contiguous windows of ≥ `min_days` days. Each window
- * scores impacted ad-sales by summing the daily ad_sales from CS-30 across
- * the window's date range.
+ * groups consecutive in-trouble days per ASIN into contiguous windows of
+ * ≥ `min_days` days.
+ *
+ * NOTE (2026-08, fb 37350): windows deliberately carry NO dollar impact.
+ * The removed `impacted_revenue_usd` summed ACCOUNT-WIDE daily ad-sales
+ * (CS-30) over each ASIN's window, so overlapping windows multiply-counted
+ * the same revenue and the totals were wildly inflated; nothing rendered
+ * it. A rigorous period- and ASIN-gated lost-sales estimate is planned as
+ * a separate analysis. Until then the windows themselves (asin, dates,
+ * days) are the advisory signal. (A serialization-only compat shim in
+ * brain/assemble.ts still WRITES the key as a literal 0, because
+ * pre-0.8.8 builds require it to parse a synced brain; it never enters
+ * this module's types or output.)
  *
  * **Key signal sources:**
  *   - sellable_zero       — SellableQuantity = 0 on that snapshot day
@@ -40,12 +49,6 @@ export interface CS29Row {
   DaysOfSupply?: unknown;
 }
 
-export interface CS30Row {
-  /** ISO date YYYY-MM-DD. */
-  metric_date?: unknown;
-  ad_sales?: unknown;
-}
-
 export interface StockoutOptions {
   /** Minimum days in a window before it qualifies as a candidate. Default 3. */
   min_days?: number;
@@ -55,12 +58,12 @@ export interface StockoutOptions {
 }
 
 /**
- * Detect stockout candidate windows from CS-29 + CS-30. Returns an array
- * sorted by impacted_revenue_usd descending. Empty array when no input.
+ * Detect stockout candidate windows from CS-29. Returns an array sorted by
+ * days_in_window descending (ties: earliest start, then ASIN). Empty array
+ * when no input.
  */
 export function detectStockoutWindows(
   cs29Rows: CS29Row[],
-  cs30Rows: CS30Row[],
   options: StockoutOptions = {},
 ): StockoutCandidate[] {
   const minDays = options.min_days ?? 3;
@@ -75,14 +78,6 @@ export function detectStockoutWindows(
     if (!asin) continue;
     if (!byAsin.has(asin)) byAsin.set(asin, []);
     byAsin.get(asin)!.push(r);
-  }
-
-  // -- Build ad-sales lookup from CS-30 (keyed by ISO date) ---------------
-  const revByDate = new Map<string, number>();
-  for (const r of cs30Rows) {
-    const d = parseDate(r.metric_date);
-    if (!d) continue;
-    revByDate.set(d, (revByDate.get(d) ?? 0) + safeFloat(r.ad_sales));
   }
 
   // -- Stitch windows per ASIN --------------------------------------------
@@ -138,14 +133,6 @@ export function detectStockoutWindows(
       const ended = w[w.length - 1]!.date;
       const days_in_window = daysBetween(started, ended) + 1;
 
-      // Sum impacted ad-sales across the window date range
-      let impacted = 0;
-      let cursor = started;
-      while (cursor <= ended) {
-        impacted += revByDate.get(cursor) ?? 0;
-        cursor = addOneDay(cursor);
-      }
-
       const item_name =
         typeof w[0]!.row.ItemName === 'string' ? w[0]!.row.ItemName : '';
 
@@ -156,13 +143,19 @@ export function detectStockoutWindows(
         ended,
         days_in_window,
         days_at_zero: zeroDays,
-        impacted_revenue_usd: Math.round(impacted * 100) / 100,
         signal_source,
       });
     }
   }
 
-  candidates.sort((a, b) => b.impacted_revenue_usd - a.impacted_revenue_usd);
+  // Longest windows first (severity proxy now that there is no dollar
+  // score); deterministic tiebreak by start date, then ASIN.
+  candidates.sort(
+    (a, b) =>
+      b.days_in_window - a.days_in_window ||
+      (a.started < b.started ? -1 : a.started > b.started ? 1 : 0) ||
+      (a.asin < b.asin ? -1 : a.asin > b.asin ? 1 : 0),
+  );
   return candidates;
 }
 
@@ -193,18 +186,6 @@ function daysBetween(startISO: string, endISO: string): number {
   const start = new Date(startISO + 'T00:00:00Z');
   const end = new Date(endISO + 'T00:00:00Z');
   return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-}
-
-function addOneDay(isoDate: string): string {
-  const d = new Date(isoDate + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function safeFloat(v: unknown): number {
-  if (v === null || v === undefined || v === '') return 0;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function numOrNull(v: unknown): number | null {

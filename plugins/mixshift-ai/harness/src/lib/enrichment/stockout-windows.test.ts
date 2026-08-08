@@ -2,15 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   detectStockoutWindows,
   type CS29Row,
-  type CS30Row,
 } from './stockout-windows.js';
-
-const cs30Series = (days: Array<{ date: string; ad_sales: number }>): CS30Row[] =>
-  days.map((d) => ({ metric_date: d.date, ad_sales: d.ad_sales }));
 
 describe('detectStockoutWindows — empty input', () => {
   it('returns empty array when CS-29 is empty', () => {
-    expect(detectStockoutWindows([], [])).toEqual([]);
+    expect(detectStockoutWindows([])).toEqual([]);
   });
 });
 
@@ -21,12 +17,7 @@ describe('detectStockoutWindows — basic window stitching', () => {
       { ASIN: 'B07X', ItemName: 'Widget', snapshot_date: '2026-05-02', SellableQuantity: 0 },
       { ASIN: 'B07X', ItemName: 'Widget', snapshot_date: '2026-05-03', SellableQuantity: 0 },
     ];
-    const cs30 = cs30Series([
-      { date: '2026-05-01', ad_sales: 100 },
-      { date: '2026-05-02', ad_sales: 150 },
-      { date: '2026-05-03', ad_sales: 200 },
-    ]);
-    const result = detectStockoutWindows(cs29, cs30);
+    const result = detectStockoutWindows(cs29);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       asin: 'B07X',
@@ -35,9 +26,11 @@ describe('detectStockoutWindows — basic window stitching', () => {
       ended: '2026-05-03',
       days_in_window: 3,
       days_at_zero: 3,
-      impacted_revenue_usd: 450,
       signal_source: 'sellable_zero',
     });
+    // The removed dollar field (fb 37350) must never come back: it summed
+    // account-wide revenue over overlapping windows and multiply-counted.
+    expect(result[0]).not.toHaveProperty('impacted_revenue_usd');
   });
 
   it('drops windows shorter than min_days', () => {
@@ -45,7 +38,7 @@ describe('detectStockoutWindows — basic window stitching', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-01', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 0 },
     ];
-    expect(detectStockoutWindows(cs29, [])).toHaveLength(0); // default min_days=3
+    expect(detectStockoutWindows(cs29)).toHaveLength(0); // default min_days=3
   });
 
   it('honors custom min_days', () => {
@@ -53,7 +46,7 @@ describe('detectStockoutWindows — basic window stitching', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-01', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 0 },
     ];
-    const result = detectStockoutWindows(cs29, [], { min_days: 2 });
+    const result = detectStockoutWindows(cs29, { min_days: 2 });
     expect(result).toHaveLength(1);
     expect(result[0]!.days_in_window).toBe(2);
   });
@@ -68,7 +61,7 @@ describe('detectStockoutWindows — basic window stitching', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-10', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-11', SellableQuantity: 0 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result).toHaveLength(2);
   });
 
@@ -80,7 +73,7 @@ describe('detectStockoutWindows — basic window stitching', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-04', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-05', SellableQuantity: 0 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result).toHaveLength(1);
     expect(result[0]!.days_in_window).toBe(5); // May 1 → May 5 inclusive
   });
@@ -93,7 +86,7 @@ describe('detectStockoutWindows — signal sources', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 10, Alert: true },
       { ASIN: 'B07X', snapshot_date: '2026-05-03', SellableQuantity: 10, Alert: 1 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result[0]!.signal_source).toBe('alert_active');
   });
 
@@ -103,7 +96,7 @@ describe('detectStockoutWindows — signal sources', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 5, DaysOfSupply: 10 },
       { ASIN: 'B07X', snapshot_date: '2026-05-03', SellableQuantity: 5, DaysOfSupply: 10 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result[0]!.signal_source).toBe('days_of_supply_low');
   });
 
@@ -113,7 +106,7 @@ describe('detectStockoutWindows — signal sources', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 5, Alert: 1 }, // alert
       { ASIN: 'B07X', snapshot_date: '2026-05-03', SellableQuantity: 5, DaysOfSupply: 10 }, // dos_low
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result[0]!.signal_source).toBe('multi');
   });
 
@@ -125,7 +118,7 @@ describe('detectStockoutWindows — signal sources', () => {
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 0, DaysOfSupply: 10 },
       { ASIN: 'B07X', snapshot_date: '2026-05-03', SellableQuantity: 0, DaysOfSupply: 10 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result[0]!.signal_source).toBe('sellable_zero');
   });
 });
@@ -140,31 +133,29 @@ describe('detectStockoutWindows — multi-ASIN handling', () => {
       { ASIN: 'B08Y', snapshot_date: '2026-05-02', SellableQuantity: 0 },
       { ASIN: 'B08Y', snapshot_date: '2026-05-03', SellableQuantity: 0 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result).toHaveLength(2);
     expect(result.map((c) => c.asin).sort()).toEqual(['B07X', 'B08Y']);
   });
 
-  it('sorts by impacted_revenue_usd descending', () => {
+  it('sorts by days_in_window descending, then start date, then ASIN', () => {
     const cs29: CS29Row[] = [
+      // B07X: 3-day window. B08Y: 5-day window (should sort first).
       { ASIN: 'B07X', snapshot_date: '2026-05-01', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-02', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: '2026-05-03', SellableQuantity: 0 },
       { ASIN: 'B08Y', snapshot_date: '2026-05-01', SellableQuantity: 0 },
       { ASIN: 'B08Y', snapshot_date: '2026-05-02', SellableQuantity: 0 },
       { ASIN: 'B08Y', snapshot_date: '2026-05-03', SellableQuantity: 0 },
+      { ASIN: 'B08Y', snapshot_date: '2026-05-04', SellableQuantity: 0 },
+      { ASIN: 'B08Y', snapshot_date: '2026-05-05', SellableQuantity: 0 },
+      // B06W: also 3 days, same start as B07X — ASIN tiebreak puts it first.
+      { ASIN: 'B06W', snapshot_date: '2026-05-01', SellableQuantity: 0 },
+      { ASIN: 'B06W', snapshot_date: '2026-05-02', SellableQuantity: 0 },
+      { ASIN: 'B06W', snapshot_date: '2026-05-03', SellableQuantity: 0 },
     ];
-    const cs30 = cs30Series([
-      // B07X dates have low revenue, B08Y dates have high revenue
-      { date: '2026-05-01', ad_sales: 1000 }, // shared date — split
-    ]);
-    // Since both share the same dates, both get the same impact in this test
-    // Just verify the sort order is preserved
-    const result = detectStockoutWindows(cs29, cs30);
-    expect(result).toHaveLength(2);
-    expect(result[0]!.impacted_revenue_usd).toBeGreaterThanOrEqual(
-      result[1]!.impacted_revenue_usd,
-    );
+    const result = detectStockoutWindows(cs29);
+    expect(result.map((c) => c.asin)).toEqual(['B08Y', 'B06W', 'B07X']);
   });
 });
 
@@ -174,7 +165,7 @@ describe('detectStockoutWindows — input tolerance', () => {
       { snapshot_date: '2026-05-01', SellableQuantity: 0 },
       { snapshot_date: '2026-05-02', SellableQuantity: 0 },
     ];
-    expect(detectStockoutWindows(cs29, [])).toHaveLength(0);
+    expect(detectStockoutWindows(cs29)).toHaveLength(0);
   });
 
   it('drops rows without parseable snapshot_date', () => {
@@ -182,7 +173,7 @@ describe('detectStockoutWindows — input tolerance', () => {
       { ASIN: 'B07X', snapshot_date: 'not-a-date', SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: null, SellableQuantity: 0 },
     ];
-    expect(detectStockoutWindows(cs29, [])).toHaveLength(0);
+    expect(detectStockoutWindows(cs29)).toHaveLength(0);
   });
 
   it('handles Date objects as snapshot_date', () => {
@@ -191,7 +182,7 @@ describe('detectStockoutWindows — input tolerance', () => {
       { ASIN: 'B07X', snapshot_date: new Date('2026-05-02T00:00:00Z'), SellableQuantity: 0 },
       { ASIN: 'B07X', snapshot_date: new Date('2026-05-03T00:00:00Z'), SellableQuantity: 0 },
     ];
-    const result = detectStockoutWindows(cs29, []);
+    const result = detectStockoutWindows(cs29);
     expect(result).toHaveLength(1);
     expect(result[0]!.started).toBe('2026-05-01');
   });
