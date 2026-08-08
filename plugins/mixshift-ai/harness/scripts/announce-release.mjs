@@ -7,7 +7,7 @@
 // event into the telemetry `events` table, which the `events_to_discord_fanout`
 // trigger forwards to the `fanout-discord` Edge Function, which posts a release
 // embed to the channel behind the RELEASES_DISCORD_WEBHOOK_URL secret.
-// (Routing + the two-layer allowlist: internal/SUPABASE-SETUP.md §10.)
+// Routing and the event-type allowlist are configured server-side.
 //
 // Run this AFTER a release is merged + the CHANGELOG has the new top entry:
 //   node scripts/announce-release.mjs              # announce the top CHANGELOG entry

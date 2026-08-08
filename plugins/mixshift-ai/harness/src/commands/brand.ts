@@ -658,9 +658,8 @@ export function registerBrandCommands(program: Command): void {
         results.push({ ...r, input });
       }
 
-      // Background brain pre-fill for newly-keyed brands (the trigger
-      // model in BACKGROUND-DISCOVERY): fire-and-forget detached
-      // fetches. Keying never blocks or fails on brain activity; a
+      // Background brain pre-fill for newly-keyed brands: fire-and-forget
+      // detached fetches. Keying never blocks or fails on brain activity; a
       // failed spawn just means the user runs
       // `mixshift brand brain fetch <slug>` manually.
       const brainSpawns = results

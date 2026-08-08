@@ -21,7 +21,7 @@
  * was received when it wasn't.
  *
  * Backend prerequisite: the `skill_submissions` table + an insert-only RLS
- * policy for the anon role must exist (see internal/SUPABASE-SETUP.md). Until
+ * policy for the anon role must exist. Until
  * then this returns { status: 'failed' } with the PostgREST error, which the
  * share flow surfaces rather than swallowing.
  */

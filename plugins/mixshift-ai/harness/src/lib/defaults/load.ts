@@ -71,7 +71,6 @@ export async function loadPluginDefaults(
  * Removed in v0.4.0: MIXSHIFT_DISCORD_WEBHOOK. The plugin no longer
  * makes direct Discord webhook calls — telemetry events fan out to
  * Discord server-side via a Supabase database trigger + Edge Function.
- * See internal/SUPABASE-SETUP.md §10.
  *
  * Values can come from the shell environment OR from a `.env.local`
  * file loaded at CLI startup (see lib/env/load-dotenv.ts).

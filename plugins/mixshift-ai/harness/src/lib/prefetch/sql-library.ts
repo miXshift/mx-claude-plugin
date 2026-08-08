@@ -22,7 +22,7 @@ import { formatZodError } from '../profile/format-error.js';
  *            mx-legacy-auth query pack, keyed by this catalog id. The
  *            harness POSTs {id, sellerIds, params} to `/api/named-query`;
  *            no SQL text ships in this public repo. The standard backend
- *            for library queries (SP-MIGRATION.md, 2026-06-12 revision).
+ *            for library queries.
  *   - sproc: the query body lives warehouse-side as a stored procedure.
  *            The harness sends `CALL <sproc>(?, ?)` through `/api/query`.
  *            Superseded by `named`; kept for transition use.

@@ -14,7 +14,7 @@ interface RootOptions {
  * Delivery model: emit a `feedback.submitted` telemetry event and force
  * a synchronous flush so the user gets an immediate "delivered" signal.
  * The Supabase database trigger fans the event out to the MixShift ops
- * Discord channel server-side (see internal/SUPABASE-SETUP.md §10). No
+ * Discord channel server-side. No
  * Discord webhook URL ever lives in the plugin.
  *
  * If the flush fails (no network, Supabase down, …), the event stays in

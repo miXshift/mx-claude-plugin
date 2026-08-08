@@ -38,7 +38,7 @@ export const defaultsSchema = z.object({
       // MIXSHIFT_DISCORD_WEBHOOK env override) until v0.4.0. It was
       // removed when Discord routing moved server-side — telemetry
       // events fan out to Discord via a Supabase database trigger +
-      // Edge Function. See internal/SUPABASE-SETUP.md §10.
+      // Edge Function.
       public_ip_lookup_url: z.url().default('https://api.ipify.org?format=json'),
       mysql: mysqlDefaults.default({
         host: 'db.mydashapplications.studio',
@@ -67,7 +67,7 @@ export const defaultsSchema = z.object({
   telemetry: z
     .object({
       // Supabase REST endpoint for the events table. Empty = "configured off"
-      // (events buffered locally, never flushed). See internal/SUPABASE-SETUP.md.
+      // (events buffered locally, never flushed).
       endpoint: z.string().default(''),
       // Supabase anon key. Empty = "configured off" same as endpoint.
       apikey: z.string().default(''),

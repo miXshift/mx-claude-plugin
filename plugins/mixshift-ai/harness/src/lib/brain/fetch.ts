@@ -37,7 +37,7 @@ import type { BrandTermsBlock } from '../enrichment/brand-typos.js';
 import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 /** Seller-source TTL: re-fetches inside this window are no-ops unless
- *  forced. 30 days per internal/BACKGROUND-DISCOVERY.md. */
+ *  forced. */
 export const BRAIN_TTL_DAYS = 30;
 
 const BRAIN_SELLER_QUERY_ID = 'BRAIN-SELLER';
@@ -47,8 +47,8 @@ const BRAIN_CAMPAIGN_QUERY_ID = 'BRAIN-CAMPAIGN';
 const BRAIN_HERO_SC_QUERY_ID = 'BRAIN-HERO-SC';
 const BRAIN_HERO_VC_QUERY_ID = 'BRAIN-HERO-VC';
 /** Recent-activity baseline: trailing-30d ad spend/sales rolled up across
- *  ALL the brand's sellers (BACKGROUND-DISCOVERY.md "skill no longer
- *  re-pulls"). A dedicated brand-scoped entry, NOT DHC-01-on-primary —
+ *  ALL the brand's sellers, cached at fetch time so skills need not
+ *  re-pull it. A dedicated brand-scoped entry, NOT DHC-01-on-primary —
  *  that returned nulls for VC-primary brands whose ad activity sits on a
  *  different seat. */
 const BRAIN_RECENT_ACTIVITY_QUERY_ID = 'BRAIN-RECENT-ACTIVITY';
@@ -322,7 +322,7 @@ export async function fetchBrandBrain(
     dataDirOverride,
   );
 
-  // Source scoping by account type (internal/BACKGROUND-DISCOVERY.md):
+  // Source scoping by account type:
   // seller covers every seat; catalog splits SC vs VC; campaign covers
   // all seats (SC, VC, DSP all carry campaign rows; 'unknown' is
   // included so registries discovered before the DSP mapping landed

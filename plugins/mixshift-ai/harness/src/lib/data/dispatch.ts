@@ -1,7 +1,6 @@
 /**
  * Dispatch registry: resolve a catalog query ID to its execution
- * backend and run it. The single seam serving three goals (see
- * internal/SP-MIGRATION.md "Dual-mode during transition"):
+ * backend and run it. The single seam serving three goals:
  *
  *   - Query security: `dispatch: sproc` entries ship NO SQL text in this
  *     public repo. The body lives warehouse-side as a stored procedure
@@ -21,8 +20,7 @@
  *                      The SQL body lives server-side in mx-legacy-auth's
  *                      private query pack, keyed by this catalog id; the
  *                      server validates scope + params and binds them.
- *                      This is the standard backend for library queries
- *                      (SP-MIGRATION.md, 2026-06-12 revision).
+ *                      This is the standard backend for library queries.
  *   dispatch: sproc  → build `CALL sp_<name>(?, ?)` with two positional
  *                      JSON args (params blob + seller-id scope) and POST
  *                      through the SAME /api/query. Superseded by `named`
@@ -170,9 +168,9 @@ async function readLocalSql(
 }
 
 /**
- * The uniform SP invocation statement. Two positional JSON args per the
- * SP signature convention (internal/SP-MIGRATION.md): a params blob and
- * the seller-id scope. One client path serves every SP.
+ * The uniform SP invocation statement. Two positional JSON args by
+ * convention: a params blob and the seller-id scope. One client path
+ * serves every SP.
  */
 export function buildCallSql(sprocName: string): string {
   return `CALL ${sprocName}(?, ?)`;
