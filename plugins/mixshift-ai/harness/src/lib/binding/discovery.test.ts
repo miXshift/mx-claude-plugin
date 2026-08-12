@@ -6,12 +6,35 @@ import {
   assembleCoverageReport,
   classifyShape,
   normalizeLabel,
+  resolveSellerIds,
   UNCLASSIFIED_LABEL,
   type Sbd01RetailRow,
   type Sbd02AdsRow,
   type Sbd03VendorRow,
   type Sbd04MatchRow,
 } from './discovery.js';
+
+describe('resolveSellerIds — AmazonSellerID -> internal warehouse seller_id(s)', () => {
+  const sellers = [
+    { seller_id: 100, amazon_seller_id: 'A1EXAMPLE23456' },
+    { seller_id: 200, amazon_seller_id: 'A1EXAMPLE23456' }, // second marketplace, same account
+    { seller_id: 300, amazon_seller_id: 'A2OTHERACCOUNT' },
+    { seller_id: 400, amazon_seller_id: null },
+  ];
+
+  it('collects ALL internal seller_ids matching the AmazonSellerID (multi-marketplace)', () => {
+    expect(resolveSellerIds('A1EXAMPLE23456', sellers)).toEqual([100, 200]);
+  });
+
+  it('does not match a different account or a null amazon_seller_id', () => {
+    expect(resolveSellerIds('A2OTHERACCOUNT', sellers)).toEqual([300]);
+    expect(resolveSellerIds('DOES-NOT-EXIST', sellers)).toEqual([]);
+  });
+
+  it('is case-sensitive (AmazonSellerID is an exact-match warehouse value)', () => {
+    expect(resolveSellerIds('a1example23456', sellers)).toEqual([]);
+  });
+});
 
 describe('normalizeLabel', () => {
   it('maps null/undefined/blank/whitespace-only to the unclassified bucket', () => {

@@ -85,6 +85,7 @@ export async function runSubbrandDiscovery(
           {
             status: 'ok',
             report,
+            resolved_seller_ids: fetched.resolvedSellerIds,
             query_errors: fetched.errors,
             ...(stake ? { stake } : {}),
           },
@@ -121,6 +122,9 @@ export function renderCoverageReport(
   const lines: string[] = [];
   lines.push(`\nSub-brand label coverage for seller ${report.seller_id}`);
   lines.push(`Generated: ${report.generated_at}`);
+  if (fetched.resolvedSellerIds.length > 0) {
+    lines.push(`Resolved warehouse seller_id(s): ${fetched.resolvedSellerIds.join(', ')}`);
+  }
   lines.push('');
 
   if (!fetched.ok) {
@@ -130,7 +134,9 @@ export function renderCoverageReport(
     }
     lines.push(
       '  (If this says "unknown query", the gateway side of this feature ' +
-        'may not be deployed yet — this is expected ahead of that release.)',
+        'may not be deployed yet — this is expected ahead of that release. ' +
+        'If this says no seller was found, check the seller ID and that ' +
+        'this account has been activated in your MixShift warehouse.)',
     );
     lines.push('');
   }

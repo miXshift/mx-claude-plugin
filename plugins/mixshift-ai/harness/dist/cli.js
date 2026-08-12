@@ -75728,6 +75728,7 @@ var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated 
 
 // src/lib/binding/discovery.ts
 init_query_runner();
+init_seller_query();
 var UNCLASSIFIED_LABEL = "(unclassified)";
 function normalizeLabel(raw) {
   const trimmed = (raw ?? "").trim();
@@ -75826,10 +75827,38 @@ function assembleCoverageReport(input) {
     classification
   };
 }
+function resolveSellerIds(amazonSellerId, sellers) {
+  return sellers.filter((s) => s.amazon_seller_id === amazonSellerId).map((s) => s.seller_id);
+}
 async function fetchLabelDiscovery(amazonSellerId, options = {}) {
-  const params = { AmazonSellerID: amazonSellerId };
+  const none = { retailRows: [], adsRows: [], vendorRows: [], matchRows: [] };
+  let sellers;
+  try {
+    sellers = await discoverSellers({
+      dataDirOverride: options.dataDirOverride,
+      includeInactive: true
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: "resolve_seller_ids", message, friendly: message }]
+    };
+  }
+  const resolvedSellerIds = resolveSellerIds(amazonSellerId, sellers);
+  if (resolvedSellerIds.length === 0) {
+    const message = `No seller found for Amazon Seller ID "${amazonSellerId}" in this tenant's warehouse access.`;
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: "resolve_seller_ids", message, friendly: message }]
+    };
+  }
   const queryOpts = {
-    params,
+    sellerIds: resolvedSellerIds,
     dataDirOverride: options.dataDirOverride,
     queryTimeoutMs: options.queryTimeoutMs
   };
@@ -75847,6 +75876,7 @@ async function fetchLabelDiscovery(amazonSellerId, options = {}) {
   };
   return {
     ok: errors.length === 0,
+    resolvedSellerIds,
     retailRows: rowsOf("sbd-01", retail),
     adsRows: rowsOf("sbd-02", ads),
     vendorRows: rowsOf("sbd-03", vendor),
@@ -75959,6 +75989,7 @@ async function runSubbrandDiscovery(opts, cmd) {
           {
             status: "ok",
             report,
+            resolved_seller_ids: fetched.resolvedSellerIds,
             query_errors: fetched.errors,
             ...stake ? { stake } : {}
           },
@@ -75987,6 +76018,9 @@ function renderCoverageReport(report, fetched, stake) {
   lines.push(`
 Sub-brand label coverage for seller ${report.seller_id}`);
   lines.push(`Generated: ${report.generated_at}`);
+  if (fetched.resolvedSellerIds.length > 0) {
+    lines.push(`Resolved warehouse seller_id(s): ${fetched.resolvedSellerIds.join(", ")}`);
+  }
   lines.push("");
   if (!fetched.ok) {
     lines.push("\u26A0 Some discovery queries did not return results:");
@@ -75994,7 +76028,7 @@ Sub-brand label coverage for seller ${report.seller_id}`);
       lines.push(`  - ${e.query_id}: ${e.friendly}`);
     }
     lines.push(
-      '  (If this says "unknown query", the gateway side of this feature may not be deployed yet \u2014 this is expected ahead of that release.)'
+      '  (If this says "unknown query", the gateway side of this feature may not be deployed yet \u2014 this is expected ahead of that release. If this says no seller was found, check the seller ID and that this account has been activated in your MixShift warehouse.)'
     );
     lines.push("");
   }

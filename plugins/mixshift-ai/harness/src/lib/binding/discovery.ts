@@ -9,14 +9,34 @@
  * ("(unclassified)") share per side, the retail<->ads match rate, and a
  * shape classification PROPOSAL (single_brand vs brand_nested candidate).
  *
- * CONTRACT NOTE: sbd-01..04 are being built in parallel on the gateway
- * (mx-legacy-auth) and may not be live yet — `fetchLabelDiscovery` below
- * tolerates a per-query `unknown_query` failure (pack entry absent) without
- * throwing, so this command degrades gracefully ahead of that deploy. The
- * row SHAPES are the frozen part of the contract (per the build brief); the
- * PARAM name this module sends (`AmazonSellerID`) is this client's own
- * choice pending the gateway side landing — a one-line fix here if the
- * actual entries expect something else.
+ * CONTRACT (confirmed against the gateway-side draft PR #106,
+ * feat/subbrand-p1-queries): sbd-01..04 are `sellerScoped: true` with EMPTY
+ * declared params — seller ids travel via the same top-level `sellerIds`
+ * field every other sellerScoped named query uses (see
+ * lib/data/query-runner.ts's `runNamedQuery` / `NamedQueryOptions.sellerIds`),
+ * NOT a `params.seller_ids` (or `AmazonSellerID`) key. Reason: `dispatch.ts`
+ * unconditionally hoists a `params.seller_ids` key to that same top-level
+ * field before the gateway ever sees it, so a declared param of that name
+ * would never arrive — the gateway side designed around that, and this
+ * client follows the same convention.
+ *
+ * The CLI takes an AmazonSellerID (a string), but `sellerIds` is the
+ * warehouse's INTERNAL numeric seller.SellerID(s) for that account (the same
+ * distinction `binding.amazon_seller_id` vs `binding.seller_ids` draws).
+ * `fetchLabelDiscovery` resolves the one to the other by reusing
+ * `discoverSellers()` (the same primitive `brand discover` / `brand add`
+ * already use) and filtering for matching rows — no new SQL surface.
+ *
+ * sbd-01..03 arrive with `label` already COALESCEd to the literal string
+ * `'(unclassified)'` for blanks (never null/empty); sbd-04 excludes blank
+ * labels entirely. `normalizeLabel` below still defensively re-checks this
+ * (idempotent on an already-'(unclassified)' value) rather than trusting the
+ * wire shape blindly.
+ *
+ * The gateway pack entries may still not be DEPLOYED at any given moment —
+ * `fetchLabelDiscovery` tolerates a per-query `unknown_query` failure
+ * without throwing, so this command degrades gracefully ahead of that
+ * deploy.
  *
  * `assembleCoverageReport` is a pure function over already-fetched rows —
  * see discovery.test.ts for the mocked-row unit tests. LIVE integration
@@ -25,6 +45,7 @@
  */
 
 import { runNamedQuery, type DataQueryResult } from '../data/query-runner.js';
+import { discoverSellers } from '../discovery/seller-query.js';
 
 // ---------------------------------------------------------------------------
 // Wire row shapes (frozen contract; see module header)
@@ -288,17 +309,41 @@ export function assembleCoverageReport(input: CoverageReportInput): CoverageRepo
 
 export interface LabelDiscoveryFetchResult {
   ok: boolean;
+  /** The internal numeric warehouse seller_id(s) resolved for the given
+   *  AmazonSellerID (empty when none were found — see `errors`). */
+  resolvedSellerIds: number[];
   retailRows: Sbd01RetailRow[];
   vendorRows: Sbd03VendorRow[];
   adsRows: Sbd02AdsRow[];
   matchRows: Sbd04MatchRow[];
   /** One entry per query id that failed; the corresponding rows array above
-   *  is empty for that side rather than the whole call throwing. */
+   *  is empty for that side rather than the whole call throwing. The
+   *  synthetic id `resolve_seller_ids` covers the AmazonSellerID -> internal
+   *  seller_id resolution step failing (before any sbd-* query even runs). */
   errors: Array<{ query_id: string; message: string; friendly: string }>;
 }
 
 /**
- * Fetch all four sbd-* named queries for one Amazon Seller ID. Tolerant of
+ * Resolve an AmazonSellerID to this tenant's internal numeric warehouse
+ * seller_id(s) by reusing `discoverSellers()` (the same primitive `brand
+ * discover` / `brand add` already use) and filtering for matching rows.
+ * Exported for direct unit testing without a network mock.
+ */
+export function resolveSellerIds(
+  amazonSellerId: string,
+  sellers: readonly { seller_id: number; amazon_seller_id: string | null }[],
+): number[] {
+  return sellers
+    .filter((s) => s.amazon_seller_id === amazonSellerId)
+    .map((s) => s.seller_id);
+}
+
+/**
+ * Fetch all four sbd-* named queries for one Amazon Seller ID. Resolves the
+ * AmazonSellerID to internal numeric seller_id(s) first (sbd-01..04 are
+ * `sellerScoped` with EMPTY declared params — seller ids travel via
+ * `NamedQueryOptions.sellerIds`, the same top-level field every other
+ * sellerScoped named query uses; see the module header), then tolerates
  * individual query failures (e.g. `unknown_query` while the gateway pack
  * entries are still being deployed) — a partial result with `ok: false` and
  * populated `errors` is returned rather than throwing, so the caller can
@@ -308,9 +353,37 @@ export async function fetchLabelDiscovery(
   amazonSellerId: string,
   options: { dataDirOverride?: string; queryTimeoutMs?: number } = {},
 ): Promise<LabelDiscoveryFetchResult> {
-  const params = { AmazonSellerID: amazonSellerId };
+  const none = { retailRows: [], adsRows: [], vendorRows: [], matchRows: [] };
+
+  let sellers: Awaited<ReturnType<typeof discoverSellers>>;
+  try {
+    sellers = await discoverSellers({
+      dataDirOverride: options.dataDirOverride,
+      includeInactive: true,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: 'resolve_seller_ids', message, friendly: message }],
+    };
+  }
+
+  const resolvedSellerIds = resolveSellerIds(amazonSellerId, sellers);
+  if (resolvedSellerIds.length === 0) {
+    const message = `No seller found for Amazon Seller ID "${amazonSellerId}" in this tenant's warehouse access.`;
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: 'resolve_seller_ids', message, friendly: message }],
+    };
+  }
+
   const queryOpts = {
-    params,
+    sellerIds: resolvedSellerIds,
     dataDirOverride: options.dataDirOverride,
     queryTimeoutMs: options.queryTimeoutMs,
   };
@@ -331,6 +404,7 @@ export async function fetchLabelDiscovery(
 
   return {
     ok: errors.length === 0,
+    resolvedSellerIds,
     retailRows: rowsOf('sbd-01', retail),
     adsRows: rowsOf('sbd-02', ads),
     vendorRows: rowsOf('sbd-03', vendor),
