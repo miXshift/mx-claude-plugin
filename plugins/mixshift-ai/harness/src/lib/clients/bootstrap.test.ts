@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { bootstrapBrand, sortAccountsForPrimary } from './bootstrap.js';
 import { contextSchema } from '../context/schema.js';
 import type { BrandSuggestion } from '../discovery/brand-grouping.js';
@@ -202,6 +202,109 @@ describe('bootstrapBrand', () => {
     const yaml = parseYaml(await readFile(result.context_path, 'utf-8')) as Record<string, unknown>;
     const accounts = yaml.accounts as Array<Record<string, unknown>>;
     expect(accounts[0]!.merchant_alias).toBe('original-storefront-name');
+  });
+});
+
+// FINDING 3, red team over PR #131: buildContext rebuilds context.yaml from
+// scratch on every bootstrap and has no knowledge of the sub-brand `binding`
+// block, so a `--force` re-bootstrap of an already-bound sub-brand used to
+// silently erase it (and auto-push the stripped context to the org store).
+describe('bootstrapBrand — preserves an existing binding across --force', () => {
+  const BINDING = {
+    kind: 'sub_brand',
+    amazon_seller_id: 'A1EXAMPLE23456',
+    seller_ids: [1],
+    retail_label: { source: 'mws_items.Brand', value: 'Forager Pantry' },
+    ads_label: { source: 'campaign.Brand', value: 'Forager Pantry' },
+    scope_note: 'This brand is label-scoped to one sub-brand of a larger seller account.',
+  };
+
+  it('carries an existing binding forward verbatim into a --force rebuild', async () => {
+    // 1. First-time bootstrap (no binding yet).
+    const first = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(first.binding_preserved).toBe(false);
+
+    // 2. Simulate the brand having since been bound as a sub-brand — inject
+    //    a binding block directly onto the on-disk context.yaml, the same
+    //    way a promotion flow (Phase 2) would.
+    const bound = parseYaml(await readFile(first.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    bound.binding = BINDING;
+    await writeFile(first.context_path, stringifyYaml(bound, { lineWidth: 0 }), 'utf-8');
+
+    // 3. Re-bootstrap with --force, exactly what a re-run of `mixshift brand
+    //    add <slug> --force` does (e.g. after a warehouse account-shape
+    //    change). Without the fix, this rebuild would drop `binding`.
+    const second = await bootstrapBrand(suggestion([row({})]), {
+      dataDirOverride: testDir,
+      force: true,
+    });
+    expect(second.binding_preserved).toBe(true);
+
+    const rewritten = parseYaml(await readFile(second.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    expect(rewritten.binding).toEqual(BINDING);
+
+    // The rebuilt file is still schema-valid with the binding in place.
+    const revalidated = contextSchema.safeParse(rewritten);
+    expect(revalidated.success).toBe(true);
+    if (revalidated.success) expect(revalidated.data.binding).toEqual(BINDING);
+  });
+
+  it('a --force rebuild with NO existing binding reports binding_preserved: false (no-op, no fabrication)', async () => {
+    await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    const second = await bootstrapBrand(suggestion([row({})]), {
+      dataDirOverride: testDir,
+      force: true,
+    });
+    expect(second.binding_preserved).toBe(false);
+    const rewritten = parseYaml(await readFile(second.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    expect(rewritten.binding).toBeUndefined();
+  });
+
+  it('a malformed existing binding is never carried forward as if it were valid', async () => {
+    const first = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    const bound = parseYaml(await readFile(first.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    // kind must be a lowercase snake_case slug — this violates that.
+    bound.binding = { kind: 'Not A Valid Slug' };
+    await writeFile(first.context_path, stringifyYaml(bound, { lineWidth: 0 }), 'utf-8');
+
+    const second = await bootstrapBrand(suggestion([row({})]), {
+      dataDirOverride: testDir,
+      force: true,
+    });
+    expect(second.binding_preserved).toBe(false);
+  });
+
+  it('does not change no-force behavior: the existing-directory error still fires with a binding present', async () => {
+    const first = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    const bound = parseYaml(await readFile(first.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    bound.binding = BINDING;
+    await writeFile(first.context_path, stringifyYaml(bound, { lineWidth: 0 }), 'utf-8');
+
+    await expect(
+      bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir }),
+    ).rejects.toThrow(/already exists/);
+
+    // Untouched — the no-force path errors out before writing anything.
+    const untouched = parseYaml(await readFile(first.context_path, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    expect(untouched.binding).toEqual(BINDING);
   });
 });
 

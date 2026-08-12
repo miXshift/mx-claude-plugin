@@ -7,12 +7,135 @@ import {
   classifyShape,
   normalizeLabel,
   resolveSellerIds,
+  coerceRetailRow,
+  coerceAdsRow,
+  coerceVendorRow,
+  coerceMatchRow,
   UNCLASSIFIED_LABEL,
+  RETAIL_BLANK_DOMINATED_THRESHOLD,
+  MEANINGFUL_LABEL_SHARE,
   type Sbd01RetailRow,
   type Sbd02AdsRow,
   type Sbd03VendorRow,
   type Sbd04MatchRow,
+  type Sbd01RetailRowWire,
+  type Sbd02AdsRowWire,
+  type Sbd03VendorRowWire,
+  type Sbd04MatchRowWire,
 } from './discovery.js';
+
+// ---------------------------------------------------------------------------
+// FINDING 2 (red team over PR #131, live-wire-verified): the gateway's mysql
+// pool runs bigNumberStrings:true, so every COUNT()-derived field arrives as
+// a JS STRING, and IF(...,0,1) flags arrive as a JS NUMBER 0/1 — neither a
+// clean number nor a boolean. These fixtures use the REAL wire shape (string
+// counts, 0/1 flags), not the idealized shape the rest of this file mocks,
+// so the coercion boundary is what CI actually exercises.
+// ---------------------------------------------------------------------------
+
+describe('wire-shape coercion (FINDING 2) — string counts, 0/1 flags', () => {
+  it('coerceRetailRow: string counts become real numbers', () => {
+    const wire: Sbd01RetailRowWire = {
+      SellerID: 1,
+      source: 'mws_items.Brand',
+      label: 'Forager Pantry',
+      asin_count: '40',
+      row_count: '80',
+    };
+    const clean = coerceRetailRow(wire);
+    expect(clean.asin_count).toBe(40);
+    expect(clean.row_count).toBe(80);
+    expect(typeof clean.asin_count).toBe('number');
+  });
+
+  it('coerceAdsRow: string campaign_count becomes a real number', () => {
+    const wire: Sbd02AdsRowWire = {
+      SellerID: 1,
+      source: 'campaign.Brand',
+      label: UNCLASSIFIED_LABEL,
+      campaign_count: '90',
+    };
+    expect(coerceAdsRow(wire).campaign_count).toBe(90);
+  });
+
+  it('coerceVendorRow: string item_count becomes a real number', () => {
+    const wire: Sbd03VendorRowWire = {
+      SellerID: 2,
+      source: 'vendor_items.CustomBrand',
+      label: 'Forager Pantry',
+      item_count: '10',
+    };
+    expect(coerceVendorRow(wire).item_count).toBe(10);
+  });
+
+  it('coerceMatchRow: string counts AND numeric 0/1 flags both coerce correctly', () => {
+    const wire: Sbd04MatchRowWire = {
+      label: 'Forager Pantry',
+      retail_asins: '40',
+      ads_campaigns: '10',
+      has_retail: 1,
+      has_ads: 0,
+    };
+    const clean = coerceMatchRow(wire);
+    expect(clean.retail_asins).toBe(40);
+    expect(clean.ads_campaigns).toBe(10);
+    expect(clean.has_retail).toBe(true);
+    expect(clean.has_ads).toBe(false);
+    expect(typeof clean.has_retail).toBe('boolean');
+  });
+
+  it('a malformed/missing count degrades to 0, not NaN (never poisons a sum)', () => {
+    const wire = { SellerID: 1, source: 's', label: 'x', asin_count: 'not-a-number', row_count: undefined } as unknown as Sbd01RetailRowWire;
+    const clean = coerceRetailRow(wire);
+    expect(clean.asin_count).toBe(0);
+    expect(clean.row_count).toBe(0);
+    expect(Number.isNaN(clean.asin_count)).toBe(false);
+  });
+
+  it('REGRESSION: without coercion, string counts would string-concatenate instead of summing', () => {
+    // The exact bug the finding describes: buildSideCoverage sums
+    // `entry.units += r.units`. Fed raw wire strings directly (bypassing
+    // coercion), "+=" on strings concatenates ("40" + "25" -> "4025").
+    // Feeding the SAME two rows through coerceRetailRow first must produce
+    // the correct numeric sum instead.
+    const wireRows: Sbd01RetailRowWire[] = [
+      { SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry', asin_count: '40', row_count: '40' },
+      { SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry', asin_count: '25', row_count: '25' },
+    ];
+    const cleanRows: Sbd01RetailRow[] = wireRows.map(coerceRetailRow);
+    const coverage = assembleRetailCoverage(cleanRows, []);
+    const forager = coverage.labels.find((l) => l.label === 'Forager Pantry');
+    expect(forager?.units).toBe(65); // NOT "4025" and NOT NaN
+    expect(coverage.total_units).toBe(65);
+  });
+
+  it('REGRESSION: the full fetch-to-assembly pipeline sums correctly from realistic wire rows', () => {
+    const wireRetail: Sbd01RetailRowWire[] = [
+      { SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry', asin_count: '40', row_count: '40' },
+      { SellerID: 1, source: 'mws_items.Brand', label: 'Alpine Trail', asin_count: '25', row_count: '25' },
+    ];
+    const wireAds: Sbd02AdsRowWire[] = [
+      { SellerID: 1, source: 'campaign.Brand', label: UNCLASSIFIED_LABEL, campaign_count: '90' },
+      { SellerID: 1, source: 'campaign.Brand', label: 'Forager Pantry', campaign_count: '10' },
+    ];
+    const wireMatch: Sbd04MatchRowWire[] = [
+      { label: 'Forager Pantry', retail_asins: '40', ads_campaigns: '10', has_retail: 1, has_ads: 1 },
+      { label: 'Alpine Trail', retail_asins: '25', ads_campaigns: '0', has_retail: 1, has_ads: 0 },
+    ];
+    const report = assembleCoverageReport({
+      sellerId: 'A1EXAMPLE23456',
+      now: new Date('2026-08-12T00:00:00.000Z'),
+      retailRows: wireRetail.map(coerceRetailRow),
+      vendorRows: [],
+      adsRows: wireAds.map(coerceAdsRow),
+      matchRows: wireMatch.map(coerceMatchRow),
+    });
+    expect(report.retail.total_units).toBe(65);
+    expect(report.ads.total_units).toBe(100);
+    expect(report.ads.unclassified_share).toBeCloseTo(0.9, 6);
+    expect(report.match.matched).toBe(1);
+  });
+});
 
 describe('resolveSellerIds — AmazonSellerID -> internal warehouse seller_id(s)', () => {
   const sellers = [
@@ -206,6 +329,106 @@ describe('classifyShape — proposal only, never a decision', () => {
     const c = classifyShape(retail, ads);
     expect(c.proposal).toBe('brand_nested_candidate');
     expect(c.evidence.some((e) => e.includes('unclassified'))).toBe(true);
+  });
+});
+
+// FINDING 5, red team over PR #131: design doc §4.1 says single_brand on "1
+// dominant label OR blanks-dominated" and requires "meaningful catalog/spend
+// mass" for brand_nested candidacy. The original code gated ONLY on
+// distinct_labels<=1, so a mostly-blank retail side with a few sliver labels
+// (a handful of mislabeled ASINs) proposed brand_nested_candidate on noise.
+describe('classifyShape — retail blanks-dominated + meaningful-mass gates (FINDING 5)', () => {
+  it('a 95%-blank retail side with 3 sliver labels proposes single_brand, not brand_nested_candidate', () => {
+    // total_units = 1000: 950 unclassified (95%, above the 90% threshold),
+    // 3 labeled rows of 16/17/17 units each (1.6%/1.7%/1.7% share) — exactly
+    // the bug scenario the finding describes.
+    const retail = assembleRetailCoverage(
+      [
+        { SellerID: 1, source: 'mws_items.Brand', label: '', asin_count: 950, row_count: 950 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Sliver A', asin_count: 16, row_count: 16 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Sliver B', asin_count: 17, row_count: 17 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Sliver C', asin_count: 17, row_count: 17 },
+      ],
+      [],
+    );
+    const ads = assembleAdsCoverage([]);
+    const c = classifyShape(retail, ads);
+    expect(c.proposal).toBe('single_brand');
+    expect(c.evidence.some((e) => e.includes('blanks-dominated'))).toBe(true);
+  });
+
+  it('a healthy nested account (two substantial labels, low blanks) is UNCHANGED: brand_nested_candidate', () => {
+    const retail = assembleRetailCoverage(
+      [
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry', asin_count: 400, row_count: 400 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Alpine Trail', asin_count: 400, row_count: 400 },
+        { SellerID: 1, source: 'mws_items.Brand', label: '', asin_count: 200, row_count: 200 },
+      ],
+      [],
+    );
+    const ads = assembleAdsCoverage([]);
+    const c = classifyShape(retail, ads);
+    // 20% blank — well under the 90% blanks-dominated threshold; both
+    // labels are 40% each — well above the 2% meaningful-mass floor.
+    expect(c.proposal).toBe('brand_nested_candidate');
+  });
+
+  it('the meaningful-mass qualifier alone (no blanks-dominance) suppresses sliver labels from counting toward N', () => {
+    // 50% blank (under the 90% threshold, so gate 1 does NOT fire) + one
+    // real 49.4%-share label + two 0.3%-share slivers. Without the mass
+    // qualifier this would read as 3 distinct labels -> brand_nested. With
+    // it, only the one real label counts -> single_brand.
+    const retail = assembleRetailCoverage(
+      [
+        { SellerID: 1, source: 'mws_items.Brand', label: '', asin_count: 500, row_count: 500 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Real Brand', asin_count: 494, row_count: 494 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Sliver A', asin_count: 3, row_count: 3 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Sliver B', asin_count: 3, row_count: 3 },
+      ],
+      [],
+    );
+    const ads = assembleAdsCoverage([]);
+    const c = classifyShape(retail, ads);
+    expect(retail.unclassified_share).toBeLessThan(RETAIL_BLANK_DOMINATED_THRESHOLD);
+    expect(c.proposal).toBe('single_brand');
+    expect(c.evidence.some((e) => e.includes('meaningful'))).toBe(true);
+  });
+
+  it('a label right at the meaningful-mass floor counts; just under it does not', () => {
+    const atFloor = MEANINGFUL_LABEL_SHARE * 1000; // exactly 2% of 1000
+    const underFloor = atFloor - 1;
+    const retail = assembleRetailCoverage(
+      [
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Dominant', asin_count: 1000 - atFloor - underFloor, row_count: 1 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'At Floor', asin_count: atFloor, row_count: 1 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Under Floor', asin_count: underFloor, row_count: 1 },
+      ],
+      [],
+    );
+    const ads = assembleAdsCoverage([]);
+    const c = classifyShape(retail, ads);
+    // "At Floor" (exactly 2%) plus "Dominant" both count -> 2 meaningful
+    // labels -> brand_nested_candidate, even though "Under Floor" (just
+    // below 2%) does not count.
+    expect(c.proposal).toBe('brand_nested_candidate');
+  });
+
+  it('the blanks-dominated gate is RETAIL-ONLY: a blank-dominated ads side never suppresses a real nested proposal', () => {
+    const retail = assembleRetailCoverage(
+      [
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry', asin_count: 40, row_count: 40 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'Alpine Trail', asin_count: 25, row_count: 25 },
+      ],
+      [],
+    );
+    // Ads at 95% unclassified — well above RETAIL_BLANK_DOMINATED_THRESHOLD,
+    // but that gate must never consult `ads`.
+    const ads = assembleAdsCoverage([
+      { SellerID: 1, source: 'campaign.Brand', label: '', campaign_count: 950 },
+      { SellerID: 1, source: 'campaign.Brand', label: 'Forager Pantry', campaign_count: 50 },
+    ]);
+    const c = classifyShape(retail, ads);
+    expect(c.proposal).toBe('brand_nested_candidate');
   });
 });
 

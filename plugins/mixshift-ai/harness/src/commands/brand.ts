@@ -374,6 +374,7 @@ export function registerBrandCommands(program: Command): void {
                   narrative_path: result.narrative_path,
                   written_files: result.written_files,
                   account_count: result.context.accounts.length,
+                  binding_preserved: result.binding_preserved,
                   next_step: `Run /mx-brand-context ${match.slug} in Claude to complete AM intake.`,
                 },
                 null,
@@ -386,6 +387,9 @@ export function registerBrandCommands(program: Command): void {
                 `    accounts:  ${result.context.accounts.length}\n` +
                 `    context:   ${result.context_path}\n` +
                 `    narrative: ${result.narrative_path}\n` +
+                (result.binding_preserved
+                  ? `\n⚠ This brand's existing sub-brand binding was preserved (not touched by --force).\n`
+                  : '') +
                 `\nNext: run \`/mx-brand-context ${match.slug}\` in Claude.\n` +
                 `      The skill walks you through AM intake (positioning,\n` +
                 `      goals, structural events) and fills in everything\n` +

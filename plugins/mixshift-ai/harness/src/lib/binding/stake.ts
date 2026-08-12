@@ -124,12 +124,21 @@ function round2(n: number): number {
 function summarizeCoverage(report: CoverageReport): string {
   const matchPct =
     report.match.match_rate === null ? 'n/a' : `${(report.match.match_rate * 100).toFixed(0)}%`;
+  // `proposal` is only ever null when the caller's fetch did not fully
+  // succeed (see discovery.ts's insufficientDataClassification) — the CLI
+  // never calls emitCoverageStake in that case (FINDING 1, red team over
+  // PR #131), but this stays a defensive, honest fallback rather than
+  // printing the literal string "null" if ever called directly.
+  const proposalText =
+    report.classification.proposal === null
+      ? 'not available (insufficient data)'
+      : `${report.classification.proposal} (unconfirmed — the user has not reviewed this)`;
   return (
     `Sub-brand label coverage for account ${report.seller_id}: retail side has ` +
     `${report.retail.distinct_labels} distinct label(s) (${(report.retail.unclassified_share * 100).toFixed(0)}% ` +
     `unclassified units), ads side has ${report.ads.distinct_labels} distinct label(s) ` +
     `(${(report.ads.unclassified_share * 100).toFixed(0)}% unclassified units), cross-side match rate ` +
-    `${matchPct}. Shape proposal: ${report.classification.proposal} (unconfirmed — the user has not reviewed this).`
+    `${matchPct}. Shape proposal: ${proposalText}.`
   );
 }
 

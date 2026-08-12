@@ -81,6 +81,110 @@ export interface Sbd04MatchRow {
   has_ads: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Wire-shape coercion (FINDING 2, red team over PR #131, live-wire-verified):
+// the four interfaces above are the CLEAN, POST-COERCION shape every
+// assemble* function below consumes. What `runNamedQuery` actually returns
+// is different in two ways:
+//
+//   - the gateway's mysql pool runs with bigNumberStrings:true (COUNT()
+//     derives a BIGINT column), so asin_count / row_count / campaign_count /
+//     item_count / retail_asins / ads_campaigns arrive as JS STRINGS, not
+//     numbers. buildSideCoverage's `entry.units += r.units` and
+//     assembleMatch's arithmetic would otherwise string-concatenate
+//     ("40" + "25" -> "4025") instead of summing, silently corrupting every
+//     total and share.
+//   - has_retail / has_ads come from `IF(...,0,1)` and arrive as a JS
+//     NUMBER 0/1, not a boolean.
+//
+// Coercing ONCE here, at the fetch boundary, means every function above
+// this comment can keep assuming clean number/boolean input.
+// ---------------------------------------------------------------------------
+
+export interface Sbd01RetailRowWire {
+  SellerID: number | string;
+  source: string;
+  label: string;
+  asin_count: number | string;
+  row_count: number | string;
+}
+
+export interface Sbd02AdsRowWire {
+  SellerID: number | string;
+  source: string;
+  label: string;
+  campaign_count: number | string;
+}
+
+export interface Sbd03VendorRowWire {
+  SellerID: number | string;
+  source: string;
+  label: string;
+  item_count: number | string;
+}
+
+export interface Sbd04MatchRowWire {
+  label: string;
+  retail_asins: number | string;
+  ads_campaigns: number | string;
+  has_retail: number | boolean;
+  has_ads: number | boolean;
+}
+
+/** Number(...) with a NaN guard: a malformed/missing count degrades to 0
+ *  rather than poisoning every downstream sum with NaN. */
+function coerceCount(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** A 0/1 (or already-boolean) flag -> a real boolean. Robust to either
+ *  arriving as a number or, defensively, a numeric string. */
+function coerceFlag(raw: unknown): boolean {
+  if (typeof raw === 'boolean') return raw;
+  return coerceCount(raw) === 1;
+}
+
+/** Exported for direct unit testing against realistic wire fixtures (string
+ *  counts) without a network mock — see discovery.test.ts. */
+export function coerceRetailRow(row: Sbd01RetailRowWire): Sbd01RetailRow {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    asin_count: coerceCount(row.asin_count),
+    row_count: coerceCount(row.row_count),
+  };
+}
+
+export function coerceAdsRow(row: Sbd02AdsRowWire): Sbd02AdsRow {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    campaign_count: coerceCount(row.campaign_count),
+  };
+}
+
+export function coerceVendorRow(row: Sbd03VendorRowWire): Sbd03VendorRow {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    item_count: coerceCount(row.item_count),
+  };
+}
+
+export function coerceMatchRow(row: Sbd04MatchRowWire): Sbd04MatchRow {
+  return {
+    label: row.label,
+    retail_asins: coerceCount(row.retail_asins),
+    ads_campaigns: coerceCount(row.ads_campaigns),
+    has_retail: coerceFlag(row.has_retail),
+    has_ads: coerceFlag(row.has_ads),
+  };
+}
+
 /** Blank/absent labels are a BUCKET, never a sub-brand candidate (design doc
  *  §3, the DHC-07/08 rule: `COALESCE(NULLIF(col,''),'(unclassified)')`). */
 export const UNCLASSIFIED_LABEL = '(unclassified)';
@@ -219,12 +323,44 @@ export function assembleMatch(rows: readonly Sbd04MatchRow[]): MatchSummary {
 export type ShapeProposal = 'single_brand' | 'brand_nested_candidate';
 
 export interface ClassificationProposal {
-  proposal: ShapeProposal;
+  /** null when there was no real data to classify from at all — see
+   *  `insufficientDataClassification` below (FINDING 1, red team over
+   *  PR #131). Callers must never treat null as either shape. */
+  proposal: ShapeProposal | null;
   evidence: string[];
   /** Always true — documents that this is a proposal, never applied
    *  automatically (design doc §4.1: "Never silently classify"). */
   confirm_required: true;
 }
+
+/**
+ * Design doc §4.1: "1 dominant label OR blanks-dominated -> single_brand".
+ * A retail side at or above this unclassified share is blanks-dominated
+ * regardless of how many labeled slivers exist among the non-blank
+ * remainder — a handful of tiny labeled rows on an otherwise-unlabeled
+ * account is not sub-brand evidence.
+ *
+ * Deliberately RETAIL-ONLY: a blank-dominated ADS side is the NORMAL state
+ * on a genuinely nested account (F24 — ads-side blanks measured 59-100% on
+ * real nested evidence accounts), so this gate must never look at `ads`,
+ * or every real nested account would misclassify as single_brand.
+ *
+ * Tunable; not itself a value the evidence measured (F24 gives ads-side
+ * blank RATES, not a retail single/nested threshold), so this is a
+ * documented default rather than a prescribed number.
+ */
+export const RETAIL_BLANK_DOMINATED_THRESHOLD = 0.9;
+
+/**
+ * Design doc §4.1: brand_nested candidacy requires "N labels with
+ * MEANINGFUL catalog/spend mass" — a label under this share of the side's
+ * total units does not count toward N. Without this qualifier, a handful
+ * of sliver labels (a handful of mislabeled ASINs, a one-off test
+ * campaign) on an otherwise blanks-dominated-but-just-under-the-threshold
+ * account would manufacture a brand_nested_candidate proposal on noise.
+ * Tunable.
+ */
+export const MEANINGFUL_LABEL_SHARE = 0.02;
 
 /**
  * Propose single_brand vs brand_nested_candidate from the RETAIL side's
@@ -236,13 +372,38 @@ export interface ClassificationProposal {
  */
 export function classifyShape(retail: SideCoverage, ads: SideCoverage): ClassificationProposal {
   const evidence: string[] = [];
-  const topRetail = retail.labels.filter((l) => l.label !== UNCLASSIFIED_LABEL).slice(0, 5);
+  const nonBlankRetail = retail.labels.filter((l) => l.label !== UNCLASSIFIED_LABEL);
+  const topRetail = nonBlankRetail.slice(0, 5);
 
-  if (retail.distinct_labels <= 1) {
+  // Gate 1 (§4.1, "blanks-dominated"): checked BEFORE counting labels, so a
+  // blank-dominated retail side never reaches brand_nested_candidate no
+  // matter how many sliver labels sit in the non-blank remainder.
+  if (
+    retail.total_units > 0 &&
+    retail.unclassified_share >= RETAIL_BLANK_DOMINATED_THRESHOLD
+  ) {
     evidence.push(
-      retail.distinct_labels === 0
-        ? 'retail side has no non-blank labels'
-        : `retail side has exactly one non-blank label (${topRetail[0]?.label ?? UNCLASSIFIED_LABEL})`,
+      `retail side is ${(retail.unclassified_share * 100).toFixed(0)}% unclassified ` +
+        `(at or above the ${(RETAIL_BLANK_DOMINATED_THRESHOLD * 100).toFixed(0)}% blanks-dominated ` +
+        'threshold), so any remaining labeled slivers are not treated as sub-brand evidence',
+    );
+    return { proposal: 'single_brand', evidence, confirm_required: true };
+  }
+
+  // Gate 2 (§4.1, "meaningful ... mass"): a label under MEANINGFUL_LABEL_SHARE
+  // of the side's total units does not count toward N for nested candidacy.
+  // With zero total_units there is no denominator to qualify against — fall
+  // back to raw non-blank presence (matches the "no rows at all" case).
+  const meaningfulRetail =
+    retail.total_units > 0
+      ? nonBlankRetail.filter((l) => l.units / retail.total_units >= MEANINGFUL_LABEL_SHARE)
+      : nonBlankRetail;
+
+  if (meaningfulRetail.length <= 1) {
+    evidence.push(
+      meaningfulRetail.length === 0
+        ? 'retail side has no label with meaningful catalog/spend mass'
+        : `retail side has exactly one label with meaningful mass (${meaningfulRetail[0]?.label ?? UNCLASSIFIED_LABEL})`,
     );
     if (retail.unclassified_share > 0) {
       evidence.push(
@@ -252,7 +413,10 @@ export function classifyShape(retail: SideCoverage, ads: SideCoverage): Classifi
     return { proposal: 'single_brand', evidence, confirm_required: true };
   }
 
-  evidence.push(`retail side has ${retail.distinct_labels} distinct non-blank labels`);
+  evidence.push(
+    `retail side has ${meaningfulRetail.length} distinct labels with meaningful mass ` +
+      `(>= ${(MEANINGFUL_LABEL_SHARE * 100).toFixed(0)}% of units each)`,
+  );
   evidence.push(
     `top labels by units: ${topRetail.map((l) => `${l.label} (${l.units})`).join(', ')}`,
   );
@@ -263,6 +427,21 @@ export function classifyShape(retail: SideCoverage, ads: SideCoverage): Classifi
     );
   }
   return { proposal: 'brand_nested_candidate', evidence, confirm_required: true };
+}
+
+/**
+ * Classification when there is no real data to classify from at all (the
+ * fetch failed outright, or the AmazonSellerID resolved to zero warehouse
+ * sellers) — FINDING 1, red team over PR #131: an all-empty-rows report
+ * would otherwise collapse to distinct_labels=0 and `classifyShape`'s
+ * normal "no non-blank labels -> single_brand" path, producing a
+ * wrong-looking-real answer during the documented gateway rollout gap.
+ * Callers (the CLI) use this INSTEAD OF `classifyShape` whenever
+ * `fetchLabelDiscovery` reports a total failure (see `classifyFetchOutcome`
+ * below — status 'error').
+ */
+export function insufficientDataClassification(reason: string): ClassificationProposal {
+  return { proposal: null, evidence: [reason], confirm_required: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -389,26 +568,55 @@ export async function fetchLabelDiscovery(
   };
 
   const [retail, ads, vendor, match] = await Promise.all([
-    runNamedQuery<Sbd01RetailRow>('sbd-01', queryOpts),
-    runNamedQuery<Sbd02AdsRow>('sbd-02', queryOpts),
-    runNamedQuery<Sbd03VendorRow>('sbd-03', queryOpts),
-    runNamedQuery<Sbd04MatchRow>('sbd-04', queryOpts),
+    runNamedQuery<Sbd01RetailRowWire>('sbd-01', queryOpts),
+    runNamedQuery<Sbd02AdsRowWire>('sbd-02', queryOpts),
+    runNamedQuery<Sbd03VendorRowWire>('sbd-03', queryOpts),
+    runNamedQuery<Sbd04MatchRowWire>('sbd-04', queryOpts),
   ]);
 
   const errors: LabelDiscoveryFetchResult['errors'] = [];
-  const rowsOf = <Row>(queryId: string, result: DataQueryResult<Row>): Row[] => {
-    if (result.ok) return result.rows;
+  function rowsOf<WireRow, CleanRow>(
+    queryId: string,
+    result: DataQueryResult<WireRow>,
+    coerce: (row: WireRow) => CleanRow,
+  ): CleanRow[] {
+    if (result.ok) return result.rows.map(coerce);
     errors.push({ query_id: queryId, message: result.message, friendly: result.friendly });
     return [];
-  };
+  }
 
   return {
     ok: errors.length === 0,
     resolvedSellerIds,
-    retailRows: rowsOf('sbd-01', retail),
-    adsRows: rowsOf('sbd-02', ads),
-    vendorRows: rowsOf('sbd-03', vendor),
-    matchRows: rowsOf('sbd-04', match),
+    retailRows: rowsOf('sbd-01', retail, coerceRetailRow),
+    adsRows: rowsOf('sbd-02', ads, coerceAdsRow),
+    vendorRows: rowsOf('sbd-03', vendor, coerceVendorRow),
+    matchRows: rowsOf('sbd-04', match, coerceMatchRow),
     errors,
   };
+}
+
+/**
+ * Classify a fetch result into the CLI's status/exit-code contract (FINDING
+ * 1, red team over PR #131):
+ *   'ok'      fetched.ok — every query (and the seller-id resolution step)
+ *             succeeded.
+ *   'error'   the seller-id resolution step failed (nothing to query at
+ *             all — see the synthetic `resolve_seller_ids` error id), or
+ *             ALL FOUR sbd-* queries failed.
+ *   'partial' some but not all of the four sbd-* queries failed; the
+ *             report is real (built from whichever sides succeeded) but
+ *             incomplete.
+ */
+export type FetchOutcome = 'ok' | 'partial' | 'error';
+
+/** How many gateway named queries fetchLabelDiscovery calls per run (the
+ *  four sbd-* entries) — used to tell "some failed" from "all failed". */
+const SBD_QUERY_COUNT = 4;
+
+export function classifyFetchOutcome(fetched: LabelDiscoveryFetchResult): FetchOutcome {
+  if (fetched.ok) return 'ok';
+  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === 'resolve_seller_ids');
+  if (sellerResolutionFailed) return 'error';
+  return fetched.errors.length >= SBD_QUERY_COUNT ? 'error' : 'partial';
 }

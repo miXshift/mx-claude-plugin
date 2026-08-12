@@ -26,7 +26,8 @@ export { slugify };
  *   1. Slugify the label value.
  *   2. If unique against `existingSlugs`, done.
  *   3. On collision, prefix with the slugified seller name
- *      (design doc example: "alpha-seller-brand-x").
+ *      (e.g. "acme-agency-forager-pantry" for label "Forager Pantry" under
+ *      seller "Acme Agency" — a synthetic example, not an account name).
  *   4. If STILL colliding (or the seller name yields no useful prefix —
  *      empty, or identical to the base slug), append a numeric suffix
  *      (-2, -3, ...) until unique.

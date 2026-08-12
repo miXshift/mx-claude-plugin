@@ -253,7 +253,12 @@ const bindingKindSchema = z
   .regex(/^[a-z][a-z0-9_]*$/, 'binding.kind must be a lowercase snake_case slug')
   .max(64);
 
-const bindingSchema = z.object({
+// Exported (not just the inferred type) so callers that must PRESERVE a
+// binding block across a rewrite — e.g. lib/clients/bootstrap.ts's --force
+// re-bootstrap path, FINDING 3 red team over PR #131 — can validate a
+// binding extracted from an existing file on its own, independent of the
+// rest of contextSchema.
+export const bindingSchema = z.object({
   kind: bindingKindSchema.optional(),
   amazon_seller_id: z.string().min(1).optional(),
   seller_ids: z.array(z.number().int()).optional(),
