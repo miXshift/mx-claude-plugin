@@ -39,6 +39,7 @@ import { registerBrandRenderContextCommand } from './brand-render-context.js';
 import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
 import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
+import { runSubbrandDiscovery } from './brand-subbrand-discover.js';
 
 interface RootOptions {
   json?: boolean;
@@ -448,7 +449,11 @@ export function registerBrandCommands(program: Command): void {
       'Query the seller table, persist to ~/.mixshift/clients/index.yaml, ' +
         'and surface the brands you have access to. By default hides ' +
         'dormant brands from the printed table; use --include-inactive to ' +
-        'see them. The registry on disk always captures every brand.',
+        'see them. The registry on disk always captures every brand. ' +
+        'Pass --seller-id to run SUB-BRAND label discovery for one Amazon ' +
+        'seller account instead (mx-ops#6 P1) — a different question ' +
+        '("what labels live inside this account") that never touches the ' +
+        'brand registry.',
     )
     .option(
       '--include-inactive',
@@ -461,8 +466,35 @@ export function registerBrandCommands(program: Command): void {
         '(markdown pipe table for Claude/Cowork to surface verbatim in chat)',
       'terminal',
     )
-    .action(async (opts: { includeInactive: boolean; format?: string }, cmd: Command) => {
-      const root = cmd.optsWithGlobals<RootOptions>();
+    .option(
+      '--seller-id <id>',
+      'run sub-brand label discovery for one Amazon Seller ID instead of the ' +
+        'normal account discovery (mx-ops#6 P1)',
+    )
+    .option(
+      '--emit-stake',
+      'with --seller-id: also post a coverage-summary stake to the account ' +
+        'timeline namespace',
+      false,
+    )
+    .action(
+      async (
+        opts: {
+          includeInactive: boolean;
+          format?: string;
+          sellerId?: string;
+          emitStake?: boolean;
+        },
+        cmd: Command,
+      ) => {
+        if (opts.sellerId !== undefined) {
+          await runSubbrandDiscovery(
+            { sellerId: opts.sellerId, emitStake: opts.emitStake },
+            cmd,
+          );
+          return;
+        }
+        const root = cmd.optsWithGlobals<RootOptions>();
       try {
         const { index } = await runDiscoveryAndPersist({
           dataDirOverride: root.dataDir,

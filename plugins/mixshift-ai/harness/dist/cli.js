@@ -64366,6 +64366,10 @@ var init_events = __esm({
       // Brand context
       BrandDiscovered: "brand.discovered",
       BrandAdded: "brand.added",
+      // Sub-brand label discovery (mx-ops#6 P1; `mixshift brand discover
+      // --seller-id`). Payload carries counts/rates/proposal only — never label
+      // values or row contents.
+      BrandSubbrandDiscovered: "brand.subbrand_discovered",
       // Brand config editor (mixshift brand config <slug>)
       BrandConfigViewed: "brand_config.viewed",
       BrandConfigEdited: "brand_config.edited",
@@ -66541,6 +66545,26 @@ var subBrandSchema = external_exports.object({
   name: external_exports.string().min(1),
   item_groups: external_exports.array(external_exports.string()).optional()
 });
+var bindingLabelSourceSchema = external_exports.string().min(1).max(128);
+var bindingLabelSchema = external_exports.object({
+  source: bindingLabelSourceSchema,
+  value: external_exports.string().min(1)
+});
+var bindingKindSchema = external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "binding.kind must be a lowercase snake_case slug").max(64);
+var bindingSchema = external_exports.object({
+  kind: bindingKindSchema.optional(),
+  amazon_seller_id: external_exports.string().min(1).optional(),
+  seller_ids: external_exports.array(external_exports.number().int()).optional(),
+  retail_label: bindingLabelSchema.optional(),
+  ads_label: bindingLabelSchema.optional(),
+  // Plain-language note, MODEL-VISIBLE on ANY plugin version (design doc
+  // §11 "old clients are the residual smearing hazard"): an install that
+  // predates this schema cannot read `binding` at all, but an LLM-driven
+  // skill run still reads context.yaml's prose. This field exists so even
+  // that old-client path carries a human sentence saying the brand is
+  // label-scoped and account-wide fetches must not be attributed to it.
+  scope_note: external_exports.string().max(2e3).optional()
+});
 var captureRateCalibrationSchema = external_exports.object({
   enabled: external_exports.boolean(),
   capture_rate_pct: external_exports.number().optional(),
@@ -66591,7 +66615,12 @@ var contextSchema = external_exports.object({
   reporting: external_exports.unknown().optional(),
   thresholds: external_exports.record(external_exports.string(), external_exports.unknown()).optional(),
   detected_anomalies: external_exports.unknown().optional(),
-  skill_config: skillConfigSchema.optional()
+  skill_config: skillConfigSchema.optional(),
+  // Sub-brand binding (mx-ops#6 P1). Additive + fully optional; absent on
+  // every normal brand and on every context.yaml written before this field
+  // existed. See the binding schema block above for the forward-tolerance
+  // rationale on kind and the label sources.
+  binding: bindingSchema.optional()
 }).refine(
   (ctx) => {
     if (ctx.management.primary_metric !== "TACOS") return true;
@@ -75697,6 +75726,316 @@ var NO_ACCOUNT_TERMINAL = "No MixShift account yet? Create one first, then conne
 var DATA_TIMING_CHAT = "After activation, most accounts are fully populated within 24-48 hours; large catalogs can take longer (" + DATA_TIMING_URL + "). MixShift emails you when your data is ready to work with.";
 var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated within 24-48 hours\n(large catalogs can take longer). MixShift emails you when your data\nis ready. Details:\n  " + DATA_TIMING_URL + "\n";
 
+// src/lib/binding/discovery.ts
+init_query_runner();
+var UNCLASSIFIED_LABEL = "(unclassified)";
+function normalizeLabel(raw) {
+  const trimmed = (raw ?? "").trim();
+  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
+}
+function buildSideCoverage(side, rows) {
+  const byLabel = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const entry = byLabel.get(r.label) ?? { sources: /* @__PURE__ */ new Set(), units: 0 };
+    entry.sources.add(r.source);
+    entry.units += r.units;
+    byLabel.set(r.label, entry);
+  }
+  const labels = [...byLabel.entries()].map(([label, { sources, units }]) => ({
+    label,
+    source: [...sources].sort().join(", "),
+    units
+  })).sort((a, b) => b.units - a.units || a.label.localeCompare(b.label));
+  const totalUnits = labels.reduce((n, l) => n + l.units, 0);
+  const unclassified = byLabel.get(UNCLASSIFIED_LABEL);
+  const unclassifiedUnits = unclassified?.units ?? 0;
+  const distinctLabels = labels.filter((l) => l.label !== UNCLASSIFIED_LABEL).length;
+  return {
+    side,
+    total_units: totalUnits,
+    distinct_labels: distinctLabels,
+    unclassified_units: unclassifiedUnits,
+    unclassified_share: totalUnits > 0 ? unclassifiedUnits / totalUnits : 0,
+    labels
+  };
+}
+function assembleRetailCoverage(scRows, vcRows) {
+  const units = [
+    ...scRows.map((r) => ({ label: normalizeLabel(r.label), source: r.source, units: r.asin_count })),
+    ...vcRows.map((r) => ({ label: normalizeLabel(r.label), source: r.source, units: r.item_count }))
+  ];
+  return buildSideCoverage("retail", units);
+}
+function assembleAdsCoverage(rows) {
+  const units = rows.map((r) => ({
+    label: normalizeLabel(r.label),
+    source: r.source,
+    units: r.campaign_count
+  }));
+  return buildSideCoverage("ads", units);
+}
+function assembleMatch(rows) {
+  const considered = rows.filter((r) => normalizeLabel(r.label) !== UNCLASSIFIED_LABEL);
+  const matched = considered.filter((r) => r.has_retail && r.has_ads).length;
+  const retailOnly = considered.filter((r) => r.has_retail && !r.has_ads).length;
+  const adsOnly = considered.filter((r) => !r.has_retail && r.has_ads).length;
+  return {
+    distinct_labels_considered: considered.length,
+    matched,
+    retail_only: retailOnly,
+    ads_only: adsOnly,
+    match_rate: considered.length > 0 ? matched / considered.length : null
+  };
+}
+function classifyShape(retail, ads) {
+  const evidence = [];
+  const topRetail = retail.labels.filter((l) => l.label !== UNCLASSIFIED_LABEL).slice(0, 5);
+  if (retail.distinct_labels <= 1) {
+    evidence.push(
+      retail.distinct_labels === 0 ? "retail side has no non-blank labels" : `retail side has exactly one non-blank label (${topRetail[0]?.label ?? UNCLASSIFIED_LABEL})`
+    );
+    if (retail.unclassified_share > 0) {
+      evidence.push(
+        `${(retail.unclassified_share * 100).toFixed(0)}% of retail units are unclassified`
+      );
+    }
+    return { proposal: "single_brand", evidence, confirm_required: true };
+  }
+  evidence.push(`retail side has ${retail.distinct_labels} distinct non-blank labels`);
+  evidence.push(
+    `top labels by units: ${topRetail.map((l) => `${l.label} (${l.units})`).join(", ")}`
+  );
+  if (ads.unclassified_share > 0.5) {
+    evidence.push(
+      `ads side is ${(ads.unclassified_share * 100).toFixed(0)}% unclassified \u2014 expect sub-brand ad attribution to start mostly (unclassified) and improve as labels are added (F24)`
+    );
+  }
+  return { proposal: "brand_nested_candidate", evidence, confirm_required: true };
+}
+function assembleCoverageReport(input) {
+  const retail = assembleRetailCoverage(input.retailRows, input.vendorRows);
+  const ads = assembleAdsCoverage(input.adsRows);
+  const match = assembleMatch(input.matchRows);
+  const classification = classifyShape(retail, ads);
+  return {
+    seller_id: input.sellerId,
+    generated_at: (input.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    retail,
+    ads,
+    match,
+    classification
+  };
+}
+async function fetchLabelDiscovery(amazonSellerId, options = {}) {
+  const params = { AmazonSellerID: amazonSellerId };
+  const queryOpts = {
+    params,
+    dataDirOverride: options.dataDirOverride,
+    queryTimeoutMs: options.queryTimeoutMs
+  };
+  const [retail, ads, vendor, match] = await Promise.all([
+    runNamedQuery("sbd-01", queryOpts),
+    runNamedQuery("sbd-02", queryOpts),
+    runNamedQuery("sbd-03", queryOpts),
+    runNamedQuery("sbd-04", queryOpts)
+  ]);
+  const errors = [];
+  const rowsOf = (queryId, result) => {
+    if (result.ok) return result.rows;
+    errors.push({ query_id: queryId, message: result.message, friendly: result.friendly });
+    return [];
+  };
+  return {
+    ok: errors.length === 0,
+    retailRows: rowsOf("sbd-01", retail),
+    adsRows: rowsOf("sbd-02", ads),
+    vendorRows: rowsOf("sbd-03", vendor),
+    matchRows: rowsOf("sbd-04", match),
+    errors
+  };
+}
+
+// src/lib/binding/stake.ts
+var ACCOUNT_NAMESPACE_PREFIX = "acct-";
+var MAX_INTERPRETATION_CHARS2 = 4e3;
+function accountNamespaceSlug(amazonSellerId) {
+  return `${ACCOUNT_NAMESPACE_PREFIX}${amazonSellerId.toLowerCase()}`;
+}
+function coverageIdempotencyKey(amazonSellerId, isoDate) {
+  return `acctcov:${accountNamespaceSlug(amazonSellerId)}:${isoDate}`;
+}
+function utcDatePart(iso) {
+  return iso.slice(0, 10);
+}
+function buildCoverageStakePayload(report) {
+  const day = utcDatePart(report.generated_at);
+  const interpretation = summarizeCoverage(report).slice(0, MAX_INTERPRETATION_CHARS2);
+  return {
+    brand_slug: accountNamespaceSlug(report.seller_id),
+    family: "structural",
+    kind: "structural.sub_brand_coverage",
+    category: "other",
+    source: "system",
+    interpretation,
+    ts: report.generated_at,
+    evidence: {
+      recorded_from: "mixshift brand discover --emit-stake",
+      seller_id: report.seller_id,
+      retail_distinct_labels: report.retail.distinct_labels,
+      retail_unclassified_share: round24(report.retail.unclassified_share),
+      ads_distinct_labels: report.ads.distinct_labels,
+      ads_unclassified_share: round24(report.ads.unclassified_share),
+      match_rate: report.match.match_rate === null ? null : round24(report.match.match_rate),
+      classification_proposal: report.classification.proposal
+    },
+    idempotency_key: coverageIdempotencyKey(report.seller_id, day)
+  };
+}
+function round24(n) {
+  return Math.round(n * 100) / 100;
+}
+function summarizeCoverage(report) {
+  const matchPct = report.match.match_rate === null ? "n/a" : `${(report.match.match_rate * 100).toFixed(0)}%`;
+  return `Sub-brand label coverage for account ${report.seller_id}: retail side has ${report.retail.distinct_labels} distinct label(s) (${(report.retail.unclassified_share * 100).toFixed(0)}% unclassified units), ads side has ${report.ads.distinct_labels} distinct label(s) (${(report.ads.unclassified_share * 100).toFixed(0)}% unclassified units), cross-side match rate ${matchPct}. Shape proposal: ${report.classification.proposal} (unconfirmed \u2014 the user has not reviewed this).`;
+}
+async function emitCoverageStake(report, options = {}) {
+  const body = buildCoverageStakePayload(report);
+  const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
+  const posted = await client.postEvent(body, {
+    ...options.timeoutMs !== void 0 ? { timeoutMs: options.timeoutMs } : {}
+  });
+  if (!posted.ok) {
+    return { ok: false, outcome: "failed", detail: posted.friendly, brand_slug: body.brand_slug };
+  }
+  return {
+    ok: true,
+    outcome: posted.duplicate ? "duplicate" : "created",
+    event_id: posted.id,
+    brand_slug: body.brand_slug
+  };
+}
+
+// src/commands/brand-subbrand-discover.ts
+init_telemetry();
+async function runSubbrandDiscovery(opts, cmd) {
+  const root = cmd.optsWithGlobals();
+  const t0 = Date.now();
+  try {
+    const fetched = await fetchLabelDiscovery(opts.sellerId, {
+      dataDirOverride: root.dataDir
+    });
+    const report = assembleCoverageReport({
+      sellerId: opts.sellerId,
+      retailRows: fetched.retailRows,
+      vendorRows: fetched.vendorRows,
+      adsRows: fetched.adsRows,
+      matchRows: fetched.matchRows
+    });
+    let stake;
+    if (opts.emitStake) {
+      stake = await emitCoverageStake(report, { dataDirOverride: root.dataDir });
+    }
+    await track(
+      {
+        event_name: EventName.BrandSubbrandDiscovered,
+        outcome: fetched.ok ? "ok" : "failed",
+        duration_ms: Date.now() - t0,
+        ...fetched.ok ? {} : { error_class: "partial_query_failure" },
+        payload: {
+          retail_distinct_labels: report.retail.distinct_labels,
+          ads_distinct_labels: report.ads.distinct_labels,
+          match_rate: report.match.match_rate,
+          classification_proposal: report.classification.proposal,
+          query_errors: fetched.errors.map((e) => e.query_id),
+          emit_stake: opts.emitStake ?? false,
+          ...stake ? { stake_outcome: stake.ok ? stake.outcome : "failed" } : {}
+        }
+      },
+      root.dataDir
+    );
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "ok",
+            report,
+            query_errors: fetched.errors,
+            ...stake ? { stake } : {}
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    process.stdout.write(renderCoverageReport(report, fetched, stake));
+    return;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+    } else {
+      process.stderr.write(`error: ${message}
+`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+}
+function renderCoverageReport(report, fetched, stake) {
+  const lines = [];
+  lines.push(`
+Sub-brand label coverage for seller ${report.seller_id}`);
+  lines.push(`Generated: ${report.generated_at}`);
+  lines.push("");
+  if (!fetched.ok) {
+    lines.push("\u26A0 Some discovery queries did not return results:");
+    for (const e of fetched.errors) {
+      lines.push(`  - ${e.query_id}: ${e.friendly}`);
+    }
+    lines.push(
+      '  (If this says "unknown query", the gateway side of this feature may not be deployed yet \u2014 this is expected ahead of that release.)'
+    );
+    lines.push("");
+  }
+  lines.push(renderSide("RETAIL", report.retail));
+  lines.push("");
+  lines.push(renderSide("ADS", report.ads));
+  lines.push("");
+  lines.push(
+    `Cross-side match: ${report.match.matched}/${report.match.distinct_labels_considered} label(s) appear on both sides` + (report.match.match_rate !== null ? ` (${(report.match.match_rate * 100).toFixed(0)}%).` : ".") + ` ${report.match.retail_only} retail-only, ${report.match.ads_only} ads-only.`
+  );
+  lines.push("");
+  lines.push(`Shape proposal: ${report.classification.proposal} (UNCONFIRMED \u2014 you decide)`);
+  for (const e of report.classification.evidence) lines.push(`  - ${e}`);
+  lines.push("");
+  lines.push(
+    'This is a proposal only. "(unclassified)" rows are never a sub-brand candidate. Nothing was created \u2014 promoting a label to a real brand is a separate step.'
+  );
+  if (stake) {
+    lines.push("");
+    lines.push(
+      stake.ok ? `\u2713 Coverage stake ${stake.outcome} on ${stake.brand_slug} (timeline event ${stake.event_id}).` : `\u26A0 Coverage stake NOT recorded on ${stake.brand_slug}: ${stake.detail}`
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function renderSide(label, side) {
+  const lines = [];
+  lines.push(
+    `${label}: ${side.distinct_labels} distinct label(s), ${(side.unclassified_share * 100).toFixed(0)}% of units unclassified (${side.total_units} total units).`
+  );
+  const top = side.labels.slice(0, 5);
+  for (const l of top) {
+    lines.push(`  - ${l.label}: ${l.units} unit(s)  [${l.source}]`);
+  }
+  if (side.labels.length > top.length) {
+    lines.push(`  ... and ${side.labels.length - top.length} more`);
+  }
+  return lines.join("\n");
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
@@ -75990,7 +76329,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     notYetImplemented("brand rename", { old: oldSlug, new: newSlug });
   });
   brand.command("discover").description(
-    "Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand."
+    'Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand. Pass --seller-id to run SUB-BRAND label discovery for one Amazon seller account instead (mx-ops#6 P1) \u2014 a different question ("what labels live inside this account") that never touches the brand registry.'
   ).option(
     "--include-inactive",
     "include dormant brands (no active ads or retail) in the printed table",
@@ -75999,108 +76338,124 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     "--format <type>",
     "output format: `terminal` (space-aligned table, default) | `chat` (markdown pipe table for Claude/Cowork to surface verbatim in chat)",
     "terminal"
-  ).action(async (opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    try {
-      const { index } = await runDiscoveryAndPersist({
-        dataDirOverride: root.dataDir
-      });
-      const counts = countByActivity(index);
-      await track(
-        {
-          event_name: EventName.BrandDiscovered,
-          outcome: "ok",
-          payload: {
-            trigger: "manual_discover",
-            total: counts.total,
-            active: counts.active,
-            dormant: counts.dormant,
-            cold_started: counts.cold_started,
-            include_inactive_display: opts.includeInactive
-          }
-        },
-        root.dataDir
-      );
-      const displayBrands = opts.includeInactive ? filterIndex(index, "all") : filterIndex(index, "active");
-      if (root.json) {
-        process.stdout.write(
-          JSON.stringify(
-            {
-              status: "ok",
-              discovered_at: index.discovered_at,
-              counts,
-              brands: displayBrands
-            },
-            null,
-            2
-          ) + "\n"
+  ).option(
+    "--seller-id <id>",
+    "run sub-brand label discovery for one Amazon Seller ID instead of the normal account discovery (mx-ops#6 P1)"
+  ).option(
+    "--emit-stake",
+    "with --seller-id: also post a coverage-summary stake to the account timeline namespace",
+    false
+  ).action(
+    async (opts, cmd) => {
+      if (opts.sellerId !== void 0) {
+        await runSubbrandDiscovery(
+          { sellerId: opts.sellerId, emitStake: opts.emitStake },
+          cmd
         );
         return;
       }
-      if (counts.active === 0 && counts.total === 0) {
-        process.stdout.write(
-          "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
+      const root = cmd.optsWithGlobals();
+      try {
+        const { index } = await runDiscoveryAndPersist({
+          dataDirOverride: root.dataDir
+        });
+        const counts = countByActivity(index);
+        await track(
+          {
+            event_name: EventName.BrandDiscovered,
+            outcome: "ok",
+            payload: {
+              trigger: "manual_discover",
+              total: counts.total,
+              active: counts.active,
+              dormant: counts.dormant,
+              cold_started: counts.cold_started,
+              include_inactive_display: opts.includeInactive
+            }
+          },
+          root.dataDir
         );
+        const displayBrands = opts.includeInactive ? filterIndex(index, "all") : filterIndex(index, "active");
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                discovered_at: index.discovered_at,
+                counts,
+                brands: displayBrands
+              },
+              null,
+              2
+            ) + "\n"
+          );
+          return;
+        }
+        if (counts.active === 0 && counts.total === 0) {
+          process.stdout.write(
+            "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
+          );
+          return;
+        }
+        const renderable = displayBrands.map((b) => ({
+          slug: b.slug,
+          display_name: b.display_name,
+          ads_active: b.ads_active,
+          retail_active: b.retail_active,
+          accounts: b.accounts.map((a) => ({
+            seller_id: a.seller_id,
+            seller_name: a.seller_name,
+            amazon_seller_id: null,
+            merchant_alias: a.merchant_alias,
+            account_type: a.account_type,
+            marketplace: a.marketplace,
+            region: a.region,
+            agency_name: null,
+            acos_target: null,
+            ads_active: a.ads_active,
+            retail_active: a.retail_active,
+            is_active: a.is_active,
+            has_mws: a.is_mws_user,
+            created_at: null,
+            updated_at: null
+          }))
+        }));
+        const chatFormat = opts.format === "chat";
+        if (chatFormat) {
+          process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
+        } else {
+          process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+        }
+        const footer = [
+          `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up).`,
+          `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
+        ];
+        if (!opts.includeInactive && counts.dormant > 0) {
+          footer.push(
+            `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
+          );
+        }
+        if (chatFormat) {
+          process.stdout.write("\n" + footer.join("\n") + "\n\n");
+        } else {
+          process.stderr.write("\n" + footer.join("\n") + "\n\n");
+        }
         return;
-      }
-      const renderable = displayBrands.map((b) => ({
-        slug: b.slug,
-        display_name: b.display_name,
-        ads_active: b.ads_active,
-        retail_active: b.retail_active,
-        accounts: b.accounts.map((a) => ({
-          seller_id: a.seller_id,
-          seller_name: a.seller_name,
-          amazon_seller_id: null,
-          merchant_alias: a.merchant_alias,
-          account_type: a.account_type,
-          marketplace: a.marketplace,
-          region: a.region,
-          agency_name: null,
-          acos_target: null,
-          ads_active: a.ads_active,
-          retail_active: a.retail_active,
-          is_active: a.is_active,
-          has_mws: a.is_mws_user,
-          created_at: null,
-          updated_at: null
-        }))
-      }));
-      const chatFormat = opts.format === "chat";
-      if (chatFormat) {
-        process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
-      } else {
-        process.stderr.write(renderDiscoveryTable(renderable) + "\n");
-      }
-      const footer = [
-        `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up).`,
-        `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
-      ];
-      if (!opts.includeInactive && counts.dormant > 0) {
-        footer.push(
-          `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
-        );
-      }
-      if (chatFormat) {
-        process.stdout.write("\n" + footer.join("\n") + "\n\n");
-      } else {
-        process.stderr.write("\n" + footer.join("\n") + "\n\n");
-      }
-      return;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (root.json) {
-        process.stdout.write(
-          JSON.stringify({ status: "error", message }, null, 2) + "\n"
-        );
-      } else {
-        process.stderr.write(`error: ${message}
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
 `);
+        }
+        process.exitCode = 1;
+        return;
       }
-      process.exitCode = 1;
-      return;
     }
-  });
+  );
   brand.command("validate <slug>").description("Schema-check one brand context.yaml (post manual edit)").action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const result = await validateBrandContext(slug, root.dataDir);
@@ -90467,7 +90822,7 @@ function registerList(timeline) {
   });
 }
 var MAX_NOTE_CHARS = 32768;
-var MAX_INTERPRETATION_CHARS2 = 4e3;
+var MAX_INTERPRETATION_CHARS3 = 4e3;
 var MAX_EVIDENCE_CHARS = 4096;
 function registerAdd(timeline) {
   timeline.command("add").description(
@@ -90517,9 +90872,9 @@ function registerAdd(timeline) {
           );
           return;
         }
-        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS2) {
+        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS3) {
           emitError13(
-            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS2}).`,
+            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS3}).`,
             root
           );
           return;

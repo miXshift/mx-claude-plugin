@@ -37,6 +37,8 @@ optional_top_level:
   - thresholds              # generic numeric knobs not tied to a single skill
   - detected_anomalies      # cold-start v2.3 — advisory findings from automated
                             # enrichment; rewritten on each delta-mode run
+  - binding                 # mx-ops#6 P1 — sub-brand binding to a parent Amazon
+                            # seller account + label (see shapes.binding below)
 
 shapes:
   account:
@@ -134,6 +136,37 @@ shapes:
 
   bid_health:
     required: [scale_threshold_pct, pullback_threshold_pct]
+
+  binding:
+    optional: [kind, amazon_seller_id, seller_ids, retail_label, ads_label, scope_note]
+    note: |
+      mx-ops#6 P1 (docs/subbrand-architecture.md §2.1-2.3 in mx-legacy-auth).
+      Marks a brand as a LABEL-SCOPED sub-brand of one Amazon seller account
+      (identifier-only design, D-023 — there is no separate "account" entity
+      or context anywhere in the plugin; the account is derived by grouping
+      bindings on amazon_seller_id).
+      Every field is optional, including within this block, so a
+      partially-filled binding (discovered but not yet fully confirmed)
+      still validates.
+        kind: a lowercase snake_case slug, 'sub_brand' for everything P1
+          mints. FORWARD-TOLERANT: validation accepts any slug shape, not a
+          closed enum, so a future binding kind does not hard-fail an older
+          client (same rule as structural_event.type below).
+        amazon_seller_id: the Amazon-assigned seller id the account is
+          derived from.
+        seller_ids[]: the warehouse's internal per-marketplace numeric
+          seller.SellerID rows for this account.
+        retail_label / ads_label: { source, value }. value is the label
+          string VERBATIM (labels are user-curated truth; never normalized).
+          source is documented as mws_items.Brand / vendor_items.CustomBrand
+          (retail) or campaign.Brand (ads), but is NOT a closed enum for the
+          same forward-tolerance reason as kind above.
+        scope_note: plain-language sentence, MODEL-VISIBLE on ANY plugin
+          version — an install that predates this schema cannot read
+          `binding` at all, but still reads context.yaml's prose, so this
+          field is how an old client's LLM-driven skill run learns the
+          brand is label-scoped and must not attribute account-wide fetches
+          to it.
 
   structural_event:
     required: [id, type, affects, interpretation]

@@ -3,7 +3,7 @@ import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   contextSchema,
   normalizeLegacyTacosFields,
@@ -417,6 +417,149 @@ describe('structural_events — #37499 taxonomy flexibility', () => {
     }
   });
 });
+
+describe('binding — sub-brand context block (mx-ops#6 P1)', () => {
+  it('a context with no binding key still validates (old files, byte-for-byte)', () => {
+    const r = contextSchema.safeParse(baseContext({}));
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.binding).toBeUndefined();
+  });
+
+  it('accepts a fully-populated binding block', () => {
+    const r = contextSchema.safeParse(
+      baseContext({
+        binding: {
+          kind: 'sub_brand',
+          amazon_seller_id: 'A1EXAMPLE23456',
+          seller_ids: [123, 456],
+          retail_label: { source: 'mws_items.Brand', value: 'Forager Pantry' },
+          ads_label: { source: 'campaign.Brand', value: 'Forager Pantry' },
+          scope_note:
+            'This brand is label-scoped to one sub-brand of a larger seller account.',
+        },
+      }),
+    );
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.binding?.kind).toBe('sub_brand');
+      expect(r.data.binding?.retail_label?.source).toBe('mws_items.Brand');
+    }
+  });
+
+  it('every field of binding is independently optional', () => {
+    for (const partial of [
+      {},
+      { kind: 'sub_brand' },
+      { amazon_seller_id: 'A1EXAMPLE23456' },
+      { seller_ids: [1] },
+      { retail_label: { source: 'vendor_items.CustomBrand', value: 'X' } },
+      { scope_note: 'note only' },
+    ]) {
+      const r = contextSchema.safeParse(baseContext({ binding: partial }));
+      expect(r.success, `binding ${JSON.stringify(partial)} should validate`).toBe(true);
+    }
+  });
+
+  it('an UNKNOWN binding.kind is tolerated, not rejected (forward compatibility)', () => {
+    // Same lesson as structural_events[].type (#37499): a future binding
+    // kind (e.g. a joint-venture binding) must not hard-fail a context on an
+    // older client just because this build has never heard of it.
+    const r = contextSchema.safeParse(
+      baseContext({ binding: { kind: 'joint_venture_binding' } }),
+    );
+    expect(r.success).toBe(true);
+  });
+
+  it('binding.kind must still be a lowercase snake_case slug', () => {
+    for (const bad of ['Sub Brand', 'sub-brand', '1sub', 'a'.repeat(65)]) {
+      const r = contextSchema.safeParse(baseContext({ binding: { kind: bad } }));
+      expect(r.success, `binding.kind '${bad}' should be rejected`).toBe(false);
+    }
+  });
+
+  it('a label source is NOT restricted to a closed enum (forward tolerance)', () => {
+    // mws_items.Brand and vendor_items.CustomBrand are the two known retail
+    // sources today, but the schema must not hard-enum them: a future third
+    // source must not break an older client. Any non-empty short string
+    // validates; typo protection is out of scope for this field on purpose.
+    const r = contextSchema.safeParse(
+      baseContext({
+        binding: { retail_label: { source: 'some_future_table.Brand', value: 'X' } },
+      }),
+    );
+    expect(r.success).toBe(true);
+  });
+
+  it('a label sub-object still requires a non-empty value when present', () => {
+    const r = contextSchema.safeParse(
+      baseContext({ binding: { retail_label: { source: 'mws_items.Brand', value: '' } } }),
+    );
+    expect(r.success).toBe(false);
+  });
+
+  it('scope_note is capped at 2000 characters', () => {
+    const ok = contextSchema.safeParse(
+      baseContext({ binding: { scope_note: 'x'.repeat(2000) } }),
+    );
+    expect(ok.success).toBe(true);
+    const tooLong = contextSchema.safeParse(
+      baseContext({ binding: { scope_note: 'x'.repeat(2001) } }),
+    );
+    expect(tooLong.success).toBe(false);
+  });
+
+  it('round-trips through YAML stringify/parse without loss', () => {
+    // A cheap proxy for "the writer preserves the block": the context
+    // editor and delta-merge both go through the `yaml` package, never
+    // through this zod schema, for writes (see context-editor/flow.test.ts
+    // and enrichment/delta-merge.test.ts for the full round-trip proof).
+    const binding = {
+      kind: 'sub_brand',
+      amazon_seller_id: 'A1EXAMPLE23456',
+      seller_ids: [123, 456],
+      retail_label: { source: 'mws_items.Brand', value: 'Forager Pantry' },
+      ads_label: { source: 'campaign.Brand', value: 'Forager Pantry' },
+      scope_note: 'label-scoped sub-brand',
+    };
+    const yamlText = stringifyYaml(baseContext({ binding }));
+    const roundTripped = parseYaml(yamlText);
+    const r = contextSchema.safeParse(roundTripped);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.binding).toEqual(binding);
+  });
+});
+
+/** A minimal valid context with no structural_events, for binding tests. */
+function baseContext(extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    brand_slug: 'acme',
+    brand_name: 'Acme',
+    last_updated: '2026-08-12',
+    accounts: [
+      {
+        seller_id: 1,
+        seller_name: 'Acme Seller',
+        account_type: 'SC',
+        status: 'active',
+        role: 'primary',
+      },
+    ],
+    sources: {
+      ad_metrics: 'campaignmetric',
+      ops_revenue: 'business_reports_dpst_date',
+      ops_revenue_field: 'SalesAmount',
+      ops_units_field: 'UnitsOrdered',
+      ops_date_field: 'DateTime',
+    },
+    management: {
+      primary_metric: 'ACOS',
+      acos_target_pct: 20.0,
+      attribution_window_days: 14,
+    },
+    ...extra,
+  };
+}
 
 describe('contextSchema — template is structurally valid', () => {
   it('the shipped _template/context.yaml does NOT validate as a real context (placeholders)', async () => {

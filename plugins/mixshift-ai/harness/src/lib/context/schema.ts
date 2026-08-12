@@ -207,6 +207,70 @@ const subBrandSchema = z.object({
   item_groups: z.array(z.string()).optional(),
 });
 
+// -----------------------------------------------------------------------
+// Sub-brand binding (mx-ops#6 P1; docs/subbrand-architecture.md §2.1-2.3)
+// -----------------------------------------------------------------------
+//
+// Identifies a brand as a LABEL-SCOPED sub-brand of an agency's Amazon
+// seller account (D-023: identifier-only, no stored account entity). Every
+// field is optional so the block itself is additive and a partially-filled
+// binding (e.g. discovered but not yet fully confirmed) still validates.
+//
+// Known label source columns, documented for humans reading context.yaml.
+// Deliberately NOT a closed enum on the schema below — see the comment on
+// bindingLabelSourceSchema for why.
+export const KNOWN_RETAIL_LABEL_SOURCES = [
+  'mws_items.Brand',
+  'vendor_items.CustomBrand',
+] as const;
+export const KNOWN_ADS_LABEL_SOURCE = 'campaign.Brand';
+
+/**
+ * FORWARD TOLERANCE, same lesson as `structural_events[].type` (#37499
+ * review, see structuralEventTypeSchema above): a fixed enum of label
+ * source columns would hard-fail an OLDER client the instant the design
+ * adds a new source (a future retail-side table, a second ads table). The
+ * two known values are documented above for humans; the schema itself only
+ * requires a non-empty short string so a client that has never heard of a
+ * newer source still loads the brand instead of failing the whole context.
+ */
+const bindingLabelSourceSchema = z.string().min(1).max(128);
+
+const bindingLabelSchema = z.object({
+  source: bindingLabelSourceSchema,
+  value: z.string().min(1),
+});
+
+/**
+ * `binding.kind` is a lowercase snake_case slug, not a fixed enum — the
+ * same forward-tolerance treatment as `structural_events[].type`. 'sub_brand'
+ * is the only kind minted by P1; a later design could add another kind
+ * (e.g. a joint-venture binding) without breaking a client built against
+ * this release.
+ */
+const bindingKindSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/, 'binding.kind must be a lowercase snake_case slug')
+  .max(64);
+
+const bindingSchema = z.object({
+  kind: bindingKindSchema.optional(),
+  amazon_seller_id: z.string().min(1).optional(),
+  seller_ids: z.array(z.number().int()).optional(),
+  retail_label: bindingLabelSchema.optional(),
+  ads_label: bindingLabelSchema.optional(),
+  // Plain-language note, MODEL-VISIBLE on ANY plugin version (design doc
+  // §11 "old clients are the residual smearing hazard"): an install that
+  // predates this schema cannot read `binding` at all, but an LLM-driven
+  // skill run still reads context.yaml's prose. This field exists so even
+  // that old-client path carries a human sentence saying the brand is
+  // label-scoped and account-wide fetches must not be attributed to it.
+  scope_note: z.string().max(2000).optional(),
+});
+
+/** A sub-brand's binding to its parent Amazon seller account and label. */
+export type BindingBlock = z.infer<typeof bindingSchema>;
+
 const captureRateCalibrationSchema = z.object({
   enabled: z.boolean(),
   capture_rate_pct: z.number().optional(),
@@ -272,6 +336,11 @@ export const contextSchema = z
     thresholds: z.record(z.string(), z.unknown()).optional(),
     detected_anomalies: z.unknown().optional(),
     skill_config: skillConfigSchema.optional(),
+    // Sub-brand binding (mx-ops#6 P1). Additive + fully optional; absent on
+    // every normal brand and on every context.yaml written before this field
+    // existed. See the binding schema block above for the forward-tolerance
+    // rationale on kind and the label sources.
+    binding: bindingSchema.optional(),
   })
   // TACOS-primary accounts must define a TACOS goal (per the YAML schema's
   // management note). Enforce as a refinement. tacos_target_pct is the
