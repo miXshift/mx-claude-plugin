@@ -62,7 +62,9 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
 
 **Schema source of truth:** the Zod schema in the harness (mirrored by `shared/clients/_schema/context.schema.yaml`). Validate with `mixshift brand validate <brand-slug>` before declaring complete.
 
-**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.3 (Shape Detection) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+
+**Scope resolution (every account, single-brand or brand-nested):** a request resolves to one of three shapes before any skill acts on it: (a) a specific brand — its own slug, its own lens; (b) an account-level operation WITH per-sub-brand split-outs — account totals plus a section per label plus the unlabeled remainder, served as one run; or (c) explicitly account-wide, undifferentiated — today's whole-account behavior. Account-wide is an explicit choice the operator makes, never a silent default, on any account Phase 0.3 classifies as brand-nested. Single-brand accounts only ever have shape (a); this line is a no-op for them.
 
 **Delta sequence:** Phase 1 (refresh the brain: `mixshift brand brain refresh`, plus delta baselines) → Phase 1.5 (read the refreshed enrichment from the brain) → `mixshift brand merge-delta` (patches the brain's settlement curve into context.yaml, AM-edited fields untouched) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
@@ -138,6 +140,144 @@ into chat. Instead:
 
 This keeps the common case (the brand they mean is usually a top brand)
 fast, while the full list stays one request away.
+
+---
+
+## Phase 0.3 — Shape Detection (sub-brand check, fresh mode only)
+
+Some agencies run many distinct brands out of one Amazon seller account,
+told apart only by a Brand label on the retail and ads sides ("brand-nested"
+accounts). Before any deeper synthesis work starts (Phase 0.5 onward), check
+whether the account you just bootstrapped a shell for is one of these.
+
+**Single-brand accounts flow to the rest of this skill completely
+unchanged.** This phase either confirms that (most accounts) and moves on,
+or forks into the sub-brand path below. Nothing past this point changes for
+a normal brand.
+
+1. **Resolve the Amazon Seller ID.** Read it from the shell's
+   `accounts[].amazon_seller_id` (Phase 0.25 just wrote it, when the
+   warehouse had it). If every account row lacks one, ask the AM for it
+   directly — a short, one-line question, not a blocker: *"What's the
+   Amazon Seller ID for this account? (Looks like A1EXAMPLE23456 — you can
+   find it in Seller Central under Settings > Account Info.)"* If the AM
+   doesn't have it handy, skip this phase entirely, note the gap in
+   `open_gaps[]`, and continue to Phase 0.5 as a normal single-brand
+   setup — never block onboarding on this check.
+2. **Run discovery:**
+   ```bash
+   mixshift brand discover --seller-id <AmazonSellerID> --format chat
+   ```
+   This never mutates anything. Present the returned per-side coverage
+   report (distinct labels, unclassified share, cross-side match rate) and
+   the classification PROPOSAL with its evidence, verbatim. **Never
+   auto-classify.** Ask the AM to confirm: *"Your account looks like it may
+   run several distinct brands under one label — I found N labels with
+   real catalog/spend mass: <label list>. Should I set these up as separate
+   brands, each with its own context and goals? Or is this really one
+   brand with some inconsistent labeling?"*
+3. If the AM confirms **single brand** (or the report itself proposed
+   `single_brand`), or the AM explicitly wants the account handled
+   **account-wide, undifferentiated** (the scope preamble's shape (c) — a
+   deliberate choice, not a default): continue straight into Phase 0.5 as
+   written. Nothing else in this skill changes.
+4. If the AM confirms **brand-nested**: stop the normal sequence here and
+   follow **"Sub-brand path"** below. Return to this skill's Phase 5 only
+   after every selected sub-brand has completed its own setup.
+
+**Known limitation, said out loud rather than silently smeared:** the
+baseline queries this skill's Phase 1 prefetch runs (`CS-02` and friends)
+do not yet automatically apply a sub-brand's label filter — that wiring is
+still pending in the harness's prefetch path even though the gateway
+queries themselves already accept the filter param. Until that lands,
+treat any sub-brand's Phase 1 historical baselines as **account-wide**
+numbers pending confirmation, say so plainly in that sub-brand's
+`open_gaps[]` and in its Phase 5 Bottom Line, and never present them as if
+they were already label-scoped. A sub-brand report quietly built on
+account-wide rows is exactly the cross-brand smearing this design exists to
+prevent (design doc §11) — an honest caveat beats a confident-looking wrong
+number.
+
+### Sub-brand path (brand-nested accounts)
+
+1. **Label menu.** Present every discovered label with its ASIN/catalog
+   count, trailing sales if available, campaign count, and the unlabeled
+   remainder. Ask which become brands: *"all"*, *"some"* (the AM picks a
+   subset — the rest stay unpromoted and simply show up as (unclassified)
+   share in future coverage reports), or *"grouped"* (the AM wants several
+   discovered labels merged under one new brand — capture the grouping and
+   promote once per resulting group, not once per raw label).
+2. **Shared account-level questions, asked ONCE.** Before touching any
+   individual sub-brand, ask the account-level questions every sub-brand
+   would otherwise ask separately: overall management posture/ops
+   conventions, whether accounts report on a shared cadence, and anything
+   else that is genuinely account-wide rather than brand-specific (see the
+   already-onboarded migration's triage table below for what "account-wide"
+   tends to mean in practice). These answers become each selected
+   sub-brand's PROPOSED defaults in step 3 — copy-at-setup, never a
+   read-time merge (design doc §4.2 step 3 / §5.1): each sub-brand owns its
+   own copy from the moment it's created and can diverge freely afterward.
+3. **Per-sub-brand setup loop.** For each selected label (or merged group):
+   1. Promote it:
+      ```bash
+      mixshift brand promote --seller-id <AmazonSellerID> --apply '{"action":"promote_label","label":"<label>"}'
+      ```
+      This mints the slug, bootstraps `~/.mixshift/clients/<slug>/`, writes
+      the `binding` block (including its plain-language `scope_note` —
+      written automatically, nothing further to do for that field), and
+      emits the coverage stake to the account timeline namespace. Re-running
+      the same `--apply` call is a safe no-op if it already happened.
+   2. Run the REST of this skill's Fresh sequence (Phase 0.5 onward) exactly
+      as normal, targeting the new sub-brand slug — same phases, same
+      artifacts, same output structure. The only difference is the seeding:
+      pre-fill the shared account-level answers from step 2 as proposed
+      defaults, and pre-fill whatever the coverage report already told you
+      about this label (its catalog/spend mass, its cross-side match rate)
+      instead of re-deriving it. Phase 2's AM intake then asks ONLY the
+      per-brand deltas — goals, guardrails, personas, anything that
+      genuinely differs from the shared answers — not a full second
+      interview. This is the mechanism that keeps N sub-brands cheaper than
+      N full setups: the marginal cost per sub-brand is the delta list.
+4. **Already-onboarded accounts (migration, not an edge case — both known
+   pilot accounts are this case):** if the account already has a
+   pre-existing WHOLE-ACCOUNT brand (Phase 0.3 step 1's discovery run
+   surfaces this automatically), run the plan first:
+   ```bash
+   mixshift brand promote --seller-id <AmazonSellerID>
+   ```
+   The default is a dry-run — nothing is written. Its output includes a
+   CONTENT TRIAGE table proposing, for every existing fact, structural
+   event, and instruction in the old brand's context: move to a specific
+   sub-brand, copy into every sub-brand, or retire. **Present this table to
+   the AM as an editable proposal — never apply it automatically.** Walk
+   through corrections with the AM, then apply confirmed items ONE AT A
+   TIME (never as a batch), e.g.:
+   ```bash
+   mixshift brand promote --seller-id <AmazonSellerID> --apply '{"action":"rebind_old_brand","label":"<dominant label>"}'
+   # or, if no label dominates:
+   mixshift brand promote --seller-id <AmazonSellerID> --apply '{"action":"retire_old_brand"}'
+   ```
+   `retire_old_brand` parks the old brand's local directory without
+   deleting anything; its org-store history stays intact and readable under
+   its old slug. `rebind_old_brand` keeps that brand's slug and history
+   alive as the surviving sub-brand for its dominant label. Either way, run
+   step 3's per-sub-brand loop for every OTHER promoted label same as a
+   fresh account. **The first live promotion on a real customer account
+   needs MixShift ops sign-off before `--apply` runs against it** — the
+   command's own output says so; don't skip that check because the plan
+   looks obviously correct.
+5. **Coverage as a standing metric, nudged lightly (design doc D-024).**
+   When a sub-brand's own coverage numbers show a meaningful unlabeled
+   remainder (a high `(unclassified)` share on the retail or ads side, or a
+   0-row read warning), mention it AT THE POINT you notice it — not as a
+   gate, and not upfront before anything useful has happened. Frame it as a
+   visibility issue, lightly: *"About N% of <brand>'s catalog/campaigns
+   still show as (unclassified) — this account's plugin can't create or
+   fix Amazon labels itself, but you can add or correct the Brand label for
+   those items in your Account Manager view
+   (https://dash.mydashapplications.com/account-manager); next time this
+   runs, they'll show up under the right brand."* Never withhold a report
+   or block a run over this — it is a visibility nudge, not a requirement.
 
 ---
 
@@ -606,7 +746,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.7.0*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.8.0*
 
 ## Telemetry (required)
 

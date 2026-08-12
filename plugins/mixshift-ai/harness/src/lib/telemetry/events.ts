@@ -106,6 +106,12 @@ export const EventName = {
   // --seller-id`). Payload carries counts/rates/proposal only — never label
   // values or row contents.
   BrandSubbrandDiscovered: 'brand.subbrand_discovered',
+  // Sub-brand promotion / demotion (mx-ops#6 P2; `mixshift brand promote` /
+  // `mixshift brand demote`). Same privacy posture as BrandSubbrandDiscovered:
+  // payload carries mode/status/counts only, never label values or row
+  // contents.
+  BrandSubbrandPromoted: 'brand.subbrand_promoted',
+  BrandSubbrandDemoted: 'brand.subbrand_demoted',
   // Brand config editor (mixshift brand config <slug>)
   BrandConfigViewed: 'brand_config.viewed',
   BrandConfigEdited: 'brand_config.edited',
