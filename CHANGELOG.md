@@ -3,6 +3,25 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.9
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Added
+
+- **Early sub-brand label discovery, for accounts run as several brands under
+  one Amazon seller.** Some agencies operate many distinct brands out of a
+  single seller account, told apart only by a Brand label on the retail and
+  ads sides. A new `mixshift brand discover --seller-id <id>` command reads
+  those labels and reports, per side, how many distinct labels exist, how
+  much of the catalog or ad spend has no label yet, and how well the retail
+  and ads labels line up with each other. It proposes whether the account
+  looks like one brand or several, but never decides for you and never
+  creates or changes anything: that confirmation step comes in a later
+  release. The underlying data queries this command depends on are still
+  rolling out, so results may be incomplete for some accounts until that
+  finishes.
+
 ## 0.8.8
 
 ### Added

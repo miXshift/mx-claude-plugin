@@ -102,6 +102,10 @@ export const EventName = {
   // Brand context
   BrandDiscovered: 'brand.discovered',
   BrandAdded: 'brand.added',
+  // Sub-brand label discovery (mx-ops#6 P1; `mixshift brand discover
+  // --seller-id`). Payload carries counts/rates/proposal only — never label
+  // values or row contents.
+  BrandSubbrandDiscovered: 'brand.subbrand_discovered',
   // Brand config editor (mixshift brand config <slug>)
   BrandConfigViewed: 'brand_config.viewed',
   BrandConfigEdited: 'brand_config.edited',

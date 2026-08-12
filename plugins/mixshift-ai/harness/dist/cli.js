@@ -64366,6 +64366,10 @@ var init_events = __esm({
       // Brand context
       BrandDiscovered: "brand.discovered",
       BrandAdded: "brand.added",
+      // Sub-brand label discovery (mx-ops#6 P1; `mixshift brand discover
+      // --seller-id`). Payload carries counts/rates/proposal only — never label
+      // values or row contents.
+      BrandSubbrandDiscovered: "brand.subbrand_discovered",
       // Brand config editor (mixshift brand config <slug>)
       BrandConfigViewed: "brand_config.viewed",
       BrandConfigEdited: "brand_config.edited",
@@ -66145,7 +66149,7 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir24, readFile as readFile32 } from "node:fs/promises";
+import { appendFile as appendFile2, mkdir as mkdir24, readFile as readFile33 } from "node:fs/promises";
 import { join as join22, dirname as dirname28 } from "node:path";
 function flushLogPath(dataDirOverride) {
   return join22(telemetryDir(dataDirOverride), LOG_FILENAME);
@@ -66164,7 +66168,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile32(path2, "utf-8");
+    const raw = await readFile33(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -66541,6 +66545,26 @@ var subBrandSchema = external_exports.object({
   name: external_exports.string().min(1),
   item_groups: external_exports.array(external_exports.string()).optional()
 });
+var bindingLabelSourceSchema = external_exports.string().min(1).max(128);
+var bindingLabelSchema = external_exports.object({
+  source: bindingLabelSourceSchema,
+  value: external_exports.string().min(1)
+});
+var bindingKindSchema = external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "binding.kind must be a lowercase snake_case slug").max(64);
+var bindingSchema = external_exports.object({
+  kind: bindingKindSchema.optional(),
+  amazon_seller_id: external_exports.string().min(1).optional(),
+  seller_ids: external_exports.array(external_exports.number().int()).optional(),
+  retail_label: bindingLabelSchema.optional(),
+  ads_label: bindingLabelSchema.optional(),
+  // Plain-language note, MODEL-VISIBLE on ANY plugin version (design doc
+  // §11 "old clients are the residual smearing hazard"): an install that
+  // predates this schema cannot read `binding` at all, but an LLM-driven
+  // skill run still reads context.yaml's prose. This field exists so even
+  // that old-client path carries a human sentence saying the brand is
+  // label-scoped and account-wide fetches must not be attributed to it.
+  scope_note: external_exports.string().max(2e3).optional()
+});
 var captureRateCalibrationSchema = external_exports.object({
   enabled: external_exports.boolean(),
   capture_rate_pct: external_exports.number().optional(),
@@ -66591,7 +66615,12 @@ var contextSchema = external_exports.object({
   reporting: external_exports.unknown().optional(),
   thresholds: external_exports.record(external_exports.string(), external_exports.unknown()).optional(),
   detected_anomalies: external_exports.unknown().optional(),
-  skill_config: skillConfigSchema.optional()
+  skill_config: skillConfigSchema.optional(),
+  // Sub-brand binding (mx-ops#6 P1). Additive + fully optional; absent on
+  // every normal brand and on every context.yaml written before this field
+  // existed. See the binding schema block above for the forward-tolerance
+  // rationale on kind and the label sources.
+  binding: bindingSchema.optional()
 }).refine(
   (ctx) => {
     if (ctx.management.primary_metric !== "TACOS") return true;
@@ -66851,7 +66880,7 @@ function countBy(arr) {
 
 // src/lib/clients/bootstrap.ts
 var import_yaml7 = __toESM(require_dist(), 1);
-import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access } from "node:fs/promises";
+import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access, readFile as readFile10 } from "node:fs/promises";
 import { dirname as dirname8 } from "node:path";
 init_format_error();
 init_resolve();
@@ -68408,7 +68437,11 @@ Either pick a different slug, delete the existing directory, or pass --force to 
       if (!isFileNotFoundError8(err)) throw err;
     }
   }
+  const existingBinding = options.force ? await readExistingBinding(ctxPath) : null;
   const context = buildContext(suggestion, validAccounts, options.asOfDate);
+  if (existingBinding) {
+    context.binding = existingBinding;
+  }
   const parsed = contextSchema.safeParse(context);
   if (!parsed.success) {
     throw new Error(
@@ -68429,7 +68462,8 @@ Either pick a different slug, delete the existing directory, or pass --force to 
     context_path: ctxPath,
     narrative_path: narrPath,
     context: parsed.data,
-    written_files: [ctxPath, narrPath, readmePath, `${dir}/corpora/`]
+    written_files: [ctxPath, narrPath, readmePath, `${dir}/corpora/`],
+    binding_preserved: existingBinding !== null
   };
 }
 function buildContext(suggestion, accounts, asOfDate) {
@@ -68540,6 +68574,25 @@ Generated by \`mixshift brand add ${suggestion.slug}\`.
 **Next step:** run \`/mx-brand-context ${suggestion.slug}\` in Claude. The skill walks you through AM intake and fills in everything the bootstrap couldn't derive from the warehouse.
 `;
 }
+async function readExistingBinding(ctxPath) {
+  let raw;
+  try {
+    raw = await readFile10(ctxPath, "utf-8");
+  } catch {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml7.parse)(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const binding = parsed.binding;
+  if (binding === void 0) return null;
+  const result = bindingSchema.safeParse(binding);
+  return result.success ? result.data : null;
+}
 async function writeAtomic(path2, content) {
   await mkdir6(dirname8(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
@@ -68557,7 +68610,7 @@ function isFileNotFoundError8(err) {
 var import_yaml8 = __toESM(require_dist(), 1);
 init_resolve();
 init_format_error();
-import { mkdir as mkdir7, readFile as readFile10, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
+import { mkdir as mkdir7, readFile as readFile11, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
 import { dirname as dirname9 } from "node:path";
 
 // src/lib/errors.ts
@@ -68631,7 +68684,7 @@ async function readIndex(dataDirOverride) {
   const path2 = indexPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile10(path2, "utf-8");
+    raw = await readFile11(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError9(err)) {
       return { index: emptyIndex(), source: "empty", path: path2 };
@@ -69032,7 +69085,7 @@ import { promisify } from "node:util";
 var import_yaml9 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
-import { mkdir as mkdir8, readFile as readFile11, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile12, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
 import { dirname as dirname10 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
@@ -69040,7 +69093,7 @@ async function readBrandConfig(brandSlug, dataDirOverride) {
   const path2 = brandConfigPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile11(path2, "utf-8");
+    raw = await readFile12(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError10(err)) {
       return { config: {}, source: "empty", path: path2 };
@@ -69236,7 +69289,7 @@ function isFileNotFoundError10(err) {
 init_resolve();
 
 // src/lib/render/design-system.ts
-import { readFile as readFile12 } from "node:fs/promises";
+import { readFile as readFile13 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
 import { dirname as dirname11, join as join9, parse as parse3 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
@@ -69260,7 +69313,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile12(join9(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile13(join9(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -69268,7 +69321,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile12(join9(designSystemDir(), filename), "utf-8");
+  const raw = await readFile13(join9(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -70660,15 +70713,15 @@ async function openInBrowser(path2) {
 }
 
 // src/commands/brand-brain.ts
-import { readFile as readFile18 } from "node:fs/promises";
+import { readFile as readFile19 } from "node:fs/promises";
 
 // src/lib/brain/fetch.ts
 var import_yaml12 = __toESM(require_dist(), 1);
-import { writeFile as writeFile11, readFile as readFile16, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
+import { writeFile as writeFile11, readFile as readFile17, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
 import { dirname as dirname14 } from "node:path";
 
 // src/lib/data/dispatch.ts
-import { readFile as readFile14, access as access2 } from "node:fs/promises";
+import { readFile as readFile15, access as access2 } from "node:fs/promises";
 import { join as join10 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
@@ -70676,7 +70729,7 @@ init_zod();
 init_plugin_root();
 var import_yaml10 = __toESM(require_dist(), 1);
 init_format_error();
-import { readFile as readFile13 } from "node:fs/promises";
+import { readFile as readFile14 } from "node:fs/promises";
 var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -70720,7 +70773,7 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile13(path2, "utf-8");
+    raw = await readFile14(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -70759,7 +70812,7 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile13(path2, "utf-8");
+    raw = await readFile14(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -70904,7 +70957,7 @@ async function readLocalSql(dir, fileName) {
   } catch {
     return void 0;
   }
-  return readFile14(path2, "utf-8");
+  return readFile15(path2, "utf-8");
 }
 function buildCallSql(sprocName) {
   return `CALL ${sprocName}(?, ?)`;
@@ -72064,7 +72117,7 @@ function toIso2(v) {
 
 // src/lib/brain/read.ts
 var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile15, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
+import { readFile as readFile16, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
 import { dirname as dirname13 } from "node:path";
 init_resolve();
 init_format_error();
@@ -72199,7 +72252,7 @@ async function loadBrain(brandSlug, dataDirOverride) {
   const path2 = brainPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile15(path2, "utf-8");
+    raw = await readFile16(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError12(err)) {
       return {
@@ -72668,7 +72721,7 @@ async function writeBrainStatus(status, dataDirOverride) {
 }
 async function readBrandTermsInput(slug, dataDirOverride) {
   try {
-    const raw = await readFile16(contextPath(slug, dataDirOverride), "utf-8");
+    const raw = await readFile17(contextPath(slug, dataDirOverride), "utf-8");
     const parsed = (0, import_yaml12.parse)(raw);
     if (!parsed || typeof parsed !== "object" || !parsed.brand_terms) {
       return void 0;
@@ -72694,7 +72747,7 @@ init_zod();
 // src/lib/brain/discoveries.ts
 init_zod();
 init_resolve();
-import { readFile as readFile17, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
+import { readFile as readFile18, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
 import { dirname as dirname15 } from "node:path";
 var contextFieldProposalSchema = external_exports.object({
   field: external_exports.string().min(1),
@@ -72719,7 +72772,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   let doc;
   try {
-    const raw = await readFile17(path2, "utf-8");
+    const raw = await readFile18(path2, "utf-8");
     doc = discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     doc = {
@@ -72762,7 +72815,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
 async function readPendingDiscoveries(brandSlug, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile17(path2, "utf-8");
+    const raw = await readFile18(path2, "utf-8");
     return discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     return null;
@@ -72953,7 +73006,7 @@ Brand brain status for ${slug}:`];
 }
 async function readStatusFile(slug, dataDirOverride) {
   try {
-    const raw = await readFile18(brainStatusPath(slug, dataDirOverride), "utf-8");
+    const raw = await readFile19(brainStatusPath(slug, dataDirOverride), "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -73128,7 +73181,7 @@ function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
 // src/lib/context-editor/flow.ts
 var import_yaml13 = __toESM(require_dist(), 1);
 init_resolve();
-import { mkdir as mkdir13, readFile as readFile19, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
+import { mkdir as mkdir13, readFile as readFile20, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
 import { dirname as dirname16 } from "node:path";
 
 // src/lib/calibration/manifest-schema.ts
@@ -73690,7 +73743,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
   let rawText;
   try {
-    rawText = await readFile19(path2, "utf-8");
+    rawText = await readFile20(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError13(err)) {
       return {
@@ -73788,7 +73841,7 @@ function deepEqual(a, b) {
 async function tryReadContextObject(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile19(path2, "utf-8");
+    const raw = await readFile20(path2, "utf-8");
     const parsed = (0, import_yaml13.parse)(raw);
     if (parsed === null || parsed === void 0) return {};
     if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
@@ -74075,7 +74128,7 @@ import { join as join12 } from "node:path";
 // src/lib/render/brand-context-report.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile20, readdir as readdir3, stat as stat3 } from "node:fs/promises";
+import { readFile as readFile21, readdir as readdir3, stat as stat3 } from "node:fs/promises";
 import { dirname as dirname17, join as join11 } from "node:path";
 async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -74315,7 +74368,7 @@ async function loadAuditLabels() {
       "audit-labels.yaml"
     );
     if (existsSync3(candidate)) {
-      const raw = await readFile20(candidate, "utf-8");
+      const raw = await readFile21(candidate, "utf-8");
       const parsed = (0, import_yaml14.parse)(raw);
       return parsed.fields ?? [];
     }
@@ -74326,7 +74379,7 @@ async function loadAuditLabels() {
 }
 async function readYamlIfExists(path2) {
   try {
-    const raw = await readFile20(path2, "utf-8");
+    const raw = await readFile21(path2, "utf-8");
     return (0, import_yaml14.parse)(raw);
   } catch {
     return null;
@@ -74334,7 +74387,7 @@ async function readYamlIfExists(path2) {
 }
 async function readTextIfExists(path2) {
   try {
-    return await readFile20(path2, "utf-8");
+    return await readFile21(path2, "utf-8");
   } catch {
     return null;
   }
@@ -74348,7 +74401,7 @@ async function summarizeCorpora(dirPath) {
       try {
         const s = await stat3(join11(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile20(join11(dirPath, f), "utf-8");
+        const raw = await readFile21(join11(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -75378,7 +75431,7 @@ function emitError3(json2, message) {
 // src/lib/enrichment/delta-merge.ts
 var import_yaml15 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
+import { readFile as readFile22, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
 import { dirname as dirname18 } from "node:path";
 async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -75402,7 +75455,7 @@ async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   }
   let ctxText;
   try {
-    ctxText = await readFile21(ctxPath, "utf-8");
+    ctxText = await readFile22(ctxPath, "utf-8");
   } catch (err) {
     if (isFileNotFoundError14(err)) {
       return {
@@ -75697,6 +75750,453 @@ var NO_ACCOUNT_TERMINAL = "No MixShift account yet? Create one first, then conne
 var DATA_TIMING_CHAT = "After activation, most accounts are fully populated within 24-48 hours; large catalogs can take longer (" + DATA_TIMING_URL + "). MixShift emails you when your data is ready to work with.";
 var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated within 24-48 hours\n(large catalogs can take longer). MixShift emails you when your data\nis ready. Details:\n  " + DATA_TIMING_URL + "\n";
 
+// src/lib/binding/discovery.ts
+init_query_runner();
+init_seller_query();
+function coerceCount(raw) {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+function coerceFlag(raw) {
+  if (typeof raw === "boolean") return raw;
+  return coerceCount(raw) === 1;
+}
+function coerceRetailRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    asin_count: coerceCount(row.asin_count),
+    row_count: coerceCount(row.row_count)
+  };
+}
+function coerceAdsRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    campaign_count: coerceCount(row.campaign_count)
+  };
+}
+function coerceVendorRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    item_count: coerceCount(row.item_count)
+  };
+}
+function coerceMatchRow(row) {
+  return {
+    label: row.label,
+    retail_asins: coerceCount(row.retail_asins),
+    ads_campaigns: coerceCount(row.ads_campaigns),
+    has_retail: coerceFlag(row.has_retail),
+    has_ads: coerceFlag(row.has_ads)
+  };
+}
+var UNCLASSIFIED_LABEL = "(unclassified)";
+function normalizeLabel(raw) {
+  const trimmed = (raw ?? "").trim();
+  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
+}
+function buildSideCoverage(side, rows) {
+  const byLabel = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const entry = byLabel.get(r.label) ?? { sources: /* @__PURE__ */ new Set(), units: 0 };
+    entry.sources.add(r.source);
+    entry.units += r.units;
+    byLabel.set(r.label, entry);
+  }
+  const labels = [...byLabel.entries()].map(([label, { sources, units }]) => ({
+    label,
+    source: [...sources].sort().join(", "),
+    units
+  })).sort((a, b) => b.units - a.units || a.label.localeCompare(b.label));
+  const totalUnits = labels.reduce((n, l) => n + l.units, 0);
+  const unclassified = byLabel.get(UNCLASSIFIED_LABEL);
+  const unclassifiedUnits = unclassified?.units ?? 0;
+  const distinctLabels = labels.filter((l) => l.label !== UNCLASSIFIED_LABEL).length;
+  return {
+    side,
+    total_units: totalUnits,
+    distinct_labels: distinctLabels,
+    unclassified_units: unclassifiedUnits,
+    unclassified_share: totalUnits > 0 ? unclassifiedUnits / totalUnits : 0,
+    labels
+  };
+}
+function assembleRetailCoverage(scRows, vcRows) {
+  const units = [
+    ...scRows.map((r) => ({ label: normalizeLabel(r.label), source: r.source, units: r.asin_count })),
+    ...vcRows.map((r) => ({ label: normalizeLabel(r.label), source: r.source, units: r.item_count }))
+  ];
+  return buildSideCoverage("retail", units);
+}
+function assembleAdsCoverage(rows) {
+  const units = rows.map((r) => ({
+    label: normalizeLabel(r.label),
+    source: r.source,
+    units: r.campaign_count
+  }));
+  return buildSideCoverage("ads", units);
+}
+function assembleMatch(rows) {
+  const considered = rows.filter((r) => normalizeLabel(r.label) !== UNCLASSIFIED_LABEL);
+  const matched = considered.filter((r) => r.has_retail && r.has_ads).length;
+  const retailOnly = considered.filter((r) => r.has_retail && !r.has_ads).length;
+  const adsOnly = considered.filter((r) => !r.has_retail && r.has_ads).length;
+  return {
+    distinct_labels_considered: considered.length,
+    matched,
+    retail_only: retailOnly,
+    ads_only: adsOnly,
+    match_rate: considered.length > 0 ? matched / considered.length : null
+  };
+}
+var RETAIL_BLANK_DOMINATED_THRESHOLD = 0.9;
+var MEANINGFUL_LABEL_SHARE = 0.02;
+function classifyShape(retail, ads) {
+  const evidence = [];
+  const nonBlankRetail = retail.labels.filter((l) => l.label !== UNCLASSIFIED_LABEL);
+  const topRetail = nonBlankRetail.slice(0, 5);
+  if (retail.total_units > 0 && retail.unclassified_share >= RETAIL_BLANK_DOMINATED_THRESHOLD) {
+    evidence.push(
+      `retail side is ${(retail.unclassified_share * 100).toFixed(0)}% unclassified (at or above the ${(RETAIL_BLANK_DOMINATED_THRESHOLD * 100).toFixed(0)}% blanks-dominated threshold), so any remaining labeled slivers are not treated as sub-brand evidence`
+    );
+    return { proposal: "single_brand", evidence, confirm_required: true };
+  }
+  const meaningfulRetail = retail.total_units > 0 ? nonBlankRetail.filter((l) => l.units / retail.total_units >= MEANINGFUL_LABEL_SHARE) : nonBlankRetail;
+  if (meaningfulRetail.length <= 1) {
+    evidence.push(
+      meaningfulRetail.length === 0 ? "retail side has no label with meaningful catalog/spend mass" : `retail side has exactly one label with meaningful mass (${meaningfulRetail[0]?.label ?? UNCLASSIFIED_LABEL})`
+    );
+    if (retail.unclassified_share > 0) {
+      evidence.push(
+        `${(retail.unclassified_share * 100).toFixed(0)}% of retail units are unclassified`
+      );
+    }
+    return { proposal: "single_brand", evidence, confirm_required: true };
+  }
+  evidence.push(
+    `retail side has ${meaningfulRetail.length} distinct labels with meaningful mass (>= ${(MEANINGFUL_LABEL_SHARE * 100).toFixed(0)}% of units each)`
+  );
+  evidence.push(
+    `top labels by units: ${topRetail.map((l) => `${l.label} (${l.units})`).join(", ")}`
+  );
+  if (ads.unclassified_share > 0.5) {
+    evidence.push(
+      `ads side is ${(ads.unclassified_share * 100).toFixed(0)}% unclassified \u2014 expect sub-brand ad attribution to start mostly (unclassified) and improve as labels are added (F24)`
+    );
+  }
+  return { proposal: "brand_nested_candidate", evidence, confirm_required: true };
+}
+function insufficientDataClassification(reason) {
+  return { proposal: null, evidence: [reason], confirm_required: true };
+}
+function assembleCoverageReport(input) {
+  const retail = assembleRetailCoverage(input.retailRows, input.vendorRows);
+  const ads = assembleAdsCoverage(input.adsRows);
+  const match = assembleMatch(input.matchRows);
+  const classification = classifyShape(retail, ads);
+  return {
+    seller_id: input.sellerId,
+    generated_at: (input.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    retail,
+    ads,
+    match,
+    classification
+  };
+}
+function resolveSellerIds(amazonSellerId, sellers) {
+  return sellers.filter((s) => s.amazon_seller_id === amazonSellerId).map((s) => s.seller_id);
+}
+async function fetchLabelDiscovery(amazonSellerId, options = {}) {
+  const none = { retailRows: [], adsRows: [], vendorRows: [], matchRows: [] };
+  let sellers;
+  try {
+    sellers = await discoverSellers({
+      dataDirOverride: options.dataDirOverride,
+      includeInactive: true
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: "resolve_seller_ids", message, friendly: message }]
+    };
+  }
+  const resolvedSellerIds = resolveSellerIds(amazonSellerId, sellers);
+  if (resolvedSellerIds.length === 0) {
+    const message = `No seller found for Amazon Seller ID "${amazonSellerId}" in this tenant's warehouse access.`;
+    return {
+      ok: false,
+      resolvedSellerIds: [],
+      ...none,
+      errors: [{ query_id: "resolve_seller_ids", message, friendly: message }]
+    };
+  }
+  const queryOpts = {
+    sellerIds: resolvedSellerIds,
+    dataDirOverride: options.dataDirOverride,
+    queryTimeoutMs: options.queryTimeoutMs
+  };
+  const [retail, ads, vendor, match] = await Promise.all([
+    runNamedQuery("sbd-01", queryOpts),
+    runNamedQuery("sbd-02", queryOpts),
+    runNamedQuery("sbd-03", queryOpts),
+    runNamedQuery("sbd-04", queryOpts)
+  ]);
+  const errors = [];
+  function rowsOf(queryId, result, coerce) {
+    if (result.ok) return result.rows.map(coerce);
+    errors.push({ query_id: queryId, message: result.message, friendly: result.friendly });
+    return [];
+  }
+  return {
+    ok: errors.length === 0,
+    resolvedSellerIds,
+    retailRows: rowsOf("sbd-01", retail, coerceRetailRow),
+    adsRows: rowsOf("sbd-02", ads, coerceAdsRow),
+    vendorRows: rowsOf("sbd-03", vendor, coerceVendorRow),
+    matchRows: rowsOf("sbd-04", match, coerceMatchRow),
+    errors
+  };
+}
+var SBD_QUERY_COUNT = 4;
+function classifyFetchOutcome(fetched) {
+  if (fetched.ok) return "ok";
+  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === "resolve_seller_ids");
+  if (sellerResolutionFailed) return "error";
+  return fetched.errors.length >= SBD_QUERY_COUNT ? "error" : "partial";
+}
+
+// src/lib/binding/stake.ts
+var ACCOUNT_NAMESPACE_PREFIX = "acct-";
+var MAX_INTERPRETATION_CHARS2 = 4e3;
+function accountNamespaceSlug(amazonSellerId) {
+  return `${ACCOUNT_NAMESPACE_PREFIX}${amazonSellerId.toLowerCase()}`;
+}
+function coverageIdempotencyKey(amazonSellerId, isoDate) {
+  return `acctcov:${accountNamespaceSlug(amazonSellerId)}:${isoDate}`;
+}
+function utcDatePart(iso) {
+  return iso.slice(0, 10);
+}
+function buildCoverageStakePayload(report) {
+  const day = utcDatePart(report.generated_at);
+  const interpretation = summarizeCoverage(report).slice(0, MAX_INTERPRETATION_CHARS2);
+  return {
+    brand_slug: accountNamespaceSlug(report.seller_id),
+    family: "structural",
+    kind: "structural.sub_brand_coverage",
+    category: "other",
+    source: "system",
+    interpretation,
+    ts: report.generated_at,
+    evidence: {
+      recorded_from: "mixshift brand discover --emit-stake",
+      seller_id: report.seller_id,
+      retail_distinct_labels: report.retail.distinct_labels,
+      retail_unclassified_share: round24(report.retail.unclassified_share),
+      ads_distinct_labels: report.ads.distinct_labels,
+      ads_unclassified_share: round24(report.ads.unclassified_share),
+      match_rate: report.match.match_rate === null ? null : round24(report.match.match_rate),
+      classification_proposal: report.classification.proposal
+    },
+    idempotency_key: coverageIdempotencyKey(report.seller_id, day)
+  };
+}
+function round24(n) {
+  return Math.round(n * 100) / 100;
+}
+function summarizeCoverage(report) {
+  const matchPct = report.match.match_rate === null ? "n/a" : `${(report.match.match_rate * 100).toFixed(0)}%`;
+  const proposalText = report.classification.proposal === null ? "not available (insufficient data)" : `${report.classification.proposal} (unconfirmed \u2014 the user has not reviewed this)`;
+  return `Sub-brand label coverage for account ${report.seller_id}: retail side has ${report.retail.distinct_labels} distinct label(s) (${(report.retail.unclassified_share * 100).toFixed(0)}% unclassified units), ads side has ${report.ads.distinct_labels} distinct label(s) (${(report.ads.unclassified_share * 100).toFixed(0)}% unclassified units), cross-side match rate ${matchPct}. Shape proposal: ${proposalText}.`;
+}
+async function emitCoverageStake(report, options = {}) {
+  const body = buildCoverageStakePayload(report);
+  const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
+  const posted = await client.postEvent(body, {
+    ...options.timeoutMs !== void 0 ? { timeoutMs: options.timeoutMs } : {}
+  });
+  if (!posted.ok) {
+    return { ok: false, outcome: "failed", detail: posted.friendly, brand_slug: body.brand_slug };
+  }
+  return {
+    ok: true,
+    outcome: posted.duplicate ? "duplicate" : "created",
+    event_id: posted.id,
+    brand_slug: body.brand_slug
+  };
+}
+
+// src/commands/brand-subbrand-discover.ts
+init_telemetry();
+function insufficientDataReason(fetched, amazonSellerId) {
+  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === "resolve_seller_ids");
+  if (sellerResolutionFailed) {
+    return `Could not resolve Amazon Seller ID "${amazonSellerId}" to a warehouse account in this tenant, so no labels could be read.`;
+  }
+  return "All four discovery queries failed, so no labels could be read.";
+}
+var STAKE_SKIPPED_REASON = "Skipped --emit-stake: discovery did not fully succeed, so no coverage stake was posted. Posting a wrong or partial snapshot would occupy today's idempotency key and block a corrected re-run later today.";
+async function runSubbrandDiscovery(opts, cmd) {
+  const root = cmd.optsWithGlobals();
+  const t0 = Date.now();
+  try {
+    const fetched = await fetchLabelDiscovery(opts.sellerId, {
+      dataDirOverride: root.dataDir
+    });
+    const fetchOutcome = classifyFetchOutcome(fetched);
+    let report = assembleCoverageReport({
+      sellerId: opts.sellerId,
+      retailRows: fetched.retailRows,
+      vendorRows: fetched.vendorRows,
+      adsRows: fetched.adsRows,
+      matchRows: fetched.matchRows
+    });
+    if (fetchOutcome === "error") {
+      report = {
+        ...report,
+        classification: insufficientDataClassification(
+          insufficientDataReason(fetched, opts.sellerId)
+        )
+      };
+    }
+    let stake;
+    let stakeSkippedReason;
+    if (opts.emitStake) {
+      if (fetched.ok) {
+        stake = await emitCoverageStake(report, { dataDirOverride: root.dataDir });
+      } else {
+        stakeSkippedReason = STAKE_SKIPPED_REASON;
+      }
+    }
+    await track(
+      {
+        event_name: EventName.BrandSubbrandDiscovered,
+        outcome: fetched.ok ? "ok" : "failed",
+        duration_ms: Date.now() - t0,
+        ...fetched.ok ? {} : { error_class: "partial_query_failure" },
+        payload: {
+          discovery_status: fetchOutcome,
+          retail_distinct_labels: report.retail.distinct_labels,
+          ads_distinct_labels: report.ads.distinct_labels,
+          match_rate: report.match.match_rate,
+          classification_proposal: report.classification.proposal,
+          query_errors: fetched.errors.map((e) => e.query_id),
+          emit_stake: opts.emitStake ?? false,
+          ...stake ? { stake_outcome: stake.ok ? stake.outcome : "failed" } : {},
+          ...stakeSkippedReason ? { stake_skipped: true } : {}
+        }
+      },
+      root.dataDir
+    );
+    if (fetchOutcome === "error") {
+      process.exitCode = 1;
+    }
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: fetchOutcome,
+            // 'ok' | 'partial' | 'error' — never 'ok' unless fetched.ok
+            report,
+            resolved_seller_ids: fetched.resolvedSellerIds,
+            query_errors: fetched.errors,
+            ...stake ? { stake } : {},
+            ...stakeSkippedReason ? { stake_skipped: true, stake_skip_reason: stakeSkippedReason } : {}
+          },
+          null,
+          2
+        ) + "\n"
+      );
+      return;
+    }
+    process.stdout.write(
+      renderCoverageReport(report, fetched, fetchOutcome, { stake, skippedReason: stakeSkippedReason })
+    );
+    return;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (root.json) {
+      process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+    } else {
+      process.stderr.write(`error: ${message}
+`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+}
+function renderCoverageReport(report, fetched, fetchOutcome, stakeInfo = {}) {
+  const lines = [];
+  lines.push(`
+Sub-brand label coverage for seller ${report.seller_id}`);
+  lines.push(`Generated: ${report.generated_at}`);
+  if (fetched.resolvedSellerIds.length > 0) {
+    lines.push(`Resolved warehouse seller_id(s): ${fetched.resolvedSellerIds.join(", ")}`);
+  }
+  lines.push("");
+  if (fetchOutcome !== "ok") {
+    lines.push(
+      fetchOutcome === "error" ? "\u2717 Discovery FAILED \u2014 no usable data:" : "\u26A0 Some discovery queries did not return results (report below is real but incomplete):"
+    );
+    for (const e of fetched.errors) {
+      lines.push(`  - ${e.query_id}: ${e.friendly}`);
+    }
+    lines.push(
+      '  (If this says "unknown query", the gateway side of this feature may not be deployed yet \u2014 this is expected ahead of that release. If this says no seller was found, check the seller ID and that this account has been activated in your MixShift warehouse.)'
+    );
+    lines.push("");
+  }
+  lines.push(renderSide("RETAIL", report.retail));
+  lines.push("");
+  lines.push(renderSide("ADS", report.ads));
+  lines.push("");
+  lines.push(
+    `Cross-side match: ${report.match.matched}/${report.match.distinct_labels_considered} label(s) appear on both sides` + (report.match.match_rate !== null ? ` (${(report.match.match_rate * 100).toFixed(0)}%).` : ".") + ` ${report.match.retail_only} retail-only, ${report.match.ads_only} ads-only.`
+  );
+  lines.push("");
+  lines.push(
+    report.classification.proposal === null ? "Shape proposal: NOT AVAILABLE (insufficient data \u2014 see the failure above)" : `Shape proposal: ${report.classification.proposal} (UNCONFIRMED \u2014 you decide)`
+  );
+  for (const e of report.classification.evidence) lines.push(`  - ${e}`);
+  lines.push("");
+  lines.push(
+    'This is a proposal only. "(unclassified)" rows are never a sub-brand candidate. Nothing was created \u2014 promoting a label to a real brand is a separate step.'
+  );
+  if (stakeInfo.stake) {
+    lines.push("");
+    lines.push(
+      stakeInfo.stake.ok ? `\u2713 Coverage stake ${stakeInfo.stake.outcome} on ${stakeInfo.stake.brand_slug} (timeline event ${stakeInfo.stake.event_id}).` : `\u26A0 Coverage stake NOT recorded on ${stakeInfo.stake.brand_slug}: ${stakeInfo.stake.detail}`
+    );
+  } else if (stakeInfo.skippedReason) {
+    lines.push("");
+    lines.push(`\u26A0 ${stakeInfo.skippedReason}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function renderSide(label, side) {
+  const lines = [];
+  lines.push(
+    `${label}: ${side.distinct_labels} distinct label(s), ${(side.unclassified_share * 100).toFixed(0)}% of units unclassified (${side.total_units} total units).`
+  );
+  const top = side.labels.slice(0, 5);
+  for (const l of top) {
+    lines.push(`  - ${l.label}: ${l.units} unit(s)  [${l.source}]`);
+  }
+  if (side.labels.length > top.length) {
+    lines.push(`  ... and ${side.labels.length - top.length} more`);
+  }
+  return lines.join("\n");
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
@@ -75937,6 +76437,7 @@ ${close}
                 narrative_path: result.narrative_path,
                 written_files: result.written_files,
                 account_count: result.context.accounts.length,
+                binding_preserved: result.binding_preserved,
                 next_step: `Run /mx-brand-context ${match.slug} in Claude to complete AM intake.`
               },
               null,
@@ -75950,7 +76451,9 @@ ${close}
     accounts:  ${result.context.accounts.length}
     context:   ${result.context_path}
     narrative: ${result.narrative_path}
-
+` + (result.binding_preserved ? `
+\u26A0 This brand's existing sub-brand binding was preserved (not touched by --force).
+` : "") + `
 Next: run \`/mx-brand-context ${match.slug}\` in Claude.
       The skill walks you through AM intake (positioning,
       goals, structural events) and fills in everything
@@ -75990,7 +76493,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     notYetImplemented("brand rename", { old: oldSlug, new: newSlug });
   });
   brand.command("discover").description(
-    "Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand."
+    'Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand. Pass --seller-id to run SUB-BRAND label discovery for one Amazon seller account instead (mx-ops#6 P1) \u2014 a different question ("what labels live inside this account") that never touches the brand registry.'
   ).option(
     "--include-inactive",
     "include dormant brands (no active ads or retail) in the printed table",
@@ -75999,108 +76502,124 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     "--format <type>",
     "output format: `terminal` (space-aligned table, default) | `chat` (markdown pipe table for Claude/Cowork to surface verbatim in chat)",
     "terminal"
-  ).action(async (opts, cmd) => {
-    const root = cmd.optsWithGlobals();
-    try {
-      const { index } = await runDiscoveryAndPersist({
-        dataDirOverride: root.dataDir
-      });
-      const counts = countByActivity(index);
-      await track(
-        {
-          event_name: EventName.BrandDiscovered,
-          outcome: "ok",
-          payload: {
-            trigger: "manual_discover",
-            total: counts.total,
-            active: counts.active,
-            dormant: counts.dormant,
-            cold_started: counts.cold_started,
-            include_inactive_display: opts.includeInactive
-          }
-        },
-        root.dataDir
-      );
-      const displayBrands = opts.includeInactive ? filterIndex(index, "all") : filterIndex(index, "active");
-      if (root.json) {
-        process.stdout.write(
-          JSON.stringify(
-            {
-              status: "ok",
-              discovered_at: index.discovered_at,
-              counts,
-              brands: displayBrands
-            },
-            null,
-            2
-          ) + "\n"
+  ).option(
+    "--seller-id <id>",
+    "run sub-brand label discovery for one Amazon Seller ID instead of the normal account discovery (mx-ops#6 P1)"
+  ).option(
+    "--emit-stake",
+    "with --seller-id: also post a coverage-summary stake to the account timeline namespace",
+    false
+  ).action(
+    async (opts, cmd) => {
+      if (opts.sellerId !== void 0) {
+        await runSubbrandDiscovery(
+          { sellerId: opts.sellerId, emitStake: opts.emitStake },
+          cmd
         );
         return;
       }
-      if (counts.active === 0 && counts.total === 0) {
-        process.stdout.write(
-          "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
+      const root = cmd.optsWithGlobals();
+      try {
+        const { index } = await runDiscoveryAndPersist({
+          dataDirOverride: root.dataDir
+        });
+        const counts = countByActivity(index);
+        await track(
+          {
+            event_name: EventName.BrandDiscovered,
+            outcome: "ok",
+            payload: {
+              trigger: "manual_discover",
+              total: counts.total,
+              active: counts.active,
+              dormant: counts.dormant,
+              cold_started: counts.cold_started,
+              include_inactive_display: opts.includeInactive
+            }
+          },
+          root.dataDir
         );
+        const displayBrands = opts.includeInactive ? filterIndex(index, "all") : filterIndex(index, "active");
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: "ok",
+                discovered_at: index.discovered_at,
+                counts,
+                brands: displayBrands
+              },
+              null,
+              2
+            ) + "\n"
+          );
+          return;
+        }
+        if (counts.active === 0 && counts.total === 0) {
+          process.stdout.write(
+            "\nNo brands found in your MixShift warehouse.\n\nThis means you have not yet activated data in MixShift for\nyour brands. Head to the Account Manager view to begin:\n  https://dash.mydashapplications.com/account-manager\n\nOnboarding help doc:\n  https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift\n\n" + DATA_TIMING_TERMINAL + "\n"
+          );
+          return;
+        }
+        const renderable = displayBrands.map((b) => ({
+          slug: b.slug,
+          display_name: b.display_name,
+          ads_active: b.ads_active,
+          retail_active: b.retail_active,
+          accounts: b.accounts.map((a) => ({
+            seller_id: a.seller_id,
+            seller_name: a.seller_name,
+            amazon_seller_id: null,
+            merchant_alias: a.merchant_alias,
+            account_type: a.account_type,
+            marketplace: a.marketplace,
+            region: a.region,
+            agency_name: null,
+            acos_target: null,
+            ads_active: a.ads_active,
+            retail_active: a.retail_active,
+            is_active: a.is_active,
+            has_mws: a.is_mws_user,
+            created_at: null,
+            updated_at: null
+          }))
+        }));
+        const chatFormat = opts.format === "chat";
+        if (chatFormat) {
+          process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
+        } else {
+          process.stderr.write(renderDiscoveryTable(renderable) + "\n");
+        }
+        const footer = [
+          `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up).`,
+          `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
+        ];
+        if (!opts.includeInactive && counts.dormant > 0) {
+          footer.push(
+            `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
+          );
+        }
+        if (chatFormat) {
+          process.stdout.write("\n" + footer.join("\n") + "\n\n");
+        } else {
+          process.stderr.write("\n" + footer.join("\n") + "\n\n");
+        }
         return;
-      }
-      const renderable = displayBrands.map((b) => ({
-        slug: b.slug,
-        display_name: b.display_name,
-        ads_active: b.ads_active,
-        retail_active: b.retail_active,
-        accounts: b.accounts.map((a) => ({
-          seller_id: a.seller_id,
-          seller_name: a.seller_name,
-          amazon_seller_id: null,
-          merchant_alias: a.merchant_alias,
-          account_type: a.account_type,
-          marketplace: a.marketplace,
-          region: a.region,
-          agency_name: null,
-          acos_target: null,
-          ads_active: a.ads_active,
-          retail_active: a.retail_active,
-          is_active: a.is_active,
-          has_mws: a.is_mws_user,
-          created_at: null,
-          updated_at: null
-        }))
-      }));
-      const chatFormat = opts.format === "chat";
-      if (chatFormat) {
-        process.stdout.write(renderDiscoveryTableChat(renderable) + "\n");
-      } else {
-        process.stderr.write(renderDiscoveryTable(renderable) + "\n");
-      }
-      const footer = [
-        `Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up).`,
-        `Persisted to ${index.brands.length === 0 ? "(empty)" : "~/.mixshift/clients/index.yaml"}.`
-      ];
-      if (!opts.includeInactive && counts.dormant > 0) {
-        footer.push(
-          `${counts.dormant} dormant brand(s) hidden. Use --include-inactive or "mixshift brand list --all" to see them.`
-        );
-      }
-      if (chatFormat) {
-        process.stdout.write("\n" + footer.join("\n") + "\n\n");
-      } else {
-        process.stderr.write("\n" + footer.join("\n") + "\n\n");
-      }
-      return;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (root.json) {
-        process.stdout.write(
-          JSON.stringify({ status: "error", message }, null, 2) + "\n"
-        );
-      } else {
-        process.stderr.write(`error: ${message}
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${message}
 `);
+        }
+        process.exitCode = 1;
+        return;
       }
-      process.exitCode = 1;
-      return;
     }
-  });
+  );
   brand.command("validate <slug>").description("Schema-check one brand context.yaml (post manual edit)").action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const result = await validateBrandContext(slug, root.dataDir);
@@ -76401,7 +76920,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
 
 // src/commands/auth.ts
 var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile22 } from "node:fs/promises";
+import { readFile as readFile23 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -79165,7 +79684,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile22(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile23(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -79317,7 +79836,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile22(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile23(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -79337,7 +79856,7 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile22(path2, "utf-8");
+  const raw = await readFile23(path2, "utf-8");
   let parsed;
   try {
     parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml16.parse)(raw);
@@ -79536,7 +80055,7 @@ init_zod();
 var import_yaml17 = __toESM(require_dist(), 1);
 init_plugin_root();
 init_format_error();
-import { readFile as readFile23 } from "node:fs/promises";
+import { readFile as readFile24 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -79617,7 +80136,7 @@ async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile23(path2, "utf-8");
+    raw = await readFile24(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError15(err)) {
       throw new Error(
@@ -80169,7 +80688,7 @@ function todayISO4() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile24 } from "node:fs/promises";
+import { readFile as readFile25 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
@@ -80382,7 +80901,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile24(opts.inputFile, "utf-8");
+      const raw = await readFile25(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -80452,14 +80971,14 @@ import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
 var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile25 } from "node:fs/promises";
+import { readFile as readFile26 } from "node:fs/promises";
 import { dirname as dirname21, join as join15 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile25(path2, "utf-8");
+      const raw = await readFile26(path2, "utf-8");
       const parsed = (0, import_yaml18.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
@@ -81635,13 +82154,13 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile27, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
+import { readFile as readFile28, writeFile as writeFile19, mkdir as mkdir20 } from "node:fs/promises";
 import { dirname as dirname24 } from "node:path";
 import { join as join17 } from "node:path";
 
 // src/lib/update-notice-state.ts
 init_resolve();
-import { readFile as readFile26, writeFile as writeFile18, mkdir as mkdir19, rename as rename17, unlink as unlink7 } from "node:fs/promises";
+import { readFile as readFile27, writeFile as writeFile18, mkdir as mkdir19, rename as rename17, unlink as unlink7 } from "node:fs/promises";
 import { dirname as dirname23, join as join16 } from "node:path";
 var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
 var VERSION_RE = /^\d{1,5}(\.\d{1,5}){1,3}(-[0-9A-Za-z][0-9A-Za-z.]{0,14})?(\+[0-9A-Za-z][0-9A-Za-z.]{0,14})?$/;
@@ -81664,7 +82183,7 @@ function updateNoticeStatePath(dataDirOverride) {
 }
 async function loadUpdateNoticeState(dataDirOverride) {
   try {
-    const raw = await readFile26(updateNoticeStatePath(dataDirOverride), "utf-8");
+    const raw = await readFile27(updateNoticeStatePath(dataDirOverride), "utf-8");
     return coerceState(JSON.parse(raw));
   } catch {
     return emptyUpdateNoticeState();
@@ -81741,7 +82260,7 @@ async function checkForUpdate(opts = {}) {
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile27(cachePath2, "utf-8");
+    const raw = await readFile28(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
       cached4 = {
@@ -81785,7 +82304,7 @@ async function checkForUpdate(opts = {}) {
 }
 async function readCachedLatestVersion(dataDirOverride) {
   try {
-    const raw = await readFile27(versionCheckCachePath(dataDirOverride), "utf-8");
+    const raw = await readFile28(versionCheckCachePath(dataDirOverride), "utf-8");
     const parsed = JSON.parse(raw);
     return isValidVersion(parsed.latest_version) ? parsed.latest_version : null;
   } catch {
@@ -82238,7 +82757,7 @@ function renderWelcomeChat(args) {
 init_plugin_version();
 
 // src/lib/install-record.ts
-import { readFile as readFile28 } from "node:fs/promises";
+import { readFile as readFile29 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
 import { join as join18 } from "node:path";
 init_surface();
@@ -82268,7 +82787,7 @@ async function probeInstallRecord(opts = {}) {
   const path2 = installedPluginsPath(opts.homeOverride);
   let raw;
   try {
-    raw = await readFile28(path2, "utf-8");
+    raw = await readFile29(path2, "utf-8");
   } catch (err) {
     const code = err?.code;
     if (code === "ENOENT") {
@@ -82522,7 +83041,7 @@ init_telemetry();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile29, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
+import { readFile as readFile30, writeFile as writeFile20, mkdir as mkdir21 } from "node:fs/promises";
 import { dirname as dirname25, join as join19 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
@@ -82570,7 +83089,7 @@ async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile29(path2, "utf-8");
+    const raw = await readFile30(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
       cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
@@ -82724,7 +83243,7 @@ init_plugin_version();
 
 // src/lib/update-actions-state.ts
 init_resolve();
-import { readFile as readFile30, writeFile as writeFile21, mkdir as mkdir22, rename as rename18, unlink as unlink8 } from "node:fs/promises";
+import { readFile as readFile31, writeFile as writeFile21, mkdir as mkdir22, rename as rename18, unlink as unlink8 } from "node:fs/promises";
 import { dirname as dirname26, join as join20 } from "node:path";
 var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
 var ACTION_STATUSES = [
@@ -82747,7 +83266,7 @@ function actionsLedgerPath(dataDirOverride) {
 }
 async function loadActionsLedger(dataDirOverride) {
   try {
-    const raw = await readFile30(actionsLedgerPath(dataDirOverride), "utf-8");
+    const raw = await readFile31(actionsLedgerPath(dataDirOverride), "utf-8");
     return coerceLedger(JSON.parse(raw));
   } catch {
     return emptyActionsLedger();
@@ -82801,7 +83320,7 @@ init_zod();
 var import_yaml19 = __toESM(require_dist(), 1);
 init_resolve();
 init_plugin_root();
-import { readFile as readFile31, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
+import { readFile as readFile32, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
 import { readdir as readdir4 } from "node:fs/promises";
 import { dirname as dirname27, join as join21 } from "node:path";
 init_credentials();
@@ -82898,7 +83417,7 @@ async function loadActions(opts = {}) {
   const path2 = actionsCachePath(opts.dataDirOverride);
   let cached4 = null;
   try {
-    const raw = await readFile31(path2, "utf-8");
+    const raw = await readFile32(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.yaml === "string") {
       cached4 = { checked_at: parsed.checked_at, yaml: parsed.yaml };
@@ -83487,7 +84006,7 @@ Context:
 
 // src/lib/calibration/confirm-flow.ts
 var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile33 } from "node:fs/promises";
+import { readFile as readFile34 } from "node:fs/promises";
 init_resolve();
 async function prepareConfirmation(opts) {
   const { brandSlug, brandName, skillId, manifest, dataDirOverride } = opts;
@@ -83803,7 +84322,7 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile33(path2, "utf-8");
+    const raw = await readFile34(path2, "utf-8");
     return (0, import_yaml20.parse)(raw);
   } catch {
     return null;
@@ -83963,7 +84482,7 @@ function indexConfirmationEntries(payload) {
 // src/commands/skill.ts
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir25, readFile as readFile34, writeFile as writeFile23 } from "node:fs/promises";
+import { mkdir as mkdir25, readFile as readFile35, writeFile as writeFile23 } from "node:fs/promises";
 import { dirname as dirname29 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
@@ -84445,7 +84964,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile34(path2, "utf-8");
+    const raw = await readFile35(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -85220,14 +85739,14 @@ function safeJsonPreview(json2) {
 
 // src/lib/reports/catalog.ts
 var import_yaml21 = __toESM(require_dist(), 1);
-import { readFile as readFile35 } from "node:fs/promises";
+import { readFile as readFile36 } from "node:fs/promises";
 import { dirname as dirname31, join as join23 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile35(path2, "utf-8");
+      const raw = await readFile36(path2, "utf-8");
       const parsed = (0, import_yaml21.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
@@ -85292,7 +85811,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile37 } from "node:fs/promises";
+import { readFile as readFile38 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -85385,12 +85904,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir27, readFile as readFile36, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
+import { mkdir as mkdir27, readFile as readFile37, rename as rename20, writeFile as writeFile24 } from "node:fs/promises";
 import { dirname as dirname32 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile36(path2, "utf8");
+    const raw = await readFile37(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -85840,7 +86359,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile37(file2, "utf8");
+    const text = await readFile38(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -85912,7 +86431,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile38 } from "node:fs/promises";
+import { readFile as readFile39 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -86041,7 +86560,7 @@ function registerCall(amazon) {
         return emitError8(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile38(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile39(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -87185,7 +87704,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile39 } from "node:fs/promises";
+import { readFile as readFile40 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -87502,7 +88021,7 @@ function registerCall2(ads) {
         return emitError10(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile39(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile40(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -87705,7 +88224,7 @@ function mdCell2(s) {
 }
 
 // src/commands/intelligence.ts
-import { readFile as readFile41, mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
+import { readFile as readFile42, mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
 import { resolve as resolvePath3, dirname as dirname35 } from "node:path";
 
 // src/lib/intelligence/client.ts
@@ -88033,12 +88552,12 @@ function safeJsonPreview2(json2) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir29, open, readFile as readFile40, rename as rename21, stat as stat4, unlink as unlink9, writeFile as writeFile26 } from "node:fs/promises";
+import { mkdir as mkdir29, open, readFile as readFile41, rename as rename21, stat as stat4, unlink as unlink9, writeFile as writeFile26 } from "node:fs/promises";
 import { dirname as dirname34 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
   try {
-    const raw = await readFile40(path2, "utf8");
+    const raw = await readFile41(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -88458,7 +88977,7 @@ async function loadParams(file2, inline) {
   }
   let raw;
   if (file2) {
-    raw = await readFile41(file2, "utf8");
+    raw = await readFile42(file2, "utf8");
   } else if (inline) {
     raw = inline;
   } else {
@@ -90467,7 +90986,7 @@ function registerList(timeline) {
   });
 }
 var MAX_NOTE_CHARS = 32768;
-var MAX_INTERPRETATION_CHARS2 = 4e3;
+var MAX_INTERPRETATION_CHARS3 = 4e3;
 var MAX_EVIDENCE_CHARS = 4096;
 function registerAdd(timeline) {
   timeline.command("add").description(
@@ -90517,9 +91036,9 @@ function registerAdd(timeline) {
           );
           return;
         }
-        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS2) {
+        if (opts.interpretation.length > MAX_INTERPRETATION_CHARS3) {
           emitError13(
-            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS2}).`,
+            `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS3}).`,
             root
           );
           return;
