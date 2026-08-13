@@ -99,6 +99,17 @@ export interface ConfirmationFieldEntry {
   source: FieldValueSource;
   /** Pre-formatted display string for the chat renderer. */
   display: string;
+  /**
+   * True only when `source === 'seed'` AND the seed value fell back to the
+   * Tier-2 brain (the brain-fallback branch below, NOT a direct context.yaml
+   * hit) for a bound sub-brand whose underlying brain field is ACCOUNT-WIDE
+   * (ResolvedField.account_wide — F2). A direct context.yaml hit is always
+   * this brand's own, bound or not, so it never sets this. mx-legacy-auth-
+   * subbrand finding F5: without this flag, an account-wide brain pre-fill
+   * silently confirms as this sub-brand's own number the moment the user
+   * hits "confirm" or edits an unrelated field on the same card.
+   */
+  account_wide?: boolean;
 }
 
 export interface ConfirmationPayload {
@@ -153,6 +164,15 @@ export interface ApplyResult {
    *  acknowledgment (renderPersistenceFooter). Empty/absent on confirm-as-is,
    *  use-once, skill-only edits, cancel, or validation failure. */
   captured?: Array<{ label: string; value: string }>;
+  /**
+   * Field ids in `effective_config` whose value is a bound sub-brand's
+   * ACCOUNT-WIDE brain pre-fill that the user did NOT override this call
+   * (red-team finding F5) — never treat these as the
+   * sub-brand's own confirmed number. Present (and non-empty) on any 'ok'
+   * result that carries at least one; absent otherwise, so an unbound
+   * brand's ApplyResult stays exactly as it was before F5.
+   */
+  account_wide_fields?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +219,10 @@ export async function prepareConfirmation(
       let seed_value = field.seed_from
         ? getByPath(ctx, stripContextPrefix(field.seed_from))
         : undefined;
+      // F5: only the BRAIN-fallback branch below can ever be an account-wide
+      // pre-fill — a direct context.yaml hit above is always this brand's
+      // own, bound sub-brand or not.
+      let seedAccountWide = false;
       if (seed_value === undefined && field.seed_from) {
         // Context lacked it — fall back to the brand brain (Tier 2) for the
         // same logical field, when seed_from maps to a registered brand field.
@@ -208,6 +232,7 @@ export async function prepareConfirmation(
         const resolved = key ? brandFields[key] : null;
         if (resolved && resolved.source === 'brain') {
           seed_value = resolved.value;
+          seedAccountWide = !!resolved.account_wide;
         }
       }
       // Reconcile units: brand state stores percentages whole (acos_target_pct:
@@ -242,6 +267,7 @@ export async function prepareConfirmation(
         effective_value,
         source,
         display: formatFieldValue(field, effective_value),
+        account_wide: source === 'seed' && seedAccountWide,
       };
     });
 
@@ -318,6 +344,7 @@ export async function applyConfirmation(
       did_persist: false,
       saved_to: null,
       validation_issues: [],
+      ...accountWideFieldsResult(payload, decision),
     };
   }
 
@@ -462,6 +489,7 @@ export async function applyConfirmation(
       did_persist: false,
       saved_to: null,
       validation_issues: [],
+      ...accountWideFieldsResult(payload, decision),
     };
   }
 
@@ -512,7 +540,34 @@ export async function applyConfirmation(
       label: s.field.label ?? humanizeFieldId(s.field.id),
       value: s.display,
     })),
+    ...accountWideFieldsResult(payload, decision),
   };
+}
+
+/**
+ * Field ids that are about to land in `effective_config` (and, on a save,
+ * in config.yaml::<skill_id>) as an account-wide brain pre-fill the user did
+ * NOT override this call (F5). Excludes anything the user actually typed
+ * (`decision.edits`) — an explicit edit is the user's own considered input,
+ * for both this skill's config and any GAP-04 shared-context promotion, not
+ * a passive inheritance. Returns `{}` (nothing to spread) when the list is
+ * empty, so an unbound brand's ApplyResult carries no new key at all.
+ */
+function accountWideFieldsResult(
+  payload: ConfirmationPayload,
+  decision: ConfirmationDecision,
+): { account_wide_fields?: string[] } {
+  const editedKeys =
+    decision.action === 'edit' &&
+    decision.edits !== null &&
+    typeof decision.edits === 'object' &&
+    !Array.isArray(decision.edits)
+      ? new Set(Object.keys(decision.edits))
+      : new Set<string>();
+  const ids = payload.fields
+    .filter((e) => e.account_wide && !editedKeys.has(e.field.id))
+    .map((e) => e.field.id);
+  return ids.length > 0 ? { account_wide_fields: ids } : {};
 }
 
 // ---------------------------------------------------------------------------

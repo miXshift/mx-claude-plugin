@@ -264,6 +264,13 @@ function renderSourceHint(entry: ConfirmationFieldEntry): string | null {
     case 'stored':
       return null;
     case 'seed':
+      // F5: an account-wide brain pre-fill for a bound sub-brand gets its
+      // OWN loud hint instead of the normal provenance-neutral one — the
+      // whole point is that this number is NOT this sub-brand's own, and
+      // that must be visible at the confirm step, not discovered later.
+      if (entry.account_wide) {
+        return `(ACCOUNT-WIDE pre-fill, not this sub-brand's own number: verify before confirming)`;
+      }
       // Deliberately does not claim the value came from the user's own data:
       // a seeded value can trace to a bootstrap placeholder (e.g.
       // management.acos_target_source: 'default'). The skill-side guidance
@@ -410,6 +417,18 @@ export function renderPersistenceFooter(
     const items = learned.map((c) => `${c.label} = ${c.value}`).join(', ');
     lines.push(
       `Learned for ${brandName}: ${items}. Recorded to apply across your skills.`,
+    );
+  }
+  // F5: this save carries at least one field the user did NOT type this
+  // call, whose value is a bound sub-brand's account-wide brain pre-fill.
+  // Say so at the point it's recorded, not only at the confirm card (which
+  // may have scrolled past by the time the save actually happens).
+  const accountWide = result.account_wide_fields ?? [];
+  if (accountWide.length > 0) {
+    lines.push(
+      `Note: ${accountWide.join(', ')} in this save came from ${brandName}'s account-wide ` +
+        `brain pre-fill, not a number specific to this sub-brand. Review before treating it ` +
+        `as ${brandName}'s own.`,
     );
   }
   return lines.join('\n');

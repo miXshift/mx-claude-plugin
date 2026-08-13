@@ -148,6 +148,232 @@ describe('prepareConfirmation — Tier-2 brain seed fallback', () => {
   });
 });
 
+// F5 (red-team review): a bound sub-brand's seed value must be
+// flagged when it falls back to a Tier-2 brain field that is ACCOUNT-WIDE
+// (ResolvedField.account_wide, F2) — never silently adopted as this
+// sub-brand's own confirmed number.
+describe('prepareConfirmation — F5 account-wide seed flag', () => {
+  const NOW = new Date('2026-06-10T12:00:00.000Z');
+  const marketplaceManifest: CalibrationManifest = {
+    schema_version: 1,
+    fields: [
+      {
+        id: 'marketplace',
+        prompt: 'Marketplace?',
+        type: 'string',
+        max_length: 280,
+        seed_from: 'context.accounts.0.marketplace',
+        required: false,
+        deprecated: false,
+      },
+    ],
+  };
+
+  async function writeBoundContext(withMarketplace: boolean) {
+    const context = {
+      schema_version: 1,
+      brand_slug: 'summit',
+      brand_name: 'Summit',
+      last_updated: '2026-06-10',
+      accounts: [
+        {
+          seller_id: 7,
+          seller_name: 'Summit Seller',
+          account_type: 'SC',
+          status: 'active',
+          role: 'primary',
+          ...(withMarketplace ? { marketplace: 'Amazon.com' } : {}),
+        },
+      ],
+      sources: {
+        ad_metrics: 'campaignmetric',
+        ops_revenue: 'business_reports_dpst_date',
+        ops_revenue_field: 'SalesAmount',
+        ops_units_field: 'UnitsOrdered',
+        ops_date_field: 'DateTime',
+      },
+      management: { primary_metric: 'ACOS', acos_target_pct: 22, attribution_window_days: 14 },
+      binding: {
+        kind: 'sub_brand',
+        amazon_seller_id: 'A1EXAMPLE23456',
+        retail_label: { source: 'mws_items.Brand', value: 'Summit' },
+        ads_label: { source: 'campaign.Brand', value: 'Summit' },
+      },
+    };
+    const { stringify: stringifyYaml } = await import('yaml');
+    await writeFile(join(brandDir, 'context.yaml'), stringifyYaml(context), 'utf-8');
+  }
+
+  async function writeBrainWithMarketplace() {
+    const brain = assembleBrain({
+      brandSlug: 'summit',
+      sellerRows: [
+        { ID: 7, MerchantAlias: 'Summit', MarketPlaceName: 'Amazon.com', ACOSTarget: '25.0' },
+      ],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@test',
+      now: NOW,
+    });
+    await saveBrain(brain, testDir);
+  }
+
+  it("flags the seed account_wide when a BOUND brand's context lacks the value and falls back to the (account-wide) brain", async () => {
+    await writeBrainWithMarketplace();
+    await writeBoundContext(false); // no marketplace on the account row
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: marketplaceManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    expect(f.source).toBe('seed');
+    expect(f.seed_value).toBe('Amazon.com');
+    expect(f.account_wide).toBe(true);
+  });
+
+  it('does NOT flag account_wide when the context itself supplies the value (Tier-3 is always this brand\'s own)', async () => {
+    await writeBrainWithMarketplace();
+    await writeBoundContext(true); // marketplace set directly in context
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: marketplaceManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    // tryReadContext's raw getByPath hits the context value directly.
+    expect(f.seed_value).toBe('Amazon.com');
+    expect(f.account_wide).toBeFalsy();
+  });
+
+  it('does NOT flag account_wide for an UNBOUND brand falling back to the same brain field (byte-identical to before F5)', async () => {
+    await writeBrainWithMarketplace();
+    // No context.yaml at all -> unbound, brain-fallback path (pre-existing
+    // "seeds a both-tiers field from the brain" test's exact scenario).
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'mx-keyword-bid-health',
+      manifest: marketplaceManifest,
+      dataDirOverride: testDir,
+    });
+    const f = payload.fields[0]!;
+    expect(f.seed_value).toBe('Amazon.com');
+    expect(f.account_wide).toBeFalsy();
+  });
+});
+
+describe('applyConfirmation — F5 account_wide_fields', () => {
+  it('lists an unedited account-wide seed field in account_wide_fields on confirm-as-is', async () => {
+    const payload = {
+      skill_id: 'x',
+      brand_slug: 'summit',
+      brand_name: 'Summit',
+      is_first_run: false,
+      fields: [
+        {
+          field: {
+            id: 'marketplace',
+            prompt: 'Marketplace?',
+            type: 'string' as const,
+            max_length: 280,
+            required: false,
+            deprecated: false,
+          },
+          stored_value: undefined,
+          seed_value: 'Amazon.com',
+          default_value: undefined,
+          effective_value: 'Amazon.com',
+          source: 'seed' as const,
+          display: 'Amazon.com',
+          account_wide: true,
+        },
+      ],
+      extras: {},
+      blocking: { has_missing_required: false, missing_keys: [] },
+    };
+    const decision: ConfirmationDecision = { action: 'confirm' };
+    const result = await applyConfirmation(payload, decision, { dataDirOverride: testDir });
+    expect(result.status).toBe('ok');
+    expect(result.account_wide_fields).toEqual(['marketplace']);
+  });
+
+  it('excludes a field the user just EDITED this call, even if it was account-wide going in', async () => {
+    const payload = {
+      skill_id: 'x',
+      brand_slug: 'summit',
+      brand_name: 'Summit',
+      is_first_run: false,
+      fields: [
+        {
+          field: {
+            id: 'marketplace',
+            prompt: 'Marketplace?',
+            type: 'string' as const,
+            max_length: 280,
+            required: false,
+            deprecated: false,
+          },
+          stored_value: undefined,
+          seed_value: 'Amazon.com',
+          default_value: undefined,
+          effective_value: 'Amazon.com',
+          source: 'seed' as const,
+          display: 'Amazon.com',
+          account_wide: true,
+        },
+      ],
+      extras: {},
+      blocking: { has_missing_required: false, missing_keys: [] },
+    };
+    const decision: ConfirmationDecision = {
+      action: 'edit',
+      edits: { marketplace: 'Amazon.co.uk' },
+      save: false,
+    };
+    const result = await applyConfirmation(payload, decision, { dataDirOverride: testDir });
+    expect(result.status).toBe('ok');
+    expect(result.account_wide_fields ?? []).toEqual([]);
+  });
+
+  it('omits account_wide_fields entirely when nothing is account-wide (byte-identical ApplyResult for an unbound brand)', async () => {
+    const payload = {
+      skill_id: 'x',
+      brand_slug: 'summit',
+      brand_name: 'Summit',
+      is_first_run: false,
+      fields: [
+        {
+          field: {
+            id: 'dampening',
+            prompt: 'Dampening?',
+            type: 'float' as const,
+            decimals: 2,
+            range: { min: 0, max: 1 },
+            required: true,
+            deprecated: false,
+          },
+          stored_value: 0.4,
+          seed_value: undefined,
+          default_value: 0.6,
+          effective_value: 0.4,
+          source: 'stored' as const,
+          display: '0.4',
+        },
+      ],
+      extras: {},
+      blocking: { has_missing_required: false, missing_keys: [] },
+    };
+    const decision: ConfirmationDecision = { action: 'confirm' };
+    const result = await applyConfirmation(payload, decision, { dataDirOverride: testDir });
+    expect(result.status).toBe('ok');
+    expect(result).not.toHaveProperty('account_wide_fields');
+  });
+});
+
 describe('prepareConfirmation — percent seed unit normalization', () => {
   const pctManifest: CalibrationManifest = {
     schema_version: 1,

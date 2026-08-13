@@ -375,16 +375,29 @@ export const brandBrainSchema = z.object({
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),
   /** Sub-brand label-lens record (mx-ops#6): present only on a BOUND brand's
-   *  brain. Which sources ran label-scoped vs account-wide — consumers must
-   *  not attribute account-wide sources to the sub-brand. Additive/optional:
-   *  older readers strip it on read, and the brain is regenerated wholesale
-   *  each fetch, so mixed-version fleets tolerate it. */
+   *  brain. Which sources RESOLVED to which outcome (lib/binding/lens.ts) —
+   *  consumers must not attribute a non-'applied' source's rows to the
+   *  sub-brand. Every outcome here is evidence-based (resolved from the
+   *  gateway's `applied_params` echo after the query returned), never a
+   *  pre-query claim. Additive/optional: older readers strip it on read, and
+   *  the brain is regenerated wholesale each fetch, so mixed-version fleets
+   *  tolerate it. `dropped`/`unverified`/`query_failed` are additive on top
+   *  of the original three-bucket shape (`.default([])` so a brain written
+   *  by an earlier build of this same unreleased feature still parses). */
   label_lens: z
     .object({
       bound: z.boolean(),
-      applied: z.array(z.string()),
-      account_wide: z.array(z.string()),
-      missing_label_value: z.array(z.string()),
+      applied: z.array(z.string()).default([]),
+      /** P0: the gateway did not honor a filter we sent — these rows are
+       *  account-wide despite the binding. */
+      dropped: z.array(z.string()).default([]),
+      /** We sent a filter but the response carried no evidence either way
+       *  (an older gateway deploy). Not proven label-scoped. */
+      unverified: z.array(z.string()).default([]),
+      account_wide: z.array(z.string()).default([]),
+      missing_label_value: z.array(z.string()).default([]),
+      /** The query failed or was deferred — no scoping claim was possible. */
+      query_failed: z.array(z.string()).default([]),
     })
     .optional(),
 });

@@ -65928,12 +65928,20 @@ async function runNamedQuery(id, options = {}) {
             auth_path: "datahub",
             named_query: true,
             server_duration_ms: serverDuration,
-            revision: json2.revision
+            revision: json2.revision,
+            applied_params: json2.applied_params
           }
         },
         options.dataDirOverride
       );
-      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json2.revision };
+      return {
+        ok: true,
+        rows,
+        rowCount,
+        durationMs: serverDuration,
+        revision: json2.revision,
+        appliedParams: json2.applied_params
+      };
     }
     const failure = {
       ok: false,
@@ -71150,7 +71158,8 @@ async function runNamed(id, opts) {
     usedDispatch: "named",
     displaySql: `-- named query ${id}@${result.revision ?? "?"} (SQL executes server-side)`,
     boundParams: { id, seller_ids: sellerIds, params: restParams },
-    revision: result.revision
+    revision: result.revision,
+    appliedParams: result.appliedParams
   };
 }
 async function runSproc(id, entry, opts) {
@@ -71447,15 +71456,28 @@ var brandBrainSchema = external_exports.object({
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({}),
   /** Sub-brand label-lens record (mx-ops#6): present only on a BOUND brand's
-   *  brain. Which sources ran label-scoped vs account-wide — consumers must
-   *  not attribute account-wide sources to the sub-brand. Additive/optional:
-   *  older readers strip it on read, and the brain is regenerated wholesale
-   *  each fetch, so mixed-version fleets tolerate it. */
+   *  brain. Which sources RESOLVED to which outcome (lib/binding/lens.ts) —
+   *  consumers must not attribute a non-'applied' source's rows to the
+   *  sub-brand. Every outcome here is evidence-based (resolved from the
+   *  gateway's `applied_params` echo after the query returned), never a
+   *  pre-query claim. Additive/optional: older readers strip it on read, and
+   *  the brain is regenerated wholesale each fetch, so mixed-version fleets
+   *  tolerate it. `dropped`/`unverified`/`query_failed` are additive on top
+   *  of the original three-bucket shape (`.default([])` so a brain written
+   *  by an earlier build of this same unreleased feature still parses). */
   label_lens: external_exports.object({
     bound: external_exports.boolean(),
-    applied: external_exports.array(external_exports.string()),
-    account_wide: external_exports.array(external_exports.string()),
-    missing_label_value: external_exports.array(external_exports.string())
+    applied: external_exports.array(external_exports.string()).default([]),
+    /** P0: the gateway did not honor a filter we sent — these rows are
+     *  account-wide despite the binding. */
+    dropped: external_exports.array(external_exports.string()).default([]),
+    /** We sent a filter but the response carried no evidence either way
+     *  (an older gateway deploy). Not proven label-scoped. */
+    unverified: external_exports.array(external_exports.string()).default([]),
+    account_wide: external_exports.array(external_exports.string()).default([]),
+    missing_label_value: external_exports.array(external_exports.string()).default([]),
+    /** The query failed or was deferred — no scoping claim was possible. */
+    query_failed: external_exports.array(external_exports.string()).default([])
   }).optional()
 });
 var BRAIN_SCHEMA_VERSION = 1;
@@ -72457,9 +72479,13 @@ async function saveBrain(brain, dataDirOverride) {
 }
 var BRAND_FIELD_REGISTRY = {
   // Both tiers — context wins, brain pre-fills.
-  acos_target_pct: { contextPath: "management.acos_target_pct", brainPath: "seller.acos_target_pct", brainSource: "seller" },
-  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc" },
-  marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller" },
+  acos_target_pct: { contextPath: "management.acos_target_pct", brainPath: "seller.acos_target_pct", brainSource: "seller", brainQueryId: "account_wide" },
+  // catalog.sub_brands / catalog.item_groups come off BRAIN-CATALOG-SC,
+  // which the label lens CAN scope (mx-ops#6) — a bound brand's value here
+  // is this sub-brand's own only when that query's lens actually resolved
+  // to 'applied' (checked against the brain's stored label_lens record).
+  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc", brainQueryId: "BRAIN-CATALOG-SC" },
+  marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller", brainQueryId: "account_wide" },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: "management.primary_metric" },
   // Provenance of acos_target_pct (warehouse|default|user; absent on
@@ -72481,22 +72507,26 @@ var BRAND_FIELD_REGISTRY = {
   campaign_naming_pattern: { contextPath: "campaign_structure.naming_pattern" },
   structural_events: { contextPath: "structural_events" },
   paused_campaigns: { contextPath: "paused_campaigns" },
-  // Tier 2 only — auto-derived; the brain is authoritative.
-  monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller" },
-  recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity" },
-  recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity" },
-  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc" },
-  hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc" },
+  // Tier 2 only — auto-derived; the brain is authoritative. None of these
+  // sources are label-aware (BRAIN-SELLER / BRAIN-HERO-SC / BRAIN-RECENT-
+  // ACTIVITY carry no label param) — a bound brand's value is ALWAYS
+  // account-wide (F2's explicit remediation list).
+  monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller", brainQueryId: "account_wide" },
+  recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity", brainQueryId: "account_wide" },
+  recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity", brainQueryId: "account_wide" },
+  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc", brainQueryId: "BRAIN-CATALOG-SC" },
+  hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc", brainQueryId: "account_wide" },
   // Phase 8 enrichment (each value serves 2+ skills).
   // capture_rate is both-tier (AM-confirmed context wins; brain
   // pre-fills from CS-06/07/08 + CS-28); daily_settlement_curve is the nested
   // sub-block monthly-report prefers. stockouts + brand_term_typos are
   // Tier-2-only advisories (no Tier-3 home; the AM confirms them into
-  // structural_events / brand_terms.variants).
-  capture_rate_calibration: { contextPath: "capture_rate_calibration", brainPath: "capture_rate_calibration", brainSource: "capture_rate" },
-  daily_settlement_curve: { contextPath: "capture_rate_calibration.daily_settlement_curve", brainPath: "capture_rate_calibration.daily_settlement_curve", brainSource: "capture_rate" },
-  stockouts: { brainPath: "stockouts", brainSource: "stockout" },
-  brand_term_typos: { brainPath: "brand_term_typos", brainSource: "brand_typos" }
+  // structural_events / brand_terms.variants). None of CS-06/07/08/28/29/31
+  // are label-aware (only CS-09/11/12/13 are) — always account-wide when bound.
+  capture_rate_calibration: { contextPath: "capture_rate_calibration", brainPath: "capture_rate_calibration", brainSource: "capture_rate", brainQueryId: "account_wide" },
+  daily_settlement_curve: { contextPath: "capture_rate_calibration.daily_settlement_curve", brainPath: "capture_rate_calibration.daily_settlement_curve", brainSource: "capture_rate", brainQueryId: "account_wide" },
+  stockouts: { brainPath: "stockouts", brainSource: "stockout", brainQueryId: "account_wide" },
+  brand_term_typos: { brainPath: "brand_term_typos", brainSource: "brand_typos", brainQueryId: "account_wide" }
 };
 var BRAND_FIELD_KEYS = Object.keys(
   BRAND_FIELD_REGISTRY
@@ -72516,6 +72546,11 @@ function isPresent(v) {
   if (typeof v === "object") return Object.keys(v).length > 0;
   return true;
 }
+function isAccountWideBrainField(spec, binding, labelLens) {
+  if (!binding) return false;
+  if (!spec.brainQueryId || spec.brainQueryId === "account_wide") return true;
+  return !(labelLens?.applied.includes(spec.brainQueryId) ?? false);
+}
 function resolveFieldFrom(ctx, brain, spec) {
   if (spec.contextPath && ctx.ok) {
     const v = getByPath(ctx.context, spec.contextPath);
@@ -72524,10 +72559,13 @@ function resolveFieldFrom(ctx, brain, spec) {
   if (spec.brainPath && brain.ok) {
     const v = getByPath(brain.brain, spec.brainPath);
     if (isPresent(v)) {
+      const binding = ctx.ok ? ctx.context.binding ?? null : null;
+      const accountWide = isAccountWideBrainField(spec, binding, brain.brain.label_lens);
       return {
         value: v,
         source: "brain",
-        fetched_at: spec.brainSource ? brain.brain.sources[spec.brainSource]?.fetched_at : void 0
+        fetched_at: spec.brainSource ? brain.brain.sources[spec.brainSource]?.fetched_at : void 0,
+        ...accountWide ? { account_wide: true } : {}
       };
     }
   }
@@ -72561,7 +72599,16 @@ init_push_after_write();
 // src/lib/binding/resolve.ts
 init_load2();
 async function resolveBinding(brandSlug, dataDirOverride) {
-  const result = await validateBrandContext(brandSlug, dataDirOverride);
+  let result;
+  try {
+    result = await validateBrandContext(brandSlug, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[binding] could not read ${brandSlug}'s context.yaml to resolve its sub-brand binding (${message}); treating as unbound rather than failing the caller.`
+    );
+    return null;
+  }
   if (!result.ok) return null;
   return result.context.binding ?? null;
 }
@@ -72582,6 +72629,7 @@ function lensFor(queryId, binding) {
   if (!param) {
     return {
       params: {},
+      pendingVerification: false,
       decision: { query_id: queryId, outcome: "account_wide" }
     };
   }
@@ -72589,20 +72637,41 @@ function lensFor(queryId, binding) {
   if (!value) {
     return {
       params: {},
+      pendingVerification: false,
       decision: { query_id: queryId, outcome: "missing_label_value", param }
     };
   }
   return {
     params: { [param]: value },
-    decision: { query_id: queryId, outcome: "applied", param, value }
+    pendingVerification: true,
+    // Placeholder — NOT a claim. reconcileLensDecision resolves this once
+    // the query returns.
+    decision: { query_id: queryId, outcome: "unverified", param, value }
   };
 }
+function reconcileLensDecision(decision, outcome) {
+  if (decision.outcome !== "unverified" || !decision.param) return decision;
+  if (!outcome || outcome.status !== "ok") {
+    return { ...decision, outcome: "query_failed" };
+  }
+  if (outcome.appliedParams === void 0) {
+    return decision;
+  }
+  return outcome.appliedParams.includes(decision.param) ? { ...decision, outcome: "applied" } : { ...decision, outcome: "dropped" };
+}
+function reconcileLensDecisions(decisions, outcomes) {
+  return decisions.map((d) => reconcileLensDecision(d, outcomes.get(d.query_id)));
+}
 function summarizeLens(decisions) {
+  const byOutcome = (outcome) => decisions.filter((d) => d.outcome === outcome).map((d) => d.query_id);
   return {
     bound: decisions.length > 0,
-    applied: decisions.filter((d) => d.outcome === "applied").map((d) => d.query_id),
-    account_wide: decisions.filter((d) => d.outcome === "account_wide").map((d) => d.query_id),
-    missing_label_value: decisions.filter((d) => d.outcome === "missing_label_value").map((d) => d.query_id)
+    applied: byOutcome("applied"),
+    dropped: byOutcome("dropped"),
+    unverified: byOutcome("unverified"),
+    account_wide: byOutcome("account_wide"),
+    missing_label_value: byOutcome("missing_label_value"),
+    query_failed: byOutcome("query_failed")
   };
 }
 function renderLensNotice(summary, slug) {
@@ -72610,6 +72679,21 @@ function renderLensNotice(summary, slug) {
   const parts = [];
   if (summary.applied.length > 0) {
     parts.push(`label-scoped: ${summary.applied.join(", ")}`);
+  }
+  if (summary.dropped.length > 0) {
+    parts.push(
+      `DROPPED (the gateway did not honor this label filter; these rows are ACCOUNT-WIDE despite "${slug}"'s binding; flag to MixShift ops): ${summary.dropped.join(", ")}`
+    );
+  }
+  if (summary.unverified.length > 0) {
+    parts.push(
+      `UNVERIFIED (the gateway did not confirm the label filter applied; treat as NOT proven label-scoped, never as confirmed): ${summary.unverified.join(", ")}`
+    );
+  }
+  if (summary.query_failed.length > 0) {
+    parts.push(
+      `no scoping claim possible, query failed or was deferred: ${summary.query_failed.join(", ")}`
+    );
   }
   if (summary.account_wide.length > 0) {
     parts.push(
@@ -72621,6 +72705,7 @@ function renderLensNotice(summary, slug) {
       `ACCOUNT-WIDE (binding has no label value for that side; add it to context.yaml binding to scope these): ${summary.missing_label_value.join(", ")}`
     );
   }
+  if (parts.length === 0) return null;
   return `Sub-brand label lens for "${slug}" -> ${parts.join(" | ")}`;
 }
 
@@ -72680,6 +72765,17 @@ function toFiniteNumber(v) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
+async function safeResolveBinding(slug, dataDirOverride) {
+  try {
+    return await resolveBinding(slug, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[brain] could not resolve ${slug}'s sub-brand binding (${message}); treating as unbound for this fetch rather than failing the run.`
+    );
+    return null;
+  }
+}
 function buildLensWarnings(args) {
   const { slug, lensSummary, lensDecisions, catalogAsinCount, campaignCount } = args;
   if (!lensSummary) return [];
@@ -72717,14 +72813,6 @@ async function fetchBrandBrain(opts) {
   if (sellerIds.length === 0) {
     return { status: "no_accounts", slug };
   }
-  const binding = await resolveBinding(slug, dataDirOverride);
-  const lensDecisions = [];
-  const withLens = (queryId, params) => {
-    const lens = lensFor(queryId, binding);
-    if (!lens) return params;
-    lensDecisions.push(lens.decision);
-    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
-  };
   const heuristicSeatId = pickPrimarySeat(brand.accounts);
   const existing = await loadBrain(slug, dataDirOverride);
   const previousObservations = existing.ok ? existing.brain.observations : void 0;
@@ -72745,6 +72833,14 @@ async function fetchBrandBrain(opts) {
       };
     }
   }
+  const binding = await safeResolveBinding(slug, dataDirOverride);
+  const lensDecisions = [];
+  const withLens = (queryId, params) => {
+    const lens = lensFor(queryId, binding);
+    if (!lens) return params;
+    lensDecisions.push(lens.decision);
+    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
+  };
   await writeBrainStatus(
     { status: "fetching", slug, started_at: now.toISOString() },
     dataDirOverride
@@ -72784,7 +72880,12 @@ async function fetchBrandBrain(opts) {
           kind: result.failure.kind
         };
       }
-      return { ok: true, rows: result.rows, usedDispatch: result.usedDispatch };
+      return {
+        ok: true,
+        rows: result.rows,
+        usedDispatch: result.usedDispatch,
+        appliedParams: result.appliedParams
+      };
     } catch (err) {
       const message = err instanceof MissingParamsError ? `${err.message} (local dev fallback SQL is missing a bind param)` : err instanceof Error ? err.message : String(err);
       return { ok: false, error: message };
@@ -72851,6 +72952,13 @@ async function fetchBrandBrain(opts) {
   if (settlementOut && !settlementOut.ok) failedSources.push("capture_rate");
   if (stockoutOut && !stockoutOut.ok) failedSources.push("stockout");
   if (typoOut && !typoOut.ok) failedSources.push("brand_typos");
+  const toLensOutcome = (out) => out === null ? { status: "failed" } : out.ok ? { status: "ok", appliedParams: out.appliedParams } : { status: "failed" };
+  const lensOutcomeByQueryId = /* @__PURE__ */ new Map([
+    [BRAIN_CATALOG_SC_QUERY_ID, toLensOutcome(scOut)],
+    [BRAIN_CATALOG_VC_QUERY_ID, toLensOutcome(vcOut)],
+    [BRAIN_CAMPAIGN_QUERY_ID, toLensOutcome(campaignOut)]
+  ]);
+  const reconciledLensDecisions = reconcileLensDecisions(lensDecisions, lensOutcomeByQueryId);
   const sourceInput = async (queryId, out) => {
     if (!out || !out.ok) return void 0;
     const entry = await getQueryEntry(queryId);
@@ -72890,7 +72998,7 @@ async function fetchBrandBrain(opts) {
       brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
       brandTermsInput
     });
-    const lensSummary = binding ? summarizeLens(lensDecisions) : null;
+    const lensSummary = binding ? summarizeLens(reconciledLensDecisions) : null;
     if (lensSummary) {
       brain.label_lens = lensSummary;
     }
@@ -72914,7 +73022,7 @@ async function fetchBrandBrain(opts) {
       lens_warnings: buildLensWarnings({
         slug,
         lensSummary,
-        lensDecisions,
+        lensDecisions: reconciledLensDecisions,
         catalogAsinCount: brain.catalog?.asin_count ?? null,
         campaignCount: brain.campaign_structure?.campaign_count ?? null
       })
@@ -73381,7 +73489,7 @@ function registerBrandContextCommands(brand) {
     "Resolved brand context \u2014 the brand-level fields skills read, each tagged with its source (Tier-3 context.yaml = you confirmed it, Tier-2 brain = auto pre-filled) so output can show confidence."
   );
   context.command("resolve <slug>").description(
-    "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at } | null }; a null field means neither tier has it \u2014 use the skill default."
+    "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at, account_wide? } | null }; a null field means neither tier has it (use the skill default); account_wide is present and true only for a bound sub-brand whose pre-filled value describes the whole seller account, not this brand."
   ).action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const fields = await resolveBrandFields(slug, root.dataDir);
@@ -73405,7 +73513,7 @@ Resolved brand context for ${slug}:`];
       } else {
         prefilled++;
         lines.push(
-          `  \u2299 ${key}: ${formatValue(r.value)} (pre-filled` + (r.fetched_at ? `, ${r.fetched_at}` : "") + ")"
+          `  \u2299 ${key}: ${formatValue(r.value)} (pre-filled` + (r.fetched_at ? `, ${r.fetched_at}` : "") + (r.account_wide ? ", ACCOUNT-WIDE, not this sub-brand's own" : "") + ")"
         );
       }
     }
@@ -74710,7 +74818,8 @@ function fieldConfidence(s, key) {
 }
 function prefilledNote(resolved) {
   if (resolved == null || resolved.source !== "brain") return void 0;
-  return resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
+  const base = resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
+  return resolved.account_wide ? `${base} - ACCOUNT-WIDE, not this sub-brand's own` : base;
 }
 function presenceConfidence(present) {
   return present ? "confirmed" : "gap";
@@ -75566,7 +75675,15 @@ function composeConfidenceSummary(s) {
       fields[key] = { level: "confirmed", source: "context" };
     } else {
       prefilled++;
-      fields[key] = { level: "prefilled", source: "brain", fetched_at: resolved.fetched_at };
+      fields[key] = {
+        level: "prefilled",
+        source: "brain",
+        fetched_at: resolved.fetched_at,
+        // F2: downstream skills consuming review.json for a bound sub-brand
+        // must be able to tell "this sub-brand's own pre-fill" apart from
+        // "the whole account's pre-fill" without re-deriving it themselves.
+        ...resolved.account_wide ? { account_wide: true } : {}
+      };
     }
   }
   return { confirmed, prefilled, gap, fields };
@@ -81466,6 +81583,7 @@ async function writePrefetchArtifacts(input) {
         display_sql: q.display_sql,
         ...q.purpose ? { purpose: q.purpose } : {},
         ...q.revision ? { revision: q.revision } : {},
+        ...q.applied_params ? { applied_params: q.applied_params } : {},
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows
@@ -81532,6 +81650,7 @@ function renderQuerySection(q) {
   lines.push(`- **Rows**: ${q.rows.length}`);
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
   if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
+  if (q.applied_params) lines.push(`- **Applied params**: ${q.applied_params.join(", ")}`);
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }
@@ -81613,6 +81732,7 @@ async function runPrefetch(opts) {
   const rounds = resolveBatchPlan(manifest);
   const queryOutputs = [];
   const perQueryResults = [];
+  const lensOutcomeByQueryId = /* @__PURE__ */ new Map();
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map(
@@ -81642,6 +81762,10 @@ async function runPrefetch(opts) {
           rowCount: r.output.rows.length,
           durationMs: r.output.duration_ms
         });
+        lensOutcomeByQueryId.set(r.output.id, {
+          status: "ok",
+          appliedParams: r.output.applied_params
+        });
       } else if ("ok" in r && !r.ok && "queryResult" in r) {
         if (r.queryResult.kind === "missing_params") {
           perQueryResults.push({
@@ -81650,12 +81774,14 @@ async function runPrefetch(opts) {
             missing_params: r.queryResult.missing_params,
             error: r.queryResult.friendly
           });
+          lensOutcomeByQueryId.set(r.id, { status: "deferred" });
         } else {
           perQueryResults.push({
             id: r.id,
             status: "failed",
             error: r.queryResult.friendly
           });
+          lensOutcomeByQueryId.set(r.id, { status: "failed" });
         }
       } else if ("error" in r) {
         if ("missing_params" in r && r.missing_params) {
@@ -81665,17 +81791,25 @@ async function runPrefetch(opts) {
             missing_params: r.missing_params,
             error: r.error
           });
+          lensOutcomeByQueryId.set(r.id, { status: "deferred" });
         } else {
           perQueryResults.push({
             id: r.id,
             status: "failed",
             error: r.error
           });
+          lensOutcomeByQueryId.set(r.id, { status: "failed" });
         }
       }
     }
   }
-  const lensSummary = binding ? summarizeLens(lensDecisions) : null;
+  const reconciledLensDecisions = reconcileLensDecisions(lensDecisions, lensOutcomeByQueryId);
+  const lensSummary = binding ? summarizeLens(reconciledLensDecisions) : null;
+  const lensWarnings = buildPrefetchLensWarnings(
+    reconciledLensDecisions,
+    perQueryResults,
+    context.brand_slug
+  );
   const artifact_paths = await writePrefetchArtifacts({
     brand_slug: context.brand_slug,
     skill_id: manifest.skill_id,
@@ -81721,8 +81855,26 @@ async function runPrefetch(opts) {
     total_duration_ms: Date.now() - t0,
     partial_failure,
     has_deferred,
-    label_lens: lensSummary
+    label_lens: lensSummary,
+    lens_warnings: lensWarnings
   };
+}
+function buildPrefetchLensWarnings(decisions, results, slug) {
+  const summary = summarizeLens(decisions);
+  if (!summary.bound) return [];
+  const warnings = [];
+  const notice = renderLensNotice(summary, slug);
+  if (notice) warnings.push(notice);
+  const rowCountById = new Map(results.map((r) => [r.id, r.rowCount ?? null]));
+  for (const d of decisions) {
+    if (d.outcome !== "applied") continue;
+    if (rowCountById.get(d.query_id) === 0) {
+      warnings.push(
+        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". The binding's label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily); verify it against \`mixshift brand discover\` before trusting this sub-brand's numbers from that query.`
+      );
+    }
+  }
+  return warnings;
 }
 async function executeOne(id, allParams, dataDirOverride) {
   const result = await runDispatched(id, {
@@ -81748,7 +81900,8 @@ async function executeOne(id, allParams, dataDirOverride) {
       params: result.boundParams,
       display_sql: result.displaySql,
       purpose,
-      revision: result.revision
+      revision: result.revision,
+      applied_params: result.appliedParams
     }
   };
 }
@@ -81839,9 +81992,27 @@ function renderResult2(result, json2) {
     process.stdout.write(
       `
   Sub-brand label lens:
-` + (lens.applied.length > 0 ? `    \u2713 label-scoped: ${lens.applied.join(", ")}
+` + (lens.applied.length > 0 ? `    \u2713 label-scoped (confirmed applied): ${lens.applied.join(", ")}
 ` : "")
     );
+    if (lens.dropped.length > 0) {
+      process.stdout.write(
+        `    \u26A0 DROPPED (the gateway did not honor this label filter; these rows are ACCOUNT-WIDE despite "${result.brand_slug}"'s binding; flag to MixShift ops): ${lens.dropped.join(", ")}
+`
+      );
+    }
+    if (lens.unverified.length > 0) {
+      process.stdout.write(
+        `    \u26A0 UNVERIFIED (the gateway did not confirm the filter applied; treat as NOT proven label-scoped): ${lens.unverified.join(", ")}
+`
+      );
+    }
+    if (lens.query_failed.length > 0) {
+      process.stdout.write(
+        `    \u2298 no scoping claim (query failed or was deferred): ${lens.query_failed.join(", ")}
+`
+      );
+    }
     if (lens.account_wide.length > 0) {
       process.stdout.write(
         `    \u26A0 ACCOUNT-WIDE (no label filter exists for these \u2014 do not attribute their numbers to "${result.brand_slug}"): ${lens.account_wide.join(", ")}
@@ -81854,6 +82025,11 @@ function renderResult2(result, json2) {
 `
       );
     }
+  }
+  if (result.lens_warnings.length > 0) {
+    process.stdout.write("\n  Lens warnings:\n");
+    for (const w of result.lens_warnings) process.stdout.write(`    \u26A0 ${w}
+`);
   }
   const failures = result.queries.filter((q) => q.status === "failed");
   if (failures.length > 0) {
@@ -85233,6 +85409,7 @@ async function prepareConfirmation(opts) {
   const entries = manifest.fields.filter((f) => !f.deprecated).map((field) => {
     const stored_value = storedBlock?.[field.id];
     let seed_value = field.seed_from ? getByPath4(ctx, stripContextPrefix(field.seed_from)) : void 0;
+    let seedAccountWide = false;
     if (seed_value === void 0 && field.seed_from) {
       const key = brandFieldKeyForContextPath(
         stripContextPrefix(field.seed_from)
@@ -85240,6 +85417,7 @@ async function prepareConfirmation(opts) {
       const resolved = key ? brandFields[key] : null;
       if (resolved && resolved.source === "brain") {
         seed_value = resolved.value;
+        seedAccountWide = !!resolved.account_wide;
       }
     }
     seed_value = normalizeSeedForField(field, seed_value);
@@ -85266,7 +85444,8 @@ async function prepareConfirmation(opts) {
       default_value,
       effective_value,
       source,
-      display: formatFieldValue(field, effective_value)
+      display: formatFieldValue(field, effective_value),
+      account_wide: source === "seed" && seedAccountWide
     };
   });
   const missing_keys = entries.filter((e) => e.field.required && e.source === "missing").map((e) => e.field.id);
@@ -85317,7 +85496,8 @@ async function applyConfirmation(payload, decision, opts) {
       effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
-      validation_issues: []
+      validation_issues: [],
+      ...accountWideFieldsResult(payload, decision)
     };
   }
   if (decision.action !== "edit") {
@@ -85411,7 +85591,8 @@ async function applyConfirmation(payload, decision, opts) {
       effective_config: toConsumableConfig(payload.fields, effective),
       did_persist: false,
       saved_to: null,
-      validation_issues: []
+      validation_issues: [],
+      ...accountWideFieldsResult(payload, decision)
     };
   }
   const blockToSave = composeSkillBlock(effective, payload.extras);
@@ -85448,8 +85629,14 @@ async function applyConfirmation(payload, decision, opts) {
     captured: shared.map((s) => ({
       label: s.field.label ?? humanizeFieldId(s.field.id),
       value: s.display
-    }))
+    })),
+    ...accountWideFieldsResult(payload, decision)
   };
+}
+function accountWideFieldsResult(payload, decision) {
+  const editedKeys = decision.action === "edit" && decision.edits !== null && typeof decision.edits === "object" && !Array.isArray(decision.edits) ? new Set(Object.keys(decision.edits)) : /* @__PURE__ */ new Set();
+  const ids = payload.fields.filter((e) => e.account_wide && !editedKeys.has(e.field.id)).map((e) => e.field.id);
+  return ids.length > 0 ? { account_wide_fields: ids } : {};
 }
 var CAPTURE_PRIORITY = {
   missing_required: 3,
@@ -85635,6 +85822,9 @@ function renderSourceHint2(entry) {
     case "stored":
       return null;
     case "seed":
+      if (entry.account_wide) {
+        return `(ACCOUNT-WIDE pre-fill, not this sub-brand's own number: verify before confirming)`;
+      }
       return `(pre-filled from your brand context: confirm or edit)`;
     case "default":
       return `(default \u2014 set explicitly if this isn't right)`;
@@ -85673,6 +85863,12 @@ function renderPersistenceFooter(result, brandName, skillDisplayName) {
     const items = learned.map((c) => `${c.label} = ${c.value}`).join(", ");
     lines.push(
       `Learned for ${brandName}: ${items}. Recorded to apply across your skills.`
+    );
+  }
+  const accountWide = result.account_wide_fields ?? [];
+  if (accountWide.length > 0) {
+    lines.push(
+      `Note: ${accountWide.join(", ")} in this save came from ${brandName}'s account-wide brain pre-fill, not a number specific to this sub-brand. Review before treating it as ${brandName}'s own.`
     );
   }
   return lines.join("\n");
@@ -86013,7 +86209,11 @@ async function runApplyDecision2(args) {
           // Shared fields just captured (the "I learned X" surface) so the
           // JSON-driven caller (Claude in chat) can acknowledge them, matching
           // the human CLI footer (renderPersistenceFooter).
-          captured: result.captured ?? []
+          captured: result.captured ?? [],
+          // F5: fields in effective_config that are a bound sub-brand's
+          // account-wide brain pre-fill, not overridden this call — the
+          // JSON-driven caller must not present these as the sub-brand's own.
+          account_wide_fields: result.account_wide_fields ?? []
         },
         null,
         2

@@ -19,6 +19,8 @@ import { brainPath } from '../paths/resolve.js';
 import { validateBrandContext } from '../context/load.js';
 import { formatZodError } from '../profile/format-error.js';
 import { maybeAutoSync } from '../context-sync/autosync.js';
+import type { BindingBlock } from '../context/schema.js';
+import type { LensSummary } from '../binding/lens.js';
 
 export type LoadBrainResult =
   | { ok: true; brain: BrandBrain; path: string }
@@ -104,6 +106,25 @@ export interface ResolvedField<T> {
   source: FieldSource;
   /** Tier 2 only: when the source data was fetched (staleness display). */
   fetched_at?: string;
+  /**
+   * Present (and `true`) ONLY when this value describes the WHOLE Amazon
+   * seller account rather than this specific sub-brand — i.e. the brand
+   * carries a `binding` (mx-ops#6) and this Tier-2 value's underlying
+   * source has no PROVEN label-scoped result for it: either the source
+   * query structurally has no label param at all, or a label filter was
+   * sent but the brain's stored `label_lens` record shows it did not
+   * resolve to 'applied' (dropped, unverified, missing_label_value, or
+   * query_failed — see lib/binding/lens.ts). Consumers must render this
+   * distinctly from an ordinary pre-filled value: "this sub-brand's own
+   * number" vs "the whole account's number" (red-team finding F2).
+   *
+   * Deliberately OMITTED (never `false`) whenever it doesn't apply — every
+   * context-sourced field (Tier-3 values are always this brand's own) and
+   * every brain-sourced field on an UNBOUND brand (the account IS the
+   * brand; nothing to distinguish). This keeps an unbound brand's resolve
+   * output byte-identical to before this field existed: additive only.
+   */
+  account_wide?: true;
 }
 
 /**
@@ -133,10 +154,16 @@ export async function resolveAcosTargetPct(
   if (brain.ok) {
     const v = brain.brain.seller?.acos_target_pct;
     if (typeof v === 'number' && Number.isFinite(v)) {
+      // BRAIN-SELLER carries no label param (it is not one of the seven
+      // gateway entries that accept one), so a bound brand's seller-sourced
+      // value is ALWAYS account-wide, never label-scoped. An unbound
+      // brand's own account IS the brand, so nothing to flag (F2).
+      const binding = ctx.ok ? ctx.context.binding ?? null : null;
       return {
         value: v,
         source: 'brain',
         fetched_at: brain.brain.sources.seller?.fetched_at,
+        ...(binding ? { account_wide: true } : {}),
       };
     }
   }
@@ -169,6 +196,22 @@ interface FieldSpec {
   brainPath?: string;
   /** sources[] entry whose fetched_at stamps a brain-sourced value. */
   brainSource?: keyof BrandBrain['sources'];
+  /**
+   * REQUIRED whenever `brainPath` is set (red-team finding F2): identifies
+   * whether this brain-sourced field's underlying query can ever be
+   * label-scoped, so `resolveFieldFrom` can tell a bound brand's OWN value
+   * apart from the whole account's.
+   *   - the literal `'account_wide'` — the source query is not one of the
+   *     seven gateway entries that accept a label param at all (seller,
+   *     hero, recent-activity, capture-rate, stockout, brand-typo sources).
+   *     Structural; a bound brand's value here is ALWAYS account-wide.
+   *   - a query id from `LABEL_LENS_PARAM_BY_QUERY` (lib/binding/lens.ts) —
+   *     the source query CAN be label-scoped. Whether THIS bound brand's
+   *     value actually is depends on the brain's stored `label_lens` record
+   *     for that id (only 'applied' counts; dropped/unverified/
+   *     missing_label_value/query_failed do not).
+   */
+  brainQueryId?: string | 'account_wide';
 }
 
 /**
@@ -179,9 +222,13 @@ interface FieldSpec {
  */
 const BRAND_FIELD_REGISTRY = {
   // Both tiers — context wins, brain pre-fills.
-  acos_target_pct: { contextPath: 'management.acos_target_pct', brainPath: 'seller.acos_target_pct', brainSource: 'seller' },
-  sub_brands: { contextPath: 'sub_brands', brainPath: 'catalog.sub_brands', brainSource: 'catalog_sc' },
-  marketplace: { contextPath: 'accounts.0.marketplace', brainPath: 'seller.marketplace', brainSource: 'seller' },
+  acos_target_pct: { contextPath: 'management.acos_target_pct', brainPath: 'seller.acos_target_pct', brainSource: 'seller', brainQueryId: 'account_wide' },
+  // catalog.sub_brands / catalog.item_groups come off BRAIN-CATALOG-SC,
+  // which the label lens CAN scope (mx-ops#6) — a bound brand's value here
+  // is this sub-brand's own only when that query's lens actually resolved
+  // to 'applied' (checked against the brain's stored label_lens record).
+  sub_brands: { contextPath: 'sub_brands', brainPath: 'catalog.sub_brands', brainSource: 'catalog_sc', brainQueryId: 'BRAIN-CATALOG-SC' },
+  marketplace: { contextPath: 'accounts.0.marketplace', brainPath: 'seller.marketplace', brainSource: 'seller', brainQueryId: 'account_wide' },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: 'management.primary_metric' },
   // Provenance of acos_target_pct (warehouse|default|user; absent on
@@ -203,22 +250,26 @@ const BRAND_FIELD_REGISTRY = {
   campaign_naming_pattern: { contextPath: 'campaign_structure.naming_pattern' },
   structural_events: { contextPath: 'structural_events' },
   paused_campaigns: { contextPath: 'paused_campaigns' },
-  // Tier 2 only — auto-derived; the brain is authoritative.
-  monthly_budget: { brainPath: 'seller.monthly_budget', brainSource: 'seller' },
-  recent_spend_30d: { brainPath: 'recent_activity.spend_30d', brainSource: 'recent_activity' },
-  recent_acos_30d: { brainPath: 'recent_activity.acos_30d', brainSource: 'recent_activity' },
-  item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc' },
-  hero_asins: { brainPath: 'catalog.top_asins', brainSource: 'hero_sc' },
+  // Tier 2 only — auto-derived; the brain is authoritative. None of these
+  // sources are label-aware (BRAIN-SELLER / BRAIN-HERO-SC / BRAIN-RECENT-
+  // ACTIVITY carry no label param) — a bound brand's value is ALWAYS
+  // account-wide (F2's explicit remediation list).
+  monthly_budget: { brainPath: 'seller.monthly_budget', brainSource: 'seller', brainQueryId: 'account_wide' },
+  recent_spend_30d: { brainPath: 'recent_activity.spend_30d', brainSource: 'recent_activity', brainQueryId: 'account_wide' },
+  recent_acos_30d: { brainPath: 'recent_activity.acos_30d', brainSource: 'recent_activity', brainQueryId: 'account_wide' },
+  item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc', brainQueryId: 'BRAIN-CATALOG-SC' },
+  hero_asins: { brainPath: 'catalog.top_asins', brainSource: 'hero_sc', brainQueryId: 'account_wide' },
   // Phase 8 enrichment (each value serves 2+ skills).
   // capture_rate is both-tier (AM-confirmed context wins; brain
   // pre-fills from CS-06/07/08 + CS-28); daily_settlement_curve is the nested
   // sub-block monthly-report prefers. stockouts + brand_term_typos are
   // Tier-2-only advisories (no Tier-3 home; the AM confirms them into
-  // structural_events / brand_terms.variants).
-  capture_rate_calibration: { contextPath: 'capture_rate_calibration', brainPath: 'capture_rate_calibration', brainSource: 'capture_rate' },
-  daily_settlement_curve: { contextPath: 'capture_rate_calibration.daily_settlement_curve', brainPath: 'capture_rate_calibration.daily_settlement_curve', brainSource: 'capture_rate' },
-  stockouts: { brainPath: 'stockouts', brainSource: 'stockout' },
-  brand_term_typos: { brainPath: 'brand_term_typos', brainSource: 'brand_typos' },
+  // structural_events / brand_terms.variants). None of CS-06/07/08/28/29/31
+  // are label-aware (only CS-09/11/12/13 are) — always account-wide when bound.
+  capture_rate_calibration: { contextPath: 'capture_rate_calibration', brainPath: 'capture_rate_calibration', brainSource: 'capture_rate', brainQueryId: 'account_wide' },
+  daily_settlement_curve: { contextPath: 'capture_rate_calibration.daily_settlement_curve', brainPath: 'capture_rate_calibration.daily_settlement_curve', brainSource: 'capture_rate', brainQueryId: 'account_wide' },
+  stockouts: { brainPath: 'stockouts', brainSource: 'stockout', brainQueryId: 'account_wide' },
+  brand_term_typos: { brainPath: 'brand_term_typos', brainSource: 'brand_typos', brainQueryId: 'account_wide' },
 } satisfies Record<string, FieldSpec>;
 
 export type BrandFieldKey = keyof typeof BRAND_FIELD_REGISTRY;
@@ -247,6 +298,27 @@ function isPresent(v: unknown): boolean {
   return true; // boolean
 }
 
+/**
+ * Whether a brain-sourced field's value is ACCOUNT-WIDE rather than this
+ * bound brand's own (red-team finding F2). Unbound brands
+ * never get here as `true`: the account IS the brand, nothing to
+ * distinguish. For a bound brand: a query with no label param at all is
+ * ALWAYS account-wide (`brainQueryId === 'account_wide'`); a label-aware
+ * query is account-wide UNLESS the brain's own `label_lens` record shows it
+ * resolved to 'applied' — dropped, unverified, missing_label_value, and
+ * query_failed all fall through to account-wide, matching the lens's own
+ * "never render as confirmed label-scoped" rule (lib/binding/lens.ts).
+ */
+function isAccountWideBrainField(
+  spec: FieldSpec,
+  binding: BindingBlock | null,
+  labelLens: LensSummary | null | undefined,
+): boolean {
+  if (!binding) return false;
+  if (!spec.brainQueryId || spec.brainQueryId === 'account_wide') return true;
+  return !(labelLens?.applied.includes(spec.brainQueryId) ?? false);
+}
+
 /** Pure tier resolution from already-loaded docs (no I/O). */
 function resolveFieldFrom(
   ctx: ContextResult,
@@ -255,17 +327,22 @@ function resolveFieldFrom(
 ): ResolvedField<unknown> | null {
   if (spec.contextPath && ctx.ok) {
     const v = getByPath(ctx.context, spec.contextPath);
+    // Tier-3 values are always THIS brand's own, bound or not — no
+    // account_wide flag, ever (F2).
     if (isPresent(v)) return { value: v, source: 'context' };
   }
   if (spec.brainPath && brain.ok) {
     const v = getByPath(brain.brain, spec.brainPath);
     if (isPresent(v)) {
+      const binding = ctx.ok ? ctx.context.binding ?? null : null;
+      const accountWide = isAccountWideBrainField(spec, binding, brain.brain.label_lens);
       return {
         value: v,
         source: 'brain',
         fetched_at: spec.brainSource
           ? brain.brain.sources[spec.brainSource]?.fetched_at
           : undefined,
+        ...(accountWide ? { account_wide: true } : {}),
       };
     }
   }

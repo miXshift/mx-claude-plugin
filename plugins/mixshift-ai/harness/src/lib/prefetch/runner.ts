@@ -22,7 +22,15 @@ import { loadSkillManifest, resolveBatchPlan } from './manifest.js';
 import { getQueryEntry } from './sql-library.js';
 import { loadBrandContext } from '../context/load.js';
 import { buildStandardParams, type ParamMap } from './params.js';
-import { lensFor, summarizeLens, type LensDecision, type LensSummary } from '../binding/lens.js';
+import {
+  lensFor,
+  summarizeLens,
+  renderLensNotice,
+  reconcileLensDecisions,
+  type LensDecision,
+  type LensSummary,
+  type QueryLensOutcome,
+} from '../binding/lens.js';
 import { runDispatched, MissingParamsError } from '../data/dispatch.js';
 import { type DataQueryResult } from '../data/query-runner.js';
 import { writePrefetchArtifacts, type QueryRunOutput } from './artifacts.js';
@@ -83,6 +91,16 @@ export interface PrefetchResult {
    */
   label_lens: LensSummary | null;
   /**
+   * Loud, human-readable lens warnings (design §11): the same
+   * never-silently-account-wide / never-silently-empty-under-lens mechanism
+   * the brain fetch surfaces (lib/brain/fetch.ts's `lens_warnings`), now
+   * also covering the prefetch path's four label-aware queries (CS-09/11/
+   * 12/13) — previously this check existed ONLY in the brain fetch, so a
+   * sub-brand's CS-09/11/12/13 pulls could silently read zero rows under a
+   * mistyped label with no warning anywhere. Empty for unbound brands.
+   */
+  lens_warnings: string[];
+  /**
    * True when at least one query ACTUALLY failed (status='failed').
    * Queries with status='deferred' do NOT set this — deferred is an
    * expected outcome for cross-query-dependent SQL.
@@ -129,6 +147,10 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   const rounds = resolveBatchPlan(manifest);
   const queryOutputs: QueryRunOutput[] = [];
   const perQueryResults: PrefetchQueryResult[] = [];
+  // Evidence for the lens's reconcile step (design's central fix): a
+  // decision is resolved from what the query ACTUALLY did, never from
+  // intent. Populated for every query as it settles below.
+  const lensOutcomeByQueryId = new Map<string, QueryLensOutcome>();
 
   for (const round of rounds) {
     const settled = await Promise.all(
@@ -162,6 +184,10 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
           rowCount: r.output.rows.length,
           durationMs: r.output.duration_ms,
         });
+        lensOutcomeByQueryId.set(r.output.id, {
+          status: 'ok',
+          appliedParams: r.output.applied_params,
+        });
       } else if ('ok' in r && !r.ok && 'queryResult' in r) {
         // Classified query failure. A server-side `missing_params` is the
         // named-query analogue of the client-side MissingParamsError
@@ -176,12 +202,14 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
             missing_params: r.queryResult.missing_params,
             error: r.queryResult.friendly,
           });
+          lensOutcomeByQueryId.set(r.id, { status: 'deferred' });
         } else {
           perQueryResults.push({
             id: r.id,
             status: 'failed',
             error: r.queryResult.friendly,
           });
+          lensOutcomeByQueryId.set(r.id, { status: 'failed' });
         }
       } else if ('error' in r) {
         // Param-substitution / setup failure. Missing-params errors are
@@ -198,20 +226,29 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
             missing_params: r.missing_params,
             error: r.error,
           });
+          lensOutcomeByQueryId.set(r.id, { status: 'deferred' });
         } else {
           perQueryResults.push({
             id: r.id,
             status: 'failed',
             error: r.error,
           });
+          lensOutcomeByQueryId.set(r.id, { status: 'failed' });
         }
       }
     }
   }
 
   // Decisions accumulate lazily as paramsFor() runs inside the rounds loop,
-  // so the summary is only complete here. null = unbound brand (no lens).
-  const lensSummary = binding ? summarizeLens(lensDecisions) : null;
+  // so reconciliation is only complete here, once every query has settled.
+  // null = unbound brand (no lens, nothing to reconcile).
+  const reconciledLensDecisions = reconcileLensDecisions(lensDecisions, lensOutcomeByQueryId);
+  const lensSummary = binding ? summarizeLens(reconciledLensDecisions) : null;
+  const lensWarnings = buildPrefetchLensWarnings(
+    reconciledLensDecisions,
+    perQueryResults,
+    context.brand_slug,
+  );
 
   const artifact_paths = await writePrefetchArtifacts({
     brand_slug: context.brand_slug,
@@ -262,7 +299,45 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     partial_failure,
     has_deferred,
     label_lens: lensSummary,
+    lens_warnings: lensWarnings,
   };
+}
+
+// -----------------------------------------------------------------------
+// Lens warnings (F7/F9): the zero-row-under-lens check the brain fetch has
+// always had (lib/brain/fetch.ts's buildLensWarnings), now also covering the
+// prefetch path's label-aware queries (CS-09/11/12/13) — the runner already
+// carries per-query row counts, so nothing new needs fetching to check this.
+// -----------------------------------------------------------------------
+
+function buildPrefetchLensWarnings(
+  decisions: readonly LensDecision[],
+  results: readonly PrefetchQueryResult[],
+  slug: string,
+): string[] {
+  const summary = summarizeLens(decisions);
+  if (!summary.bound) return [];
+  const warnings: string[] = [];
+  const notice = renderLensNotice(summary, slug);
+  if (notice) warnings.push(notice);
+
+  const rowCountById = new Map(results.map((r) => [r.id, r.rowCount ?? null]));
+  for (const d of decisions) {
+    // Only a CONFIRMED-applied filter can meaningfully have "matched zero
+    // rows" — dropped/unverified/query_failed/account_wide are already
+    // covered by `notice` above, and a zero-row claim about a query that
+    // was never actually scoped would be misleading.
+    if (d.outcome !== 'applied') continue;
+    if (rowCountById.get(d.query_id) === 0) {
+      warnings.push(
+        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". The binding's ` +
+          'label value may not match the warehouse verbatim (labels are matched exactly, never ' +
+          'fuzzily); verify it against `mixshift brand discover` before trusting this ' +
+          "sub-brand's numbers from that query.",
+      );
+    }
+  }
+  return warnings;
 }
 
 // -----------------------------------------------------------------------
@@ -318,6 +393,7 @@ async function executeOne(
       display_sql: result.displaySql,
       purpose,
       revision: result.revision,
+      applied_params: result.appliedParams,
     },
   };
 }

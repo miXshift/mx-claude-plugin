@@ -126,16 +126,36 @@ function renderResult(result: PrefetchResult, json: boolean): void {
   );
 
   // Sub-brand label lens: say loudly which numbers are label-scoped and which
-  // are account-wide (design §11 — never silently attribute account-wide rows
-  // to a sub-brand). Only present for bound brands.
+  // are not (design §11 — never silently attribute account-wide, dropped, or
+  // unproven rows to a sub-brand). Only present for bound brands. Every
+  // outcome here is EVIDENCE-based (resolved from what the query actually
+  // returned), never a pre-query claim — see lib/binding/lens.ts.
   if (result.label_lens) {
     const lens = result.label_lens;
     process.stdout.write(
       `\n  Sub-brand label lens:\n` +
         (lens.applied.length > 0
-          ? `    ✓ label-scoped: ${lens.applied.join(', ')}\n`
+          ? `    ✓ label-scoped (confirmed applied): ${lens.applied.join(', ')}\n`
           : ''),
     );
+    if (lens.dropped.length > 0) {
+      process.stdout.write(
+        `    ⚠ DROPPED (the gateway did not honor this label filter; these rows are ` +
+          `ACCOUNT-WIDE despite "${result.brand_slug}"'s binding; flag to MixShift ops): ` +
+          `${lens.dropped.join(', ')}\n`,
+      );
+    }
+    if (lens.unverified.length > 0) {
+      process.stdout.write(
+        `    ⚠ UNVERIFIED (the gateway did not confirm the filter applied; treat as NOT ` +
+          `proven label-scoped): ${lens.unverified.join(', ')}\n`,
+      );
+    }
+    if (lens.query_failed.length > 0) {
+      process.stdout.write(
+        `    ⊘ no scoping claim (query failed or was deferred): ${lens.query_failed.join(', ')}\n`,
+      );
+    }
     if (lens.account_wide.length > 0) {
       process.stdout.write(
         `    ⚠ ACCOUNT-WIDE (no label filter exists for these — do not attribute ` +
@@ -148,6 +168,10 @@ function renderResult(result: PrefetchResult, json: boolean): void {
           `context.yaml to scope these): ${lens.missing_label_value.join(', ')}\n`,
       );
     }
+  }
+  if (result.lens_warnings.length > 0) {
+    process.stdout.write('\n  Lens warnings:\n');
+    for (const w of result.lens_warnings) process.stdout.write(`    ⚠ ${w}\n`);
   }
 
   // List failed queries explicitly — skill needs to know what's broken

@@ -189,19 +189,38 @@ a normal brand.
 don't guess):** for a brand whose context carries a `binding` block, the
 prefetch runner and the brand brain apply the sub-brand's label filter
 automatically wherever a query supports one — no extra flags or params from
-you. Every run then RECORDS what happened: the prefetch output and
-`data.json` meta carry a `label_lens` block, and the brain fetch prints
-lens warnings, splitting queries three ways:
-- **label-scoped** — these rows belong to this sub-brand; use them normally.
-- **ACCOUNT-WIDE (no label filter exists)** — some warehouse tables have no
-  label column at all (for example the SC revenue baseline), so those
-  queries structurally cannot be filtered. Their numbers describe the whole
-  seller account. Carry exactly these query names into that sub-brand's
-  `open_gaps[]` and qualify any figure built from them in the Phase 5
-  Bottom Line — never present them as the sub-brand's own.
-- **ACCOUNT-WIDE (binding lacks that side's label value)** — fixable in
+you. Every run then RESOLVES what happened only AFTER the query comes back —
+never before, because a claim made before the data returns is not
+evidence: the prefetch output and `data.json` meta carry a `label_lens`
+block, and the brain fetch prints lens warnings. Six outcomes, not three:
+
+- **applied** — the gateway confirmed it actually bound our label filter.
+  These rows belong to this sub-brand; use them normally.
+- **dropped** — we sent the label filter and the gateway's response did
+  NOT confirm it was bound: the deployed query silently stripped it, so
+  despite the binding these rows are ACCOUNT-WIDE right now. Treat exactly
+  like `account_wide` below (`open_gaps[]` + Bottom Line qualifier) AND flag
+  it to MixShift ops in the run notes — a `dropped` outcome means something
+  regressed server-side, not a data problem you or the AM can fix.
+- **unverified** — the gateway's response gave no evidence either way (an
+  older deploy). Not proven label-scoped: treat exactly like
+  `account_wide`, never present as confirmed.
+- **query_failed** — the query failed or was deferred, so there are no rows
+  and no scoping claim to make either way. Wait for a successful re-run
+  before saying anything about that number's scope.
+- **account_wide** — some warehouse tables have no label column at all (for
+  example the SC revenue baseline), so those queries structurally cannot be
+  filtered. Their numbers describe the whole seller account. Carry exactly
+  these query names into that sub-brand's `open_gaps[]` and qualify any
+  figure built from them in the Phase 5 Bottom Line — never present them as
+  the sub-brand's own.
+- **missing_label_value** — the query CAN be filtered but the binding lacks
+  that side's label value, so it ran account-wide this time. Fixable in
   data: record the missing label side in `context.yaml`'s binding and
-  re-run.
+  re-run. Until then, treat it exactly like `account_wide`: carry the query
+  name into `open_gaps[]` and qualify any figure built from it in the Phase
+  5 Bottom Line — never present it as the sub-brand's own.
+
 If a lens warning says the label matched **zero rows**, stop and verify the
 label value verbatim against `mixshift brand discover` before trusting
 anything — an exact-match label that matches nothing usually means a
@@ -346,7 +365,7 @@ Phase 1 has two reads. First the Tier-2 Brand Brain (taxonomy + enrichment, alre
 mixshift brand context resolve <brand-slug> --json
 ```
 
-Each field comes back as `{value, source, fetched_at}` (`source: context` = ✓ a Tier-3 value already confirmed; `brain` = ⊙ pre-filled by the Brain; `null` = neither tier has it). PREFER the brain values for:
+Each field comes back as `{value, source, fetched_at, account_wide?}` (`source: context` = ✓ a Tier-3 value already confirmed; `brain` = ⊙ pre-filled by the Brain; `null` = neither tier has it). `account_wide: true` appears only for a bound sub-brand whose brain pre-fill is NOT proven scoped to it (for example the SC revenue baseline, or a catalog/campaign pre-fill whose lens outcome was not `applied`) — treat it exactly like the account-wide lens outcomes above, never as this sub-brand's own number. PREFER the brain values for:
 - **Taxonomy:** `sub_brands`, `item_groups`, `hero_asins` (the brain's `catalog.top_asins`).
 - **Enrichment:** `capture_rate_calibration` (+ `daily_settlement_curve`), `stockouts`, `brand_term_typos`.
 

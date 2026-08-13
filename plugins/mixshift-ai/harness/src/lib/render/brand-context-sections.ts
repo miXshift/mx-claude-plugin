@@ -92,10 +92,18 @@ function fieldConfidence(s: ReportState, key: BrandFieldKey): Confidence {
   return levelOf(s.resolved_fields[key]);
 }
 
-/** A pre-filled value's fetched_at, as a short "pre-filled <date>" note. */
+/**
+ * A pre-filled value's fetched_at, as a short "pre-filled <date>" note. For a
+ * bound sub-brand whose value is NOT proven label-scoped (ResolvedField's
+ * `account_wide` flag — red-team finding F2), append a loud
+ * qualifier so the page never presents the whole account's number as if it
+ * were this sub-brand's own. Absent entirely for an unbound brand (the flag
+ * itself is never set there), so this stays byte-identical to before F2.
+ */
 function prefilledNote(resolved: ResolvedField<unknown> | null | undefined): string | undefined {
   if (resolved == null || resolved.source !== 'brain') return undefined;
-  return resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : 'pre-filled';
+  const base = resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : 'pre-filled';
+  return resolved.account_wide ? `${base} - ACCOUNT-WIDE, not this sub-brand's own` : base;
 }
 
 /** Confidence for a NON-registered context value: present -> ✓, absent -> ◯. */
