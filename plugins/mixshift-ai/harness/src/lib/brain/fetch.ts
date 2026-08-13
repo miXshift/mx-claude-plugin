@@ -142,8 +142,8 @@ export interface BrainStatusFile {
  * seller row supplies the brain's seller scalars (acos_target, monthly_budget,
  * merchant_alias, marketplace, activation). A brand has many seats (one per
  * marketplace × platform: Seller Central vs Vendor Central); picking the wrong
- * one corrupts every seller scalar (e.g. AOP rendering its tiny VC seat 577
- * instead of the $30k/mo US SC seat 574).
+ * one corrupts every seller scalar (e.g. rendering a brand's near-dormant VC
+ * seat instead of the US SC seat carrying its actual monthly volume).
  *
  * FALLBACK HEURISTIC, tuned for MixShift's predominantly-US-3P brand base:
  * prefer the active US Seller-Central seat. The truest signal — per-seat
