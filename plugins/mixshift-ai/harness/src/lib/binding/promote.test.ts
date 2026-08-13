@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, rm, writeFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 // discoverSellers hits the warehouse in real life; promoteLabelItem calls it
 // to build the fresh sub-brand's account rows, so it must be stubbed for
@@ -12,6 +12,27 @@ vi.mock('../discovery/seller-query.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../discovery/seller-query.js')>();
   return { ...actual, discoverSellers: vi.fn() };
 });
+
+// Capture what the org-store publish would have seen, and WHEN. Promotion
+// bootstraps a brand and then writes its binding; if the publish fires between
+// those two steps, an unbound brand named after a sub-brand label reaches the
+// shared org store fleet-wide. These tests assert it never does.
+export const pushSnapshots: Array<{ slug: string; hadBinding: boolean }> = [];
+vi.mock('../context-sync/push-after-write.js', () => ({
+  pushAfterWrite: vi.fn(async (slug: string, opts?: { dataDirOverride?: string }) => {
+    const { readFile: rf } = await import('node:fs/promises');
+    const { join: j } = await import('node:path');
+    let hadBinding = false;
+    try {
+      const raw = await rf(j(opts?.dataDirOverride ?? '', 'clients', slug, 'context.yaml'), 'utf-8');
+      hadBinding = /^binding:/m.test(raw);
+    } catch {
+      hadBinding = false;
+    }
+    pushSnapshots.push({ slug, hadBinding });
+    return { ok: true } as unknown as never;
+  }),
+}));
 
 import { discoverSellers } from '../discovery/seller-query.js';
 import { assembleCoverageReport } from './discovery.js';
@@ -43,6 +64,7 @@ beforeEach(async () => {
   clientsDir = join(testDir, 'clients');
   await mkdir(clientsDir, { recursive: true });
   mockedDiscoverSellers.mockReset();
+  pushSnapshots.length = 0;
 });
 
 afterEach(async () => {
@@ -700,5 +722,142 @@ describe('applyPromotionDecision — retire_old_brand / rebind_old_brand', () =>
       opts,
     );
     expect(second.status).toBe('validation_failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 2 regression guards (P1 findings, 2026-08-13)
+// ---------------------------------------------------------------------------
+
+describe('promotion write path — org-store safety regressions', () => {
+  const opts = { dataDirOverride: '', sellerName: 'Acme Agency', resolvedSellerIds: [1] };
+
+  beforeEach(() => {
+    opts.dataDirOverride = testDir;
+    mockedDiscoverSellers.mockResolvedValue([
+      {
+        seller_id: 1,
+        seller_name: 'Acme Agency',
+        amazon_seller_id: SELLER_ID,
+        merchant_alias: null,
+        account_type: 'SC' as const,
+        marketplace: 'United States',
+        region: 'NA',
+        agency_name: null,
+        acos_target: null,
+        ads_active: true,
+        retail_active: true,
+        is_active: true,
+        has_mws: true,
+      },
+    ]);
+  });
+
+  function foragerPlan(): PromotionPlan {
+    return {
+      seller_id: SELLER_ID,
+      generated_at: '2026-08-12T00:00:00.000Z',
+      items: [
+        {
+          label: 'Forager Pantry',
+          retail_source: 'mws_items.Brand',
+          retail_units: 70,
+          ads_campaign_count: 5,
+          has_ads: true,
+          proposed_slug: 'forager-pantry',
+          status: 'would_create',
+        },
+      ],
+      old_brand: null,
+      additional_unbound_brands: [],
+      notice: FIRST_LIVE_PROMOTION_NOTICE,
+    };
+  }
+
+  const ctxPathFor = (slug: string) => join(clientsDir, slug, 'context.yaml');
+
+  /** Remove the binding block deterministically, and PROVE it was removed.
+   *  (A first pass at these guards stripped it with a regex anchored on \Z,
+   *  which JavaScript does not support — the match silently failed, the
+   *  binding survived, and two of these tests passed while exercising
+   *  nothing.) */
+  async function stripBinding(slug: string, extra?: Record<string, unknown>): Promise<void> {
+    const path = ctxPathFor(slug);
+    const doc = parseYaml(await readFile(path, 'utf-8')) as Record<string, unknown>;
+    delete doc.binding;
+    await writeFile(path, stringifyYaml({ ...doc, ...(extra ?? {}) }, { indent: 2, lineWidth: 0 }), 'utf-8');
+    const check = parseYaml(await readFile(path, 'utf-8')) as Record<string, unknown>;
+    if (check.binding !== undefined) throw new Error('test setup failed: binding was not stripped');
+  }
+
+  it('never publishes an UNBOUND brand: every push during promotion sees the binding already written', async () => {
+    const result = await applyPromotionDecision(
+      foragerPlan(),
+      { action: 'promote_label', label: 'Forager Pantry' },
+      opts,
+    );
+    expect(result.status).toBe('ok');
+    expect(pushSnapshots.length).toBeGreaterThan(0);
+    // Pre-fix, bootstrap published first and this snapshot was `false`: a brand
+    // named after a sub-brand label, carrying no binding, in the shared store.
+    for (const snap of pushSnapshots) {
+      expect({ slug: snap.slug, hadBinding: snap.hadBinding }).toEqual({
+        slug: 'forager-pantry',
+        hadBinding: true,
+      });
+    }
+  });
+
+  it('preserves unknown context keys when writing a binding (forward tolerance, design §2.2)', async () => {
+    await applyPromotionDecision(foragerPlan(), { action: 'promote_label', label: 'Forager Pantry' }, opts);
+
+    // Simulate an interrupted promotion whose context ALSO carries a key this
+    // plugin version does not know about (written by a newer client, or by hand).
+    const path = ctxPathFor('forager-pantry');
+    await stripBinding('forager-pantry', { future_field: { written_by: 'a-newer-client' } });
+
+    const recovered = await applyPromotionDecision(
+      foragerPlan(),
+      { action: 'promote_label', label: 'Forager Pantry' },
+      opts,
+    );
+    expect(recovered.status).toBe('ok');
+
+    const after = parseYaml(await readFile(path, 'utf-8')) as Record<string, unknown>;
+    expect((after.binding as { kind?: string } | undefined)?.kind).toBe('sub_brand');
+    // Pre-fix this wrote contextSchema.safeParse().data, which STRIPS unknown
+    // keys, and then published the loss to the org store.
+    expect(after.future_field).toEqual({ written_by: 'a-newer-client' });
+  });
+
+  it('recovers an interrupted promotion instead of refusing it forever', async () => {
+    await applyPromotionDecision(foragerPlan(), { action: 'promote_label', label: 'Forager Pantry' }, opts);
+    await stripBinding('forager-pantry');
+
+    const recovered = await applyPromotionDecision(
+      foragerPlan(),
+      { action: 'promote_label', label: 'Forager Pantry' },
+      opts,
+    );
+    // Pre-fix: validation_failed, "Refusing to overwrite it; investigate by hand".
+    expect(recovered.status).toBe('ok');
+    expect(recovered.did_write).toBe(true);
+    expect(recovered.detail).toContain('interrupted');
+  });
+
+  it('still refuses a slug occupied by an unrelated brand', async () => {
+    await mkdir(join(clientsDir, 'forager-pantry'), { recursive: true });
+    await writeFile(
+      ctxPathFor('forager-pantry'),
+      'schema_version: 1\nbrand_slug: forager-pantry\nbrand_name: Someone Else Entirely\nlast_updated: "2026-08-12"\naccounts: []\n',
+      'utf-8',
+    );
+    const result = await applyPromotionDecision(
+      foragerPlan(),
+      { action: 'promote_label', label: 'Forager Pantry' },
+      opts,
+    );
+    expect(result.status).toBe('validation_failed');
+    expect(result.did_write).toBe(false);
   });
 });

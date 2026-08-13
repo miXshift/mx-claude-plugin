@@ -542,6 +542,39 @@ async function promoteLabelItem(
         validation_issues: [],
       };
     }
+
+    // ORPHAN RECOVERY. A promotion that died between bootstrap and the
+    // binding write leaves a directory at exactly this slug with NO binding.
+    // Refusing outright (the previous behavior) contradicted this module's
+    // own re-runnability contract and stranded the operator with a brand that
+    // reads account-wide data under a sub-brand's name. Complete it instead,
+    // but ONLY when it is unmistakably our own interrupted work: no binding at
+    // all, and a display name equal to this label. Anything else still refuses.
+    if (existingBinding === null) {
+      const validated = await validateBrandContext(slug, opts.dataDirOverride);
+      // bootstrap writes `brand_name: suggestion.display_name`, and promotion
+      // passes the label as display_name — so brand_name === label is the
+      // fingerprint of our own interrupted bootstrap for THIS label.
+      if (validated.ok && validated.context.brand_name === item.label) {
+        const recoveryBinding = buildBindingBlock({
+          amazonSellerId,
+          resolvedSellerIds: opts.resolvedSellerIds,
+          label: item.label,
+          retailSource: item.retail_source ?? undefined,
+          hasAds: item.has_ads,
+        });
+        const recovered = await writeBindingBlock(slug, recoveryBinding, opts.dataDirOverride);
+        if (!recovered.ok) return failClosed('label', recovered.detail);
+        return {
+          status: 'ok',
+          detail: `Completed an interrupted promotion of "${item.label}" to "${slug}" (the brand directory already existed without a binding; the binding is now written and published).`,
+          slug,
+          did_write: true,
+          validation_issues: [],
+        };
+      }
+    }
+
     return failClosed(
       'label',
       `A brand directory already exists at slug "${slug}" but is not bound to "${item.label}" on this account. Refusing to overwrite it; investigate the existing brand by hand.`,
@@ -567,7 +600,11 @@ async function promoteLabelItem(
 
   const { bootstrapBrand } = await import('../clients/bootstrap.js');
   try {
-    await bootstrapBrand(suggestion, { dataDirOverride: opts.dataDirOverride });
+    // deferPush: publish ONCE, after the binding lands (see BootstrapOptions).
+    // Publishing here would put an unbound, sub-brand-named brand into the
+    // shared org store for as long as the binding write takes — or forever,
+    // if it fails.
+    await bootstrapBrand(suggestion, { dataDirOverride: opts.dataDirOverride, deferPush: true });
   } catch (err) {
     return failClosed('label', err instanceof Error ? err.message : String(err));
   }
@@ -603,7 +640,10 @@ async function retireOldBrand(
   return {
     status: 'ok',
     detail: parked.parked
-      ? `Retired "${slug}" (parked local directory; org-store revision history is untouched).`
+      ? `Retired "${slug}" on THIS machine (local directory parked; nothing deleted). ` +
+        'Its org-store documents and revision history stay intact, which also means ' +
+        'teammates and your other machines still see this brand as active until they ' +
+        'retire it locally too. Tell whoever else works this account.'
       : `Nothing to retire for "${slug}" (${parked.reason}).`,
     slug,
     did_write: parked.parked,
@@ -720,7 +760,16 @@ async function writeBindingBlock(
     return { ok: false, detail: `Adding this binding would make "${slug}"'s context.yaml invalid: ${formatZodError(fullCheck.error)}` };
   }
 
-  await writeYamlAtomic(path, fullCheck.data as unknown as Record<string, unknown>);
+  // Write `merged` (the RAW parsed document plus the validated binding), NOT
+  // fullCheck.data. contextSchema is a stripping zod object, so its parsed
+  // output DELETES every key the current schema does not know about — and
+  // this file is then published to the org store by pushAfterWrite below.
+  // Writing the parsed output would silently destroy fields written by a
+  // NEWER plugin version (or added by hand) on the customer's real context,
+  // fleet-wide, breaking the forward-tolerance invariant every other shipped
+  // writer honors (design doc §2.2). Validation above is a GATE, not the
+  // serialization source.
+  await writeYamlAtomic(path, merged);
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: 'binding written' };
 }

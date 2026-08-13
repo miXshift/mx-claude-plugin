@@ -134,7 +134,12 @@ async function unsetBindingBlock(
     return { ok: false, detail: `Removing the binding would make "${slug}"'s context.yaml invalid; refusing to write.` };
   }
 
-  await writeYamlAtomic(path, check.data as unknown as Record<string, unknown>);
+  // Write `merged` (raw document minus `binding`), NOT check.data: contextSchema
+  // strips unknown keys, and this file is published to the org store below, so
+  // serializing the parsed output would silently delete newer-version or
+  // hand-added fields from a real customer context fleet-wide. Validation is a
+  // GATE, not the serialization source (same rule as promote.ts).
+  await writeYamlAtomic(path, merged);
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: 'binding unset' };
 }

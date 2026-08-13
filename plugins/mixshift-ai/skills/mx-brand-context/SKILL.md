@@ -250,8 +250,24 @@ number.
    event, and instruction in the old brand's context: move to a specific
    sub-brand, copy into every sub-brand, or retire. **Present this table to
    the AM as an editable proposal — never apply it automatically.** Walk
-   through corrections with the AM, then apply confirmed items ONE AT A
-   TIME (never as a batch), e.g.:
+   through corrections with the AM.
+
+   **You carry the triage out yourself; no command applies it.** The table
+   is a proposal, and the confirmed dispositions are an INPUT to step 3's
+   per-sub-brand loop, not something `--apply` executes:
+   - `move to <slug>`: when you run step 3.2 for that sub-brand, seed its
+     context with that content (the fact, the structural event, the
+     protected term) instead of re-deriving it from the interview.
+   - `copy into all`: treat it exactly like a step 2 shared answer — it
+     becomes a proposed default in EVERY promoted sub-brand's context.
+   - `retire`: it exists only to describe the old label taxonomy, which the
+     binding now encodes; drop it and say so in the run notes.
+
+   Do this BEFORE retiring or re-binding the old brand. Retiring parks the
+   old brand's directory, and anything you have not carried across stays
+   parked with it rather than reaching the sub-brands that needed it.
+
+   Then dispose of the old brand itself, ONE action (never a batch), e.g.:
    ```bash
    mixshift brand promote --seller-id <AmazonSellerID> --apply '{"action":"rebind_old_brand","label":"<dominant label>"}'
    # or, if no label dominates:
@@ -259,7 +275,10 @@ number.
    ```
    `retire_old_brand` parks the old brand's local directory without
    deleting anything; its org-store history stays intact and readable under
-   its old slug. `rebind_old_brand` keeps that brand's slug and history
+   its old slug. Retiring is LOCAL to the machine you run it on: teammates
+   and the AM's other machines keep seeing that brand as active until they
+   retire it there too, so tell whoever else works the account rather than
+   assuming the roster changed for everyone. `rebind_old_brand` keeps that brand's slug and history
    alive as the surviving sub-brand for its dominant label. Either way, run
    step 3's per-sub-brand loop for every OTHER promoted label same as a
    fresh account. **The first live promotion on a real customer account

@@ -67923,7 +67923,9 @@ Either pick a different slug, delete the existing directory, or pass --force to 
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
   await writeAtomic(readmePath, readmeTemplate(suggestion));
-  await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+  if (!options.deferPush) {
+    await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+  }
   return {
     brand_dir: dir,
     context_path: ctxPath,
@@ -76659,6 +76661,27 @@ async function promoteLabelItem(item, amazonSellerId, opts) {
         validation_issues: []
       };
     }
+    if (existingBinding === null) {
+      const validated = await validateBrandContext(slug, opts.dataDirOverride);
+      if (validated.ok && validated.context.brand_name === item.label) {
+        const recoveryBinding = buildBindingBlock({
+          amazonSellerId,
+          resolvedSellerIds: opts.resolvedSellerIds,
+          label: item.label,
+          retailSource: item.retail_source ?? void 0,
+          hasAds: item.has_ads
+        });
+        const recovered = await writeBindingBlock(slug, recoveryBinding, opts.dataDirOverride);
+        if (!recovered.ok) return failClosed("label", recovered.detail);
+        return {
+          status: "ok",
+          detail: `Completed an interrupted promotion of "${item.label}" to "${slug}" (the brand directory already existed without a binding; the binding is now written and published).`,
+          slug,
+          did_write: true,
+          validation_issues: []
+        };
+      }
+    }
     return failClosed(
       "label",
       `A brand directory already exists at slug "${slug}" but is not bound to "${item.label}" on this account. Refusing to overwrite it; investigate the existing brand by hand.`
@@ -76681,7 +76704,7 @@ async function promoteLabelItem(item, amazonSellerId, opts) {
   };
   const { bootstrapBrand: bootstrapBrand2 } = await Promise.resolve().then(() => (init_bootstrap(), bootstrap_exports));
   try {
-    await bootstrapBrand2(suggestion, { dataDirOverride: opts.dataDirOverride });
+    await bootstrapBrand2(suggestion, { dataDirOverride: opts.dataDirOverride, deferPush: true });
   } catch (err) {
     return failClosed("label", err instanceof Error ? err.message : String(err));
   }
@@ -76709,7 +76732,7 @@ async function retireOldBrand(slug, dataDirOverride) {
   const parked = await parkBrandDirectory(slug, dataDirOverride);
   return {
     status: "ok",
-    detail: parked.parked ? `Retired "${slug}" (parked local directory; org-store revision history is untouched).` : `Nothing to retire for "${slug}" (${parked.reason}).`,
+    detail: parked.parked ? `Retired "${slug}" on THIS machine (local directory parked; nothing deleted). Its org-store documents and revision history stay intact, which also means teammates and your other machines still see this brand as active until they retire it locally too. Tell whoever else works this account.` : `Nothing to retire for "${slug}" (${parked.reason}).`,
     slug,
     did_write: parked.parked,
     validation_issues: []
@@ -76782,7 +76805,7 @@ async function writeBindingBlock(slug, binding, dataDirOverride) {
   if (!fullCheck.success) {
     return { ok: false, detail: `Adding this binding would make "${slug}"'s context.yaml invalid: ${formatZodError(fullCheck.error)}` };
   }
-  await writeYamlAtomic2(path2, fullCheck.data);
+  await writeYamlAtomic2(path2, merged);
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: "binding written" };
 }
@@ -76911,7 +76934,7 @@ async function unsetBindingBlock(slug, dataDirOverride) {
   if (!check2.success) {
     return { ok: false, detail: `Removing the binding would make "${slug}"'s context.yaml invalid; refusing to write.` };
   }
-  await writeYamlAtomic3(path2, check2.data);
+  await writeYamlAtomic3(path2, merged);
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: "binding unset" };
 }

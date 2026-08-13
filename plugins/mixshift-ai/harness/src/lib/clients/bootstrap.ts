@@ -38,6 +38,18 @@ export interface BootstrapOptions {
   force?: boolean;
   /** ISO date for last_updated. Default: today. */
   asOfDate?: string;
+  /**
+   * Skip the auto-publish at the end of bootstrap, leaving the caller
+   * responsible for publishing. Default false (publish, unchanged behavior).
+   *
+   * Sub-brand promotion sets this: it bootstraps a brand and THEN writes the
+   * `binding` block. Publishing in between would put a brand named after a
+   * sub-brand label, carrying NO binding, into the shared org store — a brand
+   * that reads account-wide data under a sub-brand's name, fleet-wide, which
+   * is exactly the smearing the sub-brand design exists to prevent. Deferring
+   * the push means the first thing teammates ever see is the bound brand.
+   */
+  deferPush?: boolean;
 }
 
 export interface BootstrapResult {
@@ -136,7 +148,9 @@ export async function bootstrapBrand(
   // durable result; a failed publish is a no-op). The preserved binding
   // (if any) is already part of `parsed.data`/the just-written file, so it
   // travels through this push automatically — no separate handling needed.
-  await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+  if (!options.deferPush) {
+    await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+  }
 
   return {
     brand_dir: dir,

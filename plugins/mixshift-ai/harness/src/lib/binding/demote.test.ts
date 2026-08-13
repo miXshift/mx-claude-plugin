@@ -148,3 +148,31 @@ describe('applyDemotion', () => {
     expect(result.parked_dir).toContain('.parked');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review round 2 regression guard (P1 finding, 2026-08-13)
+// ---------------------------------------------------------------------------
+
+describe('demotion write path — forward tolerance', () => {
+  it('preserves unknown context keys when unsetting the binding', async () => {
+    const path = join(clientsDir, SLUG, 'context.yaml');
+    await mkdir(join(clientsDir, SLUG), { recursive: true });
+    await writeFile(
+      path,
+      `${boundContextYaml}\nfuture_field:\n  written_by: a-newer-client\n`,
+      'utf-8',
+    );
+
+    const result = await applyDemotion(SLUG, testDir);
+    expect(result.status).toBe('ok');
+
+    const parked = join(clientsDir, `${SLUG}.parked`, 'context.yaml');
+    const finalPath = (await access(path).then(() => true).catch(() => false)) ? path : parked;
+    const after = parseYaml(await readFile(finalPath, 'utf-8')) as Record<string, unknown>;
+
+    expect(after.binding).toBeUndefined();
+    // Pre-fix this wrote contextSchema.safeParse().data, which STRIPS unknown
+    // keys, and published the loss to the org store.
+    expect(after.future_field).toEqual({ written_by: 'a-newer-client' });
+  });
+});
