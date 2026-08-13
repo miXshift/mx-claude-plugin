@@ -153,8 +153,8 @@ export interface BrainStatusFile {
  * when that metrics query returns no usable signal (not registered
  * server-side, failed, or no recent revenue/spend). It is intentionally
  * registry-only and biased (SC isn't always primary; US isn't always home) —
- * see HydraPak, whose US-VC seat 113 dwarfs its dormant US-SC seat 384, so the
- * metrics pick (113) is right and this heuristic (384) is the safety net.
+ * see the 1P-heavy fleet in brain.test.ts, whose US-VC seat dwarfs its dormant
+ * US-SC seat: there the metrics pick is right and this heuristic is the safety net.
  *
  * Ranking:
  *   1. Restrict to `ads_active` seats; if none, fall back to `is_active`; if

@@ -44,8 +44,8 @@ function seat(over: Partial<IndexAccount> & { seller_id: number }): IndexAccount
   };
 }
 
-const aopRow = {
-  ID: 574,
+const pantryRow = {
+  ID: 320,
   MerchantAlias: "Forager's Pantry",
   Name: 'Aspen Outdoor Provisions',
   ACOSTarget: '25.0',
@@ -62,10 +62,10 @@ const aopRow = {
   dtMwsActivatedOn: '2024-08-22T00:00:00.000Z',
 };
 
-function assembledAop() {
+function assembledPantry() {
   return assembleBrain({
     brandSlug: 'foragers-pantry',
-    sellerRows: [aopRow],
+    sellerRows: [pantryRow],
     sellerSproc: 'sp_brain_seller_fetch',
     generator: 'plugin@0.5.21-test',
     now: NOW,
@@ -74,7 +74,7 @@ function assembledAop() {
 
 describe('assembleBrain', () => {
   it('produces a schema-valid document with provenance', () => {
-    const brain = assembledAop();
+    const brain = assembledPantry();
     const parsed = brandBrainSchema.parse(brain);
     expect(parsed.brand_slug).toBe('foragers-pantry');
     expect(parsed.generated_at).toBe(NOW.toISOString());
@@ -88,7 +88,7 @@ describe('assembleBrain', () => {
   });
 
   it('lifts seller fields with defensive coercion (strings, tinyints, Dates)', () => {
-    const brain = assembledAop();
+    const brain = assembledPantry();
     expect(brain.seller).toMatchObject({
       merchant_alias: "Forager's Pantry",
       storefront_name: 'Aspen Outdoor Provisions',
@@ -98,7 +98,7 @@ describe('assembleBrain', () => {
       default_currency_code: 'USD',
       i_brand_report_enabled: true,
       i_running_initial_pull: false,
-      primary_seller_id: 574,
+      primary_seller_id: 320,
     });
     expect(brain.seller!.data_freshness.ads_latest).toBe('2026-06-08T00:00:00.000Z');
     expect(brain.seller!.data_freshness.retail_latest).toBe('2026-06-08T00:00:00.000Z');
@@ -130,7 +130,7 @@ describe('assembleBrain', () => {
   });
 
   it('carries previous observations forward through re-assembly', () => {
-    const withObs = applyObservations(assembledAop(), [
+    const withObs = applyObservations(assembledPantry(), [
       {
         field: 'buy_box_health.chronic_losers',
         value: ['B00TEST'],
@@ -141,7 +141,7 @@ describe('assembleBrain', () => {
     ]);
     const reassembled = assembleBrain({
       brandSlug: 'foragers-pantry',
-      sellerRows: [aopRow],
+      sellerRows: [pantryRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@0.5.21-test',
       now: NOW,
@@ -155,30 +155,30 @@ describe('assembleBrain', () => {
 });
 
 describe('pickPrimarySeat', () => {
-  it("picks AOP's active US Seller-Central seat (574) over its VC + non-US seats", () => {
-    // Real AOP seats. Row order deliberately puts the VC seat (577) first to
+  it("picks the pantry brand's active US Seller-Central seat (320) over its VC + non-US seats", () => {
+    // A representative VC + SC fleet (synthetic values). Row order deliberately puts the VC seat (310) first to
     // prove the pick is by metadata, not array position.
     const accounts = [
-      seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
-      seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
-      seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
-      seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+      seat({ seller_id: 310, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 311, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 312, account_type: 'SC', marketplace: 'Mexico' }),
+      seat({ seller_id: 320, account_type: 'SC', marketplace: 'United States' }),
     ];
-    expect(pickPrimarySeat(accounts)).toBe(574);
+    expect(pickPrimarySeat(accounts)).toBe(320);
   });
 
-  it("picks HydraPak's US Seller-Central seat (384) across a wide VC + SC fleet", () => {
+  it("picks ZenithCo's US Seller-Central seat (220) across a wide VC + SC fleet", () => {
     const accounts = [
-      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
-      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
-      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
-      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
-      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
-      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
-      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
-      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+      seat({ seller_id: 210, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 211, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 212, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 213, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 214, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 215, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 216, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 220, account_type: 'SC', marketplace: 'United States' }),
     ];
-    expect(pickPrimarySeat(accounts)).toBe(384);
+    expect(pickPrimarySeat(accounts)).toBe(220);
   });
 
   it('returns the best VC seat for a VC-only brand (not hardcoded to SC)', () => {
@@ -216,55 +216,55 @@ describe('pickPrimarySeat', () => {
 });
 
 describe('pickPrimarySeatByMetrics', () => {
-  // Real AOP seats. The per-seat USD revenue+spend values below are the
-  // warehouse-validated trailing-30d numbers (2026-06-23): seat 574 leads on
+  // A representative VC + SC fleet (synthetic values). The per-seat USD revenue+spend values below are the
+  // synthetic trailing-30d numbers: seat 320 leads on
   // economic activity, which is what we want — same answer as the heuristic
   // here, but for the RIGHT reason (it's the economic leader, not just US-SC).
-  const aopAccounts = [
-    seat({ seller_id: 577, account_type: 'VC', marketplace: 'United States' }),
-    seat({ seller_id: 575, account_type: 'SC', marketplace: 'Canada' }),
-    seat({ seller_id: 573, account_type: 'SC', marketplace: 'Mexico' }),
-    seat({ seller_id: 574, account_type: 'SC', marketplace: 'United States' }),
+  const pantryAccounts = [
+    seat({ seller_id: 310, account_type: 'VC', marketplace: 'United States' }),
+    seat({ seller_id: 311, account_type: 'SC', marketplace: 'Canada' }),
+    seat({ seller_id: 312, account_type: 'SC', marketplace: 'Mexico' }),
+    seat({ seller_id: 320, account_type: 'SC', marketplace: 'United States' }),
   ];
-  const aopMetrics = [
-    { seller_id: 577, usd_revenue: '1161.39', usd_spend: '0.00' },
-    { seller_id: 575, usd_revenue: '0.00', usd_spend: '0.00' },
-    { seller_id: 573, usd_revenue: '0.00', usd_spend: '0.00' },
-    { seller_id: 574, usd_revenue: '213262.80', usd_spend: '30489.40' },
+  const pantryMetrics = [
+    { seller_id: 310, usd_revenue: '1500.00', usd_spend: '0.00' },
+    { seller_id: 311, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 312, usd_revenue: '0.00', usd_spend: '0.00' },
+    { seller_id: 320, usd_revenue: '200000.00', usd_spend: '30000.00' },
   ];
 
-  it('picks the seat with the highest (usd_revenue + usd_spend): AOP -> 574', () => {
-    expect(pickPrimarySeatByMetrics(aopMetrics, aopAccounts)).toBe(574);
+  it('picks the seat with the highest (usd_revenue + usd_spend): the pantry brand -> 320', () => {
+    expect(pickPrimarySeatByMetrics(pantryMetrics, pantryAccounts)).toBe(320);
   });
 
-  it('picks the economic leader even when it disagrees with the heuristic: HydraPak -> 113 (US VC), NOT the dormant US-SC seat 384', () => {
-    // The warehouse truth that motivated this change. HydraPak is a 1P-heavy
-    // brand: its US Vendor seat (113) does $1.3M revenue+spend/30d while its
-    // US Seller-Central seat (384) is dormant ($0/$0). The heuristic would
-    // pick 384 (SC>VC, US-first); the metrics pick is 113, which is correct.
-    const hydrapakAccounts = [
-      seat({ seller_id: 113, account_type: 'VC', marketplace: 'United States' }),
-      seat({ seller_id: 655, account_type: 'VC', marketplace: 'Canada' }),
-      seat({ seller_id: 524, account_type: 'VC', marketplace: 'Germany' }),
-      seat({ seller_id: 523, account_type: 'VC', marketplace: 'France' }),
-      seat({ seller_id: 522, account_type: 'VC', marketplace: 'Italy' }),
-      seat({ seller_id: 408, account_type: 'SC', marketplace: 'Canada' }),
-      seat({ seller_id: 411, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
-      seat({ seller_id: 384, account_type: 'SC', marketplace: 'United States' }),
+  it('picks the economic leader even when it disagrees with the heuristic: ZenithCo -> 210 (US VC), NOT the dormant US-SC seat 220', () => {
+    // A 1P-heavy
+    // brand: its US Vendor seat (210) does ~$1.35M revenue+spend/30d while its
+    // US Seller-Central seat (220) is dormant ($0/$0). The heuristic would
+    // pick 220 (SC>VC, US-first); the metrics pick is 210, which is correct.
+    const zenithcoAccounts = [
+      seat({ seller_id: 210, account_type: 'VC', marketplace: 'United States' }),
+      seat({ seller_id: 211, account_type: 'VC', marketplace: 'Canada' }),
+      seat({ seller_id: 212, account_type: 'VC', marketplace: 'Germany' }),
+      seat({ seller_id: 213, account_type: 'VC', marketplace: 'France' }),
+      seat({ seller_id: 214, account_type: 'VC', marketplace: 'Italy' }),
+      seat({ seller_id: 215, account_type: 'SC', marketplace: 'Canada' }),
+      seat({ seller_id: 216, account_type: 'SC', marketplace: 'Mexico', is_active: false, ads_active: false }),
+      seat({ seller_id: 220, account_type: 'SC', marketplace: 'United States' }),
     ];
-    const hydrapakMetrics = [
-      { seller_id: 113, usd_revenue: 1143114.2, usd_spend: 156594.6 },
-      { seller_id: 655, usd_revenue: 100532.61, usd_spend: 3275.43 },
-      { seller_id: 524, usd_revenue: 28998.67, usd_spend: 2962.66 },
-      { seller_id: 523, usd_revenue: 17367.51, usd_spend: 873.58 },
-      { seller_id: 522, usd_revenue: 15983.25, usd_spend: 1270.74 },
-      { seller_id: 408, usd_revenue: 0, usd_spend: 0 },
-      { seller_id: 411, usd_revenue: 0, usd_spend: 0 },
-      { seller_id: 384, usd_revenue: 0, usd_spend: 0 },
+    const zenithcoMetrics = [
+      { seller_id: 210, usd_revenue: 1200000, usd_spend: 150000 },
+      { seller_id: 211, usd_revenue: 100000, usd_spend: 3300 },
+      { seller_id: 212, usd_revenue: 29000, usd_spend: 3000 },
+      { seller_id: 213, usd_revenue: 17000, usd_spend: 900 },
+      { seller_id: 214, usd_revenue: 16000, usd_spend: 1300 },
+      { seller_id: 215, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 216, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 220, usd_revenue: 0, usd_spend: 0 },
     ];
     // Verify it really diverges from the heuristic on this fleet.
-    expect(pickPrimarySeat(hydrapakAccounts)).toBe(384);
-    expect(pickPrimarySeatByMetrics(hydrapakMetrics, hydrapakAccounts)).toBe(113);
+    expect(pickPrimarySeat(zenithcoAccounts)).toBe(220);
+    expect(pickPrimarySeatByMetrics(zenithcoMetrics, zenithcoAccounts)).toBe(210);
   });
 
   it('coerces numeric-string wire values when ranking', () => {
@@ -288,31 +288,31 @@ describe('pickPrimarySeatByMetrics', () => {
   });
 
   it('ignores metric rows for seats not in the brand registry (defensive)', () => {
-    const accounts = [seat({ seller_id: 574 })];
+    const accounts = [seat({ seller_id: 320 })];
     const rows = [
       { seller_id: 999, usd_revenue: 9_999_999, usd_spend: 0 }, // not a known seat
-      { seller_id: 574, usd_revenue: 10, usd_spend: 0 },
+      { seller_id: 320, usd_revenue: 10, usd_spend: 0 },
     ];
-    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(574);
+    expect(pickPrimarySeatByMetrics(rows, accounts)).toBe(320);
   });
 
   it('returns null on empty rows so the caller falls back to the heuristic', () => {
-    expect(pickPrimarySeatByMetrics([], aopAccounts)).toBeNull();
+    expect(pickPrimarySeatByMetrics([], pantryAccounts)).toBeNull();
   });
 
   it('returns null when every eligible seat scores zero (no economic signal)', () => {
     // A quiet brand: all seats present but zero revenue+spend. No economic
     // signal -> defer to the heuristic rather than pick an arbitrary zero row.
     const rows = [
-      { seller_id: 574, usd_revenue: 0, usd_spend: 0 },
-      { seller_id: 575, usd_revenue: '0.00', usd_spend: null },
+      { seller_id: 320, usd_revenue: 0, usd_spend: 0 },
+      { seller_id: 311, usd_revenue: '0.00', usd_spend: null },
     ];
-    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
+    expect(pickPrimarySeatByMetrics(rows, pantryAccounts)).toBeNull();
   });
 
   it('returns null when no row matches a registry seat', () => {
     const rows = [{ seller_id: 12345, usd_revenue: 100, usd_spend: 100 }];
-    expect(pickPrimarySeatByMetrics(rows, aopAccounts)).toBeNull();
+    expect(pickPrimarySeatByMetrics(rows, pantryAccounts)).toBeNull();
   });
 });
 
@@ -322,14 +322,14 @@ describe('assembleSellerSection with a primary seat id', () => {
   // must lift the later row's scalars.
   const multiSeatRows = [
     {
-      ID: 577,
+      ID: 310,
       ACOSTarget: '40', // non-null → old heuristic would pick this row
       MerchantAlias: "Backpacker's Pantry",
       MonthlyBudget: 2000,
       MarketPlaceName: 'Amazon.com (VC)',
     },
     {
-      ID: 574,
+      ID: 320,
       ACOSTarget: '25',
       MerchantAlias: 'Aspen Outdoor Provisions',
       MonthlyBudget: 30000,
@@ -338,8 +338,8 @@ describe('assembleSellerSection with a primary seat id', () => {
   ];
 
   it('lifts scalars from the row whose ID matches primarySellerId (not the earlier ACOSTarget row)', () => {
-    const seller = assembleSellerSection(multiSeatRows, 574);
-    expect(seller.primary_seller_id).toBe(574);
+    const seller = assembleSellerSection(multiSeatRows, 320);
+    expect(seller.primary_seller_id).toBe(320);
     expect(seller.acos_target_pct).toBe(25);
     expect(seller.merchant_alias).toBe('Aspen Outdoor Provisions');
     expect(seller.monthly_budget).toBe(30000);
@@ -348,14 +348,14 @@ describe('assembleSellerSection with a primary seat id', () => {
 
   it('falls back to the legacy heuristic when the primary id matches no row', () => {
     const seller = assembleSellerSection(multiSeatRows, 999);
-    // 999 not found → first row with a non-null ACOSTarget (577).
-    expect(seller.primary_seller_id).toBe(577);
+    // 999 not found → first row with a non-null ACOSTarget (310).
+    expect(seller.primary_seller_id).toBe(310);
     expect(seller.acos_target_pct).toBe(40);
   });
 
   it('is backward-compatible: no primarySellerId uses the legacy heuristic', () => {
     const seller = assembleSellerSection(multiSeatRows);
-    expect(seller.primary_seller_id).toBe(577);
+    expect(seller.primary_seller_id).toBe(310);
     expect(seller.acos_target_pct).toBe(40);
   });
 });
@@ -514,7 +514,7 @@ describe('assembleBrain with slice-2 sources', () => {
   it('renders sections + source metas only for provided sources, schema-valid', () => {
     const brain = assembleBrain({
       brandSlug: 'foragers-pantry',
-      sellerRows: [aopRow],
+      sellerRows: [pantryRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@test',
       now: NOW,
@@ -553,7 +553,7 @@ describe('saveBrain + loadBrain round-trip', () => {
   it('round-trips through yaml atomically', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
-      const brain = assembledAop();
+      const brain = assembledPantry();
       const { path } = await saveBrain(brain, dir);
       expect(path).toContain(join('clients', 'foragers-pantry'));
       const loaded = await loadBrain('foragers-pantry', dir);
@@ -606,9 +606,9 @@ describe('saveBrain + loadBrain round-trip', () => {
       const brandDir = join(dir, 'clients', 'foragers-pantry');
       await mkdir(brandDir, { recursive: true });
       const oldBrain = {
-        ...assembledAop(),
+        ...assembledPantry(),
         sources: {
-          ...assembledAop().sources,
+          ...assembledPantry().sources,
           stockout: {
             sproc: 'CS-29',
             fetched_at: NOW.toISOString(),
@@ -679,7 +679,7 @@ describe('saveBrain + loadBrain round-trip', () => {
 
     const brain = assembleBrain({
       brandSlug: 'foragers-pantry',
-      sellerRows: [aopRow],
+      sellerRows: [pantryRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@0.5.21-test',
       now: NOW,
@@ -723,7 +723,7 @@ describe('getBrandField / resolveBrandFields (accessor seam)', () => {
     last_updated: '2026-06-10',
     accounts: [
       {
-        seller_id: 574,
+        seller_id: 320,
         seller_name: 'Aspen Outdoor Provisions',
         account_type: 'SC',
         status: 'active',
@@ -749,7 +749,7 @@ describe('getBrandField / resolveBrandFields (accessor seam)', () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
       // brain: acos 25, marketplace Amazon.com, monthly_budget 18000
-      await saveBrain(assembledAop(), dir);
+      await saveBrain(assembledPantry(), dir);
       if (withContext) {
         const brandDir = join(dir, 'clients', 'foragers-pantry');
         await mkdir(brandDir, { recursive: true });
@@ -820,7 +820,7 @@ describe('resolveAcosTargetPct precedence', () => {
   it('prefers Tier 3: a schema-valid context.yaml beats the brain value', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
-      await saveBrain(assembledAop(), dir); // brain says 25
+      await saveBrain(assembledPantry(), dir); // brain says 25
       const brandDir = join(dir, 'clients', 'foragers-pantry');
       await mkdir(brandDir, { recursive: true });
       const validContext = {
@@ -830,7 +830,7 @@ describe('resolveAcosTargetPct precedence', () => {
         last_updated: '2026-06-10',
         accounts: [
           {
-            seller_id: 574,
+            seller_id: 320,
             seller_name: 'Aspen Outdoor Provisions',
             account_type: 'SC',
             status: 'active',
@@ -865,7 +865,7 @@ describe('resolveAcosTargetPct precedence', () => {
   it('falls through to the brain when context.yaml exists but fails schema validation', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
-      await saveBrain(assembledAop(), dir); // brain says 25
+      await saveBrain(assembledPantry(), dir); // brain says 25
       const brandDir = join(dir, 'clients', 'foragers-pantry');
       await writeFile(
         join(brandDir, 'context.yaml'),
@@ -890,7 +890,7 @@ describe('resolveAcosTargetPct precedence', () => {
   it('serves the brain value with fetched_at when no context exists', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
-      await saveBrain(assembledAop(), dir);
+      await saveBrain(assembledPantry(), dir);
       const resolved = await resolveAcosTargetPct('foragers-pantry', dir);
       expect(resolved).toMatchObject({
         value: 25,
@@ -923,7 +923,7 @@ describe('resolveAcosTargetPct precedence', () => {
 
 describe('observations', () => {
   it('applyObservations bumps count on repeat and keeps latest value', () => {
-    const base = assembledAop();
+    const base = assembledPantry();
     const obs = (value: unknown) => ({
       field: 'buy_box_health.chronic_losers',
       value,
@@ -943,7 +943,7 @@ describe('observations', () => {
   it('recordObservations persists through the local transport', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
     try {
-      await saveBrain(assembledAop(), dir);
+      await saveBrain(assembledPantry(), dir);
       const result = await recordObservations(
         'foragers-pantry',
         [
