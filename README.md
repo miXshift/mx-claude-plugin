@@ -61,7 +61,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **26 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **27 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -91,6 +91,7 @@ The plugin ships **26 skills**. Each is invoked naturally in chat: say what you 
 | `mx-runaway-spend-check` | Acute daily keyword-level overspend detection — flags T-1 spikes + zero-conversion runaways. |
 | `mx-keyword-bid-health` | Weekly keyword-level bid review — scale-up candidates with proven conversions, pullback candidates on high-ACoS. |
 | `mx-monthly-report` | MoM / YoY performance report in MixShift's analytical voice, H-Bridge efficiency, item-group highlights, forecast beat/miss, Looking Ahead. |
+| `mx-monthly-report-max` | The smart tier of the monthly report: every figure served by MixShift Intelligence (H-Bridge bridge decompositions, footing checks), typed figure/claim contract with mechanical validators, deterministic rendering. |
 | `mx-portfolio-quick-scan` | Multi-brand daily triage. One status card per brand: do I need to log in today? GREEN / YELLOW / RED verdicts. |
 | `mx-search-term-negation` | Search-term irrelevance analysis + surgical negative keywords. |
 | `mx-search-term-harvest` | Promote high-performing auto / broad search terms to explicit keyword targeting. |

@@ -1,0 +1,77 @@
+schema_version: 1
+skill_id: mx-monthly-report-max   # smart-tier convention: <existing-skill-slug>-max, so both tiers sort and search together
+display_name: Monthly Performance Report Max
+version: "0.1.0"
+description: >
+  Composes and publishes the intelligence-powered monthly Amazon performance report:
+  every figure is served by the MixShift Intelligence service (H-Bridge ops + ads +
+  cross-domain envelope), typed through a figure/claim contract with mechanical
+  validators, and rendered deterministically. Covers MoM and YoY comparisons, bridge
+  decompositions, item-group highlights, forecast beat/miss, and Looking Ahead.
+  The smart tier alongside mx-monthly-report; saves report as local HTML.
+run_kind: per_account
+cadence: monthly
+risk_tier: 2
+allowed_tools: [insight_read, db_read, file_read, file_write, renderer, validator, prefetch]
+side_effect_policy: artifact_write
+review_required: always
+sql_ids: []
+  # Deliberately empty at scaffold: the envelope replaces account-level SQL. The residual
+  # set (campaign-type tables, SKU product-line revenue) is served by the engine at
+  # labelGroupBy/asin grain on engines >= 0.1.0; residual sql_ids get added here ONLY if
+  # the cold-render gate against the private golden envelope proves a gap on our engine version.
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+  - management.primary_metric
+  - management.acos_target_pct
+  - management.attribution_window_days
+  - management.tacos_in_bottom_line
+  - sub_brands
+  - brand_terms
+  - structural_events
+  - delivery.reports_local_dir
+  - delivery.archive_dir
+  - reporting.audience
+  - reporting.voice_lint
+optional_context_fields:
+  - goals.monthly_total_sales_target
+  - goals.quarterly_total_sales_target
+  - capture_rate_calibration
+  - attribution_rule
+  - posture
+artifacts:
+  - name: monthly-report.html
+    type: report_html
+  - name: report-data.json
+    type: json_artifact
+  - name: review.json
+    type: json_artifact
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
+pricing_tier: enterprise
+trigger_phrases:
+  - monthly report max
+  - max monthly report
+  - smart monthly report
+  - monthly report with intelligence
+notes: >
+  The smart tier of the monthly report: mx-monthly-report stays the standard tier and is
+  never modified by this skill's releases. One monthly report consumes one metered
+  intelligence request (INS-MONTHLY-01); re-renders re-read the artifact and are free.
+  Verdict maps footing plus caveats: GREEN means all footing checks pass with no blocking
+  caveats. OBSERVATIONAL applies when no target or no MoM comparison exists. Contract
+  enforcement lives in the harness (src/lib/report-contract, rule IDs BASIS-1..UNIT-1);
+  the nine shipped claim errors are permanent must-fail CI fixtures.
+calibration:
+  schema_version: 1
+  fields:
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the monthly report should frame against for {brand_name}?"
+      help: >
+        Reference ACoS for the efficiency narrative and beat/miss framing. Defaults to
+        your brand's ACoS target (Tier-3 context.yaml, else the Tier-2 brain).
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false
