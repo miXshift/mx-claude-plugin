@@ -76,6 +76,19 @@ describe('resolveBinding', () => {
     await writeFile(join(brandDir, 'context.yaml'), 'not: [valid, context', 'utf-8');
     await expect(resolveBinding('acme', testDir)).resolves.toBeNull();
   });
+
+  it('returns null (never throws) when context.yaml cannot be READ for a reason other than "missing" (F4)', async () => {
+    // validateBrandContext (lib/context/load.ts) special-cases ENOENT
+    // (returns kind:'file_missing') but RE-THROWS everything else — a
+    // permissions error, a disk failure, or (portably reproducible here) a
+    // directory sitting where the file should be, which makes fs.readFile
+    // throw EISDIR. Before the F4 fix that throw escaped resolveBinding
+    // straight into whatever awaited it (the brain fetch pipeline, for
+    // ANY brand, bound or not), contradicting this function's own "never
+    // throws" doc comment.
+    await mkdir(join(brandDir, 'context.yaml'));
+    await expect(resolveBinding('acme', testDir)).resolves.toBeNull();
+  });
 });
 
 describe('isSubBrand', () => {

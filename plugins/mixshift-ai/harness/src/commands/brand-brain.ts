@@ -218,6 +218,12 @@ function renderFetchResult(
             `Retry later with \`mixshift brand brain refresh ${slug}\`.\n`,
         );
       }
+      // Sub-brand label lens (bound brands only): the §11 mechanism — every
+      // warning line is pre-rendered by the fetch (which sources are
+      // account-wide, zero-row lens matches, missing label sides).
+      for (const warning of result.summary.lens_warnings) {
+        process.stdout.write(`  ⚠ ${warning}\n`);
+      }
       break;
     }
     case 'skipped_fresh':

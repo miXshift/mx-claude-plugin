@@ -130,14 +130,51 @@ describe('renderConfirmationCard — first-run capture nudge', () => {
   });
 });
 
+// F5 (red-team review): a bound sub-brand's ACCOUNT-WIDE brain
+// pre-fill must be visibly labeled at the confirm step — never presented as
+// an ordinary pre-fill the same way an unbound brand's own value would be.
+describe('renderSourceHint (via renderConfirmationCard) — F5 account-wide seed', () => {
+  it('gets a LOUD, distinct hint when the seed is an account-wide brain pre-fill', () => {
+    const e = entry(
+      pctField('acos_target', 'ACoS target', 'context.management.acos_target_pct'),
+      'seed',
+    );
+    e.effective_value = 0.25;
+    e.display = '25%';
+    e.account_wide = true;
+    const text = joinCard(renderConfirmationCard(payload(false, [e]), { skill_display_name: 'KBH' }));
+    expect(text).toContain('ACCOUNT-WIDE');
+    expect(text).toContain("not this sub-brand's own number");
+    // Must NOT also print the ordinary provenance-neutral hint.
+    expect(text).not.toContain('pre-filled from your brand context');
+  });
+
+  it('gets the ORDINARY seed hint (unchanged) when the seed is this brand\'s own', () => {
+    const e = entry(
+      pctField('acos_target', 'ACoS target', 'context.management.acos_target_pct'),
+      'seed',
+    );
+    e.effective_value = 0.25;
+    e.display = '25%';
+    // account_wide left undefined — the unbound / properly-scoped case.
+    const text = joinCard(renderConfirmationCard(payload(false, [e]), { skill_display_name: 'KBH' }));
+    expect(text).toContain('pre-filled from your brand context');
+    expect(text).not.toContain('ACCOUNT-WIDE');
+  });
+});
+
 describe('renderPersistenceFooter — end-of-run "I learned X"', () => {
-  const persisted = (captured?: ApplyResult['captured']): ApplyResult => ({
+  const persisted = (
+    captured?: ApplyResult['captured'],
+    account_wide_fields?: ApplyResult['account_wide_fields'],
+  ): ApplyResult => ({
     status: 'ok',
     effective_config: {},
     did_persist: true,
     saved_to: '/x/config.yaml',
     validation_issues: [],
     captured,
+    account_wide_fields,
   });
 
   it('names captured shared fields after a persisted edit', () => {
@@ -170,5 +207,21 @@ describe('renderPersistenceFooter — end-of-run "I learned X"', () => {
       'KBH',
     );
     expect(out).toBe('');
+  });
+
+  it('F5: names account-wide fields that rode into this save unedited', () => {
+    const out = renderPersistenceFooter(
+      persisted([], ['acos_target']),
+      'Summit',
+      'KBH',
+    );
+    expect(out).toContain('acos_target');
+    expect(out).toContain("account-wide brain pre-fill");
+    expect(out).toContain("not a number specific to this sub-brand");
+  });
+
+  it('omits the account-wide note when nothing account-wide rode into the save', () => {
+    const out = renderPersistenceFooter(persisted([]), 'Summit', 'KBH');
+    expect(out).not.toContain('account-wide');
   });
 });

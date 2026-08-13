@@ -374,6 +374,41 @@ export const brandBrainSchema = z.object({
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),
+  /** Sub-brand label-lens record (mx-ops#6): present only on a BOUND brand's
+   *  brain. Which sources RESOLVED to which outcome (lib/binding/lens.ts) —
+   *  consumers must not attribute a non-'applied' source's rows to the
+   *  sub-brand. Every outcome here is evidence-based (resolved from the
+   *  gateway's `applied_params` echo after the query returned), never a
+   *  pre-query claim. Additive/optional: older readers strip it on read, and
+   *  the brain is regenerated wholesale each fetch, so mixed-version fleets
+   *  tolerate it. `dropped`/`unverified`/`query_failed` are additive on top
+   *  of the original three-bucket shape (`.default([])` so a brain written
+   *  by an earlier build of this same unreleased feature still parses). */
+  label_lens: z
+    .object({
+      bound: z.boolean(),
+      applied: z.array(z.string()).default([]),
+      /** P0: the gateway did not honor a filter we sent — these rows are
+       *  account-wide despite the binding. */
+      dropped: z.array(z.string()).default([]),
+      /** We sent a filter but the response carried no evidence either way
+       *  (an older gateway deploy). Not proven label-scoped. */
+      unverified: z.array(z.string()).default([]),
+      account_wide: z.array(z.string()).default([]),
+      missing_label_value: z.array(z.string()).default([]),
+      /** The query failed or was deferred — no scoping claim was possible. */
+      query_failed: z.array(z.string()).default([]),
+      /**
+       * Which lens CONTRACT produced this record. Absent means the brain was
+       * written before evidence-based reconciliation existed, when 'applied'
+       * was asserted from client-side intent rather than proven — so an old
+       * cached brain's `applied` list is NOT trustworthy and must not be read
+       * as confirmation. Readers treat absent as "unknown provenance" and
+       * fall back to account-wide (the safe direction); a refresh restamps it.
+       */
+      contract: z.literal(2).optional(),
+    })
+    .optional(),
 });
 
 export type BrandBrain = z.infer<typeof brandBrainSchema>;

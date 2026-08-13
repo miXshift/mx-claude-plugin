@@ -89,6 +89,12 @@ export interface DispatchSuccess<Row> {
    *  + telemetry attribution (the server-side text can change without a
    *  plugin release). Undefined for sql/sproc/local-dev paths. */
   revision?: string;
+  /** Named dispatch only, on SUCCESS: the sorted param names the gateway
+   *  actually bound this execution (mx-legacy-auth PR #107). Undefined for
+   *  sql/sproc/local-dev paths, and for a named-dispatch call against a
+   *  gateway deploy that predates the field — callers must not treat that
+   *  absence as proof either way (see lib/binding/lens.ts). */
+  appliedParams?: string[];
 }
 
 export interface DispatchFailure {
@@ -256,6 +262,7 @@ async function runNamed<Row>(
     displaySql: `-- named query ${id}@${result.revision ?? '?'} (SQL executes server-side)`,
     boundParams: { id, seller_ids: sellerIds, params: restParams },
     revision: result.revision,
+    appliedParams: result.appliedParams,
   };
 }
 

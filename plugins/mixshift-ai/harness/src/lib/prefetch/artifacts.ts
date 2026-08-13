@@ -46,6 +46,12 @@ export interface QueryRunOutput<Row = Record<string, unknown>> {
   /** dispatch:named only: the server-side entry's SQL content hash, so a
    *  surprising number is attributable to an exact query revision. */
   revision?: string;
+  /** dispatch:named only, on success: sorted param names the gateway
+   *  actually bound (mx-legacy-auth PR #107). Provenance for the sub-brand
+   *  label lens's reconciliation (lib/binding/lens.ts) — a surprising
+   *  number is auditable against what the server really filtered on.
+   *  Absent for dispatch:sql/sproc and for an older gateway deploy. */
+  applied_params?: string[];
 }
 
 export interface PrefetchArtifactInput {
@@ -90,6 +96,7 @@ export async function writePrefetchArtifacts(
         display_sql: q.display_sql,
         ...(q.purpose ? { purpose: q.purpose } : {}),
         ...(q.revision ? { revision: q.revision } : {}),
+        ...(q.applied_params ? { applied_params: q.applied_params } : {}),
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows,
@@ -187,6 +194,7 @@ function renderQuerySection(q: QueryRunOutput): string {
   lines.push(`- **Rows**: ${q.rows.length}`);
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
   if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
+  if (q.applied_params) lines.push(`- **Applied params**: ${q.applied_params.join(', ')}`);
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }

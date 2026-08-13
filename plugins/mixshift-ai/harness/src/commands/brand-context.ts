@@ -36,8 +36,10 @@ export function registerBrandContextCommands(brand: Command): void {
     .command('resolve <slug>')
     .description(
       'Resolve every brand-level field across the tiers in one pass. --json ' +
-        'emits { field: { value, source, fetched_at } | null }; a null field ' +
-        'means neither tier has it — use the skill default.',
+        'emits { field: { value, source, fetched_at, account_wide? } | null }; ' +
+        'a null field means neither tier has it (use the skill default); ' +
+        'account_wide is present and true only for a bound sub-brand whose ' +
+        'pre-filled value describes the whole seller account, not this brand.',
     )
     .action(async (slug: string, _opts: unknown, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
@@ -65,6 +67,7 @@ export function registerBrandContextCommands(brand: Command): void {
           lines.push(
             `  ⊙ ${key}: ${formatValue(r.value)} (pre-filled` +
               (r.fetched_at ? `, ${r.fetched_at}` : '') +
+              (r.account_wide ? ', ACCOUNT-WIDE, not this sub-brand\'s own' : '') +
               ')',
           );
         }

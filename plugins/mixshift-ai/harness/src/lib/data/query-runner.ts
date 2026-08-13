@@ -55,6 +55,19 @@ export interface DataQuerySuccess<Row> {
    *  attributable to the exact server-side query text, which can change
    *  without a plugin release. Undefined for raw-SQL / mysql paths. */
   revision?: string;
+  /** Named-query pack only, on SUCCESS: the sorted param NAMES this
+   *  execution actually bound (mx-legacy-auth PR #107, gateway
+   *  `applied_params`). Entry param schemas are non-strict, so an optional
+   *  filter key the deployed entry doesn't declare is silently STRIPPED —
+   *  this is the only way to tell "my filter was honored" from "my filter
+   *  was dropped by an older deploy" from the response alone. A caller that
+   *  sent an optional filter param must check it appears here before
+   *  describing the result as filtered (see lib/binding/lens.ts's
+   *  reconcileLensDecision, the sub-brand label lens's evidence step).
+   *  Undefined when the executing gateway predates the field (treat as
+   *  "unproven", never as "applied") or for raw-SQL / mysql paths, which
+   *  carry no such contract. */
+  appliedParams?: string[];
   /** Set by the pager ONLY when a multi-page result had to fall back to a
    *  positional (`ORDER BY 1..N`) output order because the user's ORDER BY
    *  could not be reliably carried to the outer paging query. The delivered
@@ -1417,6 +1430,9 @@ interface NamedQueryWire extends DatahubQueryWire {
   id?: string;
   /** Success: the entry's SQL content hash. */
   revision?: string;
+  /** Success only: sorted param names the gateway actually bound
+   *  (mx-legacy-auth PR #107). See DataQuerySuccess.appliedParams. */
+  applied_params?: string[];
   /** kind 'missing_params': the absent required param names. */
   missing_params?: string[];
 }
@@ -1490,11 +1506,19 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
             named_query: true,
             server_duration_ms: serverDuration,
             revision: json.revision,
+            applied_params: json.applied_params,
           },
         },
         options.dataDirOverride,
       );
-      return { ok: true, rows, rowCount, durationMs: serverDuration, revision: json.revision };
+      return {
+        ok: true,
+        rows,
+        rowCount,
+        durationMs: serverDuration,
+        revision: json.revision,
+        appliedParams: json.applied_params,
+      };
     }
 
     const failure: DataQueryFailure = {
