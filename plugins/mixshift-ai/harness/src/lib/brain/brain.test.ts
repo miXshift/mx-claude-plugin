@@ -837,7 +837,7 @@ describe('getBrandField / resolveBrandFields (accessor seam)', () => {
   function boundBrain(labelLens?: Record<string, unknown>) {
     const brain = assembleBrain({
       brandSlug: 'foragers-pantry',
-      sellerRows: [aopRow],
+      sellerRows: [pantryRow],
       sellerSproc: 'sp_brain_seller_fetch',
       generator: 'plugin@0.5.21-test',
       now: NOW,
