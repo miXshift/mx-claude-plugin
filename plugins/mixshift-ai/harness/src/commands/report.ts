@@ -2,7 +2,13 @@ import type { Command } from 'commander';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { validateReportData, type Finding, type ReportDataDocument } from '../lib/report-contract/validate.js';
-import { extractFigures, checkFigures } from '../lib/report-contract/extract.js';
+import {
+  extractFigures,
+  checkFigures,
+  COMPOSITE_SELECTIONS,
+  CompositeSelectionError,
+  type CompositeSelection,
+} from '../lib/report-contract/extract.js';
 import {
   renderMonthlyReport,
   scanForecastVocabulary,
@@ -153,11 +159,29 @@ export function registerReportCommands(program: Command): void {
     )
     .option('--out <path>', 'write the figures document here (default: stdout)')
     .option('--check', 'run the extraction invariants (delta identity, SKU split, bridge footing)', false)
-    .action(async (file: string, opts: { out?: string; check: boolean }, cmd: Command) => {
+    .option(
+      '--select <envelope>',
+      `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(' | ')}`,
+    )
+    .action(async (file: string, opts: { out?: string; check: boolean; select?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const response = await readJson<unknown>(file);
-        const doc = extractFigures(response);
+        if (opts.select && !(COMPOSITE_SELECTIONS as readonly string[]).includes(opts.select)) {
+          throw new UserFacingError(
+            `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(', ')}.`,
+            'report_bad_selection',
+          );
+        }
+        let doc;
+        try {
+          doc = extractFigures(response, opts.select as CompositeSelection | undefined);
+        } catch (err) {
+          if (err instanceof CompositeSelectionError) {
+            throw new UserFacingError(err.message, 'report_composite_unselected');
+          }
+          throw err;
+        }
         const findings = opts.check ? checkFigures(doc) : [];
         const body = JSON.stringify(doc, null, 2);
         if (opts.out) {

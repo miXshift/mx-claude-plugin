@@ -30,6 +30,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { registerReportCommands } from './report.js';
+import { COMPOSITE_SELECTIONS } from '../lib/report-contract/extract.js';
 
 function buildProgram(): Command {
   const program = new Command();
@@ -248,5 +249,107 @@ describe('report render refuses untagged forecast vocabulary when the forecast i
     // The tagged section is suppressed at render (existing behavior), and
     // the scan doesn't refuse on its account either.
     expect(html).not.toContain('Ahead of forecast');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Composite bundle guard: `report extract` on an INS-MONTHLY-01 composite
+// (extract.ts's isCompositeResponse / CompositeSelectionError / --select)
+// ---------------------------------------------------------------------------
+
+function compositeFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ok: true,
+    mom: {
+      ops: {
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-cmd-ops-0001',
+        currency: 'USD',
+        caveats: [],
+        metrics: [{ metricKey: 'ops', totals: { p1: 100, p2: 150, delta: 50, pctChange: 0.5 }, topDrivers: [] }],
+        insights: [],
+      },
+      ads: {
+        bridgeDomain: 'ads',
+        bridgeRunId: 'run-cmd-ads-0001',
+        currency: 'USD',
+        caveats: [],
+        metrics: [],
+        insights: [],
+      },
+    },
+    yoy: null,
+    headline: {},
+    limitations: [],
+    meta: {},
+    ...overrides,
+  };
+}
+
+describe('report extract -- composite bundle guard (INS-MONTHLY-01 mom/yoy unwrapping)', () => {
+  it('a composite without --select rejects with the guidance message, text mode', async () => {
+    const composite = await writeJsonFile('composite.json', compositeFixture());
+    await expect(runCli({}, 'extract', composite)).rejects.toThrow(/composite run bundle/i);
+  });
+
+  it('a composite without --select emits report_composite_unselected, --json mode', async () => {
+    const composite = await writeJsonFile('composite.json', compositeFixture());
+    await runCli({ json: true }, 'extract', composite);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.status).toBe('error');
+    expect(parsed.error_class).toBe('report_composite_unselected');
+    expect(parsed.message).toContain('--select');
+    for (const choice of COMPOSITE_SELECTIONS) {
+      expect(parsed.message).toContain(choice);
+    }
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('a composite with a valid --select succeeds and extracts figures, --json mode', async () => {
+    const composite = await writeJsonFile('composite.json', compositeFixture());
+    await runCli({ json: true }, 'extract', composite, '--select', 'mom.ops');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.ok).toBe(true);
+    expect(parsed.figures).toBeGreaterThan(0);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('an unknown --select value fails with report_bad_selection, --json mode', async () => {
+    const anyFile = await writeJsonFile('whatever.json', {});
+    await runCli({ json: true }, 'extract', anyFile, '--select', 'bogus.selection');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.status).toBe('error');
+    expect(parsed.error_class).toBe('report_bad_selection');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('CLI end to end: report extract <composite> --select yoy.ops --check succeeds and its ids are yoy-prefixed', async () => {
+    const composite = await writeJsonFile(
+      'composite-yoy.json',
+      compositeFixture({
+        yoy: {
+          ops: {
+            bridgeDomain: 'ops',
+            bridgeRunId: 'run-cmd-yoy-0001',
+            currency: 'USD',
+            caveats: [],
+            metrics: [{ metricKey: 'ops', totals: { p1: 90, p2: 150, delta: 60, pctChange: 0.667 }, topDrivers: [] }],
+            insights: [],
+          },
+        },
+      }),
+    );
+    const out = join(dir, 'figures.yoy.ops.json');
+    await runCli({}, 'extract', composite, '--select', 'yoy.ops', '--check', '--out', out);
+    expect(process.exitCode).toBe(0);
+    const doc = JSON.parse(await readFile(out, 'utf8'));
+    expect(doc.source.selection).toBe('yoy.ops');
+    const ids: string[] = doc.figures.map((fg: { id: string }) => fg.id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) expect(id.startsWith('yoy.')).toBe(true);
+    expect(ids).toContain('yoy.ops.ops.p1');
+    expect(ids).toContain('yoy.ops.ops.delta');
+    // never the bare, unprefixed shape a single-response extraction would emit
+    expect(ids).not.toContain('ops.ops.p1');
   });
 });

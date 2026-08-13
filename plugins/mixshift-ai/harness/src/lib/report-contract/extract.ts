@@ -12,6 +12,19 @@
  * Figure ids are namespaced by domain: ops.<metric>.{p1,p2,delta},
  * ops.bridge.<variant>.<component>, ads.<metric>.*, duo.tacos.*,
  * <domain>.entity.<key>.*, <domain>.entity.<key>.bridge.<metric>.<variant>.<component>.
+ * That is the complete, unprefixed shape a single-response (no `selection`)
+ * extraction emits -- exactly as the upstream Python extractor does, which
+ * is the cross-implementation parity this path must never break.
+ *
+ * A composite selection (`selection` set -- see COMPOSITE_SELECTIONS) instead
+ * prepends the selection's period to every id: mom.ops.ops.p1, yoy.ops.ops.p1,
+ * mom.ads.ad_spend.p1. It has to: the skill composes every selection's
+ * figures document into one report (SKILL.md Step 2), and `mom.ops` /
+ * `yoy.ops` otherwise extract the identical `ops.ops.p1` from two different
+ * envelopes, so a merged document would silently resolve a MoM figure_ref to
+ * the YoY value. See `extractFigures`'s prefixing step and `checkFigures`'s
+ * SKU-SPLIT block (the one invariant that has to recover the prefix rather
+ * than read it off id shape).
  *
  * The input document is untrusted JSON assembled upstream by a live
  * service, so every field is read defensively (mirrors validate.ts's own
@@ -130,6 +143,13 @@ export interface ExtractSource {
   currency: string | null;
   channel: string | null;
   companionRunId: string | null;
+  /** Which composite selection (mom.ops | mom.ads | yoy.ops) produced this
+   *  document, or null for a single-response (non-composite) extraction --
+   *  lets a reader tell which period a document describes. Also how
+   *  checkFigures recovers the id prefix for its one hardcoded-id rule
+   *  (SKU-SPLIT); every other invariant reads id SHAPE, not a fixed string,
+   *  so it needs no lookup here. */
+  selection: CompositeSelection | null;
   entityKey?: unknown;
 }
 
@@ -211,7 +231,13 @@ const SIDE_FIELDS: readonly (readonly [string, string])[] = [
   ['p2', 'p2Value'],
 ];
 
-function buildSource(env: Rec, doc: Rec, domain: string, entityKey?: unknown): ExtractSource {
+function buildSource(
+  env: Rec,
+  doc: Rec,
+  domain: string,
+  entityKey?: unknown,
+  selection?: CompositeSelection,
+): ExtractSource {
   const src: ExtractSource = {
     bridgeRunId: (env.bridgeRunId as string) ?? null,
     bridgeDomain: domain,
@@ -223,6 +249,7 @@ function buildSource(env: Rec, doc: Rec, domain: string, entityKey?: unknown): E
     currency: (env.currency as string) ?? null,
     channel: (env.channel as string) ?? null,
     companionRunId: (doc.companionRunId as string) ?? null,
+    selection: selection ?? null,
   };
   if (entityKey !== undefined) src.entityKey = entityKey;
   return src;
@@ -240,6 +267,7 @@ function extractEntity(
   unitsMap: Record<string, string>,
   registry: Record<string, CaveatRegistryEntry>,
   deltaCaveats: string[],
+  selection: CompositeSelection | undefined,
 ): ExtractDocument {
   const ekey = env.entityKey;
   const slug = String(ekey);
@@ -303,17 +331,109 @@ function extractEntity(
 
   return {
     schema_version: '2.0-draft',
-    source: buildSource(env, doc, domain, ekey),
+    source: buildSource(env, doc, domain, ekey, selection),
     caveat_registry: registry,
     figures,
   };
 }
 
+/** The composite entries (INS-MONTHLY-01) do not return a single response:
+ *  they return a BUNDLE whose real envelopes nest one level down --
+ *  `{ ok, mom: { ops, ads, crossDomain }, yoy: { ops } | null, headline,
+ *  limitations, meta }`. Handed that bundle unselected, the extractor used
+ *  to see no `envelope` key, treat the whole composite as a bare envelope,
+ *  find no metrics or insights, and emit ZERO figures -- which then passed
+ *  every --check invariant vacuously. That is the silent-empty failure the
+ *  contract exists to kill, so a composite now REFUSES unless the caller
+ *  names which envelope it wants.
+ *
+ *  One selection per figures document, one call per envelope -- but the
+ *  skill composes every selection's document into a single report (SKILL.md
+ *  Step 2), so ids cannot merely be collision-free WITHIN one document; they
+ *  have to stay disjoint ACROSS the mom.ops / mom.ads / yoy.ops documents
+ *  once merged. `${domain}.${key}.${side}` alone repeats identically across
+ *  periods -- mom.ops and yoy.ops each extract their own envelope's
+ *  `ops.ops.p1`, so a merge would let a MoM figure_ref silently resolve to
+ *  the YoY value through a last-wins id index. Every id a composite
+ *  selection emits is therefore period-prefixed -- `mom.*` / `yoy.*`, see
+ *  `extractFigures` below -- while the single-response path (no
+ *  `selection`) keeps the bare ids above, unchanged, matching the upstream
+ *  Python extractor. */
+export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops'] as const;
+export type CompositeSelection = (typeof COMPOSITE_SELECTIONS)[number];
+
+export function isCompositeResponse(response: unknown): boolean {
+  const doc = asRecord(response) ?? {};
+  if (Object.prototype.hasOwnProperty.call(doc, 'envelope')) return false;
+  const mom = asRecord(doc.mom);
+  // A composite is identified by its nested run bundle, not by the reporting
+  // furniture around it (headline/limitations/meta), so a future composite
+  // that drops those still trips this.
+  return !!mom && (hasValue(mom.ops) || hasValue(mom.ads));
+}
+
+export class CompositeSelectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CompositeSelectionError';
+  }
+}
+
+/** Resolve a composite bundle down to the single response the extractor
+ *  understands: the selected envelope, plus the cross-domain block that
+ *  belongs with it. crossDomain is delivered attached to the ops leg of the
+ *  MoM pair only -- mirrors the pre-composite response shape below, where
+ *  crossDomain rides the ops response and the ads companion never carries
+ *  one -- so it accompanies `mom.ops` alone, never `mom.ads` or `yoy.ops`. */
+function selectFromComposite(doc: Rec, selection: CompositeSelection): Rec {
+  const [periodKey, domainKey] = selection.split('.') as ['mom' | 'yoy', 'ops' | 'ads'];
+  const period = asRecord(doc[periodKey]);
+  if (!period) {
+    throw new CompositeSelectionError(
+      `This composite has no '${periodKey}' block (an INS-MONTHLY-01 run without YoY returns yoy: null). ` +
+        `Available: ${COMPOSITE_SELECTIONS.filter((s) => !!asRecord(doc[s.split('.')[0]])).join(', ') || 'none'}.`,
+    );
+  }
+  const envelope = asRecord(period[domainKey]);
+  if (!envelope) {
+    throw new CompositeSelectionError(
+      `This composite's '${periodKey}' block has no '${domainKey}' envelope.`,
+    );
+  }
+  const out: Rec = { envelope };
+  const crossDomain = periodKey === 'mom' && domainKey === 'ops' ? asRecord(period.crossDomain) : undefined;
+  if (crossDomain) out.crossDomain = crossDomain;
+  return out;
+}
+
 /** Deterministic envelope -> figures. The model never reads raw envelope
  *  JSON: this function does, and its output is checked by invariants
- *  (checkFigures), not attention. */
-export function extractFigures(response: unknown): ExtractDocument {
-  const rawDoc = asRecord(response) ?? {};
+ *  (checkFigures), not attention.
+ *
+ *  `selection` is required for a composite bundle and rejected for a plain
+ *  response, so neither shape can be fed in by accident. Renamed internal:
+ *  builds the ids exactly as documented at the top of this file, unprefixed
+ *  regardless of `selection`. The exported `extractFigures` below applies
+ *  the period prefix as a single post-extraction step. */
+function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelection): ExtractDocument {
+  let rawDoc = asRecord(response) ?? {};
+  const composite = isCompositeResponse(rawDoc);
+  if (composite) {
+    if (!selection) {
+      throw new CompositeSelectionError(
+        'This is a composite run bundle (INS-MONTHLY-01), not a single insights response: ' +
+          'its envelopes nest inside mom/yoy. Extract one envelope at a time by naming it, ' +
+          `e.g. --select mom.ops (choices: ${COMPOSITE_SELECTIONS.join(', ')}). ` +
+          'Extracting the bundle itself would yield zero figures and pass --check vacuously.',
+      );
+    }
+    rawDoc = selectFromComposite(rawDoc, selection);
+  } else if (selection) {
+    throw new CompositeSelectionError(
+      `--select ${selection} was given, but this response is a single insights response, not a composite bundle. ` +
+        'Drop the selection.',
+    );
+  }
   const env: Rec = Object.prototype.hasOwnProperty.call(rawDoc, 'envelope')
     ? (asRecord(rawDoc.envelope) ?? {})
     : rawDoc;
@@ -337,7 +457,7 @@ export function extractFigures(response: unknown): ExtractDocument {
   // Entity-scoped envelope: a different shape entirely (metric rows live in
   // the insights, totals block is the RUN's account totals, not the entity).
   if (hasValue(env.entityKey)) {
-    return extractEntity(rawDoc, env, domain, unitsMap, registry, deltaCaveats);
+    return extractEntity(rawDoc, env, domain, unitsMap, registry, deltaCaveats, selection);
   }
 
   const figures: ExtractedFigure[] = [];
@@ -520,10 +640,53 @@ export function extractFigures(response: unknown): ExtractDocument {
 
   return {
     schema_version: '2.0-draft',
-    source: buildSource(env, rawDoc, domain),
+    source: buildSource(env, rawDoc, domain, undefined, selection),
     caveat_registry: registry,
     figures,
   };
+}
+
+/** mom./yoy. -- the period half of a composite `selection`, with the
+ *  trailing dot; '' for a non-composite (undefined selection) extraction.
+ *  `selection` is `<period>.<domain>` (e.g. 'mom.ops'); only the period
+ *  distinguishes two documents that could otherwise collide -- the domain
+ *  segment is already disjoint via each id's own `${domain}.` prefix, so
+ *  `mom.ops` and `mom.ads` sharing the same period prefix is correct, not a
+ *  gap: their ids diverge one segment later (ops.* vs ads.*). */
+function periodPrefixOf(selection: CompositeSelection | null | undefined): string {
+  return selection ? `${selection.split('.')[0]}.` : '';
+}
+
+/** Prepend the period prefix to EVERY figure id, once, after extraction --
+ *  never threaded through each individual fig() call site, so no emission
+ *  branch (entity or total-scope, metrics or bridge legs or crossDomain) can
+ *  forget it. Because the prefix is identical across every figure in one
+ *  document, every id-SHAPE invariant in checkFigures below (DELTA-IDENTITY's
+ *  p1/p2/delta stem match, BRIDGE-FOOTING's leg grouping) keeps working
+ *  unmodified: those rules slice and compare relative to each figure's own
+ *  id and never hardcode a domain root. Only SKU-SPLIT hardcodes absolute
+ *  ids and has to be told the prefix explicitly (via source.selection).
+ *  source_path (an envelope pointer, never a figure id) and population
+ *  members (business entity keys, never figure ids) are left untouched. */
+function prefixSelectionIds(
+  doc: ExtractDocument,
+  selection: CompositeSelection | undefined,
+): ExtractDocument {
+  const prefix = periodPrefixOf(selection);
+  if (!prefix) return doc;
+  return { ...doc, figures: doc.figures.map((f) => ({ ...f, id: `${prefix}${f.id}` })) };
+}
+
+/** Public entry point. Delegates the actual extraction to
+ *  `extractFiguresUnprefixed` (unchanged ids, matching the doc comment at
+ *  the top of this file) and then applies the period prefix for a composite
+ *  selection. When `selection` is undefined this is a no-op wrapper: the
+ *  returned document is byte-identical to what the unprefixed extraction
+ *  produced, so the single-response path's parity with the upstream Python
+ *  extractor is untouched. */
+export function extractFigures(response: unknown, selection?: CompositeSelection): ExtractDocument {
+  const doc = extractFiguresUnprefixed(response, selection);
+  return prefixSelectionIds(doc, selection);
 }
 
 /** Invariants. A failed invariant is a defect in extraction or the envelope
@@ -592,10 +755,22 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
   }
 
   if (out.source.bridgeDomain === 'ads') {
-    // same + other + view_through === total, per period (the SKU-split identity)
+    // same + other + view_through === total, per period (the SKU-split
+    // identity). The only hardcoded-id rule in this function: every other
+    // invariant here derives its lookups from an id's own SHAPE (a suffix, a
+    // substring, a stem slice), so prefixing never touches them. This one
+    // has to be told the prefix explicitly -- a composite selection's ids
+    // carry it (mom.ads.ad_sales.p1, not ads.ad_sales.p1) -- or the lookups
+    // below miss every figure and the whole rule silently stops firing.
+    const prefix = periodPrefixOf(out.source.selection);
     for (const side of ['p1', 'p2'] as const) {
-      const parts = ['ads.ad_sales_same_sku.', 'ads.ad_sales_other_sku.', 'ads.ad_sales_view_through.'];
-      const tot = figs.get(`ads.ad_sales.${side}`);
+      const parts = [
+        `${prefix}ads.ad_sales_same_sku.`,
+        `${prefix}ads.ad_sales_other_sku.`,
+        `${prefix}ads.ad_sales_view_through.`,
+      ];
+      const totId = `${prefix}ads.ad_sales.${side}`;
+      const tot = figs.get(totId);
       const comps = parts.map((p) => figs.get(p + side));
       if (
         tot &&
@@ -607,7 +782,7 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
         if (Math.abs(s - tot.value) > TOL) {
           findings.push({
             rule: 'SKU-SPLIT',
-            subject: `ads.ad_sales.${side}`,
+            subject: totId,
             detail: `ad_sales SKU-split identity broken on ${side}: ${s} != ${tot.value}`,
           });
         }

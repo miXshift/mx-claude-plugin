@@ -51,10 +51,20 @@ describe('report-contract fixtures (golden + negative, run_fixtures.py semantics
     .filter((f) => f.endsWith('.json'))
     .sort();
 
-  // Guard against a silently empty fixtures directory (would otherwise make
-  // this describe block vacuously pass with zero it()s).
-  it('negative fixtures directory is populated', () => {
-    expect(negativeFiles.length).toBe(9);
+  // Guard against a silently empty (or silently pruned) fixtures directory:
+  // this describe block would otherwise pass vacuously with zero it()s. The
+  // nine original incident fixtures must always be present BY NAME; the
+  // count is deliberately not pinned, because the append protocol adds a new
+  // negative fixture every time a defect ships (E10+ arrive from upstream on
+  // re-vendor) and a pinned count would make every append a test edit.
+  it('negative fixtures directory carries at least the nine original incidents', () => {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      expect(
+        negativeFiles.some((f) => f.startsWith(`E${n}-`)),
+        `missing the E${n} incident fixture`,
+      ).toBe(true);
+    }
+    expect(negativeFiles.length).toBeGreaterThanOrEqual(9);
   });
 
   for (const file of negativeFiles) {
