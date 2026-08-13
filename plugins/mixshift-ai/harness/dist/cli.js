@@ -88630,6 +88630,13 @@ var BLOCKING = "blocking";
 var POP_KINDS = /* @__PURE__ */ new Set(["superlative", "quantifier"]);
 var CAUSAL_LANG = /\b(caused?|causes|causing|drove|drives?|driving|due to|led to|leads to|because)\b/i;
 var DAYS_TEXT = /\b\d[\d,]*\s*days?\b/i;
+function quotedIds(figureRefs, claimRefs, claims) {
+  const quoted = new Set(figureRefs ?? []);
+  for (const cid of claimRefs ?? []) {
+    for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
+  }
+  return quoted;
+}
 function setsEqual(a, b) {
   if (a.size !== b.size) return false;
   for (const x of a) {
@@ -88656,20 +88663,37 @@ function compareOp(op, a, b) {
       return false;
   }
 }
+function isFiniteNumber(v) {
+  return typeof v === "number" && Number.isFinite(v);
+}
+var NUMERIC_OPS = /* @__PURE__ */ new Set(["lt", "gt", "le", "ge"]);
 function countPred(members, pred) {
   const { member_key: memberKey, op, value } = pred;
+  const numericOp = NUMERIC_OPS.has(op);
   let n = 0;
   for (const m of members) {
-    if (memberKey in m && compareOp(op, m[memberKey], value)) n++;
+    if (!(memberKey in m)) continue;
+    if (numericOp && !isFiniteNumber(m[memberKey])) {
+      return { count: n, nonNumeric: m };
+    }
+    if (compareOp(op, m[memberKey], value)) n++;
   }
-  return n;
+  return { count: n };
 }
 function evalCheck(chk, members, allFigs) {
   const t = chk.type;
   if (t === "extremum" || t === "extremum_set") {
     const key = chk.member_key;
     const rev = chk.direction === "max";
-    const ranked = members.filter((m) => key in m).slice().sort((a, b) => {
+    const present = members.filter((m) => key in m);
+    const nonNumeric = present.find((m) => !isFiniteNumber(m[key]));
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${key}'`
+      };
+    }
+    const ranked = present.slice().sort((a, b) => {
       const av = a[key];
       const bv = b[key];
       if (av < bv) return rev ? 1 : -1;
@@ -88698,7 +88722,13 @@ function evalCheck(chk, members, allFigs) {
     return { ok: true, why: "" };
   }
   if (t === "count") {
-    const n = countPred(members, chk.predicate);
+    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${chk.predicate.member_key}'`
+      };
+    }
     if (n !== chk.claimed_count) {
       return {
         ok: false,
@@ -88708,16 +88738,31 @@ function evalCheck(chk, members, allFigs) {
     return { ok: true, why: "" };
   }
   if (t === "none") {
-    const n = countPred(members, chk.predicate);
+    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${chk.predicate.member_key}'`
+      };
+    }
     if (n) {
       return { ok: false, why: `claimed none match; ${n} member(s) do` };
     }
     return { ok: true, why: "" };
   }
   if (t === "share_of_total") {
-    const num = allFigs.get(chk.numerator)?.value;
-    const den = allFigs.get(chk.denominator)?.value;
-    const ratio = num / den;
+    const numVal = allFigs.get(chk.numerator)?.value;
+    const denVal = allFigs.get(chk.denominator)?.value;
+    if (!isFiniteNumber(numVal)) {
+      return { ok: false, why: `numerator '${chk.numerator}' has a non-numeric value` };
+    }
+    if (!isFiniteNumber(denVal)) {
+      return { ok: false, why: `denominator '${chk.denominator}' has a non-numeric value` };
+    }
+    if (denVal === 0) {
+      return { ok: false, why: `denominator '${chk.denominator}' is zero` };
+    }
+    const ratio = numVal / denVal;
     const [lo, hi] = chk.claimed_band;
     if (!(lo <= ratio && ratio <= hi)) {
       return {
@@ -88822,6 +88867,15 @@ function validateReportData(doc) {
         });
       }
     }
+    for (const cid of block.claim_refs ?? []) {
+      if (!claims.has(cid)) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: `shared_blocks.${ref}`,
+          detail: `claim_ref '${cid}' does not resolve`
+        });
+      }
+    }
   }
   for (const d of derived.values()) {
     for (const rid of d.inputs ?? []) {
@@ -88889,16 +88943,12 @@ function validateReportData(doc) {
     }
   };
   for (const s of sections) {
-    const quoted = new Set(s.figure_refs ?? []);
-    for (const cid of s.claim_refs ?? []) {
-      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
-    }
-    checkCaveatSite(s.id, quoted, new Set(s.caveats_rendered ?? []));
+    checkCaveatSite(s.id, quotedIds(s.figure_refs, s.claim_refs, claims), new Set(s.caveats_rendered ?? []));
   }
   for (const [ref, block] of Object.entries(sharedBlocks)) {
     checkCaveatSite(
       `shared_blocks.${ref}`,
-      new Set(block.figure_refs ?? []),
+      quotedIds(block.figure_refs, block.claim_refs, claims),
       new Set(block.caveats_rendered ?? [])
     );
   }
@@ -88991,14 +89041,14 @@ function validateReportData(doc) {
     }
   };
   for (const s of sections) {
-    const quoted = new Set(s.figure_refs ?? []);
-    for (const cid of s.claim_refs ?? []) {
-      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
-    }
-    checkUnitSite(s.id, quoted, s.display_text);
+    checkUnitSite(s.id, quotedIds(s.figure_refs, s.claim_refs, claims), s.display_text);
   }
   for (const [ref, block] of Object.entries(sharedBlocks)) {
-    checkUnitSite(`shared_blocks.${ref}`, block.figure_refs ?? [], block.display_text);
+    checkUnitSite(
+      `shared_blocks.${ref}`,
+      quotedIds(block.figure_refs, block.claim_refs, claims),
+      block.display_text
+    );
   }
   return findings;
 }

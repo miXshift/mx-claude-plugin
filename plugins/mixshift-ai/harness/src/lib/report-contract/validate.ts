@@ -207,6 +207,7 @@ export interface Section {
 export interface SharedBlock {
   display_text?: string;
   figure_refs?: string[];
+  claim_refs?: string[];
   caveats_rendered?: string[];
 }
 
@@ -220,6 +221,24 @@ export interface ReportDataDocument {
   claims?: Claim[];
   sections?: Section[];
   shared_blocks?: Record<string, SharedBlock>;
+}
+
+/** The figures a quotation site (Section or SharedBlock) quotes: its own
+ *  `figure_refs` plus the `figure_refs` of every claim it references via
+ *  `claim_refs`. Mirrors render-report.ts's `quotedFigureIds` -- the
+ *  renderer already expands claim_refs this way, so the validator must too
+ *  (a claim-only reference to a blocking-caveat figure, an item_days figure,
+ *  or an unresolved claim id must not bypass CAVEAT-1 / UNIT-1 / TRACE-1). */
+function quotedIds(
+  figureRefs: readonly string[] | undefined,
+  claimRefs: readonly string[] | undefined,
+  claims: Map<string, Claim>,
+): Set<string> {
+  const quoted = new Set<string>(figureRefs ?? []);
+  for (const cid of claimRefs ?? []) {
+    for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
+  }
+  return quoted;
 }
 
 function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
@@ -251,13 +270,34 @@ function compareOp(op: EvalCheckPredicate['op'], a: unknown, b: unknown): boolea
   }
 }
 
-function countPred(members: readonly PopulationMember[], pred: EvalCheckPredicate): number {
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Ops whose comparator is only meaningful between numbers. `eq` is exempt
+ *  by design — comparing two strings for equality is legitimate and the
+ *  Python source never rejects it. */
+const NUMERIC_OPS = new Set<EvalCheckPredicate['op']>(['lt', 'gt', 'le', 'ge']);
+
+/** Count members matching a predicate. Fails closed rather than coercing: a
+ *  present-but-non-numeric member value under a numeric op (lt/gt/le/ge) is
+ *  reported via `nonNumeric` instead of being silently excluded from the
+ *  count, mirroring the Python source's hard TypeError on the same input. */
+function countPred(
+  members: readonly PopulationMember[],
+  pred: EvalCheckPredicate,
+): { count: number; nonNumeric?: PopulationMember } {
   const { member_key: memberKey, op, value } = pred;
+  const numericOp = NUMERIC_OPS.has(op);
   let n = 0;
   for (const m of members) {
-    if (memberKey in m && compareOp(op, m[memberKey], value)) n++;
+    if (!(memberKey in m)) continue;
+    if (numericOp && !isFiniteNumber(m[memberKey])) {
+      return { count: n, nonNumeric: m };
+    }
+    if (compareOp(op, m[memberKey], value)) n++;
   }
-  return n;
+  return { count: n };
 }
 
 /** Re-evaluate a machine-checkable claim against its population.
@@ -272,16 +312,25 @@ function evalCheck(
   if (t === 'extremum' || t === 'extremum_set') {
     const key = chk.member_key;
     const rev = chk.direction === 'max';
-    const ranked = members
-      .filter((m) => key in m)
-      .slice()
-      .sort((a, b) => {
-        const av = a[key] as never;
-        const bv = b[key] as never;
-        if (av < bv) return rev ? 1 : -1;
-        if (av > bv) return rev ? -1 : 1;
-        return 0;
-      });
+    const present = members.filter((m) => key in m);
+    // Fail closed rather than coercing: the sort comparator below returns 0
+    // on a NaN comparison, which would silently rank a formatted-string
+    // value as tied-for-extremum and let a false superlative validate
+    // CLEAN. Refuse to rank at all if any checked value isn't numeric.
+    const nonNumeric = present.find((m) => !isFiniteNumber(m[key]));
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${key}'`,
+      };
+    }
+    const ranked = present.slice().sort((a, b) => {
+      const av = a[key] as number;
+      const bv = b[key] as number;
+      if (av < bv) return rev ? 1 : -1;
+      if (av > bv) return rev ? -1 : 1;
+      return 0;
+    });
 
     if (t === 'extremum') {
       const actual = ranked[0]?.key;
@@ -307,7 +356,13 @@ function evalCheck(
   }
 
   if (t === 'count') {
-    const n = countPred(members, chk.predicate);
+    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${chk.predicate.member_key}'`,
+      };
+    }
     if (n !== chk.claimed_count) {
       return {
         ok: false,
@@ -318,7 +373,13 @@ function evalCheck(
   }
 
   if (t === 'none') {
-    const n = countPred(members, chk.predicate);
+    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    if (nonNumeric) {
+      return {
+        ok: false,
+        why: `member '${nonNumeric.key}' has non-numeric '${chk.predicate.member_key}'`,
+      };
+    }
     if (n) {
       return { ok: false, why: `claimed none match; ${n} member(s) do` };
     }
@@ -326,9 +387,18 @@ function evalCheck(
   }
 
   if (t === 'share_of_total') {
-    const num = allFigs.get(chk.numerator)?.value as number;
-    const den = allFigs.get(chk.denominator)?.value as number;
-    const ratio = num / den;
+    const numVal = allFigs.get(chk.numerator)?.value;
+    const denVal = allFigs.get(chk.denominator)?.value;
+    if (!isFiniteNumber(numVal)) {
+      return { ok: false, why: `numerator '${chk.numerator}' has a non-numeric value` };
+    }
+    if (!isFiniteNumber(denVal)) {
+      return { ok: false, why: `denominator '${chk.denominator}' has a non-numeric value` };
+    }
+    if (denVal === 0) {
+      return { ok: false, why: `denominator '${chk.denominator}' is zero` };
+    }
+    const ratio = numVal / denVal;
     const [lo, hi] = chk.claimed_band;
     if (!(lo <= ratio && ratio <= hi)) {
       return {
@@ -448,6 +518,15 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
         });
       }
     }
+    for (const cid of block.claim_refs ?? []) {
+      if (!claims.has(cid)) {
+        findings.push({
+          rule: 'TRACE-1',
+          subject: `shared_blocks.${ref}`,
+          detail: `claim_ref '${cid}' does not resolve`,
+        });
+      }
+    }
   }
   for (const d of derived.values()) {
     for (const rid of d.inputs ?? []) {
@@ -527,16 +606,12 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
     }
   };
   for (const s of sections) {
-    const quoted = new Set<string>(s.figure_refs ?? []);
-    for (const cid of s.claim_refs ?? []) {
-      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
-    }
-    checkCaveatSite(s.id, quoted, new Set<string>(s.caveats_rendered ?? []));
+    checkCaveatSite(s.id, quotedIds(s.figure_refs, s.claim_refs, claims), new Set<string>(s.caveats_rendered ?? []));
   }
   for (const [ref, block] of Object.entries(sharedBlocks)) {
     checkCaveatSite(
       `shared_blocks.${ref}`,
-      new Set<string>(block.figure_refs ?? []),
+      quotedIds(block.figure_refs, block.claim_refs, claims),
       new Set<string>(block.caveats_rendered ?? []),
     );
   }
@@ -640,14 +715,14 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
     }
   };
   for (const s of sections) {
-    const quoted = new Set<string>(s.figure_refs ?? []);
-    for (const cid of s.claim_refs ?? []) {
-      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
-    }
-    checkUnitSite(s.id, quoted, s.display_text);
+    checkUnitSite(s.id, quotedIds(s.figure_refs, s.claim_refs, claims), s.display_text);
   }
   for (const [ref, block] of Object.entries(sharedBlocks)) {
-    checkUnitSite(`shared_blocks.${ref}`, block.figure_refs ?? [], block.display_text);
+    checkUnitSite(
+      `shared_blocks.${ref}`,
+      quotedIds(block.figure_refs, block.claim_refs, claims),
+      block.display_text,
+    );
   }
 
   return findings;

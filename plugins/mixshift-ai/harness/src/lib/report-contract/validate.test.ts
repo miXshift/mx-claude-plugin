@@ -371,6 +371,67 @@ describe('shared_blocks are validated as their own quotation site (TRACE-1 / CAV
     };
     expect(validateReportData(doc).some((f) => f.rule === 'UNIT-1')).toBe(false);
   });
+
+  // A shared block's `claim_refs` -- not just its own `figure_refs` -- reach
+  // the rendered page: render-report.ts's renderSectionBody expands a
+  // block's claim_refs into figure chips exactly like an ordinary section's
+  // (quotedFigureIds), so a block that quotes a figure ONLY via claim_refs
+  // previously bypassed CAVEAT-1/UNIT-1/TRACE-1 entirely while still
+  // shipping that figure to the page bare.
+  it('CAVEAT-1: fires when a shared block quotes a blocking-caveat figure only via claim_refs', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'f.lost-sales', label: 'Lost sales', caveats: ['lost_sales_coverage'] }),
+      ],
+      caveat_registry: {
+        lost_sales_coverage: { text: 'priced universe only', severity: 'blocking' },
+      },
+      claims: [{ id: 'c.lost-sales', kind: 'observation', text: 'x', figure_refs: ['f.lost-sales'] }],
+      sections: [{ id: 'sec.exec', shared_block_ref: 'shared.bottom_line' }],
+      shared_blocks: {
+        'shared.bottom_line': {
+          // no figure_refs of its own -- the figure is reached only through claim_refs
+          claim_refs: ['c.lost-sales'],
+          caveats_rendered: [],
+        },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'CAVEAT-1', subject: 'shared_blocks.shared.bottom_line' }),
+    );
+  });
+
+  it('UNIT-1: fires when a shared block renders an item_days figure reached only via claim_refs as plain "days"', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'f.oos', label: 'OOS exposure', unit: 'item_days' })],
+      claims: [{ id: 'c.oos', kind: 'observation', text: 'x', figure_refs: ['f.oos'] }],
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.oos' }],
+      shared_blocks: {
+        'shared.oos': {
+          claim_refs: ['c.oos'],
+          display_text: 'Out-of-stock exposure rose from 377 to 855 days.',
+        },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'UNIT-1', subject: 'shared_blocks.shared.oos' }),
+    );
+  });
+
+  it('TRACE-1: fires when a shared block\'s claim_ref does not resolve', () => {
+    const doc: ReportDataDocument = {
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.bottom_line' }],
+      shared_blocks: {
+        'shared.bottom_line': { claim_refs: ['c.does-not-exist'] },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'TRACE-1', subject: 'shared_blocks.shared.bottom_line' }),
+    );
+  });
 });
 
 describe('POP-1 (superlative/quantifier claims need a complete population)', () => {
@@ -701,6 +762,213 @@ describe('eval_check machinery, exercised through POP-2', () => {
     // population must resolve+be complete for POP-2 to run the check at all
     (doc.figures as Figure[])[0].population = { complete: true, members: [{ key: 'x' }] };
     expect(validateReportData(doc).some((f) => f.rule === 'POP-2')).toBe(true);
+  });
+});
+
+/**
+ * A stringified figure-like value in a population member (e.g. a report
+ * assembler that formatted "1,200" before it should have) must not coerce
+ * through JS's loose comparisons into a silent pass. The Python executable
+ * spec hard-fails (TypeError) on these documents; the TS port must refuse
+ * without crashing -- fail closed with POP-2, never certify the check.
+ */
+describe('POP-2 numeric guard (non-numeric member values fail closed, never coerce)', () => {
+  function quantifierClaim(
+    check: NonNullable<Claim['check']>,
+    members: Array<{ key: string; [k: string]: unknown }>,
+  ): ReportDataDocument {
+    const figId = 'f.pop';
+    return {
+      figures: [
+        figure({
+          id: figId,
+          label: 'Population figure',
+          population: { complete: true, members },
+        }),
+      ],
+      claims: [
+        {
+          id: 'c.q',
+          kind: 'superlative',
+          text: 'x',
+          figure_refs: [figId],
+          population_ref: figId,
+          check,
+        },
+      ],
+    };
+  }
+
+  it('extremum: a stringified member value fails closed with POP-2 instead of validating a false superlative CLEAN', () => {
+    // 'jul' carries a formatted-string revenue; a naive comparator sorts it
+    // via NaN comparisons (always false), so it never outranks the numeric
+    // members and a FALSE "jul is the lowest" claim would validate CLEAN.
+    const doc = quantifierClaim(
+      { type: 'extremum', member_key: 'revenue', direction: 'min', claimed_member: 'jul' },
+      [
+        { key: 'jan', revenue: 1214000 },
+        { key: 'feb', revenue: 1187000 },
+        { key: 'jul', revenue: '1,200' },
+      ],
+    );
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'POP-2', subject: 'c.q' }),
+    );
+    // Fail-closed, not "coerced and happened to fail for the right reason":
+    // the finding must name the non-numeric member, not a mismatched winner.
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/non-numeric/);
+  });
+
+  it('extremum: all-numeric members evaluate normally -- a true superlative produces no POP-2', () => {
+    const doc = quantifierClaim(
+      { type: 'extremum', member_key: 'revenue', direction: 'min', claimed_member: 'feb' },
+      [
+        { key: 'jan', revenue: 1214000 },
+        { key: 'feb', revenue: 1187000 },
+        { key: 'jul', revenue: 1300000 },
+      ],
+    );
+    expect(validateReportData(doc).some((f) => f.rule === 'POP-2')).toBe(false);
+  });
+
+  it('extremum: all-numeric members evaluate normally -- a false superlative still fails POP-2 on the ordinary mismatch, not a numeric-guard reason', () => {
+    const doc = quantifierClaim(
+      { type: 'extremum', member_key: 'revenue', direction: 'min', claimed_member: 'jan' },
+      [
+        { key: 'jan', revenue: 1214000 },
+        { key: 'feb', revenue: 1187000 },
+        { key: 'jul', revenue: 1300000 },
+      ],
+    );
+    const found = validateReportData(doc);
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).not.toMatch(/non-numeric/);
+    expect(finding?.detail).toMatch(/claimed 'jan'/);
+  });
+
+  it('count: a stringified member value under a numeric predicate (gt) fails closed with POP-2', () => {
+    const doc = quantifierClaim(
+      { type: 'count', predicate: { member_key: 'delta', op: 'gt', value: 0 }, claimed_count: 2 },
+      [
+        { key: 'a', delta: 10 },
+        { key: 'b', delta: '1,200' }, // formatted-string, not a real number
+        { key: 'c', delta: -5 },
+      ],
+    );
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'POP-2', subject: 'c.q' }),
+    );
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/non-numeric/);
+  });
+
+  it('eq predicate still works on string values without the numeric requirement', () => {
+    const doc = quantifierClaim(
+      { type: 'count', predicate: { member_key: 'tier', op: 'eq', value: 'gold' }, claimed_count: 2 },
+      [
+        { key: 'a', tier: 'gold' },
+        { key: 'b', tier: 'gold' },
+        { key: 'c', tier: 'silver' },
+      ],
+    );
+    // Correct claimed_count against string equality -- no findings at all,
+    // and specifically no POP-2 numeric-guard false positive.
+    expect(validateReportData(doc)).toEqual([]);
+  });
+
+  it('eq predicate on string values still fails normally (not via the numeric guard) when the claimed count is wrong', () => {
+    const doc = quantifierClaim(
+      { type: 'count', predicate: { member_key: 'tier', op: 'eq', value: 'gold' }, claimed_count: 3 },
+      [
+        { key: 'a', tier: 'gold' },
+        { key: 'b', tier: 'gold' },
+        { key: 'c', tier: 'silver' },
+      ],
+    );
+    const found = validateReportData(doc);
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).not.toMatch(/non-numeric/);
+    expect(finding?.detail).toMatch(/claimed 3 of 3 members match; 2 do/);
+  });
+});
+
+/**
+ * share_of_total divides two figure values directly (never through a
+ * population member), so it gets its own numeric guard: a stringified
+ * figure value must not coerce through JS's `/` operator into an in-band
+ * ratio (Python raises TypeError on str/float division), and a zero
+ * denominator must not produce Infinity.
+ */
+describe('POP-2 numeric guard on share_of_total (stringified figures, zero denominator)', () => {
+  function shareClaim(numerator: Figure, denominator: Figure): ReportDataDocument {
+    return {
+      figures: [numerator, denominator],
+      claims: [
+        {
+          id: 'c.share',
+          kind: 'quantifier',
+          text: 'x',
+          figure_refs: [numerator.id, denominator.id],
+          population_ref: denominator.id,
+          check: {
+            type: 'share_of_total',
+            numerator: numerator.id,
+            denominator: denominator.id,
+            claimed_band: [0.8, 1.0],
+          },
+        },
+      ],
+    };
+  }
+
+  it('fires POP-2 when the numerator figure carries a stringified value', () => {
+    const num = figure({ id: 'f.leg', label: 'Leg', value: '900' as unknown as number });
+    const den = figure({ id: 'f.total', label: 'Total', value: 1000 });
+    den.population = { complete: true, members: [{ key: 'x' }] };
+    const doc = shareClaim(num, den);
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'POP-2', subject: 'c.share' }),
+    );
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/numerator.*non-numeric/);
+  });
+
+  it('fires POP-2 when the denominator figure carries a stringified value', () => {
+    const num = figure({ id: 'f.leg', label: 'Leg', value: 900 });
+    const den = figure({ id: 'f.total', label: 'Total', value: '1000' as unknown as number });
+    den.population = { complete: true, members: [{ key: 'x' }] };
+    const doc = shareClaim(num, den);
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'POP-2', subject: 'c.share' }),
+    );
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/denominator.*non-numeric/);
+  });
+
+  it('fires POP-2 (not Infinity) when the denominator is zero', () => {
+    const num = figure({ id: 'f.leg', label: 'Leg', value: 900 });
+    const den = figure({ id: 'f.total', label: 'Total', value: 0 });
+    den.population = { complete: true, members: [{ key: 'x' }] };
+    const doc = shareClaim(num, den);
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'POP-2', subject: 'c.share' }),
+    );
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/denominator.*zero/);
+  });
+
+  it('does not fire when both figures are numeric and the ratio falls inside the claimed band', () => {
+    const num = figure({ id: 'f.leg', label: 'Leg', value: 900 });
+    const den = figure({ id: 'f.total', label: 'Total', value: 1000 });
+    den.population = { complete: true, members: [{ key: 'x' }] };
+    const doc = shareClaim(num, den);
+    expect(validateReportData(doc).some((f) => f.rule === 'POP-2')).toBe(false);
   });
 });
 
