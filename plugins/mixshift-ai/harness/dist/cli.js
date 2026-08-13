@@ -19043,7 +19043,7 @@ var require_help = __commonJS({
           }
           return term;
         }
-        function formatList2(textArray) {
+        function formatList3(textArray) {
           return textArray.join("\n").replace(/^/gm, " ".repeat(itemIndentWidth));
         }
         let output = [`Usage: ${helper.commandUsage(cmd)}`, ""];
@@ -19061,7 +19061,7 @@ var require_help = __commonJS({
           );
         });
         if (argumentList.length > 0) {
-          output = output.concat(["Arguments:", formatList2(argumentList), ""]);
+          output = output.concat(["Arguments:", formatList3(argumentList), ""]);
         }
         const optionList = helper.visibleOptions(cmd).map((option) => {
           return formatItem(
@@ -19070,7 +19070,7 @@ var require_help = __commonJS({
           );
         });
         if (optionList.length > 0) {
-          output = output.concat(["Options:", formatList2(optionList), ""]);
+          output = output.concat(["Options:", formatList3(optionList), ""]);
         }
         if (this.showGlobalOptions) {
           const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
@@ -19082,7 +19082,7 @@ var require_help = __commonJS({
           if (globalOptionList.length > 0) {
             output = output.concat([
               "Global Options:",
-              formatList2(globalOptionList),
+              formatList3(globalOptionList),
               ""
             ]);
           }
@@ -19094,7 +19094,7 @@ var require_help = __commonJS({
           );
         });
         if (commandList.length > 0) {
-          output = output.concat(["Commands:", formatList2(commandList), ""]);
+          output = output.concat(["Commands:", formatList3(commandList), ""]);
         }
         return output.join("\n");
       }
@@ -61096,7 +61096,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join27(tree) {
+      function join28(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61122,7 +61122,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join27(parse4(query));
+        tree = join28(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -88621,6 +88621,1189 @@ function renderCatalog(entries) {
   ${e.purpose}`).join("\n");
 }
 
+// src/commands/report.ts
+import { readFile as readFile42, writeFile as writeFile28 } from "node:fs/promises";
+
+// src/lib/report-contract/validate.ts
+var BLOCKING = "blocking";
+var POP_KINDS = /* @__PURE__ */ new Set(["superlative", "quantifier"]);
+var CAUSAL_LANG = /\b(caused?|causes|causing|drove|drives?|driving|due to|led to|leads to|because)\b/i;
+var DAYS_TEXT = /\b\d[\d,]*\s*days?\b/i;
+function setsEqual(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) {
+    if (!b.has(x)) return false;
+  }
+  return true;
+}
+function formatList2(values) {
+  return `[${[...values].sort().map((v) => `'${v}'`).join(", ")}]`;
+}
+function compareOp(op, a, b) {
+  switch (op) {
+    case "lt":
+      return a < b;
+    case "gt":
+      return a > b;
+    case "le":
+      return a <= b;
+    case "ge":
+      return a >= b;
+    case "eq":
+      return a === b;
+    default:
+      return false;
+  }
+}
+function countPred(members, pred) {
+  const { member_key: memberKey, op, value } = pred;
+  let n = 0;
+  for (const m of members) {
+    if (memberKey in m && compareOp(op, m[memberKey], value)) n++;
+  }
+  return n;
+}
+function evalCheck(chk, members, allFigs) {
+  const t = chk.type;
+  if (t === "extremum" || t === "extremum_set") {
+    const key = chk.member_key;
+    const rev = chk.direction === "max";
+    const ranked = members.filter((m) => key in m).slice().sort((a, b) => {
+      const av = a[key];
+      const bv = b[key];
+      if (av < bv) return rev ? 1 : -1;
+      if (av > bv) return rev ? -1 : 1;
+      return 0;
+    });
+    if (t === "extremum") {
+      const actual2 = ranked[0]?.key;
+      if (actual2 !== chk.claimed_member) {
+        return {
+          ok: false,
+          why: `claimed '${chk.claimed_member}' is the ${chk.direction} of '${key}' but '${actual2}' is (${ranked[0]?.[key]})`
+        };
+      }
+      return { ok: true, why: "" };
+    }
+    const n = chk.n;
+    const actual = new Set(ranked.slice(0, n).map((m) => m.key));
+    const claimed = new Set(chk.claimed_members);
+    if (!setsEqual(actual, claimed)) {
+      return {
+        ok: false,
+        why: `claimed ${chk.direction}-${n} set ${formatList2(chk.claimed_members)}; actual ${formatList2([...actual])}`
+      };
+    }
+    return { ok: true, why: "" };
+  }
+  if (t === "count") {
+    const n = countPred(members, chk.predicate);
+    if (n !== chk.claimed_count) {
+      return {
+        ok: false,
+        why: `claimed ${chk.claimed_count} of ${members.length} members match; ${n} do`
+      };
+    }
+    return { ok: true, why: "" };
+  }
+  if (t === "none") {
+    const n = countPred(members, chk.predicate);
+    if (n) {
+      return { ok: false, why: `claimed none match; ${n} member(s) do` };
+    }
+    return { ok: true, why: "" };
+  }
+  if (t === "share_of_total") {
+    const num = allFigs.get(chk.numerator)?.value;
+    const den = allFigs.get(chk.denominator)?.value;
+    const ratio = num / den;
+    const [lo, hi] = chk.claimed_band;
+    if (!(lo <= ratio && ratio <= hi)) {
+      return {
+        ok: false,
+        why: `share is ${ratio.toFixed(2)}, outside the claimed band [${lo}, ${hi}]`
+      };
+    }
+    return { ok: true, why: "" };
+  }
+  return { ok: false, why: `unknown check type '${String(chk.type)}'` };
+}
+function validateReportData(doc) {
+  const findings = [];
+  const figures2 = /* @__PURE__ */ new Map();
+  for (const f of doc.figures ?? []) figures2.set(f.id, f);
+  const derived = /* @__PURE__ */ new Map();
+  for (const d of doc.derived ?? []) derived.set(d.id, d);
+  const allFigs = /* @__PURE__ */ new Map();
+  for (const [id, f] of figures2) allFigs.set(id, f);
+  for (const [id, d] of derived) allFigs.set(id, d);
+  const claims = /* @__PURE__ */ new Map();
+  for (const c of doc.claims ?? []) claims.set(c.id, c);
+  const registry2 = doc.caveat_registry ?? {};
+  const sections = doc.sections ?? [];
+  const byLabel = /* @__PURE__ */ new Map();
+  for (const f of [...figures2.values(), ...derived.values()]) {
+    const key = f.label.trim().toLowerCase();
+    const set2 = byLabel.get(key) ?? /* @__PURE__ */ new Set();
+    set2.add(f.basis);
+    byLabel.set(key, set2);
+  }
+  for (const label of [...byLabel.keys()].sort()) {
+    const bases = byLabel.get(label);
+    if (bases.size > 1) {
+      const sortedBases = [...bases].map((b) => String(b)).sort();
+      findings.push({
+        rule: "BASIS-1",
+        subject: label,
+        detail: `label carries ${bases.size} bases: ${sortedBases.join(", ")}`
+      });
+    }
+  }
+  for (const f of figures2.values()) {
+    if (!f.source_path) {
+      findings.push({ rule: "TRACE-1", subject: f.id, detail: "figure has no source_path" });
+    }
+  }
+  for (const c of claims.values()) {
+    for (const rid of c.figure_refs ?? []) {
+      if (!allFigs.has(rid)) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: c.id,
+          detail: `figure_ref '${rid}' does not resolve`
+        });
+      }
+    }
+    const pr = c.population_ref;
+    if (pr && !allFigs.has(pr)) {
+      findings.push({
+        rule: "TRACE-1",
+        subject: c.id,
+        detail: `population_ref '${pr}' does not resolve`
+      });
+    }
+  }
+  for (const s of sections) {
+    for (const rid of s.figure_refs ?? []) {
+      if (!allFigs.has(rid)) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: s.id,
+          detail: `figure_ref '${rid}' does not resolve`
+        });
+      }
+    }
+    for (const cid of s.claim_refs ?? []) {
+      if (!claims.has(cid)) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: s.id,
+          detail: `claim_ref '${cid}' does not resolve`
+        });
+      }
+    }
+  }
+  for (const d of derived.values()) {
+    for (const rid of d.inputs ?? []) {
+      if (!allFigs.has(rid) && !(rid.startsWith("sql:") || rid.startsWith("envelope:"))) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: d.id,
+          detail: `input '${rid}' does not resolve`
+        });
+      }
+    }
+  }
+  for (const d of derived.values()) {
+    if (!d.inputs || d.inputs.length === 0) {
+      findings.push({
+        rule: "TRACE-2",
+        subject: d.id,
+        detail: "derived figure without inputs[]"
+      });
+    }
+    if (!(d.why_not_published ?? "").trim()) {
+      findings.push({
+        rule: "TRACE-2",
+        subject: d.id,
+        detail: "derived figure without why_not_published"
+      });
+    }
+  }
+  const figLabels = /* @__PURE__ */ new Map();
+  for (const f of figures2.values()) {
+    figLabels.set(f.label.trim().toLowerCase(), f.id);
+  }
+  for (const d of derived.values()) {
+    const key = d.label.trim().toLowerCase();
+    const figId = figLabels.get(key);
+    if (figId !== void 0 && !(d.why_not_published ?? "").includes(figId)) {
+      findings.push({
+        rule: "TRACE-3",
+        subject: d.id,
+        detail: `shadows published figure ${figId} without naming it in why_not_published`
+      });
+    }
+  }
+  for (const s of sections) {
+    const quoted = new Set(s.figure_refs ?? []);
+    for (const cid of s.claim_refs ?? []) {
+      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
+    }
+    const rendered = new Set(s.caveats_rendered ?? []);
+    for (const rid of [...quoted].sort()) {
+      const f = allFigs.get(rid);
+      if (!f) continue;
+      for (const cav of f.caveats ?? []) {
+        if (registry2[cav]?.severity === BLOCKING && !rendered.has(cav)) {
+          findings.push({
+            rule: "CAVEAT-1",
+            subject: s.id,
+            detail: `quotes ${rid} without its blocking caveat '${cav}'`
+          });
+        }
+      }
+    }
+  }
+  for (const c of claims.values()) {
+    const kind = c.kind;
+    if (kind && POP_KINDS.has(kind)) {
+      const pr = c.population_ref;
+      const pop = pr ? allFigs.get(pr)?.population : void 0;
+      if (!pop) {
+        findings.push({
+          rule: "POP-1",
+          subject: c.id,
+          detail: `${kind} claim without a resolvable population`
+        });
+      } else if (!pop.complete) {
+        findings.push({ rule: "POP-1", subject: c.id, detail: "population is not complete" });
+      } else {
+        const chk = c.check;
+        if (!chk) {
+          findings.push({
+            rule: "POP-2",
+            subject: c.id,
+            detail: `no machine-checkable check on a ${kind} claim`
+          });
+        } else {
+          const { ok, why } = evalCheck(chk, pop.members ?? [], allFigs);
+          if (!ok) findings.push({ rule: "POP-2", subject: c.id, detail: why });
+        }
+      }
+    }
+    if (kind === "causal") {
+      if (!(c.mechanism ?? "").trim()) {
+        findings.push({
+          rule: "CAUSE-1",
+          subject: c.id,
+          detail: "causal claim without a mechanism"
+        });
+      }
+      if (!c.tested_alternatives || c.tested_alternatives.length === 0) {
+        findings.push({
+          rule: "CAUSE-1",
+          subject: c.id,
+          detail: "causal claim without tested_alternatives"
+        });
+      }
+    } else {
+      const m = CAUSAL_LANG.exec(c.text ?? "");
+      if (m) {
+        findings.push({
+          rule: "CAUSE-2",
+          subject: c.id,
+          detail: `non-causal claim uses causal language: '${m[0]}'`
+        });
+      }
+    }
+    const refs = (c.figure_refs ?? []).map((r) => allFigs.get(r)).filter((f) => f !== void 0);
+    const cb = c.comparison_basis;
+    if (cb) {
+      for (const f of refs) {
+        if (f.basis !== cb) {
+          findings.push({
+            rule: "COMP-1",
+            subject: c.id,
+            detail: `claim compares on basis '${cb}' but ${f.id} carries basis '${f.basis}'`
+          });
+        }
+      }
+    } else if (kind === "comparison") {
+      const bases = new Set(refs.map((f) => f.basis));
+      if (bases.size > 1) {
+        const sortedBases = [...bases].map((b) => String(b)).sort();
+        findings.push({
+          rule: "COMP-1",
+          subject: c.id,
+          detail: `comparison mixes bases: [${sortedBases.map((b) => `'${b}'`).join(", ")}]`
+        });
+      }
+    }
+  }
+  for (const s of sections) {
+    const text = s.display_text ?? "";
+    if (!text) continue;
+    const quoted = new Set(s.figure_refs ?? []);
+    for (const cid of s.claim_refs ?? []) {
+      for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
+    }
+    const hasItemDays = [...quoted].some((r) => allFigs.get(r)?.unit === "item_days");
+    if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes("item-day")) {
+      findings.push({
+        rule: "UNIT-1",
+        subject: s.id,
+        detail: "renders an item_days figure as plain days"
+      });
+    }
+  }
+  return findings;
+}
+
+// src/lib/report-contract/extract.ts
+var TOL = 0.011;
+var OPS_UNITS = {
+  ops: "currency",
+  units: "count",
+  sessions: "count",
+  conversion: "ratio",
+  buy_box: "ratio",
+  ops_per_unit: "currency",
+  sellable_inventory: "count",
+  weeks_of_cover: "weeks",
+  lost_sales: "currency",
+  glance_views: "count",
+  gv_conversion: "ratio"
+};
+var ADS_UNITS = {
+  ad_spend: "currency",
+  ad_sales: "currency",
+  acos: "ratio",
+  roas: "ratio",
+  ad_impressions: "count",
+  ad_clicks: "count",
+  ad_ctr: "ratio",
+  ad_orders: "count",
+  ad_cpa: "currency",
+  ad_aov: "currency",
+  ad_cpc: "currency",
+  ad_conversion: "ratio",
+  ad_sales_same_sku: "currency",
+  ad_sales_other_sku: "currency",
+  ad_sales_view_through: "currency",
+  ad_orders_same_sku: "count",
+  ad_orders_other_sku: "count",
+  ad_orders_view_through: "count"
+};
+var ADS_BASIS = {
+  ad_sales_same_sku: "click_attributed",
+  ad_orders_same_sku: "click_attributed",
+  ad_sales_other_sku: "click_attributed",
+  ad_orders_other_sku: "click_attributed",
+  ad_sales_view_through: "view_through",
+  ad_orders_view_through: "view_through"
+};
+var ADS_BASIS_DEFAULT = "console_authoritative";
+var CAVEAT_SEVERITY = {
+  filtered_scope: "blocking",
+  decomposition_degraded: "blocking",
+  surge_window: "disclosure",
+  dark_run: "disclosure",
+  restatement: "disclosure",
+  matched_window: "context"
+};
+function asRecord(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+}
+function asArray(v) {
+  return Array.isArray(v) ? v : void 0;
+}
+function truthyRecord(v) {
+  const r = asRecord(v);
+  return r && Object.keys(r).length > 0 ? r : void 0;
+}
+function hasValue(v) {
+  return v !== void 0 && v !== null;
+}
+function fig(id, label, value, unit, basis, sourcePath, opts = {}) {
+  const f = {
+    id,
+    label,
+    value,
+    unit,
+    basis,
+    source_path: sourcePath,
+    confidence: "published",
+    caveats: opts.caveats ? [...opts.caveats] : []
+  };
+  if (opts.population !== void 0) f.population = opts.population;
+  if (opts.extra) Object.assign(f, opts.extra);
+  return f;
+}
+function opsBasis(env, metric) {
+  const b = asRecord(env.basis) ?? {};
+  if (metric === "ops" || metric === "ops_per_unit" || metric === "lost_sales") {
+    return b.revenue ?? "engine_default";
+  }
+  if (metric === "units") {
+    return b.units ?? "engine_default";
+  }
+  if (metric === "sessions" || metric === "conversion" || metric === "glance_views" || metric === "gv_conversion") {
+    return b.traffic ?? "engine_default";
+  }
+  return "engine_default";
+}
+var SIDE_FIELDS = [
+  ["p1", "p1Value"],
+  ["p2", "p2Value"]
+];
+function buildSource(env, doc, domain2, entityKey) {
+  const src = {
+    bridgeRunId: env.bridgeRunId ?? null,
+    bridgeDomain: domain2,
+    // None = pre-T1 engine, say so downstream
+    engineVersion: env.engineVersion ?? null,
+    schemaVersion: env.schemaVersion ?? null,
+    period: env.period ?? null,
+    tenant: env.tenant ?? null,
+    currency: env.currency ?? null,
+    channel: env.channel ?? null,
+    companionRunId: doc.companionRunId ?? null
+  };
+  if (entityKey !== void 0) src.entityKey = entityKey;
+  return src;
+}
+function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats) {
+  const ekey = env.entityKey;
+  const slug = String(ekey);
+  const figures2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  const insights = asArray(env.insights) ?? [];
+  insights.forEach((entryRaw, ii) => {
+    const entry = asRecord(entryRaw) ?? {};
+    const ins = truthyRecord(entry.insight) ?? entry;
+    const mkey = entry.metricKey || ins.metricKey;
+    const variant = entry.variantKey || ins.variantKey || "primary";
+    const identKey = `${mkey}\0${variant}`;
+    if (seen.has(identKey)) return;
+    seen.add(identKey);
+    if (variant !== "primary" && mkey !== "lost_sales") return;
+    const unit = (mkey && unitsMap[mkey]) ?? "count";
+    const basis = domain2 === "ads" ? ADS_BASIS[mkey ?? ""] ?? ADS_BASIS_DEFAULT : opsBasis(env, mkey);
+    const base = `envelope:insights[${ii}]`;
+    const stem = `${domain2}.entity.${slug}.${mkey}`;
+    const label = `${mkey} \u2014 ${ekey}`;
+    for (const [side, field] of SIDE_FIELDS) {
+      const v = entry[field];
+      if (hasValue(v)) {
+        figures2.push(fig(`${stem}.${side}`, label, v, unit, basis, `${base}.${field}`));
+      }
+    }
+    const netChange = entry.netChange;
+    if (hasValue(netChange)) {
+      figures2.push(
+        fig(`${stem}.delta`, label, netChange, unit, basis, `${base}.netChange`, {
+          caveats: deltaCaveats,
+          extra: { pct_change: entry.pctChange ?? null }
+        })
+      );
+    }
+    const components = asArray(entry.components) ?? [];
+    components.forEach((compRaw, ci) => {
+      const comp = asRecord(compRaw) ?? {};
+      if (!hasValue(comp.impact)) return;
+      figures2.push(
+        fig(
+          `${domain2}.entity.${slug}.bridge.${mkey}.${variant}.${comp.key}`,
+          `${mkey} ${comp.key} leg (${variant}) \u2014 ${ekey}`,
+          comp.impact,
+          comp.valueUnit ?? "currency",
+          basis,
+          `${base}.components[${ci}].impact`,
+          {
+            extra: {
+              footing_ok: asRecord(entry.footing)?.ok ?? null,
+              net_change: entry.netChange ?? null
+            }
+          }
+        )
+      );
+    });
+  });
+  return {
+    schema_version: "2.0-draft",
+    source: buildSource(env, doc, domain2, ekey),
+    caveat_registry: registry2,
+    figures: figures2
+  };
+}
+function extractFigures(response) {
+  const rawDoc = asRecord(response) ?? {};
+  const env = Object.prototype.hasOwnProperty.call(rawDoc, "envelope") ? asRecord(rawDoc.envelope) ?? {} : rawDoc;
+  const domain2 = env.bridgeDomain ?? "ops";
+  const unitsMap = domain2 === "ads" ? ADS_UNITS : OPS_UNITS;
+  const registry2 = {};
+  const deltaCaveats = [];
+  const caveatsArr = asArray(env.caveats) ?? [];
+  caveatsArr.forEach((cRaw, i) => {
+    const c = asRecord(cRaw) ?? {};
+    const kind = c.kind ?? "unknown";
+    const cid = `env.${kind}.${i}`;
+    registry2[cid] = { text: c.message ?? "", severity: CAVEAT_SEVERITY[kind] ?? "disclosure" };
+    deltaCaveats.push(cid);
+  });
+  if (hasValue(env.entityKey)) {
+    return extractEntity(rawDoc, env, domain2, unitsMap, registry2, deltaCaveats);
+  }
+  const figures2 = [];
+  const metricsArr = asArray(env.metrics) ?? [];
+  metricsArr.forEach((mRaw, mi) => {
+    const m = asRecord(mRaw) ?? {};
+    const key = m.metricKey;
+    const unit = (key && unitsMap[key]) ?? "count";
+    const basis = domain2 === "ads" ? ADS_BASIS[key ?? ""] ?? ADS_BASIS_DEFAULT : opsBasis(env, key);
+    const t = asRecord(m.totals) ?? {};
+    const base = `envelope:metrics[${mi}].totals`;
+    for (const side of ["p1", "p2"]) {
+      const v = t[side];
+      if (hasValue(v)) {
+        figures2.push(fig(`${domain2}.${key}.${side}`, key ?? "", v, unit, basis, `${base}.${side}`));
+      }
+    }
+    const delta = t.delta;
+    if (hasValue(delta)) {
+      let pop;
+      const drivers = asArray(m.topDrivers) ?? [];
+      if (drivers.length > 0) {
+        pop = {
+          complete: false,
+          // topDrivers is a ranked SHORTLIST, never the census
+          members: drivers.map((dRaw) => {
+            const d = asRecord(dRaw) ?? {};
+            return { key: d.entityKey, delta: d.delta };
+          })
+        };
+      }
+      figures2.push(
+        fig(`${domain2}.${key}.delta`, key ?? "", delta, unit, basis, `${base}.delta`, {
+          caveats: deltaCaveats,
+          population: pop,
+          extra: { pct_change: t.pctChange ?? null }
+        })
+      );
+    }
+  });
+  const seenInsights = /* @__PURE__ */ new Set();
+  const insightsArr = asArray(env.insights) ?? [];
+  insightsArr.forEach((entryRaw, ii) => {
+    const entry = asRecord(entryRaw) ?? {};
+    const ins = truthyRecord(entry.insight) ?? entry;
+    if (ins.scope !== "total") return;
+    const variant = entry.variantKey || ins.variantKey || "primary";
+    const mkey = ins.metricKey;
+    const identKey = `${mkey}\0${variant}`;
+    if (seenInsights.has(identKey)) return;
+    seenInsights.add(identKey);
+    const components = asArray(ins.components) ?? [];
+    components.forEach((compRaw, ci) => {
+      const comp = asRecord(compRaw) ?? {};
+      if (!hasValue(comp.impact)) return;
+      figures2.push(
+        fig(
+          `${domain2}.bridge.${mkey}.${variant}.${comp.key}`,
+          `${mkey} ${comp.key} leg (${variant})`,
+          comp.impact,
+          comp.valueUnit ?? "currency",
+          domain2 === "ops" ? opsBasis(env, mkey) : ADS_BASIS_DEFAULT,
+          `envelope:insights[${ii}].insight.components[${ci}].impact`,
+          {
+            extra: {
+              footing_ok: asRecord(entry.footing)?.ok ?? null,
+              net_change: ins.netChange ?? null
+            }
+          }
+        )
+      );
+    });
+  });
+  const cd = asRecord(rawDoc.crossDomain);
+  if (cd) {
+    const soloBlocks = [
+      ["tacos", "ratio", "deltaPts"],
+      ["attributedShare", "ratio", "deltaPts"]
+    ];
+    for (const [name, unit, ptsField] of soloBlocks) {
+      const blk = asRecord(cd[name]);
+      if (!blk) continue;
+      for (const side of ["p1", "p2"]) {
+        const v = blk[side];
+        if (hasValue(v)) {
+          figures2.push(
+            fig(`duo.${name}.${side}`, name, v, unit, "cross_domain_joined", `crossDomain.${name}.${side}`)
+          );
+        }
+      }
+      const ptsVal = blk[ptsField];
+      if (hasValue(ptsVal)) {
+        figures2.push(
+          fig(
+            `duo.${name}.delta_pts`,
+            name,
+            ptsVal,
+            "points",
+            "cross_domain_joined",
+            `crossDomain.${name}.${ptsField}`
+          )
+        );
+      }
+    }
+    const td = asRecord(cd.tacosDecomposition);
+    if (td) {
+      const comps = asArray(td.components) ?? [];
+      comps.forEach((compRaw, ci) => {
+        const comp = asRecord(compRaw) ?? {};
+        if (!hasValue(comp.impact)) return;
+        figures2.push(
+          fig(
+            `duo.bridge.tacos.primary.${comp.key}`,
+            `tacos ${comp.key} leg (cross-domain)`,
+            comp.impact,
+            "points_fraction",
+            "cross_domain_joined",
+            `crossDomain.tacosDecomposition.components[${ci}].impact`,
+            { extra: { net_change: td.delta ?? null } }
+          )
+        );
+      });
+    }
+    const pp = asRecord(cd.paidPressure);
+    if (pp) {
+      for (const side of ["p1", "p2"]) {
+        const v = pp[side];
+        if (hasValue(v)) {
+          figures2.push(
+            fig(
+              `duo.paidPressure.${side}`,
+              "paid pressure",
+              v,
+              "ratio",
+              "cross_domain_joined",
+              `crossDomain.paidPressure.${side}`
+            )
+          );
+        }
+      }
+    }
+    const av = asRecord(cd.aspVsAdAov);
+    if (av) {
+      for (const lane of ["asp", "adAov"]) {
+        const laneBlk = asRecord(av[lane]) ?? {};
+        for (const side of ["p1", "p2"]) {
+          const v = laneBlk[side];
+          if (hasValue(v)) {
+            figures2.push(
+              fig(
+                `duo.${lane}.${side}`,
+                lane,
+                v,
+                "currency",
+                "cross_domain_joined",
+                `crossDomain.aspVsAdAov.${lane}.${side}`
+              )
+            );
+          }
+        }
+      }
+    }
+  }
+  return {
+    schema_version: "2.0-draft",
+    source: buildSource(env, rawDoc, domain2),
+    caveat_registry: registry2,
+    figures: figures2
+  };
+}
+function checkFigures(out) {
+  const findings = [];
+  const figs = new Map(out.figures.map((f) => [f.id, f]));
+  const REQUIRED_FIELDS = ["id", "label", "value", "unit", "basis", "source_path"];
+  for (const f of out.figures) {
+    for (const req of REQUIRED_FIELDS) {
+      const v = f[req];
+      if (v === void 0 || v === null || v === "") {
+        findings.push({ rule: "REQUIRED", subject: f.id, detail: `missing ${req}` });
+      }
+    }
+    if (!(String(f.source_path).startsWith("envelope:") || String(f.source_path).startsWith("crossDomain."))) {
+      findings.push({ rule: "SOURCE-PATH", subject: f.id, detail: "source_path outside the envelope" });
+    }
+  }
+  for (const f of out.figures) {
+    if (f.id.endsWith(".delta") && !f.id.includes(".bridge.")) {
+      const stem = f.id.slice(0, -".delta".length);
+      const p1 = figs.get(`${stem}.p1`);
+      const p2 = figs.get(`${stem}.p2`);
+      if (p1 && p2 && Math.abs(p2.value - p1.value - f.value) > TOL) {
+        findings.push({ rule: "DELTA-IDENTITY", subject: f.id, detail: "delta != p2 - p1" });
+      }
+    }
+  }
+  if (out.source.bridgeDomain === "ads") {
+    for (const side of ["p1", "p2"]) {
+      const parts = ["ads.ad_sales_same_sku.", "ads.ad_sales_other_sku.", "ads.ad_sales_view_through."];
+      const tot = figs.get(`ads.ad_sales.${side}`);
+      const comps = parts.map((p) => figs.get(p + side));
+      if (tot && comps.every((c) => c !== void 0)) {
+        const s = comps.reduce((acc, c) => acc + c.value, 0);
+        if (Math.abs(s - tot.value) > TOL) {
+          findings.push({
+            rule: "SKU-SPLIT",
+            subject: `ads.ad_sales.${side}`,
+            detail: `ad_sales SKU-split identity broken on ${side}: ${s} != ${tot.value}`
+          });
+        }
+      }
+    }
+  }
+  const legs = /* @__PURE__ */ new Map();
+  for (const f of out.figures) {
+    if (f.id.includes(".bridge.") && f.footing_ok) {
+      const stem = f.id.slice(0, f.id.lastIndexOf("."));
+      const arr = legs.get(stem) ?? [];
+      arr.push(f);
+      legs.set(stem, arr);
+    }
+  }
+  for (const [stem, group] of legs) {
+    const net = group[0].net_change;
+    if (net === void 0 || net === null) continue;
+    const s = group.reduce((acc, g) => acc + g.value, 0);
+    if (Math.abs(s - net) > Math.max(Math.abs(net) * 1e-3, TOL)) {
+      findings.push({
+        rule: "BRIDGE-FOOTING",
+        subject: stem,
+        detail: `legs sum ${s.toFixed(4)} != net ${net.toFixed(4)}`
+      });
+    }
+  }
+  return findings;
+}
+
+// src/lib/report-contract/render-report.ts
+import { readFileSync as readFileSync2 } from "node:fs";
+import { join as join24 } from "node:path";
+var MINUS = "\u2212";
+var MIDDOT = "\xB7";
+var MISSING_VALUE = "\u2014";
+var CURRENCY_SYMBOLS = {
+  USD: "$",
+  EUR: "\u20AC",
+  GBP: "\xA3",
+  CAD: "C$",
+  AUD: "A$"
+};
+function currencySymbol(code) {
+  if (!code) return "$";
+  return CURRENCY_SYMBOLS[code] ?? `${code} `;
+}
+function fixed(n, precision) {
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision
+  });
+}
+function formatFigureValue(fig2, currencyCode) {
+  const v = fig2.value;
+  if (v === void 0 || v === null || Number.isNaN(v)) return MISSING_VALUE;
+  const unit = fig2.unit ?? "raw";
+  const n = Number(v);
+  const neg = n < 0;
+  const a = Math.abs(n);
+  const prec = fig2.precision;
+  let body;
+  switch (unit) {
+    case "currency":
+      body = `${currencySymbol(currencyCode)}${fixed(a, prec ?? 0)}`;
+      break;
+    case "currency_abbrev": {
+      const sym = currencySymbol(currencyCode);
+      if (a >= 1e6) body = `${sym}${(a / 1e6).toFixed(1)}M`;
+      else if (a >= 1e3) body = `${sym}${(a / 1e3).toFixed(1)}K`;
+      else body = `${sym}${fixed(a, 0)}`;
+      break;
+    }
+    case "count":
+      body = fixed(a, prec ?? 0);
+      break;
+    case "ratio":
+      body = `${(a * 100).toFixed(prec ?? 1)}%`;
+      break;
+    case "percent":
+      body = `${a.toFixed(prec ?? 1)}%`;
+      break;
+    case "points":
+      body = `${a.toFixed(prec ?? 1)} pts`;
+      break;
+    case "item_days": {
+      const count = fixed(a, prec ?? 0);
+      body = `${count} item-day${a === 1 ? "" : "s"}`;
+      break;
+    }
+    case "weeks":
+      body = a.toFixed(prec ?? 1);
+      break;
+    default:
+      body = prec !== void 0 ? fixed(a, prec) : String(a);
+      break;
+  }
+  if (neg) body = MINUS + body;
+  else if (fig2.signed && n > 0) body = "+" + body;
+  return body + (fig2.suffix ?? "");
+}
+function figureAccentClass(fig2) {
+  const accent = fig2.accent;
+  if (accent !== "auto" && accent !== "auto_invert") return "";
+  const v = fig2.value;
+  if (v === void 0 || v === null || Number(v) === 0) return "is-neutral";
+  const rose = Number(v) > 0;
+  const good = accent === "auto" ? rose : !rose;
+  return good ? "is-positive" : "is-negative";
+}
+function buildFigureIndex(doc) {
+  const idx = /* @__PURE__ */ new Map();
+  for (const f of doc.figures ?? []) idx.set(f.id, f);
+  for (const d of doc.derived ?? []) idx.set(d.id, d);
+  return idx;
+}
+function quotedFigureIds(section, claims) {
+  const seen = /* @__PURE__ */ new Set();
+  const ids = [];
+  const add = (id) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  };
+  for (const id of section.figure_refs ?? []) add(id);
+  for (const cid of section.claim_refs ?? []) {
+    for (const id of claims.get(cid)?.figure_refs ?? []) add(id);
+  }
+  return ids;
+}
+function renderFigureStrip(ids, figureIdx, currencyCode) {
+  const chips = [];
+  for (const id of ids) {
+    const fig2 = figureIdx.get(id);
+    if (!fig2) continue;
+    const accentCls = figureAccentClass(fig2);
+    const valueCls = accentCls ? `rr-figure-value ${accentCls}` : "rr-figure-value";
+    const label = escapeHtml(fig2.label);
+    const value = escapeHtml(formatFigureValue(fig2, currencyCode));
+    chips.push(
+      `<span class="rr-figure-chip"><span class="rr-figure-label">${label}</span><span class="${valueCls}">${value}</span></span>`
+    );
+  }
+  if (chips.length === 0) return "";
+  return `<div class="rr-figure-strip">${chips.join("")}</div>
+`;
+}
+function renderCaveats(caveatIds, registry2) {
+  const lines = [];
+  for (const id of caveatIds) {
+    const text = registry2[id]?.text;
+    if (text) lines.push(`<p class="rr-caveat">${escapeHtml(text)}</p>`);
+  }
+  return lines.join("\n");
+}
+function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
+  const title = block.title ? `<h2 class="rr-section-title">${escapeHtml(block.title)}</h2>
+` : "";
+  const prose = block.display_text ? `<p class="rr-prose">${block.display_text}</p>
+` : "";
+  const ids = quotedFigureIds(block, claims);
+  const figures2 = renderFigureStrip(ids, figureIdx, currencyCode);
+  const caveats = renderCaveats(block.caveats_rendered ?? [], registry2);
+  return `${title}${prose}${figures2}${caveats}`;
+}
+function loadReportCss() {
+  const dsDir = designSystemDir();
+  const raw = readFileSync2(join24(dsDir, "colors_and_type.css"), "utf-8");
+  const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
+  const withFonts = raw.replace(
+    /url\((['"]?)fonts\//g,
+    (_match, quote2) => `url(${quote2}${fontsAbsUrl}/`
+  );
+  return `${withFonts}
+${REPORT_CSS}`;
+}
+var REPORT_CSS = `
+html, body { margin: 0; padding: 0; }
+body { background: var(--rc-bg); }
+.rr-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-body);
+  color: var(--rc-text);
+  font-feature-settings: 'tnum' 1, 'rlig' 1, 'calt' 1;
+}
+.rr-header {
+  border-bottom: 1px solid var(--rc-border);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.rr-title {
+  font-family: var(--font-heading);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--rc-text);
+}
+.rr-subtitle {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  margin: 4px 0 0;
+}
+.rr-content { display: flex; flex-direction: column; gap: var(--space-6); }
+.rr-section {
+  background: var(--rc-card);
+  border: 1px solid var(--rc-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--rc-shadow-1);
+}
+.rr-section-title {
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+  color: var(--rc-text);
+}
+.rr-prose { margin: 0 0 var(--space-3); color: var(--rc-text); }
+.rr-prose:last-child { margin-bottom: 0; }
+.rr-figure-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+.rr-figure-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--rc-border);
+  background: var(--rc-chip-bg);
+  font-size: var(--fs-caption);
+}
+.rr-figure-label { color: var(--rc-text-sub); }
+.rr-figure-value {
+  font-weight: 600;
+  color: var(--rc-text);
+  font-feature-settings: 'tnum' 1;
+}
+.rr-figure-value.is-positive { color: var(--rc-positive); }
+.rr-figure-value.is-negative { color: var(--rc-negative); }
+.rr-figure-value.is-neutral  { color: var(--rc-text-sub); }
+.rr-caveat {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  font-style: italic;
+  margin: var(--space-2) 0 0;
+}
+.rr-caveat:first-child { margin-top: 0; }
+.rr-footer {
+  margin-top: var(--space-12);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--rc-border);
+  text-align: center;
+}
+.rr-footer-copy {
+  font-size: var(--fs-caption);
+  color: var(--rc-text-sub);
+  margin: 0;
+}
+`;
+function buildPage(args) {
+  const { title, theme, css, currencyCode, schemaVersion, bodyHtml } = args;
+  const metaParts = [];
+  if (schemaVersion) metaParts.push(escapeHtml(`Schema ${schemaVersion}`));
+  if (currencyCode) metaParts.push(escapeHtml(`Currency ${currencyCode}`));
+  const subtitle = metaParts.join(` ${MIDDOT} `);
+  const escapedTitle = escapeHtml(title);
+  return `<!DOCTYPE html>
+<html lang="en" data-rc-theme="${escapeAttr(theme)}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapedTitle}: Monthly report</title>
+<style>${css}</style>
+</head>
+<body>
+<div class="rr-page">
+  <header class="rr-header">
+    <h1 class="rr-title">${escapedTitle}</h1>
+    ${subtitle ? `<p class="rr-subtitle">${subtitle}</p>` : ""}
+  </header>
+  <main class="rr-content">
+${bodyHtml}
+  </main>
+  <footer class="rr-footer">
+    <p class="rr-footer-copy">MixShift smart-tier monthly report.</p>
+  </footer>
+</div>
+</body>
+</html>`;
+}
+function renderMonthlyReport(doc, opts = {}) {
+  const currencyCode = doc.currency ?? opts.defaultCurrency;
+  const figureIdx = buildFigureIndex(doc);
+  const claimIdx = /* @__PURE__ */ new Map();
+  for (const c of doc.claims ?? []) claimIdx.set(c.id, c);
+  const registry2 = doc.caveat_registry ?? {};
+  const forecastState = doc.forecast?.state;
+  const sharedBlocks = doc.shared_blocks ?? {};
+  const sharedRendered = /* @__PURE__ */ new Map();
+  const sectionsHtml = [];
+  for (const section of doc.sections ?? []) {
+    let block;
+    if (section.shared_block_ref) {
+      const shared = sharedBlocks[section.shared_block_ref];
+      if (!shared) {
+        throw new Error(
+          `render-report: shared_block_ref '${section.shared_block_ref}' (section '${section.id}') has no definition in doc.shared_blocks`
+        );
+      }
+      block = shared;
+    } else {
+      block = section;
+    }
+    if (block.kind === "forecast" && forecastState !== "provided_current") {
+      continue;
+    }
+    let html;
+    if (section.shared_block_ref) {
+      const ref = section.shared_block_ref;
+      const cached4 = sharedRendered.get(ref);
+      if (cached4 !== void 0) {
+        html = cached4;
+      } else {
+        html = renderSectionBody(block, figureIdx, claimIdx, registry2, currencyCode);
+        sharedRendered.set(ref, html);
+      }
+    } else {
+      html = renderSectionBody(block, figureIdx, claimIdx, registry2, currencyCode);
+    }
+    sectionsHtml.push(`<section class="rr-section" id="${escapeAttr(section.id)}">
+${html}</section>`);
+  }
+  const css = loadReportCss();
+  const title = opts.title ?? doc.brand_slug ?? "Monthly report";
+  const theme = opts.theme ?? "light";
+  return buildPage({
+    title,
+    theme,
+    css,
+    currencyCode,
+    schemaVersion: doc.schema_version,
+    bodyHtml: sectionsHtml.join("\n")
+  });
+}
+
+// src/commands/report.ts
+async function readJson(file2) {
+  try {
+    return JSON.parse(await readFile42(file2, "utf8"));
+  } catch (err) {
+    throw new UserFacingError(
+      `Could not read ${file2} as JSON: ${err instanceof Error ? err.message : String(err)}`,
+      "report_data_unreadable"
+    );
+  }
+}
+function registerReportCommands(program3) {
+  const report = program3.command("report").description("Report-contract tools: validate typed report-data documents at the render seam.");
+  report.command("validate <files...>").description(
+    "Run the report-contract validators (BASIS-1..UNIT-1) over one or more report-data.json documents. Exit 0 = all clean, 1 = findings."
+  ).action(async (files, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const results = [];
+    for (const file2 of files) {
+      const doc = await readJson(file2);
+      results.push({ file: file2, findings: validateReportData(doc) });
+    }
+    const total = results.reduce((n, r) => n + r.findings.length, 0);
+    if (root.json) {
+      console.log(JSON.stringify({ ok: total === 0, total, results }, null, 2));
+    } else {
+      for (const r of results) {
+        console.log(`
+${r.file}: ${r.findings.length === 0 ? "CLEAN" : `${r.findings.length} finding(s)`}`);
+        for (const f of r.findings) {
+          console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        }
+      }
+      console.log(`
+${total === 0 ? "PASS" : `FAIL: ${total} finding(s)`}`);
+    }
+    process.exitCode = total === 0 ? 0 : 1;
+  });
+  report.command("extract <response.json>").description(
+    "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings."
+  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).action(async (file2, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const response = await readJson(file2);
+    const doc = extractFigures(response);
+    const findings = opts.check ? checkFigures(doc) : [];
+    const body = JSON.stringify(doc, null, 2);
+    if (opts.out) {
+      await writeFile28(opts.out, body + "\n", "utf8");
+    }
+    if (root.json) {
+      console.log(
+        JSON.stringify(
+          { ok: findings.length === 0, figures: doc.figures.length, out: opts.out ?? null, findings },
+          null,
+          2
+        )
+      );
+    } else {
+      if (!opts.out) console.log(body);
+      console.log(
+        `
+${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
+      );
+      for (const f of findings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+      if (opts.check) console.log(findings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${findings.length})`);
+    }
+    process.exitCode = findings.length === 0 ? 0 : 1;
+  });
+  report.command("render <report-data.json>").description(
+    "Render a validated report-data document to self-contained HTML via the deterministic renderer. Refuses to render a document that fails validation unless --force is given."
+  ).requiredOption("--out <path>", "write the HTML artifact here").option("--force", "render even when the document has validator findings", false).action(async (file2, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const doc = await readJson(file2);
+    const findings = validateReportData(doc);
+    if (findings.length > 0 && !opts.force) {
+      for (const f of findings) console.error(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+      throw new UserFacingError(
+        `Refusing to render: ${findings.length} validator finding(s). Fix report-data.json (corrections go to the data file, never the HTML) or pass --force.`,
+        "report_data_invalid"
+      );
+    }
+    const html = renderMonthlyReport(doc);
+    await writeFile28(opts.out, html, "utf8");
+    if (root.json) {
+      console.log(JSON.stringify({ ok: true, out: opts.out, bytes: html.length, findings }, null, 2));
+    } else {
+      console.log(`Rendered ${opts.out} (${html.length} bytes${findings.length ? `; ${findings.length} finding(s) overridden` : ""})`);
+    }
+  });
+}
+
 // src/lib/net/doctor.ts
 init_credentials();
 var REQUIRED_ALLOWLIST = [
@@ -89172,7 +90355,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname36, join as join24 } from "node:path";
+import { dirname as dirname36, join as join25 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -89307,12 +90490,12 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join24(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join25(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
   let dir = dirname36(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join24(dir, "skills");
+      const candidate = join25(dir, "skills");
       const stat6 = await fs.stat(candidate);
       if (stat6.isDirectory()) return candidate;
     } catch {
@@ -89438,7 +90621,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve2, join as join25, relative, basename as basename4 } from "node:path";
+import { resolve as resolve2, join as join26, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load2();
@@ -89771,7 +90954,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join25(dir, e.name);
+        const abs = join26(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -90961,7 +92144,7 @@ function emitError13(message, root) {
 // src/commands/task.ts
 init_credentials();
 import { readdir as readdir5, stat as stat5 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname37, join as join26 } from "node:path";
+import { basename as basename5, dirname as dirname37, join as join27 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -91018,14 +92201,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join26(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join27(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
     if (basename5(dir) !== "auth" || basename5(dirname37(dir)) !== ".mixshift") continue;
-    found.push(join26(dir, entry.name));
+    found.push(join27(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -91108,7 +92291,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join26(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join27(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -91506,6 +92689,7 @@ registerSkillCommands(program2);
 registerAmazonCommands(program2);
 registerAdsCommands(program2);
 registerIntelligenceCommands(program2);
+registerReportCommands(program2);
 registerDoctorCommand(program2);
 registerHelpCommand(program2);
 registerShareSkillCommand(program2);
