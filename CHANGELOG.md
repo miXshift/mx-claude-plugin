@@ -3,6 +3,44 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.9
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Added
+
+- **Early sub-brand label discovery, for accounts run as several brands under
+  one Amazon seller.** Some agencies operate many distinct brands out of a
+  single seller account, told apart only by a Brand label on the retail and
+  ads sides. A new `mixshift brand discover --seller-id <id>` command reads
+  those labels and reports, per side, how many distinct labels exist, how
+  much of the catalog or ad spend has no label yet, and how well the retail
+  and ads labels line up with each other. It proposes whether the account
+  looks like one brand or several, but never decides for you and never
+  creates or changes anything: that confirmation step comes in a later
+  release. The underlying data queries this command depends on are still
+  rolling out, so results may be incomplete for some accounts until that
+  finishes.
+
+- **Turning discovered sub-brand labels into real brands, and brand setup's
+  new nested path.** `mixshift brand promote --seller-id <id>` builds a
+  promotion plan from that discovery: which labels would become their own
+  brand, what slug each would get, and whether a brand is already bound to
+  that label so re-running never proposes the same thing twice. The default
+  is always a plan only; nothing is written until you confirm one step at a
+  time with `--apply`. Accounts already set up as one whole brand get a
+  content triage proposal alongside the plan: for every existing note,
+  event, and instruction, a suggested disposition (move it to a specific
+  sub-brand, copy it to all of them, or retire it) that you review and edit
+  before anything happens. `mixshift brand demote <slug>` reverses a
+  promotion: it unsets the binding and sets the local folder aside without
+  deleting anything, so restoring it later stays possible. Brand setup
+  (`mx-brand-context`) now runs a shape check before it does anything else;
+  on an account that looks like several brands, it walks you through
+  picking which labels become brands, asks the questions that are the same
+  across all of them once, and then sets up each one with just its own
+  differences. Single-brand accounts see no change at all.
+
 ## 0.8.8
 
 ### Added

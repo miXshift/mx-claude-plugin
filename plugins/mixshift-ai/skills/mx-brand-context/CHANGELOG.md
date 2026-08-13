@@ -4,6 +4,29 @@
 
 *Renamed `mx-account-cold-start` → `mx-brand-context` (mx- prefix convention + the pivot's "Brand Context" umbrella). `skill_id` and SKILL.md `name` are now `mx-brand-context`; `display_name` is "Brand Context Setup". The old cold-start trigger phrases ("cold start", "run cold start") are retained as deprecated aliases for a 1-2 release window. The per-brand run directory moves from `runs/mx-account-cold-start/<date>/` to `runs/mx-brand-context/<date>/`; old run-dir artifacts are regenerable and not migrated. Render layer (brand-context.html, `brand render-context`, `mixshift brand context`) was already named "Brand Context" and is unchanged.*
 
+*v2.8.0 (mx-ops#6 P2, sub-brand path): new Phase 0.3 (Shape Detection) runs
+sub-brand label discovery (`mixshift brand discover --seller-id`) before any
+deeper synthesis and presents the coverage report + classification proposal
+for the AM to confirm — never auto-classified. A confirmed brand-nested
+account forks into the new "Sub-brand path": label menu with per-label
+mass, shared account-level questions asked once, then this skill's own
+Fresh sequence re-run per selected label (seeded from discovery + the
+shared answers, asking only per-brand deltas). Promotion writes go through
+the new `mixshift brand promote`/`brand demote` harness commands (propose-
+only by default; `--apply` executes one confirmed step at a time). Covers
+the already-onboarded migration case (both known pilot accounts): the
+promotion plan's CONTENT TRIAGE table proposes move/copy/retire per
+existing fact, structural event, and instruction, presented as an editable
+proposal, never auto-applied. Adds the three-way scope preamble (specific
+sub-brand / account-with-split-outs / account-wide undifferentiated, the
+last always an explicit choice) and the D-024 label-coverage nudge (light,
+point-of-use, points at the existing Account Manager view — never a gate).
+Single-brand accounts are unaffected: Phase 0.3 confirms the single_brand
+proposal and the rest of the skill runs exactly as before. Documented
+limitation: Phase 1's baseline queries do not yet thread a sub-brand's
+label filter automatically, so early sub-brand baselines are flagged
+account-wide in `open_gaps[]` until that harness wiring lands.*
+
 *v2.7.0 (feedback #37499, flexible event taxonomy + timeline sync): `structural_events[]` gains three types so real customer events no longer have to masquerade as `portfolio_decision`: `off_amazon_media` (a standing off-Amazon media condition: outside demand gen, MMM attribution, non-Amazon ad lines), `assortment_change` (expected catalog rotation: seasonal flavors, planned discontinuations), and `other` as the explicit escape (requires a specific freeform `kind`, so specificity is never lost). Two new optional axes on every event: `kind` (lowercase snake_case slug naming what THIS event specifically is; syncs as the timeline's `structural.<kind>`) and `tags[]` (freeform lowercase slug list, max 16, the team-idiom axis). Structural events now PUBLISH to the org brand timeline as declared stakes: automatically after context writes (auto-publish seam), on `mixshift context push`/`migrate`, and explicitly via the new `mixshift timeline sync --brand <slug> [--dry-run]`. Undated events sync with recorded-now semantics plus an `event_date_known: false` evidence marker. Sync is idempotent (server-side keys), so re-runs create nothing twice.*
 
 *v2.6.0 (Brand Context pivot, Phase 8) — the deep cold-start now READS brand taxonomy (sub-brands, item groups, top ASINs), campaign-structure shape, and the three enrichment analyses (capture-rate calibration incl. the daily settlement curve, stockout windows, brand-term typo clusters) from the Tier-2 Brand Brain (`brand-brain.yaml`, auto-filled on `brand key add`) instead of re-deriving them — restoring the v2.3 enrichment capability that had gone dormant. Retired the queries the brain now covers: CS-01 (identity → registry HARD GATE), CS-10/CS-19/CS-20 (catalog taxonomy → BRAIN-CATALOG), CS-27 (objective completeness → new `campaign_structure.objective_tag_completeness_pct` on BRAIN-CAMPAIGN), CS-16 (redundant with brain stockout), CS-21/CS-25 (skill-level diagnostics). Dropped CS-06/07/08 + CS-28/29/30/31 from the skill's prefetch (the brain computes capture-rate / settlement / stockout / typo from them). KEPT as runtime prefetch pulls: the historical baselines (CS-02/03/04/05/11/12/13/14/15/17/18/22/23/26) plus CS-09 and CS-24 (the brain stores only distinct sets, so the deep skill still pulls CS-09's sub-brand×item-group cross-structure and CS-24's per-campaign objective classification). Per the no-SQL-in-skills constraint: deleted `references/sql-queries.md` and forbade ad-hoc SQL / SQL-library reads in the skill body. Delta mode re-sourced from the brain: `brand merge-delta` now reads the settlement curve from `brand-brain.yaml` (not the retired per-run `enrichment.json`), and the renderer's Detected Anomalies section reads stockouts/typos from the brain; the now-vestigial `brand enrich` command + the `enrichment.json` storage layer were retired (also fixed a pre-existing typo-cluster render field, `total_variants` -> `variant_count`).*
