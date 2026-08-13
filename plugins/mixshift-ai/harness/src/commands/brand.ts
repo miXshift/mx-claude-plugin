@@ -40,6 +40,7 @@ import { registerBrandMergeDeltaCommand } from './brand-merge-delta.js';
 import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
 import { runSubbrandDiscovery } from './brand-subbrand-discover.js';
+import { registerBrandPromoteCommands } from './brand-promote.js';
 
 interface RootOptions {
   json?: boolean;
@@ -663,6 +664,11 @@ export function registerBrandCommands(program: Command): void {
   // `mixshift brand migrate-config <slug>` — one-time context -> OCL migration
   // of single-skill scalar knobs (bid_health.* -> KBH). Idempotent + sovereign.
   registerBrandMigrateConfigCommand(brand);
+
+  // `mixshift brand promote --seller-id <id>` / `mixshift brand demote <slug>`
+  // — sub-brand promotion + its reversal (mx-ops#6 P2). Propose-only by
+  // default; --apply executes one confirmed step at a time.
+  registerBrandPromoteCommands(brand);
 
   // ──────────────────────────────────────────────────────────────────────
   // `mixshift brand key` — manage the user-curated focused subset.

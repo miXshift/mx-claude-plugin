@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-brand-context
 display_name: Brand Context Setup
-version: "2.7.0"
+version: "2.8.0"
 description: >
   Brand Context setup: onboards a brand by building its Tier 3 brand context directory
   for a new Amazon PPC account from scratch (formerly mx-account-cold-start).
