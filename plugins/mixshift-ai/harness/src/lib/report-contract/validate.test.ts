@@ -821,6 +821,47 @@ describe('POP-2 numeric guard (non-numeric member values fail closed, never coer
     expect(finding?.detail).toMatch(/non-numeric/);
   });
 
+  it('none: a stringified predicate THRESHOLD fails closed with POP-2 instead of certifying a false none-claim', () => {
+    // 5 > '1,200' coerces to 5 > NaN = false in JS, so every comparison is
+    // false, the count is 0, and a FALSE "no member exceeded the threshold"
+    // claim would validate CLEAN. The threshold gets the same fail-closed
+    // discipline as member values.
+    const doc = quantifierClaim(
+      { type: 'none', predicate: { member_key: 'delta', op: 'gt', value: '1,200' } },
+      [
+        { key: 'a', delta: 5000 },
+        { key: 'b', delta: 3 },
+      ],
+    );
+    const found = validateReportData(doc);
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/predicate value .* non-numeric/);
+  });
+
+  it('count: a stringified predicate threshold fails closed with POP-2 even when the claimed_count matches the coerced zero', () => {
+    const doc = quantifierClaim(
+      { type: 'count', predicate: { member_key: 'delta', op: 'gt', value: '1,200' }, claimed_count: 0 },
+      [
+        { key: 'a', delta: 5000 },
+        { key: 'b', delta: 3 },
+      ],
+    );
+    const found = validateReportData(doc);
+    const finding = found.find((f) => f.rule === 'POP-2');
+    expect(finding?.detail).toMatch(/predicate value .* non-numeric/);
+  });
+
+  it('eq predicate keeps working on string values with a string threshold (no numeric guard false positive)', () => {
+    const doc = quantifierClaim(
+      { type: 'count', predicate: { member_key: 'status', op: 'eq', value: 'active' }, claimed_count: 1 },
+      [
+        { key: 'a', status: 'active' },
+        { key: 'b', status: 'paused' },
+      ],
+    );
+    expect(validateReportData(doc).filter((f) => f.rule === 'POP-2')).toEqual([]);
+  });
+
   it('extremum: all-numeric members evaluate normally -- a true superlative produces no POP-2', () => {
     const doc = quantifierClaim(
       { type: 'extremum', member_key: 'revenue', direction: 'min', claimed_member: 'feb' },

@@ -88670,6 +88670,9 @@ var NUMERIC_OPS = /* @__PURE__ */ new Set(["lt", "gt", "le", "ge"]);
 function countPred(members, pred) {
   const { member_key: memberKey, op, value } = pred;
   const numericOp = NUMERIC_OPS.has(op);
+  if (numericOp && !isFiniteNumber(value)) {
+    return { count: 0, nonNumericThreshold: true };
+  }
   let n = 0;
   for (const m of members) {
     if (!(memberKey in m)) continue;
@@ -88722,7 +88725,13 @@ function evalCheck(chk, members, allFigs) {
     return { ok: true, why: "" };
   }
   if (t === "count") {
-    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    const { count: n, nonNumeric, nonNumericThreshold } = countPred(members, chk.predicate);
+    if (nonNumericThreshold) {
+      return {
+        ok: false,
+        why: `predicate value for '${chk.predicate.member_key}' (${chk.predicate.op}) is non-numeric`
+      };
+    }
     if (nonNumeric) {
       return {
         ok: false,
@@ -88738,7 +88747,13 @@ function evalCheck(chk, members, allFigs) {
     return { ok: true, why: "" };
   }
   if (t === "none") {
-    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    const { count: n, nonNumeric, nonNumericThreshold } = countPred(members, chk.predicate);
+    if (nonNumericThreshold) {
+      return {
+        ok: false,
+        why: `predicate value for '${chk.predicate.member_key}' (${chk.predicate.op}) is non-numeric`
+      };
+    }
     if (nonNumeric) {
       return {
         ok: false,

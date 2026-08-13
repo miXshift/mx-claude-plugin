@@ -286,9 +286,16 @@ const NUMERIC_OPS = new Set<EvalCheckPredicate['op']>(['lt', 'gt', 'le', 'ge']);
 function countPred(
   members: readonly PopulationMember[],
   pred: EvalCheckPredicate,
-): { count: number; nonNumeric?: PopulationMember } {
+): { count: number; nonNumeric?: PopulationMember; nonNumericThreshold?: boolean } {
   const { member_key: memberKey, op, value } = pred;
   const numericOp = NUMERIC_OPS.has(op);
+  // The predicate's own threshold gets the same fail-closed discipline as
+  // member values: a formatted-string threshold ('1,200') coerces to NaN in
+  // JS, making EVERY comparison false and certifying a false none/count
+  // claim clean, where the Python source raises TypeError.
+  if (numericOp && !isFiniteNumber(value)) {
+    return { count: 0, nonNumericThreshold: true };
+  }
   let n = 0;
   for (const m of members) {
     if (!(memberKey in m)) continue;
@@ -356,7 +363,13 @@ function evalCheck(
   }
 
   if (t === 'count') {
-    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    const { count: n, nonNumeric, nonNumericThreshold } = countPred(members, chk.predicate);
+    if (nonNumericThreshold) {
+      return {
+        ok: false,
+        why: `predicate value for '${chk.predicate.member_key}' (${chk.predicate.op}) is non-numeric`,
+      };
+    }
     if (nonNumeric) {
       return {
         ok: false,
@@ -373,7 +386,13 @@ function evalCheck(
   }
 
   if (t === 'none') {
-    const { count: n, nonNumeric } = countPred(members, chk.predicate);
+    const { count: n, nonNumeric, nonNumericThreshold } = countPred(members, chk.predicate);
+    if (nonNumericThreshold) {
+      return {
+        ok: false,
+        why: `predicate value for '${chk.predicate.member_key}' (${chk.predicate.op}) is non-numeric`,
+      };
+    }
     if (nonNumeric) {
       return {
         ok: false,
