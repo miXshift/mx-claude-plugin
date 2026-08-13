@@ -142,8 +142,8 @@ export interface BrainStatusFile {
  * seller row supplies the brain's seller scalars (acos_target, monthly_budget,
  * merchant_alias, marketplace, activation). A brand has many seats (one per
  * marketplace × platform: Seller Central vs Vendor Central); picking the wrong
- * one corrupts every seller scalar (e.g. AOP rendering its tiny VC seat 577
- * instead of the $30k/mo US SC seat 574).
+ * one corrupts every seller scalar (e.g. rendering a brand's near-dormant VC
+ * seat instead of the US SC seat carrying its actual monthly volume).
  *
  * FALLBACK HEURISTIC, tuned for MixShift's predominantly-US-3P brand base:
  * prefer the active US Seller-Central seat. The truest signal — per-seat
@@ -153,8 +153,8 @@ export interface BrainStatusFile {
  * when that metrics query returns no usable signal (not registered
  * server-side, failed, or no recent revenue/spend). It is intentionally
  * registry-only and biased (SC isn't always primary; US isn't always home) —
- * see HydraPak, whose US-VC seat 113 dwarfs its dormant US-SC seat 384, so the
- * metrics pick (113) is right and this heuristic (384) is the safety net.
+ * see the 1P-heavy fleet in brain.test.ts, whose US-VC seat dwarfs its dormant
+ * US-SC seat: there the metrics pick is right and this heuristic is the safety net.
  *
  * Ranking:
  *   1. Restrict to `ads_active` seats; if none, fall back to `is_active`; if
