@@ -194,9 +194,17 @@ function fixed(n: number, precision: number): string {
  *  display text. Mirrors the reference's `fmt_spec_text`. */
 export function formatFigureValue(fig: FigureLike, currencyCode: string | undefined): string {
   const v = fig.value;
-  if (v === undefined || v === null || Number.isNaN(v)) return MISSING_VALUE;
-  const unit = fig.unit ?? 'raw';
+  if (v === undefined || v === null) return MISSING_VALUE;
+  // Coerce BEFORE checking finiteness: an untrusted document can carry a
+  // non-numeric value ('n/a', '1,234', an object) that Number.isNaN(v)
+  // never catches because v itself is not literally the number NaN. Number
+  // coercion collapses every non-numeric shape to NaN, which the
+  // finiteness check below then catches uniformly -- so a bad value always
+  // renders the same missing-value placeholder, never "$NaN" with a sign
+  // implied that was never there.
   const n = Number(v);
+  if (!Number.isFinite(n)) return MISSING_VALUE;
+  const unit = fig.unit ?? 'raw';
   const neg = n < 0;
   const a = Math.abs(n);
   const prec = fig.precision;
@@ -253,8 +261,15 @@ export function figureAccentClass(fig: FigureLike): '' | 'is-positive' | 'is-neg
   const accent = fig.accent;
   if (accent !== 'auto' && accent !== 'auto_invert') return '';
   const v = fig.value;
-  if (v === undefined || v === null || Number(v) === 0) return 'is-neutral';
-  const rose = Number(v) > 0;
+  if (v === undefined || v === null) return 'is-neutral';
+  // Coerce, then gate on finiteness: a non-numeric value ('n/a', an object)
+  // must never earn a positive/negative accent -- it carries no sign to
+  // report. Number('n/a') is NaN, which is neither > 0 nor === 0 under a
+  // naive check, so the old code fell through to "not risen" and picked a
+  // real accent class for a value that was never a number.
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return 'is-neutral';
+  const rose = n > 0;
   const good = accent === 'auto' ? rose : !rose;
   return good ? 'is-positive' : 'is-negative';
 }
@@ -318,8 +333,17 @@ function renderCaveats(
 ): string {
   const lines: string[] = [];
   for (const id of caveatIds) {
-    const text = registry[id]?.text;
-    if (text) lines.push(`<p class="rr-caveat">${escapeHtml(text)}</p>`);
+    const entry = registry[id];
+    const text = entry?.text;
+    if (text) {
+      lines.push(`<p class="rr-caveat">${escapeHtml(text)}</p>`);
+    } else if (entry?.severity === 'blocking') {
+      // A blocking caveat with no text would otherwise vanish silently here
+      // (validate.ts's CAVEAT-1 now catches this at the door, but the
+      // renderer stays defensive on its own -- corrections go to the data,
+      // never a silently blank page).
+      lines.push(`<p class="rr-caveat rr-caveat-missing">[caveat text missing: ${escapeHtml(id)}]</p>`);
+    }
   }
   return lines.join('\n');
 }
@@ -346,15 +370,25 @@ function renderSectionBody(
 // is async; we mirror its font-URL rewrite here with a sync read instead).
 // ---------------------------------------------------------------------------
 
+/** Matches a single-line `@font-face { ... src: url('fonts/X.ttf') ... }`
+ *  declaration (the design system's colors_and_type.css writes exactly one
+ *  per line, verified against the shipped file). */
+const LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
+
 function loadReportCss(): string {
   const dsDir = designSystemDir();
   const raw = readFileSync(join(dsDir, 'colors_and_type.css'), 'utf-8');
-  const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, '/')}/fonts`;
-  const withFonts = raw.replace(
-    /url\((['"]?)fonts\//g,
-    (_match, quote: string) => `url(${quote}${fontsAbsUrl}/`,
-  );
-  return `${withFonts}\n${REPORT_CSS}`;
+  // Do NOT rewrite local font URLs to file:///<local-install-path>/fonts/...
+  // -- that bakes the operator's own machine's absolute path (and OS
+  // username, on Windows) into HTML that ships to a customer, and it makes
+  // the same document render to different bytes on every machine. Strip the
+  // @font-face rules that point at local files instead; the design
+  // system's own font-family fallback stack (--font-sans / --font-heading,
+  // both end in system-ui / sans-serif) carries the page without them. The
+  // Google Fonts @import lines above them are already absolute https: URLs
+  // and pass through untouched.
+  const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, '').replace(/\n{3,}/g, '\n\n');
+  return `${withoutLocalFonts}\n${REPORT_CSS}`;
 }
 
 const REPORT_CSS = `
@@ -436,6 +470,7 @@ body { background: var(--rc-bg); }
   margin: var(--space-2) 0 0;
 }
 .rr-caveat:first-child { margin-top: 0; }
+.rr-caveat-missing { color: var(--rc-negative); font-style: normal; font-weight: 600; }
 .rr-footer {
   margin-top: var(--space-12);
   padding-top: var(--space-6);
@@ -489,6 +524,60 @@ ${bodyHtml}
 </div>
 </body>
 </html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Forecast vocabulary scan (fail-closed door, see file header point 4)
+// ---------------------------------------------------------------------------
+
+/** Same spirit as the reference's CONDITIONAL_FORECAST_SECTIONS suppression
+ *  list: language that only makes sense next to a live forecast. */
+const FORECAST_VOCAB = /\b(forecast|projected|projection|ahead of|behind)\b/i;
+
+/**
+ * Suppression of forecast content is opt-in today: only a section/shared
+ * block explicitly tagged `kind: 'forecast'` gets suppressed when the
+ * document's forecast isn't provided-current (see the render loop below).
+ * That is correct for TAGGED content but leaves a gap -- forecast prose
+ * that was never tagged ships regardless of forecast state. This scans
+ * every claim and every quotation site that will actually render (an
+ * ordinary section, or the shared block a `shared_block_ref` section
+ * resolves to -- never a pointer section's own ignored fields) for forecast
+ * vocabulary, and returns the offending ids. Already-tagged forecast
+ * content is skipped here: it is suppressed at render regardless, so it is
+ * not a leak and callers should not refuse on its account. Returns `[]`
+ * whenever the forecast IS provided-current (nothing to guard against) or
+ * nothing matches.
+ */
+export function scanForecastVocabulary(doc: RenderReportDataDocument): string[] {
+  if (doc.forecast?.state === 'provided_current') return [];
+
+  const offenders = new Set<string>();
+  const sharedBlocks = doc.shared_blocks ?? {};
+
+  for (const c of doc.claims ?? []) {
+    if (c.text && FORECAST_VOCAB.test(c.text)) offenders.add(c.id);
+  }
+
+  for (const s of doc.sections ?? []) {
+    let block: DisplaySection;
+    let subjectId: string;
+    if (s.shared_block_ref) {
+      const shared = sharedBlocks[s.shared_block_ref];
+      if (!shared) continue; // unresolved ref: TRACE-1 / render's own error, not this scan's
+      block = shared;
+      subjectId = shared.id ?? s.shared_block_ref;
+    } else {
+      block = s;
+      subjectId = s.id;
+    }
+    if (block.kind === 'forecast') continue; // tagged + suppressed at render already
+    if (block.display_text && FORECAST_VOCAB.test(block.display_text)) {
+      offenders.add(subjectId);
+    }
+  }
+
+  return [...offenders].sort();
 }
 
 // ---------------------------------------------------------------------------

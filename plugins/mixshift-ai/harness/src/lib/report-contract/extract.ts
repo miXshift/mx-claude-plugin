@@ -140,7 +140,13 @@ export interface ExtractDocument {
   figures: ExtractedFigure[];
 }
 
-export type CheckRuleId = 'REQUIRED' | 'SOURCE-PATH' | 'DELTA-IDENTITY' | 'SKU-SPLIT' | 'BRIDGE-FOOTING';
+export type CheckRuleId =
+  | 'REQUIRED'
+  | 'SOURCE-PATH'
+  | 'NUMERIC'
+  | 'DELTA-IDENTITY'
+  | 'SKU-SPLIT'
+  | 'BRIDGE-FOOTING';
 
 export interface CheckFinding {
   rule: CheckRuleId;
@@ -540,13 +546,46 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
     }
   }
 
-  // delta == p2 - p1 wherever all three exist
+  // NUMERIC -- every figure's value must actually be a finite number.
+  // Math.abs(NaN) > TOL is always false, so a non-numeric value (a string
+  // like "n/a" or "20000", an object, a boolean, or a genuine NaN/Infinity)
+  // silently PASSES every arithmetic invariant below instead of failing
+  // them -- the exact defect this rule closes. Numeric-looking strings are
+  // reported too, never coerced: a figure's value is either a number or a
+  // defect, there is no third "close enough" state. REQUIRED above already
+  // reports an undefined/null/'' value as "missing"; this rule only adds
+  // new coverage for a value that IS present but is the wrong type/shape,
+  // so the two rules never double-report the same figure.
+  const invalidIds = new Set<string>();
+  for (const f of out.figures) {
+    const v: unknown = f.value;
+    if (v === undefined || v === null || v === '') continue; // REQUIRED's concern
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      invalidIds.add(f.id);
+      findings.push({
+        rule: 'NUMERIC',
+        subject: f.id,
+        detail: `value must be a finite number, got ${JSON.stringify(v)}`,
+      });
+    }
+  }
+
+  // delta == p2 - p1 wherever all three exist and are all numeric. A figure
+  // already flagged NUMERIC is excluded so this can never NaN-compare (which
+  // silently passes) or throw.
   for (const f of out.figures) {
     if (f.id.endsWith('.delta') && !f.id.includes('.bridge.')) {
       const stem = f.id.slice(0, -'.delta'.length);
       const p1 = figs.get(`${stem}.p1`);
       const p2 = figs.get(`${stem}.p2`);
-      if (p1 && p2 && Math.abs(p2.value - p1.value - f.value) > TOL) {
+      if (
+        p1 &&
+        p2 &&
+        !invalidIds.has(f.id) &&
+        !invalidIds.has(p1.id) &&
+        !invalidIds.has(p2.id) &&
+        Math.abs(p2.value - p1.value - f.value) > TOL
+      ) {
         findings.push({ rule: 'DELTA-IDENTITY', subject: f.id, detail: 'delta != p2 - p1' });
       }
     }
@@ -558,7 +597,12 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
       const parts = ['ads.ad_sales_same_sku.', 'ads.ad_sales_other_sku.', 'ads.ad_sales_view_through.'];
       const tot = figs.get(`ads.ad_sales.${side}`);
       const comps = parts.map((p) => figs.get(p + side));
-      if (tot && comps.every((c): c is ExtractedFigure => c !== undefined)) {
+      if (
+        tot &&
+        comps.every((c): c is ExtractedFigure => c !== undefined) &&
+        !invalidIds.has(tot.id) &&
+        comps.every((c) => !invalidIds.has(c.id))
+      ) {
         const s = comps.reduce((acc, c) => acc + c.value, 0);
         if (Math.abs(s - tot.value) > TOL) {
           findings.push({
@@ -571,7 +615,11 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
     }
   }
 
-  // bridge legs foot to the net change whenever the engine said footing ok
+  // bridge legs foot to the net change whenever the engine said footing ok.
+  // A group containing any leg already flagged NUMERIC is skipped entirely
+  // (a string-concatenated reduce here is exactly how earlier findings used
+  // to get lost mid-check -- see BRIDGE-FOOTING test coverage for the
+  // numeric-string-leg regression this guards).
   const legs = new Map<string, ExtractedFigure[]>();
   for (const f of out.figures) {
     if (f.id.includes('.bridge.') && f.footing_ok) {
@@ -584,6 +632,8 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
   for (const [stem, group] of legs) {
     const net = group[0].net_change;
     if (net === undefined || net === null) continue;
+    if (typeof net !== 'number' || !Number.isFinite(net)) continue; // malformed metadata; nothing safe to compare
+    if (group.some((g) => invalidIds.has(g.id))) continue;
     const s = group.reduce((acc, g) => acc + g.value, 0);
     if (Math.abs(s - net) > Math.max(Math.abs(net) * 0.001, TOL)) {
       findings.push({

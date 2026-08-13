@@ -306,6 +306,67 @@ describe('checkFigures: REQUIRED (id, label, value, unit, basis, source_path all
   });
 });
 
+describe('checkFigures: NUMERIC (every figure value must be a finite number, never coerced)', () => {
+  it('passes for an ordinary numeric value', () => {
+    const out = minimalOut({ figures: [f({ id: 'ops.ops.p1', value: 100 })] });
+    expect(checkFigures(out).filter((p) => p.rule === 'NUMERIC')).toEqual([]);
+  });
+
+  it('fires when a value is a non-numeric string ("n/a") -- does not silently pass', () => {
+    const out = minimalOut({ figures: [f({ id: 'ops.ops.p1', value: 'n/a' as unknown as number })] });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'NUMERIC', subject: 'ops.ops.p1' }),
+    );
+  });
+
+  it('fires when a value is a numeric-LOOKING string ("20000") -- reported, never coerced', () => {
+    const out = minimalOut({ figures: [f({ id: 'ops.ops.p1', value: '20000' as unknown as number })] });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'NUMERIC', subject: 'ops.ops.p1' }),
+    );
+  });
+
+  it('fires when a value is an object ({"v":2})', () => {
+    const out = minimalOut({ figures: [f({ id: 'ops.ops.p1', value: { v: 2 } as unknown as number })] });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'NUMERIC', subject: 'ops.ops.p1' }),
+    );
+  });
+
+  it('fires when a value is literally NaN or Infinity', () => {
+    const out = minimalOut({
+      figures: [f({ id: 'a', value: NaN }), f({ id: 'b', value: Infinity })],
+    });
+    const problems = checkFigures(out).filter((p) => p.rule === 'NUMERIC');
+    expect(problems.map((p) => p.subject).sort()).toEqual(['a', 'b']);
+  });
+
+  it('does not double-report a missing value already covered by REQUIRED', () => {
+    const broken = f({ id: 'ops.ops.p1' });
+    delete (broken as Partial<ExtractedFigure>).value;
+    const out = minimalOut({ figures: [broken] });
+    const problems = checkFigures(out);
+    expect(problems.filter((p) => p.rule === 'REQUIRED' && p.subject === 'ops.ops.p1')).toHaveLength(1);
+    expect(problems.filter((p) => p.rule === 'NUMERIC' && p.subject === 'ops.ops.p1')).toHaveLength(0);
+  });
+
+  it('a non-numeric delta value no longer silently passes DELTA-IDENTITY (the original defect: Math.abs(NaN) > TOL is false)', () => {
+    const out = minimalOut({
+      figures: [
+        f({ id: 'ops.ops.p1', value: 100 }),
+        f({ id: 'ops.ops.p2', value: 130 }),
+        f({ id: 'ops.ops.delta', value: 'n/a' as unknown as number }),
+      ],
+    });
+    const problems = checkFigures(out);
+    expect(problems).toContainEqual(expect.objectContaining({ rule: 'NUMERIC', subject: 'ops.ops.delta' }));
+    // The arithmetic invariant is SKIPPED for a figure already flagged
+    // non-numeric -- no NaN comparison, and no spurious DELTA-IDENTITY
+    // finding piled on top of the NUMERIC one for the same root cause.
+    expect(problems.filter((p) => p.rule === 'DELTA-IDENTITY')).toEqual([]);
+  });
+});
+
 describe('checkFigures: SOURCE-PATH (source_path must be envelope-rooted)', () => {
   it('passes for envelope: and crossDomain: rooted paths', () => {
     const out = minimalOut({
@@ -451,5 +512,25 @@ describe('checkFigures: BRIDGE-FOOTING (legs foot to net whenever footing_ok)', 
       ],
     });
     expect(checkFigures(out).filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
+  });
+
+  it('never throws when a leg value is a numeric STRING (the original defect: string-concat reduce + s.toFixed crashing mid-check and losing earlier findings)', () => {
+    const out = minimalOut({
+      figures: [
+        f({ id: 'ops.ops.p1', value: 100 }), // an earlier, unrelated finding-free figure
+        f({ id: 'ops.bridge.ops.primary.a', value: '20000' as unknown as number, footing_ok: true, net_change: 30000 }),
+        f({ id: 'ops.bridge.ops.primary.b', value: '10000' as unknown as number, footing_ok: true, net_change: 30000 }),
+      ],
+    });
+    let problems: ReturnType<typeof checkFigures> = [];
+    expect(() => {
+      problems = checkFigures(out);
+    }).not.toThrow();
+    // Each string leg is its own NUMERIC finding (never coerced)...
+    expect(problems.filter((p) => p.rule === 'NUMERIC')).toHaveLength(2);
+    // ...and the group is excluded from BRIDGE-FOOTING entirely rather than
+    // string-concatenating "20000" + "10000" into "2000010000" and either
+    // throwing on .toFixed or comparing garbage against net_change.
+    expect(problems.filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
   });
 });

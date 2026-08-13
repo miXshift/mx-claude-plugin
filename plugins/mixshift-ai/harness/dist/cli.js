@@ -88622,7 +88622,8 @@ function renderCatalog(entries) {
 }
 
 // src/commands/report.ts
-import { readFile as readFile42, writeFile as writeFile28 } from "node:fs/promises";
+import { readFile as readFile42, writeFile as writeFile28, mkdir as mkdir31 } from "node:fs/promises";
+import { dirname as dirname36 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -88741,6 +88742,7 @@ function validateReportData(doc) {
   for (const c of doc.claims ?? []) claims.set(c.id, c);
   const registry2 = doc.caveat_registry ?? {};
   const sections = doc.sections ?? [];
+  const sharedBlocks = doc.shared_blocks ?? {};
   const byLabel = /* @__PURE__ */ new Map();
   for (const f of [...figures2.values(), ...derived.values()]) {
     const key = f.label.trim().toLowerCase();
@@ -88802,6 +88804,24 @@ function validateReportData(doc) {
         });
       }
     }
+    if (s.shared_block_ref && !Object.prototype.hasOwnProperty.call(sharedBlocks, s.shared_block_ref)) {
+      findings.push({
+        rule: "TRACE-1",
+        subject: s.id,
+        detail: `shared_block_ref '${s.shared_block_ref}' does not resolve`
+      });
+    }
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    for (const rid of block.figure_refs ?? []) {
+      if (!allFigs.has(rid)) {
+        findings.push({
+          rule: "TRACE-1",
+          subject: `shared_blocks.${ref}`,
+          detail: `figure_ref '${rid}' does not resolve`
+        });
+      }
+    }
   }
   for (const d of derived.values()) {
     for (const rid of d.inputs ?? []) {
@@ -88845,25 +88865,42 @@ function validateReportData(doc) {
       });
     }
   }
+  const checkCaveatSite = (subjectId, quoted, rendered) => {
+    for (const rid of [...quoted].sort()) {
+      const f = allFigs.get(rid);
+      if (!f) continue;
+      for (const cav of f.caveats ?? []) {
+        const entry = registry2[cav];
+        if (entry?.severity !== BLOCKING) continue;
+        if (!rendered.has(cav)) {
+          findings.push({
+            rule: "CAVEAT-1",
+            subject: subjectId,
+            detail: `quotes ${rid} without its blocking caveat '${cav}'`
+          });
+        } else if (!(entry.text ?? "").trim()) {
+          findings.push({
+            rule: "CAVEAT-1",
+            subject: subjectId,
+            detail: `quotes ${rid} whose blocking caveat '${cav}' has no text to render`
+          });
+        }
+      }
+    }
+  };
   for (const s of sections) {
     const quoted = new Set(s.figure_refs ?? []);
     for (const cid of s.claim_refs ?? []) {
       for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
     }
-    const rendered = new Set(s.caveats_rendered ?? []);
-    for (const rid of [...quoted].sort()) {
-      const f = allFigs.get(rid);
-      if (!f) continue;
-      for (const cav of f.caveats ?? []) {
-        if (registry2[cav]?.severity === BLOCKING && !rendered.has(cav)) {
-          findings.push({
-            rule: "CAVEAT-1",
-            subject: s.id,
-            detail: `quotes ${rid} without its blocking caveat '${cav}'`
-          });
-        }
-      }
-    }
+    checkCaveatSite(s.id, quoted, new Set(s.caveats_rendered ?? []));
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    checkCaveatSite(
+      `shared_blocks.${ref}`,
+      new Set(block.figure_refs ?? []),
+      new Set(block.caveats_rendered ?? [])
+    );
   }
   for (const c of claims.values()) {
     const kind = c.kind;
@@ -88941,21 +88978,27 @@ function validateReportData(doc) {
       }
     }
   }
+  const checkUnitSite = (subjectId, quoted, text) => {
+    if (!text) return;
+    const quotedArr = [...quoted];
+    const hasItemDays = quotedArr.some((r) => allFigs.get(r)?.unit === "item_days");
+    if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes("item-day")) {
+      findings.push({
+        rule: "UNIT-1",
+        subject: subjectId,
+        detail: "renders an item_days figure as plain days"
+      });
+    }
+  };
   for (const s of sections) {
-    const text = s.display_text ?? "";
-    if (!text) continue;
     const quoted = new Set(s.figure_refs ?? []);
     for (const cid of s.claim_refs ?? []) {
       for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
     }
-    const hasItemDays = [...quoted].some((r) => allFigs.get(r)?.unit === "item_days");
-    if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes("item-day")) {
-      findings.push({
-        rule: "UNIT-1",
-        subject: s.id,
-        detail: "renders an item_days figure as plain days"
-      });
-    }
+    checkUnitSite(s.id, quoted, s.display_text);
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    checkUnitSite(`shared_blocks.${ref}`, block.figure_refs ?? [], block.display_text);
   }
   return findings;
 }
@@ -89338,12 +89381,25 @@ function checkFigures(out) {
       findings.push({ rule: "SOURCE-PATH", subject: f.id, detail: "source_path outside the envelope" });
     }
   }
+  const invalidIds = /* @__PURE__ */ new Set();
+  for (const f of out.figures) {
+    const v = f.value;
+    if (v === void 0 || v === null || v === "") continue;
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      invalidIds.add(f.id);
+      findings.push({
+        rule: "NUMERIC",
+        subject: f.id,
+        detail: `value must be a finite number, got ${JSON.stringify(v)}`
+      });
+    }
+  }
   for (const f of out.figures) {
     if (f.id.endsWith(".delta") && !f.id.includes(".bridge.")) {
       const stem = f.id.slice(0, -".delta".length);
       const p1 = figs.get(`${stem}.p1`);
       const p2 = figs.get(`${stem}.p2`);
-      if (p1 && p2 && Math.abs(p2.value - p1.value - f.value) > TOL) {
+      if (p1 && p2 && !invalidIds.has(f.id) && !invalidIds.has(p1.id) && !invalidIds.has(p2.id) && Math.abs(p2.value - p1.value - f.value) > TOL) {
         findings.push({ rule: "DELTA-IDENTITY", subject: f.id, detail: "delta != p2 - p1" });
       }
     }
@@ -89353,7 +89409,7 @@ function checkFigures(out) {
       const parts = ["ads.ad_sales_same_sku.", "ads.ad_sales_other_sku.", "ads.ad_sales_view_through."];
       const tot = figs.get(`ads.ad_sales.${side}`);
       const comps = parts.map((p) => figs.get(p + side));
-      if (tot && comps.every((c) => c !== void 0)) {
+      if (tot && comps.every((c) => c !== void 0) && !invalidIds.has(tot.id) && comps.every((c) => !invalidIds.has(c.id))) {
         const s = comps.reduce((acc, c) => acc + c.value, 0);
         if (Math.abs(s - tot.value) > TOL) {
           findings.push({
@@ -89377,6 +89433,8 @@ function checkFigures(out) {
   for (const [stem, group] of legs) {
     const net = group[0].net_change;
     if (net === void 0 || net === null) continue;
+    if (typeof net !== "number" || !Number.isFinite(net)) continue;
+    if (group.some((g) => invalidIds.has(g.id))) continue;
     const s = group.reduce((acc, g) => acc + g.value, 0);
     if (Math.abs(s - net) > Math.max(Math.abs(net) * 1e-3, TOL)) {
       findings.push({
@@ -89414,9 +89472,10 @@ function fixed(n, precision) {
 }
 function formatFigureValue(fig2, currencyCode) {
   const v = fig2.value;
-  if (v === void 0 || v === null || Number.isNaN(v)) return MISSING_VALUE;
-  const unit = fig2.unit ?? "raw";
+  if (v === void 0 || v === null) return MISSING_VALUE;
   const n = Number(v);
+  if (!Number.isFinite(n)) return MISSING_VALUE;
+  const unit = fig2.unit ?? "raw";
   const neg = n < 0;
   const a = Math.abs(n);
   const prec = fig2.precision;
@@ -89464,8 +89523,10 @@ function figureAccentClass(fig2) {
   const accent = fig2.accent;
   if (accent !== "auto" && accent !== "auto_invert") return "";
   const v = fig2.value;
-  if (v === void 0 || v === null || Number(v) === 0) return "is-neutral";
-  const rose = Number(v) > 0;
+  if (v === void 0 || v === null) return "is-neutral";
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return "is-neutral";
+  const rose = n > 0;
   const good = accent === "auto" ? rose : !rose;
   return good ? "is-positive" : "is-negative";
 }
@@ -89510,8 +89571,13 @@ function renderFigureStrip(ids, figureIdx, currencyCode) {
 function renderCaveats(caveatIds, registry2) {
   const lines = [];
   for (const id of caveatIds) {
-    const text = registry2[id]?.text;
-    if (text) lines.push(`<p class="rr-caveat">${escapeHtml(text)}</p>`);
+    const entry = registry2[id];
+    const text = entry?.text;
+    if (text) {
+      lines.push(`<p class="rr-caveat">${escapeHtml(text)}</p>`);
+    } else if (entry?.severity === "blocking") {
+      lines.push(`<p class="rr-caveat rr-caveat-missing">[caveat text missing: ${escapeHtml(id)}]</p>`);
+    }
   }
   return lines.join("\n");
 }
@@ -89525,15 +89591,12 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
   const caveats = renderCaveats(block.caveats_rendered ?? [], registry2);
   return `${title}${prose}${figures2}${caveats}`;
 }
+var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
   const raw = readFileSync2(join24(dsDir, "colors_and_type.css"), "utf-8");
-  const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
-  const withFonts = raw.replace(
-    /url\((['"]?)fonts\//g,
-    (_match, quote2) => `url(${quote2}${fontsAbsUrl}/`
-  );
-  return `${withFonts}
+  const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
+  return `${withoutLocalFonts}
 ${REPORT_CSS}`;
 }
 var REPORT_CSS = `
@@ -89615,6 +89678,7 @@ body { background: var(--rc-bg); }
   margin: var(--space-2) 0 0;
 }
 .rr-caveat:first-child { margin-top: 0; }
+.rr-caveat-missing { color: var(--rc-negative); font-style: normal; font-weight: 600; }
 .rr-footer {
   margin-top: var(--space-12);
   padding-top: var(--space-6);
@@ -89657,6 +89721,33 @@ ${bodyHtml}
 </div>
 </body>
 </html>`;
+}
+var FORECAST_VOCAB = /\b(forecast|projected|projection|ahead of|behind)\b/i;
+function scanForecastVocabulary(doc) {
+  if (doc.forecast?.state === "provided_current") return [];
+  const offenders = /* @__PURE__ */ new Set();
+  const sharedBlocks = doc.shared_blocks ?? {};
+  for (const c of doc.claims ?? []) {
+    if (c.text && FORECAST_VOCAB.test(c.text)) offenders.add(c.id);
+  }
+  for (const s of doc.sections ?? []) {
+    let block;
+    let subjectId;
+    if (s.shared_block_ref) {
+      const shared = sharedBlocks[s.shared_block_ref];
+      if (!shared) continue;
+      block = shared;
+      subjectId = shared.id ?? s.shared_block_ref;
+    } else {
+      block = s;
+      subjectId = s.id;
+    }
+    if (block.kind === "forecast") continue;
+    if (block.display_text && FORECAST_VOCAB.test(block.display_text)) {
+      offenders.add(subjectId);
+    }
+  }
+  return [...offenders].sort();
 }
 function renderMonthlyReport(doc, opts = {}) {
   const currencyCode = doc.currency ?? opts.defaultCurrency;
@@ -89724,83 +89815,151 @@ async function readJson(file2) {
     );
   }
 }
+async function writeReportOutput(out, body) {
+  try {
+    await mkdir31(dirname36(out), { recursive: true });
+    await writeFile28(out, body, "utf8");
+  } catch (err) {
+    throw new UserFacingError(
+      `Could not write ${out}: ${err instanceof Error ? err.message : String(err)}`,
+      "report_out_unwritable"
+    );
+  }
+}
+async function withReportErrorHandling(json2, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    if (!json2) throw err;
+    const isUserFacing = err instanceof UserFacingError;
+    console.log(
+      JSON.stringify(
+        {
+          status: "error",
+          error_class: isUserFacing ? err.errorClass : "unhandled_exception",
+          message: err instanceof Error ? err.message : String(err)
+        },
+        null,
+        2
+      )
+    );
+    process.exitCode = 1;
+  }
+}
 function registerReportCommands(program3) {
   const report = program3.command("report").description("Report-contract tools: validate typed report-data documents at the render seam.");
   report.command("validate <files...>").description(
-    "Run the report-contract validators (BASIS-1..UNIT-1) over one or more report-data.json documents. Exit 0 = all clean, 1 = findings."
+    "Run the report-contract validators (BASIS-1..UNIT-1) over one or more report-data.json documents. Exit 0 = all clean, 1 = findings, 2 = at least one file was unreadable (processing still continues through every file; 2 wins over 1 when both occur)."
   ).action(async (files, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
-    const results = [];
-    for (const file2 of files) {
-      const doc = await readJson(file2);
-      results.push({ file: file2, findings: validateReportData(doc) });
-    }
-    const total = results.reduce((n, r) => n + r.findings.length, 0);
-    if (root.json) {
-      console.log(JSON.stringify({ ok: total === 0, total, results }, null, 2));
-    } else {
-      for (const r of results) {
-        console.log(`
-${r.file}: ${r.findings.length === 0 ? "CLEAN" : `${r.findings.length} finding(s)`}`);
-        for (const f of r.findings) {
-          console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+    await withReportErrorHandling(!!root.json, async () => {
+      const results = [];
+      let anyUnreadable = false;
+      for (const file2 of files) {
+        try {
+          const doc = await readJson(file2);
+          results.push({ file: file2, findings: validateReportData(doc) });
+        } catch (err) {
+          anyUnreadable = true;
+          results.push({ file: file2, error: err instanceof Error ? err.message : String(err) });
         }
       }
-      console.log(`
-${total === 0 ? "PASS" : `FAIL: ${total} finding(s)`}`);
-    }
-    process.exitCode = total === 0 ? 0 : 1;
+      const total = results.reduce((n, r) => n + (r.findings?.length ?? 0), 0);
+      const unreadableCount = results.filter((r) => r.error !== void 0).length;
+      if (root.json) {
+        console.log(
+          JSON.stringify(
+            { ok: total === 0 && !anyUnreadable, total, unreadable: unreadableCount, results },
+            null,
+            2
+          )
+        );
+      } else {
+        for (const r of results) {
+          if (r.error !== void 0) {
+            console.log(`
+${r.file}: UNREADABLE -- ${r.error}`);
+            continue;
+          }
+          const findings = r.findings ?? [];
+          console.log(`
+${r.file}: ${findings.length === 0 ? "CLEAN" : `${findings.length} finding(s)`}`);
+          for (const f of findings) {
+            console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+          }
+        }
+        const summary = [
+          total === 0 ? null : `${total} finding(s)`,
+          unreadableCount === 0 ? null : `${unreadableCount} file(s) unreadable`
+        ].filter((s) => s !== null);
+        console.log(`
+${summary.length === 0 ? "PASS" : `FAIL: ${summary.join(", ")}`}`);
+      }
+      process.exitCode = anyUnreadable ? 2 : total === 0 ? 0 : 1;
+    });
   });
   report.command("extract <response.json>").description(
     "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings."
   ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).action(async (file2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
-    const response = await readJson(file2);
-    const doc = extractFigures(response);
-    const findings = opts.check ? checkFigures(doc) : [];
-    const body = JSON.stringify(doc, null, 2);
-    if (opts.out) {
-      await writeFile28(opts.out, body + "\n", "utf8");
-    }
-    if (root.json) {
-      console.log(
-        JSON.stringify(
-          { ok: findings.length === 0, figures: doc.figures.length, out: opts.out ?? null, findings },
-          null,
-          2
-        )
-      );
-    } else {
-      if (!opts.out) console.log(body);
-      console.log(
-        `
+    await withReportErrorHandling(!!root.json, async () => {
+      const response = await readJson(file2);
+      const doc = extractFigures(response);
+      const findings = opts.check ? checkFigures(doc) : [];
+      const body = JSON.stringify(doc, null, 2);
+      if (opts.out) {
+        await writeReportOutput(opts.out, body + "\n");
+      }
+      if (root.json) {
+        console.log(
+          JSON.stringify(
+            { ok: findings.length === 0, figures: doc.figures.length, out: opts.out ?? null, findings },
+            null,
+            2
+          )
+        );
+      } else {
+        if (!opts.out) console.log(body);
+        console.log(
+          `
 ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
-      );
-      for (const f of findings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
-      if (opts.check) console.log(findings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${findings.length})`);
-    }
-    process.exitCode = findings.length === 0 ? 0 : 1;
+        );
+        for (const f of findings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        if (opts.check) console.log(findings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${findings.length})`);
+      }
+      process.exitCode = findings.length === 0 ? 0 : 1;
+    });
   });
   report.command("render <report-data.json>").description(
-    "Render a validated report-data document to self-contained HTML via the deterministic renderer. Refuses to render a document that fails validation unless --force is given."
+    "Render a validated report-data document to self-contained HTML via the deterministic renderer. Refuses to render a document that fails validation, or one whose untagged prose carries forecast vocabulary while the forecast is not provided-current, unless --force is given."
   ).requiredOption("--out <path>", "write the HTML artifact here").option("--force", "render even when the document has validator findings", false).action(async (file2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
-    const doc = await readJson(file2);
-    const findings = validateReportData(doc);
-    if (findings.length > 0 && !opts.force) {
-      for (const f of findings) console.error(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
-      throw new UserFacingError(
-        `Refusing to render: ${findings.length} validator finding(s). Fix report-data.json (corrections go to the data file, never the HTML) or pass --force.`,
-        "report_data_invalid"
-      );
-    }
-    const html = renderMonthlyReport(doc);
-    await writeFile28(opts.out, html, "utf8");
-    if (root.json) {
-      console.log(JSON.stringify({ ok: true, out: opts.out, bytes: html.length, findings }, null, 2));
-    } else {
-      console.log(`Rendered ${opts.out} (${html.length} bytes${findings.length ? `; ${findings.length} finding(s) overridden` : ""})`);
-    }
+    await withReportErrorHandling(!!root.json, async () => {
+      const doc = await readJson(file2);
+      const findings = validateReportData(doc);
+      if (findings.length > 0 && !opts.force) {
+        for (const f of findings) console.error(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        throw new UserFacingError(
+          `Refusing to render: ${findings.length} validator finding(s). Fix report-data.json (corrections go to the data file, never the HTML) or pass --force.`,
+          "report_data_invalid"
+        );
+      }
+      const forecastOffenders = scanForecastVocabulary(doc);
+      if (forecastOffenders.length > 0 && !opts.force) {
+        for (const id of forecastOffenders) console.error(`  forecast vocabulary: ${id}`);
+        throw new UserFacingError(
+          `Refusing to render: forecast vocabulary found in ${forecastOffenders.length} untagged location(s) while the forecast is not provided-current: ${forecastOffenders.join(", ")}. Tag forecast-dependent content with kind: 'forecast' or pass --force.`,
+          "report_forecast_vocabulary"
+        );
+      }
+      const html = renderMonthlyReport(doc);
+      await writeReportOutput(opts.out, html);
+      if (root.json) {
+        console.log(JSON.stringify({ ok: true, out: opts.out, bytes: html.length, findings }, null, 2));
+      } else {
+        console.log(`Rendered ${opts.out} (${html.length} bytes${findings.length ? `; ${findings.length} finding(s) overridden` : ""})`);
+      }
+    });
   });
 }
 
@@ -90355,7 +90514,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname36, join as join25 } from "node:path";
+import { dirname as dirname37, join as join25 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -90492,7 +90651,7 @@ async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     return join25(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname36(fileURLToPath7(import.meta.url));
+  let dir = dirname37(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
       const candidate = join25(dir, "skills");
@@ -90500,7 +90659,7 @@ async function findSkillsDir() {
       if (stat6.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname36(dir);
+    const parent = dirname37(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -92144,7 +92303,7 @@ function emitError13(message, root) {
 // src/commands/task.ts
 init_credentials();
 import { readdir as readdir5, stat as stat5 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname37, join as join27 } from "node:path";
+import { basename as basename5, dirname as dirname38, join as join27 } from "node:path";
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
@@ -92207,7 +92366,7 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename5(dir) !== "auth" || basename5(dirname37(dir)) !== ".mixshift") continue;
+    if (basename5(dir) !== "auth" || basename5(dirname38(dir)) !== ".mixshift") continue;
     found.push(join27(dir, entry.name));
   }
 }
@@ -92223,7 +92382,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname37(dirname37(hitPath));
+  return dirname38(dirname38(hitPath));
 }
 async function pathExists(path2) {
   try {

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderMonthlyReport } from './render-report.js';
-import type { RenderReportDataDocument, DisplaySection } from './render-report.js';
-import type { Figure } from './validate.js';
+import { renderMonthlyReport, formatFigureValue, figureAccentClass, scanForecastVocabulary } from './render-report.js';
+import type { RenderReportDataDocument, DisplaySection, FigureDisplay } from './render-report.js';
+import type { Figure, FigureCommon } from './validate.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const goldenPath = join(here, 'fixtures', 'golden-minimal.json');
@@ -337,6 +337,225 @@ describe('renderMonthlyReport — currency handling', () => {
 function figure(overrides: Partial<Figure> & Pick<Figure, 'id' | 'label'>): Figure {
   return { source_path: `envelope:${overrides.id}`, basis: 'settled_month_end', ...overrides };
 }
+
+// ---------------------------------------------------------------------------
+// formatFigureValue / figureAccentClass — non-numeric values (F5)
+// ---------------------------------------------------------------------------
+
+function figLike(overrides: Partial<FigureCommon & FigureDisplay> & { value?: unknown } = {}): FigureCommon & FigureDisplay {
+  return { id: 'f.x', label: 'X', unit: 'currency', ...overrides } as FigureCommon & FigureDisplay;
+}
+
+describe('formatFigureValue — non-numeric values render the missing placeholder, never "$NaN" (F5)', () => {
+  it('renders the missing-value placeholder for a non-numeric string ("n/a")', () => {
+    const text = formatFigureValue(figLike({ value: 'n/a' as unknown as number }), 'USD');
+    expect(text).not.toContain('NaN');
+    expect(text).toBe('—');
+  });
+
+  it('renders the missing-value placeholder for a numeric-LOOKING string ("1,234") -- never coerced to a real value', () => {
+    const text = formatFigureValue(figLike({ value: '1,234' as unknown as number }), 'USD');
+    expect(text).not.toContain('NaN');
+    expect(text).toBe('—');
+  });
+
+  it('renders the missing-value placeholder for an object value', () => {
+    const text = formatFigureValue(figLike({ value: { v: 2 } as unknown as number }), 'USD');
+    expect(text).toBe('—');
+  });
+
+  it('still formats a genuine numeric value normally (regression guard)', () => {
+    const text = formatFigureValue(figLike({ value: 4200 }), 'USD');
+    expect(text).toBe('$4,200');
+  });
+});
+
+describe('figureAccentClass — non-finite values are always neutral, never a sign accent (F5)', () => {
+  it('returns is-neutral for a non-numeric string under accent: auto', () => {
+    const cls = figureAccentClass(figLike({ value: 'n/a' as unknown as number, accent: 'auto' }));
+    expect(cls).toBe('is-neutral');
+  });
+
+  it('returns is-neutral for a non-numeric string under accent: auto_invert', () => {
+    const cls = figureAccentClass(figLike({ value: 'n/a' as unknown as number, accent: 'auto_invert' }));
+    expect(cls).toBe('is-neutral');
+  });
+
+  it('still resolves a real positive/negative value normally (regression guard)', () => {
+    expect(figureAccentClass(figLike({ value: 10, accent: 'auto' }))).toBe('is-positive');
+    expect(figureAccentClass(figLike({ value: -10, accent: 'auto' }))).toBe('is-negative');
+  });
+});
+
+describe('renderMonthlyReport end-to-end — a non-numeric figure value never reaches the page as "$NaN" with a sign accent (F5)', () => {
+  it('renders the placeholder and a neutral accent class, not is-positive/is-negative', () => {
+    const doc: RenderReportDataDocument = {
+      currency: 'USD',
+      figures: [
+        {
+          id: 'f.bad',
+          label: 'Garbage figure',
+          value: 'n/a' as unknown as number,
+          unit: 'currency',
+          basis: 'b',
+          source_path: 'envelope:x',
+          accent: 'auto',
+          signed: true,
+        },
+      ],
+      sections: [{ id: 'sec.bad', figure_refs: ['f.bad'] }],
+    };
+    const html = renderMonthlyReport(doc);
+    expect(html).not.toContain('NaN');
+    expect(html).not.toContain('rr-figure-value is-positive');
+    expect(html).not.toContain('rr-figure-value is-negative');
+    expect(html).toContain('rr-figure-value is-neutral');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Blocking caveat with no text renders a visible marker, not nothing (F4)
+// ---------------------------------------------------------------------------
+
+describe('a blocking caveat with no registry text renders a visible marker instead of vanishing (F4)', () => {
+  it('renders "[caveat text missing: <id>]" when the registry entry has no text', () => {
+    const doc: RenderReportDataDocument = {
+      figures: [
+        {
+          id: 'f.lost-sales',
+          label: 'Lost sales',
+          value: 100,
+          unit: 'currency',
+          basis: 'b',
+          source_path: 'envelope:x',
+          caveats: ['lost_sales_coverage'],
+        },
+      ],
+      caveat_registry: { lost_sales_coverage: { severity: 'blocking' } }, // no text
+      sections: [
+        {
+          id: 'sec.a',
+          figure_refs: ['f.lost-sales'],
+          caveats_rendered: ['lost_sales_coverage'],
+        },
+      ],
+    };
+    const html = renderMonthlyReport(doc);
+    expect(html).toContain('[caveat text missing: lost_sales_coverage]');
+  });
+
+  it('renders nothing for a non-blocking caveat with no text (unaffected)', () => {
+    const doc: RenderReportDataDocument = {
+      figures: [
+        {
+          id: 'f.a',
+          label: 'A',
+          value: 100,
+          unit: 'currency',
+          basis: 'b',
+          source_path: 'envelope:x',
+          caveats: ['some_note'],
+        },
+      ],
+      caveat_registry: { some_note: { severity: 'disclosure' } }, // no text, non-blocking
+      sections: [{ id: 'sec.a', figure_refs: ['f.a'], caveats_rendered: ['some_note'] }],
+    };
+    const html = renderMonthlyReport(doc);
+    expect(html).not.toContain('caveat text missing');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No file:// URLs / local paths in the rendered HTML (F6)
+// ---------------------------------------------------------------------------
+
+describe('rendered HTML never embeds a local file:// font path (F6, cross-machine determinism)', () => {
+  it('contains no file:// URLs anywhere', () => {
+    const doc = loadGolden();
+    const html = renderMonthlyReport(doc);
+    expect(html).not.toMatch(/file:\/\//);
+  });
+
+  it('contains no absolute local filesystem path (the design-system directory itself)', () => {
+    const doc = loadGolden();
+    const html = renderMonthlyReport(doc);
+    // The CSS should carry no url('fonts/...') references at all once the
+    // local @font-face rules are stripped, and no Windows drive-letter path
+    // (a backslash never legitimately appears in this renderer's output --
+    // unlike a bare "C:" prefix, which would false-positive against the
+    // "https:" in the Google Fonts @import lines that stay untouched).
+    expect(html).not.toMatch(/url\(['"]?fonts\//);
+    expect(html).not.toContain('\\');
+    expect(html).not.toMatch(/[A-Za-z]:[/\\](Users|home)[/\\]/i); // no Windows/POSIX user-home path
+  });
+
+  it('still renders successfully (fallback font stack carries the page, no throw)', () => {
+    const doc = loadGolden();
+    expect(() => renderMonthlyReport(doc)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanForecastVocabulary — the fail-closed door helper (F7)
+// ---------------------------------------------------------------------------
+
+describe('scanForecastVocabulary — untagged forecast prose is caught when the forecast is not provided-current (F7)', () => {
+  it('returns [] when the forecast IS provided-current, regardless of vocabulary present', () => {
+    const doc: RenderReportDataDocument = {
+      forecast: { state: 'provided_current' },
+      sections: [{ id: 'sec.a', display_text: 'Revenue is projected to grow, running ahead of plan.' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual([]);
+  });
+
+  it('flags an UNTAGGED section whose display_text carries forecast vocabulary', () => {
+    const doc: RenderReportDataDocument = {
+      sections: [{ id: 'sec.a', display_text: 'The account is running ahead of its forecast.' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual(['sec.a']);
+  });
+
+  it('flags a claim whose text carries forecast vocabulary', () => {
+    const doc: RenderReportDataDocument = {
+      claims: [{ id: 'claim.a', text: 'Spend is projected to rise next month.' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual(['claim.a']);
+  });
+
+  it('does NOT flag a section explicitly tagged kind: "forecast" -- opt-in suppression stays as-is', () => {
+    const doc: RenderReportDataDocument = {
+      sections: [{ id: 'sec.fc', kind: 'forecast', display_text: 'Running ahead of forecast, projected to beat plan.' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual([]);
+  });
+
+  it('resolves a shared_block_ref section to the BLOCK it points at (never the pointer section\'s own ignored fields)', () => {
+    const doc: RenderReportDataDocument = {
+      shared_blocks: {
+        'shared.bl': { id: 'shared.bl', display_text: 'Behind forecast this month.' },
+      },
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.bl' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual(['shared.bl']);
+  });
+
+  it('does not flag a shared block tagged kind: "forecast" even when referenced by an untagged section', () => {
+    const doc: RenderReportDataDocument = {
+      shared_blocks: {
+        'shared.bl': { id: 'shared.bl', kind: 'forecast', display_text: 'Ahead of forecast, projected to beat plan.' },
+      },
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.bl' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual([]);
+  });
+
+  it('returns [] on plain prose with no forecast vocabulary at all', () => {
+    const doc: RenderReportDataDocument = {
+      sections: [{ id: 'sec.a', display_text: 'Revenue held steady month over month.' }],
+    };
+    expect(scanForecastVocabulary(doc)).toEqual([]);
+  });
+});
 
 describe('renderMonthlyReport — permissive on absent optional data', () => {
   it('renders a document with only the required top-level fields', () => {

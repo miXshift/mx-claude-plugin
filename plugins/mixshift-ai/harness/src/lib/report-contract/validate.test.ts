@@ -233,6 +233,144 @@ describe('CAVEAT-1 (blocking caveats render at every quotation site)', () => {
     };
     expect(validateReportData(doc).some((f) => f.rule === 'CAVEAT-1')).toBe(false);
   });
+
+  it('fires when a blocking caveat IS declared rendered but its registry entry has no text (it would silently vanish at render)', () => {
+    const doc: ReportDataDocument = {
+      figures: [figWithBlockingCaveat],
+      caveat_registry: { lost_sales_coverage: { severity: 'blocking' } }, // no text
+      sections: [
+        { id: 'sec.1', figure_refs: ['f.lost-sales'], caveats_rendered: ['lost_sales_coverage'] },
+      ],
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'CAVEAT-1', subject: 'sec.1' }),
+    );
+  });
+
+  it('also fires for a registry entry with an empty-string text', () => {
+    const doc: ReportDataDocument = {
+      figures: [figWithBlockingCaveat],
+      caveat_registry: { lost_sales_coverage: { text: '   ', severity: 'blocking' } },
+      sections: [
+        { id: 'sec.1', figure_refs: ['f.lost-sales'], caveats_rendered: ['lost_sales_coverage'] },
+      ],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'CAVEAT-1')).toBe(true);
+  });
+});
+
+describe('shared_blocks are validated as their own quotation site (TRACE-1 / CAVEAT-1 / UNIT-1)', () => {
+  it('TRACE-1: fires when a section\'s shared_block_ref does not resolve', () => {
+    const doc: ReportDataDocument = {
+      sections: [{ id: 'sec.orphan', shared_block_ref: 'nope' }],
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'TRACE-1', subject: 'sec.orphan' }),
+    );
+  });
+
+  it('TRACE-1: fires when a shared block\'s own figure_ref does not resolve', () => {
+    const doc: ReportDataDocument = {
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.bottom_line' }],
+      shared_blocks: {
+        'shared.bottom_line': { figure_refs: ['f.does-not-exist'] },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'TRACE-1', subject: 'shared_blocks.shared.bottom_line' }),
+    );
+  });
+
+  it('TRACE-1: passes when the shared_block_ref and its figure_refs all resolve', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'f.a', label: 'A' })],
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.bottom_line' }],
+      shared_blocks: { 'shared.bottom_line': { figure_refs: ['f.a'] } },
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'TRACE-1')).toBe(false);
+  });
+
+  it('CAVEAT-1: fires when a shared block quotes a figure without rendering its blocking caveat -- a pointer section carrying no figure_refs of its own previously let this bypass the validator entirely', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'f.lost-sales', label: 'Lost sales', caveats: ['lost_sales_coverage'] }),
+      ],
+      caveat_registry: {
+        lost_sales_coverage: { text: 'priced universe only', severity: 'blocking' },
+      },
+      sections: [
+        { id: 'sec.exec', shared_block_ref: 'shared.bottom_line' },
+        { id: 'sec.full', shared_block_ref: 'shared.bottom_line' },
+      ],
+      shared_blocks: {
+        'shared.bottom_line': {
+          figure_refs: ['f.lost-sales'],
+          caveats_rendered: [], // the bug: never rendered
+        },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'CAVEAT-1', subject: 'shared_blocks.shared.bottom_line' }),
+    );
+    // The pointer sections themselves carry no figure_refs, so they must
+    // NOT ALSO separately fire (would be a confusing duplicate against the
+    // wrong subject id).
+    expect(found.filter((f) => f.subject === 'sec.exec' || f.subject === 'sec.full')).toEqual([]);
+  });
+
+  it('CAVEAT-1: does not fire when the shared block renders the blocking caveat', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'f.lost-sales', label: 'Lost sales', caveats: ['lost_sales_coverage'] }),
+      ],
+      caveat_registry: {
+        lost_sales_coverage: { text: 'priced universe only', severity: 'blocking' },
+      },
+      sections: [{ id: 'sec.exec', shared_block_ref: 'shared.bottom_line' }],
+      shared_blocks: {
+        'shared.bottom_line': {
+          figure_refs: ['f.lost-sales'],
+          caveats_rendered: ['lost_sales_coverage'],
+        },
+      },
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'CAVEAT-1')).toBe(false);
+  });
+
+  it('UNIT-1: fires when a shared block renders an item_days figure as plain "days"', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'f.oos', label: 'OOS exposure', unit: 'item_days' })],
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.oos' }],
+      shared_blocks: {
+        'shared.oos': {
+          figure_refs: ['f.oos'],
+          display_text: 'Out-of-stock exposure rose from 377 to 855 days.',
+        },
+      },
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'UNIT-1', subject: 'shared_blocks.shared.oos' }),
+    );
+  });
+
+  it('UNIT-1: does not fire when the shared block says "item-days"', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'f.oos', label: 'OOS exposure', unit: 'item_days' })],
+      sections: [{ id: 'sec.a', shared_block_ref: 'shared.oos' }],
+      shared_blocks: {
+        'shared.oos': {
+          figure_refs: ['f.oos'],
+          display_text: 'Out-of-stock exposure rose from 377 to 855 item-days.',
+        },
+      },
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-1')).toBe(false);
+  });
 });
 
 describe('POP-1 (superlative/quantifier claims need a complete population)', () => {

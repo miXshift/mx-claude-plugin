@@ -188,6 +188,26 @@ export interface Section {
   claim_refs?: string[];
   caveats_rendered?: string[];
   display_text?: string;
+  /** When set, this section is a thin pointer at `doc.shared_blocks[ref]`
+   *  (see render-report.ts's `SectionDisplay`); the section's own
+   *  `figure_refs` / `caveats_rendered` / `display_text` are ignored at
+   *  render time in favor of the resolved block's. The validator only needs
+   *  to know the ref resolves (TRACE-1) -- the block itself is validated as
+   *  its own quotation site, see `shared_blocks` below. */
+  shared_block_ref?: string;
+}
+
+/** A shared block (render-report.ts's `doc.shared_blocks[ref]`) is content
+ *  authored once and injected at every section pointing to it via
+ *  `shared_block_ref`, rendered byte-identically at each site. It is a
+ *  quotation site in its own right -- it carries the figure_refs and
+ *  caveats_rendered that actually reach the page, not whatever a pointer
+ *  section happens to declare -- so TRACE-1 / CAVEAT-1 / UNIT-1 walk it the
+ *  same way they walk an ordinary Section. */
+export interface SharedBlock {
+  display_text?: string;
+  figure_refs?: string[];
+  caveats_rendered?: string[];
 }
 
 export interface ReportDataDocument {
@@ -199,6 +219,7 @@ export interface ReportDataDocument {
   caveat_registry?: Record<string, CaveatRegistryEntry>;
   claims?: Claim[];
   sections?: Section[];
+  shared_blocks?: Record<string, SharedBlock>;
 }
 
 function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
@@ -343,6 +364,7 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
 
   const registry = doc.caveat_registry ?? {};
   const sections = doc.sections ?? [];
+  const sharedBlocks = doc.shared_blocks ?? {};
 
   // BASIS-1 -- one basis per label
   const byLabel = new Map<string, Set<string | undefined>>();
@@ -408,6 +430,24 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
         });
       }
     }
+    if (s.shared_block_ref && !Object.prototype.hasOwnProperty.call(sharedBlocks, s.shared_block_ref)) {
+      findings.push({
+        rule: 'TRACE-1',
+        subject: s.id,
+        detail: `shared_block_ref '${s.shared_block_ref}' does not resolve`,
+      });
+    }
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    for (const rid of block.figure_refs ?? []) {
+      if (!allFigs.has(rid)) {
+        findings.push({
+          rule: 'TRACE-1',
+          subject: `shared_blocks.${ref}`,
+          detail: `figure_ref '${rid}' does not resolve`,
+        });
+      }
+    }
   }
   for (const d of derived.values()) {
     for (const rid of d.inputs ?? []) {
@@ -456,26 +496,49 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
     }
   }
 
-  // CAVEAT-1 -- blocking caveats travel to every quotation site
+  // CAVEAT-1 -- blocking caveats travel to every quotation site, and a
+  // blocking caveat that IS declared rendered must actually carry text to
+  // render (an empty/missing registry entry passes the "is it declared"
+  // check but vanishes silently at render -- see render-report.ts's
+  // renderCaveats, which now renders a visible marker for exactly this
+  // case). Shared blocks are quotation sites in their own right (see
+  // `SharedBlock` above), checked the same way as an ordinary Section.
+  const checkCaveatSite = (subjectId: string, quoted: Iterable<string>, rendered: Set<string>): void => {
+    for (const rid of [...quoted].sort()) {
+      const f = allFigs.get(rid);
+      if (!f) continue;
+      for (const cav of f.caveats ?? []) {
+        const entry = registry[cav];
+        if (entry?.severity !== BLOCKING) continue;
+        if (!rendered.has(cav)) {
+          findings.push({
+            rule: 'CAVEAT-1',
+            subject: subjectId,
+            detail: `quotes ${rid} without its blocking caveat '${cav}'`,
+          });
+        } else if (!(entry.text ?? '').trim()) {
+          findings.push({
+            rule: 'CAVEAT-1',
+            subject: subjectId,
+            detail: `quotes ${rid} whose blocking caveat '${cav}' has no text to render`,
+          });
+        }
+      }
+    }
+  };
   for (const s of sections) {
     const quoted = new Set<string>(s.figure_refs ?? []);
     for (const cid of s.claim_refs ?? []) {
       for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
     }
-    const rendered = new Set<string>(s.caveats_rendered ?? []);
-    for (const rid of [...quoted].sort()) {
-      const f = allFigs.get(rid);
-      if (!f) continue;
-      for (const cav of f.caveats ?? []) {
-        if (registry[cav]?.severity === BLOCKING && !rendered.has(cav)) {
-          findings.push({
-            rule: 'CAVEAT-1',
-            subject: s.id,
-            detail: `quotes ${rid} without its blocking caveat '${cav}'`,
-          });
-        }
-      }
-    }
+    checkCaveatSite(s.id, quoted, new Set<string>(s.caveats_rendered ?? []));
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    checkCaveatSite(
+      `shared_blocks.${ref}`,
+      new Set<string>(block.figure_refs ?? []),
+      new Set<string>(block.caveats_rendered ?? []),
+    );
   }
 
   // Per-claim rules
@@ -561,22 +624,30 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
     }
   }
 
-  // UNIT-1 -- item_days never renders as plain days
+  // UNIT-1 -- item_days never renders as plain days. Shared blocks own
+  // their own display_text (a pointer section's is ignored at render), so
+  // they get the same check.
+  const checkUnitSite = (subjectId: string, quoted: Iterable<string>, text: string | undefined): void => {
+    if (!text) return;
+    const quotedArr = [...quoted];
+    const hasItemDays = quotedArr.some((r) => allFigs.get(r)?.unit === 'item_days');
+    if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes('item-day')) {
+      findings.push({
+        rule: 'UNIT-1',
+        subject: subjectId,
+        detail: 'renders an item_days figure as plain days',
+      });
+    }
+  };
   for (const s of sections) {
-    const text = s.display_text ?? '';
-    if (!text) continue;
     const quoted = new Set<string>(s.figure_refs ?? []);
     for (const cid of s.claim_refs ?? []) {
       for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
     }
-    const hasItemDays = [...quoted].some((r) => allFigs.get(r)?.unit === 'item_days');
-    if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes('item-day')) {
-      findings.push({
-        rule: 'UNIT-1',
-        subject: s.id,
-        detail: 'renders an item_days figure as plain days',
-      });
-    }
+    checkUnitSite(s.id, quoted, s.display_text);
+  }
+  for (const [ref, block] of Object.entries(sharedBlocks)) {
+    checkUnitSite(`shared_blocks.${ref}`, block.figure_refs ?? [], block.display_text);
   }
 
   return findings;
