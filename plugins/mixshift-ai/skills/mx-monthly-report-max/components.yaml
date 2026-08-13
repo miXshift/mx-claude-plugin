@@ -1,0 +1,108 @@
+# Borrow map — what this skill is made of, and how to lift each piece.
+#
+# Product bet on record (2026-08-12): users will want pieces of this skill more
+# often than the whole. Every component below is designed to be borrowed: it names its
+# home, its dependencies, and the smallest correct way to reuse it in another skill.
+# Keep this file honest — a component whose "how to lift" no longer works is a defect.
+
+schema_version: 1
+skill_id: mx-monthly-report-max
+
+components:
+  - id: report-contract
+    what: >
+      The typed figure/claim contract and its mechanical validators (rule IDs
+      BASIS-1..UNIT-1): a document of Figure / Derived / Claim / Caveat / Section
+      objects where a number cannot be quoted without its basis, a superlative without
+      its complete population, or a caveat-carrying figure without its caveat.
+    home: plugins/mixshift-ai/harness/src/lib/report-contract/
+    depends_on: [nothing outside the harness; pure functions over a JSON document]
+    how_to_lift: >
+      Import validateReportData() from the harness lib, or call the CLI door
+      (`mixshift report validate <file.json>`). Any skill that emits claims from data
+      can adopt the contract wholesale; adopt the fixtures too or the contract is
+      decorative.
+    provenance: >
+      Ported from the mpr-v2 handover package (Python executable spec, same rule IDs,
+      same 10 fixtures verbatim). Each rule maps to a shipped incident; see
+      rules-provenance.md.
+
+  - id: negative-fixtures
+    what: >
+      The nine shipped claim errors encoded as renders that MUST fail (E1-E9), plus the
+      golden-minimal document. Wired as CI: a change that stops one firing fails the
+      build.
+    home: plugins/mixshift-ai/harness/src/lib/report-contract/fixtures/
+    depends_on: [report-contract]
+    how_to_lift: >
+      Copy the append PROTOCOL, not just the files: every shipped defect in your skill
+      becomes a permanent negative fixture, routed by scope (brand -> context,
+      universal -> fixture, engine-class -> engine rule). The fixtures themselves are
+      report-contract-shaped and only transfer to skills using that contract.
+    provenance: mpr-v2 package, verbatim; incident history in rules-provenance.md.
+
+  - id: rules-provenance
+    what: >
+      The case law: every validator rule and judgment rule annotated with the real
+      incident that created it, plus the live append protocol at the top.
+    home: rules-provenance.md (this skill directory)
+    depends_on: []
+    how_to_lift: >
+      The FORMAT is the borrowable part: rule -> incident -> what now enforces it.
+      Start your skill's own provenance file with the same three columns; copy the
+      append protocol verbatim.
+    provenance: mpr-v2 package, verbatim (pre-scrubbed upstream).
+
+  - id: envelope-acquisition
+    what: >
+      The INS-MONTHLY-01 acquisition pattern: MoM + YoY pairs with ops/ads companions,
+      async poll for oversize accounts, degrade-and-label on not_enrolled/service
+      error, publish-day re-pull + diff (restatement discipline), metered disclosure.
+    home: SKILL.md Step 1 (pattern) + harness lib/intelligence (the client)
+    depends_on: [mixshift intelligence CLI (0.8.7+), tenant enrollment]
+    how_to_lift: >
+      Any skill consuming an INS-* entry: copy Step 1's structure and keep all four
+      behaviors (degrade-and-label, async patience, re-pull+diff, metered disclosure).
+      The CLI client is already shared; do not write your own HTTP.
+    provenance: house pattern (gateway Phase 2) + mpr-v2 operating notes.
+
+  - id: prose-lint
+    what: Writing-quality lint for rendered report HTML (register, banned phrases, voice).
+    home: helpers/prose-lint.py
+    depends_on: [python3 stdlib only]
+    how_to_lift: Copy the file; it is self-contained. Run against rendered HTML, exit 0 gate.
+    provenance: mpr-v2 package, verbatim.
+
+  - id: review-manifest
+    what: >
+      The self-review artifact schema (review.json): substantiation findings + language
+      edits as a structured manifest with honest counts and validator exit codes.
+    home: helpers/mpr-review-schema.json
+    depends_on: []
+    how_to_lift: Copy the schema; emit it at your own pre-publication gate.
+    provenance: mpr-v2 package (v1.4.0 requirement carried forward).
+
+  - id: judgment-rules
+    what: >
+      The analytical judgment residue (C1/C1a cross-item halo discovery, C2/C3
+      event-shift + clean comparator, C4 cover-build direction, probe-before-limit,
+      mechanism-testing) and the writing rules.
+    home: SKILL.md "Judgment rules" section
+    depends_on: [an envelope with evidence/halo data for C1; otherwise portable prose rules]
+    how_to_lift: >
+      Text-borrowable per rule. C1/C1a require halo flows from the envelope; the
+      writing rules transfer to any client-facing report skill unchanged.
+    provenance: mpr-v2 SKILL.md, adapted to house doors; incidents in rules-provenance.md.
+
+  - id: engine-pending-rules
+    what: >
+      Six methodology-universal rules (blended-benchmark non-finding, absolute
+      contributions, bid-pullback language, ex-surge day-normalisation, mix vs blended
+      metric, statement reconciliation) that bind in-skill until the engine adopts them.
+    home: SKILL.md "Engine-pending rules" section
+    depends_on: []
+    how_to_lift: >
+      Borrow freely, but check the engine version first: each rule retires here the
+      release the engine starts enforcing it, and a borrowed copy must retire too.
+      Their eventual home is the engine, not more skills.
+    provenance: mpr-v2 package; design for engine adoption already merged upstream.

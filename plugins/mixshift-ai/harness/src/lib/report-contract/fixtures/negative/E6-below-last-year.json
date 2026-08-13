@@ -1,0 +1,39 @@
+{
+  "_note": "Error #3: '17% below last year's price for five weeks'. dipPct measures against the item's OWN baseline (not prior year) and days counts depressed days (8), not a span of weeks. The claim declares comparison_basis prior_year against a figure whose basis is own_baseline -- the basis mismatch is the structural catch.",
+  "_expected": ["COMP-1"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.line20.dip",
+      "label": "Line-20 detected discount depth",
+      "value": -17.0,
+      "unit": "percent",
+      "basis": "own_baseline",
+      "source_path": "envelope:ops.promoWindows.line20.dipPct",
+      "caveats": []
+    },
+    {
+      "id": "ops.line20.dip_days",
+      "label": "Line-20 depressed-price days",
+      "value": 8,
+      "unit": "days",
+      "basis": "own_baseline",
+      "source_path": "envelope:ops.promoWindows.line20.days",
+      "caveats": []
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.below-last-year",
+      "kind": "comparison",
+      "text": "Line-20 ran 17% below last year's price for five weeks.",
+      "figure_refs": ["ops.line20.dip", "ops.line20.dip_days"],
+      "comparison_basis": "prior_year"
+    }
+  ],
+  "sections": []
+}

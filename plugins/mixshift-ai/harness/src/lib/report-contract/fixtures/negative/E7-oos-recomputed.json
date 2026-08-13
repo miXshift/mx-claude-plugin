@@ -1,0 +1,49 @@
+{
+  "_note": "Error #4: OOS '377 -> 855' shipped while the run publishes 672, in ITEM-days. Two defects: a locally recomputed figure with no why_not_published (the sentence explaining why 672 would not do cannot be written), and item_days rendered as plain 'days'.",
+  "_expected": ["TRACE-2", "UNIT-1"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.oos.item_days.current",
+      "label": "OOS exposure (item-days), current",
+      "value": 672,
+      "unit": "item_days",
+      "basis": "full_universe",
+      "source_path": "envelope:ops.availability.oosItemDays.current",
+      "caveats": []
+    },
+    {
+      "id": "ops.oos.item_days.comparison",
+      "label": "OOS exposure (item-days), comparison",
+      "value": 377,
+      "unit": "item_days",
+      "basis": "full_universe",
+      "source_path": "envelope:ops.availability.oosItemDays.comparison",
+      "caveats": []
+    }
+  ],
+  "derived": [
+    {
+      "id": "ops.oos.recomputed",
+      "label": "OOS days (recomputed)",
+      "value": 855,
+      "unit": "item_days",
+      "basis": "full_universe",
+      "inputs": ["sql:oos-day-join"],
+      "why_not_published": ""
+    }
+  ],
+  "caveat_registry": {},
+  "claims": [],
+  "sections": [
+    {
+      "id": "sec.availability",
+      "figure_refs": ["ops.oos.item_days.comparison", "ops.oos.recomputed"],
+      "claim_refs": [],
+      "caveats_rendered": [],
+      "display_text": "Out-of-stock exposure rose from 377 to 855 days."
+    }
+  ]
+}

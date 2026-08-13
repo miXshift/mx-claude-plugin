@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generated_at": "<ISO 8601 UTC>",
+  "skill_version": "<from manifest>",
+  "brand_slug": "<brand-slug>",
+  "data_date": "<YYYY-MM-DD, last day of reported month>",
+  "report_html_path": "<absolute path to report HTML>",
+
+  "pass_1_substantiation": {
+    "claims_checked_estimate": "<int — typically 30-60; order-of-magnitude is fine>",
+    "corrections": [
+      {
+        "type": "rank_correction|number_correction|delta_correction",
+        "original": "<text as originally written>",
+        "corrected": "<text after fix>",
+        "source": "<DB query ID or context.yaml path>"
+      }
+    ],
+    "removals": [
+      {
+        "type": "unsupported_causal_claim|seasonal_driver|future_assertion|invented_nickname",
+        "removed": "<text removed>",
+        "rationale": "<why it failed substantiation>"
+      }
+    ]
+  },
+
+  "pass_2_language": {
+    "squish_words_removed": ["<word>"],
+    "delta_labels_added": ["<short description of where MoM/YoY was added>"],
+    "delta_signs_added": "<int>",
+    "em_dash_substitutions": "<int>",
+    "banned_terms_found": ["<term>"]
+  },
+
+  "anti_fabrication_attestation": {
+    "all_numbers_from_db_or_context_yaml": true,
+    "forecast_numbers_source": "<context.yaml path(s) or screenshot ref>",
+    "item_group_mapping_applied": "<context.yaml path or 'not applicable'>",
+    "unsupported_claims_present": false
+  }
+}

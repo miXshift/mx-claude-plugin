@@ -1,0 +1,53 @@
+{
+  "_note": "Error #9: 'almost all of it is traffic' -- the traffic leg was 128% of the net decline (offset by positive legs). 'Almost all' encodes as a share band [0.8, 1.0]; a share above 1 means 'traffic did MORE than all of it' and the claim as worded must fail.",
+  "_expected": ["POP-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.decline.total",
+      "label": "Revenue decline, MoM",
+      "value": -184300,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.bridge.total",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "traffic", "impact": -235900},
+          {"key": "conversion", "impact": 38200},
+          {"key": "price", "impact": 13400}
+        ]
+      }
+    },
+    {
+      "id": "ops.decline.traffic_leg",
+      "label": "Traffic leg of the bridge",
+      "value": -235900,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.bridge.components.traffic",
+      "caveats": []
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.almost-all-traffic",
+      "kind": "quantifier",
+      "text": "Almost all of the decline is traffic.",
+      "figure_refs": ["ops.decline.total", "ops.decline.traffic_leg"],
+      "population_ref": "ops.decline.total",
+      "check": {
+        "type": "share_of_total",
+        "numerator": "ops.decline.traffic_leg",
+        "denominator": "ops.decline.total",
+        "claimed_band": [0.8, 1.0]
+      }
+    }
+  ],
+  "sections": []
+}
