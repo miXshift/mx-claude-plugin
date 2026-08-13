@@ -71477,7 +71477,16 @@ var brandBrainSchema = external_exports.object({
     account_wide: external_exports.array(external_exports.string()).default([]),
     missing_label_value: external_exports.array(external_exports.string()).default([]),
     /** The query failed or was deferred — no scoping claim was possible. */
-    query_failed: external_exports.array(external_exports.string()).default([])
+    query_failed: external_exports.array(external_exports.string()).default([]),
+    /**
+     * Which lens CONTRACT produced this record. Absent means the brain was
+     * written before evidence-based reconciliation existed, when 'applied'
+     * was asserted from client-side intent rather than proven — so an old
+     * cached brain's `applied` list is NOT trustworthy and must not be read
+     * as confirmation. Readers treat absent as "unknown provenance" and
+     * fall back to account-wide (the safe direction); a refresh restamps it.
+     */
+    contract: external_exports.literal(2).optional()
   }).optional()
 });
 var BRAIN_SCHEMA_VERSION = 1;
@@ -72432,6 +72441,131 @@ function debugLog2(env, message) {
 `);
 }
 
+// src/lib/binding/lens.ts
+var LABEL_LENS_PARAM_BY_QUERY = {
+  "BRAIN-CATALOG-SC": "retail_brand_label",
+  "BRAIN-CATALOG-VC": "retail_brand_label",
+  "BRAIN-CAMPAIGN": "ads_brand_label",
+  "CS-09": "retail_brand_label",
+  "CS-11": "retail_brand_label",
+  "CS-12": "retail_brand_label",
+  "CS-13": "retail_brand_label"
+};
+function lensFor(queryId, binding) {
+  if (!binding) return null;
+  const param = LABEL_LENS_PARAM_BY_QUERY[queryId];
+  if (!param) {
+    return {
+      params: {},
+      pendingVerification: false,
+      decision: { query_id: queryId, outcome: "account_wide" }
+    };
+  }
+  const value = param === "retail_brand_label" ? binding.retail_label?.value : binding.ads_label?.value;
+  if (!value) {
+    return {
+      params: {},
+      pendingVerification: false,
+      decision: { query_id: queryId, outcome: "missing_label_value", param }
+    };
+  }
+  return {
+    params: { [param]: value },
+    pendingVerification: true,
+    // Placeholder — NOT a claim. reconcileLensDecision resolves this once
+    // the query returns.
+    decision: { query_id: queryId, outcome: "unverified", param, value }
+  };
+}
+function reconcileLensDecision(decision, outcome) {
+  if (decision.outcome !== "unverified" || !decision.param) return decision;
+  if (!outcome || outcome.status !== "ok") {
+    return { ...decision, outcome: "query_failed" };
+  }
+  if (!Array.isArray(outcome.appliedParams)) {
+    return decision;
+  }
+  return outcome.appliedParams.includes(decision.param) ? { ...decision, outcome: "applied" } : { ...decision, outcome: "dropped" };
+}
+function reconcileLensDecisions(decisions, outcomes) {
+  return decisions.map((d) => reconcileLensDecision(d, outcomes.get(d.query_id)));
+}
+function mergeLensOutcome(outcomes, id, next) {
+  const prev = outcomes.get(id);
+  if (!prev) {
+    outcomes.set(id, next);
+    return;
+  }
+  if (prev.status !== "ok" || next.status !== "ok") {
+    outcomes.set(id, prev.status !== "ok" ? prev : next);
+    return;
+  }
+  const prevParams = Array.isArray(prev.appliedParams) ? prev.appliedParams : void 0;
+  const nextParams = Array.isArray(next.appliedParams) ? next.appliedParams : void 0;
+  if (prevParams === void 0 || nextParams === void 0) {
+    outcomes.set(id, { status: "ok" });
+    return;
+  }
+  outcomes.set(id, {
+    status: "ok",
+    appliedParams: prevParams.filter((p) => nextParams.includes(p))
+  });
+}
+var LENS_CONTRACT_VERSION = 2;
+function lensFilterWasSent(outcome) {
+  return outcome === "applied" || outcome === "unverified";
+}
+function zeroRowConfidence(outcome) {
+  return outcome === "applied" ? "The filter is confirmed applied, so" : "The filter was sent but the gateway did not confirm it, so either the label does not match or the filter never ran;";
+}
+function summarizeLens(decisions) {
+  const byOutcome = (outcome) => decisions.filter((d) => d.outcome === outcome).map((d) => d.query_id);
+  return {
+    bound: decisions.length > 0,
+    contract: LENS_CONTRACT_VERSION,
+    applied: byOutcome("applied"),
+    dropped: byOutcome("dropped"),
+    unverified: byOutcome("unverified"),
+    account_wide: byOutcome("account_wide"),
+    missing_label_value: byOutcome("missing_label_value"),
+    query_failed: byOutcome("query_failed")
+  };
+}
+function renderLensNotice(summary, slug) {
+  if (!summary.bound) return null;
+  const parts = [];
+  if (summary.applied.length > 0) {
+    parts.push(`label-scoped: ${summary.applied.join(", ")}`);
+  }
+  if (summary.dropped.length > 0) {
+    parts.push(
+      `DROPPED (the gateway did not honor this label filter; these rows are ACCOUNT-WIDE despite "${slug}"'s binding; flag to MixShift ops): ${summary.dropped.join(", ")}`
+    );
+  }
+  if (summary.unverified.length > 0) {
+    parts.push(
+      `UNVERIFIED (the gateway did not confirm the label filter applied; treat as NOT proven label-scoped, never as confirmed): ${summary.unverified.join(", ")}`
+    );
+  }
+  if (summary.query_failed.length > 0) {
+    parts.push(
+      `no scoping claim possible, query failed or was deferred: ${summary.query_failed.join(", ")}`
+    );
+  }
+  if (summary.account_wide.length > 0) {
+    parts.push(
+      `ACCOUNT-WIDE (no label filter exists for these; do not attribute their numbers to "${slug}"): ${summary.account_wide.join(", ")}`
+    );
+  }
+  if (summary.missing_label_value.length > 0) {
+    parts.push(
+      `ACCOUNT-WIDE (binding has no label value for that side; add it to context.yaml binding to scope these): ${summary.missing_label_value.join(", ")}`
+    );
+  }
+  if (parts.length === 0) return null;
+  return `Sub-brand label lens for "${slug}" -> ${parts.join(" | ")}`;
+}
+
 // src/lib/brain/read.ts
 async function loadBrain(brandSlug, dataDirOverride) {
   const path2 = brainPath(brandSlug, dataDirOverride);
@@ -72484,7 +72618,11 @@ var BRAND_FIELD_REGISTRY = {
   // which the label lens CAN scope (mx-ops#6) — a bound brand's value here
   // is this sub-brand's own only when that query's lens actually resolved
   // to 'applied' (checked against the brain's stored label_lens record).
-  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc", brainQueryId: "BRAIN-CATALOG-SC" },
+  // MERGED FIELD: assembleBrain builds catalog.sub_brands / item_groups from
+  // BOTH catalog sources, so BOTH must be confirmed before this can be called
+  // this sub-brand's own. Keying it to SC alone let a hybrid or VC-side brand
+  // carry unfiltered vendor rows under a "label-scoped" badge.
+  sub_brands: { contextPath: "sub_brands", brainPath: "catalog.sub_brands", brainSource: "catalog_sc", brainQueryId: ["BRAIN-CATALOG-SC", "BRAIN-CATALOG-VC"] },
   marketplace: { contextPath: "accounts.0.marketplace", brainPath: "seller.marketplace", brainSource: "seller", brainQueryId: "account_wide" },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: "management.primary_metric" },
@@ -72514,7 +72652,8 @@ var BRAND_FIELD_REGISTRY = {
   monthly_budget: { brainPath: "seller.monthly_budget", brainSource: "seller", brainQueryId: "account_wide" },
   recent_spend_30d: { brainPath: "recent_activity.spend_30d", brainSource: "recent_activity", brainQueryId: "account_wide" },
   recent_acos_30d: { brainPath: "recent_activity.acos_30d", brainSource: "recent_activity", brainQueryId: "account_wide" },
-  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc", brainQueryId: "BRAIN-CATALOG-SC" },
+  // Same merged-source rule as sub_brands above: SC + VC both contribute.
+  item_groups: { brainPath: "catalog.item_groups", brainSource: "catalog_sc", brainQueryId: ["BRAIN-CATALOG-SC", "BRAIN-CATALOG-VC"] },
   hero_asins: { brainPath: "catalog.top_asins", brainSource: "hero_sc", brainQueryId: "account_wide" },
   // Phase 8 enrichment (each value serves 2+ skills).
   // capture_rate is both-tier (AM-confirmed context wins; brain
@@ -72549,7 +72688,15 @@ function isPresent(v) {
 function isAccountWideBrainField(spec, binding, labelLens) {
   if (!binding) return false;
   if (!spec.brainQueryId || spec.brainQueryId === "account_wide") return true;
-  return !(labelLens?.applied.includes(spec.brainQueryId) ?? false);
+  const contributors = typeof spec.brainQueryId === "string" ? [spec.brainQueryId] : [...spec.brainQueryId];
+  if (!labelLens) return true;
+  if (labelLens.contract !== LENS_CONTRACT_VERSION) return true;
+  const ran = contributors.filter((id) => lensRecorded(labelLens, id));
+  if (ran.length === 0) return true;
+  return !ran.every((id) => labelLens.applied.includes(id));
+}
+function lensRecorded(lens, id) {
+  return lens.applied.includes(id) || lens.dropped.includes(id) || lens.unverified.includes(id) || lens.account_wide.includes(id) || lens.missing_label_value.includes(id) || lens.query_failed.includes(id);
 }
 function resolveFieldFrom(ctx, brain, spec) {
   if (spec.contextPath && ctx.ok) {
@@ -72611,102 +72758,6 @@ async function resolveBinding(brandSlug, dataDirOverride) {
   }
   if (!result.ok) return null;
   return result.context.binding ?? null;
-}
-
-// src/lib/binding/lens.ts
-var LABEL_LENS_PARAM_BY_QUERY = {
-  "BRAIN-CATALOG-SC": "retail_brand_label",
-  "BRAIN-CATALOG-VC": "retail_brand_label",
-  "BRAIN-CAMPAIGN": "ads_brand_label",
-  "CS-09": "retail_brand_label",
-  "CS-11": "retail_brand_label",
-  "CS-12": "retail_brand_label",
-  "CS-13": "retail_brand_label"
-};
-function lensFor(queryId, binding) {
-  if (!binding) return null;
-  const param = LABEL_LENS_PARAM_BY_QUERY[queryId];
-  if (!param) {
-    return {
-      params: {},
-      pendingVerification: false,
-      decision: { query_id: queryId, outcome: "account_wide" }
-    };
-  }
-  const value = param === "retail_brand_label" ? binding.retail_label?.value : binding.ads_label?.value;
-  if (!value) {
-    return {
-      params: {},
-      pendingVerification: false,
-      decision: { query_id: queryId, outcome: "missing_label_value", param }
-    };
-  }
-  return {
-    params: { [param]: value },
-    pendingVerification: true,
-    // Placeholder — NOT a claim. reconcileLensDecision resolves this once
-    // the query returns.
-    decision: { query_id: queryId, outcome: "unverified", param, value }
-  };
-}
-function reconcileLensDecision(decision, outcome) {
-  if (decision.outcome !== "unverified" || !decision.param) return decision;
-  if (!outcome || outcome.status !== "ok") {
-    return { ...decision, outcome: "query_failed" };
-  }
-  if (outcome.appliedParams === void 0) {
-    return decision;
-  }
-  return outcome.appliedParams.includes(decision.param) ? { ...decision, outcome: "applied" } : { ...decision, outcome: "dropped" };
-}
-function reconcileLensDecisions(decisions, outcomes) {
-  return decisions.map((d) => reconcileLensDecision(d, outcomes.get(d.query_id)));
-}
-function summarizeLens(decisions) {
-  const byOutcome = (outcome) => decisions.filter((d) => d.outcome === outcome).map((d) => d.query_id);
-  return {
-    bound: decisions.length > 0,
-    applied: byOutcome("applied"),
-    dropped: byOutcome("dropped"),
-    unverified: byOutcome("unverified"),
-    account_wide: byOutcome("account_wide"),
-    missing_label_value: byOutcome("missing_label_value"),
-    query_failed: byOutcome("query_failed")
-  };
-}
-function renderLensNotice(summary, slug) {
-  if (!summary.bound) return null;
-  const parts = [];
-  if (summary.applied.length > 0) {
-    parts.push(`label-scoped: ${summary.applied.join(", ")}`);
-  }
-  if (summary.dropped.length > 0) {
-    parts.push(
-      `DROPPED (the gateway did not honor this label filter; these rows are ACCOUNT-WIDE despite "${slug}"'s binding; flag to MixShift ops): ${summary.dropped.join(", ")}`
-    );
-  }
-  if (summary.unverified.length > 0) {
-    parts.push(
-      `UNVERIFIED (the gateway did not confirm the label filter applied; treat as NOT proven label-scoped, never as confirmed): ${summary.unverified.join(", ")}`
-    );
-  }
-  if (summary.query_failed.length > 0) {
-    parts.push(
-      `no scoping claim possible, query failed or was deferred: ${summary.query_failed.join(", ")}`
-    );
-  }
-  if (summary.account_wide.length > 0) {
-    parts.push(
-      `ACCOUNT-WIDE (no label filter exists for these; do not attribute their numbers to "${slug}"): ${summary.account_wide.join(", ")}`
-    );
-  }
-  if (summary.missing_label_value.length > 0) {
-    parts.push(
-      `ACCOUNT-WIDE (binding has no label value for that side; add it to context.yaml binding to scope these): ${summary.missing_label_value.join(", ")}`
-    );
-  }
-  if (parts.length === 0) return null;
-  return `Sub-brand label lens for "${slug}" -> ${parts.join(" | ")}`;
 }
 
 // src/lib/brain/fetch.ts
@@ -72782,20 +72833,20 @@ function buildLensWarnings(args) {
   const warnings = [];
   const notice = renderLensNotice(lensSummary, slug);
   if (notice) warnings.push(notice);
-  const catalogLensApplied = lensDecisions.some(
-    (d) => d.outcome === "applied" && (d.query_id === "BRAIN-CATALOG-SC" || d.query_id === "BRAIN-CATALOG-VC")
+  const catalogSent = lensDecisions.find(
+    (d) => lensFilterWasSent(d.outcome) && (d.query_id === "BRAIN-CATALOG-SC" || d.query_id === "BRAIN-CATALOG-VC")
   );
-  if (catalogLensApplied && (catalogAsinCount ?? 0) === 0) {
+  if (catalogSent && (catalogAsinCount ?? 0) === 0) {
     warnings.push(
-      `The retail label filter matched ZERO catalog rows for "${slug}". The binding's retail label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily) \u2014 verify it against \`mixshift brand discover\` before trusting any retail numbers for this sub-brand.`
+      `The retail label filter matched ZERO catalog rows for "${slug}". ${zeroRowConfidence(catalogSent.outcome)} the binding's retail label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily). Verify it against \`mixshift brand discover\` before trusting any retail numbers for this sub-brand.`
     );
   }
-  const campaignLensApplied = lensDecisions.some(
-    (d) => d.outcome === "applied" && d.query_id === "BRAIN-CAMPAIGN"
+  const campaignSent = lensDecisions.find(
+    (d) => lensFilterWasSent(d.outcome) && d.query_id === "BRAIN-CAMPAIGN"
   );
-  if (campaignLensApplied && (campaignCount ?? 0) === 0) {
+  if (campaignSent && (campaignCount ?? 0) === 0) {
     warnings.push(
-      `The ads label filter matched ZERO campaigns for "${slug}". Either this sub-brand truly has no labeled campaigns, or the binding's ads label value does not match \`campaign.Brand\` verbatim \u2014 the coverage report distinguishes the two.`
+      `The ads label filter matched ZERO campaigns for "${slug}". ${zeroRowConfidence(campaignSent.outcome)} either this sub-brand truly has no labeled campaigns, or the binding's ads label value does not match \`campaign.Brand\` verbatim. The coverage report distinguishes the two.`
     );
   }
   return warnings;
@@ -81762,7 +81813,7 @@ async function runPrefetch(opts) {
           rowCount: r.output.rows.length,
           durationMs: r.output.duration_ms
         });
-        lensOutcomeByQueryId.set(r.output.id, {
+        mergeLensOutcome(lensOutcomeByQueryId, r.output.id, {
           status: "ok",
           appliedParams: r.output.applied_params
         });
@@ -81774,14 +81825,14 @@ async function runPrefetch(opts) {
             missing_params: r.queryResult.missing_params,
             error: r.queryResult.friendly
           });
-          lensOutcomeByQueryId.set(r.id, { status: "deferred" });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: "deferred" });
         } else {
           perQueryResults.push({
             id: r.id,
             status: "failed",
             error: r.queryResult.friendly
           });
-          lensOutcomeByQueryId.set(r.id, { status: "failed" });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: "failed" });
         }
       } else if ("error" in r) {
         if ("missing_params" in r && r.missing_params) {
@@ -81791,14 +81842,14 @@ async function runPrefetch(opts) {
             missing_params: r.missing_params,
             error: r.error
           });
-          lensOutcomeByQueryId.set(r.id, { status: "deferred" });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: "deferred" });
         } else {
           perQueryResults.push({
             id: r.id,
             status: "failed",
             error: r.error
           });
-          lensOutcomeByQueryId.set(r.id, { status: "failed" });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: "failed" });
         }
       }
     }
@@ -81867,10 +81918,10 @@ function buildPrefetchLensWarnings(decisions, results, slug) {
   if (notice) warnings.push(notice);
   const rowCountById = new Map(results.map((r) => [r.id, r.rowCount ?? null]));
   for (const d of decisions) {
-    if (d.outcome !== "applied") continue;
+    if (!lensFilterWasSent(d.outcome)) continue;
     if (rowCountById.get(d.query_id) === 0) {
       warnings.push(
-        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". The binding's label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily); verify it against \`mixshift brand discover\` before trusting this sub-brand's numbers from that query.`
+        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". ${zeroRowConfidence(d.outcome)} the binding's label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily). Verify it against \`mixshift brand discover\` before trusting this sub-brand's numbers from that query.`
       );
     }
   }
@@ -85595,7 +85646,17 @@ async function applyConfirmation(payload, decision, opts) {
       ...accountWideFieldsResult(payload, decision)
     };
   }
-  const blockToSave = composeSkillBlock(effective, payload.extras);
+  const accountWideSaved = accountWideFieldsResult(payload, decision).account_wide_fields;
+  const blockToSave = composeSkillBlock(
+    effective,
+    accountWideSaved && accountWideSaved.length > 0 ? {
+      ...payload.extras,
+      account_wide_at_save: {
+        fields: accountWideSaved,
+        note: "These values came from data covering the WHOLE seller account, not just this sub-brand, and were accepted without edit. Re-confirm them against label-scoped numbers when the sub-brand data lens can serve them."
+      }
+    } : payload.extras
+  );
   const { path: path2 } = await saveSkillConfig(
     payload.brand_slug,
     payload.skill_id,

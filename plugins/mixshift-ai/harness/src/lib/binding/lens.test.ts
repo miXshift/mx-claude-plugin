@@ -8,6 +8,7 @@ import {
   renderLensNotice,
   type LensDecision,
   type QueryLensOutcome,
+  LENS_CONTRACT_VERSION,
 } from './lens.js';
 import type { BindingBlock } from '../context/schema.js';
 
@@ -173,6 +174,7 @@ describe('summarizeLens + renderLensNotice (post-reconciliation)', () => {
   it('splits decisions into all six buckets', () => {
     expect(summarizeLens(decisions)).toEqual({
       bound: true,
+      contract: LENS_CONTRACT_VERSION,
       applied: ['CS-09'],
       dropped: ['CS-13'],
       unverified: ['CS-12'],
@@ -203,6 +205,7 @@ describe('summarizeLens + renderLensNotice (post-reconciliation)', () => {
   it('bound is false and every bucket is empty for an unbound brand (no decisions)', () => {
     expect(summarizeLens([])).toEqual({
       bound: false,
+      contract: LENS_CONTRACT_VERSION,
       applied: [],
       dropped: [],
       unverified: [],

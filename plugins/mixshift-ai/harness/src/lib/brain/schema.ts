@@ -398,6 +398,15 @@ export const brandBrainSchema = z.object({
       missing_label_value: z.array(z.string()).default([]),
       /** The query failed or was deferred — no scoping claim was possible. */
       query_failed: z.array(z.string()).default([]),
+      /**
+       * Which lens CONTRACT produced this record. Absent means the brain was
+       * written before evidence-based reconciliation existed, when 'applied'
+       * was asserted from client-side intent rather than proven — so an old
+       * cached brain's `applied` list is NOT trustworthy and must not be read
+       * as confirmation. Readers treat absent as "unknown provenance" and
+       * fall back to account-wide (the safe direction); a refresh restamps it.
+       */
+      contract: z.literal(2).optional(),
     })
     .optional(),
 });

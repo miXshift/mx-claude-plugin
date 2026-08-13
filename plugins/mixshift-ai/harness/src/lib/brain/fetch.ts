@@ -40,6 +40,8 @@ import {
   lensFor,
   summarizeLens,
   renderLensNotice,
+  lensFilterWasSent,
+  zeroRowConfidence,
   reconcileLensDecisions,
   type LensDecision,
   type LensSummary,
@@ -315,27 +317,33 @@ function buildLensWarnings(args: {
   const notice = renderLensNotice(lensSummary, slug);
   if (notice) warnings.push(notice);
 
-  const catalogLensApplied = lensDecisions.some(
+  // Zero-row (label-typo) detection fires whenever a filter was SENT, not
+  // only when the gateway confirmed it — see lensFilterWasSent. Gating on
+  // 'applied' alone made this detector dark on every deploy that predates
+  // the applied_params echo, which is precisely when a mistyped label
+  // silently yields an empty sub-brand.
+  const catalogSent = lensDecisions.find(
     (d) =>
-      d.outcome === 'applied' &&
+      lensFilterWasSent(d.outcome) &&
       (d.query_id === 'BRAIN-CATALOG-SC' || d.query_id === 'BRAIN-CATALOG-VC'),
   );
-  if (catalogLensApplied && (catalogAsinCount ?? 0) === 0) {
+  if (catalogSent && (catalogAsinCount ?? 0) === 0) {
     warnings.push(
-      `The retail label filter matched ZERO catalog rows for "${slug}". The binding's ` +
-        'retail label value may not match the warehouse verbatim (labels are matched ' +
-        'exactly, never fuzzily) — verify it against `mixshift brand discover` before ' +
-        'trusting any retail numbers for this sub-brand.',
+      `The retail label filter matched ZERO catalog rows for "${slug}". ` +
+        `${zeroRowConfidence(catalogSent.outcome)} the binding's retail label value may not ` +
+        'match the warehouse verbatim (labels are matched exactly, never fuzzily). Verify it ' +
+        'against `mixshift brand discover` before trusting any retail numbers for this sub-brand.',
     );
   }
-  const campaignLensApplied = lensDecisions.some(
-    (d) => d.outcome === 'applied' && d.query_id === 'BRAIN-CAMPAIGN',
+  const campaignSent = lensDecisions.find(
+    (d) => lensFilterWasSent(d.outcome) && d.query_id === 'BRAIN-CAMPAIGN',
   );
-  if (campaignLensApplied && (campaignCount ?? 0) === 0) {
+  if (campaignSent && (campaignCount ?? 0) === 0) {
     warnings.push(
-      `The ads label filter matched ZERO campaigns for "${slug}". Either this sub-brand ` +
-        'truly has no labeled campaigns, or the binding\'s ads label value does not match ' +
-        '`campaign.Brand` verbatim — the coverage report distinguishes the two.',
+      `The ads label filter matched ZERO campaigns for "${slug}". ` +
+        `${zeroRowConfidence(campaignSent.outcome)} either this sub-brand truly has no labeled ` +
+        "campaigns, or the binding's ads label value does not match `campaign.Brand` verbatim. " +
+        'The coverage report distinguishes the two.',
     );
   }
   return warnings;

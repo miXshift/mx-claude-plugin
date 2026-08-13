@@ -215,8 +215,14 @@ export function reconcileLensDecision(
     // Failed or deferred: no rows, no scoping claim either way.
     return { ...decision, outcome: 'query_failed' };
   }
-  if (outcome.appliedParams === undefined) {
-    // No evidence either way (older gateway) — stays 'unverified'.
+  // Runtime shape guard, not just a type guard: applied_params arrives from
+  // an HTTP response we do not control, so a null / object / number / string
+  // there must degrade to "no evidence" rather than throw (.includes on a
+  // non-array) or silently read as a dropped filter. Anything that is not a
+  // real array is treated exactly like an absent field.
+  if (!Array.isArray(outcome.appliedParams)) {
+    // No evidence either way (older gateway, or a malformed field) — stays
+    // 'unverified', which the surfaces already render as not-proven.
     return decision;
   }
   return outcome.appliedParams.includes(decision.param)
@@ -227,9 +233,16 @@ export function reconcileLensDecision(
 /**
  * Batch form of {@link reconcileLensDecision}: resolve every decision whose
  * query id has a known outcome. Decisions with no matching entry in
- * `outcomes` (the query never ran) pass through unchanged — in practice
- * that never happens for a decision `lensFor` produced, since a decision is
- * only ever pushed at the same call site that dispatches the query.
+ * `outcomes` (the query never ran) pass through unchanged, which leaves them
+ * 'unverified' — the safe direction, since nothing then claims scoping.
+ *
+ * DUPLICATE IDS: a map is keyed by query id, so if the same id executes more
+ * than once in a run (a manifest listing it in two rounds, or a caller
+ * dispatching it twice), every decision for that id resolves against
+ * whichever outcome was recorded LAST. That is a genuine limitation rather
+ * than a silent bug, so it is bounded here: callers must record outcomes for
+ * duplicate ids conservatively (see the merge rule below), and the map's
+ * writer, not this function, owns that choice.
  */
 export function reconcileLensDecisions(
   decisions: readonly LensDecision[],
@@ -238,9 +251,66 @@ export function reconcileLensDecisions(
   return decisions.map((d) => reconcileLensDecision(d, outcomes.get(d.query_id)));
 }
 
+/**
+ * Merge a newly-observed outcome for a query id into an outcome map, keeping
+ * the SAFEST of the two rather than letting the last write win.
+ *
+ * Safety order (least to most confident): query_failed/deferred < no-evidence
+ * < evidence. When one execution of an id proves the filter applied and
+ * another shows it dropped, the DROPPED reading survives: a merged field must
+ * never be described as scoped when any contributing execution was not.
+ */
+export function mergeLensOutcome(
+  outcomes: Map<string, QueryLensOutcome>,
+  id: string,
+  next: QueryLensOutcome,
+): void {
+  const prev = outcomes.get(id);
+  if (!prev) {
+    outcomes.set(id, next);
+    return;
+  }
+  // A failure anywhere wins: it makes no scoping claim at all.
+  if (prev.status !== 'ok' || next.status !== 'ok') {
+    outcomes.set(id, prev.status !== 'ok' ? prev : next);
+    return;
+  }
+  const prevParams = Array.isArray(prev.appliedParams) ? prev.appliedParams : undefined;
+  const nextParams = Array.isArray(next.appliedParams) ? next.appliedParams : undefined;
+  if (prevParams === undefined || nextParams === undefined) {
+    // One execution gave no evidence: keep the no-evidence reading so the
+    // decision stays 'unverified' rather than being upgraded on partial proof.
+    outcomes.set(id, { status: 'ok' });
+    return;
+  }
+  // Both carry evidence: intersect, so a param must have been bound on EVERY
+  // execution of this id to count as applied.
+  outcomes.set(id, {
+    status: 'ok',
+    appliedParams: prevParams.filter((p) => nextParams.includes(p)),
+  });
+}
+
+/**
+ * Version of the LENS CONTRACT that produced a summary. Bumped when the
+ * MEANING of an outcome changes, which is different from the brain's own
+ * schema_version (the document shape is unchanged).
+ *
+ * 1 = outcomes asserted from client-side intent before the query ran. A
+ *     stored `applied` from that era proves nothing.
+ * 2 = outcomes resolved from evidence (the gateway's applied_params echo).
+ *
+ * Persisted records written before this constant existed carry no `contract`
+ * field at all; readers treat that as era 1 and refuse to read its `applied`
+ * as confirmation.
+ */
+export const LENS_CONTRACT_VERSION = 2 as const;
+
 export interface LensSummary {
   /** True whenever the brand is bound (decisions exist). */
   bound: boolean;
+  /** See {@link LENS_CONTRACT_VERSION}. Absent on pre-evidence records. */
+  contract?: typeof LENS_CONTRACT_VERSION;
   applied: string[];
   /** P0: we sent the filter, the gateway did not honor it. These rows are
    *  ACCOUNT-WIDE despite the binding. */
@@ -259,11 +329,42 @@ export interface LensSummary {
  * would report every pending placeholder as 'unverified' regardless of
  * what actually happened, defeating the point of the evidence step.
  */
+/**
+ * Did we actually SEND a label filter for this query, whether or not the
+ * gateway confirmed it?
+ *
+ * This is the correct gate for the zero-row (label-typo) detector, and it is
+ * deliberately NOT `outcome === 'applied'`. The label predicates are live
+ * server-side today, but the `applied_params` echo that proves it is a
+ * SEPARATE, later gateway change — so until that deploys, a genuinely
+ * filtered query that genuinely returns zero rows resolves 'unverified'.
+ * Gating the typo detector on 'applied' therefore switches it off for the
+ * entire window in which it is most needed: a mistyped label produces a
+ * silently empty sub-brand, which is exactly what the design (§7, §11) says
+ * must warn rather than pass quietly.
+ *
+ * 'dropped' is excluded on purpose: there the gateway told us the filter did
+ * NOT apply, so zero rows means an empty ACCOUNT, not a bad label, and the
+ * dropped warning already says the rows are account-wide.
+ */
+export function lensFilterWasSent(outcome: LensOutcome): boolean {
+  return outcome === 'applied' || outcome === 'unverified';
+}
+
+/** Phrase-fragment for a zero-row warning, matched to how much we can prove.
+ *  Keeps an unprovable claim out of the confirmed-language path. */
+export function zeroRowConfidence(outcome: LensOutcome): string {
+  return outcome === 'applied'
+    ? 'The filter is confirmed applied, so'
+    : 'The filter was sent but the gateway did not confirm it, so either the label does not match or the filter never ran;';
+}
+
 export function summarizeLens(decisions: readonly LensDecision[]): LensSummary {
   const byOutcome = (outcome: LensOutcome): string[] =>
     decisions.filter((d) => d.outcome === outcome).map((d) => d.query_id);
   return {
     bound: decisions.length > 0,
+    contract: LENS_CONTRACT_VERSION,
     applied: byOutcome('applied'),
     dropped: byOutcome('dropped'),
     unverified: byOutcome('unverified'),

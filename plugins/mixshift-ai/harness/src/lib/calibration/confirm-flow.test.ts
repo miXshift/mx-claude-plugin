@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import {
@@ -1320,5 +1321,59 @@ describe('writeRunOclSnapshot', () => {
       expect(raw).toMatch(/skill_id: dhc/);
       expect(raw).toMatch(/objective: growth/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round-2 red team: an accepted account-wide value must leave a DURABLE record
+// ---------------------------------------------------------------------------
+
+describe('applyConfirmation - account-wide provenance survives the save', () => {
+  /** The realistic shape: the operator edits one field and ACCEPTS the rest,
+   *  one of which carries an account-wide value. Before the fix, the accepted
+   *  account-wide value landed in config.yaml indistinguishable from a value
+   *  chosen deliberately for this sub-brand. */
+  async function saveWith(accountWide: boolean) {
+    const payload = await prepareConfirmation({
+      brandSlug: 'summit',
+      brandName: 'Summit',
+      skillId: 'dhc',
+      manifest,
+      dataDirOverride: testDir,
+    });
+    // Mark hero_skus (NOT one of the edited fields) as the account-wide one,
+    // so it is accepted-as-is — the exact case the stamp exists for.
+    const marked = {
+      ...payload,
+      fields: payload.fields.map((f) =>
+        f.field.id === 'hero_skus' && accountWide ? { ...f, account_wide: true as const } : f,
+      ),
+    };
+    const result = await applyConfirmation(
+      marked,
+      // Both REQUIRED fields must be supplied or the save fails validation
+      // and nothing is written.
+      { action: 'edit', edits: { objective: 'growth', dampening: '0.4' }, save: true },
+      { dataDirOverride: testDir },
+    );
+    const raw = await readFile(join(testDir, 'clients', 'summit', 'config.yaml'), 'utf-8');
+    return { result, doc: parseYaml(raw) as Record<string, Record<string, unknown>> };
+  }
+
+  it('stamps account_wide_at_save into the PERSISTED block for an accepted account-wide field', async () => {
+    const { result, doc } = await saveWith(true);
+    expect(result.status).toBe('ok');
+    expect(result.did_persist).toBe(true);
+    const stamp = doc.dhc?.account_wide_at_save as { fields?: string[] } | undefined;
+    expect(stamp?.fields).toContain('hero_skus');
+    // The EDITED fields are deliberate choices, so they are never stamped.
+    expect(stamp?.fields).not.toContain('dampening');
+    expect(stamp?.fields).not.toContain('objective');
+  });
+
+  it('adds NO stamp when nothing account-wide was accepted', async () => {
+    const { result, doc } = await saveWith(false);
+    expect(result.did_persist).toBe(true);
+    expect(doc.dhc ?? {}).not.toHaveProperty('account_wide_at_save');
   });
 });

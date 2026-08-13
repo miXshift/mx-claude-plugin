@@ -20,7 +20,7 @@ import { validateBrandContext } from '../context/load.js';
 import { formatZodError } from '../profile/format-error.js';
 import { maybeAutoSync } from '../context-sync/autosync.js';
 import type { BindingBlock } from '../context/schema.js';
-import type { LensSummary } from '../binding/lens.js';
+import { LENS_CONTRACT_VERSION, type LensSummary } from '../binding/lens.js';
 
 export type LoadBrainResult =
   | { ok: true; brain: BrandBrain; path: string }
@@ -211,7 +211,7 @@ interface FieldSpec {
    *     for that id (only 'applied' counts; dropped/unverified/
    *     missing_label_value/query_failed do not).
    */
-  brainQueryId?: string | 'account_wide';
+  brainQueryId?: string | readonly string[] | 'account_wide';
 }
 
 /**
@@ -227,7 +227,11 @@ const BRAND_FIELD_REGISTRY = {
   // which the label lens CAN scope (mx-ops#6) — a bound brand's value here
   // is this sub-brand's own only when that query's lens actually resolved
   // to 'applied' (checked against the brain's stored label_lens record).
-  sub_brands: { contextPath: 'sub_brands', brainPath: 'catalog.sub_brands', brainSource: 'catalog_sc', brainQueryId: 'BRAIN-CATALOG-SC' },
+  // MERGED FIELD: assembleBrain builds catalog.sub_brands / item_groups from
+  // BOTH catalog sources, so BOTH must be confirmed before this can be called
+  // this sub-brand's own. Keying it to SC alone let a hybrid or VC-side brand
+  // carry unfiltered vendor rows under a "label-scoped" badge.
+  sub_brands: { contextPath: 'sub_brands', brainPath: 'catalog.sub_brands', brainSource: 'catalog_sc', brainQueryId: ['BRAIN-CATALOG-SC', 'BRAIN-CATALOG-VC'] },
   marketplace: { contextPath: 'accounts.0.marketplace', brainPath: 'seller.marketplace', brainSource: 'seller', brainQueryId: 'account_wide' },
   // Tier 3 only — human judgment.
   primary_metric: { contextPath: 'management.primary_metric' },
@@ -257,7 +261,8 @@ const BRAND_FIELD_REGISTRY = {
   monthly_budget: { brainPath: 'seller.monthly_budget', brainSource: 'seller', brainQueryId: 'account_wide' },
   recent_spend_30d: { brainPath: 'recent_activity.spend_30d', brainSource: 'recent_activity', brainQueryId: 'account_wide' },
   recent_acos_30d: { brainPath: 'recent_activity.acos_30d', brainSource: 'recent_activity', brainQueryId: 'account_wide' },
-  item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc', brainQueryId: 'BRAIN-CATALOG-SC' },
+  // Same merged-source rule as sub_brands above: SC + VC both contribute.
+  item_groups: { brainPath: 'catalog.item_groups', brainSource: 'catalog_sc', brainQueryId: ['BRAIN-CATALOG-SC', 'BRAIN-CATALOG-VC'] },
   hero_asins: { brainPath: 'catalog.top_asins', brainSource: 'hero_sc', brainQueryId: 'account_wide' },
   // Phase 8 enrichment (each value serves 2+ skills).
   // capture_rate is both-tier (AM-confirmed context wins; brain
@@ -316,7 +321,38 @@ function isAccountWideBrainField(
 ): boolean {
   if (!binding) return false;
   if (!spec.brainQueryId || spec.brainQueryId === 'account_wide') return true;
-  return !(labelLens?.applied.includes(spec.brainQueryId) ?? false);
+
+  const contributors =
+    typeof spec.brainQueryId === 'string' ? [spec.brainQueryId] : [...spec.brainQueryId];
+  if (!labelLens) return true;
+
+  // A contributing query that never RAN (e.g. the VC catalog source on an
+  // SC-only brand) has no decision in any bucket, and must not be held
+  // against the field — otherwise every single-channel brand would read
+  // account-wide. Judge only the contributors that actually produced a
+  // decision, and require ALL of them to be confirmed applied: for a merged
+  // field, one unconfirmed source is enough to make the merged value
+  // account-wide.
+  // A record written before evidence-based reconciliation (no `contract`
+  // stamp) asserted 'applied' from intent, so it proves nothing. Refuse to
+  // read it as confirmation; a brain refresh restamps the record.
+  if (labelLens.contract !== LENS_CONTRACT_VERSION) return true;
+
+  const ran = contributors.filter((id) => lensRecorded(labelLens, id));
+  if (ran.length === 0) return true;
+  return !ran.every((id) => labelLens.applied.includes(id));
+}
+
+/** Did the lens record ANY decision for this query id (i.e. did it run)? */
+function lensRecorded(lens: LensSummary, id: string): boolean {
+  return (
+    lens.applied.includes(id) ||
+    lens.dropped.includes(id) ||
+    lens.unverified.includes(id) ||
+    lens.account_wide.includes(id) ||
+    lens.missing_label_value.includes(id) ||
+    lens.query_failed.includes(id)
+  );
 }
 
 /** Pure tier resolution from already-loaded docs (no I/O). */

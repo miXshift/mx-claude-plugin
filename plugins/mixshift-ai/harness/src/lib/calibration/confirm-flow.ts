@@ -494,7 +494,31 @@ export async function applyConfirmation(
   }
 
   // Persist: compose manifest values + preserved extras, then save.
-  const blockToSave = composeSkillBlock(effective, payload.extras);
+  //
+  // DURABLE PROVENANCE (round-2 red team): a confirmed save can bake a value
+  // that came from an ACCOUNT-WIDE brain source into a SUB-BRAND's own skill
+  // config. The confirm step surfaces that at the time, but once written the
+  // config looked indistinguishable from a value the operator actually chose
+  // for this sub-brand, so the caveat died at the moment it mattered least.
+  // Stamp it into the saved block instead: composeSkillBlock preserves
+  // unknown keys, so this travels with the config and is still readable on
+  // the next `--show` or review, long after the session is gone.
+  const accountWideSaved = accountWideFieldsResult(payload, decision).account_wide_fields;
+  const blockToSave = composeSkillBlock(
+    effective,
+    accountWideSaved && accountWideSaved.length > 0
+      ? {
+          ...payload.extras,
+          account_wide_at_save: {
+            fields: accountWideSaved,
+            note:
+              'These values came from data covering the WHOLE seller account, not just this ' +
+              'sub-brand, and were accepted without edit. Re-confirm them against ' +
+              'label-scoped numbers when the sub-brand data lens can serve them.',
+          },
+        }
+      : payload.extras,
+  );
   const { path } = await saveSkillConfig(
     payload.brand_slug,
     payload.skill_id,

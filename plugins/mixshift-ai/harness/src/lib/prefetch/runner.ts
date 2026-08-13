@@ -25,6 +25,9 @@ import { buildStandardParams, type ParamMap } from './params.js';
 import {
   lensFor,
   summarizeLens,
+  mergeLensOutcome,
+  lensFilterWasSent,
+  zeroRowConfidence,
   renderLensNotice,
   reconcileLensDecisions,
   type LensDecision,
@@ -184,7 +187,7 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
           rowCount: r.output.rows.length,
           durationMs: r.output.duration_ms,
         });
-        lensOutcomeByQueryId.set(r.output.id, {
+        mergeLensOutcome(lensOutcomeByQueryId, r.output.id, {
           status: 'ok',
           appliedParams: r.output.applied_params,
         });
@@ -202,14 +205,14 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
             missing_params: r.queryResult.missing_params,
             error: r.queryResult.friendly,
           });
-          lensOutcomeByQueryId.set(r.id, { status: 'deferred' });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: 'deferred' });
         } else {
           perQueryResults.push({
             id: r.id,
             status: 'failed',
             error: r.queryResult.friendly,
           });
-          lensOutcomeByQueryId.set(r.id, { status: 'failed' });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: 'failed' });
         }
       } else if ('error' in r) {
         // Param-substitution / setup failure. Missing-params errors are
@@ -226,14 +229,14 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
             missing_params: r.missing_params,
             error: r.error,
           });
-          lensOutcomeByQueryId.set(r.id, { status: 'deferred' });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: 'deferred' });
         } else {
           perQueryResults.push({
             id: r.id,
             status: 'failed',
             error: r.error,
           });
-          lensOutcomeByQueryId.set(r.id, { status: 'failed' });
+          mergeLensOutcome(lensOutcomeByQueryId, r.id, { status: 'failed' });
         }
       }
     }
@@ -323,17 +326,21 @@ function buildPrefetchLensWarnings(
 
   const rowCountById = new Map(results.map((r) => [r.id, r.rowCount ?? null]));
   for (const d of decisions) {
-    // Only a CONFIRMED-applied filter can meaningfully have "matched zero
-    // rows" — dropped/unverified/query_failed/account_wide are already
-    // covered by `notice` above, and a zero-row claim about a query that
-    // was never actually scoped would be misleading.
-    if (d.outcome !== 'applied') continue;
+    // Fire whenever a filter was SENT, not only when the gateway confirmed
+    // it (lensFilterWasSent). The earlier 'applied'-only gate reasoned that
+    // an unconfirmed query "was never actually scoped" — but the label
+    // predicates are live server-side; it is only the PROOF that may be
+    // missing. That gate switched the label-typo detector off for exactly
+    // the deploys where a mistyped label silently yields an empty
+    // sub-brand. 'dropped' stays excluded: the gateway told us the filter
+    // did not apply, so zero rows means an empty account, not a bad label.
+    if (!lensFilterWasSent(d.outcome)) continue;
     if (rowCountById.get(d.query_id) === 0) {
       warnings.push(
-        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". The binding's ` +
-          'label value may not match the warehouse verbatim (labels are matched exactly, never ' +
-          'fuzzily); verify it against `mixshift brand discover` before trusting this ' +
-          "sub-brand's numbers from that query.",
+        `The label filter for "${d.query_id}" matched ZERO rows for "${slug}". ` +
+          `${zeroRowConfidence(d.outcome)} the binding's label value may not match the ` +
+          'warehouse verbatim (labels are matched exactly, never fuzzily). Verify it against ' +
+          "`mixshift brand discover` before trusting this sub-brand's numbers from that query.",
       );
     }
   }

@@ -41,6 +41,7 @@ import { runDispatched } from '../data/dispatch.js';
 import { loadSkillManifest, resolveBatchPlan } from './manifest.js';
 import { loadBrandContext } from '../context/load.js';
 import { writePrefetchArtifacts } from './artifacts.js';
+import { LENS_CONTRACT_VERSION } from '../binding/lens.js';
 
 const runDispatchedMock = vi.mocked(runDispatched);
 const loadSkillManifestMock = vi.mocked(loadSkillManifest);
@@ -166,6 +167,7 @@ describe('runPrefetch — sub-brand label lens', () => {
 
     expect(result.label_lens).toEqual({
       bound: true,
+      contract: LENS_CONTRACT_VERSION,
       applied: expect.arrayContaining(['CS-09', 'CS-11']),
       dropped: [],
       unverified: [],
