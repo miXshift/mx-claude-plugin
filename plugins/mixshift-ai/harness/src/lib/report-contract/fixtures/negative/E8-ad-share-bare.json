@@ -1,0 +1,42 @@
+{
+  "_note": "Error #6: 'advertising's share of revenue rose' -- the entire rise was Sponsored Brands; ex-SB the share FALLS 33.7% -> 31.7%. The composition caveat is blocking and the quoting section omits it.",
+  "_expected": ["CAVEAT-1"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ads.share_of_revenue",
+      "label": "Advertising share of revenue",
+      "value": 35.1,
+      "unit": "percent",
+      "basis": "console_authoritative",
+      "source_path": "envelope:duo.adShareOfRevenue",
+      "caveats": ["sb_composition"]
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {
+    "sb_composition": {
+      "text": "The MoM rise is entirely Sponsored Brands; excluding SB the share falls 33.7% -> 31.7%.",
+      "severity": "blocking"
+    }
+  },
+  "claims": [
+    {
+      "id": "claim.ad-share-rose",
+      "kind": "observation",
+      "text": "Advertising's share of revenue rose month-over-month.",
+      "figure_refs": ["ads.share_of_revenue"]
+    }
+  ],
+  "sections": [
+    {
+      "id": "sec.exec-summary",
+      "figure_refs": [],
+      "claim_refs": ["claim.ad-share-rose"],
+      "caveats_rendered": [],
+      "display_text": "Advertising's share of revenue rose to 35.1%."
+    }
+  ]
+}

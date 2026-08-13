@@ -1,0 +1,89 @@
+{
+  "_note": "Minimal document that exercises every object type correctly and must validate CLEAN: a superlative backed by a complete population that re-evaluates true, a blocking caveat rendered at its quotation site, a Derived with inputs and why_not_published, and a tracking claim with no causal language.",
+  "_expected": [],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.monthly.2026",
+      "label": "Monthly revenue, 2026",
+      "value": 1081500,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.monthlySeries",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "2026-01", "revenue": 1214000},
+          {"key": "2026-02", "revenue": 1187000},
+          {"key": "2026-03", "revenue": 1316600},
+          {"key": "2026-04", "revenue": 1305000},
+          {"key": "2026-05", "revenue": 1244000},
+          {"key": "2026-06", "revenue": 1265800},
+          {"key": "2026-07", "revenue": 1081500},
+          {"key": "2026-08", "revenue": 1042000}
+        ]
+      }
+    },
+    {
+      "id": "ops.lost_sales.current",
+      "label": "Estimated lost sales, current",
+      "value": 20081,
+      "unit": "currency",
+      "basis": "priced_only",
+      "source_path": "envelope:ops.lostSales.current.total",
+      "caveats": ["lost_sales_coverage"],
+      "precision": 0
+    }
+  ],
+  "derived": [
+    {
+      "id": "ops.surge.day_rate",
+      "label": "Ex-event daily revenue rate",
+      "value": 31840,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "inputs": ["ops.monthly.2026", "envelope:ops.comparability.surgeWindows"],
+      "why_not_published": "The published exSurgePctChange divides a full-length period by the residual of a shortened one (31 days vs 26); the day-normalised rate is computed here instead, per the engine's own documented caveat."
+    }
+  ],
+  "caveat_registry": {
+    "lost_sales_coverage": {
+      "text": "Lost-sales estimate covers the priced universe only (92.5% of ASINs); the true figure is a floor.",
+      "severity": "blocking"
+    }
+  },
+  "claims": [
+    {
+      "id": "claim.two-lowest",
+      "kind": "superlative",
+      "text": "July and August stand as the two lowest months of 2026.",
+      "figure_refs": ["ops.monthly.2026"],
+      "population_ref": "ops.monthly.2026",
+      "check": {
+        "type": "extremum_set",
+        "direction": "min",
+        "n": 2,
+        "member_key": "revenue",
+        "claimed_members": ["2026-07", "2026-08"]
+      }
+    },
+    {
+      "id": "claim.sessions-tracked",
+      "kind": "tracking",
+      "text": "Sessions fell -18.5% month-over-month and revenue fell with them.",
+      "figure_refs": ["ops.monthly.2026"]
+    }
+  ],
+  "sections": [
+    {
+      "id": "sec.availability",
+      "figure_refs": ["ops.lost_sales.current"],
+      "claim_refs": [],
+      "caveats_rendered": ["lost_sales_coverage"],
+      "display_text": "Estimated lost sales reached $20,081 (priced universe only, 92.5% coverage; the true figure is a floor)."
+    }
+  ]
+}

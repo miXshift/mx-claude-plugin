@@ -1,0 +1,43 @@
+{
+  "_note": "Error #8: 'high-potency tiers did not participate' -- Line-24 grew +10.8% YoY. A 'none' quantifier over a complete population with a counter-member; re-evaluation must fail.",
+  "_expected": ["POP-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.tiers.yoy",
+      "label": "High-potency tier growth, YoY",
+      "value": 4,
+      "unit": "count",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.byEntity.tiers",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "Line-20", "yoy_pct": -6.2},
+          {"key": "Line-24", "yoy_pct": 10.8},
+          {"key": "Line-26", "yoy_pct": -18.4},
+          {"key": "Line-28", "yoy_pct": -100.0}
+        ]
+      }
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.tiers-flat",
+      "kind": "quantifier",
+      "text": "The high-potency tiers did not participate in the year's growth.",
+      "figure_refs": ["ops.tiers.yoy"],
+      "population_ref": "ops.tiers.yoy",
+      "check": {
+        "type": "none",
+        "predicate": {"member_key": "yoy_pct", "op": "gt", "value": 0}
+      }
+    }
+  ],
+  "sections": []
+}

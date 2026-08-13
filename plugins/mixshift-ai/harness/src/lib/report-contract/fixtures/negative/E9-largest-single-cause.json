@@ -1,0 +1,29 @@
+{
+  "_note": "Error #7: 'the largest single cause' written about a decomposition leg. A leg is a tracking observation, not a cause. As a causal claim it lacks mechanism and tested_alternatives; the shipped fix downgraded the wording to 'the largest leg... not a statement of cause'.",
+  "_expected": ["CAUSE-1"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.bridge.traffic_leg",
+      "label": "Traffic leg of the bridge",
+      "value": -235900,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.bridge.components.traffic",
+      "caveats": []
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.largest-cause",
+      "kind": "causal",
+      "text": "Traffic was the largest single cause of the July decline.",
+      "figure_refs": ["ops.bridge.traffic_leg"]
+    }
+  ],
+  "sections": []
+}

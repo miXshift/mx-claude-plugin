@@ -1,0 +1,48 @@
+{
+  "_note": "Error #2: 'six lines show a lower realised price' -- two of the six finished HIGHER. Root cause was field semantics (dipPct flags a detected discount window against the item's own baseline, not a lower end price), and the enumeration catches the false count: only four members actually finished lower.",
+  "_expected": ["POP-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.lines.price_delta",
+      "label": "Realised price change by line, MoM",
+      "value": 8,
+      "unit": "count",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.byEntity.priceDelta",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "Line-10", "end_price_delta_pct": -4.1},
+          {"key": "Line-13", "end_price_delta_pct": -2.3},
+          {"key": "the house grading standard 15+", "end_price_delta_pct": -6.0},
+          {"key": "Line-20", "end_price_delta_pct": -1.2},
+          {"key": "Line-24", "end_price_delta_pct": 2.9},
+          {"key": "Line-26", "end_price_delta_pct": 1.4},
+          {"key": "Line-S", "end_price_delta_pct": 0.0},
+          {"key": "the accessory line",   "end_price_delta_pct": 0.0}
+        ]
+      }
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.six-lower",
+      "kind": "quantifier",
+      "text": "Six lines show a lower realised price this month.",
+      "figure_refs": ["ops.lines.price_delta"],
+      "population_ref": "ops.lines.price_delta",
+      "check": {
+        "type": "count",
+        "predicate": {"member_key": "end_price_delta_pct", "op": "lt", "value": 0},
+        "claimed_count": 6
+      }
+    }
+  ],
+  "sections": []
+}

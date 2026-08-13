@@ -1,0 +1,47 @@
+{
+  "_note": "Error #5: 'only two of thirteen placements fell' -- three did. Quantifier claimed without enumerating the full member set. The population here IS complete; re-evaluation must fail.",
+  "_expected": ["POP-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ads.placements.mom",
+      "label": "Placement revenue change, MoM",
+      "value": 13,
+      "unit": "count",
+      "basis": "click_attributed",
+      "source_path": "envelope:ads.placements",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "p01", "delta": 4210}, {"key": "p02", "delta": 2130},
+          {"key": "p03", "delta": 1820}, {"key": "p04", "delta": 1540},
+          {"key": "p05", "delta": 990},  {"key": "p06", "delta": 720},
+          {"key": "p07", "delta": 610},  {"key": "p08", "delta": 340},
+          {"key": "p09", "delta": 120},  {"key": "p10", "delta": 45},
+          {"key": "p11", "delta": -180}, {"key": "p12", "delta": -1250},
+          {"key": "p13", "delta": -3900}
+        ]
+      }
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.two-of-thirteen",
+      "kind": "quantifier",
+      "text": "Only two of the thirteen placements fell month-over-month.",
+      "figure_refs": ["ads.placements.mom"],
+      "population_ref": "ads.placements.mom",
+      "check": {
+        "type": "count",
+        "predicate": {"member_key": "delta", "op": "lt", "value": 0},
+        "claimed_count": 2
+      }
+    }
+  ],
+  "sections": []
+}

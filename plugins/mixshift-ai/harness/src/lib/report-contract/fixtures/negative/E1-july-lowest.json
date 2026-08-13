@@ -1,0 +1,48 @@
+{
+  "_note": "Brand A US Jul 2026 error #1: 'July lowest of any month in 2026' shipped while August was lower. The hand-written assertion validated against PLAN, which held Jan-Jul only -- an incomplete population converted 'unverified' into 'verified'. Here the population is honestly marked complete:false, which must block the superlative.",
+  "_expected": ["POP-1"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.monthly.2026",
+      "label": "Monthly revenue, 2026",
+      "value": 1081500,
+      "unit": "currency",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.monthlySeries",
+      "caveats": [],
+      "population": {
+        "complete": false,
+        "members": [
+          {"key": "2026-01", "revenue": 1214000},
+          {"key": "2026-02", "revenue": 1187000},
+          {"key": "2026-03", "revenue": 1316600},
+          {"key": "2026-04", "revenue": 1305000},
+          {"key": "2026-05", "revenue": 1244000},
+          {"key": "2026-06", "revenue": 1265800},
+          {"key": "2026-07", "revenue": 1081500}
+        ]
+      }
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.july-lowest",
+      "kind": "superlative",
+      "text": "July posted the lowest revenue of any month in 2026.",
+      "figure_refs": ["ops.monthly.2026"],
+      "population_ref": "ops.monthly.2026",
+      "check": {
+        "type": "extremum",
+        "direction": "min",
+        "member_key": "revenue",
+        "claimed_member": "2026-07"
+      }
+    }
+  ],
+  "sections": []
+}
