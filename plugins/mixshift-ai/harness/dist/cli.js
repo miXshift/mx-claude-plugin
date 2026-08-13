@@ -71445,7 +71445,18 @@ var brandBrainSchema = external_exports.object({
   brand_term_typos: external_exports.array(brainBrandTermTypoSchema).optional(),
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
-  observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({})
+  observations: external_exports.record(external_exports.string(), brainObservationAggregateSchema).default({}),
+  /** Sub-brand label-lens record (mx-ops#6): present only on a BOUND brand's
+   *  brain. Which sources ran label-scoped vs account-wide — consumers must
+   *  not attribute account-wide sources to the sub-brand. Additive/optional:
+   *  older readers strip it on read, and the brain is regenerated wholesale
+   *  each fetch, so mixed-version fleets tolerate it. */
+  label_lens: external_exports.object({
+    bound: external_exports.boolean(),
+    applied: external_exports.array(external_exports.string()),
+    account_wide: external_exports.array(external_exports.string()),
+    missing_label_value: external_exports.array(external_exports.string())
+  }).optional()
 });
 var BRAIN_SCHEMA_VERSION = 1;
 
@@ -72546,6 +72557,74 @@ function isFileNotFoundError12(err) {
 
 // src/lib/brain/fetch.ts
 init_push_after_write();
+
+// src/lib/binding/resolve.ts
+init_load2();
+async function resolveBinding(brandSlug, dataDirOverride) {
+  const result = await validateBrandContext(brandSlug, dataDirOverride);
+  if (!result.ok) return null;
+  return result.context.binding ?? null;
+}
+
+// src/lib/binding/lens.ts
+var LABEL_LENS_PARAM_BY_QUERY = {
+  "BRAIN-CATALOG-SC": "retail_brand_label",
+  "BRAIN-CATALOG-VC": "retail_brand_label",
+  "BRAIN-CAMPAIGN": "ads_brand_label",
+  "CS-09": "retail_brand_label",
+  "CS-11": "retail_brand_label",
+  "CS-12": "retail_brand_label",
+  "CS-13": "retail_brand_label"
+};
+function lensFor(queryId, binding) {
+  if (!binding) return null;
+  const param = LABEL_LENS_PARAM_BY_QUERY[queryId];
+  if (!param) {
+    return {
+      params: {},
+      decision: { query_id: queryId, outcome: "account_wide" }
+    };
+  }
+  const value = param === "retail_brand_label" ? binding.retail_label?.value : binding.ads_label?.value;
+  if (!value) {
+    return {
+      params: {},
+      decision: { query_id: queryId, outcome: "missing_label_value", param }
+    };
+  }
+  return {
+    params: { [param]: value },
+    decision: { query_id: queryId, outcome: "applied", param, value }
+  };
+}
+function summarizeLens(decisions) {
+  return {
+    bound: decisions.length > 0,
+    applied: decisions.filter((d) => d.outcome === "applied").map((d) => d.query_id),
+    account_wide: decisions.filter((d) => d.outcome === "account_wide").map((d) => d.query_id),
+    missing_label_value: decisions.filter((d) => d.outcome === "missing_label_value").map((d) => d.query_id)
+  };
+}
+function renderLensNotice(summary, slug) {
+  if (!summary.bound) return null;
+  const parts = [];
+  if (summary.applied.length > 0) {
+    parts.push(`label-scoped: ${summary.applied.join(", ")}`);
+  }
+  if (summary.account_wide.length > 0) {
+    parts.push(
+      `ACCOUNT-WIDE (no label filter exists for these; do not attribute their numbers to "${slug}"): ${summary.account_wide.join(", ")}`
+    );
+  }
+  if (summary.missing_label_value.length > 0) {
+    parts.push(
+      `ACCOUNT-WIDE (binding has no label value for that side; add it to context.yaml binding to scope these): ${summary.missing_label_value.join(", ")}`
+    );
+  }
+  return `Sub-brand label lens for "${slug}" -> ${parts.join(" | ")}`;
+}
+
+// src/lib/brain/fetch.ts
 var BRAIN_TTL_DAYS = 30;
 var BRAIN_SELLER_QUERY_ID = "BRAIN-SELLER";
 var BRAIN_CATALOG_SC_QUERY_ID = "BRAIN-CATALOG-SC";
@@ -72601,6 +72680,30 @@ function toFiniteNumber(v) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
+function buildLensWarnings(args) {
+  const { slug, lensSummary, lensDecisions, catalogAsinCount, campaignCount } = args;
+  if (!lensSummary) return [];
+  const warnings = [];
+  const notice = renderLensNotice(lensSummary, slug);
+  if (notice) warnings.push(notice);
+  const catalogLensApplied = lensDecisions.some(
+    (d) => d.outcome === "applied" && (d.query_id === "BRAIN-CATALOG-SC" || d.query_id === "BRAIN-CATALOG-VC")
+  );
+  if (catalogLensApplied && (catalogAsinCount ?? 0) === 0) {
+    warnings.push(
+      `The retail label filter matched ZERO catalog rows for "${slug}". The binding's retail label value may not match the warehouse verbatim (labels are matched exactly, never fuzzily) \u2014 verify it against \`mixshift brand discover\` before trusting any retail numbers for this sub-brand.`
+    );
+  }
+  const campaignLensApplied = lensDecisions.some(
+    (d) => d.outcome === "applied" && d.query_id === "BRAIN-CAMPAIGN"
+  );
+  if (campaignLensApplied && (campaignCount ?? 0) === 0) {
+    warnings.push(
+      `The ads label filter matched ZERO campaigns for "${slug}". Either this sub-brand truly has no labeled campaigns, or the binding's ads label value does not match \`campaign.Brand\` verbatim \u2014 the coverage report distinguishes the two.`
+    );
+  }
+  return warnings;
+}
 async function fetchBrandBrain(opts) {
   const now = opts.now ?? /* @__PURE__ */ new Date();
   const t0 = Date.now();
@@ -72614,6 +72717,14 @@ async function fetchBrandBrain(opts) {
   if (sellerIds.length === 0) {
     return { status: "no_accounts", slug };
   }
+  const binding = await resolveBinding(slug, dataDirOverride);
+  const lensDecisions = [];
+  const withLens = (queryId, params) => {
+    const lens = lensFor(queryId, binding);
+    if (!lens) return params;
+    lensDecisions.push(lens.decision);
+    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
+  };
   const heuristicSeatId = pickPrimarySeat(brand.accounts);
   const existing = await loadBrain(slug, dataDirOverride);
   const previousObservations = existing.ok ? existing.brain.observations : void 0;
@@ -72696,19 +72807,19 @@ async function fetchBrandBrain(opts) {
     stockoutImpactOut,
     typoOut
   ] = await Promise.all([
-    runSource(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds }),
-    scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds }) : Promise.resolve(null),
-    vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds }) : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds }),
-    scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds }) : Promise.resolve(null),
-    vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds }) : Promise.resolve(null),
+    runSource(BRAIN_SELLER_QUERY_ID, withLens(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds })),
+    scIds.length > 0 ? runSource(BRAIN_CATALOG_SC_QUERY_ID, withLens(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds })) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_CATALOG_VC_QUERY_ID, withLens(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds })) : Promise.resolve(null),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, withLens(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds })),
+    scIds.length > 0 ? runSource(BRAIN_HERO_SC_QUERY_ID, withLens(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds })) : Promise.resolve(null),
+    vcIds.length > 0 ? runSource(BRAIN_HERO_VC_QUERY_ID, withLens(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds })) : Promise.resolve(null),
     // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, withLens(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds })),
     // Brand-level: per-seat revenue+spend for primary-seat selection.
     // Best-effort and SELECTION-ONLY — not folded into a brain section,
     // so a failure isn't even a "failed source"; it just means the
     // heuristic decides the primary seat.
-    runSource(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, withLens(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds })),
     // Phase 8 enrichment (reused CS-* named queries, native binds). All
     // best-effort: a failure just omits that section. Settlement (CS-28) spans
     // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
@@ -72717,13 +72828,13 @@ async function fetchBrandBrain(opts) {
     // impacted-revenue field was removed; the fetch stays pending a
     // rigorous lost-sales replacement); the typo corpus (CS-31) spans
     // all seats.
-    runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
-    scPrimary != null ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary }) : Promise.resolve(null),
-    vcPrimary != null ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary }) : Promise.resolve(null),
-    scPrimary != null ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary }) : Promise.resolve(null),
-    scIds.length > 0 ? runSource(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds }) : Promise.resolve(null),
-    scIds.length > 0 ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds }) : Promise.resolve(null),
-    runSource(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds })
+    runSource(CS_SETTLEMENT_QUERY_ID, withLens(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds })),
+    scPrimary != null ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, withLens(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary })) : Promise.resolve(null),
+    vcPrimary != null ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, withLens(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary })) : Promise.resolve(null),
+    scPrimary != null ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, withLens(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary })) : Promise.resolve(null),
+    scIds.length > 0 ? runSource(CS_STOCKOUT_QUERY_ID, withLens(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds })) : Promise.resolve(null),
+    scIds.length > 0 ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, withLens(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds })) : Promise.resolve(null),
+    runSource(CS_TYPO_CORPUS_QUERY_ID, withLens(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds }))
   ]);
   const metricSeatId = seatMetricsOut.ok ? pickPrimarySeatByMetrics(seatMetricsOut.rows, brand.accounts) : null;
   const primarySeatId = metricSeatId ?? heuristicSeatId;
@@ -72779,6 +72890,10 @@ async function fetchBrandBrain(opts) {
       brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
       brandTermsInput
     });
+    const lensSummary = binding ? summarizeLens(lensDecisions) : null;
+    if (lensSummary) {
+      brain.label_lens = lensSummary;
+    }
     const { path: path2 } = await saveBrain(brain, dataDirOverride);
     await pushAfterWrite(slug, { dataDirOverride });
     const summary = {
@@ -72794,7 +72909,15 @@ async function fetchBrandBrain(opts) {
       has_capture_rate: brain.capture_rate_calibration !== void 0,
       stockout_count: brain.stockouts?.length ?? null,
       brand_typo_count: brain.brand_term_typos?.length ?? null,
-      failed_sources: failedSources
+      failed_sources: failedSources,
+      label_lens: lensSummary,
+      lens_warnings: buildLensWarnings({
+        slug,
+        lensSummary,
+        lensDecisions,
+        catalogAsinCount: brain.catalog?.asin_count ?? null,
+        campaignCount: brain.campaign_structure?.campaign_count ?? null
+      })
     };
     await writeBrainStatus(
       {
@@ -73201,6 +73324,10 @@ function renderFetchResult(slug, result, json2) {
           `  \u26A0 Source(s) failed and were skipped: ${result.summary.failed_sources.join(", ")}. Retry later with \`mixshift brand brain refresh ${slug}\`.
 `
         );
+      }
+      for (const warning of result.summary.lens_warnings) {
+        process.stdout.write(`  \u26A0 ${warning}
+`);
       }
       break;
     }
@@ -76371,14 +76498,6 @@ init_seller_query();
 var import_yaml16 = __toESM(require_dist(), 1);
 import { readFile as readFile23, writeFile as writeFile16, rename as rename14, mkdir as mkdir16 } from "node:fs/promises";
 import { dirname as dirname19 } from "node:path";
-
-// src/lib/binding/resolve.ts
-init_load2();
-async function resolveBinding(brandSlug, dataDirOverride) {
-  const result = await validateBrandContext(brandSlug, dataDirOverride);
-  if (!result.ok) return null;
-  return result.context.binding ?? null;
-}
 
 // src/lib/binding/slug.ts
 init_brand_grouping();
@@ -81483,13 +81602,21 @@ async function runPrefetch(opts) {
     runDate: opts.runDate,
     paramOverrides: opts.paramOverrides
   });
+  const binding = context.binding ?? null;
+  const lensDecisions = [];
+  const paramsFor = (id) => {
+    const lens = lensFor(id, binding);
+    if (!lens) return params;
+    lensDecisions.push(lens.decision);
+    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
+  };
   const rounds = resolveBatchPlan(manifest);
   const queryOutputs = [];
   const perQueryResults = [];
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map(
-        (id) => executeOne(id, params, opts.dataDirOverride).catch((err) => {
+        (id) => executeOne(id, paramsFor(id), opts.dataDirOverride).catch((err) => {
           if (err instanceof MissingParamsError) {
             return {
               id,
@@ -81548,6 +81675,7 @@ async function runPrefetch(opts) {
       }
     }
   }
+  const lensSummary = binding ? summarizeLens(lensDecisions) : null;
   const artifact_paths = await writePrefetchArtifacts({
     brand_slug: context.brand_slug,
     skill_id: manifest.skill_id,
@@ -81558,7 +81686,11 @@ async function runPrefetch(opts) {
       schema_version: manifest.schema_version,
       run_kind: manifest.run_kind,
       account_count: context.accounts.length,
-      primary_metric: context.management.primary_metric
+      primary_metric: context.management.primary_metric,
+      // Durable per-run record of the lens (null = unbound brand): the run
+      // artifact must say which numbers are label-scoped, in the artifact
+      // itself, not only in session output.
+      label_lens: lensSummary
     },
     dataDirOverride: opts.dataDirOverride
   });
@@ -81588,7 +81720,8 @@ async function runPrefetch(opts) {
     queries: perQueryResults,
     total_duration_ms: Date.now() - t0,
     partial_failure,
-    has_deferred
+    has_deferred,
+    label_lens: lensSummary
   };
 }
 async function executeOne(id, allParams, dataDirOverride) {
@@ -81701,6 +81834,27 @@ function renderResult2(result, json2) {
   - data.md:   ${result.artifact_paths.data_md_path}
 `
   );
+  if (result.label_lens) {
+    const lens = result.label_lens;
+    process.stdout.write(
+      `
+  Sub-brand label lens:
+` + (lens.applied.length > 0 ? `    \u2713 label-scoped: ${lens.applied.join(", ")}
+` : "")
+    );
+    if (lens.account_wide.length > 0) {
+      process.stdout.write(
+        `    \u26A0 ACCOUNT-WIDE (no label filter exists for these \u2014 do not attribute their numbers to "${result.brand_slug}"): ${lens.account_wide.join(", ")}
+`
+      );
+    }
+    if (lens.missing_label_value.length > 0) {
+      process.stdout.write(
+        `    \u26A0 ACCOUNT-WIDE (binding lacks that side's label value \u2014 add it to context.yaml to scope these): ${lens.missing_label_value.join(", ")}
+`
+      );
+    }
+  }
   const failures = result.queries.filter((q) => q.status === "failed");
   if (failures.length > 0) {
     process.stdout.write("\n  Failed queries:\n");

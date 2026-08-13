@@ -374,6 +374,19 @@ export const brandBrainSchema = z.object({
   /** S3 skill observations, keyed by dotted field path
    *  (e.g. "buy_box_health.chronic_losers"). */
   observations: z.record(z.string(), brainObservationAggregateSchema).default({}),
+  /** Sub-brand label-lens record (mx-ops#6): present only on a BOUND brand's
+   *  brain. Which sources ran label-scoped vs account-wide — consumers must
+   *  not attribute account-wide sources to the sub-brand. Additive/optional:
+   *  older readers strip it on read, and the brain is regenerated wholesale
+   *  each fetch, so mixed-version fleets tolerate it. */
+  label_lens: z
+    .object({
+      bound: z.boolean(),
+      applied: z.array(z.string()),
+      account_wide: z.array(z.string()),
+      missing_label_value: z.array(z.string()),
+    })
+    .optional(),
 });
 
 export type BrandBrain = z.infer<typeof brandBrainSchema>;

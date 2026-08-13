@@ -670,3 +670,180 @@ describe('spawn helper', () => {
     ).toMatchObject({ spawned: false, reason: expect.stringContaining('test') });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sub-brand label lens (mx-ops#6): bound brands fetch label-scoped sources
+// ---------------------------------------------------------------------------
+
+describe('fetchBrandBrain — sub-brand label lens', () => {
+  async function writeBindingFixture(dir: string, opts: { ads?: boolean } = {}) {
+    const context = {
+      schema_version: 1,
+      brand_slug: 'foragers-pantry',
+      brand_name: "Forager's Pantry",
+      last_updated: '2026-06-01',
+      accounts: [
+        {
+          seller_id: 574,
+          seller_name: 'Aspen Outdoor Provisions',
+          account_type: 'SC',
+          status: 'active',
+          role: 'primary',
+        },
+      ],
+      sources: {
+        ad_metrics: 'campaignmetric',
+        ops_revenue: 'business_reports_dpst_date',
+        ops_revenue_field: 'SalesAmount',
+        ops_units_field: 'UnitsOrdered',
+        ops_date_field: 'DateTime',
+      },
+      management: {
+        primary_metric: 'ACOS',
+        acos_target_pct: 25,
+        attribution_window_days: 14,
+      },
+      binding: {
+        kind: 'sub_brand',
+        amazon_seller_id: 'A1EXAMPLE23456',
+        seller_ids: [574, 575],
+        retail_label: { source: 'mws_items.Brand', value: "Forager's Pantry" },
+        ...(opts.ads === false
+          ? {}
+          : { ads_label: { source: 'campaign.Brand', value: "Forager's Pantry" } }),
+        scope_note: 'This brand is a sub-brand scoped to a label.',
+      },
+    };
+    await mkdir(join(dir, 'clients', 'foragers-pantry'), { recursive: true });
+    await writeFile(
+      join(dir, 'clients', 'foragers-pantry', 'context.yaml'),
+      stringifyYaml(context),
+      'utf-8',
+    );
+  }
+
+  it('passes the label params to exactly the lens-aware sources and records the split', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      // Lens-aware sources got their param, with the verbatim value.
+      expect(callFor('BRAIN-CATALOG-SC')?.params).toMatchObject({
+        retail_brand_label: "Forager's Pantry",
+      });
+      expect(callFor('BRAIN-CAMPAIGN')?.params).toMatchObject({
+        ads_brand_label: "Forager's Pantry",
+      });
+      // Non-lens sources did NOT gain any label key.
+      const seller = callFor('BRAIN-SELLER')?.params ?? {};
+      expect(Object.keys(seller)).not.toContain('retail_brand_label');
+      expect(Object.keys(seller)).not.toContain('ads_brand_label');
+      const hero = callFor('BRAIN-HERO-SC')?.params ?? {};
+      expect(Object.keys(hero)).not.toContain('retail_brand_label');
+
+      // The split is recorded on the summary AND stamped into the brain doc.
+      expect(result.summary.label_lens).not.toBeNull();
+      expect(result.summary.label_lens!.applied).toEqual(
+        expect.arrayContaining(['BRAIN-CATALOG-SC', 'BRAIN-CAMPAIGN']),
+      );
+      expect(result.summary.label_lens!.account_wide).toEqual(
+        expect.arrayContaining(['BRAIN-SELLER', 'BRAIN-HERO-SC', 'BRAIN-RECENT-ACTIVITY']),
+      );
+      const brain = await loadBrain('foragers-pantry', dir);
+      expect(brain.ok).toBe(true);
+      if (brain.ok) {
+        expect(brain.brain.label_lens?.applied).toEqual(
+          expect.arrayContaining(['BRAIN-CATALOG-SC', 'BRAIN-CAMPAIGN']),
+        );
+      }
+      // The loud notice names the slug.
+      expect(result.summary.lens_warnings.join('\n')).toContain('foragers-pantry');
+    });
+  });
+
+  it('sends NOTHING and records nothing for an unbound brand (byte-identical behavior)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      for (const [, opts] of runDispatchedMock.mock.calls) {
+        const params = (opts as { params?: Record<string, unknown> }).params ?? {};
+        expect(Object.keys(params)).not.toContain('retail_brand_label');
+        expect(Object.keys(params)).not.toContain('ads_brand_label');
+      }
+      expect(result.summary.label_lens).toBeNull();
+      expect(result.summary.lens_warnings).toEqual([]);
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) expect(brain.brain.label_lens).toBeUndefined();
+    });
+  });
+
+  it('records missing_label_value when the binding has no ads label', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir, { ads: false });
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      const campaign = callFor('BRAIN-CAMPAIGN')?.params ?? {};
+      expect(Object.keys(campaign)).not.toContain('ads_brand_label');
+      expect(result.summary.label_lens!.missing_label_value).toContain('BRAIN-CAMPAIGN');
+      expect(result.summary.lens_warnings.join('\n')).toContain('binding has no label value');
+    });
+  });
+
+  it('warns LOUDLY when an applied retail lens matches zero catalog rows', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', []),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+      expect(result.summary.lens_warnings.join('\n')).toContain('ZERO catalog rows');
+    });
+  });
+});

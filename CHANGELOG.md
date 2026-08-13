@@ -25,6 +25,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   not enrolled the skill says so and offers the standard tier instead. New
   supporting commands: `mixshift report validate | extract | render`.
 
+- **Sub-brand data scoping is now automatic.** For a brand set up as a
+  sub-brand, brand setup and the brand brain now apply that sub-brand's
+  label filter to every data pull that supports one, so its context and
+  baselines are built from its own catalog and campaigns instead of the
+  whole seller account. Each run also reports which numbers are
+  label-scoped and which describe the whole account (some data, like the
+  Seller Central revenue baseline, has no label on it at all), and warns
+  clearly if a label filter matches nothing so a typo in a label value
+  cannot silently produce an empty brand. Brands not set up as sub-brands
+  see no change.
+
 - **Early sub-brand label discovery, for accounts run as several brands under
   one Amazon seller.** Some agencies operate many distinct brands out of a
   single seller account, told apart only by a Brand label on the retail and

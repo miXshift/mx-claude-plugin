@@ -185,18 +185,30 @@ a normal brand.
    follow **"Sub-brand path"** below. Return to this skill's Phase 5 only
    after every selected sub-brand has completed its own setup.
 
-**Known limitation, said out loud rather than silently smeared:** the
-baseline queries this skill's Phase 1 prefetch runs (`CS-02` and friends)
-do not yet automatically apply a sub-brand's label filter — that wiring is
-still pending in the harness's prefetch path even though the gateway
-queries themselves already accept the filter param. Until that lands,
-treat any sub-brand's Phase 1 historical baselines as **account-wide**
-numbers pending confirmation, say so plainly in that sub-brand's
-`open_gaps[]` and in its Phase 5 Bottom Line, and never present them as if
-they were already label-scoped. A sub-brand report quietly built on
-account-wide rows is exactly the cross-brand smearing this design exists to
-prevent (design doc §11) — an honest caveat beats a confident-looking wrong
-number.
+**How sub-brand scoping works in this skill's data (read the lens record,
+don't guess):** for a brand whose context carries a `binding` block, the
+prefetch runner and the brand brain apply the sub-brand's label filter
+automatically wherever a query supports one — no extra flags or params from
+you. Every run then RECORDS what happened: the prefetch output and
+`data.json` meta carry a `label_lens` block, and the brain fetch prints
+lens warnings, splitting queries three ways:
+- **label-scoped** — these rows belong to this sub-brand; use them normally.
+- **ACCOUNT-WIDE (no label filter exists)** — some warehouse tables have no
+  label column at all (for example the SC revenue baseline), so those
+  queries structurally cannot be filtered. Their numbers describe the whole
+  seller account. Carry exactly these query names into that sub-brand's
+  `open_gaps[]` and qualify any figure built from them in the Phase 5
+  Bottom Line — never present them as the sub-brand's own.
+- **ACCOUNT-WIDE (binding lacks that side's label value)** — fixable in
+  data: record the missing label side in `context.yaml`'s binding and
+  re-run.
+If a lens warning says the label matched **zero rows**, stop and verify the
+label value verbatim against `mixshift brand discover` before trusting
+anything — an exact-match label that matches nothing usually means a
+spelling or casing drift, not an empty sub-brand. A sub-brand report
+quietly built on account-wide rows is exactly the cross-brand smearing this
+design exists to prevent (design doc §11); the lens record is what makes
+that impossible to do by accident.
 
 ### Sub-brand path (brand-nested accounts)
 

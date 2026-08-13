@@ -125,6 +125,31 @@ function renderResult(result: PrefetchResult, json: boolean): void {
       `  - data.md:   ${result.artifact_paths.data_md_path}\n`,
   );
 
+  // Sub-brand label lens: say loudly which numbers are label-scoped and which
+  // are account-wide (design §11 — never silently attribute account-wide rows
+  // to a sub-brand). Only present for bound brands.
+  if (result.label_lens) {
+    const lens = result.label_lens;
+    process.stdout.write(
+      `\n  Sub-brand label lens:\n` +
+        (lens.applied.length > 0
+          ? `    ✓ label-scoped: ${lens.applied.join(', ')}\n`
+          : ''),
+    );
+    if (lens.account_wide.length > 0) {
+      process.stdout.write(
+        `    ⚠ ACCOUNT-WIDE (no label filter exists for these — do not attribute ` +
+          `their numbers to "${result.brand_slug}"): ${lens.account_wide.join(', ')}\n`,
+      );
+    }
+    if (lens.missing_label_value.length > 0) {
+      process.stdout.write(
+        `    ⚠ ACCOUNT-WIDE (binding lacks that side's label value — add it to ` +
+          `context.yaml to scope these): ${lens.missing_label_value.join(', ')}\n`,
+      );
+    }
+  }
+
   // List failed queries explicitly — skill needs to know what's broken
   // before composing the report.
   const failures = result.queries.filter((q) => q.status === 'failed');

@@ -21,7 +21,8 @@
 import { loadSkillManifest, resolveBatchPlan } from './manifest.js';
 import { getQueryEntry } from './sql-library.js';
 import { loadBrandContext } from '../context/load.js';
-import { buildStandardParams } from './params.js';
+import { buildStandardParams, type ParamMap } from './params.js';
+import { lensFor, summarizeLens, type LensDecision, type LensSummary } from '../binding/lens.js';
 import { runDispatched, MissingParamsError } from '../data/dispatch.js';
 import { type DataQueryResult } from '../data/query-runner.js';
 import { writePrefetchArtifacts, type QueryRunOutput } from './artifacts.js';
@@ -73,6 +74,15 @@ export interface PrefetchResult {
   queries: PrefetchQueryResult[];
   total_duration_ms: number;
   /**
+   * Sub-brand label-lens record. `null` for an unbound brand (no lens —
+   * today's behavior, unchanged). For a bound brand: which queries ran
+   * label-scoped, which are structurally ACCOUNT-WIDE (no label param
+   * exists), and which fell back account-wide because the binding lacks
+   * that side's label value. Consumers must not attribute account-wide
+   * query results to the sub-brand (design §11).
+   */
+  label_lens: LensSummary | null;
+  /**
    * True when at least one query ACTUALLY failed (status='failed').
    * Queries with status='deferred' do NOT set this — deferred is an
    * expected outcome for cross-query-dependent SQL.
@@ -102,6 +112,20 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     paramOverrides: opts.paramOverrides,
   });
 
+  // Sub-brand label lens (design §2.1/§3/§11): a bound brand's label values
+  // ride into every label-aware query as its filter param; an unbound brand
+  // sends nothing (byte-identical account-wide behavior). Per-query decisions
+  // are recorded on the result + artifacts so account-wide rows can never be
+  // silently read as sub-brand rows.
+  const binding = context.binding ?? null;
+  const lensDecisions: LensDecision[] = [];
+  const paramsFor = (id: string): ParamMap => {
+    const lens = lensFor(id, binding);
+    if (!lens) return params;
+    lensDecisions.push(lens.decision);
+    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
+  };
+
   const rounds = resolveBatchPlan(manifest);
   const queryOutputs: QueryRunOutput[] = [];
   const perQueryResults: PrefetchQueryResult[] = [];
@@ -109,7 +133,7 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map((id) =>
-        executeOne(id, params, opts.dataDirOverride).catch((err) => {
+        executeOne(id, paramsFor(id), opts.dataDirOverride).catch((err) => {
           // Carry missing_params through so the classifier below can flag
           // this as `deferred` instead of `failed`.
           if (err instanceof MissingParamsError) {
@@ -185,6 +209,10 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     }
   }
 
+  // Decisions accumulate lazily as paramsFor() runs inside the rounds loop,
+  // so the summary is only complete here. null = unbound brand (no lens).
+  const lensSummary = binding ? summarizeLens(lensDecisions) : null;
+
   const artifact_paths = await writePrefetchArtifacts({
     brand_slug: context.brand_slug,
     skill_id: manifest.skill_id,
@@ -196,6 +224,10 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
       run_kind: manifest.run_kind,
       account_count: context.accounts.length,
       primary_metric: context.management.primary_metric,
+      // Durable per-run record of the lens (null = unbound brand): the run
+      // artifact must say which numbers are label-scoped, in the artifact
+      // itself, not only in session output.
+      label_lens: lensSummary,
     },
     dataDirOverride: opts.dataDirOverride,
   });
@@ -229,6 +261,7 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
     total_duration_ms: Date.now() - t0,
     partial_failure,
     has_deferred,
+    label_lens: lensSummary,
   };
 }
 
