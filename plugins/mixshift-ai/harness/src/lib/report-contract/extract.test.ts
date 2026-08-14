@@ -762,6 +762,45 @@ describe('composite bundle handling (INS-MONTHLY-01 mom/yoy unwrapping)', () => 
   // regression guard.
   // ---------------------------------------------------------------------
 
+  it('REGRESSION: caveat registry keys are period-namespaced too, and figures reference the prefixed ids', () => {
+    // The first cut of this fix prefixed figure ids but NOT caveat registry
+    // keys, which collide identically (`env.surge_window.0` in both periods).
+    // Since the skill merges both documents into one report-data and a merged
+    // registry is last-wins, a figure could have rendered the OTHER period's
+    // caveat text. Blocking caveats are exactly the ones that must never be
+    // wrong, so this is the same failure class as the figure-id collision.
+    const caveated = {
+      ...(opsEnvelope as Record<string, unknown>),
+      caveats: [{ kind: 'surge_window', message: 'A surge window overlaps the comparison period.' }],
+    };
+    const composite = buildComposite({ mom: { ops: caveated, ads: adsEnvelope, crossDomain }, yoy: { ops: caveated } });
+
+    const mom = extractFigures(composite, 'mom.ops');
+    const yoy = extractFigures(composite, 'yoy.ops');
+
+    expect(Object.keys(mom.caveat_registry)).toContain('mom.env.surge_window.0');
+    expect(Object.keys(yoy.caveat_registry)).toContain('yoy.env.surge_window.0');
+    // The bare, collidable key is gone from both.
+    expect(Object.keys(mom.caveat_registry)).not.toContain('env.surge_window.0');
+
+    // A merged registry (what the skill actually composes) loses nothing.
+    const mergedKeys = new Set([
+      ...Object.keys(mom.caveat_registry),
+      ...Object.keys(yoy.caveat_registry),
+    ]);
+    expect(mergedKeys.size).toBe(
+      Object.keys(mom.caveat_registry).length + Object.keys(yoy.caveat_registry).length,
+    );
+
+    // Figures must point at the prefixed keys, or the reference dangles.
+    const momCaveatRefs = mom.figures.flatMap((f) => f.caveats);
+    expect(momCaveatRefs.length).toBeGreaterThan(0);
+    for (const ref of momCaveatRefs) {
+      expect(ref.startsWith('mom.')).toBe(true);
+      expect(mom.caveat_registry[ref]).toBeDefined();
+    }
+  });
+
   it('REGRESSION (P0): mom.ops and yoy.ops from the same composite produce DISJOINT id sets, never colliding', () => {
     const composite = buildComposite();
     const mom = extractFigures(composite, 'mom.ops');

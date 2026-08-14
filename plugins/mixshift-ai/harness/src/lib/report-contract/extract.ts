@@ -657,24 +657,45 @@ function periodPrefixOf(selection: CompositeSelection | null | undefined): strin
   return selection ? `${selection.split('.')[0]}.` : '';
 }
 
-/** Prepend the period prefix to EVERY figure id, once, after extraction --
- *  never threaded through each individual fig() call site, so no emission
- *  branch (entity or total-scope, metrics or bridge legs or crossDomain) can
- *  forget it. Because the prefix is identical across every figure in one
- *  document, every id-SHAPE invariant in checkFigures below (DELTA-IDENTITY's
- *  p1/p2/delta stem match, BRIDGE-FOOTING's leg grouping) keeps working
- *  unmodified: those rules slice and compare relative to each figure's own
- *  id and never hardcode a domain root. Only SKU-SPLIT hardcodes absolute
- *  ids and has to be told the prefix explicitly (via source.selection).
- *  source_path (an envelope pointer, never a figure id) and population
- *  members (business entity keys, never figure ids) are left untouched. */
+/** Prepend the period prefix to every DOCUMENT-SCOPED identifier, once, after
+ *  extraction -- never threaded through each individual fig() call site, so no
+ *  emission branch (entity or total-scope, metrics or bridge legs or
+ *  crossDomain) can forget it. Two id spaces need it, and both collide the
+ *  same way when the skill merges a mom document and a yoy document into the
+ *  one report-data it composes:
+ *    - figure ids (`ops.ops.p1` in both periods), and
+ *    - caveat registry keys (`env.surge_window.0` in both periods), which
+ *      figures reference by id in their `caveats` array. Missing these was a
+ *      real gap in the first cut of this fix: a merged registry is last-wins,
+ *      so a figure could have rendered the OTHER period's caveat text -- and
+ *      blocking caveats are exactly the ones that must never be wrong.
+ *  Because the prefix is identical across every figure in one document, every
+ *  id-SHAPE invariant in checkFigures below (DELTA-IDENTITY's p1/p2/delta stem
+ *  match, BRIDGE-FOOTING's leg grouping) keeps working unmodified: those rules
+ *  slice and compare relative to each figure's own id and never hardcode a
+ *  domain root. Only SKU-SPLIT hardcodes absolute ids and has to be told the
+ *  prefix explicitly (via source.selection). source_path (an envelope pointer,
+ *  never an id) and population members (business entity keys, never ids) are
+ *  left untouched. */
 function prefixSelectionIds(
   doc: ExtractDocument,
   selection: CompositeSelection | undefined,
 ): ExtractDocument {
   const prefix = periodPrefixOf(selection);
   if (!prefix) return doc;
-  return { ...doc, figures: doc.figures.map((f) => ({ ...f, id: `${prefix}${f.id}` })) };
+  const caveatRegistry: Record<string, CaveatRegistryEntry> = {};
+  for (const [cid, entry] of Object.entries(doc.caveat_registry)) {
+    caveatRegistry[`${prefix}${cid}`] = entry;
+  }
+  return {
+    ...doc,
+    caveat_registry: caveatRegistry,
+    figures: doc.figures.map((f) => ({
+      ...f,
+      id: `${prefix}${f.id}`,
+      caveats: f.caveats.map((cid) => `${prefix}${cid}`),
+    })),
+  };
 }
 
 /** Public entry point. Delegates the actual extraction to
