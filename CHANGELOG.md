@@ -3,27 +3,36 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.10
+
+### Fixed
+
+- **Monthly Performance Report Max now reads the full monthly run.** A monthly
+  intelligence run returns a bundle that holds each period's analysis inside it,
+  and the report skill was handing that whole bundle to the figure extractor,
+  which found nothing it recognized and returned an empty set without
+  complaining. The extractor now refuses a bundle instead of quietly returning
+  nothing, and the skill pulls out one period at a time
+  (`mixshift report extract <run.json> --select mom.ops`). Figures also carry
+  which period they came from, so a month-over-month number and a year-over-year
+  number can never be mistaken for each other in the same report. If you ran the
+  smart-tier monthly report on 0.8.9, re-run it on this version.
+
+- **Portfolio budget caps now come from Amazon directly.** The stored copy of a
+  portfolio's budget cap in the warehouse is often wrong, so asking what a
+  portfolio is capped at could come back with a placeholder figure rather than
+  the real one. That question now goes to the live Amazon read
+  (`mixshift ads call portfolios.list --legacy-seller-id <id>`), which returns
+  the current amount,
+  currency, policy, and date range straight from your account. The data catalog
+  also now explains that a portfolio's cap is not the sum of its campaigns'
+  daily budgets: the cap exists to hold total portfolio spend below that sum, so
+  the two figures are expected to differ, and a gap between them does not mean
+  anything has failed to sync.
+
 ## 0.8.9
 
-<!-- unreleased: version bump happens at release cut, not in feature PRs -->
-
 ### Added
-
-- **Monthly Performance Report Max: a smart tier of the monthly report, built
-  on MixShift Intelligence.** The new `mx-monthly-report-max` skill composes
-  the same monthly report from figures the intelligence service computes and
-  publishes (H-Bridge decompositions with footing checks, MoM and YoY pairs,
-  cross-domain TACOS), instead of numbers assembled in chat. Every figure in
-  the report traces to its source; a sentence that quotes a number without
-  its basis, claims a superlative the data does not support, or drops a
-  required caveat is refused before the report renders, by mechanical
-  validators the model cannot talk its way past. The nine claim errors that
-  shipped in real reports are locked in as permanent must-fail tests. Your
-  existing `mx-monthly-report` skill is unchanged and stays the standard
-  tier. One report consumes one metered intelligence request; re-renders are
-  free. Requires intelligence enrollment for the account; if the account is
-  not enrolled the skill says so and offers the standard tier instead. New
-  supporting commands: `mixshift report validate | extract | render`.
 
 - **Early sub-brand label discovery, for accounts run as several brands under
   one Amazon seller.** Some agencies operate many distinct brands out of a
@@ -56,6 +65,38 @@ starts at 0.5.39; earlier versions predate the changelog.
   picking which labels become brands, asks the questions that are the same
   across all of them once, and then sets up each one with just its own
   differences. Single-brand accounts see no change at all.
+
+- **Sub-brand data scoping is now automatic, and it tells you the truth
+  about what happened.** For a brand set up as a sub-brand, brand setup and
+  the brand brain now apply that sub-brand's label filter to every data pull
+  that supports one, so its context and baselines are built from its own
+  catalog and campaigns instead of the whole seller account. Each run
+  reports, pull by pull, which numbers are label-scoped, which describe the
+  whole account (some data, like the Seller Central revenue baseline, has no
+  label on it at all), and which could not be confirmed as label-scoped at
+  all, rather than assuming a filter worked just because it was sent. It
+  warns clearly if a label filter matches nothing, whether that happens
+  during brand setup or an ongoing brand-brain refresh, so a typo in a label
+  value cannot silently produce an empty brand, and it warns just as loudly
+  if a filter you set was not actually applied, so a sub-brand's numbers are
+  never quietly account-wide without you knowing it. Brands not set up as
+  sub-brands see no change.
+
+- **Monthly Performance Report Max: a smart tier of the monthly report, built
+  on MixShift Intelligence.** The new `mx-monthly-report-max` skill composes
+  the same monthly report from figures the intelligence service computes and
+  publishes (H-Bridge decompositions with footing checks, MoM and YoY pairs,
+  cross-domain TACOS), instead of numbers assembled in chat. Every figure in
+  the report traces to its source; a sentence that quotes a number without
+  its basis, claims a superlative the data does not support, or drops a
+  required caveat is refused before the report renders, by mechanical
+  validators the model cannot talk its way past. The nine claim errors that
+  shipped in real reports are locked in as permanent must-fail tests. Your
+  existing `mx-monthly-report` skill is unchanged and stays the standard
+  tier. One report consumes one metered intelligence request; re-renders are
+  free. Requires intelligence enrollment for the account; if the account is
+  not enrolled the skill says so and offers the standard tier instead. New
+  supporting commands: `mixshift report validate | extract | render`.
 
 ## 0.8.8
 

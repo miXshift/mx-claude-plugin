@@ -451,11 +451,24 @@ function composeConfidenceSummary(s: ReportState): {
   confirmed: number;
   prefilled: number;
   gap: number;
-  fields: Record<string, { level: 'confirmed' | 'prefilled' | 'gap'; source: 'context' | 'brain' | null; fetched_at?: string }>;
+  fields: Record<
+    string,
+    {
+      level: 'confirmed' | 'prefilled' | 'gap';
+      source: 'context' | 'brain' | null;
+      fetched_at?: string;
+      account_wide?: boolean;
+    }
+  >;
 } {
   const fields: Record<
     string,
-    { level: 'confirmed' | 'prefilled' | 'gap'; source: 'context' | 'brain' | null; fetched_at?: string }
+    {
+      level: 'confirmed' | 'prefilled' | 'gap';
+      source: 'context' | 'brain' | null;
+      fetched_at?: string;
+      account_wide?: boolean;
+    }
   > = {};
   let confirmed = 0;
   let prefilled = 0;
@@ -469,7 +482,15 @@ function composeConfidenceSummary(s: ReportState): {
       fields[key] = { level: 'confirmed', source: 'context' };
     } else {
       prefilled++;
-      fields[key] = { level: 'prefilled', source: 'brain', fetched_at: resolved.fetched_at };
+      fields[key] = {
+        level: 'prefilled',
+        source: 'brain',
+        fetched_at: resolved.fetched_at,
+        // F2: downstream skills consuming review.json for a bound sub-brand
+        // must be able to tell "this sub-brand's own pre-fill" apart from
+        // "the whole account's pre-fill" without re-deriving it themselves.
+        ...(resolved.account_wide ? { account_wide: true } : {}),
+      };
     }
   }
   return { confirmed, prefilled, gap, fields };

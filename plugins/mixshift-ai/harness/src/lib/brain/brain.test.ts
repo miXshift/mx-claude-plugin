@@ -24,6 +24,7 @@ import {
 import { applyObservations, recordObservations } from './observe.js';
 import { pickPrimarySeat, pickPrimarySeatByMetrics } from './fetch.js';
 import type { IndexAccount } from '../clients/index-schema.js';
+import { LENS_CONTRACT_VERSION } from '../binding/lens.js';
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
 
@@ -812,6 +813,179 @@ describe('getBrandField / resolveBrandFields (accessor seam)', () => {
       expect(all.primary_metric).toMatchObject({ value: 'ACOS', source: 'context' });
       // a Tier-3-only field not set in this context => gap (null)
       expect(all.protected_terms).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // F2 (red-team review): ResolvedField's account_wide scope flag.
+  // A bound brand's Tier-2 pre-fill must be distinguishable from "this
+  // sub-brand's own value" when the underlying source has no proven
+  // label-scoped result for it. Byte-identical for an unbound brand.
+  // -------------------------------------------------------------------------
+
+  const boundContext = {
+    ...validContext,
+    binding: {
+      kind: 'sub_brand',
+      amazon_seller_id: 'A1EXAMPLE23456',
+      retail_label: { source: 'mws_items.Brand', value: "Forager's Pantry" },
+      ads_label: { source: 'campaign.Brand', value: "Forager's Pantry" },
+    },
+  };
+
+  /** A brain with a populated catalog section (so sub_brands/item_groups
+   *  actually resolve), optionally carrying a `label_lens` record. */
+  function boundBrain(labelLens?: Record<string, unknown>) {
+    const brain = assembleBrain({
+      brandSlug: 'foragers-pantry',
+      sellerRows: [pantryRow],
+      sellerSproc: 'sp_brain_seller_fetch',
+      generator: 'plugin@0.5.21-test',
+      now: NOW,
+      catalogSc: {
+        rows: [{ ASIN: 'B001', SKU: 'S1', Brand: "Forager's Pantry", ItemGroup: 'Chews' }],
+        sproc: 'sp_brain_catalog_fetch_sc',
+      },
+    });
+    return labelLens ? { ...brain, label_lens: labelLens } : brain;
+  }
+
+  /** Write a bound brand's context.yaml plus the given brain. */
+  async function withBoundFixtures(
+    brain: unknown,
+    fn: (dir: string) => Promise<void>,
+  ): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'mx-brain-'));
+    try {
+      await saveBrain(brain as never, dir);
+      const brandDir = join(dir, 'clients', 'foragers-pantry');
+      await mkdir(brandDir, { recursive: true });
+      await writeFile(
+        join(brandDir, 'context.yaml'),
+        stringifyYaml(boundContext),
+        'utf-8',
+      );
+      await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("flags a bound brand's account-wide-only brain field (monthly_budget: seller source, never label-aware)", async () => {
+    await withBoundFixtures(boundBrain(), async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'monthly_budget', dir);
+      expect(r).toMatchObject({ value: 18000, source: 'brain', account_wide: true });
+    });
+  });
+
+  it('does NOT flag the same field for an UNBOUND brand (byte-identical to before F2)', async () => {
+    await withFixtures(true, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'monthly_budget', dir);
+      expect(r).toMatchObject({ value: 18000, source: 'brain' });
+      expect(r).not.toHaveProperty('account_wide');
+      // The whole resolveBrandFields payload must carry the key nowhere.
+      const all = await resolveBrandFields('foragers-pantry', dir);
+      expect(JSON.stringify(all)).not.toContain('account_wide');
+    });
+  });
+
+  it('never flags a Tier-3 context value as account-wide, even when bound', async () => {
+    await withBoundFixtures(boundBrain(), async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'acos_target_pct', dir);
+      expect(r).toMatchObject({ value: 22, source: 'context' });
+      expect(r).not.toHaveProperty('account_wide');
+    });
+  });
+
+  it('a label-aware brain field (sub_brands via BRAIN-CATALOG-SC) is account-wide when the lens did NOT resolve to applied', async () => {
+    const brain = boundBrain({
+      bound: true,
+      applied: [],
+      dropped: ['BRAIN-CATALOG-SC'],
+      unverified: [],
+      account_wide: [],
+      missing_label_value: [],
+      query_failed: [],
+    });
+    await withBoundFixtures(brain, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'sub_brands', dir);
+      expect(r).not.toBeNull();
+      expect(r?.account_wide).toBe(true);
+    });
+  });
+
+  it('the SAME label-aware brain field is NOT account-wide once EVERY contributing query resolved to applied', async () => {
+    const brain = boundBrain({
+      bound: true,
+      contract: LENS_CONTRACT_VERSION,
+      applied: ['BRAIN-CATALOG-SC'],
+      dropped: [],
+      unverified: [],
+      account_wide: [],
+      missing_label_value: [],
+      query_failed: [],
+    });
+    await withBoundFixtures(brain, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'sub_brands', dir);
+      expect(r).not.toBeNull();
+      // SC is the only contributor that RAN here (no VC decision recorded),
+      // so a confirmed SC lens is sufficient.
+      expect(r).not.toHaveProperty('account_wide');
+    });
+  });
+
+  // Round-2 red team: catalog.sub_brands / item_groups are MERGED from the SC
+  // and VC catalog sources. Keying them to SC alone let a hybrid brand carry
+  // unfiltered vendor rows under a label-scoped badge.
+  it('a MERGED catalog field stays account-wide when only ONE of its two sources is confirmed', async () => {
+    const brain = boundBrain({
+      bound: true,
+      contract: LENS_CONTRACT_VERSION,
+      applied: ['BRAIN-CATALOG-SC'],
+      dropped: ['BRAIN-CATALOG-VC'],
+      unverified: [],
+      account_wide: [],
+      missing_label_value: [],
+      query_failed: [],
+    });
+    await withBoundFixtures(brain, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'sub_brands', dir);
+      expect(r?.account_wide).toBe(true);
+    });
+  });
+
+  it('a merged catalog field is scoped only when BOTH sources that ran are confirmed', async () => {
+    const brain = boundBrain({
+      bound: true,
+      contract: LENS_CONTRACT_VERSION,
+      applied: ['BRAIN-CATALOG-SC', 'BRAIN-CATALOG-VC'],
+      dropped: [],
+      unverified: [],
+      account_wide: [],
+      missing_label_value: [],
+      query_failed: [],
+    });
+    await withBoundFixtures(brain, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'sub_brands', dir);
+      expect(r).not.toHaveProperty('account_wide');
+    });
+  });
+
+  // A brain cached before evidence-based reconciliation asserted 'applied'
+  // from intent, so its record proves nothing and must not read as confirmed.
+  it('a pre-evidence lens record (no contract stamp) is never trusted as confirmation', async () => {
+    const brain = boundBrain({
+      bound: true,
+      applied: ['BRAIN-CATALOG-SC', 'BRAIN-CATALOG-VC'],
+      dropped: [],
+      unverified: [],
+      account_wide: [],
+      missing_label_value: [],
+      query_failed: [],
+    });
+    await withBoundFixtures(brain, async (dir) => {
+      const r = await getBrandField('foragers-pantry', 'sub_brands', dir);
+      expect(r?.account_wide).toBe(true);
     });
   });
 });

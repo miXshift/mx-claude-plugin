@@ -15,14 +15,31 @@ import type { BindingBlock } from '../context/schema.js';
  * Read one brand's local context.yaml and return its `binding` block, or
  * null when the brand has no context, fails validation, or has no binding
  * (the overwhelming majority of brands — binding is opt-in and identifies a
- * sub-brand specifically). Never throws: a missing/invalid context is
- * indistinguishable from "not a sub-brand" for this accessor's purpose.
+ * sub-brand specifically). Genuinely never throws: `validateBrandContext`
+ * handles the missing-file and malformed-YAML cases itself, but a
+ * non-ENOENT read failure (permissions, a directory where the file should
+ * be, disk I/O) still escapes it as a raw throw (lib/context/load.ts). That
+ * used to propagate straight out of this accessor too — every caller
+ * (promote, demote, the brain fetch pipeline) already treats a null return
+ * as "not a sub-brand," so failing closed to null here, with a loud
+ * console warning, keeps all of them safe without touching their code
+ * (red-team finding F4).
  */
 export async function resolveBinding(
   brandSlug: string,
   dataDirOverride?: string,
 ): Promise<BindingBlock | null> {
-  const result = await validateBrandContext(brandSlug, dataDirOverride);
+  let result: Awaited<ReturnType<typeof validateBrandContext>>;
+  try {
+    result = await validateBrandContext(brandSlug, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[binding] could not read ${brandSlug}'s context.yaml to resolve its sub-brand binding ` +
+        `(${message}); treating as unbound rather than failing the caller.`,
+    );
+    return null;
+  }
   if (!result.ok) return null;
   return result.context.binding ?? null;
 }

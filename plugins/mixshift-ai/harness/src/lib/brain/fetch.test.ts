@@ -9,6 +9,15 @@ vi.mock('../data/dispatch.js', async (importOriginal) => {
   return { ...actual, runDispatched: vi.fn() };
 });
 
+// F4: wraps the REAL resolveBinding by default (every other test's binding
+// fixtures keep working unchanged) so individual tests can override it with
+// mockRejectedValueOnce to prove a throwing resolveBinding doesn't break
+// fetchBrandBrain, without stubbing binding resolution out for every test.
+vi.mock('../binding/resolve.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../binding/resolve.js')>();
+  return { ...actual, resolveBinding: vi.fn(actual.resolveBinding) };
+});
+
 // fs control for the "failFetch is defensive" test. The mock is INERT by
 // default (delegates every call to the real implementation); a test arms it by
 // setting `renameFailFrom` to make the Nth `rename` throw an ENOSPC-like error.
@@ -37,6 +46,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 
 import { runDispatched } from '../data/dispatch.js';
+import { resolveBinding } from '../binding/resolve.js';
 import { fetchBrandBrain, BRAIN_TTL_DAYS } from './fetch.js';
 import { loadBrain, saveBrain } from './read.js';
 import { assembleBrain } from './assemble.js';
@@ -44,6 +54,7 @@ import { applyObservations } from './observe.js';
 import { buildBrainFetchArgv, spawnBrainFetchDetached } from './spawn.js';
 
 const runDispatchedMock = vi.mocked(runDispatched);
+const resolveBindingMock = vi.mocked(resolveBinding);
 
 const NOW = new Date('2026-06-10T12:00:00.000Z');
 
@@ -71,7 +82,11 @@ const campaignRow = {
   BrandEntityId: 'ENTITY123',
 };
 
-function ok(id: string, rows: Array<Record<string, unknown>>) {
+function ok(
+  id: string,
+  rows: Array<Record<string, unknown>>,
+  appliedParams?: string[],
+) {
   return {
     ok: true as const,
     id,
@@ -81,6 +96,7 @@ function ok(id: string, rows: Array<Record<string, unknown>>) {
     usedDispatch: 'sproc' as const,
     displaySql: `CALL ${id}(?, ?)`,
     boundParams: {},
+    ...(appliedParams ? { appliedParams } : {}),
   };
 }
 
@@ -668,5 +684,347 @@ describe('spawn helper', () => {
     expect(
       spawnBrainFetchDetached('acme', undefined, { VITEST: 'true' }),
     ).toMatchObject({ spawned: false, reason: expect.stringContaining('test') });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-brand label lens (mx-ops#6): bound brands fetch label-scoped sources
+// ---------------------------------------------------------------------------
+
+describe('fetchBrandBrain — sub-brand label lens', () => {
+  async function writeBindingFixture(dir: string, opts: { ads?: boolean } = {}) {
+    const context = {
+      schema_version: 1,
+      brand_slug: 'foragers-pantry',
+      brand_name: "Forager's Pantry",
+      last_updated: '2026-06-01',
+      accounts: [
+        {
+          seller_id: 574,
+          seller_name: 'Aspen Outdoor Provisions',
+          account_type: 'SC',
+          status: 'active',
+          role: 'primary',
+        },
+      ],
+      sources: {
+        ad_metrics: 'campaignmetric',
+        ops_revenue: 'business_reports_dpst_date',
+        ops_revenue_field: 'SalesAmount',
+        ops_units_field: 'UnitsOrdered',
+        ops_date_field: 'DateTime',
+      },
+      management: {
+        primary_metric: 'ACOS',
+        acos_target_pct: 25,
+        attribution_window_days: 14,
+      },
+      binding: {
+        kind: 'sub_brand',
+        amazon_seller_id: 'A1EXAMPLE23456',
+        seller_ids: [574, 575],
+        retail_label: { source: 'mws_items.Brand', value: "Forager's Pantry" },
+        ...(opts.ads === false
+          ? {}
+          : { ads_label: { source: 'campaign.Brand', value: "Forager's Pantry" } }),
+        scope_note: 'This brand is a sub-brand scoped to a label.',
+      },
+    };
+    await mkdir(join(dir, 'clients', 'foragers-pantry'), { recursive: true });
+    await writeFile(
+      join(dir, 'clients', 'foragers-pantry', 'context.yaml'),
+      stringifyYaml(context),
+      'utf-8',
+    );
+  }
+
+  it('passes the label params to exactly the lens-aware sources and records the EVIDENCE-CONFIRMED split', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        // Evidence: the gateway echoes our key back in applied_params. Only
+        // NOW does 'applied' become a provable claim (the central fix).
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow], ['retail_brand_label', 'seller_ids']),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow], ['ads_brand_label', 'seller_ids']),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      // Lens-aware sources got their param, with the verbatim value.
+      expect(callFor('BRAIN-CATALOG-SC')?.params).toMatchObject({
+        retail_brand_label: "Forager's Pantry",
+      });
+      expect(callFor('BRAIN-CAMPAIGN')?.params).toMatchObject({
+        ads_brand_label: "Forager's Pantry",
+      });
+      // Non-lens sources did NOT gain any label key.
+      const seller = callFor('BRAIN-SELLER')?.params ?? {};
+      expect(Object.keys(seller)).not.toContain('retail_brand_label');
+      expect(Object.keys(seller)).not.toContain('ads_brand_label');
+      const hero = callFor('BRAIN-HERO-SC')?.params ?? {};
+      expect(Object.keys(hero)).not.toContain('retail_brand_label');
+
+      // The split is recorded on the summary AND stamped into the brain doc.
+      expect(result.summary.label_lens).not.toBeNull();
+      expect(result.summary.label_lens!.applied).toEqual(
+        expect.arrayContaining(['BRAIN-CATALOG-SC', 'BRAIN-CAMPAIGN']),
+      );
+      expect(result.summary.label_lens!.dropped).toEqual([]);
+      expect(result.summary.label_lens!.unverified).toEqual([]);
+      expect(result.summary.label_lens!.account_wide).toEqual(
+        expect.arrayContaining(['BRAIN-SELLER', 'BRAIN-HERO-SC', 'BRAIN-RECENT-ACTIVITY']),
+      );
+      const brain = await loadBrain('foragers-pantry', dir);
+      expect(brain.ok).toBe(true);
+      if (brain.ok) {
+        expect(brain.brain.label_lens?.applied).toEqual(
+          expect.arrayContaining(['BRAIN-CATALOG-SC', 'BRAIN-CAMPAIGN']),
+        );
+      }
+      // The loud notice names the slug.
+      expect(result.summary.lens_warnings.join('\n')).toContain('foragers-pantry');
+    });
+  });
+
+  it("DROPPED (P0): applied_params came back WITHOUT our key -> account-wide despite the binding, never 'applied'", async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        // The gateway ran the query (ok:true, rows came back) but its
+        // applied_params does NOT contain retail_brand_label: the deployed
+        // entry silently stripped our filter. Before the central fix, the
+        // old client-side lensFor would have recorded this as 'applied'
+        // purely because a value was SENT — exactly the bug this fixes.
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow], ['seller_ids']),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow], ['ads_brand_label', 'seller_ids']),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      expect(result.summary.label_lens!.dropped).toEqual(['BRAIN-CATALOG-SC']);
+      expect(result.summary.label_lens!.applied).not.toContain('BRAIN-CATALOG-SC');
+      expect(result.summary.label_lens!.applied).toContain('BRAIN-CAMPAIGN');
+      expect(result.summary.lens_warnings.join('\n')).toContain('DROPPED');
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) expect(brain.brain.label_lens?.dropped).toEqual(['BRAIN-CATALOG-SC']);
+    });
+  });
+
+  it("UNVERIFIED: applied_params is ABSENT entirely (older gateway) -> not proven, never 'applied'", async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        // ok() with NO third argument -> no appliedParams field at all,
+        // simulating a gateway deploy that predates PR #107.
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      expect(result.summary.label_lens!.unverified).toEqual(
+        expect.arrayContaining(['BRAIN-CATALOG-SC', 'BRAIN-CAMPAIGN']),
+      );
+      expect(result.summary.label_lens!.applied).toEqual([]);
+      expect(result.summary.lens_warnings.join('\n')).toContain('UNVERIFIED');
+    });
+  });
+
+  it("query_failed: a failed label-aware query never resolves to 'applied'", async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': failed('BRAIN-CATALOG-SC', 'table access denied'),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow], ['ads_brand_label']),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      expect(result.summary.label_lens!.query_failed).toEqual(['BRAIN-CATALOG-SC']);
+      expect(result.summary.label_lens!.applied).not.toContain('BRAIN-CATALOG-SC');
+      expect(result.summary.failed_sources).toContain('catalog_sc');
+    });
+  });
+
+  it('sends NOTHING and records nothing for an unbound brand (byte-identical behavior)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      for (const [, opts] of runDispatchedMock.mock.calls) {
+        const params = (opts as { params?: Record<string, unknown> }).params ?? {};
+        expect(Object.keys(params)).not.toContain('retail_brand_label');
+        expect(Object.keys(params)).not.toContain('ads_brand_label');
+      }
+      expect(result.summary.label_lens).toBeNull();
+      expect(result.summary.lens_warnings).toEqual([]);
+      const brain = await loadBrain('foragers-pantry', dir);
+      if (brain.ok) expect(brain.brain.label_lens).toBeUndefined();
+    });
+  });
+
+  it('records missing_label_value when the binding has no ads label', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir, { ads: false });
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [scCatalogRow]),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+
+      const campaign = callFor('BRAIN-CAMPAIGN')?.params ?? {};
+      expect(Object.keys(campaign)).not.toContain('ads_brand_label');
+      expect(result.summary.label_lens!.missing_label_value).toContain('BRAIN-CAMPAIGN');
+      expect(result.summary.lens_warnings.join('\n')).toContain('binding has no label value');
+    });
+  });
+
+  it('warns LOUDLY when a CONFIRMED-applied retail lens matches zero catalog rows', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        // Evidence confirms the filter DID apply (retail_brand_label is in
+        // applied_params) - it's just that it matched nothing, the label-typo
+        // case this warning exists for.
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [], ['retail_brand_label']),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow], ['ads_brand_label']),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+      expect(result.summary.label_lens!.applied).toContain('BRAIN-CATALOG-SC');
+      expect(result.summary.lens_warnings.join('\n')).toContain('ZERO catalog rows');
+    });
+  });
+
+  it('does NOT warn "ZERO catalog rows" when the lens was DROPPED rather than applied (no false confidence)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      await writeBindingFixture(dir);
+      routeDispatch({
+        'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]),
+        // Zero rows AND the filter was dropped: the right warning is
+        // "DROPPED / account-wide", not "your label typo produced zero
+        // rows" (which would misdirect the operator toward fixing a label
+        // value that was never actually the cause).
+        'BRAIN-CATALOG-SC': ok('BRAIN-CATALOG-SC', [], ['seller_ids']),
+        'BRAIN-CAMPAIGN': ok('BRAIN-CAMPAIGN', [campaignRow], ['ads_brand_label']),
+      });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+      expect(result.summary.label_lens!.dropped).toContain('BRAIN-CATALOG-SC');
+      expect(result.summary.lens_warnings.join('\n')).not.toContain('ZERO catalog rows');
+      expect(result.summary.lens_warnings.join('\n')).toContain('DROPPED');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F4: resolveBinding throwing must never break fetchBrandBrain, for ANY
+// brand (bound or not). resolve.ts fixed its OWN never-throws contract, but
+// fetch.ts carries its OWN guard too (defense in depth) — this proves THAT
+// guard, by forcing resolveBinding itself to reject despite its own fix.
+// ---------------------------------------------------------------------------
+
+describe('fetchBrandBrain — a throwing resolveBinding does not break the fetch (F4)', () => {
+  it('treats the failure as unbound and completes the fetch instead of crashing', async () => {
+    resolveBindingMock.mockRejectedValueOnce(new Error('EACCES: permission denied'));
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
+
+      const result = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: NOW,
+      });
+      expect(result.status).toBe('complete');
+      if (result.status !== 'complete') return;
+      // Treated as unbound: no lens claims of any kind.
+      expect(result.summary.label_lens).toBeNull();
+      expect(result.summary.lens_warnings).toEqual([]);
+    });
+  });
+
+  it('a fresh (skipped_fresh) fetch never even calls resolveBinding (F4 ordering: resolved AFTER the TTL gate)', async () => {
+    await withTempDir(async (dir) => {
+      await writeIndexFixture(dir);
+      routeDispatch({ 'BRAIN-SELLER': ok('BRAIN-SELLER', [sellerRow]) });
+      // Prime a fresh brain so the second fetch hits the TTL gate.
+      await fetchBrandBrain({ slug: 'foragers-pantry', dataDirOverride: dir, now: NOW });
+      resolveBindingMock.mockClear();
+
+      const second = await fetchBrandBrain({
+        slug: 'foragers-pantry',
+        dataDirOverride: dir,
+        now: new Date(NOW.getTime() + 1000),
+      });
+      expect(second.status).toBe('skipped_fresh');
+      expect(resolveBindingMock).not.toHaveBeenCalled();
+    });
   });
 });

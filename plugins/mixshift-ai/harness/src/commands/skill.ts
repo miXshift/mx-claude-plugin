@@ -480,6 +480,10 @@ async function runApplyDecision(args: {
           // JSON-driven caller (Claude in chat) can acknowledge them, matching
           // the human CLI footer (renderPersistenceFooter).
           captured: result.captured ?? [],
+          // F5: fields in effective_config that are a bound sub-brand's
+          // account-wide brain pre-fill, not overridden this call — the
+          // JSON-driven caller must not present these as the sub-brand's own.
+          account_wide_fields: result.account_wide_fields ?? [],
         },
         null,
         2,

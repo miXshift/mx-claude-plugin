@@ -35,6 +35,19 @@ import { loadBrain, saveBrain } from './read.js';
 import type { BrandBrain } from './schema.js';
 import type { BrandTermsBlock } from '../enrichment/brand-typos.js';
 import { pushAfterWrite } from '../context-sync/push-after-write.js';
+import { resolveBinding } from '../binding/resolve.js';
+import {
+  lensFor,
+  summarizeLens,
+  renderLensNotice,
+  lensFilterWasSent,
+  zeroRowConfidence,
+  reconcileLensDecisions,
+  type LensDecision,
+  type LensSummary,
+  type QueryLensOutcome,
+} from '../binding/lens.js';
+import type { BindingBlock } from '../context/schema.js';
 
 /** Seller-source TTL: re-fetches inside this window are no-ops unless
  *  forced. */
@@ -121,6 +134,13 @@ export interface BrainFetchSummary {
    *  hero_sc | hero_vc | recent_activity | capture_rate | stockout |
    *  brand_typos. */
   failed_sources: string[];
+  /** Sub-brand label-lens record; null for an unbound brand (no lens).
+   *  See lib/binding/lens.ts. */
+  label_lens: LensSummary | null;
+  /** Loud, human-readable lens warnings: the §11 never-silently-account-wide
+   *  mechanism (account-wide sources named; a lens that matched ZERO catalog
+   *  rows; label sides missing from the binding). Empty for unbound brands. */
+  lens_warnings: string[];
 }
 
 /**
@@ -258,6 +278,77 @@ function toFiniteNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * `resolveBinding` fixed its OWN never-throws contract (mx-legacy-auth-
+ * subbrand finding F4), but this call site gets its own guard too: a
+ * binding-resolution failure must never break the automatic brain-populate
+ * pipeline for ANY brand. Failure is treated as unbound (the conservative
+ * choice — an unbound brand's fetch is the well-tested, unchanged path) plus
+ * a loud console warning, never a crash.
+ */
+async function safeResolveBinding(
+  slug: string,
+  dataDirOverride: string | undefined,
+): Promise<BindingBlock | null> {
+  try {
+    return await resolveBinding(slug, dataDirOverride);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[brain] could not resolve ${slug}'s sub-brand binding (${message}); ` +
+        'treating as unbound for this fetch rather than failing the run.',
+    );
+    return null;
+  }
+}
+
+/** Assemble the loud lens warnings for a fetch summary (design §11: never
+ *  silently account-wide; never silently empty-under-lens). */
+function buildLensWarnings(args: {
+  slug: string;
+  lensSummary: LensSummary | null;
+  lensDecisions: readonly LensDecision[];
+  catalogAsinCount: number | null;
+  campaignCount: number | null;
+}): string[] {
+  const { slug, lensSummary, lensDecisions, catalogAsinCount, campaignCount } = args;
+  if (!lensSummary) return [];
+  const warnings: string[] = [];
+  const notice = renderLensNotice(lensSummary, slug);
+  if (notice) warnings.push(notice);
+
+  // Zero-row (label-typo) detection fires whenever a filter was SENT, not
+  // only when the gateway confirmed it — see lensFilterWasSent. Gating on
+  // 'applied' alone made this detector dark on every deploy that predates
+  // the applied_params echo, which is precisely when a mistyped label
+  // silently yields an empty sub-brand.
+  const catalogSent = lensDecisions.find(
+    (d) =>
+      lensFilterWasSent(d.outcome) &&
+      (d.query_id === 'BRAIN-CATALOG-SC' || d.query_id === 'BRAIN-CATALOG-VC'),
+  );
+  if (catalogSent && (catalogAsinCount ?? 0) === 0) {
+    warnings.push(
+      `The retail label filter matched ZERO catalog rows for "${slug}". ` +
+        `${zeroRowConfidence(catalogSent.outcome)} the binding's retail label value may not ` +
+        'match the warehouse verbatim (labels are matched exactly, never fuzzily). Verify it ' +
+        'against `mixshift brand discover` before trusting any retail numbers for this sub-brand.',
+    );
+  }
+  const campaignSent = lensDecisions.find(
+    (d) => lensFilterWasSent(d.outcome) && d.query_id === 'BRAIN-CAMPAIGN',
+  );
+  if (campaignSent && (campaignCount ?? 0) === 0) {
+    warnings.push(
+      `The ads label filter matched ZERO campaigns for "${slug}". ` +
+        `${zeroRowConfidence(campaignSent.outcome)} either this sub-brand truly has no labeled ` +
+        "campaigns, or the binding's ads label value does not match `campaign.Brand` verbatim. " +
+        'The coverage report distinguishes the two.',
+    );
+  }
+  return warnings;
+}
+
 export async function fetchBrandBrain(
   opts: BrainFetchOptions,
 ): Promise<BrainFetchResult> {
@@ -275,6 +366,7 @@ export async function fetchBrandBrain(
   if (sellerIds.length === 0) {
     return { status: 'no_accounts', slug };
   }
+
   // Registry heuristic for the primary seat (SC>VC, US-first). Kept as the
   // FALLBACK: it's used only when the per-seat economic ranking
   // (BRAIN-SEAT-METRICS, below) returns no usable signal — e.g. the named
@@ -304,6 +396,28 @@ export async function fetchBrandBrain(
       };
     }
   }
+
+  // Sub-brand label lens (design §2.1/§11): a bound brand's catalog and
+  // campaign sources run label-scoped; everything else in this fetch is
+  // structurally account-wide and gets RECORDED as such rather than silently
+  // read as the sub-brand's. Unbound brands send nothing (unchanged).
+  //
+  // Resolved AFTER the freshness gate (F4): a skipped-fresh fetch returns
+  // above without ever touching context.yaml for this. Guarded here too
+  // (belt-and-suspenders on top of resolve.ts's own try/catch, F4): a
+  // binding-resolution failure must never take down the automatic
+  // brain-populate pipeline for ANY brand, bound or not.
+  const binding = await safeResolveBinding(slug, dataDirOverride);
+  const lensDecisions: LensDecision[] = [];
+  const withLens = (
+    queryId: string,
+    params: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    const lens = lensFor(queryId, binding);
+    if (!lens) return params;
+    lensDecisions.push(lens.decision);
+    return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
+  };
 
   // 3. Fetch + assemble + persist, mirroring progress to the status file.
   await writeBrainStatus(
@@ -352,7 +466,16 @@ export async function fetchBrandBrain(
   const brandTermsInput = await readBrandTermsInput(slug, dataDirOverride);
 
   type SourceOutcome =
-    | { ok: true; rows: RawSellerRow[]; usedDispatch: string }
+    | {
+        ok: true;
+        rows: RawSellerRow[];
+        usedDispatch: string;
+        /** dispatch:named only, on success: sorted param names the gateway
+         *  actually bound (mx-legacy-auth PR #107) — the label lens's
+         *  reconciliation evidence. Undefined for other dispatch paths or
+         *  an older gateway deploy. */
+        appliedParams?: string[];
+      }
     | { ok: false; error: string; kind?: string };
 
   const runSource = async (
@@ -376,7 +499,12 @@ export async function fetchBrandBrain(
           kind: result.failure.kind,
         };
       }
-      return { ok: true, rows: result.rows, usedDispatch: result.usedDispatch };
+      return {
+        ok: true,
+        rows: result.rows,
+        usedDispatch: result.usedDispatch,
+        appliedParams: result.appliedParams,
+      };
     } catch (err) {
       const message =
         err instanceof MissingParamsError
@@ -405,27 +533,27 @@ export async function fetchBrandBrain(
     stockoutImpactOut,
     typoOut,
   ] = await Promise.all([
-    runSource(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_SELLER_QUERY_ID, withLens(BRAIN_SELLER_QUERY_ID, { seller_ids: sellerIds })),
     scIds.length > 0
-      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds })
+      ? runSource(BRAIN_CATALOG_SC_QUERY_ID, withLens(BRAIN_CATALOG_SC_QUERY_ID, { seller_ids: scIds }))
       : Promise.resolve(null),
     vcIds.length > 0
-      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds })
+      ? runSource(BRAIN_CATALOG_VC_QUERY_ID, withLens(BRAIN_CATALOG_VC_QUERY_ID, { seller_ids: vcIds }))
       : Promise.resolve(null),
-    runSource(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_CAMPAIGN_QUERY_ID, withLens(BRAIN_CAMPAIGN_QUERY_ID, { seller_ids: sellerIds })),
     scIds.length > 0
-      ? runSource(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds })
+      ? runSource(BRAIN_HERO_SC_QUERY_ID, withLens(BRAIN_HERO_SC_QUERY_ID, { seller_ids: scIds }))
       : Promise.resolve(null),
     vcIds.length > 0
-      ? runSource(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds })
+      ? runSource(BRAIN_HERO_VC_QUERY_ID, withLens(BRAIN_HERO_VC_QUERY_ID, { seller_ids: vcIds }))
       : Promise.resolve(null),
     // Brand-level: every seller's ad rows roll into one baseline.
-    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_RECENT_ACTIVITY_QUERY_ID, withLens(BRAIN_RECENT_ACTIVITY_QUERY_ID, { seller_ids: sellerIds })),
     // Brand-level: per-seat revenue+spend for primary-seat selection.
     // Best-effort and SELECTION-ONLY — not folded into a brain section,
     // so a failure isn't even a "failed source"; it just means the
     // heuristic decides the primary seat.
-    runSource(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds }),
+    runSource(BRAIN_SEAT_METRICS_QUERY_ID, withLens(BRAIN_SEAT_METRICS_QUERY_ID, { seller_ids: sellerIds })),
     // Phase 8 enrichment (reused CS-* named queries, native binds). All
     // best-effort: a failure just omits that section. Settlement (CS-28) spans
     // all seats; capture-rate scalars (CS-06/07/08) use a representative per-
@@ -434,23 +562,23 @@ export async function fetchBrandBrain(
     // impacted-revenue field was removed; the fetch stays pending a
     // rigorous lost-sales replacement); the typo corpus (CS-31) spans
     // all seats.
-    runSource(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds }),
+    runSource(CS_SETTLEMENT_QUERY_ID, withLens(CS_SETTLEMENT_QUERY_ID, { seller_id_list: sellerIds })),
     scPrimary != null
-      ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary })
+      ? runSource(CS_CAPTURE_RATE_SC_QUERY_ID, withLens(CS_CAPTURE_RATE_SC_QUERY_ID, { seller_id: scPrimary }))
       : Promise.resolve(null),
     vcPrimary != null
-      ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary })
+      ? runSource(CS_CAPTURE_RATE_VC_QUERY_ID, withLens(CS_CAPTURE_RATE_VC_QUERY_ID, { seller_id: vcPrimary }))
       : Promise.resolve(null),
     scPrimary != null
-      ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary })
+      ? runSource(CS_CAPTURE_RATE_DAILY_QUERY_ID, withLens(CS_CAPTURE_RATE_DAILY_QUERY_ID, { seller_id: scPrimary }))
       : Promise.resolve(null),
     scIds.length > 0
-      ? runSource(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds })
+      ? runSource(CS_STOCKOUT_QUERY_ID, withLens(CS_STOCKOUT_QUERY_ID, { seller_id_list: scIds }))
       : Promise.resolve(null),
     scIds.length > 0
-      ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds })
+      ? runSource(CS_STOCKOUT_IMPACT_QUERY_ID, withLens(CS_STOCKOUT_IMPACT_QUERY_ID, { seller_id_list: scIds }))
       : Promise.resolve(null),
-    runSource(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds }),
+    runSource(CS_TYPO_CORPUS_QUERY_ID, withLens(CS_TYPO_CORPUS_QUERY_ID, { seller_id_list: sellerIds })),
   ]);
 
   // Primary seat: prefer the per-seat economic ranking; fall back to the
@@ -480,6 +608,22 @@ export async function fetchBrandBrain(
   if (settlementOut && !settlementOut.ok) failedSources.push('capture_rate');
   if (stockoutOut && !stockoutOut.ok) failedSources.push('stockout');
   if (typoOut && !typoOut.ok) failedSources.push('brand_typos');
+
+  // Reconcile the label lens's placeholder decisions from EVIDENCE, now that
+  // every source has settled (the central fix: a decision is resolved after
+  // the query returns, never before — see lib/binding/lens.ts). Only the
+  // three label-aware sources this fetch actually calls need an outcome
+  // entry; the rest of `lensDecisions` are already-final structural
+  // decisions (account_wide / missing_label_value) that reconciliation
+  // leaves untouched.
+  const toLensOutcome = (out: SourceOutcome | null): QueryLensOutcome =>
+    out === null ? { status: 'failed' } : out.ok ? { status: 'ok', appliedParams: out.appliedParams } : { status: 'failed' };
+  const lensOutcomeByQueryId = new Map<string, QueryLensOutcome>([
+    [BRAIN_CATALOG_SC_QUERY_ID, toLensOutcome(scOut)],
+    [BRAIN_CATALOG_VC_QUERY_ID, toLensOutcome(vcOut)],
+    [BRAIN_CAMPAIGN_QUERY_ID, toLensOutcome(campaignOut)],
+  ]);
+  const reconciledLensDecisions = reconcileLensDecisions(lensDecisions, lensOutcomeByQueryId);
 
   const sourceInput = async (
     queryId: string,
@@ -532,6 +676,15 @@ export async function fetchBrandBrain(
       brandTypos: await sourceInput(CS_TYPO_CORPUS_QUERY_ID, typoOut),
       brandTermsInput,
     });
+    // Stamp the lens record INTO the brain document (additive optional field;
+    // old readers strip it on read, writers preserve unknown keys — the same
+    // forward-tolerance contract as every other schema addition this epic
+    // made). The brain is where sub_brands pre-fill and downstream sections
+    // get read from, so the scoping record has to travel WITH the data.
+    const lensSummary = binding ? summarizeLens(reconciledLensDecisions) : null;
+    if (lensSummary) {
+      brain.label_lens = lensSummary;
+    }
     const { path } = await saveBrain(brain, dataDirOverride);
 
     // Auto-publish the freshly-saved brain to the org store, detached from the
@@ -556,6 +709,14 @@ export async function fetchBrandBrain(
       stockout_count: brain.stockouts?.length ?? null,
       brand_typo_count: brain.brand_term_typos?.length ?? null,
       failed_sources: failedSources,
+      label_lens: lensSummary,
+      lens_warnings: buildLensWarnings({
+        slug,
+        lensSummary,
+        lensDecisions: reconciledLensDecisions,
+        catalogAsinCount: brain.catalog?.asin_count ?? null,
+        campaignCount: brain.campaign_structure?.campaign_count ?? null,
+      }),
     };
     await writeBrainStatus(
       {
