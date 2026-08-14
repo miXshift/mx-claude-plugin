@@ -5,25 +5,7 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.9
 
-<!-- unreleased: version bump happens at release cut, not in feature PRs -->
-
 ### Added
-
-- **Monthly Performance Report Max: a smart tier of the monthly report, built
-  on MixShift Intelligence.** The new `mx-monthly-report-max` skill composes
-  the same monthly report from figures the intelligence service computes and
-  publishes (H-Bridge decompositions with footing checks, MoM and YoY pairs,
-  cross-domain TACOS), instead of numbers assembled in chat. Every figure in
-  the report traces to its source; a sentence that quotes a number without
-  its basis, claims a superlative the data does not support, or drops a
-  required caveat is refused before the report renders, by mechanical
-  validators the model cannot talk its way past. The nine claim errors that
-  shipped in real reports are locked in as permanent must-fail tests. Your
-  existing `mx-monthly-report` skill is unchanged and stays the standard
-  tier. One report consumes one metered intelligence request; re-renders are
-  free. Requires intelligence enrollment for the account; if the account is
-  not enrolled the skill says so and offers the standard tier instead. New
-  supporting commands: `mixshift report validate | extract | render`.
 
 - **Early sub-brand label discovery, for accounts run as several brands under
   one Amazon seller.** Some agencies operate many distinct brands out of a
@@ -72,6 +54,22 @@ starts at 0.5.39; earlier versions predate the changelog.
   if a filter you set was not actually applied, so a sub-brand's numbers are
   never quietly account-wide without you knowing it. Brands not set up as
   sub-brands see no change.
+
+- **Monthly Performance Report Max: a smart tier of the monthly report, built
+  on MixShift Intelligence.** The new `mx-monthly-report-max` skill composes
+  the same monthly report from figures the intelligence service computes and
+  publishes (H-Bridge decompositions with footing checks, MoM and YoY pairs,
+  cross-domain TACOS), instead of numbers assembled in chat. Every figure in
+  the report traces to its source; a sentence that quotes a number without
+  its basis, claims a superlative the data does not support, or drops a
+  required caveat is refused before the report renders, by mechanical
+  validators the model cannot talk its way past. The nine claim errors that
+  shipped in real reports are locked in as permanent must-fail tests. Your
+  existing `mx-monthly-report` skill is unchanged and stays the standard
+  tier. One report consumes one metered intelligence request; re-renders are
+  free. Requires intelligence enrollment for the account; if the account is
+  not enrolled the skill says so and offers the standard tier instead. New
+  supporting commands: `mixshift report validate | extract | render`.
 
 ## 0.8.8
 
