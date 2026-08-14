@@ -76,17 +76,20 @@ that file.
 
 ## The pipeline
 
-### Step 1 — Acquire the envelope set
+### Step 1 — Acquire the run bundle
 
-One MoM pair + one YoY pair, ops + ads companion each:
+INS-MONTHLY-01 returns one **composite bundle** for the whole run, not a single response —
+one MoM pair and one YoY pair, each an ops + ads companion, nested inside it:
 
 ```bash
-mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out envelope.json
+mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out run.json
 ```
 
 (params: `{"merchant": {"sellerId", "marketplaceId"}, "month", "grouping", "includeYoY"}`;
 oversize accounts return an async handle — poll with `mixshift intelligence poll`, never
-cancel on time.) Record `envelope.engineVersion` for the sidecar.
+cancel on time.) The bundle shape is `{ok, mom: {ops, ads, crossDomain}, yoy: {ops} | null,
+headline, limitations, meta}`. `run.json` is never fed to the extractor as-is — Step 2 pulls
+each nested envelope out by name, one period-prefixed figures document per envelope.
 
 On `not_enrolled` or a service error: **degrade and label** — name the degradation in the
 report header and offer the standard-tier skill; never fail closed, never silently
@@ -96,14 +99,35 @@ substitute locally-computed numbers for engine ones.
 live accounts at magnitudes from low hundreds to ~$10K within days of a build. If two runs
 disagree, it is time, not grain. A figure quoted from a stale envelope is a defect.
 
-### Step 2 — Extract typed figures (never read raw envelope JSON)
+### Step 2 — Extract typed figures per envelope (never read raw envelope JSON)
 
-Run the figure extractor over the envelope to produce `figures.json` (typed Figure objects
-with `source_path` into the envelope, basis/unit metadata, envelope caveats mapped into the
-caveat registry) and require its `--check` to pass (required fields, envelope-rooted source
-paths, delta = p2 − p1, the ads SKU-split identity, bridge legs footing to net). Reading a
-40–120KB envelope "carefully" in context is the reason-from-the-fragment-you-kept failure
-this step exists to prevent.
+The bundle nests its envelopes, so extract each one the report needs by name instead of
+feeding `run.json` straight in: `mom.ops` for the retail/bridge figures plus the
+`crossDomain` cross-domain block (it rides the ops leg of the pair, never the ads leg),
+`mom.ads` for the ads figures, and `yoy.ops` when `includeYoY` was set. Each `--select`
+produces its own figures document (typed Figure objects with `source_path` into the
+envelope, basis/unit metadata, envelope caveats mapped into the caveat registry); require
+`--check` to pass on every one of them (required fields, envelope-rooted source paths,
+delta = p2 − p1, the ads SKU-split identity, bridge legs footing to net):
+
+```bash
+mixshift report extract run.json --select mom.ops --check --out figures.mom.ops.json
+mixshift report extract run.json --select mom.ads --check --out figures.mom.ads.json
+mixshift report extract run.json --select yoy.ops --check --out figures.yoy.ops.json  # only when includeYoY
+```
+
+**Every id a `--select` produces is prefixed with its period** — `mom.*` or `yoy.*` ahead of
+the usual domain shape, e.g. `mom.ops.ops.p1` and `yoy.ops.ops.p1` from the same metric in
+two different periods. MoM and YoY figures therefore never collide, even once every document
+this step produced is composed into one report. Never build or expect a bare, unprefixed id
+(`ops.ops.p1`) from a `--select` extraction — that shape belongs to a plain, non-composite
+response only, which this pipeline never hands the extractor.
+
+Record `source.engineVersion` off the `mom.ops` figures document for the sidecar, and
+compose the report against the full set of figures documents together — the period prefix is
+what makes that merge safe. Reading a 40–120KB envelope "carefully" in context is the
+reason-from-the-fragment-you-kept failure this step exists to prevent, composite bundle or
+not.
 
 ### Step 3 — Residual SQL (declared, shrinking)
 
@@ -136,7 +160,12 @@ MixShift revenue forecasting model" (first mention) / "the forecasting model" (t
 ### Step 5 — Compose `report-data.json` (the model's actual work)
 
 Every number is a `figure_ref` into figures.json; every sentence that asserts something is a
-typed claim (Figure / Derived / Claim / Caveat / Section — the harness report-contract).
+typed claim (Figure / Derived / Claim / Caveat / Section — the harness report-contract). A
+`figure_ref` built from a composite extraction names its period explicitly — `mom.ops.ops.p1`
+for the MoM figure, `yoy.ops.ops.p1` for the YoY figure of the same metric — never the bare
+`ops.ops.p1` shape. There is exactly one report-data.json and its figures come from every
+document Step 2 produced, so a `figure_ref` that drops the period is not just wrong style: on
+a bare id, MoM and YoY read as the same figure.
 
 - **Claims carry their kind**, and the kind carries obligations: `superlative`/`quantifier`
   need a population with `complete: true` plus a machine-checkable form — until the envelope

@@ -7,6 +7,17 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Monthly Performance Report Max now reads the full monthly run.** A monthly
+  intelligence run returns a bundle that holds each period's analysis inside it,
+  and the report skill was handing that whole bundle to the figure extractor,
+  which found nothing it recognized and returned an empty set without
+  complaining. The extractor now refuses a bundle instead of quietly returning
+  nothing, and the skill pulls out one period at a time
+  (`mixshift report extract <run.json> --select mom.ops`). Figures also carry
+  which period they came from, so a month-over-month number and a year-over-year
+  number can never be mistaken for each other in the same report. If you ran the
+  smart-tier monthly report on 0.8.9, re-run it on this version.
+
 - **Portfolio budget caps now come from Amazon directly.** The stored copy of a
   portfolio's budget cap in the warehouse is often wrong, so asking what a
   portfolio is capped at could come back with a placeholder figure rather than

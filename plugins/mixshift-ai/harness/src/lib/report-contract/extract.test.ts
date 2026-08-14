@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractFigures, checkFigures } from './extract.js';
-import type { ExtractDocument, ExtractedFigure } from './extract.js';
+import { extractFigures, checkFigures, CompositeSelectionError, COMPOSITE_SELECTIONS } from './extract.js';
+import type { ExtractDocument, ExtractedFigure, CompositeSelection } from './extract.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(here, 'fixtures');
@@ -270,6 +270,7 @@ function minimalOut(overrides: Partial<ExtractDocument> = {}): ExtractDocument {
       currency: 'USD',
       channel: null,
       companionRunId: null,
+      selection: null,
     },
     caveat_registry: {},
     figures: [],
@@ -422,6 +423,38 @@ describe('checkFigures: DELTA-IDENTITY (delta === p2 - p1 within TOL)', () => {
     expect(checkFigures(out)).toContainEqual({ rule: 'DELTA-IDENTITY', subject: 'ops.ops.delta', detail: 'delta != p2 - p1' });
   });
 
+  // DELTA-IDENTITY derives its p1/p2 lookups from the delta figure's OWN id
+  // (slice off '.delta', look up '<stem>.p1'/'.p2') rather than a hardcoded
+  // root, so it needs no prefix-awareness of its own -- proving that here
+  // rather than assuming it, since the sibling SKU-SPLIT rule looked
+  // identically safe until its hardcoded 'ads.' root was checked.
+  it('still fires on a PREFIXED (mom.ops selection) document -- stem-relative lookup needs no prefix-awareness', () => {
+    const out = minimalOut({
+      source: {
+        bridgeRunId: 'r1',
+        bridgeDomain: 'ops',
+        engineVersion: null,
+        schemaVersion: null,
+        period: null,
+        tenant: null,
+        currency: 'USD',
+        channel: null,
+        companionRunId: null,
+        selection: 'mom.ops',
+      },
+      figures: [
+        f({ id: 'mom.ops.ops.p1', value: 100 }),
+        f({ id: 'mom.ops.ops.p2', value: 130 }),
+        f({ id: 'mom.ops.ops.delta', value: 25 }), // broken: should be 30
+      ],
+    });
+    expect(checkFigures(out)).toContainEqual({
+      rule: 'DELTA-IDENTITY',
+      subject: 'mom.ops.ops.delta',
+      detail: 'delta != p2 - p1',
+    });
+  });
+
   it('ignores bridge-leg ids ending in .delta-shaped stems (never applies to .bridge. figures)', () => {
     // a bridge figure id happens to not end in ".delta" in practice, but the
     // guard is explicit in the source -- exercise it directly via an id that
@@ -436,7 +469,18 @@ describe('checkFigures: DELTA-IDENTITY (delta === p2 - p1 within TOL)', () => {
 });
 
 describe('checkFigures: SKU-SPLIT (ads domain only: same + other + view_through === total)', () => {
-  function adsOut(totalP1: number, sameP1: number, otherP1: number, vtP1: number) {
+  // `selection` optionally simulates a composite-selection document: every
+  // id gets the same period prefix a real extractFigures(..., selection)
+  // call would apply, and source.selection is set to match (SKU-SPLIT is the
+  // one invariant that reads it back).
+  function adsOut(
+    totalP1: number,
+    sameP1: number,
+    otherP1: number,
+    vtP1: number,
+    selection: CompositeSelection | null = null,
+  ) {
+    const p = selection ? `${selection.split('.')[0]}.` : '';
     return minimalOut({
       source: {
         bridgeRunId: 'r1',
@@ -448,12 +492,13 @@ describe('checkFigures: SKU-SPLIT (ads domain only: same + other + view_through 
         currency: 'USD',
         channel: null,
         companionRunId: null,
+        selection,
       },
       figures: [
-        f({ id: 'ads.ad_sales.p1', value: totalP1 }),
-        f({ id: 'ads.ad_sales_same_sku.p1', value: sameP1 }),
-        f({ id: 'ads.ad_sales_other_sku.p1', value: otherP1 }),
-        f({ id: 'ads.ad_sales_view_through.p1', value: vtP1 }),
+        f({ id: `${p}ads.ad_sales.p1`, value: totalP1 }),
+        f({ id: `${p}ads.ad_sales_same_sku.p1`, value: sameP1 }),
+        f({ id: `${p}ads.ad_sales_other_sku.p1`, value: otherP1 }),
+        f({ id: `${p}ads.ad_sales_view_through.p1`, value: vtP1 }),
       ],
     });
   }
@@ -477,6 +522,23 @@ describe('checkFigures: SKU-SPLIT (ads domain only: same + other + view_through 
         f({ id: 'ads.ad_sales_view_through.p1', value: 1 }),
       ],
     });
+    expect(checkFigures(out).filter((p) => p.rule === 'SKU-SPLIT')).toEqual([]);
+  });
+
+  // SKU-SPLIT is the one invariant with a hardcoded id root ('ads.ad_sales...'),
+  // so it is the one at risk of becoming a silent no-op under period
+  // prefixing: figs.get('ads.ad_sales.p1') simply misses every figure in a
+  // 'mom.ads.ad_sales.p1'-shaped document and the whole rule stops firing
+  // with no error. These two prove it still resolves the right ids.
+  it('still fires on a PREFIXED (mom.ads) document when the parts do not sum to the total', () => {
+    const out = adsOut(100, 60, 30, 5, 'mom.ads'); // 60+30+5=95 != 100
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'SKU-SPLIT', subject: 'mom.ads.ad_sales.p1' }),
+    );
+  });
+
+  it('does not false-positive on a matching PREFIXED (mom.ads) document (sanity: it found the right ids to sum, not just any ids)', () => {
+    const out = adsOut(100, 60, 30, 10, 'mom.ads');
     expect(checkFigures(out).filter((p) => p.rule === 'SKU-SPLIT')).toEqual([]);
   });
 });
@@ -514,6 +576,34 @@ describe('checkFigures: BRIDGE-FOOTING (legs foot to net whenever footing_ok)', 
     expect(checkFigures(out).filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
   });
 
+  // Like DELTA-IDENTITY, BRIDGE-FOOTING groups legs by slicing each figure's
+  // OWN id (up to its last '.') rather than a hardcoded root, so a uniform
+  // period prefix never breaks the grouping -- proving it rather than
+  // assuming it, same rationale as the DELTA-IDENTITY prefixed case above.
+  it('still fires on a PREFIXED (yoy.ops selection) document', () => {
+    const out = minimalOut({
+      source: {
+        bridgeRunId: 'r1',
+        bridgeDomain: 'ops',
+        engineVersion: null,
+        schemaVersion: null,
+        period: null,
+        tenant: null,
+        currency: 'USD',
+        channel: null,
+        companionRunId: null,
+        selection: 'yoy.ops',
+      },
+      figures: [
+        f({ id: 'yoy.ops.bridge.ops.primary.a', value: 20, footing_ok: true, net_change: 30 }),
+        f({ id: 'yoy.ops.bridge.ops.primary.b', value: 5, footing_ok: true, net_change: 30 }), // 20+5=25 != 30
+      ],
+    });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'BRIDGE-FOOTING', subject: 'yoy.ops.bridge.ops.primary' }),
+    );
+  });
+
   it('never throws when a leg value is a numeric STRING (the original defect: string-concat reduce + s.toFixed crashing mid-check and losing earlier findings)', () => {
     const out = minimalOut({
       figures: [
@@ -532,5 +622,255 @@ describe('checkFigures: BRIDGE-FOOTING (legs foot to net whenever footing_ok)', 
     // string-concatenating "20000" + "10000" into "2000010000" and either
     // throwing on .toFixed or comparing garbage against net_change.
     expect(problems.filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (e) composite bundle handling (INS-MONTHLY-01 mom/yoy unwrapping)
+// ---------------------------------------------------------------------------
+
+describe('composite bundle handling (INS-MONTHLY-01 mom/yoy unwrapping)', () => {
+  // Reuse the anonymized envelope fixture's inner `envelope` object -- inside
+  // a composite bundle, mom.ops / yoy.ops ARE envelope objects directly, one
+  // level down from where a bare-response caller would find them (that
+  // caller sees {envelope, crossDomain, ...}; the composite's mom.ops IS the
+  // `envelope` value from that shape, not the wrapper around it).
+  const opsEnvelope = (loadFixture('envelope-minimal.json') as { envelope: unknown }).envelope;
+
+  // Small synthetic ads envelope -- just enough shape to exercise ads.*
+  // figures without pulling in a second full fixture.
+  const adsEnvelope = {
+    bridgeDomain: 'ads',
+    bridgeRunId: 'run-example-ads-0001',
+    currency: 'USD',
+    caveats: [],
+    metrics: [
+      { metricKey: 'ad_spend', totals: { p1: 15000, p2: 16000, delta: 1000, pctChange: 0.0667 }, topDrivers: [] },
+      { metricKey: 'ad_sales', totals: { p1: 70000, p2: 95000, delta: 25000, pctChange: 0.357 }, topDrivers: [] },
+    ],
+    insights: [],
+  };
+
+  // Small synthetic crossDomain block -- only what's needed to prove duo.*
+  // figures ride along with the mom.ops selection.
+  const crossDomain = {
+    tacos: { p1: 0.15, p2: 0.12, deltaPts: -0.03 },
+  };
+
+  function buildComposite(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      ok: true,
+      mom: { ops: opsEnvelope, ads: adsEnvelope, crossDomain },
+      yoy: { ops: opsEnvelope },
+      headline: {},
+      limitations: [],
+      meta: {},
+      ...overrides,
+    };
+  }
+
+  it('a composite bundle with no selection throws CompositeSelectionError naming the available choices', () => {
+    const composite = buildComposite();
+    let error: unknown;
+    try {
+      extractFigures(composite);
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(CompositeSelectionError);
+    for (const choice of COMPOSITE_SELECTIONS) {
+      expect((error as Error).message).toContain(choice);
+    }
+  });
+
+  it('REGRESSION: a composite never silently extracts zero figures that would pass checkFigures vacuously (the original defect)', () => {
+    // Old behavior: no top-level `envelope` key on the composite, so it was
+    // treated as a bare-but-empty envelope -- metrics/insights both resolved
+    // to [], figures stayed [], and checkFigures([]) === [] is a CLEAN pass
+    // with zero figures extracted. The guard exists so this sequence can no
+    // longer happen: extraction throws before any document -- empty or
+    // otherwise -- is ever produced from an unselected composite.
+    const composite = buildComposite();
+    let out: ExtractDocument | undefined;
+    let error: unknown;
+    try {
+      out = extractFigures(composite);
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(CompositeSelectionError);
+    expect(out).toBeUndefined();
+    // Belt-and-suspenders: even if a future change stopped this from
+    // throwing, it must never come back as the silent-empty pass.
+    if (out !== undefined) {
+      const completed: ExtractDocument = out;
+      const isSilentEmptyPass = completed.figures.length === 0 && checkFigures(completed).length === 0;
+      expect(isSilentEmptyPass).toBe(false);
+    }
+  });
+
+  it('--select mom.ops extracts the ops envelope and picks up mom.crossDomain (duo.* present), all ids mom.-prefixed', () => {
+    const composite = buildComposite();
+    const out = extractFigures(composite, 'mom.ops');
+    const figs = byId(out);
+    expect(out.source.bridgeDomain).toBe('ops');
+    expect(out.source.selection).toBe('mom.ops');
+    expect(figs.get('mom.ops.ops.p1')).toMatchObject({ value: 100000, unit: 'currency' });
+    expect(figs.get('mom.ops.ops.p2')).toMatchObject({ value: 144000 });
+    expect(out.figures.some((fg) => fg.id.includes('duo.'))).toBe(true);
+    expect(figs.get('mom.duo.tacos.p1')).toMatchObject({ value: 0.15, unit: 'ratio' });
+    expect(figs.get('mom.duo.tacos.p2')).toMatchObject({ value: 0.12 });
+    // never the bare, unprefixed shape a single-response extraction would emit
+    expect(figs.has('ops.ops.p1')).toBe(false);
+    expect(figs.has('duo.tacos.p1')).toBe(false);
+  });
+
+  it('--select mom.ads ids are period-prefixed AND still carry the ads.* domain structure (ads.* present, duo.* absent -- crossDomain belongs to the pair, not the ads run)', () => {
+    const composite = buildComposite();
+    const out = extractFigures(composite, 'mom.ads');
+    const figs = byId(out);
+    expect(out.source.bridgeDomain).toBe('ads');
+    expect(out.source.selection).toBe('mom.ads');
+    expect(figs.get('mom.ads.ad_spend.p1')).toMatchObject({ value: 15000, unit: 'currency' });
+    expect(figs.get('mom.ads.ad_sales.delta')).toMatchObject({ value: 25000 });
+    expect(out.figures.filter((fg) => fg.id.includes('duo.'))).toEqual([]);
+    expect(figs.has('ads.ad_spend.p1')).toBe(false); // never the bare, unprefixed shape
+    expect(checkFigures(out)).toEqual([]); // still checks clean, prefixed
+  });
+
+  it('--select yoy.ops works, carries no crossDomain, and its ids are yoy.-prefixed -- DISJOINT from mom.ops on the identical underlying envelope', () => {
+    const composite = buildComposite();
+    const out = extractFigures(composite, 'yoy.ops');
+    const figs = byId(out);
+    expect(out.source.bridgeDomain).toBe('ops');
+    expect(out.source.selection).toBe('yoy.ops');
+    expect(figs.get('yoy.ops.ops.p1')).toMatchObject({ value: 100000 });
+    expect(out.figures.filter((fg) => fg.id.includes('duo.'))).toEqual([]);
+    expect(figs.has('ops.ops.p1')).toBe(false); // never the bare, unprefixed shape
+    expect(figs.has('mom.ops.ops.p1')).toBe(false); // never the OTHER period's prefix
+  });
+
+  // ---------------------------------------------------------------------
+  // THE P0 REGRESSION: mom.ops and yoy.ops here read the EXACT SAME
+  // underlying opsEnvelope fixture object (see `buildComposite` above) --
+  // before period-prefixing, `${domain}.${key}.${side}` gave both documents
+  // the identical id set (ops.ops.p1, ops.ops.delta, ops.bridge.ops.primary.
+  // sessions, ...). SKILL.md Step 2 composes every selection's document into
+  // one report, so those collided ids meant a MoM figure_ref could resolve
+  // to the YoY value through render-report.ts / validate.ts's last-wins
+  // Maps, with every validator reporting clean. These two tests are the
+  // regression guard.
+  // ---------------------------------------------------------------------
+
+  it('REGRESSION: caveat registry keys are period-namespaced too, and figures reference the prefixed ids', () => {
+    // The first cut of this fix prefixed figure ids but NOT caveat registry
+    // keys, which collide identically (`env.surge_window.0` in both periods).
+    // Since the skill merges both documents into one report-data and a merged
+    // registry is last-wins, a figure could have rendered the OTHER period's
+    // caveat text. Blocking caveats are exactly the ones that must never be
+    // wrong, so this is the same failure class as the figure-id collision.
+    const caveated = {
+      ...(opsEnvelope as Record<string, unknown>),
+      caveats: [{ kind: 'surge_window', message: 'A surge window overlaps the comparison period.' }],
+    };
+    const composite = buildComposite({ mom: { ops: caveated, ads: adsEnvelope, crossDomain }, yoy: { ops: caveated } });
+
+    const mom = extractFigures(composite, 'mom.ops');
+    const yoy = extractFigures(composite, 'yoy.ops');
+
+    expect(Object.keys(mom.caveat_registry)).toContain('mom.env.surge_window.0');
+    expect(Object.keys(yoy.caveat_registry)).toContain('yoy.env.surge_window.0');
+    // The bare, collidable key is gone from both.
+    expect(Object.keys(mom.caveat_registry)).not.toContain('env.surge_window.0');
+
+    // A merged registry (what the skill actually composes) loses nothing.
+    const mergedKeys = new Set([
+      ...Object.keys(mom.caveat_registry),
+      ...Object.keys(yoy.caveat_registry),
+    ]);
+    expect(mergedKeys.size).toBe(
+      Object.keys(mom.caveat_registry).length + Object.keys(yoy.caveat_registry).length,
+    );
+
+    // Figures must point at the prefixed keys, or the reference dangles.
+    const momCaveatRefs = mom.figures.flatMap((f) => f.caveats);
+    expect(momCaveatRefs.length).toBeGreaterThan(0);
+    for (const ref of momCaveatRefs) {
+      expect(ref.startsWith('mom.')).toBe(true);
+      expect(mom.caveat_registry[ref]).toBeDefined();
+    }
+  });
+
+  it('REGRESSION (P0): mom.ops and yoy.ops from the same composite produce DISJOINT id sets, never colliding', () => {
+    const composite = buildComposite();
+    const mom = extractFigures(composite, 'mom.ops');
+    const yoy = extractFigures(composite, 'yoy.ops');
+    const momIds = new Set(mom.figures.map((fg) => fg.id));
+    const yoyIds = new Set(yoy.figures.map((fg) => fg.id));
+
+    expect(momIds.size).toBeGreaterThan(0);
+    expect(yoyIds.size).toBeGreaterThan(0);
+    for (const id of momIds) expect(yoyIds.has(id)).toBe(false);
+    for (const id of yoyIds) expect(momIds.has(id)).toBe(false);
+
+    // the SPECIFIC ids that collided pre-fix (both selections read the same
+    // opsEnvelope, so both used to emit the exact same bare id here)
+    expect(momIds.has('mom.ops.ops.p1')).toBe(true);
+    expect(yoyIds.has('yoy.ops.ops.p1')).toBe(true);
+    expect(momIds.has('mom.ops.ops.delta')).toBe(true);
+    expect(yoyIds.has('yoy.ops.ops.delta')).toBe(true);
+    expect(momIds.has('mom.ops.bridge.ops.primary.sessions')).toBe(true);
+    expect(yoyIds.has('yoy.ops.bridge.ops.primary.sessions')).toBe(true);
+  });
+
+  it('simulated skill merge (SKILL.md Step 2: compose every selection\'s figures document together) yields zero duplicate ids across mom.ops + mom.ads + yoy.ops', () => {
+    const composite = buildComposite();
+    const mom = extractFigures(composite, 'mom.ops');
+    const ads = extractFigures(composite, 'mom.ads');
+    const yoy = extractFigures(composite, 'yoy.ops');
+
+    // exactly what the skill does at Step 5: concatenate every extracted
+    // document's figures[] into one report-data.json figures[] array
+    const merged = [...mom.figures, ...ads.figures, ...yoy.figures];
+    const ids = merged.map((fg) => fg.id);
+    expect(new Set(ids).size).toBe(ids.length); // no id repeats anywhere
+
+    // and reproduce validate.ts / render-report.ts's own last-wins index
+    // directly: every figure survives, none is silently shadowed
+    const byIdMap = new Map(merged.map((fg) => [fg.id, fg]));
+    expect(byIdMap.size).toBe(merged.length);
+  });
+
+  it('yoy: null (a run without YoY) + --select yoy.ops throws, naming what IS available', () => {
+    const composite = buildComposite({ yoy: null });
+    let error: unknown;
+    try {
+      extractFigures(composite, 'yoy.ops');
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(CompositeSelectionError);
+    const message = (error as Error).message;
+    expect(message).toContain("no 'yoy' block");
+    expect(message).toContain('mom.ops');
+    expect(message).toContain('mom.ads');
+    expect(message).not.toContain('yoy.ops'); // excluded from "available" -- it's the one that's missing
+  });
+
+  it('a selection passed for a plain single response throws', () => {
+    const plain = loadFixture('envelope-minimal.json');
+    expect(() => extractFigures(plain, 'mom.ops')).toThrow(CompositeSelectionError);
+  });
+
+  it('a plain single response still extracts exactly as before (regression guard: unprefixed ids, parity with the upstream Python extractor)', () => {
+    const plain = loadFixture('envelope-minimal.json');
+    const out = extractFigures(plain);
+    const figs = byId(out);
+    expect(out.source.bridgeDomain).toBe('ops');
+    expect(out.source.selection).toBeNull(); // no composite selection on this path
+    expect(figs.get('ops.ops.p1')).toMatchObject({ value: 100000, unit: 'currency', basis: 'ordered_revenue' });
+    expect(figs.get('ops.ops.delta')).toMatchObject({ value: 44000 });
+    expect(figs.get('duo.tacos.p1')).toMatchObject({ value: 0.15 });
+    expect(checkFigures(out)).toEqual([]);
   });
 });

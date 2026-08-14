@@ -1,0 +1,39 @@
+{
+  "_note": "MixShift fail-closed extension #3, ported back per the append protocol: a non-numeric population member value must produce a clean POP-2 refusal, never a crash. Pre-port, the Python validator raised TypeError here.",
+  "_expected": ["POP-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ops.lines.delta",
+      "label": "Line deltas",
+      "value": 3,
+      "unit": "count",
+      "basis": "settled_month_end",
+      "source_path": "envelope:ops.byEntity",
+      "caveats": [],
+      "population": {
+        "complete": true,
+        "members": [
+          {"key": "Line-1", "delta": -100},
+          {"key": "Line-2", "delta": "n/a"},
+          {"key": "Line-3", "delta": 50}
+        ]
+      }
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.two-fell",
+      "kind": "quantifier",
+      "text": "Two of the three lines fell.",
+      "figure_refs": ["ops.lines.delta"],
+      "population_ref": "ops.lines.delta",
+      "check": {"type": "count", "predicate": {"member_key": "delta", "op": "lt", "value": 0}, "claimed_count": 2}
+    }
+  ],
+  "sections": []
+}

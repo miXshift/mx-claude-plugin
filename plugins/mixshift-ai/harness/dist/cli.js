@@ -91162,7 +91162,7 @@ var SIDE_FIELDS = [
   ["p1", "p1Value"],
   ["p2", "p2Value"]
 ];
-function buildSource(env, doc, domain2, entityKey) {
+function buildSource(env, doc, domain2, entityKey, selection) {
   const src = {
     bridgeRunId: env.bridgeRunId ?? null,
     bridgeDomain: domain2,
@@ -91173,12 +91173,13 @@ function buildSource(env, doc, domain2, entityKey) {
     tenant: env.tenant ?? null,
     currency: env.currency ?? null,
     channel: env.channel ?? null,
-    companionRunId: doc.companionRunId ?? null
+    companionRunId: doc.companionRunId ?? null,
+    selection: selection ?? null
   };
   if (entityKey !== void 0) src.entityKey = entityKey;
   return src;
 }
-function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats) {
+function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats, selection) {
   const ekey = env.entityKey;
   const slug = String(ekey);
   const figures2 = [];
@@ -91237,13 +91238,58 @@ function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats) {
   });
   return {
     schema_version: "2.0-draft",
-    source: buildSource(env, doc, domain2, ekey),
+    source: buildSource(env, doc, domain2, ekey, selection),
     caveat_registry: registry2,
     figures: figures2
   };
 }
-function extractFigures(response) {
-  const rawDoc = asRecord(response) ?? {};
+var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops"];
+function isCompositeResponse(response) {
+  const doc = asRecord(response) ?? {};
+  if (Object.prototype.hasOwnProperty.call(doc, "envelope")) return false;
+  const mom = asRecord(doc.mom);
+  return !!mom && (hasValue(mom.ops) || hasValue(mom.ads));
+}
+var CompositeSelectionError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "CompositeSelectionError";
+  }
+};
+function selectFromComposite(doc, selection) {
+  const [periodKey, domainKey] = selection.split(".");
+  const period = asRecord(doc[periodKey]);
+  if (!period) {
+    throw new CompositeSelectionError(
+      `This composite has no '${periodKey}' block (an INS-MONTHLY-01 run without YoY returns yoy: null). Available: ${COMPOSITE_SELECTIONS.filter((s) => !!asRecord(doc[s.split(".")[0]])).join(", ") || "none"}.`
+    );
+  }
+  const envelope = asRecord(period[domainKey]);
+  if (!envelope) {
+    throw new CompositeSelectionError(
+      `This composite's '${periodKey}' block has no '${domainKey}' envelope.`
+    );
+  }
+  const out = { envelope };
+  const crossDomain = periodKey === "mom" && domainKey === "ops" ? asRecord(period.crossDomain) : void 0;
+  if (crossDomain) out.crossDomain = crossDomain;
+  return out;
+}
+function extractFiguresUnprefixed(response, selection) {
+  let rawDoc = asRecord(response) ?? {};
+  const composite = isCompositeResponse(rawDoc);
+  if (composite) {
+    if (!selection) {
+      throw new CompositeSelectionError(
+        `This is a composite run bundle (INS-MONTHLY-01), not a single insights response: its envelopes nest inside mom/yoy. Extract one envelope at a time by naming it, e.g. --select mom.ops (choices: ${COMPOSITE_SELECTIONS.join(", ")}). Extracting the bundle itself would yield zero figures and pass --check vacuously.`
+      );
+    }
+    rawDoc = selectFromComposite(rawDoc, selection);
+  } else if (selection) {
+    throw new CompositeSelectionError(
+      `--select ${selection} was given, but this response is a single insights response, not a composite bundle. Drop the selection.`
+    );
+  }
   const env = Object.prototype.hasOwnProperty.call(rawDoc, "envelope") ? asRecord(rawDoc.envelope) ?? {} : rawDoc;
   const domain2 = env.bridgeDomain ?? "ops";
   const unitsMap = domain2 === "ads" ? ADS_UNITS : OPS_UNITS;
@@ -91258,7 +91304,7 @@ function extractFigures(response) {
     deltaCaveats.push(cid);
   });
   if (hasValue(env.entityKey)) {
-    return extractEntity(rawDoc, env, domain2, unitsMap, registry2, deltaCaveats);
+    return extractEntity(rawDoc, env, domain2, unitsMap, registry2, deltaCaveats, selection);
   }
   const figures2 = [];
   const metricsArr = asArray(env.metrics) ?? [];
@@ -91423,10 +91469,34 @@ function extractFigures(response) {
   }
   return {
     schema_version: "2.0-draft",
-    source: buildSource(env, rawDoc, domain2),
+    source: buildSource(env, rawDoc, domain2, void 0, selection),
     caveat_registry: registry2,
     figures: figures2
   };
+}
+function periodPrefixOf(selection) {
+  return selection ? `${selection.split(".")[0]}.` : "";
+}
+function prefixSelectionIds(doc, selection) {
+  const prefix = periodPrefixOf(selection);
+  if (!prefix) return doc;
+  const caveatRegistry = {};
+  for (const [cid, entry] of Object.entries(doc.caveat_registry)) {
+    caveatRegistry[`${prefix}${cid}`] = entry;
+  }
+  return {
+    ...doc,
+    caveat_registry: caveatRegistry,
+    figures: doc.figures.map((f) => ({
+      ...f,
+      id: `${prefix}${f.id}`,
+      caveats: f.caveats.map((cid) => `${prefix}${cid}`)
+    }))
+  };
+}
+function extractFigures(response, selection) {
+  const doc = extractFiguresUnprefixed(response, selection);
+  return prefixSelectionIds(doc, selection);
 }
 function checkFigures(out) {
   const findings = [];
@@ -91467,16 +91537,22 @@ function checkFigures(out) {
     }
   }
   if (out.source.bridgeDomain === "ads") {
+    const prefix = periodPrefixOf(out.source.selection);
     for (const side of ["p1", "p2"]) {
-      const parts = ["ads.ad_sales_same_sku.", "ads.ad_sales_other_sku.", "ads.ad_sales_view_through."];
-      const tot = figs.get(`ads.ad_sales.${side}`);
+      const parts = [
+        `${prefix}ads.ad_sales_same_sku.`,
+        `${prefix}ads.ad_sales_other_sku.`,
+        `${prefix}ads.ad_sales_view_through.`
+      ];
+      const totId = `${prefix}ads.ad_sales.${side}`;
+      const tot = figs.get(totId);
       const comps = parts.map((p) => figs.get(p + side));
       if (tot && comps.every((c) => c !== void 0) && !invalidIds.has(tot.id) && comps.every((c) => !invalidIds.has(c.id))) {
         const s = comps.reduce((acc, c) => acc + c.value, 0);
         if (Math.abs(s - tot.value) > TOL) {
           findings.push({
             rule: "SKU-SPLIT",
-            subject: `ads.ad_sales.${side}`,
+            subject: totId,
             detail: `ad_sales SKU-split identity broken on ${side}: ${s} != ${tot.value}`
           });
         }
@@ -91963,11 +92039,28 @@ ${summary.length === 0 ? "PASS" : `FAIL: ${summary.join(", ")}`}`);
   });
   report.command("extract <response.json>").description(
     "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings."
-  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).action(async (file2, opts, cmd) => {
+  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).option(
+    "--select <envelope>",
+    `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(" | ")}`
+  ).action(async (file2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
       const response = await readJson(file2);
-      const doc = extractFigures(response);
+      if (opts.select && !COMPOSITE_SELECTIONS.includes(opts.select)) {
+        throw new UserFacingError(
+          `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(", ")}.`,
+          "report_bad_selection"
+        );
+      }
+      let doc;
+      try {
+        doc = extractFigures(response, opts.select);
+      } catch (err) {
+        if (err instanceof CompositeSelectionError) {
+          throw new UserFacingError(err.message, "report_composite_unselected");
+        }
+        throw err;
+      }
       const findings = opts.check ? checkFigures(doc) : [];
       const body = JSON.stringify(doc, null, 2);
       if (opts.out) {
