@@ -3,6 +3,22 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.10
+
+### Fixed
+
+- **Portfolio budget caps now come from Amazon directly.** The stored copy of a
+  portfolio's budget cap in the warehouse is often wrong, so asking what a
+  portfolio is capped at could come back with a placeholder figure rather than
+  the real one. That question now goes to the live Amazon read
+  (`mixshift ads call portfolios.list --legacy-seller-id <id>`), which returns
+  the current amount,
+  currency, policy, and date range straight from your account. The data catalog
+  also now explains that a portfolio's cap is not the sum of its campaigns'
+  daily budgets: the cap exists to hold total portfolio spend below that sum, so
+  the two figures are expected to differ, and a gap between them does not mean
+  anything has failed to sync.
+
 ## 0.8.9
 
 ### Added

@@ -124,7 +124,20 @@ tables:
     requires_seller_id: true
 
   portfolio:
-    description: "Campaign portfolio metadata. PortfolioName, BudgetAmount, BudgetPolicy. Surfaced on campaignmetric via PortfolioID."
+    description: >-
+      Campaign portfolio metadata: PortfolioName, BudgetPolicy, BudgetStartDate,
+      BudgetEndDate, State. Surfaced on campaignmetric via PortfolioID.
+      DO NOT READ A PORTFOLIO'S BUDGET CAP FROM THIS TABLE. The stored BudgetAmount
+      and InBudget values are frequently wrong (commonly a literal 1.00 whatever the
+      real cap is), so for a portfolio's budget cap, its currency, or whether it is
+      currently in budget, pull it live from Amazon with
+      `mixshift ads call portfolios.list --legacy-seller-id <id>`, which returns the
+      current amount, currency, policy, and date range per portfolio.
+      Also note that a portfolio's cap is NOT the sum of its campaigns' daily budgets.
+      The cap exists to hold total portfolio spend BELOW that sum, so the two numbers
+      are expected to differ, often by several times, and a gap between them is not a
+      sync problem. SUM(campaign.DailyBudget) answers "what are my campaigns allowed
+      to spend per day"; portfolios.list answers "what is this portfolio capped at".
     category: dimensional
     time_series: false
     requires_seller_id: true

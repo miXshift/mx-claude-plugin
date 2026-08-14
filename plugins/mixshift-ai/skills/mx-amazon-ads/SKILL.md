@@ -266,7 +266,12 @@ The most-used read operations:
 - `sb.list_campaigns`, `sb.list_ad_groups`, `sb.list_ads`, `sb.list_keywords`,
   `sb.list_targets` (SB product/category targets with current bids and states),
   `sb.list_negative_targets`.
-- `portfolios.list`.
+- `portfolios.list` (portfolio names, budget caps, currency, policy, date range,
+  state). **This is the source of truth for a portfolio's budget cap.** The
+  warehouse copy of that cap (`portfolio.BudgetAmount`) is frequently wrong, so
+  read caps from here rather than from the warehouse. Note also that a cap is not
+  the sum of the portfolio's campaign daily budgets: it exists to hold total
+  portfolio spend below that sum, so expect the two figures to differ.
 
 `sb.list_targets` and `sb.list_negative_targets` take a **different filter
 shape** from their SP cousins: an ARRAY of `{ filterType, values }` rather than
