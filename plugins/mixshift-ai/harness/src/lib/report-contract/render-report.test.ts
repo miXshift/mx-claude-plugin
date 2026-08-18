@@ -566,3 +566,188 @@ describe('renderMonthlyReport — permissive on absent optional data', () => {
     expect(() => renderMonthlyReport(doc)).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Unit vocabulary — the analysis engine's tokens, not just ours
+//
+// Figures extracted from an analysis envelope carry the ENGINE's unit
+// vocabulary: `extract.ts` passes `component.valueUnit` straight through onto
+// every bridge-leg figure. Anything the renderer did not recognize fell
+// through to a bare number, so a rate, a ratio and a count became
+// indistinguishable on the page. All values below are synthetic.
+// ---------------------------------------------------------------------------
+
+/** A figure carrying just a unit + value — the two inputs that decide the
+ *  formatted text (precision is exercised explicitly where it matters). */
+function unitFig(
+  unit: string | undefined,
+  value: number,
+  extra: Partial<FigureCommon & FigureDisplay> = {},
+): FigureCommon & FigureDisplay {
+  return { id: 'f.u', label: 'U', unit, value, ...extra } as unknown as FigureCommon & FigureDisplay;
+}
+
+describe('formatFigureValue — engine HorizontalBridgeValueUnit tokens (the vocabulary that reaches us today)', () => {
+  it('currency-2dp renders money at TWO decimals, not the 0dp `currency` rounding', () => {
+    // ASP / CPC / CPA / AOV. Before: fell through to raw -> "12.34".
+    expect(formatFigureValue(unitFig('currency-2dp', 12.34), 'USD')).toBe('$12.34');
+    // Sub-dollar CPC is the case a 0dp render destroys entirely.
+    expect(formatFigureValue(unitFig('currency-2dp', 0.85), 'USD')).toBe('$0.85');
+  });
+
+  it('currency-2dp honors the document currency symbol', () => {
+    expect(formatFigureValue(unitFig('currency-2dp', 12.34), 'GBP')).toBe('£12.34');
+  });
+
+  it('number renders a grouped whole number', () => {
+    expect(formatFigureValue(unitFig('number', 48210.4), 'USD')).toBe('48,210');
+  });
+
+  it('number-2dp keeps sub-integer movement that `number` would erase', () => {
+    // The engine added this precisely so 0.69 -> 1.47 does not display "1 -> 1".
+    expect(formatFigureValue(unitFig('number-2dp', 0.69), 'USD')).toBe('0.69');
+    expect(formatFigureValue(unitFig('number-2dp', 1.47), 'USD')).toBe('1.47');
+  });
+});
+
+describe('formatFigureValue — engine DisplayUnit + our own extractor tokens', () => {
+  it('percent-points renders an already-whole points value with its affix', () => {
+    expect(formatFigureValue(unitFig('percent-points', 2.4), 'USD')).toBe('2.4 pts');
+  });
+
+  it('points_fraction converts TACoS rate units to points (engine: 0.01 = 1 pt)', () => {
+    // Worked example: the extractor emits tacosDecomposition legs in rate
+    // units. 0.031 rate units = 3.1 points. Before: bare "0.031", which reads
+    // as a rounding artifact rather than a three-point move.
+    expect(formatFigureValue(unitFig('points_fraction', 0.031), 'USD')).toBe('3.1 pts');
+    expect(formatFigureValue(unitFig('points_fraction', -0.031), 'USD')).toBe('−3.1 pts');
+  });
+});
+
+describe('formatFigureValue — engine ContributionUnit tokens (stored-scale conversions pinned)', () => {
+  it('bps renders as-stored, integer-rounded, with its token', () => {
+    // The engine stores contribution x 10^4 and renders `bps` as-stored.
+    expect(formatFigureValue(unitFig('bps', 1654), 'USD')).toBe('1,654 bps');
+  });
+
+  it('bps-1dp keeps the one decimal that whole points round away', () => {
+    // The CTR case: contributions are hundredths of a point, so `pts` had
+    // rounded every driver row to "0.0 pts".
+    expect(formatFigureValue(unitFig('bps-1dp', 4.7), 'USD')).toBe('4.7 bps');
+  });
+
+  it('pts converts stored/100 to percentage points (worked example)', () => {
+    // Stored 40 = 0.4 percentage points.
+    expect(formatFigureValue(unitFig('pts', 40), 'USD')).toBe('0.4 pts');
+  });
+
+  it('ratio-2dp converts stored/10000 to a bare multiple (worked example)', () => {
+    // Stored 20600 = a 2.06x ROAS. This is the conversion the engine
+    // documents as "stored x 10^4, rendered as a plain 2-decimal number".
+    expect(formatFigureValue(unitFig('ratio-2dp', 20600), 'USD')).toBe('2.06×');
+  });
+
+  it('does NOT apply the contribution divide to the overloaded tokens', () => {
+    // `currency-2dp` and `weeks` exist in BOTH the level and contribution
+    // vocabularies with different scales. The level reading is the one that
+    // reaches this renderer, so a real $0.85 CPC must not become $0.000085.
+    expect(formatFigureValue(unitFig('currency-2dp', 0.85), 'USD')).toBe('$0.85');
+    expect(formatFigureValue(unitFig('weeks', 6.2), 'USD')).toBe('6.2');
+  });
+});
+
+describe('formatFigureValue — an unknown unit is visible, never a silent bare number', () => {
+  it('renders the number AND the unrecognized token', () => {
+    expect(formatFigureValue(unitFig('furlongs', 4.7), 'USD')).toBe('4.7 furlongs');
+  });
+
+  it('a garbage unit still renders the number and does not read as a plain count', () => {
+    const text = formatFigureValue(unitFig('!!!@@@', 4.7), 'USD');
+    expect(text).toBe('4.7 [unknown unit]');
+    expect(text).not.toBe('4.7');
+  });
+
+  it('allowlists the OUTPUT alphabet so an untrusted unit cannot carry markup', () => {
+    const text = formatFigureValue(unitFig('<script>alert(1)</script>', 4.7), 'USD');
+    expect(text).not.toContain('<');
+    expect(text).not.toContain('>');
+    expect(text).toBe('4.7 scriptalert1script');
+  });
+
+  it('bounds an absurdly long unit token', () => {
+    const text = formatFigureValue(unitFig('a'.repeat(200), 4.7), 'USD');
+    expect(text).toBe(`4.7 ${'a'.repeat(24)}`);
+  });
+
+  it('a figure with NO unit at all still renders, as a bare number', () => {
+    // An absent unit asserts "this figure genuinely has no unit" -- unchanged.
+    expect(formatFigureValue(unitFig(undefined, 4.7), 'USD')).toBe('4.7');
+    expect(formatFigureValue(unitFig('', 4.7), 'USD')).toBe('4.7');
+    expect(formatFigureValue(unitFig('raw', 4.7), 'USD')).toBe('4.7');
+  });
+
+  it('an unknown unit still carries sign and suffix handling', () => {
+    expect(formatFigureValue(unitFig('furlongs', -4.7), 'USD')).toBe('−4.7 furlongs');
+    expect(formatFigureValue(unitFig('furlongs', 4.7, { signed: true }), 'USD')).toBe('+4.7 furlongs');
+  });
+});
+
+describe('formatFigureValue — the pre-existing unit cases are unchanged (regression guard)', () => {
+  // Every unit the renderer handled before this change, pinned so the
+  // additive engine-vocabulary work cannot have moved one of them.
+  const cases: [string, number, string][] = [
+    ['currency', 20081, '$20,081'],
+    ['currency_abbrev', 2400000, '$2.4M'],
+    ['currency_abbrev', 2400, '$2.4K'],
+    ['currency_abbrev', 240, '$240'],
+    ['count', 48210, '48,210'],
+    ['ratio', 0.1234, '12.3%'],
+    ['percent', 12.34, '12.3%'],
+    ['points', 2.4, '2.4 pts'],
+    ['weeks', 6.2, '6.2'],
+    ['raw', 4.7, '4.7'],
+  ];
+  for (const [unit, value, expected] of cases) {
+    it(`${unit} still renders ${expected}`, () => {
+      expect(formatFigureValue(unitFig(unit, value), 'USD')).toBe(expected);
+    });
+  }
+
+  it('item_days still renders "item-day(s)", never bare "N days" (UNIT-1)', () => {
+    expect(formatFigureValue(unitFig('item_days', 3), 'USD')).toBe('3 item-days');
+    expect(formatFigureValue(unitFig('item_days', 1), 'USD')).toBe('1 item-day');
+  });
+
+  it('explicit precision still overrides the per-unit default', () => {
+    expect(formatFigureValue(unitFig('currency', 12.345, { precision: 2 }), 'USD')).toBe('$12.35');
+    expect(formatFigureValue(unitFig('ratio', 0.1234, { precision: 2 }), 'USD')).toBe('12.34%');
+  });
+});
+
+describe('renderMonthlyReport — an engine-unit figure reaches the page carrying its unit', () => {
+  it('a bridge-leg figure carrying currency-2dp is no longer a naked number', () => {
+    const doc: RenderReportDataDocument = {
+      currency: 'USD',
+      figures: [
+        figure({
+          id: 'f.leg',
+          label: 'ASP leg',
+          value: 12.34,
+          unit: 'currency-2dp',
+          source_path: 'envelope:insights[0].insight.components[0].impact',
+        }),
+      ],
+      sections: [{ id: 'sec.leg', figure_refs: ['f.leg'] }],
+    };
+    expect(renderMonthlyReport(doc)).toContain('$12.34');
+  });
+
+  it('an unknown unit surfaces its token in the page', () => {
+    const doc: RenderReportDataDocument = {
+      currency: 'USD',
+      figures: [figure({ id: 'f.odd', label: 'Odd figure', value: 4.7, unit: 'zorkmids' })],
+      sections: [{ id: 'sec.odd', figure_refs: ['f.odd'] }],
+    };
+    expect(renderMonthlyReport(doc)).toContain('4.7 zorkmids');
+  });
+});

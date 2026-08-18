@@ -43,6 +43,19 @@ const TOL = 0.011; // cent-level float tolerance on currency identities
 
 // ---------------------------------------------------------------------------
 // INTERIM-UNTIL-CATALOG metadata (the service catalog owns this eventually).
+//
+// Every entry below is now reconciled against the ENGINE's own metric
+// registry (`METRIC_DEFINITIONS[key].display`), which is the authority on how
+// a metric's LEVEL renders. Where our token and the engine's disagreed, the
+// engine won. Two conventions to keep straight while reading this:
+//   - our `ratio` means a stored FRACTION rendered ×100 with a "%" affix,
+//     which is exactly the engine's `percent`. These agree; they are not a
+//     defect. (Our `percent` means an ALREADY-WHOLE number — never the right
+//     mapping for an engine `percent` metric.)
+//   - our `count` is a whole bare number, i.e. the engine's `number`.
+// The key sets themselves are pinned to the engine's `OPS_FAMILY_METRICS` and
+// `ADS_METRIC_KEYS`: a key missing here silently falls back to 'count' below,
+// which is how dollar metrics ended up rendering as bare counts.
 // ---------------------------------------------------------------------------
 const OPS_UNITS: Record<string, string> = {
   ops: 'currency',
@@ -50,25 +63,38 @@ const OPS_UNITS: Record<string, string> = {
   sessions: 'count',
   conversion: 'ratio',
   buy_box: 'ratio',
-  ops_per_unit: 'currency',
+  // engine: display 'currency-2dp', decimals 2. This is ASP ($/unit), where
+  // the cents ARE the signal; rendering it at 0dp dropped them.
+  ops_per_unit: 'currency-2dp',
   sellable_inventory: 'count',
   weeks_of_cover: 'weeks',
   lost_sales: 'currency',
   glance_views: 'count',
   gv_conversion: 'ratio',
+  // The ops-grid ad-attribution fold. Present in the engine's
+  // OPS_FAMILY_METRICS but absent here, so all three fell back to 'count' --
+  // two dollar metrics and a rate rendering as bare counts.
+  ad_driven_sales: 'currency',
+  ad_driven_share: 'ratio',
+  ad_driven_halo: 'currency',
 };
 const ADS_UNITS: Record<string, string> = {
   ad_spend: 'currency',
   ad_sales: 'currency',
   acos: 'ratio',
-  roas: 'ratio',
+  // engine: display 'currency-2dp' ("ad sales generated per $1 of spend --
+  // displayed as currency ($2.06), matching the ASP ($/unit) convention").
+  // As 'ratio' a 2.06x ROAS rendered "206.0%", which ROAS never is.
+  roas: 'currency-2dp',
   ad_impressions: 'count',
   ad_clicks: 'count',
   ad_ctr: 'ratio',
   ad_orders: 'count',
-  ad_cpa: 'currency',
-  ad_aov: 'currency',
-  ad_cpc: 'currency',
+  // engine: display 'currency-2dp', decimals 2 -- per-click/per-order money,
+  // sub-dollar in normal operation, so 0dp rounded it to nothing.
+  ad_cpa: 'currency-2dp',
+  ad_aov: 'currency-2dp',
+  ad_cpc: 'currency-2dp',
   ad_conversion: 'ratio',
   ad_sales_same_sku: 'currency',
   ad_sales_other_sku: 'currency',

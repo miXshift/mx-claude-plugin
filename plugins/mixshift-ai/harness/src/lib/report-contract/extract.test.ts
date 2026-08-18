@@ -41,7 +41,10 @@ describe('extractFigures over envelope-minimal.json (ops total-scope + crossDoma
     expect(figs.get('ops.units.delta')).toMatchObject({ value: 1000, unit: 'count', basis: 'ordered_units' });
     expect(figs.get('ops.sessions.delta')).toMatchObject({ value: 2000, unit: 'count', basis: 'sessions' });
     expect(figs.get('ops.conversion.delta')).toMatchObject({ value: 0.05, unit: 'ratio', basis: 'sessions' });
-    expect(figs.get('ops.ops_per_unit.delta')).toMatchObject({ value: -2, unit: 'currency', basis: 'ordered_revenue' });
+    // ASP: the engine registry declares display 'currency-2dp' / decimals 2,
+    // so the interim map carries 'currency-2dp' and the renderer keeps the
+    // cents. 'currency' (0dp) had been rounding them away.
+    expect(figs.get('ops.ops_per_unit.delta')).toMatchObject({ value: -2, unit: 'currency-2dp', basis: 'ordered_revenue' });
     expect(figs.get('ops.lost_sales.delta')).toMatchObject({ value: 1000, unit: 'currency', basis: 'ordered_revenue' });
     expect(figs.get('ops.weeks_of_cover.delta')).toMatchObject({ unit: 'weeks' });
   });
@@ -872,5 +875,97 @@ describe('composite bundle handling (INS-MONTHLY-01 mom/yoy unwrapping)', () => 
     expect(figs.get('ops.ops.delta')).toMatchObject({ value: 44000 });
     expect(figs.get('duo.tacos.p1')).toMatchObject({ value: 0.15 });
     expect(checkFigures(out)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INTERIM-UNTIL-CATALOG unit map, reconciled against the engine's metric
+// registry (METRIC_DEFINITIONS[key].display). Synthetic envelopes only.
+// ---------------------------------------------------------------------------
+
+describe('OPS_UNITS / ADS_UNITS agree with the engine metric registry', () => {
+  /** Minimal envelope carrying one totals row per requested metric. */
+  function unitsOut(domain: 'ops' | 'ads', keys: string[]) {
+    return byId(
+      extractFigures({
+        bridgeDomain: domain,
+        bridgeRunId: 'run-example-units-0001',
+        currency: 'USD',
+        caveats: [],
+        metrics: keys.map((metricKey) => ({
+          metricKey,
+          totals: { p1: 1, p2: 2, delta: 1, pctChange: 1 },
+          topDrivers: [],
+        })),
+        insights: [],
+      }),
+    );
+  }
+
+  it('maps the per-unit money metrics to currency-2dp, not 0dp currency', () => {
+    // engine: ops_per_unit / ad_cpc / ad_cpa / ad_aov all declare
+    // display 'currency-2dp', decimals 2. These are per-click / per-order /
+    // per-unit amounts, routinely sub-dollar, so a 0dp render erased them.
+    expect(unitsOut('ops', ['ops_per_unit']).get('ops.ops_per_unit.p1')?.unit).toBe('currency-2dp');
+    const ads = unitsOut('ads', ['ad_cpc', 'ad_cpa', 'ad_aov']);
+    expect(ads.get('ads.ad_cpc.p1')?.unit).toBe('currency-2dp');
+    expect(ads.get('ads.ad_cpa.p1')?.unit).toBe('currency-2dp');
+    expect(ads.get('ads.ad_aov.p1')?.unit).toBe('currency-2dp');
+  });
+
+  it('maps ROAS to currency-2dp — it is a multiple, never a percentage', () => {
+    // engine: display 'currency-2dp' ("displayed as currency ($2.06),
+    // matching the ASP ($/unit) convention"). As 'ratio' the renderer turned
+    // a 2.06x ROAS into "206.0%".
+    expect(unitsOut('ads', ['roas']).get('ads.roas.p1')?.unit).toBe('currency-2dp');
+  });
+
+  it('covers the ops-grid ad-attribution fold instead of defaulting it to count', () => {
+    // These three are in the engine's OPS_FAMILY_METRICS but were absent from
+    // the map, so the `?? 'count'` fallback rendered two dollar metrics and a
+    // rate as bare counts.
+    const ops = unitsOut('ops', ['ad_driven_sales', 'ad_driven_halo', 'ad_driven_share']);
+    expect(ops.get('ops.ad_driven_sales.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.ad_driven_halo.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.ad_driven_share.p1')?.unit).toBe('ratio');
+  });
+
+  it('leaves the entries the engine registry already agreed with untouched', () => {
+    // our `ratio` (stored fraction, rendered x100 with %) == engine `percent`;
+    // our `count` (bare whole number) == engine `number`.
+    const ops = unitsOut('ops', [
+      'ops', 'units', 'sessions', 'conversion', 'buy_box',
+      'sellable_inventory', 'weeks_of_cover', 'lost_sales', 'glance_views', 'gv_conversion',
+    ]);
+    expect(ops.get('ops.ops.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.lost_sales.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.units.p1')?.unit).toBe('count');
+    expect(ops.get('ops.sessions.p1')?.unit).toBe('count');
+    expect(ops.get('ops.glance_views.p1')?.unit).toBe('count');
+    expect(ops.get('ops.sellable_inventory.p1')?.unit).toBe('count');
+    expect(ops.get('ops.conversion.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.buy_box.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.gv_conversion.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.weeks_of_cover.p1')?.unit).toBe('weeks');
+
+    const ads = unitsOut('ads', [
+      'ad_spend', 'ad_sales', 'acos', 'ad_impressions', 'ad_clicks', 'ad_ctr',
+      'ad_orders', 'ad_conversion', 'ad_sales_same_sku', 'ad_sales_other_sku',
+      'ad_sales_view_through', 'ad_orders_same_sku', 'ad_orders_other_sku',
+      'ad_orders_view_through',
+    ]);
+    for (const k of ['ad_spend', 'ad_sales', 'ad_sales_same_sku', 'ad_sales_other_sku', 'ad_sales_view_through']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('currency');
+    }
+    for (const k of ['ad_impressions', 'ad_clicks', 'ad_orders', 'ad_orders_same_sku', 'ad_orders_other_sku', 'ad_orders_view_through']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('count');
+    }
+    for (const k of ['acos', 'ad_ctr', 'ad_conversion']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('ratio');
+    }
+  });
+
+  it('an unmapped metric key still falls back to count rather than throwing', () => {
+    expect(unitsOut('ops', ['not_a_real_metric']).get('ops.not_a_real_metric.p1')?.unit).toBe('count');
   });
 });
