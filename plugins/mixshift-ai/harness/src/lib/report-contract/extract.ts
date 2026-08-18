@@ -16,6 +16,16 @@
  * extraction emits -- exactly as the upstream Python extractor does, which
  * is the cross-implementation parity this path must never break.
  *
+ * ⚠ THAT PARITY IS ABOUT SHAPE -- figure ids, source paths, values, and
+ * which figures get emitted -- NOT about every field's contents. Two unit
+ * LABELS deliberately diverge from `extract_figures.py` as of this file's
+ * `bridgeLegUnit` / `changeUnitOf` work, because the Python source labels
+ * them wrongly and a report that prints "22448.2%" for $22.4K is worse than
+ * a temporary fork: (1) a bridge leg takes its unit from the ANCHOR metric,
+ * not from `component.valueUnit`; (2) `duo.*.delta_pts` is `points_fraction`,
+ * not `points`. Both are ported upstream on the next parity pass; until then
+ * a diff on those two fields is EXPECTED and is not a regression here.
+ *
  * A composite selection (`selection` set -- see COMPOSITE_SELECTIONS) instead
  * prepends the selection's period to every id: mom.ops.ops.p1, yoy.ops.ops.p1,
  * mom.ads.ad_spend.p1. It has to: the skill composes every selection's
@@ -113,6 +123,65 @@ const ADS_BASIS: Record<string, string> = {
   ad_orders_view_through: 'view_through',
 };
 const ADS_BASIS_DEFAULT = 'console_authoritative';
+
+// ---------------------------------------------------------------------------
+// A BRIDGE LEG's unit comes from the ANCHOR metric, never from the lever.
+//
+// A leg figure stores `component.impact` -- the leg's contribution to the
+// ANCHOR metric's net change -- and NOT the lever's own before/after level.
+// So the unit that describes the stored value is the anchor's, not
+// `component.valueUnit`. Three independent lines of evidence, all pointing
+// the same way:
+//
+//   1. ENGINE. `component.valueUnit` is typed `HorizontalBridgeValueUnit` and
+//      is used by the engine ONLY to format the leg's own levels --
+//      `compactMagByUnit(c.p1Value, c.valueUnit)` in bridge-visual-model.ts's
+//      `miniForComponent`. The engine formats the leg's IMPACT through the
+//      root metric instead: `impactFormatted: compactSigned(rootMetric,
+//      c.impact)`, on the very same object ("every edge/impact is in the ROOT
+//      metric's native contribution frame"). valueUnit describes the numbers
+//      we do not emit.
+//   2. OUR OWN CONTRACT. `checkFigures`'s BRIDGE-FOOTING invariant asserts
+//      Σ(legs) == net_change, and net_change is the ANCHOR metric's delta.
+//      Numbers that sum to each other are in the same unit, so a leg is in
+//      the anchor's delta unit by an invariant this file already enforces.
+//   3. ARITHMETIC, on this repo's own envelope fixture. The ops bridge's legs
+//      are 20000 + 15000 + 9000 = 44000, exactly the ops delta -- DOLLARS --
+//      while the conversion leg's `valueUnit` is 'percent'. Passing valueUnit
+//      through labeled $15,000 as a percentage, and the renderer printed
+//      "15000.0%". The conversion bridge is the mirror case: legs 0.03 + 0.02
+//      = 0.05 = the conversion delta, i.e. FRACTIONS of a rate, both labeled
+//      'number' -- printed as "0" at 0dp, erasing a three-point contribution.
+//
+// A rate anchor's delta is NOT its level unit. Every engine metric whose
+// `display` is 'percent' also declares `deltaUnit: 'pts'`, and `formatDelta`
+// renders that branch as value x 100 with a " pts" affix -- a stored FRACTION
+// of a point, which is exactly our `points_fraction`. Every 'ratio' entry in
+// the maps above is an engine 'percent' metric (conversion, buy_box,
+// gv_conversion, ad_driven_share, acos, ad_ctr, ad_conversion) and no
+// non-'ratio' entry is, so the mapping below is total. Every other unit is
+// `deltaUnit: 'absolute'` -- delta in the level's own unit -- and passes
+// through untouched.
+//
+// This is not a new convention in this file: the cross-domain TACOS legs
+// below have always been labeled from their anchor (`points_fraction`, the
+// TACOS rate) while their components' own `valueUnit`s say 'currency-2dp' /
+// 'percent'. This makes the envelope bridge legs follow the same rule.
+// ---------------------------------------------------------------------------
+
+/** The unit an ANCHOR metric's CHANGE carries, given its level unit. Identity
+ *  except for rate metrics, whose change is in points, stored as a fraction. */
+function changeUnitOf(levelUnit: string): string {
+  return levelUnit === 'ratio' ? 'points_fraction' : levelUnit;
+}
+
+/** The unit for a bridge leg anchored on `metricKey`. The `?? 'count'`
+ *  fallback deliberately matches the one the anchor's OWN p1/p2/delta figures
+ *  use for an unmapped key, so a leg and the net change it foots to can never
+ *  disagree about their unit. */
+function bridgeLegUnit(unitsMap: Record<string, string>, metricKey: string | undefined): string {
+  return changeUnitOf((metricKey && unitsMap[metricKey]) ?? 'count');
+}
 
 // Which envelope caveat kinds bar bare quotation of a figure they ride on.
 const CAVEAT_SEVERITY: Record<string, string> = {
@@ -341,7 +410,9 @@ function extractEntity(
           `${domain}.entity.${slug}.bridge.${mkey}.${variant}.${comp.key as string}`,
           `${mkey} ${comp.key as string} leg (${variant}) — ${ekey}`,
           comp.impact as number,
-          (comp.valueUnit as string) ?? 'currency',
+          // ANCHOR metric's change unit -- `unit` above is this insight's own
+          // metric. NOT comp.valueUnit; see `bridgeLegUnit`.
+          changeUnitOf(unit),
           basis,
           `${base}.components[${ci}].impact`,
           {
@@ -555,7 +626,10 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
           `${domain}.bridge.${mkey}.${variant}.${comp.key as string}`,
           `${mkey} ${comp.key as string} leg (${variant})`,
           comp.impact as number,
-          (comp.valueUnit as string) ?? 'currency',
+          // ANCHOR metric's change unit, NOT comp.valueUnit (which describes
+          // the lever's own level, a number this figure does not carry) --
+          // see `bridgeLegUnit`.
+          bridgeLegUnit(unitsMap, mkey),
           domain === 'ops' ? opsBasis(env, mkey) : ADS_BASIS_DEFAULT,
           `envelope:insights[${ii}].insight.components[${ci}].impact`,
           {
@@ -594,7 +668,15 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
             `duo.${name}.delta_pts`,
             name,
             ptsVal as number,
-            'points',
+            // `deltaPts` is NAMED points but is not stored in points: the
+            // engine computes it as `p.p2 - p.p1` over a RATIO pair (TACOS
+            // and attributed share are both `ratioPair(...)`, "in RATE units
+            // (0.083 = 8.3%)"), so a 2.8-point move arrives as 0.028. Under
+            // our `points` unit -- an already-whole number -- that rendered
+            // "0.0 pts" and erased the move. Same anchor rule as everywhere
+            // else in this file: the change unit of the block's own level
+            // unit, which for a ratio is `points_fraction` (x100 -> pts).
+            changeUnitOf(unit),
             'cross_domain_joined',
             `crossDomain.${name}.${ptsField}`,
           ),

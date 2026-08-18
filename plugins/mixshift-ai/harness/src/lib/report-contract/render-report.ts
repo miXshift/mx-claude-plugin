@@ -225,18 +225,22 @@ function unitToken(unit: string): string {
  *
  * ── Where the engine's tokens come from ──────────────────────────────────
  * A figure extracted from an analysis envelope does not carry OUR unit
- * vocabulary. `extract.ts` passes `component.valueUnit` STRAIGHT THROUGH
- * onto every bridge-leg figure, and that field is typed by the engine, so
- * the engine's tokens arrive here verbatim. Three engine vocabularies exist
- * and they are NOT interchangeable — the same token can mean different
- * scales in two of them, which is why each case below names the one it
- * implements:
+ * vocabulary: `extract.ts` labels figures from the engine's metric registry,
+ * so engine tokens arrive here verbatim (`currency-2dp` on every per-unit
+ * money metric, for instance). Three engine vocabularies exist and they are
+ * NOT interchangeable — the same token can mean different scales in two of
+ * them, which is why each case below names the one it implements:
  *
- *   1. `HorizontalBridgeValueUnit` — `component.valueUnit`. THE ONLY ENGINE
- *      VOCABULARY THAT REACHES THIS RENDERER TODAY. Members: currency,
- *      currency-2dp, number, number-2dp, percent. These are LEVEL units and
- *      carry NO stored-scale trick: a `currency-2dp` value is plain dollars
- *      at two decimals (ASP $12.34, CPC $0.85), never a ×10⁴ scalar.
+ *   1. `HorizontalBridgeValueUnit` — `component.valueUnit`. Members:
+ *      currency, currency-2dp, number, number-2dp, percent. These are LEVEL
+ *      units and carry NO stored-scale trick: a `currency-2dp` value is
+ *      plain dollars at two decimals (ASP $12.34, CPC $0.85), never a ×10⁴
+ *      scalar. `extract.ts` used to pass this field straight onto every
+ *      bridge-leg figure; it no longer does, because a leg figure stores the
+ *      component's `impact` (denominated in the ANCHOR metric) and not the
+ *      levels `valueUnit` describes — so these tokens now reach this
+ *      function only from a document authored outside the extractor. The
+ *      cases stay: this renderer formats whatever it is handed.
  *   2. `DisplayUnit` — `METRIC_DEFINITIONS[m].display`. Members: currency,
  *      currency-2dp, number, percent, percent-points. Also level units.
  *   3. `ContributionUnit` — `contributionUnit` / `decompositionUnit`, the
@@ -321,8 +325,11 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
       break;
 
     // -----------------------------------------------------------------
-    // Engine `HorizontalBridgeValueUnit` — arrives on every bridge-leg
-    // figure via `component.valueUnit`. LEVEL units: no stored scale.
+    // Engine `HorizontalBridgeValueUnit` / `DisplayUnit` level tokens. No
+    // stored scale. `currency-2dp` reaches here on every per-unit money
+    // metric via the extractor's interim unit map; `number` / `number-2dp`
+    // only from a document authored outside the extractor (see this
+    // function's doc comment).
     // -----------------------------------------------------------------
     case 'currency-2dp':
       // Plain dollars at two decimals (ASP, CPC, CPA, AOV, ROAS). The
@@ -354,11 +361,13 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
     // Emitted by our own extractor, previously unhandled.
     // -----------------------------------------------------------------
     case 'points_fraction':
-      // The TACoS decomposition legs. The engine types that block's
-      // impacts as "TACOS rate units (0.01 = 1 pt)", i.e. a FRACTION of a
-      // point — so ×100 recovers points. Without this the legs rendered as
-      // a bare fraction ("−0.01") that reads as a rounding error rather
-      // than a one-point move.
+      // A CHANGE in a rate, stored as a fraction: every bridge leg anchored
+      // on a rate metric, the TACoS decomposition legs, and the cross-domain
+      // `delta_pts` figures. The engine types those as rate units
+      // (0.01 = 1 pt) and renders them ×100 with " pts" (`formatDelta`'s
+      // `deltaUnit === 'pts'` branch) — so ×100 recovers points here too.
+      // Without this a −2.8 point TACoS move rendered as a bare "−0.03",
+      // which reads as a rounding artifact rather than a real move.
       body = `${(a * 100).toFixed(prec ?? 1)} pts`;
       break;
 
