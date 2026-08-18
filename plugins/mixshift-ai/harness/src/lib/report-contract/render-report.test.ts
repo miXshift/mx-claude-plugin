@@ -636,15 +636,23 @@ describe('formatFigureValue — engine ContributionUnit tokens (stored-scale con
     expect(formatFigureValue(unitFig('bps-1dp', 4.7), 'USD')).toBe('4.7 bps');
   });
 
-  it('pts converts stored/100 to percentage points (worked example)', () => {
-    // Stored 40 = 0.4 percentage points.
-    expect(formatFigureValue(unitFig('pts', 40), 'USD')).toBe('0.4 pts');
+  it('pts reads as points, exactly like its two near-synonyms (red team 2026-08-18)', () => {
+    // REVERSED from the first cut, which applied the engine's stored/100
+    // contribution scale and rendered this 2.4 as "0.0 pts" -- silently
+    // destroying the magnitude. Nothing carrying that scale can reach this
+    // renderer (the contribution vocabulary is never serialized into an
+    // envelope), so the only documents that CAN carry `pts` are authored by
+    // hand or by the model, where the plain reading is what was meant.
+    // Three tokens for one idea, one of which quietly zeroes the number, is
+    // a trap; they must agree.
+    expect(formatFigureValue(unitFig('pts', 2.4), 'USD')).toBe('2.4 pts');
+    expect(formatFigureValue(unitFig('points', 2.4), 'USD')).toBe('2.4 pts');
+    expect(formatFigureValue(unitFig('percent-points', 2.4), 'USD')).toBe('2.4 pts');
   });
 
-  it('ratio-2dp converts stored/10000 to a bare multiple (worked example)', () => {
-    // Stored 20600 = a 2.06x ROAS. This is the conversion the engine
-    // documents as "stored x 10^4, rendered as a plain 2-decimal number".
-    expect(formatFigureValue(unitFig('ratio-2dp', 20600), 'USD')).toBe('2.06×');
+  it('ratio-2dp reads as a plain multiple, for the same reason', () => {
+    // Was stored/10000, which rendered a 2.06x ROAS as "0.00x".
+    expect(formatFigureValue(unitFig('ratio-2dp', 2.06), 'USD')).toBe('2.06×');
   });
 
   it('does NOT apply the contribution divide to the overloaded tokens', () => {
@@ -689,6 +697,44 @@ describe('formatFigureValue — an unknown unit is visible, never a silent bare 
   it('an unknown unit still carries sign and suffix handling', () => {
     expect(formatFigureValue(unitFig('furlongs', -4.7), 'USD')).toBe('−4.7 furlongs');
     expect(formatFigureValue(unitFig('furlongs', 4.7, { signed: true }), 'USD')).toBe('+4.7 furlongs');
+  });
+
+  it('a NON-STRING unit degrades instead of throwing (red team 2026-08-18)', () => {
+    // `unit` is typed `string?` but the document is untrusted JSON read with
+    // a bare cast, and validateReportData never type-checks it. Before the
+    // unit-carrying fallback existed the default branch never touched
+    // `unit`, so a malformed figure still rendered; calling `.replace` on a
+    // number turned it into a TypeError that escaped the whole render and
+    // wrote NO HTML -- a malformed figure taking down the page. The value
+    // guard in this same function already handles exactly this class.
+    for (const bad of [42, ['pts'], {}, true, null] as unknown[]) {
+      const fig = { id: 'f.bad', label: 'Bad', value: 4.7, unit: bad } as never;
+      expect(() => formatFigureValue(fig, 'USD')).not.toThrow();
+      expect(formatFigureValue(fig, 'USD')).toContain('4.7');
+    }
+  });
+
+  it('a whole document with a non-string unit still renders a page', () => {
+    // The end-to-end version: the failure that mattered was not the thrown
+    // TypeError, it was `report render` writing no file at all.
+    const doc = {
+      figures: [{ id: 'f.bad', label: 'Revenue', value: 1234.5, unit: 42 }],
+      sections: [
+        {
+          id: 'sec.only',
+          title: 'Only section',
+          figure_refs: ['f.bad'],
+          claim_refs: [],
+          caveats_rendered: [],
+          display_text: 'A figure with a malformed unit.',
+        },
+      ],
+    } as never;
+    const html = renderMonthlyReport(doc);
+    // No thousands separator: an unrecognized unit keeps the raw-number
+    // formatting it always had, and only gains the token.
+    expect(html).toContain('1234.5');
+    expect(html).toContain('Only section');
   });
 });
 

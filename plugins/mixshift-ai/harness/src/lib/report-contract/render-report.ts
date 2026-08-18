@@ -212,8 +212,21 @@ const UNKNOWN_UNIT = '[unknown unit]';
  * the chip. Returns '' when nothing survives — the caller then falls back to
  * `UNKNOWN_UNIT`.
  */
-function unitToken(unit: string): string {
-  return unit.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24);
+function unitToken(unit: unknown): string {
+  // Coerced, not asserted. `unit` is typed `string?` but arrives from an
+  // untrusted document read with a bare cast, and `validateReportData` never
+  // type-checks it -- so `"unit": 42` (or an array, or an object) reaches
+  // here as a non-string. Before this fallback existed the default branch
+  // never touched `unit` and such a figure still rendered; calling
+  // `.replace` on it would turn a malformed figure into a thrown
+  // TypeError that escapes the whole render, writing no HTML at all. That
+  // is the same class the value guard 40 lines below already handles, and
+  // the module's own rule is that a malformed document must degrade, not
+  // crash. Non-strings stringify to something the allowlist then filters,
+  // so the reader sees an odd token rather than losing the page.
+  return String(unit ?? '')
+    .replace(/[^A-Za-z0-9_-]/g, '')
+    .slice(0, 24);
 }
 
 /**
@@ -374,13 +387,25 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
     // -----------------------------------------------------------------
     // Engine `ContributionUnit` — grid C2C / mix-rate cells. Handled
     // defensively: these are NOT serialized into the insight envelope
-    // today, so nothing can reach here through `extract.ts`. Only the four
-    // tokens UNIQUE to this vocabulary are implemented — `currency-2dp`
-    // and `weeks` are overloaded and keep their level reading above.
-    // Scales are the engine's own (contribution values are stored ×10⁴).
+    // today, so nothing can reach here through `extract.ts`.
+    //
+    // ⚠ NO STORED-SCALE DIVISION HERE, and that is the point (red team,
+    // 2026-08-18). The engine stores these values ×100 / ×10⁴ for its own
+    // grid, but nothing carrying that scale can reach this renderer. The
+    // only documents that CAN carry these tokens are hand- or
+    // model-authored, where the plain reading is what the author meant —
+    // so dividing would silently destroy the magnitude: `{unit:'pts',
+    // value:2.4}` rendered "0.0 pts" while the near-synonyms `points` and
+    // `percent-points` both rendered the same 2.4 as "2.4 pts". Three
+    // tokens for one idea, one of which quietly zeroes the number, is a
+    // trap. This is the same reasoning `currency-2dp` and `weeks` already
+    // use above (take the LEVEL reading, because the level vocabulary is
+    // the one that actually reaches here) — it was simply applied in
+    // reverse for these two. If a genuine contribution-scaled document
+    // ever reaches us, it needs its own token, not a silent divide.
     // -----------------------------------------------------------------
     case 'bps':
-      // Stored AS-IS in basis points; the engine renders integer-rounded.
+      // Already basis points; the engine renders integer-rounded.
       body = `${fixed(a, prec ?? 0)} bps`;
       break;
     case 'bps-1dp':
@@ -389,14 +414,14 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
       body = `${fixed(a, prec ?? 1)} bps`;
       break;
     case 'pts':
-      // Stored ÷ 100 → percentage points.
-      body = `${(a / 100).toFixed(prec ?? 1)} pts`;
+      // Read as points, exactly like `points` and `percent-points`.
+      body = `${a.toFixed(prec ?? 1)} pts`;
       break;
     case 'ratio-2dp':
-      // Stored ÷ 10⁴ → a bare multiple (ROAS). The engine prints it with
-      // no affix because its grid column is labeled; a figure chip has no
-      // such guarantee, so the multiplication sign carries the unit.
-      body = `${(a / 10_000).toFixed(prec ?? 2)}${MULTIPLE}`;
+      // A bare multiple (ROAS). The engine prints it with no affix because
+      // its grid column is labeled; a figure chip has no such guarantee, so
+      // the multiplication sign carries the unit.
+      body = `${a.toFixed(prec ?? 2)}${MULTIPLE}`;
       break;
 
     default: {
