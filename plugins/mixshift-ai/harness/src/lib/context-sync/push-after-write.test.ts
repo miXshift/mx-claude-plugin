@@ -12,6 +12,7 @@ import { push } from './engine.js';
 import type { DocActionReport } from './types.js';
 import type { ContextSyncState } from './state.js';
 import { brandDir, contextSyncStatePath, credentialsPath } from '../paths/resolve.js';
+import { track } from '../telemetry/index.js';
 
 // engine.push is the safety-critical delegate. Stub it so we can (a) assert
 // the exact options it is handed (never-force) and (b) drive its outcome
@@ -21,6 +22,14 @@ import { brandDir, contextSyncStatePath, credentialsPath } from '../paths/resolv
 vi.mock('./engine.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./engine.js')>();
   return { ...actual, push: vi.fn() };
+});
+
+// Telemetry: stub track() so tests never touch the real on-disk queue (a
+// bare temp dir can still resolve isTelemetryEnabled()=true off the plugin's
+// bundled defaults) — same convention as commands/context.test.ts.
+vi.mock('../telemetry/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../telemetry/index.js')>();
+  return { ...actual, track: vi.fn().mockResolvedValue(undefined) };
 });
 
 let testDir: string;
@@ -66,6 +75,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.mocked(push).mockReset();
+  vi.mocked(track).mockClear();
   await rm(testDir, { recursive: true, force: true });
 });
 
@@ -710,5 +720,119 @@ structural_events:
       skipped: true,
       detail: 'no structural events',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Telemetry: one ContextPushCompleted event per completed attempt, tagged
+// trigger:'write', EXCEPT the kill switch (which stays a true zero-fs/zero-
+// network no-op, telemetry included).
+// ---------------------------------------------------------------------------
+
+describe('telemetry', () => {
+  it('published (success): fires ContextPushCompleted with trigger:write and doc counts', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [
+        { key: 'context', docType: 'context', action: 'pushed', detail: 'rev 2' },
+        { key: 'narrative', docType: 'narrative', action: 'created', detail: 'rev 1' },
+      ],
+    });
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event, dataDir] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'ok',
+      payload: {
+        trigger: 'write',
+        brand: 'acme',
+        published: true,
+        pushed: 1,
+        created: 1,
+        conflicts: 0,
+        errors: 0,
+      },
+    });
+    expect(typeof event.duration_ms).toBe('number');
+    expect(event.duration_ms).toBeGreaterThanOrEqual(0);
+    expect(dataDir).toBe(testDir);
+  });
+
+  it('failed: fires ContextPushCompleted with outcome failed + reason/detail', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: false,
+      brand: 'acme',
+      message: 'the auth service is unreachable',
+    });
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'failed',
+      payload: {
+        trigger: 'write',
+        brand: 'acme',
+        published: false,
+        reason: 'failed',
+        detail: 'the auth service is unreachable',
+      },
+    });
+  });
+
+  it('skipped (unsafe slug): fires ContextPushCompleted with outcome skipped', async () => {
+    await pushAfterWrite('../x', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'skipped',
+      payload: {
+        trigger: 'write',
+        brand: '../x',
+        published: false,
+        reason: 'skipped',
+        detail: 'not a valid brand slug',
+      },
+    });
+  });
+
+  it('skipped (missing brand directory): fires ContextPushCompleted with outcome skipped', async () => {
+    await pushAfterWrite('ghost', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'skipped',
+      payload: { published: false, reason: 'skipped', detail: 'no local brand directory' },
+    });
+  });
+
+  it('disabled (kill switch): fires NO telemetry — zero fs/network stays true', async () => {
+    await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: { [PUSH_AFTER_WRITE_ENV]: 'off' },
+    });
+
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('disabled under the VITEST guard (no explicit env): fires NO telemetry', async () => {
+    await makeBrandDir('acme');
+    await pushAfterWrite('acme', { dataDirOverride: testDir });
+
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
   });
 });

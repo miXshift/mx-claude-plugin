@@ -47,9 +47,24 @@
  *     disables it entirely, before any file or network activity — this is
  *     also the opt-out for anyone who wants first-share-stays-manual back.
  *
- * No telemetry is emitted here (the context-sync events belong to the explicit
- * `mixshift context` commands; a passive write side-channel stays silent, the
- * same way the autosync preflight hook and the assignment mirror do).
+ * Telemetry: unlike the assignment mirror (still silent by design), this
+ * seam now fires ONE ContextPushCompleted event per completed attempt —
+ * published, failed, or skipped alike — tagged trigger:'write' so its rows
+ * sit alongside the explicit `mixshift context push` command's rows of the
+ * SAME event instead of forking a parallel one. The one exception is the
+ * kill switch: 'disabled' returns before telemetry too, so MIXSHIFT_CONTEXT_
+ * AUTOPUBLISH=off keeps its documented zero-fs/zero-network guarantee above
+ * — telemetry's own track() reads/writes local files (install id, profile,
+ * queue), so calling it from that branch would quietly break the promise.
+ * The emit is AWAITED (see emitPushTelemetry) rather than fire-and-forget:
+ * this fires once per write, not per query, so its cost is negligible
+ * against the 2s budget, and awaiting avoids the emit racing the process
+ * (or a caller's own cleanup) exiting before the queue append lands.
+ * This replaces the old silent-by-design stance: a one-shot 2s-budget push
+ * firing from 7 write seams with no visibility into how often it actually
+ * reaches the team (offline, expired creds, a budget death) was a real
+ * observability gap, not a deliberate one. The autosync preflight hook
+ * (autosync.ts) gained the equivalent instrumentation alongside this.
  */
 
 import { push } from './engine.js';
@@ -59,6 +74,7 @@ import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import type { TimelineClient } from '../timeline/client.js';
 import type { DocActionReport } from './types.js';
+import { track, EventName } from '../telemetry/index.js';
 
 // Re-exported for existing consumers; the canonical definition moved to
 // lib/timeline/stake-sync.ts when the autosync read preflight gained the
@@ -128,6 +144,7 @@ export async function pushAfterWrite(
   brandSlug: string,
   options: PushAfterWriteOptions = {},
 ): Promise<PushAfterWriteResult> {
+  const t0 = Date.now();
   const env = options.env ?? process.env;
   let result = await computePushResult(brandSlug, options, env);
   // Stake-sync leg (#37499): after a successful doc push, publish the
@@ -144,6 +161,7 @@ export async function pushAfterWrite(
   // the copy and the per-brand dedup. See emitNotice for why STDERR + why a
   // print is right here (unlike the silent autosync preflight).
   emitNotice(brandSlug, result, options.notify ?? true);
+  await emitPushTelemetry(brandSlug, result, Date.now() - t0, options.dataDirOverride);
   return result;
 }
 
@@ -375,4 +393,79 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
         `Retry with \`mixshift context push --brand ${brandSlug}\`.`
       );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire one telemetry event per completed pushAfterWrite attempt — published,
+ * failed, or skipped (unsafe slug / no local dir) alike. The one outcome that
+ * never reaches here is 'disabled': the kill switch returns before this is
+ * even called (see computePushResult's first check + the module doc's
+ * zero-fs/zero-network guarantee), and track() itself does local file I/O
+ * (install id, profile, queue), so calling it from the kill-switch path would
+ * quietly break that promise.
+ *
+ * Reuses ContextPushCompleted — the SAME event `mixshift context push`
+ * emits (see commands/context.ts's registerActionSubcommand) — tagged
+ * payload.trigger:'write' rather than forking a parallel event, so both
+ * sources are queryable together and diffable apart.
+ *
+ * AWAITED, not fire-and-forget: lib/data/query-runner.ts and lib/brain/
+ * fetch.ts use `void track(...)` for telemetry on a hot, per-query path
+ * where every millisecond compounds across thousands of calls — this seam
+ * fires once per write, so track()'s cost (a handful of local file reads/
+ * writes, no network — that happens later, on the next invocation's flush)
+ * is negligible against the 2s budget it is measured inside of. Awaiting
+ * also matters here in a way it wouldn't for a hot path: pushAfterWrite is
+ * itself awaited specifically so a short-lived CLI process doesn't exit
+ * before a background publish lands (see the module doc); a detached
+ * `void track(...)` would reopen exactly that risk for this rare,
+ * high-value signal — the process could exit (or, in a test, the caller
+ * could tear down its temp dir) before the queue append finishes.
+ */
+async function emitPushTelemetry(
+  brandSlug: string,
+  result: PushAfterWriteResult,
+  durationMs: number,
+  dataDirOverride: string | undefined,
+): Promise<void> {
+  if (result.published) {
+    await track(
+      {
+        event_name: EventName.ContextPushCompleted,
+        outcome: 'ok',
+        duration_ms: durationMs,
+        payload: {
+          trigger: 'write',
+          brand: brandSlug,
+          published: true,
+          pushed: result.pushed,
+          created: result.created,
+          conflicts: result.conflicts,
+          errors: result.errors,
+        },
+      },
+      dataDirOverride,
+    );
+    return;
+  }
+  if (result.reason === 'disabled') return; // kill switch: zero fs/network, telemetry included
+  await track(
+    {
+      event_name: EventName.ContextPushCompleted,
+      outcome: result.reason === 'failed' ? 'failed' : 'skipped',
+      duration_ms: durationMs,
+      payload: {
+        trigger: 'write',
+        brand: brandSlug,
+        published: false,
+        reason: result.reason,
+        detail: result.detail,
+      },
+    },
+    dataDirOverride,
+  );
 }

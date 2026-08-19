@@ -44,6 +44,19 @@
  *     pull-only behavior.
  *   - Kill switch: MIXSHIFT_CONTEXT_AUTOSYNC=off (also '0'/'false')
  *     disables it entirely, before any file or network activity.
+ *
+ * Telemetry + ledger outcome: every attempt that clears the guards above
+ * (i.e. everything past the throttle stamp write) now records
+ * last_autosync_outcome / last_autosync_success_at on the ledger (see
+ * state.ts) and fires one ContextAutosyncCompleted event — the SAME event
+ * `mixshift context autosync` already emits — tagged payload.trigger
+ * ('preflight' by default; a caller may pass 'manual'). Early-skip outcomes
+ * (disabled, unsafe slug, missing dir, throttled, foreign-tenant ledger, an
+ * unpersistable stamp) get neither: this hook runs on every skill step but
+ * only truly attempts a sync once per brand per throttle window, so
+ * instrumenting the skip path would mostly log "throttled" noise, and the
+ * kill switch keeps its documented zero-fs/zero-network guarantee (telemetry
+ * itself does local file I/O).
  */
 
 import { pull, sync } from './engine.js';
@@ -51,9 +64,10 @@ import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
 import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
-import { loadState, resolveLedgerIdentity, saveState } from './state.js';
+import { loadState, resolveLedgerIdentity, saveState, type ContextSyncState } from './state.js';
 import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { DocActionReport } from './types.js';
+import { track, EventName } from '../telemetry/index.js';
 
 /** Overall wall-clock budget for one autosync attempt (network inclusive). */
 export const AUTOSYNC_BUDGET_MS = 2_000;
@@ -80,6 +94,19 @@ export interface AutoSyncOptions {
   /** Ledger-identity override for tests; defaults to resolveLedgerIdentity. */
   identity?: string | null;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Telemetry provenance tag on the ContextAutosyncCompleted event this
+   * function emits for every attempt that clears the early-skip guards (see
+   * the module doc). Defaults to 'preflight' — today's only other caller,
+   * `mixshift context autosync` (commands/context.ts), does not pass this
+   * option and still emits its OWN ContextAutosyncCompleted event
+   * unconditionally, so a manual run currently produces two rows: the CLI
+   * command's own (untagged) row, and this function's ('preflight'-tagged)
+   * row for the real attempt underneath it. Wiring the command to pass
+   * 'manual' here (and drop its now-redundant track() call) is a follow-up,
+   * not part of this change.
+   */
+  trigger?: 'preflight' | 'manual';
 }
 
 export type AutoSyncResult =
@@ -112,6 +139,67 @@ export async function maybeAutoSync(
   options: AutoSyncOptions = {},
 ): Promise<AutoSyncResult> {
   const env = options.env ?? process.env;
+  const t0 = Date.now();
+  const trigger = options.trigger ?? 'preflight';
+  // Flips true only once an attempt has cleared every early-skip guard (see
+  // the throttle-stamp write below) — `finish()` below uses it to decide
+  // whether THIS outcome is a real attempt (record + telemetry) or one of
+  // the early returns above/below it (neither; same as `last_autosync_at`
+  // itself is only ever stamped for a cleared attempt).
+  let pastGuards = false;
+  let ledgerState: ContextSyncState | undefined;
+
+  /**
+   * Common tail for every outcome that cleared the guards: persists
+   * last_autosync_outcome/last_autosync_success_at on the already-loaded
+   * ledger (best-effort, mirrors the throttle-stamp save below — saveState
+   * never throws) and fires one ContextAutosyncCompleted event. See the
+   * module doc for why early-skip outcomes never reach here.
+   */
+  async function finish(result: AutoSyncResult): Promise<AutoSyncResult> {
+    if (pastGuards && ledgerState) {
+      const succeeded = result.ran && result.errors === 0;
+      const finishedAt = options.now ? options.now() : new Date();
+      ledgerState.last_autosync_outcome = succeeded ? 'success' : 'failed';
+      if (succeeded) ledgerState.last_autosync_success_at = finishedAt.toISOString();
+      await saveState(brandSlug, ledgerState, options.dataDirOverride);
+      // AWAITED, not fire-and-forget: this fires once per real attempt (at
+      // most once per brand per AUTOSYNC_THROTTLE_MS), not per query, so
+      // track()'s cost (a handful of local file ops, no network) is
+      // negligible against the 2s budget. A detached `void track(...)`
+      // would risk the emit racing the process (or a caller's cleanup)
+      // exiting before the queue append lands — see push-after-write.ts's
+      // identical reasoning for its own ContextPushCompleted emit.
+      await track(
+        {
+          event_name: EventName.ContextAutosyncCompleted,
+          outcome: succeeded ? 'ok' : 'failed',
+          duration_ms: Date.now() - t0,
+          payload: {
+            trigger,
+            brand: brandSlug,
+            force: options.force ?? false,
+            ran: result.ran,
+            ...(result.ran
+              ? {
+                  pulled: result.pulled,
+                  pushed: result.pushed,
+                  created: result.created,
+                  conflicts: result.conflicts,
+                  errors: result.errors,
+                }
+              : {
+                  reason: result.reason,
+                  ...(result.reason === 'failed' ? { detail: result.detail } : {}),
+                }),
+          },
+        },
+        options.dataDirOverride,
+      );
+    }
+    return result;
+  }
+
   try {
     const flag = (env[AUTOSYNC_ENV] ?? '').toLowerCase();
     if (flag === 'off' || flag === '0' || flag === 'false') {
@@ -209,6 +297,13 @@ export async function maybeAutoSync(
       };
     }
 
+    // From here on this is a REAL attempt (every early-skip guard is
+    // cleared): `finish()` below will record its outcome on the ledger and
+    // in telemetry. `state` already carries the just-written last_autosync_at
+    // and any identity rebind from above.
+    pastGuards = true;
+    ledgerState = state;
+
     // Fetch-level budget: one shared abort across every request the pull
     // makes (manifest + per-doc fetches). The per-request timeouts inside
     // the client (30s/120s) are far looser, so simply REPLACING the signal
@@ -252,11 +347,15 @@ export async function maybeAutoSync(
       if (raced === DEADLINE) {
         controller.abort(); // cut the budgeted fetches; a refresh dies on its own timer
         debugLog(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
-        return { ran: false, reason: 'failed', detail: `timed out after ${budgetMs}ms` };
+        return await finish({
+          ran: false,
+          reason: 'failed',
+          detail: `timed out after ${budgetMs}ms`,
+        });
       }
       if (!raced.ok) {
         debugLog(env, `autosync(${brandSlug}): ${raced.message}`);
-        return { ran: false, reason: 'failed', detail: raced.message };
+        return await finish({ ran: false, reason: 'failed', detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === 'pulled').length;
       const pushed = raced.reports.filter((r) => r.action === 'pushed').length;
@@ -277,7 +376,7 @@ export async function maybeAutoSync(
           env,
         });
       }
-      return {
+      return await finish({
         ran: true,
         pulled,
         pushed,
@@ -286,14 +385,14 @@ export async function maybeAutoSync(
         errors,
         reports: raced.reports,
         ...(stakeLeg !== undefined ? { stake_events: stakeLeg } : {}),
-      };
+      });
     } finally {
       clearTimeout(abortTimer);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     debugLog(env, `autosync(${brandSlug}): swallowed error: ${message}`);
-    return { ran: false, reason: 'failed', detail: message };
+    return await finish({ ran: false, reason: 'failed', detail: message });
   }
 }
 

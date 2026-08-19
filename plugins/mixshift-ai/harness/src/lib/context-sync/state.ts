@@ -49,8 +49,40 @@ export interface ContextSyncState {
    * files written before the field existed, and preserved across identity
    * rebinds — the throttle limits attempts per brand per window regardless
    * of tenant, so a stale stamp only ever means FEWER attempts.
+   *
+   * DELIBERATELY stamped BEFORE the network call, not after (autosync.ts
+   * writes it ahead of the pull/sync so a hung or failed attempt still
+   * opens a full quiet window, instead of retrying on every single skill
+   * step). That timing is unchanged by the two fields below — it is exactly
+   * why this field alone can't answer "did the last attempt actually work":
+   * an offline machine and a healthy one both advance `last_autosync_at` on
+   * every attempt, identically.
    */
   last_autosync_at?: string;
+  /**
+   * Outcome of the last preflight auto-sync ATTEMPT (see autosync.ts):
+   * 'success' when the pull/sync call completed with zero per-doc errors,
+   * 'failed' otherwise (offline, expired/missing credentials, a budget
+   * death, a server error, or a completed call that still reported per-doc
+   * errors). Written ONLY for attempts that clear every early-skip guard
+   * (kill switch, unsafe slug, missing local dir, throttle, foreign-tenant
+   * ledger, an unpersistable throttle stamp) — those leave this field
+   * untouched, the same way `last_autosync_at` is never stamped for them
+   * either. Absent on files written before the field existed, and on any
+   * brand that has never cleared the guards.
+   */
+  last_autosync_outcome?: 'success' | 'failed';
+  /**
+   * ISO-8601 timestamp of the last preflight auto-sync attempt that
+   * actually SUCCEEDED (set together with `last_autosync_outcome ===
+   * 'success'`, never on its own). Distinct from `last_autosync_at`, which
+   * advances on every attempt regardless of outcome: this one only moves
+   * forward on a real success, so "when did this brand last actually reach
+   * the server" is answerable without scanning attempt history. Absent
+   * when no attempt has ever succeeded, or on files written before the
+   * field existed.
+   */
+  last_autosync_success_at?: string;
   /**
    * Structural-events sync stamp (#37499): content hash of the brand's
    * context.yaml structural_events block at the last FULLY-successful stake
@@ -127,6 +159,19 @@ export async function loadState(
     const storedAutosyncAt = (parsed as { last_autosync_at?: unknown }).last_autosync_at;
     const lastAutosyncAt =
       typeof storedAutosyncAt === 'string' ? storedAutosyncAt : undefined;
+    // Attempt-vs-success outcome fields: same explicit, tolerant
+    // reconstruction as `last_autosync_at` above (a malformed/absent value
+    // just degrades to "no stamp", never a throw or a fabricated value).
+    const storedAutosyncOutcome = (parsed as { last_autosync_outcome?: unknown })
+      .last_autosync_outcome;
+    const lastAutosyncOutcome: 'success' | 'failed' | undefined =
+      storedAutosyncOutcome === 'success' || storedAutosyncOutcome === 'failed'
+        ? storedAutosyncOutcome
+        : undefined;
+    const storedAutosyncSuccessAt = (parsed as { last_autosync_success_at?: unknown })
+      .last_autosync_success_at;
+    const lastAutosyncSuccessAt =
+      typeof storedAutosyncSuccessAt === 'string' ? storedAutosyncSuccessAt : undefined;
     const storedIdentity = (parsed as { identity?: unknown }).identity;
     if (
       typeof storedIdentity === 'string' &&
@@ -135,11 +180,18 @@ export async function loadState(
     ) {
       // Different server/tenant: org A's revisions say nothing about org
       // B's manifest. Fail safe — verdicts run as if untracked. The
-      // autosync stamp survives the rebind (attempt limiting is not
-      // tenant-bound; see the field doc above).
+      // autosync stamp (and its outcome fields) survive the rebind —
+      // attempt limiting and attempt history are not tenant-bound; see the
+      // field docs above.
       return {
         ...emptyState(currentIdentity),
         ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+        ...(lastAutosyncOutcome !== undefined
+          ? { last_autosync_outcome: lastAutosyncOutcome }
+          : {}),
+        ...(lastAutosyncSuccessAt !== undefined
+          ? { last_autosync_success_at: lastAutosyncSuccessAt }
+          : {}),
       };
     }
     const docs: Record<string, ContextSyncDocState> = {};
@@ -177,6 +229,10 @@ export async function loadState(
       schema: 2,
       ...(identity ? { identity } : {}),
       ...(lastAutosyncAt !== undefined ? { last_autosync_at: lastAutosyncAt } : {}),
+      ...(lastAutosyncOutcome !== undefined ? { last_autosync_outcome: lastAutosyncOutcome } : {}),
+      ...(lastAutosyncSuccessAt !== undefined
+        ? { last_autosync_success_at: lastAutosyncSuccessAt }
+        : {}),
       ...(stakes !== undefined ? { stakes } : {}),
       docs,
     };

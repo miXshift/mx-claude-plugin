@@ -16,6 +16,15 @@ import { contextSyncStatePath, brandDir, credentialsPath } from '../paths/resolv
 import type { ContextSyncState } from './state.js';
 import type { WireManifestBrand } from './types.js';
 import { resolveBrandFields } from '../brain/read.js';
+import { track } from '../telemetry/index.js';
+
+// Telemetry: stub track() so tests never touch the real on-disk queue (a
+// bare temp dir can still resolve isTelemetryEnabled()=true off the plugin's
+// bundled defaults) — same convention as commands/context.test.ts.
+vi.mock('../telemetry/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../telemetry/index.js')>();
+  return { ...actual, track: vi.fn().mockResolvedValue(undefined) };
+});
 
 let testDir: string;
 
@@ -30,6 +39,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.mocked(track).mockClear();
   await rm(testDir, { recursive: true, force: true });
 });
 
@@ -747,5 +757,168 @@ describe('resolveBrandFields integration', () => {
     await resolveBrandFields('tpyo-brand', testDir);
     const clients = await readdir(join(testDir, 'clients'));
     expect(clients).toEqual(['foragers-pantry']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ledger outcome fields + telemetry: written/fired ONLY for attempts that
+// clear every early-skip guard (see the module doc).
+// ---------------------------------------------------------------------------
+
+describe('ledger outcome + telemetry', () => {
+  it('a successful attempt records outcome success + success_at, and fires ContextAutosyncCompleted', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const t0 = new Date('2026-07-05T12:00:00.000Z');
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      now: () => t0,
+    });
+    expect(result.ran).toBe(true);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('success');
+    expect(ledger.last_autosync_success_at).toBe(t0.toISOString());
+    expect(ledger.last_autosync_at).toBe(t0.toISOString());
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event, dataDir] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      outcome: 'ok',
+      payload: { trigger: 'preflight', brand: 'acme', ran: true },
+    });
+    expect(dataDir).toBe(testDir);
+  });
+
+  it('a failed attempt (client failure) records outcome failed, leaves success_at absent, fires outcome:failed', async () => {
+    await makeBrandDir('acme');
+    const failingClient: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'fetch failed',
+        friendly: 'unreachable',
+      }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: failingClient,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('failed');
+    expect(ledger.last_autosync_success_at).toBeUndefined();
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      outcome: 'failed',
+      payload: {
+        trigger: 'preflight',
+        brand: 'acme',
+        ran: false,
+        reason: 'failed',
+        detail: 'unreachable',
+      },
+    });
+  });
+
+  it('a ran:true result with per-doc errors counts as ledger/telemetry failed, not success', async () => {
+    const dir = brandDir('acme', testDir);
+    await mkdir(dir, { recursive: true });
+    const erroringClient: ContextSyncClient = {
+      fetchManifest: async () => ({ ok: true, brands: [manifestBrand('acme', [])] }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'boom', friendly: 'boom' }),
+      putAssignment: async () => ({ ok: true }),
+    };
+    await writeFile(join(dir, 'narrative.md'), 'local-only narrative\n', 'utf8');
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: erroringClient,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) expect(result.errors).toBeGreaterThan(0);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('failed');
+    expect(ledger.last_autosync_success_at).toBeUndefined();
+
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({ outcome: 'failed', payload: { ran: true } });
+  });
+
+  it('early-skip (disabled, kill switch): writes no outcome fields and fires no telemetry', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: { [AUTOSYNC_ENV]: 'off' },
+    });
+    expect(result).toEqual({ ran: false, reason: 'disabled' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+    // No ledger file at all — the kill switch touches no fs, ever.
+    await expect(readFile(contextSyncStatePath('acme', testDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('early-skip (unsafe slug): writes no outcome fields and fires no telemetry', async () => {
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('../evil', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({ ran: false, reason: 'skipped', detail: 'not a valid brand slug' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('early-skip (missing brand directory): writes no outcome fields and fires no telemetry', async () => {
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('ghost', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('throttled (second call in-window): writes no NEW outcome fields and fires no telemetry', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    await maybeAutoSync('acme', { dataDirOverride: testDir, client, env: LIVE_ENV });
+    vi.mocked(track).mockClear();
+
+    const second = await maybeAutoSync('acme', { dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(second).toEqual({ ran: false, reason: 'throttled' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('a caller-supplied trigger (e.g. "manual") is threaded into the telemetry payload', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      trigger: 'manual',
+    });
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({ payload: { trigger: 'manual' } });
   });
 });
