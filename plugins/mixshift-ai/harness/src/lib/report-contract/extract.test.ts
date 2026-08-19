@@ -1967,6 +1967,56 @@ describe('crossDomain.pairFormats (engine >= 0.3.0) drives every crossDomain uni
   });
 });
 
+describe('UNIT-2 end to end: extraction stamps the contract, the validator catches a later rewrite', () => {
+  const response = {
+    envelope: {
+      engineVersion: '0.2.0',
+      bridgeDomain: 'ops',
+      bridgeRunId: 'run-example-unit2-0001',
+      currency: 'USD',
+      caveats: [],
+      metrics: [
+        {
+          metricKey: 'ad_driven_sales',
+          format: { display: 'currency', decimals: 0, deltaUnit: 'absolute' },
+          totals: { p1: 18000, p2: 22448, delta: 4448 },
+          topDrivers: [],
+        },
+      ],
+      insights: [],
+    },
+  };
+
+  it('a document assembled straight off the extractor validates clean', () => {
+    const out = extractFigures(response);
+    expect(out.figures.every((f) => f.served_unit === f.unit)).toBe(true);
+    expect(validateReportData({ figures: out.figures }).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
+  it('rewriting a unit after extraction is caught, and shows up as the wrong string on the page', () => {
+    // The full failure the rule exists to end: an assembly pass relabels
+    // engine-served dollars as a rate. Before UNIT-2 this shipped -- every
+    // other rule passes, because none of them looks at the unit at all.
+    const out = extractFigures(response);
+    const rewritten = out.figures.map((f) =>
+      f.id === 'ops.ad_driven_sales.p2' ? { ...f, unit: 'ratio' } : f,
+    );
+    const found = validateReportData({ figures: rewritten });
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'UNIT-2', subject: 'ops.ad_driven_sales.p2' }),
+    );
+    // and here is what the reader would have seen without it: $22,448 of
+    // ad-attributed sales printed as a percentage, at the currency precision
+    // the rewrite left behind
+    const html = renderMonthlyReport({
+      currency: 'USD',
+      figures: rewritten.filter((f) => f.id === 'ops.ad_driven_sales.p2'),
+      sections: [{ id: 'sec.units', figure_refs: ['ops.ad_driven_sales.p2'] }],
+    });
+    expect(servedChipValues(html)).toEqual(['2244800%']);
+  });
+});
+
 describe('COMPOSITE_SELECTIONS: there is no yoy.ads, and that is the server’s contract', () => {
   // The audit that prompted this work flagged `yoy.ads` as a missing selection.
   // It is not missing -- INS-MONTHLY-01 runs exactly ONE ads bridge per

@@ -679,6 +679,150 @@ describe('UNIT-1 (item_days never renders as plain "days")', () => {
   });
 });
 
+describe('UNIT-2 (a unit must not contradict its served contract, or claim an implausible percent)', () => {
+  // (a) THE SERVED-CONTRACT PREDICATE
+
+  it('fires when a figure’s unit contradicts the served contract it was extracted under', () => {
+    // The engine said these dollars are 'currency'. Something downstream --
+    // an assembly pass, a hand edit, a copied figure -- relabelled them a rate.
+    // No other rule in this file can see that; every one of them passes.
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({
+          id: 'ads.ad_driven_sales.p2',
+          label: 'Ad-attributed sales',
+          value: 22448.2,
+          unit: 'ratio',
+          served_unit: 'currency',
+        }),
+      ],
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(
+      expect.objectContaining({ rule: 'UNIT-2', subject: 'ads.ad_driven_sales.p2' }),
+    );
+    expect(found.find((f) => f.rule === 'UNIT-2')?.detail).toContain("contradicts the served contract 'currency'");
+  });
+
+  it('does NOT fire when no contract was served — version skew must not manufacture findings', () => {
+    // Same figure, same 'ratio' label, no served_unit: a pre-0.2.0 envelope, a
+    // hand-authored figure, or a Derived. The rule has nothing to compare
+    // against and stays silent by design. The value is kept inside the
+    // plausibility ceiling deliberately, so this isolates the served-contract
+    // predicate — the backstop is exercised on its own below.
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'ads.ad_driven_sales.p2', label: 'Ad-attributed sales', value: 0.224482, unit: 'ratio' }),
+      ],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
+  it('does not fire when the unit and the served contract agree', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({
+          id: 'ops.ops.p1',
+          label: 'Revenue',
+          value: 100000,
+          unit: 'currency',
+          served_unit: 'currency',
+        }),
+      ],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
+  it('does not fire on an empty served_unit (nothing was asserted)', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'f.a', label: 'A', value: 1, unit: 'currency', served_unit: '' })],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
+  it('catches a Derived whose recompute changed the scale without changing the label', () => {
+    const doc: ReportDataDocument = {
+      derived: [
+        {
+          id: 'd.tacos',
+          label: 'Day-normalised TACoS',
+          value: 0.083,
+          unit: 'percent',
+          served_unit: 'ratio',
+          inputs: ['ops.ops.p1'],
+          why_not_published: 'reason',
+        },
+      ],
+    };
+    expect(validateReportData(doc)).toContainEqual(
+      expect.objectContaining({ rule: 'UNIT-2', subject: 'd.tacos' }),
+    );
+  });
+
+  // (b) THE PERCENT PLAUSIBILITY BACKSTOP — needs no served contract, so it
+  // still covers the figures the predicate above cannot reach.
+
+  it('fires on a percent-family figure past 1000% displayed, even with nothing served', () => {
+    // The classic scale error: 45 (meaning 45%) stored under 'ratio', which
+    // multiplies by 100 on the way to the page. The reader sees "4500.0%".
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'ads.acos.p2', label: 'ACoS', value: 45, unit: 'ratio' })],
+    };
+    const found = validateReportData(doc);
+    expect(found).toContainEqual(expect.objectContaining({ rule: 'UNIT-2', subject: 'ads.acos.p2' }));
+    expect(found.find((f) => f.rule === 'UNIT-2')?.detail).toContain('4500.0%');
+  });
+
+  it('is scale-aware: the same number is fine under `percent`, which is already whole', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'ads.acos.p2', label: 'ACoS', value: 45, unit: 'percent' })],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
+  it('fires on an already-whole percent unit too, once it passes the same displayed ceiling', () => {
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'ads.acos.p2', label: 'ACoS', value: 4500, unit: 'percent' })],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(true);
+  });
+
+  it('covers every percent-family token at its own scale, and fires on the negative side too', () => {
+    const cases: Array<[string, number, boolean]> = [
+      ['ratio', 10.5, true], // 1050% displayed
+      ['ratio', -10.5, true], // magnitude, not sign
+      ['ratio', 9.9, false], // 990% — loose ceiling, deliberately
+      ['points_fraction', 12, true], // 1200 pts
+      ['points_fraction', 0.028, false], // a real 2.8-point move
+      ['points', 1200, true],
+      ['percent-points', 1200, true],
+      ['pts', 1200, true],
+      ['percent', 999, false],
+    ];
+    for (const [unit, value, shouldFire] of cases) {
+      const doc: ReportDataDocument = {
+        figures: [figure({ id: 'f.x', label: 'X', value, unit })],
+      };
+      expect(
+        validateReportData(doc).some((f) => f.rule === 'UNIT-2'),
+        `${unit} @ ${value} should ${shouldFire ? '' : 'not '}fire`,
+      ).toBe(shouldFire);
+    }
+  });
+
+  it('ignores non-percent units and non-numeric values entirely', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'f.money', label: 'Money', value: 1_000_000, unit: 'currency' }),
+        figure({ id: 'f.count', label: 'Count', value: 500_000, unit: 'count' }),
+        figure({ id: 'f.bad', label: 'Bad', value: 'n/a' as unknown as number, unit: 'ratio' }),
+        figure({ id: 'f.none', label: 'None', unit: 'ratio' }),
+      ],
+    };
+    expect(validateReportData(doc).some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+});
+
 // Exercise the remaining eval_check machinery (extremum_set, count, none,
 // share_of_total) not otherwise hit by the direct POP-1/POP-2 tests above,
 // so every check `type` has coverage independent of the fixture files.
