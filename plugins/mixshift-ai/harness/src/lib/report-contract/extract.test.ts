@@ -1579,10 +1579,11 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
     engineVersion: string | undefined,
     format: unknown,
     metricKey = 'ops',
+    totals: Record<string, number> = { p1: 100000, p2: 144000, delta: 44000 },
   ): unknown {
     const metric: Record<string, unknown> = {
       metricKey,
-      totals: { p1: 100000, p2: 144000, delta: 44000 },
+      totals,
       topDrivers: [],
     };
     if (format !== undefined) metric.format = format;
@@ -1695,57 +1696,38 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
 
   it('served deltaUnit drives the CHANGE unit: a rate metric’s delta reads in points', () => {
     // The engine states the rule mechanically (`deltaUnit: 'pts'`) instead of
-    // us inferring it from our own level token. Levels stay percentages.
-    const response = opsEnvelopeWith('0.2.0', { display: 'percent', decimals: 1, deltaUnit: 'pts' }, 'conversion');
-    const figs = byId(
-      extractFigures({
-        envelope: {
-          ...(asEnvelope(response)),
-          metrics: [
-            {
-              metricKey: 'conversion',
-              format: { display: 'percent', decimals: 1, deltaUnit: 'pts' },
-              totals: { p1: 0.2, p2: 0.25, delta: 0.05 },
-              topDrivers: [],
-            },
-          ],
-        },
-      }),
+    // us inferring it from our own level token. Levels stay percentages: a
+    // rate is still a rate, only its CHANGE is in points.
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'percent', decimals: 1, deltaUnit: 'pts' },
+      'conversion',
+      { p1: 0.2, p2: 0.25, delta: 0.05 },
     );
+    const figs = byId(extractFigures(response));
     expect(figs.get('ops.conversion.p1')).toMatchObject({ unit: 'ratio', served_unit: 'ratio' });
     expect(figs.get('ops.conversion.delta')).toMatchObject({
       unit: 'points_fraction',
       served_unit: 'points_fraction',
     });
+    expect(
+      servedChipValues(renderServed(response, ['ops.conversion.p1', 'ops.conversion.delta'])),
+    ).toEqual(['20.0%', '5.0 pts']);
   });
 
   it('carries the served `decimals` through as precision, so a 1dp metric does not print whole', () => {
     // weeks_of_cover is display 'number' with decimals 1. Dropping the 1 would
     // print "12" where the pre-0.2.0 path prints "12.4" — the served contract's
     // precision is part of the same answer as its unit.
-    const response = opsEnvelopeWith('0.2.0', { display: 'number', decimals: 1, deltaUnit: 'absolute' }, 'weeks_of_cover');
-    const wired = {
-      envelope: {
-        ...(asEnvelope(response)),
-        metrics: [
-          {
-            metricKey: 'weeks_of_cover',
-            format: { display: 'number', decimals: 1, deltaUnit: 'absolute' },
-            totals: { p1: 12.4, p2: 9.1, delta: -3.3 },
-            topDrivers: [],
-          },
-        ],
-      },
-    };
-    expect(servedChipValues(renderServed(wired, ['ops.weeks_of_cover.p1']))).toEqual(['12.4']);
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'number', decimals: 1, deltaUnit: 'absolute' },
+      'weeks_of_cover',
+      { p1: 12.4, p2: 9.1, delta: -3.3 },
+    );
+    expect(servedChipValues(renderServed(response, ['ops.weeks_of_cover.p1']))).toEqual(['12.4']);
   });
 });
-
-/** Pull the envelope object back out of a `{envelope}` response wrapper, so a
- *  test can vary its metrics without restating the whole envelope. */
-function asEnvelope(response: unknown): Record<string, unknown> {
-  return (response as { envelope: Record<string, unknown> }).envelope;
-}
 
 describe('served caveat severity is used verbatim, including a RUN-DEPENDENT one', () => {
   /** The engine grades `lost_sales_regime_guard` by what the guard DID on this
