@@ -91271,25 +91271,38 @@ var OPS_UNITS = {
   sessions: "count",
   conversion: "ratio",
   buy_box: "ratio",
-  ops_per_unit: "currency",
+  // engine: display 'currency-2dp', decimals 2. This is ASP ($/unit), where
+  // the cents ARE the signal; rendering it at 0dp dropped them.
+  ops_per_unit: "currency-2dp",
   sellable_inventory: "count",
   weeks_of_cover: "weeks",
   lost_sales: "currency",
   glance_views: "count",
-  gv_conversion: "ratio"
+  gv_conversion: "ratio",
+  // The ops-grid ad-attribution fold. Present in the engine's
+  // OPS_FAMILY_METRICS but absent here, so all three fell back to 'count' --
+  // two dollar metrics and a rate rendering as bare counts.
+  ad_driven_sales: "currency",
+  ad_driven_share: "ratio",
+  ad_driven_halo: "currency"
 };
 var ADS_UNITS = {
   ad_spend: "currency",
   ad_sales: "currency",
   acos: "ratio",
-  roas: "ratio",
+  // engine: display 'currency-2dp' ("ad sales generated per $1 of spend --
+  // displayed as currency ($2.06), matching the ASP ($/unit) convention").
+  // As 'ratio' a 2.06x ROAS rendered "206.0%", which ROAS never is.
+  roas: "currency-2dp",
   ad_impressions: "count",
   ad_clicks: "count",
   ad_ctr: "ratio",
   ad_orders: "count",
-  ad_cpa: "currency",
-  ad_aov: "currency",
-  ad_cpc: "currency",
+  // engine: display 'currency-2dp', decimals 2 -- per-click/per-order money,
+  // sub-dollar in normal operation, so 0dp rounded it to nothing.
+  ad_cpa: "currency-2dp",
+  ad_aov: "currency-2dp",
+  ad_cpc: "currency-2dp",
   ad_conversion: "ratio",
   ad_sales_same_sku: "currency",
   ad_sales_other_sku: "currency",
@@ -91307,6 +91320,16 @@ var ADS_BASIS = {
   ad_orders_view_through: "view_through"
 };
 var ADS_BASIS_DEFAULT = "console_authoritative";
+var AV_LANE_UNITS = {
+  asp: OPS_UNITS.ops_per_unit,
+  adAov: ADS_UNITS.ad_aov
+};
+function changeUnitOf(levelUnit) {
+  return levelUnit === "ratio" ? "points_fraction" : levelUnit;
+}
+function bridgeLegUnit(unitsMap, metricKey) {
+  return changeUnitOf((metricKey && unitsMap[metricKey]) ?? "count");
+}
 var CAVEAT_SEVERITY = {
   filtered_scope: "blocking",
   decomposition_degraded: "blocking",
@@ -91406,7 +91429,10 @@ function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats, sel
     const netChange = entry.netChange;
     if (hasValue(netChange)) {
       figures2.push(
-        fig(`${stem}.delta`, label, netChange, unit, basis, `${base}.netChange`, {
+        // The CHANGE unit, not `unit` (this metric's LEVEL, which p1/p2 above
+        // correctly carry) -- see `changeUnitOf`. Same rule the legs below use,
+        // so an entity's rate delta and its own legs agree.
+        fig(`${stem}.delta`, label, netChange, changeUnitOf(unit), basis, `${base}.netChange`, {
           caveats: deltaCaveats,
           extra: { pct_change: entry.pctChange ?? null }
         })
@@ -91421,7 +91447,9 @@ function extractEntity(doc, env, domain2, unitsMap, registry2, deltaCaveats, sel
           `${domain2}.entity.${slug}.bridge.${mkey}.${variant}.${comp.key}`,
           `${mkey} ${comp.key} leg (${variant}) \u2014 ${ekey}`,
           comp.impact,
-          comp.valueUnit ?? "currency",
+          // ANCHOR metric's change unit -- `unit` above is this insight's own
+          // metric. NOT comp.valueUnit; see `bridgeLegUnit`.
+          changeUnitOf(unit),
           basis,
           `${base}.components[${ci}].impact`,
           {
@@ -91534,7 +91562,11 @@ function extractFiguresUnprefixed(response, selection) {
         };
       }
       figures2.push(
-        fig(`${domain2}.${key}.delta`, key ?? "", delta, unit, basis, `${base}.delta`, {
+        // The CHANGE unit, not `unit` (the LEVEL, kept by p1/p2 above): a rate
+        // metric's delta is in POINTS. `bridgeLegUnit` derives every leg that
+        // foots to this figure through the same helper, so the two cannot
+        // disagree -- see `changeUnitOf`.
+        fig(`${domain2}.${key}.delta`, key ?? "", delta, changeUnitOf(unit), basis, `${base}.delta`, {
           caveats: deltaCaveats,
           population: pop,
           extra: { pct_change: t.pctChange ?? null }
@@ -91562,7 +91594,10 @@ function extractFiguresUnprefixed(response, selection) {
           `${domain2}.bridge.${mkey}.${variant}.${comp.key}`,
           `${mkey} ${comp.key} leg (${variant})`,
           comp.impact,
-          comp.valueUnit ?? "currency",
+          // ANCHOR metric's change unit, NOT comp.valueUnit (which describes
+          // the lever's own level, a number this figure does not carry) --
+          // see `bridgeLegUnit`.
+          bridgeLegUnit(unitsMap, mkey),
           domain2 === "ops" ? opsBasis(env, mkey) : ADS_BASIS_DEFAULT,
           `envelope:insights[${ii}].insight.components[${ci}].impact`,
           {
@@ -91599,7 +91634,15 @@ function extractFiguresUnprefixed(response, selection) {
             `duo.${name}.delta_pts`,
             name,
             ptsVal,
-            "points",
+            // `deltaPts` is NAMED points but is not stored in points: the
+            // engine computes it as `p.p2 - p.p1` over a RATIO pair (TACOS
+            // and attributed share are both `ratioPair(...)`, "in RATE units
+            // (0.083 = 8.3%)"), so a 2.8-point move arrives as 0.028. Under
+            // our `points` unit -- an already-whole number -- that rendered
+            // "0.0 pts" and erased the move. Same anchor rule as everywhere
+            // else in this file: the change unit of the block's own level
+            // unit, which for a ratio is `points_fraction` (x100 -> pts).
+            changeUnitOf(unit),
             "cross_domain_joined",
             `crossDomain.${name}.${ptsField}`
           )
@@ -91655,7 +91698,16 @@ function extractFiguresUnprefixed(response, selection) {
                 `duo.${lane}.${side}`,
                 lane,
                 v,
-                "currency",
+                // NOT a hardcoded 'currency'. The engine builds this block from
+                // two metric pairs it reads straight off the sidecars --
+                // `aspVsAdAov: { asp: pair(ops, 'ops_per_unit'),
+                // adAov: pair(ads, 'ad_aov') }` -- so these figures ARE those
+                // metrics and take their units from the same maps their own
+                // domain figures do. Both are 'currency-2dp' (engine: display
+                // 'currency-2dp', decimals 2); at 0dp a $59.38 ad AOV printed
+                // "$59", and the ASP-vs-ad-AOV comparison is precisely a
+                // cents-level read.
+                AV_LANE_UNITS[lane],
                 "cross_domain_joined",
                 `crossDomain.aspVsAdAov.${lane}.${side}`
               )
@@ -91789,6 +91841,7 @@ import { join as join24 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
+var MULTIPLE = "\xD7";
 var CURRENCY_SYMBOLS = {
   USD: "$",
   EUR: "\u20AC",
@@ -91805,6 +91858,10 @@ function fixed(n, precision) {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision
   });
+}
+var UNKNOWN_UNIT = "[unknown unit]";
+function unitToken(unit) {
+  return String(unit ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);
 }
 function formatFigureValue(fig2, currencyCode) {
   const v = fig2.value;
@@ -91847,9 +91904,76 @@ function formatFigureValue(fig2, currencyCode) {
     case "weeks":
       body = a.toFixed(prec ?? 1);
       break;
-    default:
-      body = prec !== void 0 ? fixed(a, prec) : String(a);
+    // -----------------------------------------------------------------
+    // Engine `HorizontalBridgeValueUnit` / `DisplayUnit` level tokens. No
+    // stored scale. `currency-2dp` reaches here on every per-unit money
+    // metric via the extractor's interim unit map; `number` / `number-2dp`
+    // only from a document authored outside the extractor (see this
+    // function's doc comment).
+    // -----------------------------------------------------------------
+    case "currency-2dp":
+      body = `${currencySymbol(currencyCode)}${fixed(a, prec ?? 2)}`;
       break;
+    case "number":
+      body = fixed(a, prec ?? 0);
+      break;
+    case "number-2dp":
+      body = fixed(a, prec ?? 2);
+      break;
+    // -----------------------------------------------------------------
+    // Engine `DisplayUnit` — the metric-registry level vocabulary.
+    // -----------------------------------------------------------------
+    case "percent-points":
+      body = `${a.toFixed(prec ?? 1)} pts`;
+      break;
+    // -----------------------------------------------------------------
+    // Emitted by our own extractor, previously unhandled.
+    // -----------------------------------------------------------------
+    case "points_fraction":
+      body = `${(a * 100).toFixed(prec ?? 1)} pts`;
+      break;
+    // -----------------------------------------------------------------
+    // Engine `ContributionUnit` — grid C2C / mix-rate cells. Handled
+    // defensively: these are NOT serialized into the insight envelope
+    // today, so nothing can reach here through `extract.ts`.
+    //
+    // ⚠ NO STORED-SCALE DIVISION HERE, and that is the point (red team,
+    // 2026-08-18). The engine stores these values ×100 / ×10⁴ for its own
+    // grid, but nothing carrying that scale can reach this renderer. The
+    // only documents that CAN carry these tokens are hand- or
+    // model-authored, where the plain reading is what the author meant —
+    // so dividing would silently destroy the magnitude: `{unit:'pts',
+    // value:2.4}` rendered "0.0 pts" while the near-synonyms `points` and
+    // `percent-points` both rendered the same 2.4 as "2.4 pts". Three
+    // tokens for one idea, one of which quietly zeroes the number, is a
+    // trap. This is the same reasoning `currency-2dp` and `weeks` already
+    // use above (take the LEVEL reading, because the level vocabulary is
+    // the one that actually reaches here) — it was simply applied in
+    // reverse for these two. If a genuine contribution-scaled document
+    // ever reaches us, it needs its own token, not a silent divide.
+    // -----------------------------------------------------------------
+    case "bps":
+      body = `${fixed(a, prec ?? 0)} bps`;
+      break;
+    case "bps-1dp":
+      body = `${fixed(a, prec ?? 1)} bps`;
+      break;
+    case "pts":
+      body = `${a.toFixed(prec ?? 1)} pts`;
+      break;
+    case "ratio-2dp":
+      body = `${a.toFixed(prec ?? 2)}${MULTIPLE}`;
+      break;
+    default: {
+      const plain = prec !== void 0 ? fixed(a, prec) : String(a);
+      if (unit === "raw" || unit === "") {
+        body = plain;
+        break;
+      }
+      const tok = unitToken(unit);
+      body = `${plain} ${tok || UNKNOWN_UNIT}`;
+      break;
+    }
   }
   if (neg) body = MINUS + body;
   else if (fig2.signed && n > 0) body = "+" + body;

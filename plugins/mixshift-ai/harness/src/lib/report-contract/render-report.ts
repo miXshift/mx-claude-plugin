@@ -21,7 +21,12 @@
  *   1. A figure's displayed value is formatted from its unit + precision —
  *      never hand-formatted in prose. `formatFigureValue` mirrors the
  *      reference's `fmt_spec_text` unit switch (currency / currency_abbrev /
- *      count / ratio / percent / points / item_days / weeks / raw).
+ *      count / ratio / percent / points / item_days / weeks / raw), EXTENDED
+ *      with the analysis engine's own unit vocabulary (currency-2dp / number
+ *      / number-2dp / percent-points, plus the contribution-scale tokens bps
+ *      / bps-1dp / pts / ratio-2dp) and our extractor's `points_fraction`.
+ *      An unrecognized unit renders the number WITH its token rather than
+ *      falling through to a bare number — see `formatFigureValue`.
  *   2. Visual accent (positive/negative) derives ONLY from the value's sign
  *      via `figureAccentClass` — never from prose tone. Mirrors
  *      `fmt_spec_class`'s auto / auto_invert split (auto_invert: a rise is
@@ -166,6 +171,7 @@ type FigureLike = FigureCommon & FigureDisplay;
 const MINUS = '−'; // typographic minus, matches shipped-report convention
 const MIDDOT = '·'; // metadata separator (schema version, currency)
 const MISSING_VALUE = '—'; // placeholder glyph for a missing/NaN value
+const MULTIPLE = '×'; // multiple/times affix for a bare-ratio unit (ROAS)
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
@@ -189,9 +195,91 @@ function fixed(n: number, precision: number): string {
   });
 }
 
-/** Format one figure's value from its `unit` + `precision` alone. Prose
- *  never formats numbers — this is the only place a figure's value becomes
- *  display text. Mirrors the reference's `fmt_spec_text`. */
+/** Marker for a unit token this renderer does not know AND cannot safely
+ *  echo (nothing survived the output allowlist). Better a visible "I do not
+ *  know this unit" than a bare number the reader will take for a count. */
+const UNKNOWN_UNIT = '[unknown unit]';
+
+/**
+ * Sanitize an unrecognized unit token for display.
+ *
+ * `unit` comes from an untrusted report-data document, and an unrecognized
+ * one is now ECHOED into the page rather than dropped. The single in-repo
+ * call site already wraps this function's return in `escapeHtml`, but the
+ * function is exported, so the OUTPUT ALPHABET is allowlisted here too
+ * rather than relying on a caller to escape: enumerate what may appear, not
+ * what must be stripped. Length-bounded so a garbage "unit" cannot dominate
+ * the chip. Returns '' when nothing survives — the caller then falls back to
+ * `UNKNOWN_UNIT`.
+ */
+function unitToken(unit: unknown): string {
+  // Coerced, not asserted. `unit` is typed `string?` but arrives from an
+  // untrusted document read with a bare cast, and `validateReportData` never
+  // type-checks it -- so `"unit": 42` (or an array, or an object) reaches
+  // here as a non-string. Before this fallback existed the default branch
+  // never touched `unit` and such a figure still rendered; calling
+  // `.replace` on it would turn a malformed figure into a thrown
+  // TypeError that escapes the whole render, writing no HTML at all. That
+  // is the same class the value guard 40 lines below already handles, and
+  // the module's own rule is that a malformed document must degrade, not
+  // crash. Non-strings stringify to something the allowlist then filters,
+  // so the reader sees an odd token rather than losing the page.
+  return String(unit ?? '')
+    .replace(/[^A-Za-z0-9_-]/g, '')
+    .slice(0, 24);
+}
+
+/**
+ * Format one figure's value from its `unit` + `precision` alone. Prose
+ * never formats numbers — this is the only place a figure's value becomes
+ * display text. Mirrors the reference's `fmt_spec_text`, EXTENDED with the
+ * analysis engine's own unit vocabulary (below) and with a unit-carrying
+ * fallback so an unknown token can never render as a bare number.
+ *
+ * ── Where the engine's tokens come from ──────────────────────────────────
+ * A figure extracted from an analysis envelope does not carry OUR unit
+ * vocabulary: `extract.ts` labels figures from the engine's metric registry,
+ * so engine tokens arrive here verbatim (`currency-2dp` on every per-unit
+ * money metric, for instance). Three engine vocabularies exist and they are
+ * NOT interchangeable — the same token can mean different scales in two of
+ * them, which is why each case below names the one it implements:
+ *
+ *   1. `HorizontalBridgeValueUnit` — `component.valueUnit`. Members:
+ *      currency, currency-2dp, number, number-2dp, percent. These are LEVEL
+ *      units and carry NO stored-scale trick: a `currency-2dp` value is
+ *      plain dollars at two decimals (ASP $12.34, CPC $0.85), never a ×10⁴
+ *      scalar. `extract.ts` used to pass this field straight onto every
+ *      bridge-leg figure; it no longer does, because a leg figure stores the
+ *      component's `impact` (denominated in the ANCHOR metric) and not the
+ *      levels `valueUnit` describes — so these tokens now reach this
+ *      function only from a document authored outside the extractor. The
+ *      cases stay: this renderer formats whatever it is handed.
+ *   2. `DisplayUnit` — `METRIC_DEFINITIONS[m].display`. Members: currency,
+ *      currency-2dp, number, percent, percent-points. Also level units.
+ *   3. `ContributionUnit` — `contributionUnit` / `decompositionUnit`, the
+ *      GRID's C2C and mix/rate cells. Members: bps, bps-1dp, pts,
+ *      currency-2dp, weeks, ratio-2dp. These DO carry a stored scale (the
+ *      engine stores contribution × 10⁴). This vocabulary is NOT serialized
+ *      into the insight envelope at all — it appears only in the engine's
+ *      metric registry and its own grid formatter — so it cannot reach a
+ *      figure through `extract.ts` today. The four tokens UNIQUE to it are
+ *      still handled below, defensively and with the engine's own scale, so
+ *      that if a future envelope ever does carry one it is not silently
+ *      mis-read as a level.
+ *
+ * ⚠ TWO TOKENS ARE OVERLOADED ACROSS VOCABULARIES WITH DIFFERENT SCALES,
+ *   and both deliberately take the LEVEL reading here, because the level
+ *   vocabulary is the one that actually reaches this renderer:
+ *     • `currency-2dp` — level: plain dollars at 2dp. Contribution:
+ *       stored ÷ 10⁴. Applying the contribution divide would turn a real
+ *       $0.85 CPC into $0.000085, so it is NOT applied.
+ *     • `weeks` — our long-standing level unit (weeks of cover, a bare 1dp
+ *       number). Contribution: stored ÷ 10⁴ with a " wks" affix. The
+ *       existing level behavior is preserved unchanged.
+ *   If contribution cells are ever serialized into an envelope they must
+ *   arrive under their own distinct tokens (or a scale marker), NOT by
+ *   reusing these two — there is no way to tell them apart from the value.
+ */
 export function formatFigureValue(fig: FigureLike, currencyCode: string | undefined): string {
   const v = fig.value;
   if (v === undefined || v === null) return MISSING_VALUE;
@@ -243,11 +331,117 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
       break;
     }
     case 'weeks':
+      // LEVEL weeks (weeks of cover). NOT the engine's `weeks`
+      // ContributionUnit, which is stored ÷ 10⁴ with a " wks" affix — see
+      // the overload warning in this function's doc comment.
       body = a.toFixed(prec ?? 1);
       break;
-    default: // raw
-      body = prec !== undefined ? fixed(a, prec) : String(a);
+
+    // -----------------------------------------------------------------
+    // Engine `HorizontalBridgeValueUnit` / `DisplayUnit` level tokens. No
+    // stored scale. `currency-2dp` reaches here on every per-unit money
+    // metric via the extractor's interim unit map; `number` / `number-2dp`
+    // only from a document authored outside the extractor (see this
+    // function's doc comment).
+    // -----------------------------------------------------------------
+    case 'currency-2dp':
+      // Plain dollars at two decimals (ASP, CPC, CPA, AOV, ROAS). The
+      // engine's own level formatters render this as `cur2` / `$X.XX`.
+      body = `${currencySymbol(currencyCode)}${fixed(a, prec ?? 2)}`;
       break;
+    case 'number':
+      // Whole-number display. Same shape as our `count`; kept as its own
+      // case so the engine token is explicitly recognized rather than
+      // landing in the unknown-unit fallback.
+      body = fixed(a, prec ?? 0);
+      break;
+    case 'number-2dp':
+      // Two-decimal bare number, for fractional rates whose movement is
+      // meaningful below integer precision (e.g. lost units per OOS day).
+      body = fixed(a, prec ?? 2);
+      break;
+
+    // -----------------------------------------------------------------
+    // Engine `DisplayUnit` — the metric-registry level vocabulary.
+    // -----------------------------------------------------------------
+    case 'percent-points':
+      // Already IN points; rendered as-is with the affix (the engine does
+      // the same). Distinct from `points_fraction` below, which is not.
+      body = `${a.toFixed(prec ?? 1)} pts`;
+      break;
+
+    // -----------------------------------------------------------------
+    // Emitted by our own extractor, previously unhandled.
+    // -----------------------------------------------------------------
+    case 'points_fraction':
+      // A CHANGE in a rate, stored as a fraction: every bridge leg anchored
+      // on a rate metric, the TACoS decomposition legs, and the cross-domain
+      // `delta_pts` figures. The engine types those as rate units
+      // (0.01 = 1 pt) and renders them ×100 with " pts" (`formatDelta`'s
+      // `deltaUnit === 'pts'` branch) — so ×100 recovers points here too.
+      // Without this a −2.8 point TACoS move rendered as a bare "−0.03",
+      // which reads as a rounding artifact rather than a real move.
+      body = `${(a * 100).toFixed(prec ?? 1)} pts`;
+      break;
+
+    // -----------------------------------------------------------------
+    // Engine `ContributionUnit` — grid C2C / mix-rate cells. Handled
+    // defensively: these are NOT serialized into the insight envelope
+    // today, so nothing can reach here through `extract.ts`.
+    //
+    // ⚠ NO STORED-SCALE DIVISION HERE, and that is the point (red team,
+    // 2026-08-18). The engine stores these values ×100 / ×10⁴ for its own
+    // grid, but nothing carrying that scale can reach this renderer. The
+    // only documents that CAN carry these tokens are hand- or
+    // model-authored, where the plain reading is what the author meant —
+    // so dividing would silently destroy the magnitude: `{unit:'pts',
+    // value:2.4}` rendered "0.0 pts" while the near-synonyms `points` and
+    // `percent-points` both rendered the same 2.4 as "2.4 pts". Three
+    // tokens for one idea, one of which quietly zeroes the number, is a
+    // trap. This is the same reasoning `currency-2dp` and `weeks` already
+    // use above (take the LEVEL reading, because the level vocabulary is
+    // the one that actually reaches here) — it was simply applied in
+    // reverse for these two. If a genuine contribution-scaled document
+    // ever reaches us, it needs its own token, not a silent divide.
+    // -----------------------------------------------------------------
+    case 'bps':
+      // Already basis points; the engine renders integer-rounded.
+      body = `${fixed(a, prec ?? 0)} bps`;
+      break;
+    case 'bps-1dp':
+      // Basis points at one decimal, for a rate so small that whole points
+      // round every driver row away (CTR contributions).
+      body = `${fixed(a, prec ?? 1)} bps`;
+      break;
+    case 'pts':
+      // Read as points, exactly like `points` and `percent-points`.
+      body = `${a.toFixed(prec ?? 1)} pts`;
+      break;
+    case 'ratio-2dp':
+      // A bare multiple (ROAS). The engine prints it with no affix because
+      // its grid column is labeled; a figure chip has no such guarantee, so
+      // the multiplication sign carries the unit.
+      body = `${a.toFixed(prec ?? 2)}${MULTIPLE}`;
+      break;
+
+    default: {
+      // 'raw' / absent unit → the historical bare number. Those two assert
+      // "this figure genuinely has no unit", and that contract is kept.
+      const plain = prec !== undefined ? fixed(a, prec) : String(a);
+      if (unit === 'raw' || unit === '') {
+        body = plain;
+        break;
+      }
+      // Anything else is a token this renderer does not know. It must NOT
+      // render as a bare number — an unlabeled figure reads as a plain
+      // count, which is exactly how a rate, a ratio and a count become
+      // indistinguishable. Show the number AND the token that qualifies it
+      // so the gap is visible to the reader (and reportable) instead of
+      // silent.
+      const tok = unitToken(unit);
+      body = `${plain} ${tok || UNKNOWN_UNIT}`;
+      break;
+    }
   }
 
   if (neg) body = MINUS + body;

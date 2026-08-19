@@ -16,6 +16,24 @@
  * extraction emits -- exactly as the upstream Python extractor does, which
  * is the cross-implementation parity this path must never break.
  *
+ * ⚠ THAT PARITY IS ABOUT SHAPE -- figure ids, source paths, values, and
+ * which figures get emitted -- NOT about every field's contents. Four unit
+ * LABELS deliberately diverge from `extract_figures.py`, because the Python
+ * source labels them wrongly and a report that prints "22448.2%" for $22.4K
+ * is worse than a temporary fork. All four are the same defect -- a unit that
+ * does not describe the value stored -- and all four are settled against the
+ * engine's own registry (`METRIC_DEFINITIONS`) and formatters:
+ *   (1) a bridge leg takes its unit from the ANCHOR metric, not from
+ *       `component.valueUnit`;
+ *   (2) `duo.*.delta_pts` is `points_fraction`, not `points`;
+ *   (3) a RATE metric's own delta (`<domain>.<metric>.delta`, and an entity
+ *       insight's `netChange`) is `points_fraction`, not the level's `ratio`
+ *       -- the engine declares `deltaUnit: 'pts'` for every such metric;
+ *   (4) `duo.asp` / `duo.adAov` are `ops_per_unit` / `ad_aov` and carry those
+ *       metrics' `currency-2dp`, not a hardcoded 0dp `currency`.
+ * All are ported upstream on the next parity pass; until then a diff on those
+ * fields is EXPECTED and is not a regression here.
+ *
  * A composite selection (`selection` set -- see COMPOSITE_SELECTIONS) instead
  * prepends the selection's period to every id: mom.ops.ops.p1, yoy.ops.ops.p1,
  * mom.ads.ad_spend.p1. It has to: the skill composes every selection's
@@ -43,6 +61,19 @@ const TOL = 0.011; // cent-level float tolerance on currency identities
 
 // ---------------------------------------------------------------------------
 // INTERIM-UNTIL-CATALOG metadata (the service catalog owns this eventually).
+//
+// Every entry below is now reconciled against the ENGINE's own metric
+// registry (`METRIC_DEFINITIONS[key].display`), which is the authority on how
+// a metric's LEVEL renders. Where our token and the engine's disagreed, the
+// engine won. Two conventions to keep straight while reading this:
+//   - our `ratio` means a stored FRACTION rendered ×100 with a "%" affix,
+//     which is exactly the engine's `percent`. These agree; they are not a
+//     defect. (Our `percent` means an ALREADY-WHOLE number — never the right
+//     mapping for an engine `percent` metric.)
+//   - our `count` is a whole bare number, i.e. the engine's `number`.
+// The key sets themselves are pinned to the engine's `OPS_FAMILY_METRICS` and
+// `ADS_METRIC_KEYS`: a key missing here silently falls back to 'count' below,
+// which is how dollar metrics ended up rendering as bare counts.
 // ---------------------------------------------------------------------------
 const OPS_UNITS: Record<string, string> = {
   ops: 'currency',
@@ -50,25 +81,38 @@ const OPS_UNITS: Record<string, string> = {
   sessions: 'count',
   conversion: 'ratio',
   buy_box: 'ratio',
-  ops_per_unit: 'currency',
+  // engine: display 'currency-2dp', decimals 2. This is ASP ($/unit), where
+  // the cents ARE the signal; rendering it at 0dp dropped them.
+  ops_per_unit: 'currency-2dp',
   sellable_inventory: 'count',
   weeks_of_cover: 'weeks',
   lost_sales: 'currency',
   glance_views: 'count',
   gv_conversion: 'ratio',
+  // The ops-grid ad-attribution fold. Present in the engine's
+  // OPS_FAMILY_METRICS but absent here, so all three fell back to 'count' --
+  // two dollar metrics and a rate rendering as bare counts.
+  ad_driven_sales: 'currency',
+  ad_driven_share: 'ratio',
+  ad_driven_halo: 'currency',
 };
 const ADS_UNITS: Record<string, string> = {
   ad_spend: 'currency',
   ad_sales: 'currency',
   acos: 'ratio',
-  roas: 'ratio',
+  // engine: display 'currency-2dp' ("ad sales generated per $1 of spend --
+  // displayed as currency ($2.06), matching the ASP ($/unit) convention").
+  // As 'ratio' a 2.06x ROAS rendered "206.0%", which ROAS never is.
+  roas: 'currency-2dp',
   ad_impressions: 'count',
   ad_clicks: 'count',
   ad_ctr: 'ratio',
   ad_orders: 'count',
-  ad_cpa: 'currency',
-  ad_aov: 'currency',
-  ad_cpc: 'currency',
+  // engine: display 'currency-2dp', decimals 2 -- per-click/per-order money,
+  // sub-dollar in normal operation, so 0dp rounded it to nothing.
+  ad_cpa: 'currency-2dp',
+  ad_aov: 'currency-2dp',
+  ad_cpc: 'currency-2dp',
   ad_conversion: 'ratio',
   ad_sales_same_sku: 'currency',
   ad_sales_other_sku: 'currency',
@@ -87,6 +131,93 @@ const ADS_BASIS: Record<string, string> = {
   ad_orders_view_through: 'view_through',
 };
 const ADS_BASIS_DEFAULT = 'console_authoritative';
+
+/** The cross-domain ASP ⇄ ad-AOV mirror is not its own pair of measures: the
+ *  engine assembles it from two metrics it already publishes --
+ *  `aspVsAdAov: { asp: pair(ops, 'ops_per_unit'), adAov: pair(ads, 'ad_aov') }`
+ *  -- so each lane is READ THROUGH the same map its own domain figures use and
+ *  can never drift from them. Both resolve to 'currency-2dp' today. */
+const AV_LANE_UNITS: Record<'asp' | 'adAov', string> = {
+  asp: OPS_UNITS.ops_per_unit,
+  adAov: ADS_UNITS.ad_aov,
+};
+
+// ---------------------------------------------------------------------------
+// A CHANGE figure carries the CHANGE unit; a BRIDGE LEG carries the ANCHOR's.
+//
+// Two applications of one rule, both below. (a) A metric's own delta figure is
+// a CHANGE, so for a rate metric it is denominated in POINTS, not in the rate.
+// (b) A leg figure stores a contribution to that same change, so it takes the
+// anchor's change unit and never the lever's own level unit. They have to
+// agree: the legs sum to the delta, so the two can never be read apart.
+//
+// A leg figure stores `component.impact` -- the leg's contribution to the
+// ANCHOR metric's net change -- and NOT the lever's own before/after level.
+// So the unit that describes the stored value is the anchor's, not
+// `component.valueUnit`. Three independent lines of evidence, all pointing
+// the same way:
+//
+//   1. ENGINE. `component.valueUnit` is typed `HorizontalBridgeValueUnit` and
+//      is used by the engine ONLY to format the leg's own levels --
+//      `compactMagByUnit(c.p1Value, c.valueUnit)` in bridge-visual-model.ts's
+//      `miniForComponent`. The engine formats the leg's IMPACT through the
+//      root metric instead: `impactFormatted: compactSigned(rootMetric,
+//      c.impact)`, on the very same object ("every edge/impact is in the ROOT
+//      metric's native contribution frame"). valueUnit describes the numbers
+//      we do not emit.
+//   2. OUR OWN CONTRACT. `checkFigures`'s BRIDGE-FOOTING invariant asserts
+//      Σ(legs) == net_change, and net_change is the ANCHOR metric's delta.
+//      Numbers that sum to each other are in the same unit, so a leg is in
+//      the anchor's delta unit by an invariant this file already enforces.
+//   3. ARITHMETIC, on this repo's own envelope fixture. The ops bridge's legs
+//      are 20000 + 15000 + 9000 = 44000, exactly the ops delta -- DOLLARS --
+//      while the conversion leg's `valueUnit` is 'percent'. Passing valueUnit
+//      through labeled $15,000 as a percentage, and the renderer printed
+//      "15000.0%". The conversion bridge is the mirror case: legs 0.03 + 0.02
+//      = 0.05 = the conversion delta, i.e. FRACTIONS of a rate, both labeled
+//      'number' -- printed as "0" at 0dp, erasing a three-point contribution.
+//
+// A rate anchor's delta is NOT its level unit. Every engine metric whose
+// `display` is 'percent' also declares `deltaUnit: 'pts'`, and `formatDelta`
+// renders that branch as value x 100 with a " pts" affix -- a stored FRACTION
+// of a point, which is exactly our `points_fraction`. Every 'ratio' entry in
+// the maps above is an engine 'percent' metric (conversion, buy_box,
+// gv_conversion, ad_driven_share, acos, ad_ctr, ad_conversion) and no
+// non-'ratio' entry is, so the mapping below is total. Every other unit is
+// `deltaUnit: 'absolute'` -- delta in the level's own unit -- and passes
+// through untouched.
+//
+// This is not a new convention in this file: the cross-domain TACOS legs
+// below have always been labeled from their anchor (`points_fraction`, the
+// TACOS rate) while their components' own `valueUnit`s say 'currency-2dp' /
+// 'percent'. This makes the envelope bridge legs follow the same rule.
+//
+// ...and so does the metric's OWN delta figure, at total and entity scope.
+// `metrics[].totals.delta` and an entity insight's `netChange` are both the
+// change itself, and the engine's `formatDelta` sends a deltaUnit:'pts' metric
+// down `numWithDecimals(abs * 100, dp) + ' pts'` -- it never renders a rate
+// change as a rate. Labeling those figures with the LEVEL unit made a
+// five-POINT conversion move (20% -> 25%, stored 0.05) print "5.0%", which
+// reads as a 5% relative rise, and left a net printing "5.0%" directly beneath
+// the legs -- correctly labeled by the rule above -- that footed to it as
+// "3.0 pts" and "2.0 pts". Numbers that sum to each other now share a unit
+// wherever this file emits them.
+// ---------------------------------------------------------------------------
+
+/** The unit a metric's CHANGE carries, given its level unit -- for the delta
+ *  figure itself and for every leg that foots to it. Identity except for rate
+ *  metrics, whose change is in points, stored as a fraction. */
+function changeUnitOf(levelUnit: string): string {
+  return levelUnit === 'ratio' ? 'points_fraction' : levelUnit;
+}
+
+/** The unit for a bridge leg anchored on `metricKey`. The `?? 'count'`
+ *  fallback deliberately matches the one the anchor's OWN p1/p2/delta figures
+ *  use for an unmapped key, so a leg and the net change it foots to can never
+ *  disagree about their unit. */
+function bridgeLegUnit(unitsMap: Record<string, string>, metricKey: string | undefined): string {
+  return changeUnitOf((metricKey && unitsMap[metricKey]) ?? 'count');
+}
 
 // Which envelope caveat kinds bar bare quotation of a figure they ride on.
 const CAVEAT_SEVERITY: Record<string, string> = {
@@ -300,7 +431,10 @@ function extractEntity(
     const netChange = entry.netChange;
     if (hasValue(netChange)) {
       figures.push(
-        fig(`${stem}.delta`, label, netChange as number, unit, basis, `${base}.netChange`, {
+        // The CHANGE unit, not `unit` (this metric's LEVEL, which p1/p2 above
+        // correctly carry) -- see `changeUnitOf`. Same rule the legs below use,
+        // so an entity's rate delta and its own legs agree.
+        fig(`${stem}.delta`, label, netChange as number, changeUnitOf(unit), basis, `${base}.netChange`, {
           caveats: deltaCaveats,
           extra: { pct_change: (entry.pctChange as number | null | undefined) ?? null },
         }),
@@ -315,7 +449,9 @@ function extractEntity(
           `${domain}.entity.${slug}.bridge.${mkey}.${variant}.${comp.key as string}`,
           `${mkey} ${comp.key as string} leg (${variant}) — ${ekey}`,
           comp.impact as number,
-          (comp.valueUnit as string) ?? 'currency',
+          // ANCHOR metric's change unit -- `unit` above is this insight's own
+          // metric. NOT comp.valueUnit; see `bridgeLegUnit`.
+          changeUnitOf(unit),
           basis,
           `${base}.components[${ci}].impact`,
           {
@@ -491,7 +627,11 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
         };
       }
       figures.push(
-        fig(`${domain}.${key}.delta`, key ?? '', delta as number, unit, basis, `${base}.delta`, {
+        // The CHANGE unit, not `unit` (the LEVEL, kept by p1/p2 above): a rate
+        // metric's delta is in POINTS. `bridgeLegUnit` derives every leg that
+        // foots to this figure through the same helper, so the two cannot
+        // disagree -- see `changeUnitOf`.
+        fig(`${domain}.${key}.delta`, key ?? '', delta as number, changeUnitOf(unit), basis, `${base}.delta`, {
           caveats: deltaCaveats,
           population: pop,
           extra: { pct_change: (t.pctChange as number | null | undefined) ?? null },
@@ -529,7 +669,10 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
           `${domain}.bridge.${mkey}.${variant}.${comp.key as string}`,
           `${mkey} ${comp.key as string} leg (${variant})`,
           comp.impact as number,
-          (comp.valueUnit as string) ?? 'currency',
+          // ANCHOR metric's change unit, NOT comp.valueUnit (which describes
+          // the lever's own level, a number this figure does not carry) --
+          // see `bridgeLegUnit`.
+          bridgeLegUnit(unitsMap, mkey),
           domain === 'ops' ? opsBasis(env, mkey) : ADS_BASIS_DEFAULT,
           `envelope:insights[${ii}].insight.components[${ci}].impact`,
           {
@@ -568,7 +711,15 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
             `duo.${name}.delta_pts`,
             name,
             ptsVal as number,
-            'points',
+            // `deltaPts` is NAMED points but is not stored in points: the
+            // engine computes it as `p.p2 - p.p1` over a RATIO pair (TACOS
+            // and attributed share are both `ratioPair(...)`, "in RATE units
+            // (0.083 = 8.3%)"), so a 2.8-point move arrives as 0.028. Under
+            // our `points` unit -- an already-whole number -- that rendered
+            // "0.0 pts" and erased the move. Same anchor rule as everywhere
+            // else in this file: the change unit of the block's own level
+            // unit, which for a ratio is `points_fraction` (x100 -> pts).
+            changeUnitOf(unit),
             'cross_domain_joined',
             `crossDomain.${name}.${ptsField}`,
           ),
@@ -627,7 +778,16 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
                 `duo.${lane}.${side}`,
                 lane,
                 v as number,
-                'currency',
+                // NOT a hardcoded 'currency'. The engine builds this block from
+                // two metric pairs it reads straight off the sidecars --
+                // `aspVsAdAov: { asp: pair(ops, 'ops_per_unit'),
+                // adAov: pair(ads, 'ad_aov') }` -- so these figures ARE those
+                // metrics and take their units from the same maps their own
+                // domain figures do. Both are 'currency-2dp' (engine: display
+                // 'currency-2dp', decimals 2); at 0dp a $59.38 ad AOV printed
+                // "$59", and the ASP-vs-ad-AOV comparison is precisely a
+                // cents-level read.
+                AV_LANE_UNITS[lane],
                 'cross_domain_joined',
                 `crossDomain.aspVsAdAov.${lane}.${side}`,
               ),
