@@ -27,7 +27,7 @@ import { stringify as stringifyYaml, parse as parseYaml } from 'yaml';
 import { contextSchema, bindingSchema, type BrandContext, type BindingBlock } from '../context/schema.js';
 import { formatZodError } from '../profile/format-error.js';
 import { brandDir, contextPath, narrativePath } from '../paths/resolve.js';
-import { pushAfterWrite } from '../context-sync/push-after-write.js';
+import { pushAfterWrite, type PushAfterWriteResult } from '../context-sync/push-after-write.js';
 import type { BrandSuggestion } from '../discovery/brand-grouping.js';
 import type { SellerRow } from '../discovery/seller-query.js';
 
@@ -63,6 +63,41 @@ export interface BootstrapResult {
    *  PR #131). Always false on a first-time bootstrap — there is nothing
    *  to preserve yet. */
   binding_preserved: boolean;
+  /**
+   * Outcome of the auto-publish that runs at the end of bootstrap (see
+   * pushAfterWrite below), so a caller can tell whether this brand's first
+   * context actually reached the team without re-deriving it.
+   *
+   * Populated whenever bootstrap attempted the push (`deferPush` false or
+   * omitted — the normal case). `attempted` is false only when the kill
+   * switch (MIXSHIFT_CONTEXT_AUTOPUBLISH=off) prevented a real attempt;
+   * true for every other outcome, including a skip or failure that DID
+   * reach pushAfterWrite's own logic. `reason`/`detail` mirror
+   * PushAfterWriteResult's non-published variants verbatim.
+   *
+   * Left undefined when `deferPush` is true (e.g. sub-brand promotion,
+   * which publishes once itself after the binding lands) — there is
+   * nothing to report yet, and fabricating a status would misrepresent an
+   * attempt that never happened.
+   *
+   * `pushed`/`created`/`errors` are ADDITIVE (populated whenever
+   * `published` is true — there is nothing to count on a disabled/skipped/
+   * failed attempt, which never reaches engine.push). A caller must NOT
+   * infer "this brand's context reached the team" from `published` alone:
+   * a published attempt can still carry `errors > 0` (a partial push) or
+   * `pushed + created === 0` (every doc was already in sync — nothing
+   * actually moved). See commands/brand.ts's `pushShared` gate for the
+   * exact condition that earns the human-readable "shared: yes" line.
+   */
+  push?: {
+    attempted: boolean;
+    published: boolean;
+    pushed?: number;
+    created?: number;
+    errors?: number;
+    reason?: string;
+    detail?: string;
+  };
 }
 
 export async function bootstrapBrand(
@@ -148,8 +183,12 @@ export async function bootstrapBrand(
   // durable result; a failed publish is a no-op). The preserved binding
   // (if any) is already part of `parsed.data`/the just-written file, so it
   // travels through this push automatically — no separate handling needed.
+  let pushStatus: BootstrapResult['push'];
   if (!options.deferPush) {
-    await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+    const pushResult = await pushAfterWrite(suggestion.slug, {
+      dataDirOverride: options.dataDirOverride,
+    });
+    pushStatus = toBootstrapPushStatus(pushResult);
   }
 
   return {
@@ -159,6 +198,33 @@ export async function bootstrapBrand(
     context: parsed.data,
     written_files: [ctxPath, narrPath, readmePath, `${dir}/corpora/`],
     binding_preserved: existingBinding !== null,
+    push: pushStatus,
+  };
+}
+
+/** Map pushAfterWrite's result onto BootstrapResult['push'] (see its doc
+ *  comment above for the `attempted` semantics and why `published:true`
+ *  alone does not mean "reached the team"). */
+function toBootstrapPushStatus(
+  result: PushAfterWriteResult,
+): NonNullable<BootstrapResult['push']> {
+  if (result.published) {
+    return {
+      attempted: true,
+      published: true,
+      pushed: result.pushed,
+      created: result.created,
+      errors: result.errors,
+    };
+  }
+  if (result.reason === 'disabled') {
+    return { attempted: false, published: false, reason: result.reason };
+  }
+  return {
+    attempted: true,
+    published: false,
+    reason: result.reason,
+    detail: result.detail,
   };
 }
 

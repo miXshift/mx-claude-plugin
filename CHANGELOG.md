@@ -5,7 +5,33 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.10
 
+### Added
+
+- **`brand add` now tells you whether the new brand's context reached your
+  team.** Bootstrapping a brand auto-publishes its context to your org's
+  shared store in the background, but there was previously no way to tell
+  from the command's own output whether that publish actually succeeded,
+  only a separate notice printed on failure. `mixshift brand add <slug>` now
+  prints one confirmation line when the publish lands, and `--json` output
+  carries a `push` object (`attempted`, `published`, and a `reason`/`detail`
+  on anything short of success) so scripts can check it too.
+
+- **Context sync now reports what it's doing, and remembers whether it
+  actually worked.** The background push that runs after every brand-context
+  write, and the throttled sync that runs before skills read one, both emit
+  telemetry now, the same way the `context push`/`context autosync` commands
+  already did. The per-brand sync ledger also now tracks whether the last
+  attempt actually succeeded, separately from when it was last attempted, so
+  a string of offline attempts no longer looks the same as a healthy one.
+
 ### Fixed
+
+- **`context autosync`'s built-in help no longer says pull-only.** The
+  command's own description still described it as fetching server-side
+  changes only ("nothing is pushed"), even though it has pushed
+  non-conflicting local changes too since 0.8.8. The description now says
+  what it actually does: two-way, never blocking, and a quiet no-op when
+  you're offline or not signed in.
 
 - **Monthly Performance Report Max now reads the full monthly run.** A monthly
   intelligence run returns a bundle that holds each period's analysis inside it,

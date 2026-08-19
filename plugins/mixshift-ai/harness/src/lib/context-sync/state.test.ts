@@ -215,6 +215,89 @@ describe('last_autosync_at (autosync throttle stamp)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Attempt-vs-success outcome fields (last_autosync_outcome / _success_at)
+// ---------------------------------------------------------------------------
+
+describe('last_autosync_outcome / last_autosync_success_at', () => {
+  const STAMP = '2026-07-05T12:00:00.000Z';
+  const SUCCESS_AT = '2026-07-05T12:00:03.000Z';
+
+  it('round-trips outcome:success + success_at through save/load', async () => {
+    await saveState(
+      'acme',
+      {
+        ...sampleState(),
+        last_autosync_at: STAMP,
+        last_autosync_outcome: 'success',
+        last_autosync_success_at: SUCCESS_AT,
+      },
+      testDir,
+    );
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_outcome).toBe('success');
+    expect(loaded.last_autosync_success_at).toBe(SUCCESS_AT);
+  });
+
+  it('round-trips outcome:failed with success_at absent', async () => {
+    await saveState(
+      'acme',
+      { ...sampleState(), last_autosync_at: STAMP, last_autosync_outcome: 'failed' },
+      testDir,
+    );
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_outcome).toBe('failed');
+    expect(loaded.last_autosync_success_at).toBeUndefined();
+  });
+
+  it('are absent on files written before the fields existed (schema-2, last_autosync_at only)', async () => {
+    await saveState('acme', { ...sampleState(), last_autosync_at: STAMP }, testDir);
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_outcome).toBeUndefined();
+    expect(loaded.last_autosync_success_at).toBeUndefined();
+    // The attempt stamp itself is untouched by the absence of the newer fields.
+    expect(loaded.last_autosync_at).toBe(STAMP);
+  });
+
+  it('tolerates a malformed outcome value by dropping it, without touching docs', async () => {
+    const path = contextSyncStatePath('acme', testDir);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      JSON.stringify({
+        schema: 2,
+        last_autosync_outcome: 'partial', // not a valid enum member
+        last_autosync_success_at: 12345, // not a string
+        docs: sampleState().docs,
+      }),
+      'utf8',
+    );
+    const loaded = await loadState('acme', testDir);
+    expect(loaded.last_autosync_outcome).toBeUndefined();
+    expect(loaded.last_autosync_success_at).toBeUndefined();
+    expect(loaded.docs).toEqual(sampleState().docs);
+  });
+
+  it('survive an identity rebind (docs drop, outcome fields stay — attempt history is not tenant-bound)', async () => {
+    await saveState(
+      'acme',
+      {
+        ...sampleState(),
+        identity: ID_A,
+        last_autosync_at: STAMP,
+        last_autosync_outcome: 'success',
+        last_autosync_success_at: SUCCESS_AT,
+      },
+      testDir,
+    );
+    const loaded = await loadState('acme', testDir, ID_B);
+    expect(loaded.docs).toEqual({});
+    expect(loaded.identity).toBe(ID_B);
+    expect(loaded.last_autosync_outcome).toBe('success');
+    expect(loaded.last_autosync_success_at).toBe(SUCCESS_AT);
+  });
+});
+
 describe('resolveLedgerIdentity', () => {
   async function writeCreds(blocks: Record<string, unknown>): Promise<void> {
     const path = credentialsPath(testDir);

@@ -6,12 +6,14 @@ import {
   pushAfterWrite,
   PUSH_AFTER_WRITE_ENV,
   PUSH_AFTER_WRITE_BUDGET_MS,
+  TELEMETRY_EMIT_BUDGET_MS,
   __resetPushAfterWriteNotices,
 } from './push-after-write.js';
 import { push } from './engine.js';
 import type { DocActionReport } from './types.js';
 import type { ContextSyncState } from './state.js';
 import { brandDir, contextSyncStatePath, credentialsPath } from '../paths/resolve.js';
+import { track } from '../telemetry/index.js';
 
 // engine.push is the safety-critical delegate. Stub it so we can (a) assert
 // the exact options it is handed (never-force) and (b) drive its outcome
@@ -21,6 +23,14 @@ import { brandDir, contextSyncStatePath, credentialsPath } from '../paths/resolv
 vi.mock('./engine.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./engine.js')>();
   return { ...actual, push: vi.fn() };
+});
+
+// Telemetry: stub track() so tests never touch the real on-disk queue (a
+// bare temp dir can still resolve isTelemetryEnabled()=true off the plugin's
+// bundled defaults) — same convention as commands/context.test.ts.
+vi.mock('../telemetry/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../telemetry/index.js')>();
+  return { ...actual, track: vi.fn().mockResolvedValue(undefined) };
 });
 
 let testDir: string;
@@ -66,6 +76,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.mocked(push).mockReset();
+  vi.mocked(track).mockClear();
   await rm(testDir, { recursive: true, force: true });
 });
 
@@ -710,5 +721,209 @@ structural_events:
       skipped: true,
       detail: 'no structural events',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Telemetry: one ContextPushCompleted event per completed attempt, tagged
+// trigger:'write', EXCEPT the kill switch (which stays a true zero-fs/zero-
+// network no-op, telemetry included).
+// ---------------------------------------------------------------------------
+
+describe('telemetry', () => {
+  it('published (success): fires ContextPushCompleted with trigger:write and doc counts', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [
+        { key: 'context', docType: 'context', action: 'pushed', detail: 'rev 2' },
+        { key: 'narrative', docType: 'narrative', action: 'created', detail: 'rev 1' },
+      ],
+    });
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event, dataDir] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'ok',
+      payload: {
+        trigger: 'write',
+        brand: 'acme',
+        published: true,
+        pushed: 1,
+        created: 1,
+        conflicts: 0,
+        errors: 0,
+      },
+    });
+    expect(typeof event.duration_ms).toBe('number');
+    expect(event.duration_ms).toBeGreaterThanOrEqual(0);
+    expect(dataDir).toBe(testDir);
+  });
+
+  it('published WITH per-doc errors (FIX B): outcome is "failed", not "ok"', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: true,
+      brand: 'acme',
+      reports: [
+        { key: 'context', docType: 'context', action: 'pushed', detail: 'rev 2' },
+        { key: 'config', docType: 'config', action: 'error', detail: 'push failed: boom' },
+      ],
+    });
+
+    const result = await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+    // The published:true envelope keeps published:true — errors alone don't
+    // flip that — but the errors count is right there for a caller to gate
+    // on (see FIX E / commands/brand.ts's `pushShared`).
+    expect(result.published).toBe(true);
+    if (result.published) expect(result.errors).toBe(1);
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      // A partial push (published:true, errors>0) is telemetry-'failed',
+      // matching commands/context.ts's `counts.error > 0 ? 'failed' : 'ok'`
+      // convention and autosync.ts's finish() (never a bare 'ok' when
+      // per-doc errors are present).
+      outcome: 'failed',
+      payload: { published: true, pushed: 1, created: 0, errors: 1 },
+    });
+  });
+
+  it('failed: fires ContextPushCompleted with outcome failed + reason/detail', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({
+      ok: false,
+      brand: 'acme',
+      message: 'the auth service is unreachable',
+    });
+
+    await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'failed',
+      payload: {
+        trigger: 'write',
+        brand: 'acme',
+        published: false,
+        reason: 'failed',
+        detail: 'the auth service is unreachable',
+      },
+    });
+  });
+
+  it('skipped (unsafe slug): fires ContextPushCompleted with outcome skipped', async () => {
+    await pushAfterWrite('../x', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'skipped',
+      payload: {
+        trigger: 'write',
+        brand: '../x',
+        published: false,
+        reason: 'skipped',
+        detail: 'not a valid brand slug',
+      },
+    });
+  });
+
+  it('skipped (missing brand directory): fires ContextPushCompleted with outcome skipped', async () => {
+    await pushAfterWrite('ghost', { dataDirOverride: testDir, env: LIVE_ENV });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.push_completed',
+      outcome: 'skipped',
+      payload: { published: false, reason: 'skipped', detail: 'no local brand directory' },
+    });
+  });
+
+  it('disabled (kill switch): fires NO telemetry — zero fs/network stays true', async () => {
+    await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: { [PUSH_AFTER_WRITE_ENV]: 'off' },
+    });
+
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('disabled under the VITEST guard (no explicit env): fires NO telemetry', async () => {
+    await makeBrandDir('acme');
+    await pushAfterWrite('acme', { dataDirOverride: testDir });
+
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX C (privacy): a `detail` value entering telemetry is scrubbed of local
+// filesystem paths (see telemetry-detail.ts's own unit tests for the scrub
+// rules themselves). This pins the WIRING — that emitPushTelemetry actually
+// routes `detail` through scrubDetail — not just the helper in isolation.
+// The value returned to the CALLER (PushAfterWriteResult.detail) stays the
+// real, unscrubbed message; scrubbing is telemetry-only.
+// ---------------------------------------------------------------------------
+
+describe('telemetry detail is path-scrubbed (FIX C)', () => {
+  it('a raw fs-error path in the returned result never reaches the telemetry payload', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    const rawDetail =
+      "EBUSY: resource busy or locked, open 'C:\\Users\\sam\\.mixshift\\clients\\acme\\corpora\\notes.md'";
+    vi.mocked(push).mockRejectedValue(new Error(rawDetail));
+
+    const result = await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+    // The RETURNED result keeps the real message — a user debugging their
+    // own machine needs the real path.
+    expect(result).toEqual({ published: false, reason: 'failed', detail: rawDetail });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    const telemetryDetail = (event.payload as { detail?: string } | undefined)?.detail ?? '';
+    expect(telemetryDetail).toContain('EBUSY');
+    expect(telemetryDetail).not.toContain('\\Users\\');
+    expect(telemetryDetail).not.toContain('sam');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX D: the telemetry emit itself is bounded (TELEMETRY_EMIT_BUDGET_MS) so a
+// stalled local queue.jsonl cannot hold this write seam open beyond a small
+// extra margin on top of PUSH_AFTER_WRITE_BUDGET_MS.
+// ---------------------------------------------------------------------------
+
+describe('telemetry emit is bounded (FIX D)', () => {
+  it('a track() that never resolves does not hang pushAfterWrite beyond the telemetry budget', async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockResolvedValue({ ok: true, brand: 'acme', reports: [] });
+    // One-time override: this call never settles; every OTHER track() call in
+    // the suite keeps the module's default resolved stub (see the top-of-file
+    // vi.mock), so nothing leaks into later tests.
+    vi.mocked(track).mockImplementationOnce(() => new Promise(() => {}));
+
+    const t0 = Date.now();
+    const result = await pushAfterWrite('acme', { dataDirOverride: testDir, env: LIVE_ENV });
+    const elapsed = Date.now() - t0;
+
+    expect(result.published).toBe(true);
+    // Bounded by TELEMETRY_EMIT_BUDGET_MS (plus real overhead) — nowhere near
+    // a hang into the suite timeout.
+    expect(elapsed).toBeLessThan(TELEMETRY_EMIT_BUDGET_MS + 2_000);
   });
 });

@@ -24,11 +24,24 @@ import { join } from 'node:path';
 
 import { registerContextCommands } from './context.js';
 import { createContextSyncClient, type ContextSyncClient } from '../lib/context-sync/client.js';
+import { maybeAutoSync } from '../lib/context-sync/autosync.js';
+import { track } from '../lib/telemetry/index.js';
 import type { WireManifestBrand } from '../lib/context-sync/types.js';
 
 vi.mock('../lib/context-sync/client.js', () => ({
   createContextSyncClient: vi.fn(),
 }));
+
+// FIX F: mock the autosync module so the `autosync` subcommand's own wiring
+// (trigger:'manual', the wrapper's single telemetry row) can be pinned
+// without depending on maybeAutoSync's internal VITEST guard / real sync
+// logic. Every test that runs the `autosync` subcommand must configure this
+// mock's return value explicitly (no shared default — see the "autosync
+// command" describe block).
+vi.mock('../lib/context-sync/autosync.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/context-sync/autosync.js')>();
+  return { ...actual, maybeAutoSync: vi.fn() };
+});
 
 vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/telemetry/index.js')>();
@@ -243,19 +256,55 @@ describe('sync --quiet', () => {
 // ---------------------------------------------------------------------------
 
 describe('autosync command', () => {
-  it('is registered and reports the disabled no-op under the test runner', async () => {
+  it('is registered and reports the disabled no-op (arg parsing, JSON envelope)', async () => {
     let stdout = '';
     vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
       stdout += String(chunk);
       return true;
     });
-    // maybeAutoSync's VITEST guard yields the quiet 'disabled' path here —
-    // this pins the command wiring (arg parsing, JSON envelope) without
-    // any network.
+    // maybeAutoSync is mocked at module level (see the FIX F vi.mock above);
+    // this pins the command wiring (arg parsing, JSON envelope) for a
+    // disabled outcome without any network.
+    vi.mocked(maybeAutoSync).mockResolvedValue({ ran: false, reason: 'disabled' });
     await runContext('autosync', 'acme', '--json', '--data-dir', tmpDataDir);
     const parsed = JSON.parse(stdout) as { status: string; ran: boolean; reason?: string };
     expect(parsed).toEqual({ status: 'ok', ran: false, reason: 'disabled' });
     expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  // FIX F (test gap): nothing previously pinned that the CLI wrapper
+  // actually passes trigger:'manual' to maybeAutoSync, or that exactly ONE
+  // telemetry row fires for a manual invocation (the internal preflight tail
+  // inside maybeAutoSync is trigger-scoped specifically to avoid a manual
+  // run double-counting against it — see autosync.ts's finish()).
+  it('passes trigger:"manual" to maybeAutoSync and fires exactly one telemetry row tagged manual', async () => {
+    vi.mocked(maybeAutoSync).mockResolvedValue({
+      ran: true,
+      pulled: 0,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+
+    await runContext('autosync', 'acme', '--data-dir', tmpDataDir);
+
+    expect(vi.mocked(maybeAutoSync)).toHaveBeenCalledTimes(1);
+    const [brandArg, optsArg] = vi.mocked(maybeAutoSync).mock.calls[0]!;
+    expect(brandArg).toBe('acme');
+    expect(optsArg).toMatchObject({ trigger: 'manual' });
+
+    // maybeAutoSync is fully mocked here (no real internals run, so its own
+    // trigger-scoped emit never fires either way) — this pins the CLI
+    // WRAPPER's own single emit, the one commands/context.ts fires
+    // unconditionally for a manual run (see registerAutosyncSubcommand).
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      payload: { trigger: 'manual' },
+    });
   });
 });
 

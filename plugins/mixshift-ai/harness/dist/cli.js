@@ -64764,9 +64764,11 @@ var init_events = __esm({
       ContextPushCompleted: "context_sync.push_completed",
       ContextSyncCompleted: "context_sync.sync_completed",
       ContextMigrateCompleted: "context_sync.migrate_completed",
-      // Manual `mixshift context autosync <brand>` runs only — the implicit
-      // preflight hook inside resolveBrandFields stays silent by design (it
-      // fires on every skill step; telemetry there would be noise).
+      // One row per autosync invocation, tagged payload.trigger: the implicit
+      // resolveBrandFields preflight emits for attempts that clear the guards
+      // ('preflight'; throttled/early-skip stays silent so the per-skill-step
+      // hook can't flood the table), and `mixshift context autosync` emits its
+      // own single 'manual' row covering every outcome.
       ContextAutosyncCompleted: "context_sync.autosync_completed",
       // Brand timeline (lib/timeline/ + `mixshift timeline`). Privacy: payloads
       // carry filters, counts, kinds + duration/outcome — never event contents
@@ -66600,11 +66602,17 @@ async function loadState(brandSlug, dataDirOverride, currentIdentity) {
     }
     const storedAutosyncAt = parsed.last_autosync_at;
     const lastAutosyncAt = typeof storedAutosyncAt === "string" ? storedAutosyncAt : void 0;
+    const storedAutosyncOutcome = parsed.last_autosync_outcome;
+    const lastAutosyncOutcome = storedAutosyncOutcome === "success" || storedAutosyncOutcome === "failed" ? storedAutosyncOutcome : void 0;
+    const storedAutosyncSuccessAt = parsed.last_autosync_success_at;
+    const lastAutosyncSuccessAt = typeof storedAutosyncSuccessAt === "string" ? storedAutosyncSuccessAt : void 0;
     const storedIdentity = parsed.identity;
     if (typeof storedIdentity === "string" && typeof currentIdentity === "string" && storedIdentity !== currentIdentity) {
       return {
         ...emptyState(currentIdentity),
-        ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {}
+        ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {},
+        ...lastAutosyncOutcome !== void 0 ? { last_autosync_outcome: lastAutosyncOutcome } : {},
+        ...lastAutosyncSuccessAt !== void 0 ? { last_autosync_success_at: lastAutosyncSuccessAt } : {}
       };
     }
     const docs = {};
@@ -66627,6 +66635,8 @@ async function loadState(brandSlug, dataDirOverride, currentIdentity) {
       schema: 2,
       ...identity ? { identity } : {},
       ...lastAutosyncAt !== void 0 ? { last_autosync_at: lastAutosyncAt } : {},
+      ...lastAutosyncOutcome !== void 0 ? { last_autosync_outcome: lastAutosyncOutcome } : {},
+      ...lastAutosyncSuccessAt !== void 0 ? { last_autosync_success_at: lastAutosyncSuccessAt } : {},
       ...stakes !== void 0 ? { stakes } : {},
       docs
     };
@@ -67745,8 +67755,48 @@ var init_stake_sync = __esm({
   }
 });
 
+// src/lib/context-sync/telemetry-detail.ts
+import { homedir as homedir3 } from "node:os";
+function escapeRegExp(literal2) {
+  return literal2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function safeHomedir() {
+  try {
+    return homedir3() || "";
+  } catch {
+    return "";
+  }
+}
+function scrubDetail(detail) {
+  let out = detail;
+  const home = safeHomedir();
+  if (home) {
+    const variants = new Set(
+      [home, home.replace(/\\/g, "/"), home.replace(/\//g, "\\")].filter((v) => v.length > 0)
+    );
+    const flags = process.platform === "win32" ? "gi" : "g";
+    for (const variant of variants) {
+      out = out.replace(new RegExp(escapeRegExp(variant), flags), "~");
+    }
+  }
+  out = out.replace(PATH_TOKEN_RE, "<path>");
+  if (out.length > MAX_DETAIL_LENGTH) {
+    out = `${out.slice(0, MAX_DETAIL_LENGTH)}\u2026`;
+  }
+  return out;
+}
+var MAX_DETAIL_LENGTH, PATH_TOKEN_RE;
+var init_telemetry_detail = __esm({
+  "src/lib/context-sync/telemetry-detail.ts"() {
+    "use strict";
+    MAX_DETAIL_LENGTH = 300;
+    PATH_TOKEN_RE = /[A-Za-z]:[\\/][^\s'"<>]*(?:[\\/][^\s'"<>]+)*|~?(?:[\\/][^\s'"<>]+){2,}/g;
+  }
+});
+
 // src/lib/context-sync/push-after-write.ts
 async function pushAfterWrite(brandSlug, options = {}) {
+  const t0 = Date.now();
   const env = options.env ?? process.env;
   let result = await computePushResult(brandSlug, options, env);
   if (result.published) {
@@ -67754,6 +67804,7 @@ async function pushAfterWrite(brandSlug, options = {}) {
     result = { ...result, stake_events: stakeLeg };
   }
   emitNotice(brandSlug, result, options.notify ?? true);
+  await emitPushTelemetry(brandSlug, result, Date.now() - t0, options.dataDirOverride);
   return result;
 }
 async function runStakeLeg(brandSlug, options, env) {
@@ -67865,7 +67916,63 @@ function noticeLineFor(brandSlug, result) {
       return `Could not sync ${brandSlug} to your team just now; your work is saved locally. Retry with \`mixshift context push --brand ${brandSlug}\`.`;
   }
 }
-var PUSH_AFTER_WRITE_BUDGET_MS, STAKE_SYNC_AFTER_WRITE_BUDGET_MS, PUSH_AFTER_WRITE_ENV, noticedBrands;
+async function emitPushTelemetry(brandSlug, result, durationMs, dataDirOverride) {
+  if (result.published) {
+    await raceDeadline(
+      track(
+        {
+          event_name: EventName.ContextPushCompleted,
+          // Per-doc errors demote the outcome even though the attempt
+          // published SOMETHING — a partial push is not a clean success.
+          // Matches commands/context.ts's `counts.error > 0 ? 'failed' :
+          // 'ok'` convention and autosync.ts's finish() (a ran:true result
+          // with errors is ledger/telemetry 'failed', never 'success').
+          outcome: result.errors > 0 ? "failed" : "ok",
+          duration_ms: durationMs,
+          payload: {
+            trigger: "write",
+            brand: brandSlug,
+            published: true,
+            pushed: result.pushed,
+            created: result.created,
+            conflicts: result.conflicts,
+            errors: result.errors
+          }
+        },
+        dataDirOverride
+      ),
+      TELEMETRY_EMIT_BUDGET_MS
+    );
+    return;
+  }
+  if (result.reason === "disabled") return;
+  await raceDeadline(
+    track(
+      {
+        event_name: EventName.ContextPushCompleted,
+        outcome: result.reason === "failed" ? "failed" : "skipped",
+        duration_ms: durationMs,
+        payload: {
+          trigger: "write",
+          brand: brandSlug,
+          published: false,
+          reason: result.reason,
+          // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs) can embed
+          // an absolute local path in their raw Node.js message; events.ts's
+          // contract for context_sync.* payloads is slugs/counts/outcomes,
+          // never file paths — scrub before it ever reaches the queue (see
+          // telemetry-detail.ts). The unscrubbed detail still reaches the
+          // CALLER via PushAfterWriteResult / BootstrapResult.push — this
+          // scrub is telemetry-only.
+          detail: scrubDetail(result.detail)
+        }
+      },
+      dataDirOverride
+    ),
+    TELEMETRY_EMIT_BUDGET_MS
+  );
+}
+var PUSH_AFTER_WRITE_BUDGET_MS, STAKE_SYNC_AFTER_WRITE_BUDGET_MS, TELEMETRY_EMIT_BUDGET_MS, PUSH_AFTER_WRITE_ENV, noticedBrands;
 var init_push_after_write = __esm({
   "src/lib/context-sync/push-after-write.ts"() {
     "use strict";
@@ -67874,8 +67981,11 @@ var init_push_after_write = __esm({
     init_local();
     init_deadline();
     init_stake_sync();
+    init_telemetry();
+    init_telemetry_detail();
     PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
     STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2e3;
+    TELEMETRY_EMIT_BUDGET_MS = 1e3;
     PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
     noticedBrands = /* @__PURE__ */ new Set();
   }
@@ -67931,8 +68041,12 @@ Either pick a different slug, delete the existing directory, or pass --force to 
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
   await writeAtomic(readmePath, readmeTemplate(suggestion));
+  let pushStatus;
   if (!options.deferPush) {
-    await pushAfterWrite(suggestion.slug, { dataDirOverride: options.dataDirOverride });
+    const pushResult = await pushAfterWrite(suggestion.slug, {
+      dataDirOverride: options.dataDirOverride
+    });
+    pushStatus = toBootstrapPushStatus(pushResult);
   }
   return {
     brand_dir: dir,
@@ -67940,7 +68054,28 @@ Either pick a different slug, delete the existing directory, or pass --force to 
     narrative_path: narrPath,
     context: parsed.data,
     written_files: [ctxPath, narrPath, readmePath, `${dir}/corpora/`],
-    binding_preserved: existingBinding !== null
+    binding_preserved: existingBinding !== null,
+    push: pushStatus
+  };
+}
+function toBootstrapPushStatus(result) {
+  if (result.published) {
+    return {
+      attempted: true,
+      published: true,
+      pushed: result.pushed,
+      created: result.created,
+      errors: result.errors
+    };
+  }
+  if (result.reason === "disabled") {
+    return { attempted: false, published: false, reason: result.reason };
+  }
+  return {
+    attempted: true,
+    published: false,
+    reason: result.reason,
+    detail: result.detail
   };
 }
 function buildContext(suggestion, accounts, asOfDate) {
@@ -72317,11 +72452,65 @@ init_client2();
 init_local();
 init_state();
 init_deadline();
+init_telemetry();
+init_telemetry_detail();
 var AUTOSYNC_BUDGET_MS = 2e3;
 var AUTOSYNC_THROTTLE_MS = 15 * 60 * 1e3;
 var AUTOSYNC_ENV = "MIXSHIFT_CONTEXT_AUTOSYNC";
 async function maybeAutoSync(brandSlug, options = {}) {
   const env = options.env ?? process.env;
+  const t0 = Date.now();
+  const trigger = options.trigger ?? "preflight";
+  let pastGuards = false;
+  let ledgerState;
+  async function finish(result) {
+    if (pastGuards && ledgerState) {
+      const succeeded = result.ran && result.errors === 0;
+      const finishedAt = options.now ? options.now() : /* @__PURE__ */ new Date();
+      const freshState = await loadState(brandSlug, options.dataDirOverride);
+      freshState.last_autosync_outcome = succeeded ? "success" : "failed";
+      if (succeeded) freshState.last_autosync_success_at = finishedAt.toISOString();
+      await saveState(brandSlug, freshState, options.dataDirOverride);
+      if (trigger === "preflight") {
+        await raceDeadline(
+          track(
+            {
+              event_name: EventName.ContextAutosyncCompleted,
+              outcome: succeeded ? "ok" : "failed",
+              duration_ms: Date.now() - t0,
+              payload: {
+                trigger,
+                brand: brandSlug,
+                force: options.force ?? false,
+                ran: result.ran,
+                ...result.ran ? {
+                  pulled: result.pulled,
+                  pushed: result.pushed,
+                  created: result.created,
+                  conflicts: result.conflicts,
+                  errors: result.errors
+                } : {
+                  reason: result.reason,
+                  // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs)
+                  // can embed an absolute local path in their raw
+                  // Node.js message; events.ts's contract for
+                  // context_sync.* payloads is slugs/counts/outcomes,
+                  // never file paths — scrub before it ever reaches the
+                  // queue (see telemetry-detail.ts). AutoSyncResult's own
+                  // `detail` (returned to the caller) stays unscrubbed —
+                  // this is telemetry-only.
+                  ...result.reason === "failed" ? { detail: scrubDetail(result.detail) } : {}
+                }
+              }
+            },
+            options.dataDirOverride
+          ),
+          TELEMETRY_EMIT_BUDGET_MS
+        );
+      }
+    }
+    return result;
+  }
   try {
     const flag = (env[AUTOSYNC_ENV] ?? "").toLowerCase();
     if (flag === "off" || flag === "0" || flag === "false") {
@@ -72373,6 +72562,8 @@ async function maybeAutoSync(brandSlug, options = {}) {
         detail: "could not persist the throttle stamp (brand dir not writable?)"
       };
     }
+    pastGuards = true;
+    ledgerState = state;
     const controller = new AbortController();
     const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
     const abortTimer = setTimeout(() => controller.abort(), budgetMs);
@@ -72398,11 +72589,15 @@ async function maybeAutoSync(brandSlug, options = {}) {
       if (raced === DEADLINE) {
         controller.abort();
         debugLog2(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
-        return { ran: false, reason: "failed", detail: `timed out after ${budgetMs}ms` };
+        return await finish({
+          ran: false,
+          reason: "failed",
+          detail: `timed out after ${budgetMs}ms`
+        });
       }
       if (!raced.ok) {
         debugLog2(env, `autosync(${brandSlug}): ${raced.message}`);
-        return { ran: false, reason: "failed", detail: raced.message };
+        return await finish({ ran: false, reason: "failed", detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
       const pushed = raced.reports.filter((r) => r.action === "pushed").length;
@@ -72417,7 +72612,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
           env
         });
       }
-      return {
+      return await finish({
         ran: true,
         pulled,
         pushed,
@@ -72426,14 +72621,14 @@ async function maybeAutoSync(brandSlug, options = {}) {
         errors,
         reports: raced.reports,
         ...stakeLeg !== void 0 ? { stake_events: stakeLeg } : {}
-      };
+      });
     } finally {
       clearTimeout(abortTimer);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     debugLog2(env, `autosync(${brandSlug}): swallowed error: ${message}`);
-    return { ran: false, reason: "failed", detail: message };
+    return await finish({ ran: false, reason: "failed", detail: message });
   }
 }
 function debugLog2(env, message) {
@@ -72870,7 +73065,7 @@ async function fetchBrandBrain(opts) {
   if (!opts.refresh && existing.ok) {
     const fetchedAt = existing.brain.sources.seller?.fetched_at;
     if (fetchedAt && withinTtl(fetchedAt, now)) {
-      void track(
+      await track(
         {
           event_name: EventName.BrainFetchSkipped,
           payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS }
@@ -77773,6 +77968,7 @@ ${close}
                 written_files: result.written_files,
                 account_count: result.context.accounts.length,
                 binding_preserved: result.binding_preserved,
+                push: result.push,
                 next_step: `Run /mx-brand-context ${match.slug} in Claude to complete AM intake.`
               },
               null,
@@ -77780,13 +77976,15 @@ ${close}
             ) + "\n"
           );
         } else {
+          const pushShared = result.push?.published === true && result.push.errors === 0 && (result.push.pushed ?? 0) + (result.push.created ?? 0) > 0;
           process.stderr.write(
             `
 \u2713 Bootstrapped "${match.slug}" (${match.display_name})
     accounts:  ${result.context.accounts.length}
     context:   ${result.context_path}
     narrative: ${result.narrative_path}
-` + (result.binding_preserved ? `
+` + (pushShared ? `    shared:    yes, this brand's context reached your team
+` : "") + (result.binding_preserved ? `
 \u26A0 This brand's existing sub-brand binding was preserved (not touched by --force).
 ` : "") + `
 Next: run \`/mx-brand-context ${match.slug}\` in Claude.
@@ -84195,13 +84393,13 @@ init_plugin_version();
 
 // src/lib/install-record.ts
 import { readFile as readFile31 } from "node:fs/promises";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 import { join as join18 } from "node:path";
 init_surface();
 var PLUGIN_KEY = "mixshift-ai@mixshift";
 var SURFACES_WITHOUT_INSTALL_RECORD = /* @__PURE__ */ new Set(["cowork"]);
 function installedPluginsPath(homeOverride) {
-  return join18(homeOverride ?? homedir3(), ".claude", "plugins", "installed_plugins.json");
+  return join18(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
 }
 function isPlausibleSha(v) {
   return typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);
@@ -93753,14 +93951,15 @@ function registerActionSubcommand(context, spec) {
 }
 function registerAutosyncSubcommand(context) {
   context.command("autosync <brand>").description(
-    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Pull-only and conservative: fetches conflict-free server-side changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally; diverged docs are never touched and nothing is pushed. Push local changes explicitly with \`mixshift context sync [--quiet]\`. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
+    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally; diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
   ).option("--force", "bypass the per-brand throttle window", false).action(async (brand, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
       const result = await maybeAutoSync(brand, {
         dataDirOverride: root.dataDir,
-        force: opts.force ?? false
+        force: opts.force ?? false,
+        trigger: "manual"
       });
       await track(
         {
@@ -93768,11 +93967,14 @@ function registerAutosyncSubcommand(context) {
           outcome: result.ran ? result.errors > 0 ? "failed" : "ok" : result.reason === "failed" ? "failed" : "skipped",
           duration_ms: Date.now() - t0,
           payload: {
+            trigger: "manual",
             brand,
             force: opts.force ?? false,
             ran: result.ran,
             ...result.ran ? {
               pulled: result.pulled,
+              pushed: result.pushed,
+              created: result.created,
               conflicts: result.conflicts,
               errors: result.errors
             } : { reason: result.reason }

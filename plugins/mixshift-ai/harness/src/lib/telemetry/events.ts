@@ -221,9 +221,11 @@ export const EventName = {
   ContextPushCompleted: 'context_sync.push_completed',
   ContextSyncCompleted: 'context_sync.sync_completed',
   ContextMigrateCompleted: 'context_sync.migrate_completed',
-  // Manual `mixshift context autosync <brand>` runs only — the implicit
-  // preflight hook inside resolveBrandFields stays silent by design (it
-  // fires on every skill step; telemetry there would be noise).
+  // One row per autosync invocation, tagged payload.trigger: the implicit
+  // resolveBrandFields preflight emits for attempts that clear the guards
+  // ('preflight'; throttled/early-skip stays silent so the per-skill-step
+  // hook can't flood the table), and `mixshift context autosync` emits its
+  // own single 'manual' row covering every outcome.
   ContextAutosyncCompleted: 'context_sync.autosync_completed',
 
   // Brand timeline (lib/timeline/ + `mixshift timeline`). Privacy: payloads

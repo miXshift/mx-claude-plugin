@@ -376,6 +376,7 @@ export function registerBrandCommands(program: Command): void {
                   written_files: result.written_files,
                   account_count: result.context.accounts.length,
                   binding_preserved: result.binding_preserved,
+                  push: result.push,
                   next_step: `Run /mx-brand-context ${match.slug} in Claude to complete AM intake.`,
                 },
                 null,
@@ -383,11 +384,31 @@ export function registerBrandCommands(program: Command): void {
               ) + '\n',
             );
           } else {
+            // Exactly one success line, and nothing new on failure: pushAfterWrite
+            // (called inside bootstrapBrand, above) already prints its own deduped
+            // "Could not sync ... your work is saved locally" notice to stderr on
+            // a failed/skipped push (see push-after-write.ts's emitNotice), so
+            // repeating that here would show the same failure twice. On success it
+            // stays silent unless something actually moved, so this line is the
+            // only confirmation a fresh brand's context reached the team.
+            //
+            // `published:true` alone overstates it: the attempt can still carry
+            // per-doc errors (a partial push), or move zero docs (every doc was
+            // already in sync — push-after-write.ts's own noticeLineFor stays
+            // silent in that exact case too, see :365-374 there). Require BOTH a
+            // clean push AND real movement before claiming "reached your team".
+            const pushShared =
+              result.push?.published === true &&
+              result.push.errors === 0 &&
+              (result.push.pushed ?? 0) + (result.push.created ?? 0) > 0;
             process.stderr.write(
               `\n✓ Bootstrapped "${match.slug}" (${match.display_name})\n` +
                 `    accounts:  ${result.context.accounts.length}\n` +
                 `    context:   ${result.context_path}\n` +
                 `    narrative: ${result.narrative_path}\n` +
+                (pushShared
+                  ? `    shared:    yes, this brand's context reached your team\n`
+                  : '') +
                 (result.binding_preserved
                   ? `\n⚠ This brand's existing sub-brand binding was preserved (not touched by --force).\n`
                   : '') +

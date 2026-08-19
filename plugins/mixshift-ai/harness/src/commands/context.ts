@@ -483,22 +483,29 @@ function registerAutosyncSubcommand(context: Command): void {
     .description(
       'Run the throttled preflight auto-sync for one brand (the same code ' +
         'path skills trigger implicitly when they read brand context). ' +
-        'Pull-only and conservative: fetches conflict-free server-side ' +
-        `changes within a ~2s budget, at most once per brand per ` +
-        `${AUTOSYNC_THROTTLE_MS / 60_000} minutes (--force bypasses the ` +
-        `throttle). Serves brands that already exist locally; diverged docs ` +
-        'are never touched and nothing is pushed. Push local changes ' +
-        'explicitly with `mixshift context sync [--quiet]`. Disable the ' +
-        `implicit hook entirely with ${AUTOSYNC_ENV}=off.`,
+        'Two-way and conservative: pulls conflict-free server-side changes ' +
+        'AND pushes conflict-free local changes within a ~2s budget, at ' +
+        `most once per brand per ${AUTOSYNC_THROTTLE_MS / 60_000} minutes ` +
+        `(--force bypasses the throttle). Serves brands that already exist ` +
+        'locally; diverged docs are never touched either direction. Never ' +
+        'blocks meaningfully and never fails loud: offline, missing ' +
+        'credentials, or any error is a quiet no-op and the read this hook ' +
+        `guards proceeds unchanged. Disable the implicit hook entirely with ` +
+        `${AUTOSYNC_ENV}=off.`,
     )
     .option('--force', 'bypass the per-brand throttle window', false)
     .action(async (brand: string, opts: { force?: boolean }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const t0 = Date.now();
       try {
+        // trigger:'manual' suppresses maybeAutoSync's internal preflight
+        // emit — this wrapper's track() below is the single authoritative
+        // row for a manual run (it also covers early-skip outcomes the
+        // internal tail never sees), so one invocation = one event.
         const result = await maybeAutoSync(brand, {
           dataDirOverride: root.dataDir,
           force: opts.force ?? false,
+          trigger: 'manual',
         });
 
         await track(
@@ -513,12 +520,15 @@ function registerAutosyncSubcommand(context: Command): void {
                 : 'skipped',
             duration_ms: Date.now() - t0,
             payload: {
+              trigger: 'manual',
               brand,
               force: opts.force ?? false,
               ran: result.ran,
               ...(result.ran
                 ? {
                     pulled: result.pulled,
+                    pushed: result.pushed,
+                    created: result.created,
                     conflicts: result.conflicts,
                     errors: result.errors,
                   }

@@ -1,20 +1,42 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { bootstrapBrand, sortAccountsForPrimary } from './bootstrap.js';
-import { contextSchema } from '../context/schema.js';
 import type { BrandSuggestion } from '../discovery/brand-grouping.js';
 import type { SellerRow } from '../discovery/seller-query.js';
+
+// pushAfterWrite is invoked unconditionally at the end of a non-deferred
+// bootstrap. Under the real module it always short-circuits to
+// {published:false, reason:'disabled'} here anyway (bootstrapBrand never
+// threads a test `env` through, so pushAfterWrite's own VITEST guard wins) —
+// stub it explicitly so bootstrap.test.ts doesn't depend on that as an
+// implementation detail, and so BootstrapResult.push's attempted-success/
+// attempted-failure cases (which the real short-circuit can never produce)
+// are reachable below.
+vi.mock('../context-sync/push-after-write.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../context-sync/push-after-write.js')>();
+  return { ...actual, pushAfterWrite: vi.fn() };
+});
+
+import { bootstrapBrand, sortAccountsForPrimary } from './bootstrap.js';
+import { contextSchema } from '../context/schema.js';
+import { pushAfterWrite } from '../context-sync/push-after-write.js';
+
+const mockedPushAfterWrite = vi.mocked(pushAfterWrite);
 
 let testDir: string;
 
 beforeEach(async () => {
   testDir = await mkdtemp(join(tmpdir(), 'mixshift-bootstrap-test-'));
+  // Default: matches today's real behavior (VITEST-guarded kill switch) so
+  // every EXISTING test below is unaffected; individual tests override this
+  // to exercise an attempted success/failure.
+  mockedPushAfterWrite.mockResolvedValue({ published: false, reason: 'disabled' });
 });
 
 afterEach(async () => {
+  mockedPushAfterWrite.mockReset();
   await rm(testDir, { recursive: true, force: true });
 });
 
@@ -332,5 +354,94 @@ describe('sortAccountsForPrimary', () => {
       row({ account_type: 'SC', marketplace: 'United States' }),
     ]);
     expect(sorted[0]!.marketplace).toBe('United States');
+  });
+});
+
+describe('bootstrapBrand — BootstrapResult.push', () => {
+  it('populated {attempted:true, published:true, pushed, created, errors} on an attempted, successful push', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 0,
+      created: 2,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(mockedPushAfterWrite).toHaveBeenCalledTimes(1);
+    // FIX E: the counts flow through additively — a caller must not infer
+    // "reached the team" from published:true alone (see the errors>0 case
+    // right below, and commands/brand.ts's pushShared gate).
+    expect(result.push).toEqual({
+      attempted: true,
+      published: true,
+      pushed: 0,
+      created: 2,
+      errors: 0,
+    });
+  });
+
+  it('populated with errors>0 on an attempted, PARTIALLY successful push (published:true, per-doc errors)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 1,
+      created: 0,
+      conflicts: 0,
+      errors: 1,
+      reports: [],
+    });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(result.push).toEqual({
+      attempted: true,
+      published: true,
+      pushed: 1,
+      created: 0,
+      errors: 1,
+    });
+  });
+
+  it('populated {attempted:true, published:false, reason, detail} on an attempted, failed push', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: false,
+      reason: 'failed',
+      detail: 'the auth service is unreachable',
+    });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(result.push).toEqual({
+      attempted: true,
+      published: false,
+      reason: 'failed',
+      detail: 'the auth service is unreachable',
+    });
+  });
+
+  it('populated {attempted:true, published:false, reason, detail} on an attempted skip (e.g. no local dir)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: false,
+      reason: 'skipped',
+      detail: 'no local brand directory',
+    });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(result.push).toEqual({
+      attempted: true,
+      published: false,
+      reason: 'skipped',
+      detail: 'no local brand directory',
+    });
+  });
+
+  it('populated {attempted:false, published:false, reason:"disabled"} when the kill switch blocks the attempt', async () => {
+    mockedPushAfterWrite.mockResolvedValue({ published: false, reason: 'disabled' });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(result.push).toEqual({ attempted: false, published: false, reason: 'disabled' });
+  });
+
+  it('left undefined, and pushAfterWrite never called, when deferPush is true', async () => {
+    const result = await bootstrapBrand(suggestion([row({})]), {
+      dataDirOverride: testDir,
+      deferPush: true,
+    });
+    expect(mockedPushAfterWrite).not.toHaveBeenCalled();
+    expect(result.push).toBeUndefined();
   });
 });

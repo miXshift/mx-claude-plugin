@@ -11,11 +11,21 @@ import {
 } from './autosync.js';
 import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
-import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
+import { PUSH_AFTER_WRITE_ENV, TELEMETRY_EMIT_BUDGET_MS } from './push-after-write.js';
 import { contextSyncStatePath, brandDir, credentialsPath } from '../paths/resolve.js';
+import { loadState } from './state.js';
 import type { ContextSyncState } from './state.js';
 import type { WireManifestBrand } from './types.js';
 import { resolveBrandFields } from '../brain/read.js';
+import { track } from '../telemetry/index.js';
+
+// Telemetry: stub track() so tests never touch the real on-disk queue (a
+// bare temp dir can still resolve isTelemetryEnabled()=true off the plugin's
+// bundled defaults) — same convention as commands/context.test.ts.
+vi.mock('../telemetry/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../telemetry/index.js')>();
+  return { ...actual, track: vi.fn().mockResolvedValue(undefined) };
+});
 
 let testDir: string;
 
@@ -30,6 +40,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.mocked(track).mockClear();
   await rm(testDir, { recursive: true, force: true });
 });
 
@@ -255,6 +266,10 @@ describe('read-path safety', () => {
     expect(result.ran).toBe(false);
     if (!result.ran) expect(result.reason).toBe('skipped');
     expect(state.manifestCalls).toBe(0);
+    // An unpersistable throttle stamp is one of the documented telemetry-
+    // silent early-skip categories (see the module doc): this never clears
+    // the guards, so finish() never runs and track() must never fire.
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
   });
 });
 
@@ -288,6 +303,15 @@ describe('identity rebind protection', () => {
     expect(state.manifestCalls).toBe(0);
     // The passive read persisted NOTHING: no doc wipe, no stamp.
     expect(await readFile(contextSyncStatePath('acme', testDir), 'utf8')).toBe(before);
+    // Explicit, field-level version of the byte-equality check above: a
+    // foreign-tenant ledger is one of the documented telemetry-silent
+    // early-skip categories — this never clears the guards, so finish()
+    // never runs, no ledger outcome fields get written, and track() never
+    // fires.
+    const afterState = await readLedger('acme');
+    expect(afterState.last_autosync_outcome).toBeUndefined();
+    expect(afterState.last_autosync_success_at).toBeUndefined();
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
   });
 
   it('foreign identity but EMPTY ledger: harmless, proceeds and rebinds', async () => {
@@ -747,5 +771,336 @@ describe('resolveBrandFields integration', () => {
     await resolveBrandFields('tpyo-brand', testDir);
     const clients = await readdir(join(testDir, 'clients'));
     expect(clients).toEqual(['foragers-pantry']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ledger outcome fields + telemetry: written/fired ONLY for attempts that
+// clear every early-skip guard (see the module doc).
+// ---------------------------------------------------------------------------
+
+describe('ledger outcome + telemetry', () => {
+  it('a successful attempt records outcome success + success_at, and fires ContextAutosyncCompleted', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const t0 = new Date('2026-07-05T12:00:00.000Z');
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      now: () => t0,
+    });
+    expect(result.ran).toBe(true);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('success');
+    expect(ledger.last_autosync_success_at).toBe(t0.toISOString());
+    expect(ledger.last_autosync_at).toBe(t0.toISOString());
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event, dataDir] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      outcome: 'ok',
+      payload: { trigger: 'preflight', brand: 'acme', ran: true },
+    });
+    expect(dataDir).toBe(testDir);
+  });
+
+  it('a failed attempt (client failure) records outcome failed, leaves success_at absent, fires outcome:failed', async () => {
+    await makeBrandDir('acme');
+    const failingClient: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'fetch failed',
+        friendly: 'unreachable',
+      }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: failingClient,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('failed');
+    expect(ledger.last_autosync_success_at).toBeUndefined();
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      outcome: 'failed',
+      payload: {
+        trigger: 'preflight',
+        brand: 'acme',
+        ran: false,
+        reason: 'failed',
+        detail: 'unreachable',
+      },
+    });
+  });
+
+  it('a ran:true result with per-doc errors counts as ledger/telemetry failed, not success', async () => {
+    const dir = brandDir('acme', testDir);
+    await mkdir(dir, { recursive: true });
+    const erroringClient: ContextSyncClient = {
+      fetchManifest: async () => ({ ok: true, brands: [manifestBrand('acme', [])] }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'boom', friendly: 'boom' }),
+      putAssignment: async () => ({ ok: true }),
+    };
+    await writeFile(join(dir, 'narrative.md'), 'local-only narrative\n', 'utf8');
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: erroringClient,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) expect(result.errors).toBeGreaterThan(0);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.last_autosync_outcome).toBe('failed');
+    expect(ledger.last_autosync_success_at).toBeUndefined();
+
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({ outcome: 'failed', payload: { ran: true } });
+  });
+
+  it('early-skip (disabled, kill switch): writes no outcome fields and fires no telemetry', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: { [AUTOSYNC_ENV]: 'off' },
+    });
+    expect(result).toEqual({ ran: false, reason: 'disabled' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+    // No ledger file at all — the kill switch touches no fs, ever.
+    await expect(readFile(contextSyncStatePath('acme', testDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('early-skip (unsafe slug): writes no outcome fields and fires no telemetry', async () => {
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('../evil', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({ ran: false, reason: 'skipped', detail: 'not a valid brand slug' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('early-skip (missing brand directory): writes no outcome fields and fires no telemetry', async () => {
+    const { client } = countingClient([], {});
+    const result = await maybeAutoSync('ghost', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('throttled (second call in-window): writes no NEW outcome fields and fires no telemetry', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    await maybeAutoSync('acme', { dataDirOverride: testDir, client, env: LIVE_ENV });
+    vi.mocked(track).mockClear();
+
+    const second = await maybeAutoSync('acme', { dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(second).toEqual({ ran: false, reason: 'throttled' });
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('trigger "manual" suppresses the internal emit (the CLI wrapper owns the row) but still records the ledger outcome', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      trigger: 'manual',
+    });
+    expect(result.ran).toBe(true);
+    // No internal ContextAutosyncCompleted for manual runs — commands/
+    // context.ts emits the single authoritative row for the invocation.
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+    // The ledger outcome is trigger-agnostic: written for manual runs too.
+    const state = await loadState('acme', testDir);
+    expect(state.last_autosync_outcome).toBe('success');
+    expect(state.last_autosync_success_at).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX A (red team, empirically reproduced): finish() used to save the STALE
+// pre-attempt state object AFTER op() (pull/sync) had already loaded, mutated,
+// and persisted its OWN state inside engine.ts's buildDocPairs — silently
+// clobbering every per-doc revision + the stake-sync `stakes` stamp back to
+// their pre-attempt values. finish() must re-load the ledger fresh before
+// stamping the outcome fields onto it.
+// ---------------------------------------------------------------------------
+
+describe("finish() does not clobber the engine's own save (FIX A)", () => {
+  it("a successful pull's per-doc revision survives the outcome save, alongside last_autosync_outcome", async () => {
+    const dir = brandDir('acme', testDir);
+    await mkdir(dir, { recursive: true });
+    // narrative: local matches the ledger (rev 1); server moved to rev 2 →
+    // server-ahead, so this attempt actually pulls something (mirrors the
+    // existing 'pull safety' fixture above).
+    await writeFile(join(dir, 'narrative.md'), 'old narrative\n', 'utf8');
+    await writeLedger('acme', {
+      narrative: {
+        server_revision: 1,
+        last_synced_hash: hashContent('old narrative\n'),
+        last_synced_at: '2026-07-01T00:00:00.000Z',
+      },
+    });
+
+    const serverDocs = { narrative: { content: 'new narrative\n', revision: 2 } };
+    const { client } = countingClient(
+      [manifestBrand('acme', [{ key: 'narrative', content: 'new narrative\n', revision: 2 }])],
+      serverDocs,
+    );
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(result.pulled).toBe(1);
+      expect(result.errors).toBe(0);
+    }
+
+    // The engine's OWN saveState (engine.ts's sync()/pull(), buildDocPairs)
+    // persisted the pulled doc's new revision BEFORE finish() ran. Before the
+    // fix, finish()'s later save reused the pre-attempt `ledgerState` object
+    // (loaded before op() ran) and overwrote this with rev 1 — a successful
+    // pull would then read back as 'diverged' on the very next status check.
+    const ledger = await readLedger('acme');
+    expect(ledger.docs.narrative?.server_revision).toBe(2);
+    expect(ledger.docs.narrative?.last_synced_hash).toBe(hashContent('new narrative\n'));
+    // ...and the outcome fields finish() is responsible for still land
+    // alongside it, on the SAME save.
+    expect(ledger.last_autosync_outcome).toBe('success');
+    expect(ledger.last_autosync_success_at).toBeTruthy();
+  });
+
+  it("a pre-existing stakes stamp survives finish()'s outcome save", async () => {
+    await makeBrandDir('acme');
+    await writeLedger('acme', {});
+    // Seed a stakes stamp directly, as a prior real stake-sync would have
+    // left it — cheaper than driving a full stake-sync leg through this
+    // fixture (a valid context.yaml + structural_events + a stake client),
+    // and this fixture only needs to prove the stamp SURVIVES finish(), not
+    // that the stake leg itself works (that's covered elsewhere).
+    const statePath = contextSyncStatePath('acme', testDir);
+    const seeded = JSON.parse(await readFile(statePath, 'utf8')) as ContextSyncState;
+    seeded.stakes = {
+      last_synced_hash: 'deadbeef'.repeat(8),
+      last_synced_at: '2026-07-01T00:00:00.000Z',
+    };
+    await writeFile(statePath, JSON.stringify(seeded), 'utf8');
+
+    // No context.yaml in this brand dir → the stake leg's own fast path
+    // ("context not readable") never loads or saves state, so the seeded
+    // stamp is untouched by anything except finish()'s reload+save.
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+
+    const ledger = await readLedger('acme');
+    expect(ledger.stakes).toEqual({
+      last_synced_hash: 'deadbeef'.repeat(8),
+      last_synced_at: '2026-07-01T00:00:00.000Z',
+    });
+    expect(ledger.last_autosync_outcome).toBe('success');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX C (privacy): a `detail` value entering telemetry is scrubbed of local
+// filesystem paths (see telemetry-detail.ts's own unit tests for the scrub
+// rules themselves). This pins the WIRING — that finish() actually routes
+// `detail` through scrubDetail — not just the helper in isolation. The value
+// returned to the CALLER (AutoSyncResult.detail) stays the real, unscrubbed
+// message; scrubbing is telemetry-only.
+// ---------------------------------------------------------------------------
+
+describe('telemetry detail is path-scrubbed (FIX C)', () => {
+  it('a raw fs-error path in the returned result never reaches the telemetry payload', async () => {
+    await makeBrandDir('acme');
+    const rawDetail =
+      "EBUSY: resource busy or locked, open 'C:\\Users\\sam\\.mixshift\\clients\\acme\\corpora\\notes.md'";
+    const throwingClient: ContextSyncClient = {
+      fetchManifest: async () => {
+        throw new Error(rawDetail);
+      },
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: true }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: throwingClient,
+      env: LIVE_ENV,
+    });
+    // The RETURNED result keeps the real message — a user debugging their own
+    // machine needs the real path.
+    expect(result).toEqual({ ran: false, reason: 'failed', detail: rawDetail });
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    const telemetryDetail = (event.payload as { detail?: string } | undefined)?.detail ?? '';
+    expect(telemetryDetail).toContain('EBUSY');
+    expect(telemetryDetail).not.toContain('\\Users\\');
+    expect(telemetryDetail).not.toContain('sam');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX D: the telemetry emit inside finish() is bounded (TELEMETRY_EMIT_BUDGET_MS)
+// so a stalled local queue.jsonl cannot hold the read-path hook open forever.
+// ---------------------------------------------------------------------------
+
+describe('finish() telemetry emit is bounded (FIX D)', () => {
+  it('a track() that never resolves does not hang maybeAutoSync beyond the telemetry budget', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    // One-time override: this call never settles; every OTHER track() call
+    // in the suite keeps the module's default resolved stub (see the
+    // top-of-file vi.mock), so nothing leaks into later tests.
+    vi.mocked(track).mockImplementationOnce(() => new Promise(() => {}));
+
+    const t0 = Date.now();
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    const elapsed = Date.now() - t0;
+
+    expect(result.ran).toBe(true);
+    // Bounded by TELEMETRY_EMIT_BUDGET_MS (plus real overhead) — nowhere
+    // near a hang into the suite timeout.
+    expect(elapsed).toBeLessThan(TELEMETRY_EMIT_BUDGET_MS + 2_000);
   });
 });
