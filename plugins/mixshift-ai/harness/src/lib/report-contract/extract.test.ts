@@ -4,6 +4,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFigures, checkFigures, CompositeSelectionError, COMPOSITE_SELECTIONS } from './extract.js';
 import type { ExtractDocument, ExtractedFigure, CompositeSelection } from './extract.js';
+// The unit a figure carries is only VISIBLE in rendered output -- the
+// report-contract validator checks claim/figure relationships, never units --
+// so the end-to-end block at the bottom of this file renders for real.
+import { renderMonthlyReport } from './render-report.js';
+import type { RenderReportDataDocument } from './render-report.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(here, 'fixtures');
@@ -40,8 +45,22 @@ describe('extractFigures over envelope-minimal.json (ops total-scope + crossDoma
     expect(figs.get('ops.ops.delta')).toMatchObject({ value: 44000, unit: 'currency', basis: 'ordered_revenue' });
     expect(figs.get('ops.units.delta')).toMatchObject({ value: 1000, unit: 'count', basis: 'ordered_units' });
     expect(figs.get('ops.sessions.delta')).toMatchObject({ value: 2000, unit: 'count', basis: 'sessions' });
-    expect(figs.get('ops.conversion.delta')).toMatchObject({ value: 0.05, unit: 'ratio', basis: 'sessions' });
-    expect(figs.get('ops.ops_per_unit.delta')).toMatchObject({ value: -2, unit: 'currency', basis: 'ordered_revenue' });
+    // WAS `unit: 'ratio'`, which PINNED A DEFECT: 0.05 is a five-POINT move
+    // (20% -> 25%), and 'ratio' rendered it "5.0%" -- read as a 5% relative
+    // rise, and in a different denomination from the very legs that foot to
+    // it. The engine declares `deltaUnit: 'pts'` for every 'percent' metric.
+    // Levels stay 'ratio' (asserted below).
+    expect(figs.get('ops.conversion.delta')).toMatchObject({
+      value: 0.05,
+      unit: 'points_fraction',
+      basis: 'sessions',
+    });
+    expect(figs.get('ops.conversion.p1')).toMatchObject({ value: 0.2, unit: 'ratio' });
+    expect(figs.get('ops.buy_box.delta')).toMatchObject({ value: -0.01, unit: 'points_fraction' });
+    // ASP: the engine registry declares display 'currency-2dp' / decimals 2,
+    // so the interim map carries 'currency-2dp' and the renderer keeps the
+    // cents. 'currency' (0dp) had been rounding them away.
+    expect(figs.get('ops.ops_per_unit.delta')).toMatchObject({ value: -2, unit: 'currency-2dp', basis: 'ordered_revenue' });
     expect(figs.get('ops.lost_sales.delta')).toMatchObject({ value: 1000, unit: 'currency', basis: 'ordered_revenue' });
     expect(figs.get('ops.weeks_of_cover.delta')).toMatchObject({ unit: 'weeks' });
   });
@@ -94,11 +113,20 @@ describe('extractFigures over envelope-minimal.json (ops total-scope + crossDoma
   it('emits crossDomain duo.* figures (tacos, attributedShare, paidPressure, aspVsAdAov)', () => {
     expect(figs.get('duo.tacos.p1')).toMatchObject({ value: 0.15, unit: 'ratio', basis: 'cross_domain_joined' });
     expect(figs.get('duo.tacos.p2')).toMatchObject({ value: 0.12 });
-    expect(figs.get('duo.tacos.delta_pts')).toMatchObject({ value: -0.03, unit: 'points' });
-    expect(figs.get('duo.attributedShare.delta_pts')).toMatchObject({ value: 0.02 });
+    // WAS `unit: 'points'`, and that expectation PINNED A DEFECT: the engine
+    // computes `deltaPts` as `p2 - p1` over a RATIO pair, so this -0.03 is a
+    // three-POINT move stored as a fraction. Under `points` (an
+    // already-whole number) the renderer printed "0.0 pts" and erased it.
+    // See the `changeUnitOf` call in extract.ts's crossDomain solo blocks.
+    expect(figs.get('duo.tacos.delta_pts')).toMatchObject({ value: -0.03, unit: 'points_fraction' });
+    expect(figs.get('duo.attributedShare.delta_pts')).toMatchObject({ value: 0.02, unit: 'points_fraction' });
     expect(figs.get('duo.paidPressure.p1')).toMatchObject({ value: 0.55 });
-    expect(figs.get('duo.asp.p1')).toMatchObject({ value: 50, unit: 'currency' });
-    expect(figs.get('duo.adAov.p2')).toMatchObject({ value: 59.38 });
+    // WAS `unit: 'currency'` (0dp), another pinned defect: this block IS
+    // `pair(ops, 'ops_per_unit')` / `pair(ads, 'ad_aov')`, both of which the
+    // engine registry declares 'currency-2dp'. At 0dp a $59.38 ad AOV printed
+    // "$59" -- the cents are the whole point of a per-unit money metric.
+    expect(figs.get('duo.asp.p1')).toMatchObject({ value: 50, unit: 'currency-2dp' });
+    expect(figs.get('duo.adAov.p2')).toMatchObject({ value: 59.38, unit: 'currency-2dp' });
   });
 
   it('emits the cross-domain tacos bridge legs without a footing_ok flag (Python source never sets one there)', () => {
@@ -872,5 +900,643 @@ describe('composite bundle handling (INS-MONTHLY-01 mom/yoy unwrapping)', () => 
     expect(figs.get('ops.ops.delta')).toMatchObject({ value: 44000 });
     expect(figs.get('duo.tacos.p1')).toMatchObject({ value: 0.15 });
     expect(checkFigures(out)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INTERIM-UNTIL-CATALOG unit map, reconciled against the engine's metric
+// registry (METRIC_DEFINITIONS[key].display). Synthetic envelopes only.
+// ---------------------------------------------------------------------------
+
+describe('OPS_UNITS / ADS_UNITS agree with the engine metric registry', () => {
+  /** Minimal envelope carrying one totals row per requested metric. */
+  function unitsOut(domain: 'ops' | 'ads', keys: string[]) {
+    return byId(
+      extractFigures({
+        bridgeDomain: domain,
+        bridgeRunId: 'run-example-units-0001',
+        currency: 'USD',
+        caveats: [],
+        metrics: keys.map((metricKey) => ({
+          metricKey,
+          totals: { p1: 1, p2: 2, delta: 1, pctChange: 1 },
+          topDrivers: [],
+        })),
+        insights: [],
+      }),
+    );
+  }
+
+  it('maps the per-unit money metrics to currency-2dp, not 0dp currency', () => {
+    // engine: ops_per_unit / ad_cpc / ad_cpa / ad_aov all declare
+    // display 'currency-2dp', decimals 2. These are per-click / per-order /
+    // per-unit amounts, routinely sub-dollar, so a 0dp render erased them.
+    expect(unitsOut('ops', ['ops_per_unit']).get('ops.ops_per_unit.p1')?.unit).toBe('currency-2dp');
+    const ads = unitsOut('ads', ['ad_cpc', 'ad_cpa', 'ad_aov']);
+    expect(ads.get('ads.ad_cpc.p1')?.unit).toBe('currency-2dp');
+    expect(ads.get('ads.ad_cpa.p1')?.unit).toBe('currency-2dp');
+    expect(ads.get('ads.ad_aov.p1')?.unit).toBe('currency-2dp');
+  });
+
+  it('maps ROAS to currency-2dp — it is a multiple, never a percentage', () => {
+    // engine: display 'currency-2dp' ("displayed as currency ($2.06),
+    // matching the ASP ($/unit) convention"). As 'ratio' the renderer turned
+    // a 2.06x ROAS into "206.0%".
+    expect(unitsOut('ads', ['roas']).get('ads.roas.p1')?.unit).toBe('currency-2dp');
+  });
+
+  it('covers the ops-grid ad-attribution fold instead of defaulting it to count', () => {
+    // These three are in the engine's OPS_FAMILY_METRICS but were absent from
+    // the map, so the `?? 'count'` fallback rendered two dollar metrics and a
+    // rate as bare counts.
+    const ops = unitsOut('ops', ['ad_driven_sales', 'ad_driven_halo', 'ad_driven_share']);
+    expect(ops.get('ops.ad_driven_sales.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.ad_driven_halo.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.ad_driven_share.p1')?.unit).toBe('ratio');
+  });
+
+  it('leaves the entries the engine registry already agreed with untouched', () => {
+    // our `ratio` (stored fraction, rendered x100 with %) == engine `percent`;
+    // our `count` (bare whole number) == engine `number`.
+    const ops = unitsOut('ops', [
+      'ops', 'units', 'sessions', 'conversion', 'buy_box',
+      'sellable_inventory', 'weeks_of_cover', 'lost_sales', 'glance_views', 'gv_conversion',
+    ]);
+    expect(ops.get('ops.ops.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.lost_sales.p1')?.unit).toBe('currency');
+    expect(ops.get('ops.units.p1')?.unit).toBe('count');
+    expect(ops.get('ops.sessions.p1')?.unit).toBe('count');
+    expect(ops.get('ops.glance_views.p1')?.unit).toBe('count');
+    expect(ops.get('ops.sellable_inventory.p1')?.unit).toBe('count');
+    expect(ops.get('ops.conversion.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.buy_box.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.gv_conversion.p1')?.unit).toBe('ratio');
+    expect(ops.get('ops.weeks_of_cover.p1')?.unit).toBe('weeks');
+
+    const ads = unitsOut('ads', [
+      'ad_spend', 'ad_sales', 'acos', 'ad_impressions', 'ad_clicks', 'ad_ctr',
+      'ad_orders', 'ad_conversion', 'ad_sales_same_sku', 'ad_sales_other_sku',
+      'ad_sales_view_through', 'ad_orders_same_sku', 'ad_orders_other_sku',
+      'ad_orders_view_through',
+    ]);
+    for (const k of ['ad_spend', 'ad_sales', 'ad_sales_same_sku', 'ad_sales_other_sku', 'ad_sales_view_through']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('currency');
+    }
+    for (const k of ['ad_impressions', 'ad_clicks', 'ad_orders', 'ad_orders_same_sku', 'ad_orders_other_sku', 'ad_orders_view_through']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('count');
+    }
+    for (const k of ['acos', 'ad_ctr', 'ad_conversion']) {
+      expect(ads.get(`ads.${k}.p1`)?.unit).toBe('ratio');
+    }
+  });
+
+  it('an unmapped metric key still falls back to count rather than throwing', () => {
+    expect(unitsOut('ops', ['not_a_real_metric']).get('ops.not_a_real_metric.p1')?.unit).toBe('count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bridge-leg units come from the ANCHOR metric, not the lever.
+//
+// A leg figure stores `component.impact` -- the leg's contribution to the
+// ANCHOR metric's net change -- so its unit is the anchor's, never
+// `component.valueUnit` (which the engine uses only for the leg's own
+// p1Value/p2Value levels, numbers this extractor does not emit). The fixture
+// below is the repo's own synthetic envelope; every leg in it carries a
+// valueUnit that DISAGREES with its anchor, which is exactly the shape of the
+// live defect. All values synthetic.
+// ---------------------------------------------------------------------------
+
+describe('bridge legs take their unit from the anchor metric, not comp.valueUnit', () => {
+  const out = extractFigures(loadFixture('envelope-minimal.json'));
+  const figs = byId(out);
+
+  it('a dollar bridge labels every leg in dollars, whatever the lever is', () => {
+    // Anchor: ops (currency). The three legs foot to the ops delta --
+    // 20000 + 15000 + 9000 = 44000 -- so all three ARE dollars, yet their
+    // valueUnits are 'number', 'percent' and 'currency-2dp' respectively.
+    // The conversion leg is the live defect: $15,000 labeled 'percent'
+    // rendered "15000.0%".
+    expect(figs.get('ops.bridge.ops.primary.sessions')?.unit).toBe('currency');
+    expect(figs.get('ops.bridge.ops.primary.conversion')?.unit).toBe('currency');
+    expect(figs.get('ops.bridge.ops.primary.ops_per_unit')?.unit).toBe('currency');
+    // ...and the values are untouched by the relabel.
+    expect(figs.get('ops.bridge.ops.primary.conversion')?.value).toBe(15000);
+  });
+
+  it('a RATE bridge labels its legs points_fraction — the change unit of a ratio', () => {
+    // Anchor: conversion (ratio). Legs 0.03 + 0.02 = 0.05 = the conversion
+    // delta, i.e. fractions of a rate: a three-point and a two-point
+    // contribution. Both carry valueUnit 'number', which rendered them "0".
+    expect(figs.get('ops.bridge.conversion.primary.units')?.unit).toBe('points_fraction');
+    expect(figs.get('ops.bridge.conversion.primary.sessions')?.unit).toBe('points_fraction');
+    // Buy Box is the contribution-only shape (legs with no p1/p2 at all),
+    // which makes the lever-unit reading impossible on its own terms.
+    expect(figs.get('ops.bridge.buy_box.primary.rate')?.unit).toBe('points_fraction');
+    expect(figs.get('ops.bridge.buy_box.primary.mix')?.unit).toBe('points_fraction');
+  });
+
+  it('carries the anchor unit through for the non-currency, non-rate anchors too', () => {
+    // ASP anchor: dollars-per-unit at 2dp, so its legs are too -- including
+    // the 'sessions' leg, whose own level is a count.
+    expect(figs.get('ops.bridge.ops_per_unit.primary.ops')?.unit).toBe('currency-2dp');
+    expect(figs.get('ops.bridge.ops_per_unit.primary.sessions')?.unit).toBe('currency-2dp');
+    // Weeks of cover: a weeks-denominated anchor.
+    expect(figs.get('ops.bridge.weeks_of_cover.primary.inventory')?.unit).toBe('weeks');
+    expect(figs.get('ops.bridge.weeks_of_cover.primary.demand')?.unit).toBe('weeks');
+    // Lost sales: a dollar anchor whose legs are all SYNTHETIC factors (no
+    // MetricKey of their own), so the anchor is the only sound source.
+    expect(figs.get('ops.bridge.lost_sales.secondary.oos_days')?.unit).toBe('currency');
+    expect(figs.get('ops.bridge.lost_sales.secondary.convr')?.unit).toBe('currency');
+  });
+
+  it('every leg agrees with the net change it foots to (the BRIDGE-FOOTING unit corollary)', () => {
+    // Structural, not enumerated: legs SUM to the anchor's delta, and numbers
+    // that sum to each other share a unit. Whatever unit the anchor's own
+    // delta figure carries, its legs carry the change form of it.
+    const changeUnitOf = (u: string): string => (u === 'ratio' ? 'points_fraction' : u);
+    const legs = out.figures.filter((f) => f.id.startsWith('ops.bridge.'));
+    expect(legs.length).toBeGreaterThan(10); // the rule is exercised, not vacuous
+    for (const leg of legs) {
+      const metric = leg.id.split('.')[2];
+      const delta = figs.get(`ops.${metric}.delta`);
+      expect(delta, `no delta figure for anchor ${metric}`).toBeDefined();
+      expect(leg.unit, `${leg.id} disagrees with ops.${metric}.delta`).toBe(
+        changeUnitOf(delta!.unit),
+      );
+    }
+  });
+
+  it('leaves the cross-domain TACOS legs on their own anchor (regression guard)', () => {
+    // These legs are anchored on the cross-domain TACOS rate, which is not a
+    // metric key in either units map, so they are NOT derived from it -- they
+    // were already labeled points_fraction and must stay that way. Their
+    // components' own valueUnits are 'currency-2dp' / 'percent'.
+    expect(figs.get('duo.bridge.tacos.primary.ad_cpc')?.unit).toBe('points_fraction');
+    expect(figs.get('duo.bridge.tacos.primary.ad_conversion')?.unit).toBe('points_fraction');
+    expect(figs.get('duo.bridge.tacos.primary.ads_pct_total_sales')?.unit).toBe('points_fraction');
+  });
+
+  it('falls back to the same unit the anchor metric’s own figures fall back to', () => {
+    const odd = byId(
+      extractFigures({
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-example-legs-0001',
+        metrics: [{ metricKey: 'not_a_real_metric', totals: { p1: 1, p2: 3, delta: 2 } }],
+        insights: [
+          {
+            insight: {
+              scope: 'total',
+              metricKey: 'not_a_real_metric',
+              variantKey: 'primary',
+              netChange: 2,
+              components: [{ key: 'lever', impact: 2, valueUnit: 'percent' }],
+            },
+          },
+        ],
+      }),
+    );
+    // 'count' both places -- a leg can never disagree with the net it foots to.
+    expect(odd.get('ops.not_a_real_metric.delta')?.unit).toBe('count');
+    expect(odd.get('ops.bridge.not_a_real_metric.primary.lever')?.unit).toBe('count');
+  });
+
+  it('applies the same anchor rule at entity scope', () => {
+    const entity = byId(
+      extractFigures({
+        envelope: {
+          bridgeDomain: 'ops',
+          bridgeRunId: 'run-example-legs-0002',
+          entityKey: 'item-group-a',
+          insights: [
+            {
+              metricKey: 'ops',
+              variantKey: 'primary',
+              p1Value: 20000,
+              p2Value: 25000,
+              netChange: 5000,
+              components: [
+                { key: 'sessions', impact: 3000, valueUnit: 'number' },
+                { key: 'conversion', impact: 2000, valueUnit: 'percent' },
+              ],
+            },
+            {
+              metricKey: 'conversion',
+              variantKey: 'primary',
+              p1Value: 0.2,
+              p2Value: 0.25,
+              netChange: 0.05,
+              components: [{ key: 'units', impact: 0.05, valueUnit: 'number' }],
+            },
+          ],
+        },
+      }),
+    );
+    expect(entity.get('ops.entity.item-group-a.bridge.ops.primary.sessions')?.unit).toBe('currency');
+    expect(entity.get('ops.entity.item-group-a.bridge.ops.primary.conversion')?.unit).toBe('currency');
+    expect(entity.get('ops.entity.item-group-a.bridge.conversion.primary.units')?.unit).toBe(
+      'points_fraction',
+    );
+  });
+
+  it('changes only the unit label — ids, values, source paths and footing metadata are identical', () => {
+    const leg = figs.get('ops.bridge.ops.primary.conversion');
+    expect(leg).toMatchObject({
+      id: 'ops.bridge.ops.primary.conversion',
+      label: 'ops conversion leg (primary)',
+      value: 15000,
+      basis: 'ordered_revenue',
+      source_path: 'envelope:insights[0].insight.components[1].impact',
+      footing_ok: true,
+      net_change: 44000,
+    });
+    expect(checkFigures(out)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// crossDomain delta_pts is a FRACTION, not points.
+// ---------------------------------------------------------------------------
+
+describe('duo.<block>.delta_pts carries the fraction-scaled points unit', () => {
+  /** A cross-domain block with a real, awkward rate move: TACoS 8.3% -> 11.1%
+   *  and attributed share 41.2% -> 38.4%. Synthetic. */
+  const out = extractFigures({
+    envelope: { bridgeDomain: 'ops', bridgeRunId: 'run-example-duo-0001', currency: 'USD', metrics: [], insights: [] },
+    crossDomain: {
+      tacos: { p1: 0.083, p2: 0.111, deltaPts: 0.028 },
+      attributedShare: { p1: 0.412, p2: 0.384, deltaPts: -0.028 },
+    },
+  });
+  const figs = byId(out);
+
+  it('labels both delta_pts figures points_fraction, matching how the engine stores them', () => {
+    expect(figs.get('duo.tacos.delta_pts')).toMatchObject({ value: 0.028, unit: 'points_fraction' });
+    expect(figs.get('duo.attributedShare.delta_pts')).toMatchObject({
+      value: -0.028,
+      unit: 'points_fraction',
+    });
+  });
+
+  it('leaves the LEVEL figures on ratio — only the change unit moved', () => {
+    expect(figs.get('duo.tacos.p1')?.unit).toBe('ratio');
+    expect(figs.get('duo.tacos.p2')?.unit).toBe('ratio');
+    expect(figs.get('duo.attributedShare.p1')?.unit).toBe('ratio');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A RATE metric's DELTA is in POINTS, not in the level's own unit.
+//
+// The engine declares this itself: `METRIC_DEFINITIONS[k].deltaUnit` is 'pts'
+// for EVERY metric whose `display` is 'percent' -- conversion, buy_box,
+// gv_conversion, ad_driven_share, acos, ad_ctr, ad_conversion -- and
+// 'absolute' for every other metric in the registry. `formatDelta` renders the
+// 'pts' branch as `numWithDecimals(abs * 100, dp) + ' pts'`, i.e. a stored
+// FRACTION of a point, which is exactly our `points_fraction`; the 'absolute'
+// branch renders the delta in the LEVEL's own unit, which is the pass-through.
+// Our `ratio` IS the engine's `percent`, so the 'ratio' entries in the two
+// maps are precisely the deltaUnit:'pts' set and the mapping is total.
+//
+// Levels keep 'ratio'. Only the CHANGE moves -- the same `changeUnitOf` rule
+// the bridge legs and the crossDomain delta_pts figures already follow, which
+// is what puts a leg and the net it foots to in one denomination. Synthetic.
+// ---------------------------------------------------------------------------
+
+describe('a rate metric’s delta carries the change unit, not the level unit', () => {
+  /** Minimal envelope carrying one totals row per requested metric. Values are
+   *  rate-shaped (0.20 -> 0.25) so a fraction delta is the realistic case. */
+  function deltaOut(domain: 'ops' | 'ads', keys: string[]) {
+    return byId(
+      extractFigures({
+        bridgeDomain: domain,
+        bridgeRunId: 'run-example-delta-0001',
+        currency: 'USD',
+        caveats: [],
+        metrics: keys.map((metricKey) => ({
+          metricKey,
+          totals: { p1: 0.2, p2: 0.25, delta: 0.05, pctChange: 0.25 },
+          topDrivers: [],
+        })),
+        insights: [],
+      }),
+    );
+  }
+
+  // Every 'ratio' entry in OPS_UNITS / ADS_UNITS, which is exactly the engine's
+  // deltaUnit:'pts' set -- checked against METRIC_DEFINITIONS key by key.
+  const OPS_RATES = ['conversion', 'buy_box', 'gv_conversion', 'ad_driven_share'];
+  const ADS_RATES = ['acos', 'ad_ctr', 'ad_conversion'];
+
+  it('labels EVERY rate metric’s delta points_fraction, in both domain maps', () => {
+    const ops = deltaOut('ops', OPS_RATES);
+    for (const k of OPS_RATES) {
+      expect(ops.get(`ops.${k}.delta`)?.unit, `ops.${k}.delta`).toBe('points_fraction');
+    }
+    const ads = deltaOut('ads', ADS_RATES);
+    for (const k of ADS_RATES) {
+      expect(ads.get(`ads.${k}.delta`)?.unit, `ads.${k}.delta`).toBe('points_fraction');
+    }
+  });
+
+  it('leaves the LEVEL figures on ratio — a rate’s level is still a rate', () => {
+    const ops = deltaOut('ops', OPS_RATES);
+    for (const k of OPS_RATES) {
+      expect(ops.get(`ops.${k}.p1`)?.unit, `ops.${k}.p1`).toBe('ratio');
+      expect(ops.get(`ops.${k}.p2`)?.unit, `ops.${k}.p2`).toBe('ratio');
+    }
+    const ads = deltaOut('ads', ADS_RATES);
+    for (const k of ADS_RATES) {
+      expect(ads.get(`ads.${k}.p1`)?.unit, `ads.${k}.p1`).toBe('ratio');
+    }
+  });
+
+  it('changes the unit only — value, basis, caveats and pct_change are untouched', () => {
+    expect(deltaOut('ops', ['conversion']).get('ops.conversion.delta')).toMatchObject({
+      id: 'ops.conversion.delta',
+      value: 0.05,
+      unit: 'points_fraction',
+      basis: 'engine_default',
+      source_path: 'envelope:metrics[0].totals.delta',
+      pct_change: 0.25,
+    });
+  });
+
+  it('is the identity on every NON-rate metric — deltaUnit "absolute" passes through', () => {
+    // The whole of both maps, minus the rate set above. Structural rather than
+    // enumerated: a delta unit may differ from its level unit ONLY where the
+    // engine says deltaUnit is 'pts', i.e. only where the level is a ratio.
+    const opsRest = [
+      'ops', 'units', 'sessions', 'ops_per_unit', 'sellable_inventory',
+      'weeks_of_cover', 'lost_sales', 'glance_views', 'ad_driven_sales', 'ad_driven_halo',
+    ];
+    const ops = deltaOut('ops', opsRest);
+    for (const k of opsRest) {
+      const level = ops.get(`ops.${k}.p1`)?.unit;
+      expect(level, `ops.${k}.p1`).not.toBe('ratio');
+      expect(ops.get(`ops.${k}.delta`)?.unit, `ops.${k}.delta`).toBe(level);
+    }
+    const adsRest = [
+      'ad_spend', 'ad_sales', 'roas', 'ad_impressions', 'ad_clicks', 'ad_orders',
+      'ad_cpa', 'ad_aov', 'ad_cpc', 'ad_sales_same_sku', 'ad_sales_other_sku',
+      'ad_sales_view_through', 'ad_orders_same_sku', 'ad_orders_other_sku',
+      'ad_orders_view_through',
+    ];
+    const ads = deltaOut('ads', adsRest);
+    for (const k of adsRest) {
+      const level = ads.get(`ads.${k}.p1`)?.unit;
+      expect(level, `ads.${k}.p1`).not.toBe('ratio');
+      expect(ads.get(`ads.${k}.delta`)?.unit, `ads.${k}.delta`).toBe(level);
+    }
+    // ...and an unmapped key keeps the same 'count' fallback on both.
+    const odd = deltaOut('ops', ['not_a_real_metric']);
+    expect(odd.get('ops.not_a_real_metric.p1')?.unit).toBe('count');
+    expect(odd.get('ops.not_a_real_metric.delta')?.unit).toBe('count');
+  });
+
+  it('applies the same rule to an entity-scoped envelope’s netChange', () => {
+    const entity = byId(
+      extractFigures({
+        envelope: {
+          bridgeDomain: 'ops',
+          bridgeRunId: 'run-example-delta-0002',
+          entityKey: 'item-group-a',
+          insights: [
+            { metricKey: 'ops', variantKey: 'primary', p1Value: 20000, p2Value: 25000, netChange: 5000 },
+            { metricKey: 'conversion', variantKey: 'primary', p1Value: 0.2, p2Value: 0.25, netChange: 0.05 },
+          ],
+        },
+      }),
+    );
+    expect(entity.get('ops.entity.item-group-a.conversion.p1')?.unit).toBe('ratio');
+    expect(entity.get('ops.entity.item-group-a.conversion.delta')?.unit).toBe('points_fraction');
+    // the dollar metric alongside it is untouched
+    expect(entity.get('ops.entity.item-group-a.ops.delta')?.unit).toBe('currency');
+  });
+
+  it('puts a delta and the legs that foot to it in ONE denomination (the visible contradiction)', () => {
+    // Structural over the repo's own envelope fixture: the legs SUM to the
+    // anchor's delta, so they are the same quantity and must carry the same
+    // unit. Before this fix the conversion bridge printed "3.0 pts / 2.0 pts"
+    // under a net that printed "5.0%" -- on the same page.
+    const out = extractFigures(loadFixture('envelope-minimal.json'));
+    const all = byId(out);
+    const legs = out.figures.filter((f) => f.id.startsWith('ops.bridge.'));
+    expect(legs.length).toBeGreaterThan(10); // exercised, not vacuous
+    for (const leg of legs) {
+      const metric = leg.id.split('.')[2];
+      const delta = all.get(`ops.${metric}.delta`);
+      expect(delta, `no delta figure for anchor ${metric}`).toBeDefined();
+      expect(leg.unit, `${leg.id} vs ops.${metric}.delta`).toBe(delta!.unit);
+    }
+    // and the rate anchors are genuinely in the set being checked
+    expect(all.get('ops.conversion.delta')?.unit).toBe('points_fraction');
+    expect(all.get('ops.buy_box.delta')?.unit).toBe('points_fraction');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// duo.asp / duo.adAov are ops_per_unit and ad_aov, and carry their units.
+//
+// The engine builds the block from exactly those two metric pairs:
+// `aspVsAdAov: comparable.ok ? { asp, adAov } : null` where
+// `asp = pair(ops, 'ops_per_unit')` and `adAov = pair(ads, 'ad_aov')` -- the
+// SAME sidecar metric blocks the ops/ads domain figures read. Both declare
+// `display: 'currency-2dp', decimals: 2` in METRIC_DEFINITIONS. Hardcoding
+// 'currency' (0dp) printed a $59.38 ad AOV as "$59". Synthetic values.
+// ---------------------------------------------------------------------------
+
+describe('duo.asp / duo.adAov carry their source metric’s unit, cents included', () => {
+  const figs = byId(extractFigures(loadFixture('envelope-minimal.json')));
+
+  it('labels both lanes currency-2dp', () => {
+    expect(figs.get('duo.asp.p1')).toMatchObject({ value: 50, unit: 'currency-2dp' });
+    expect(figs.get('duo.asp.p2')?.unit).toBe('currency-2dp');
+    expect(figs.get('duo.adAov.p1')).toMatchObject({ value: 58.33, unit: 'currency-2dp' });
+    expect(figs.get('duo.adAov.p2')).toMatchObject({ value: 59.38, unit: 'currency-2dp' });
+  });
+
+  it('agrees with the unit those metrics carry on their own domain figures', () => {
+    // Structural: the same number must not change denomination because it was
+    // read off the cross-domain block instead of its own metric row.
+    const ops = byId(
+      extractFigures({
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-example-duo-units-0001',
+        metrics: [{ metricKey: 'ops_per_unit', totals: { p1: 50, p2: 48, delta: -2 } }],
+        insights: [],
+      }),
+    );
+    const ads = byId(
+      extractFigures({
+        bridgeDomain: 'ads',
+        bridgeRunId: 'run-example-duo-units-0002',
+        metrics: [{ metricKey: 'ad_aov', totals: { p1: 58.33, p2: 59.38, delta: 1.05 } }],
+        insights: [],
+      }),
+    );
+    expect(figs.get('duo.asp.p1')?.unit).toBe(ops.get('ops.ops_per_unit.p1')?.unit);
+    expect(figs.get('duo.adAov.p1')?.unit).toBe(ads.get('ads.ad_aov.p1')?.unit);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// duo.paidPressure stays `ratio` -- DECISION PIN, not a fix.
+//
+// It was reviewed as a suspected unit defect (a >1 reading renders "110.0%"
+// though the engine calls it "a pressure index, not a share") and found
+// CORRECT as-is. The engine's ONLY renderer of this block prints it as a
+// percentage:
+//   `Paid clicks per ${noun} went ${(cd.paidPressure.p1 * 100).toFixed(0)}%
+//    -> ${(cd.paidPressure.p2 * 100).toFixed(0)}% -- ${read}.`
+//   (ops-bridge-evidence/src/performance-summary.ts, crossDomainSentences)
+// which is exactly our `ratio` (stored quotient, rendered x100 with '%'). The
+// "not a share" note warns that the number may EXCEED 100%, not that it is
+// stored or scaled differently -- the engine keeps the percent rendering in
+// full knowledge of it. Relabelling would invent a scale the engine does not
+// use. This test therefore passes both before and after; it exists so the
+// next unit sweep does not re-open a settled question.
+// ---------------------------------------------------------------------------
+
+describe('duo.paidPressure keeps the engine’s own percent reading (decision pin)', () => {
+  const figs = byId(extractFigures(loadFixture('envelope-minimal.json')));
+
+  it('stays ratio on both sides', () => {
+    expect(figs.get('duo.paidPressure.p1')).toMatchObject({ value: 0.55, unit: 'ratio' });
+    expect(figs.get('duo.paidPressure.p2')).toMatchObject({ value: 0.48, unit: 'ratio' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// END TO END: envelope -> extract -> render -> the string a reader sees.
+//
+// The report contract validates claim/figure RELATIONSHIPS; nothing in it can
+// see that a figure's unit is wrong, so both defects fixed here rode a real
+// golden-chain lap with every validator green. These tests assert the
+// RENDERED text, which is the only place a unit error is visible. Synthetic
+// values only.
+// ---------------------------------------------------------------------------
+
+describe('rendered output catches a wrong unit that no validator can see', () => {
+  /** Quote the named extracted figures in one section and render the page. */
+  function renderQuoting(response: unknown, ids: string[]): string {
+    const out = extractFigures(response);
+    const wanted = new Set(ids);
+    const doc: RenderReportDataDocument = {
+      currency: 'USD',
+      figures: out.figures.filter((f) => wanted.has(f.id)),
+      sections: [{ id: 'sec.units', figure_refs: ids }],
+      caveat_registry: out.caveat_registry,
+    };
+    return renderMonthlyReport(doc);
+  }
+
+  /** The displayed value of every figure chip on the page, in order. Asserting
+   *  these EXACTLY is the point: a unit defect is invisible in the document
+   *  and shows up only as the wrong string here. */
+  function chipValues(html: string): string[] {
+    return [...html.matchAll(/<span class="rr-figure-value[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
+  }
+
+  it('renders an OPS bridge leg as the dollars it is, never as a percentage', () => {
+    // THE ORIGINAL DEFECT, from the reader's side: this leg's value is
+    // $15,000 of the $44,000 revenue move, but it carried the LEVER's unit
+    // ('percent'), so the page printed "15000.0%" -- the exact shape of the
+    // live "22448.2%" for $22.4K.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'ops.bridge.ops.primary.conversion',
+    ]);
+    expect(chipValues(html)).toEqual(['$15,000']);
+  });
+
+  it('renders a rate bridge’s legs in points instead of rounding them to zero', () => {
+    // Anchor: conversion. A three-point contribution stored as 0.03 printed
+    // "0" under the lever's 'number' unit -- a real driver rendered as
+    // nothing at all.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'ops.bridge.conversion.primary.units',
+      'ops.bridge.conversion.primary.sessions',
+    ]);
+    expect(chipValues(html)).toEqual(['3.0 pts', '2.0 pts']);
+  });
+
+  it('renders a 2.8-point TACoS move as 2.8 points, not 0.0', () => {
+    // DEFECT 2 from the reader's side. Under `points` this printed "0.0 pts":
+    // a materially worse TACoS quarter reported as no change at all.
+    const html = renderQuoting(
+      {
+        envelope: { bridgeDomain: 'ops', bridgeRunId: 'run-example-e2e-0001', metrics: [], insights: [] },
+        crossDomain: { tacos: { p1: 0.083, p2: 0.111, deltaPts: 0.028 } },
+      },
+      ['duo.tacos.delta_pts'],
+    );
+    expect(chipValues(html)).toEqual(['2.8 pts']);
+    expect(html).not.toContain('0.0 pts');
+  });
+
+  it('keeps a leg and the net change it foots to in the same denomination on the page', () => {
+    // The legs and their net are quoted side by side in real reports; if the
+    // legs took the lever's unit they read as different quantities entirely.
+    // $20,000 + $15,000 + $9,000 = $44,000, and the page says so in dollars.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'ops.ops.delta',
+      'ops.bridge.ops.primary.sessions',
+      'ops.bridge.ops.primary.conversion',
+      'ops.bridge.ops.primary.ops_per_unit',
+    ]);
+    expect(chipValues(html)).toEqual(['$44,000', '$20,000', '$15,000', '$9,000']);
+  });
+
+  it('renders a 5-POINT conversion move as points, not as a 5% relative rise', () => {
+    // Conversion went 20% -> 25%. The delta is stored 0.05, and under the
+    // LEVEL unit ('ratio') the page printed "5.0%" for a move that is five
+    // POINTS -- the same string a 5% relative rise would print, off a base
+    // this figure never mentions.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), ['ops.conversion.delta']);
+    expect(chipValues(html)).toEqual(['5.0 pts']);
+    expect(html).not.toContain('5.0%');
+  });
+
+  it('renders a rate delta and the legs that foot to it in ONE denomination', () => {
+    // THE VISIBLE CONTRADICTION, and the reason this fix follows the leg fix:
+    // with the legs correct but the net still on the level unit, one page
+    // printed "3.0 pts + 2.0 pts" under a net of "5.0%". Now the reader can
+    // add the strip up: 3.0 + 2.0 = 5.0 pts.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'ops.conversion.delta',
+      'ops.bridge.conversion.primary.units',
+      'ops.bridge.conversion.primary.sessions',
+    ]);
+    expect(chipValues(html)).toEqual(['5.0 pts', '3.0 pts', '2.0 pts']);
+    // the levels either side of that move stay percentages -- a rate is still
+    // a rate, only its CHANGE is in points
+    const levels = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'ops.conversion.p1',
+      'ops.conversion.p2',
+    ]);
+    expect(chipValues(levels)).toEqual(['20.0%', '25.0%']);
+  });
+
+  it('renders the cross-domain ASP / ad-AOV mirror with the cents that carry the signal', () => {
+    // $50.00 ASP against a $59.38 ad AOV is the whole "is the ads mix richer
+    // than the account mix" read. At 0dp the page printed "$59" and the
+    // comparison lost its precision on the side that moved.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'duo.asp.p2',
+      'duo.adAov.p2',
+    ]);
+    expect(chipValues(html)).toEqual(['$48.00', '$59.38']);
+  });
+
+  it('renders paid pressure exactly as the engine’s own summary sentence does (decision pin)', () => {
+    // NOT a fix -- a settled decision, pinned. The engine prints this block as
+    // `(p * 100).toFixed(0)%` ("Paid clicks per session went 55% -> 48%"), so
+    // 'ratio' is the honest label; its "not a share" note warns the number can
+    // exceed 100%, not that it is stored differently. Passes before and after.
+    const html = renderQuoting(loadFixture('envelope-minimal.json'), [
+      'duo.paidPressure.p1',
+      'duo.paidPressure.p2',
+    ]);
+    expect(chipValues(html)).toEqual(['55.0%', '48.0%']);
   });
 });
