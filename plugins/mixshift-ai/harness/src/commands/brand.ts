@@ -391,12 +391,22 @@ export function registerBrandCommands(program: Command): void {
             // repeating that here would show the same failure twice. On success it
             // stays silent unless something actually moved, so this line is the
             // only confirmation a fresh brand's context reached the team.
+            //
+            // `published:true` alone overstates it: the attempt can still carry
+            // per-doc errors (a partial push), or move zero docs (every doc was
+            // already in sync — push-after-write.ts's own noticeLineFor stays
+            // silent in that exact case too, see :365-374 there). Require BOTH a
+            // clean push AND real movement before claiming "reached your team".
+            const pushShared =
+              result.push?.published === true &&
+              result.push.errors === 0 &&
+              (result.push.pushed ?? 0) + (result.push.created ?? 0) > 0;
             process.stderr.write(
               `\n✓ Bootstrapped "${match.slug}" (${match.display_name})\n` +
                 `    accounts:  ${result.context.accounts.length}\n` +
                 `    context:   ${result.context_path}\n` +
                 `    narrative: ${result.narrative_path}\n` +
-                (result.push?.published
+                (pushShared
                   ? `    shared:    yes, this brand's context reached your team\n`
                   : '') +
                 (result.binding_preserved

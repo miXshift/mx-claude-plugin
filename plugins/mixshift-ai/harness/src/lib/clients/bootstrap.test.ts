@@ -358,7 +358,7 @@ describe('sortAccountsForPrimary', () => {
 });
 
 describe('bootstrapBrand — BootstrapResult.push', () => {
-  it('populated {attempted:true, published:true} on an attempted, successful push', async () => {
+  it('populated {attempted:true, published:true, pushed, created, errors} on an attempted, successful push', async () => {
     mockedPushAfterWrite.mockResolvedValue({
       published: true,
       pushed: 0,
@@ -369,7 +369,35 @@ describe('bootstrapBrand — BootstrapResult.push', () => {
     });
     const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
     expect(mockedPushAfterWrite).toHaveBeenCalledTimes(1);
-    expect(result.push).toEqual({ attempted: true, published: true });
+    // FIX E: the counts flow through additively — a caller must not infer
+    // "reached the team" from published:true alone (see the errors>0 case
+    // right below, and commands/brand.ts's pushShared gate).
+    expect(result.push).toEqual({
+      attempted: true,
+      published: true,
+      pushed: 0,
+      created: 2,
+      errors: 0,
+    });
+  });
+
+  it('populated with errors>0 on an attempted, PARTIALLY successful push (published:true, per-doc errors)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 1,
+      created: 0,
+      conflicts: 0,
+      errors: 1,
+      reports: [],
+    });
+    const result = await bootstrapBrand(suggestion([row({})]), { dataDirOverride: testDir });
+    expect(result.push).toEqual({
+      attempted: true,
+      published: true,
+      pushed: 1,
+      created: 0,
+      errors: 1,
+    });
   });
 
   it('populated {attempted:true, published:false, reason, detail} on an attempted, failed push', async () => {

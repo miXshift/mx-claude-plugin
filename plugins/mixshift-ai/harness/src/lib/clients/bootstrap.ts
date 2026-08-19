@@ -79,10 +79,22 @@ export interface BootstrapResult {
    * which publishes once itself after the binding lands) — there is
    * nothing to report yet, and fabricating a status would misrepresent an
    * attempt that never happened.
+   *
+   * `pushed`/`created`/`errors` are ADDITIVE (populated whenever
+   * `published` is true — there is nothing to count on a disabled/skipped/
+   * failed attempt, which never reaches engine.push). A caller must NOT
+   * infer "this brand's context reached the team" from `published` alone:
+   * a published attempt can still carry `errors > 0` (a partial push) or
+   * `pushed + created === 0` (every doc was already in sync — nothing
+   * actually moved). See commands/brand.ts's `pushShared` gate for the
+   * exact condition that earns the human-readable "shared: yes" line.
    */
   push?: {
     attempted: boolean;
     published: boolean;
+    pushed?: number;
+    created?: number;
+    errors?: number;
     reason?: string;
     detail?: string;
   };
@@ -191,12 +203,19 @@ export async function bootstrapBrand(
 }
 
 /** Map pushAfterWrite's result onto BootstrapResult['push'] (see its doc
- *  comment above for the `attempted` semantics). */
+ *  comment above for the `attempted` semantics and why `published:true`
+ *  alone does not mean "reached the team"). */
 function toBootstrapPushStatus(
   result: PushAfterWriteResult,
 ): NonNullable<BootstrapResult['push']> {
   if (result.published) {
-    return { attempted: true, published: true };
+    return {
+      attempted: true,
+      published: true,
+      pushed: result.pushed,
+      created: result.created,
+      errors: result.errors,
+    };
   }
   if (result.reason === 'disabled') {
     return { attempted: false, published: false, reason: result.reason };

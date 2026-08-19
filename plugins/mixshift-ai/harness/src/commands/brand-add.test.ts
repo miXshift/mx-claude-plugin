@@ -115,7 +115,7 @@ afterEach(async () => {
 });
 
 describe('brand add — push outcome in JSON output', () => {
-  it('includes push:{attempted:true,published:true} on a successful auto-publish', async () => {
+  it('includes push:{attempted:true,published:true,pushed,created,errors} on a successful auto-publish', async () => {
     mockedPushAfterWrite.mockResolvedValue({
       published: true,
       pushed: 0,
@@ -127,7 +127,7 @@ describe('brand add — push outcome in JSON output', () => {
     await runAdd('acme-widgets', ['--json']);
     const out = emittedJson();
     expect(out.status).toBe('ok');
-    expect(out.push).toEqual({ attempted: true, published: true });
+    expect(out.push).toEqual({ attempted: true, published: true, pushed: 0, created: 2, errors: 0 });
   });
 
   it('includes push:{attempted:true,published:false,reason,detail} on a failed auto-publish', async () => {
@@ -145,6 +145,34 @@ describe('brand add — push outcome in JSON output', () => {
       reason: 'failed',
       detail: 'the auth service is unreachable',
     });
+  });
+
+  it('carries errors > 0 through JSON even though published:true (a partial push is not hidden)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 1,
+      created: 0,
+      conflicts: 0,
+      errors: 1,
+      reports: [],
+    });
+    await runAdd('acme-widgets', ['--json']);
+    const out = emittedJson();
+    expect(out.push).toEqual({ attempted: true, published: true, pushed: 1, created: 0, errors: 1 });
+  });
+
+  it('carries pushed:0,created:0 through JSON when published but nothing moved', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+    await runAdd('acme-widgets', ['--json']);
+    const out = emittedJson();
+    expect(out.push).toEqual({ attempted: true, published: true, pushed: 0, created: 0, errors: 0 });
   });
 });
 
@@ -188,6 +216,45 @@ describe('brand add — human output: one success line, no duplicate failure', (
     mockedPushAfterWrite.mockResolvedValue({ published: false, reason: 'disabled' });
     await runAdd('acme-widgets');
     expect(stderr).not.toContain('reached your team');
+  });
+
+  it('omits the "reached your team" line when published but nothing actually moved (FIX E)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+    await runAdd('acme-widgets');
+    expect(stderr).not.toContain('reached your team');
+  });
+
+  it('omits the "reached your team" line when the push published but had per-doc errors (FIX E)', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 1,
+      created: 0,
+      conflicts: 0,
+      errors: 1,
+      reports: [],
+    });
+    await runAdd('acme-widgets');
+    expect(stderr).not.toContain('reached your team');
+  });
+
+  it('still prints the line when the push published with real movement and zero errors', async () => {
+    mockedPushAfterWrite.mockResolvedValue({
+      published: true,
+      pushed: 0,
+      created: 1,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+    await runAdd('acme-widgets');
+    expect(stderr).toContain('reached your team');
   });
 });
 

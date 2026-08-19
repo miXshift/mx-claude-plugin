@@ -67755,6 +67755,45 @@ var init_stake_sync = __esm({
   }
 });
 
+// src/lib/context-sync/telemetry-detail.ts
+import { homedir as homedir3 } from "node:os";
+function escapeRegExp(literal2) {
+  return literal2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function safeHomedir() {
+  try {
+    return homedir3() || "";
+  } catch {
+    return "";
+  }
+}
+function scrubDetail(detail) {
+  let out = detail;
+  const home = safeHomedir();
+  if (home) {
+    const variants = new Set(
+      [home, home.replace(/\\/g, "/"), home.replace(/\//g, "\\")].filter((v) => v.length > 0)
+    );
+    const flags = process.platform === "win32" ? "gi" : "g";
+    for (const variant of variants) {
+      out = out.replace(new RegExp(escapeRegExp(variant), flags), "~");
+    }
+  }
+  out = out.replace(PATH_TOKEN_RE, "<path>");
+  if (out.length > MAX_DETAIL_LENGTH) {
+    out = `${out.slice(0, MAX_DETAIL_LENGTH)}\u2026`;
+  }
+  return out;
+}
+var MAX_DETAIL_LENGTH, PATH_TOKEN_RE;
+var init_telemetry_detail = __esm({
+  "src/lib/context-sync/telemetry-detail.ts"() {
+    "use strict";
+    MAX_DETAIL_LENGTH = 300;
+    PATH_TOKEN_RE = /[A-Za-z]:[\\/][^\s'"<>]*(?:[\\/][^\s'"<>]+)*|~?(?:[\\/][^\s'"<>]+){2,}/g;
+  }
+});
+
 // src/lib/context-sync/push-after-write.ts
 async function pushAfterWrite(brandSlug, options = {}) {
   const t0 = Date.now();
@@ -67879,43 +67918,61 @@ function noticeLineFor(brandSlug, result) {
 }
 async function emitPushTelemetry(brandSlug, result, durationMs, dataDirOverride) {
   if (result.published) {
-    await track(
-      {
-        event_name: EventName.ContextPushCompleted,
-        outcome: "ok",
-        duration_ms: durationMs,
-        payload: {
-          trigger: "write",
-          brand: brandSlug,
-          published: true,
-          pushed: result.pushed,
-          created: result.created,
-          conflicts: result.conflicts,
-          errors: result.errors
-        }
-      },
-      dataDirOverride
+    await raceDeadline(
+      track(
+        {
+          event_name: EventName.ContextPushCompleted,
+          // Per-doc errors demote the outcome even though the attempt
+          // published SOMETHING — a partial push is not a clean success.
+          // Matches commands/context.ts's `counts.error > 0 ? 'failed' :
+          // 'ok'` convention and autosync.ts's finish() (a ran:true result
+          // with errors is ledger/telemetry 'failed', never 'success').
+          outcome: result.errors > 0 ? "failed" : "ok",
+          duration_ms: durationMs,
+          payload: {
+            trigger: "write",
+            brand: brandSlug,
+            published: true,
+            pushed: result.pushed,
+            created: result.created,
+            conflicts: result.conflicts,
+            errors: result.errors
+          }
+        },
+        dataDirOverride
+      ),
+      TELEMETRY_EMIT_BUDGET_MS
     );
     return;
   }
   if (result.reason === "disabled") return;
-  await track(
-    {
-      event_name: EventName.ContextPushCompleted,
-      outcome: result.reason === "failed" ? "failed" : "skipped",
-      duration_ms: durationMs,
-      payload: {
-        trigger: "write",
-        brand: brandSlug,
-        published: false,
-        reason: result.reason,
-        detail: result.detail
-      }
-    },
-    dataDirOverride
+  await raceDeadline(
+    track(
+      {
+        event_name: EventName.ContextPushCompleted,
+        outcome: result.reason === "failed" ? "failed" : "skipped",
+        duration_ms: durationMs,
+        payload: {
+          trigger: "write",
+          brand: brandSlug,
+          published: false,
+          reason: result.reason,
+          // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs) can embed
+          // an absolute local path in their raw Node.js message; events.ts's
+          // contract for context_sync.* payloads is slugs/counts/outcomes,
+          // never file paths — scrub before it ever reaches the queue (see
+          // telemetry-detail.ts). The unscrubbed detail still reaches the
+          // CALLER via PushAfterWriteResult / BootstrapResult.push — this
+          // scrub is telemetry-only.
+          detail: scrubDetail(result.detail)
+        }
+      },
+      dataDirOverride
+    ),
+    TELEMETRY_EMIT_BUDGET_MS
   );
 }
-var PUSH_AFTER_WRITE_BUDGET_MS, STAKE_SYNC_AFTER_WRITE_BUDGET_MS, PUSH_AFTER_WRITE_ENV, noticedBrands;
+var PUSH_AFTER_WRITE_BUDGET_MS, STAKE_SYNC_AFTER_WRITE_BUDGET_MS, TELEMETRY_EMIT_BUDGET_MS, PUSH_AFTER_WRITE_ENV, noticedBrands;
 var init_push_after_write = __esm({
   "src/lib/context-sync/push-after-write.ts"() {
     "use strict";
@@ -67925,8 +67982,10 @@ var init_push_after_write = __esm({
     init_deadline();
     init_stake_sync();
     init_telemetry();
+    init_telemetry_detail();
     PUSH_AFTER_WRITE_BUDGET_MS = 2e3;
     STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2e3;
+    TELEMETRY_EMIT_BUDGET_MS = 1e3;
     PUSH_AFTER_WRITE_ENV = "MIXSHIFT_CONTEXT_AUTOPUBLISH";
     noticedBrands = /* @__PURE__ */ new Set();
   }
@@ -68001,7 +68060,13 @@ Either pick a different slug, delete the existing directory, or pass --force to 
 }
 function toBootstrapPushStatus(result) {
   if (result.published) {
-    return { attempted: true, published: true };
+    return {
+      attempted: true,
+      published: true,
+      pushed: result.pushed,
+      created: result.created,
+      errors: result.errors
+    };
   }
   if (result.reason === "disabled") {
     return { attempted: false, published: false, reason: result.reason };
@@ -72388,6 +72453,7 @@ init_local();
 init_state();
 init_deadline();
 init_telemetry();
+init_telemetry_detail();
 var AUTOSYNC_BUDGET_MS = 2e3;
 var AUTOSYNC_THROTTLE_MS = 15 * 60 * 1e3;
 var AUTOSYNC_ENV = "MIXSHIFT_CONTEXT_AUTOSYNC";
@@ -72401,33 +72467,45 @@ async function maybeAutoSync(brandSlug, options = {}) {
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
       const finishedAt = options.now ? options.now() : /* @__PURE__ */ new Date();
-      ledgerState.last_autosync_outcome = succeeded ? "success" : "failed";
-      if (succeeded) ledgerState.last_autosync_success_at = finishedAt.toISOString();
-      await saveState(brandSlug, ledgerState, options.dataDirOverride);
+      const freshState = await loadState(brandSlug, options.dataDirOverride);
+      freshState.last_autosync_outcome = succeeded ? "success" : "failed";
+      if (succeeded) freshState.last_autosync_success_at = finishedAt.toISOString();
+      await saveState(brandSlug, freshState, options.dataDirOverride);
       if (trigger === "preflight") {
-        await track(
-          {
-            event_name: EventName.ContextAutosyncCompleted,
-            outcome: succeeded ? "ok" : "failed",
-            duration_ms: Date.now() - t0,
-            payload: {
-              trigger,
-              brand: brandSlug,
-              force: options.force ?? false,
-              ran: result.ran,
-              ...result.ran ? {
-                pulled: result.pulled,
-                pushed: result.pushed,
-                created: result.created,
-                conflicts: result.conflicts,
-                errors: result.errors
-              } : {
-                reason: result.reason,
-                ...result.reason === "failed" ? { detail: result.detail } : {}
+        await raceDeadline(
+          track(
+            {
+              event_name: EventName.ContextAutosyncCompleted,
+              outcome: succeeded ? "ok" : "failed",
+              duration_ms: Date.now() - t0,
+              payload: {
+                trigger,
+                brand: brandSlug,
+                force: options.force ?? false,
+                ran: result.ran,
+                ...result.ran ? {
+                  pulled: result.pulled,
+                  pushed: result.pushed,
+                  created: result.created,
+                  conflicts: result.conflicts,
+                  errors: result.errors
+                } : {
+                  reason: result.reason,
+                  // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs)
+                  // can embed an absolute local path in their raw
+                  // Node.js message; events.ts's contract for
+                  // context_sync.* payloads is slugs/counts/outcomes,
+                  // never file paths — scrub before it ever reaches the
+                  // queue (see telemetry-detail.ts). AutoSyncResult's own
+                  // `detail` (returned to the caller) stays unscrubbed —
+                  // this is telemetry-only.
+                  ...result.reason === "failed" ? { detail: scrubDetail(result.detail) } : {}
+                }
               }
-            }
-          },
-          options.dataDirOverride
+            },
+            options.dataDirOverride
+          ),
+          TELEMETRY_EMIT_BUDGET_MS
         );
       }
     }
@@ -77898,13 +77976,14 @@ ${close}
             ) + "\n"
           );
         } else {
+          const pushShared = result.push?.published === true && result.push.errors === 0 && (result.push.pushed ?? 0) + (result.push.created ?? 0) > 0;
           process.stderr.write(
             `
 \u2713 Bootstrapped "${match.slug}" (${match.display_name})
     accounts:  ${result.context.accounts.length}
     context:   ${result.context_path}
     narrative: ${result.narrative_path}
-` + (result.push?.published ? `    shared:    yes, this brand's context reached your team
+` + (pushShared ? `    shared:    yes, this brand's context reached your team
 ` : "") + (result.binding_preserved ? `
 \u26A0 This brand's existing sub-brand binding was preserved (not touched by --force).
 ` : "") + `
@@ -84314,13 +84393,13 @@ init_plugin_version();
 
 // src/lib/install-record.ts
 import { readFile as readFile31 } from "node:fs/promises";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 import { join as join18 } from "node:path";
 init_surface();
 var PLUGIN_KEY = "mixshift-ai@mixshift";
 var SURFACES_WITHOUT_INSTALL_RECORD = /* @__PURE__ */ new Set(["cowork"]);
 function installedPluginsPath(homeOverride) {
-  return join18(homeOverride ?? homedir3(), ".claude", "plugins", "installed_plugins.json");
+  return join18(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
 }
 function isPlausibleSha(v) {
   return typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);

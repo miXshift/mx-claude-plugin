@@ -57,10 +57,19 @@
  * instrumenting the skip path would mostly log "throttled" noise, and the
  * kill switch keeps its documented zero-fs/zero-network guarantee (telemetry
  * itself does local file I/O).
+ *
+ * The ledger save AND the telemetry emit both happen in finish(), AFTER
+ * op() (pull/sync) has already returned — op() loads and persists its OWN
+ * state object inside engine.ts's buildDocPairs, so finish() must re-load
+ * the ledger fresh rather than reusing the copy it captured before op() ran
+ * (see finish()'s own comment). The telemetry emit itself is bounded
+ * (TELEMETRY_EMIT_BUDGET_MS, raced via raceDeadline) so a locked/contended
+ * local queue.jsonl cannot extend this hook's wall-clock promise beyond that
+ * small extra margin, on top of AUTOSYNC_BUDGET_MS.
  */
 
 import { pull, sync } from './engine.js';
-import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
+import { PUSH_AFTER_WRITE_ENV, TELEMETRY_EMIT_BUDGET_MS } from './push-after-write.js';
 import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
@@ -68,6 +77,7 @@ import { loadState, resolveLedgerIdentity, saveState, type ContextSyncState } fr
 import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { DocActionReport } from './types.js';
 import { track, EventName } from '../telemetry/index.js';
+import { scrubDetail } from './telemetry-detail.js';
 
 /** Overall wall-clock budget for one autosync attempt (network inclusive). */
 export const AUTOSYNC_BUDGET_MS = 2_000;
@@ -159,9 +169,24 @@ export async function maybeAutoSync(
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
       const finishedAt = options.now ? options.now() : new Date();
-      ledgerState.last_autosync_outcome = succeeded ? 'success' : 'failed';
-      if (succeeded) ledgerState.last_autosync_success_at = finishedAt.toISOString();
-      await saveState(brandSlug, ledgerState, options.dataDirOverride);
+      // Re-load the ledger FRESH rather than reusing `ledgerState` (captured
+      // above at the throttle-stamp write, BEFORE op() ran): pull/push/sync
+      // (engine.ts's buildDocPairs) load and persist their OWN state object,
+      // independent of this closure's copy — by the time we get here the
+      // on-disk ledger already carries every per-doc revision op() just
+      // wrote (engine.ts's own saveState calls) and, when the stake leg ran,
+      // its `stakes` stamp too. Saving `ledgerState` here would overwrite
+      // ALL of that with its PRE-ATTEMPT snapshot — a successful pull would
+      // then read back as 'diverged' on the very next status check.
+      // `state`/`ledgerState` above are untouched by this reload (they stay
+      // exactly what the identity/throttle-stamp guard logic before this
+      // point needs); the reload is scoped to the save right below. See the
+      // FIX A regression test ("finish() does not clobber the engine's own
+      // save").
+      const freshState = await loadState(brandSlug, options.dataDirOverride);
+      freshState.last_autosync_outcome = succeeded ? 'success' : 'failed';
+      if (succeeded) freshState.last_autosync_success_at = finishedAt.toISOString();
+      await saveState(brandSlug, freshState, options.dataDirOverride);
       // Preflight attempts only: the manual `mixshift context autosync`
       // wrapper (commands/context.ts) emits its OWN ContextAutosyncCompleted
       // row covering every outcome — including the early skips this tail
@@ -170,37 +195,57 @@ export async function maybeAutoSync(
       // event is preflight-scoped.
       if (trigger === 'preflight') {
         // AWAITED, not fire-and-forget: this fires once per real attempt (at
-        // most once per brand per AUTOSYNC_THROTTLE_MS), not per query, so
-        // track()'s cost (a handful of local file ops, no network) is
-        // negligible against the 2s budget. A detached `void track(...)`
-        // would risk the emit racing the process (or a caller's cleanup)
-        // exiting before the queue append lands — see push-after-write.ts's
-        // identical reasoning for its own ContextPushCompleted emit.
-        await track(
-          {
-            event_name: EventName.ContextAutosyncCompleted,
-            outcome: succeeded ? 'ok' : 'failed',
-            duration_ms: Date.now() - t0,
-            payload: {
-              trigger,
-              brand: brandSlug,
-              force: options.force ?? false,
-              ran: result.ran,
-              ...(result.ran
-                ? {
-                    pulled: result.pulled,
-                    pushed: result.pushed,
-                    created: result.created,
-                    conflicts: result.conflicts,
-                    errors: result.errors,
-                  }
-                : {
-                    reason: result.reason,
-                    ...(result.reason === 'failed' ? { detail: result.detail } : {}),
-                  }),
+        // most once per brand per AUTOSYNC_THROTTLE_MS), not per query. The
+        // WAIT is bounded too (TELEMETRY_EMIT_BUDGET_MS, via raceDeadline):
+        // track()'s local queue-append is normally negligible against the 2s
+        // sync budget, but a locked/contended queue.jsonl could otherwise
+        // stall this read-path hook indefinitely with no bound of its own.
+        // On deadline we stop WAITING, not the write — the append usually
+        // still lands because the process lives past this call; only a
+        // pathological stall plus an immediate process exit loses the event,
+        // an acceptable corner (see push-after-write.ts, which carries the
+        // identical bound for its own ContextPushCompleted emit). A detached
+        // `void track(...)` would reopen a different risk: the emit racing
+        // the process (or a caller's cleanup) exiting before the queue
+        // append lands.
+        await raceDeadline(
+          track(
+            {
+              event_name: EventName.ContextAutosyncCompleted,
+              outcome: succeeded ? 'ok' : 'failed',
+              duration_ms: Date.now() - t0,
+              payload: {
+                trigger,
+                brand: brandSlug,
+                force: options.force ?? false,
+                ran: result.ran,
+                ...(result.ran
+                  ? {
+                      pulled: result.pulled,
+                      pushed: result.pushed,
+                      created: result.created,
+                      conflicts: result.conflicts,
+                      errors: result.errors,
+                    }
+                  : {
+                      reason: result.reason,
+                      // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs)
+                      // can embed an absolute local path in their raw
+                      // Node.js message; events.ts's contract for
+                      // context_sync.* payloads is slugs/counts/outcomes,
+                      // never file paths — scrub before it ever reaches the
+                      // queue (see telemetry-detail.ts). AutoSyncResult's own
+                      // `detail` (returned to the caller) stays unscrubbed —
+                      // this is telemetry-only.
+                      ...(result.reason === 'failed'
+                        ? { detail: scrubDetail(result.detail) }
+                        : {}),
+                    }),
+              },
             },
-          },
-          options.dataDirOverride,
+            options.dataDirOverride,
+          ),
+          TELEMETRY_EMIT_BUDGET_MS,
         );
       }
     }

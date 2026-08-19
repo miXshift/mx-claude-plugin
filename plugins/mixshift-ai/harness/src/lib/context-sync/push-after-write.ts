@@ -18,7 +18,10 @@
  * genuine background publish would simply never land. Instead the call is
  * bounded (PUSH_AFTER_WRITE_BUDGET_MS) and result-first — the local write is
  * already durable, so the awaited result is discarded and never surfaced, and
- * the worst the await costs is the wall-clock budget.
+ * the worst the await costs is the wall-clock budget PLUS one small bounded
+ * tail: the telemetry emit itself (see emitPushTelemetry) is raced against
+ * TELEMETRY_EMIT_BUDGET_MS so a locked/contended local queue.jsonl can't
+ * extend this seam's promise indefinitely either.
  *
  * HARD CONSTRAINTS (mirrored in tests):
  *   - Never fails the user's write: the local write is already durable by the
@@ -75,6 +78,7 @@ import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-syn
 import type { TimelineClient } from '../timeline/client.js';
 import type { DocActionReport } from './types.js';
 import { track, EventName } from '../telemetry/index.js';
+import { scrubDetail } from './telemetry-detail.js';
 
 // Re-exported for existing consumers; the canonical definition moved to
 // lib/timeline/stake-sync.ts when the autosync read preflight gained the
@@ -92,6 +96,20 @@ export const PUSH_AFTER_WRITE_BUDGET_MS = 2_000;
  *  nothing changed, and idempotency keys make a re-run convergent when a
  *  budget death strands a partial sync). */
 export const STAKE_SYNC_AFTER_WRITE_BUDGET_MS = 2_000;
+
+/**
+ * Bound for the AWAITED telemetry emit itself (see emitPushTelemetry below
+ * and autosync.ts's finish()) — separate from PUSH_AFTER_WRITE_BUDGET_MS /
+ * AUTOSYNC_BUDGET_MS, which bound the NETWORK attempt. track() only does
+ * local disk I/O (a queue.jsonl append), normally negligible against those
+ * budgets, but a locked/contended queue file could otherwise stall this
+ * write seam (and the autosync read preflight) indefinitely with no bound of
+ * its own. Deliberately small: on deadline we stop WAITING, not the write —
+ * the append usually still lands because the process lives past this call;
+ * see emitPushTelemetry for the one corner where it doesn't. Exported so
+ * tests can assert against it directly (mirrors PUSH_AFTER_WRITE_BUDGET_MS).
+ */
+export const TELEMETRY_EMIT_BUDGET_MS = 1_000;
 
 /** Env kill switch. 'off' | '0' | 'false' (case-insensitive) disables. */
 export const PUSH_AFTER_WRITE_ENV = 'MIXSHIFT_CONTEXT_AUTOPUBLISH';
@@ -425,6 +443,13 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
  * `void track(...)` would reopen exactly that risk for this rare,
  * high-value signal — the process could exit (or, in a test, the caller
  * could tear down its temp dir) before the queue append finishes.
+ *
+ * The WAIT is bounded too (TELEMETRY_EMIT_BUDGET_MS, via raceDeadline): on
+ * deadline we stop awaiting track() — its local queue.jsonl append usually
+ * still lands regardless, because the process lives on past this call; only
+ * a pathological stall (a locked queue file) landing at the exact moment the
+ * process ALSO exits loses the event, an acceptable corner against the
+ * alternative of an unbounded wait stalling every write seam.
  */
 async function emitPushTelemetry(
   brandSlug: string,
@@ -433,39 +458,57 @@ async function emitPushTelemetry(
   dataDirOverride: string | undefined,
 ): Promise<void> {
   if (result.published) {
-    await track(
-      {
-        event_name: EventName.ContextPushCompleted,
-        outcome: 'ok',
-        duration_ms: durationMs,
-        payload: {
-          trigger: 'write',
-          brand: brandSlug,
-          published: true,
-          pushed: result.pushed,
-          created: result.created,
-          conflicts: result.conflicts,
-          errors: result.errors,
+    await raceDeadline(
+      track(
+        {
+          event_name: EventName.ContextPushCompleted,
+          // Per-doc errors demote the outcome even though the attempt
+          // published SOMETHING — a partial push is not a clean success.
+          // Matches commands/context.ts's `counts.error > 0 ? 'failed' :
+          // 'ok'` convention and autosync.ts's finish() (a ran:true result
+          // with errors is ledger/telemetry 'failed', never 'success').
+          outcome: result.errors > 0 ? 'failed' : 'ok',
+          duration_ms: durationMs,
+          payload: {
+            trigger: 'write',
+            brand: brandSlug,
+            published: true,
+            pushed: result.pushed,
+            created: result.created,
+            conflicts: result.conflicts,
+            errors: result.errors,
+          },
         },
-      },
-      dataDirOverride,
+        dataDirOverride,
+      ),
+      TELEMETRY_EMIT_BUDGET_MS,
     );
     return;
   }
   if (result.reason === 'disabled') return; // kill switch: zero fs/network, telemetry included
-  await track(
-    {
-      event_name: EventName.ContextPushCompleted,
-      outcome: result.reason === 'failed' ? 'failed' : 'skipped',
-      duration_ms: durationMs,
-      payload: {
-        trigger: 'write',
-        brand: brandSlug,
-        published: false,
-        reason: result.reason,
-        detail: result.detail,
+  await raceDeadline(
+    track(
+      {
+        event_name: EventName.ContextPushCompleted,
+        outcome: result.reason === 'failed' ? 'failed' : 'skipped',
+        duration_ms: durationMs,
+        payload: {
+          trigger: 'write',
+          brand: brandSlug,
+          published: false,
+          reason: result.reason,
+          // Non-ENOENT fs errors (EBUSY/EPERM from readLocalDocs) can embed
+          // an absolute local path in their raw Node.js message; events.ts's
+          // contract for context_sync.* payloads is slugs/counts/outcomes,
+          // never file paths — scrub before it ever reaches the queue (see
+          // telemetry-detail.ts). The unscrubbed detail still reaches the
+          // CALLER via PushAfterWriteResult / BootstrapResult.push — this
+          // scrub is telemetry-only.
+          detail: scrubDetail(result.detail),
+        },
       },
-    },
-    dataDirOverride,
+      dataDirOverride,
+    ),
+    TELEMETRY_EMIT_BUDGET_MS,
   );
 }
