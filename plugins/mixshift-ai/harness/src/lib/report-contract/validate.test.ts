@@ -57,6 +57,14 @@ describe('report-contract fixtures (golden + negative, run_fixtures.py semantics
   // count is deliberately not pinned, because the append protocol adds a new
   // negative fixture every time a defect ships (E10+ arrive from upstream on
   // re-vendor) and a pinned count would make every append a test edit.
+  //
+  // NAMING, and it is a real hazard rather than a style rule: the `E<n>`
+  // sequence belongs to UPSTREAM's append protocol, and they keep appending
+  // into it on their own cadence. A fixture WE add under the same sequence
+  // will eventually collide by name with a different upstream incident on a
+  // re-vendor, and the loser is decided by whoever copies last. Fixtures for
+  // rules that are OURS (UNIT-2 and anything after it) therefore carry an
+  // `MX<n>-` prefix, which cannot collide in either direction.
   it('negative fixtures directory carries at least the nine original incidents', () => {
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
       expect(

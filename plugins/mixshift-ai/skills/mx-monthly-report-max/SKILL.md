@@ -87,8 +87,11 @@ mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out run.json
 
 (params: `{"merchant": {"sellerId", "marketplaceId"}, "month", "grouping", "includeYoY"}`;
 oversize accounts return an async handle — poll with `mixshift intelligence poll`, never
-cancel on time.) The bundle shape is `{ok, mom: {ops, ads, crossDomain}, yoy: {ops} | null,
-headline, limitations, meta}`. `run.json` is never fed to the extractor as-is — Step 2 pulls
+cancel on time.) The bundle shape is `{ok, mom: {ops, ads, crossDomain}, yoy: {ops, ads,
+crossDomain} | null, headline, limitations, meta}` — where the YoY leg's `ads` and
+`crossDomain` are ALWAYS null, because exactly one ads bridge runs per request, against the
+MoM window. That is the leg's scope, not missing data, and the run says so in its own
+limitations. `run.json` is never fed to the extractor as-is — Step 2 pulls
 each nested envelope out by name, one period-prefixed figures document per envelope.
 
 On `not_enrolled` or a service error: **degrade and label** — name the degradation in the
