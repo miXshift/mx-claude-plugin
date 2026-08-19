@@ -35,6 +35,9 @@
  *   COMP-1    a claim's comparison_basis must match its figures' basis; a
  *             comparison claim may not mix bases
  *   UNIT-1    an item_days figure never renders as plain "days"
+ *   UNIT-2    a figure's unit must not contradict the served unit contract its
+ *             source_path resolved to, and a percent-family figure may not
+ *             claim an implausible magnitude
  *
  * The input document is untrusted JSON (it is assembled by a report-writing
  * pass and may be malformed), so every field the Python source reads via
@@ -53,6 +56,43 @@ const CAUSAL_LANG =
   /\b(caused?|causes|causing|drove|drives?|driving|due to|led to|leads to|because)\b/i;
 const DAYS_TEXT = /\b\d[\d,]*\s*days?\b/i;
 
+/**
+ * UNIT-2's percent family, mapped to the factor that turns a STORED value into
+ * the percentage the reader sees. `ratio` and `points_fraction` store a
+ * fraction and are displayed ×100; `percent` / `points` / `percent-points` /
+ * `pts` are already whole. Every one of these tokens is handled by
+ * render-report.ts's `formatFigureValue`; the scales here mirror it exactly,
+ * because the backstop below is a statement about the DISPLAYED number.
+ */
+const PERCENT_FAMILY_SCALE: Record<string, number> = {
+  ratio: 100,
+  points_fraction: 100,
+  percent: 1,
+  points: 1,
+  'percent-points': 1,
+  pts: 1,
+};
+
+/**
+ * The percent-family plausibility ceiling, in DISPLAYED percent.
+ *
+ * Deliberately loose. This is not a business rule about what a rate may be --
+ * it is a scale-error detector, and the error it detects is an order of
+ * magnitude off, not a few points: a fraction-scaled value (0.35) mislabeled
+ * as an already-whole `percent`, or the far more common inverse, a whole
+ * number (35) labeled `ratio` and therefore displayed as 3500%. Anything that
+ * survives 1000% is a number nobody could mistake for a rate.
+ *
+ * ⚠ It is not free of false positives, and the one real class is worth naming:
+ * ACOS and TACoS are genuine rates that pass 1000% on an account with
+ * near-zero sales against live spend (spend 12× sales is ACOS 1200%). Those
+ * are real readings, not scale errors. The rule reports rather than throws, so
+ * such a figure surfaces as a finding to be dismissed by a human -- which is
+ * the right trade against the alternative of a 3500% "rate" shipping silently,
+ * the failure this rule exists to end.
+ */
+const PERCENT_IMPLAUSIBLE_LIMIT = 1000;
+
 export type RuleId =
   | 'BASIS-1'
   | 'TRACE-1'
@@ -64,7 +104,8 @@ export type RuleId =
   | 'CAUSE-1'
   | 'CAUSE-2'
   | 'COMP-1'
-  | 'UNIT-1';
+  | 'UNIT-1'
+  | 'UNIT-2';
 
 export interface Finding {
   rule: RuleId;
@@ -91,6 +132,19 @@ export interface FigureCommon {
   label: string;
   value?: number;
   unit?: string;
+  /** The unit the ANALYSIS ENGINE's served contract assigns to the envelope
+   *  path this figure was extracted from -- `metrics[].format` /
+   *  `insights[].format` (engine >= 0.2.0) or `crossDomain.pairFormats`
+   *  (>= 0.3.0), resolved in extract.ts where the envelope is in hand and
+   *  stamped onto the figure so it survives document assembly. Absent
+   *  whenever no contract was served (a pre-0.2.0 envelope, a hand-authored
+   *  figure, a Derived), and UNIT-2 never fires on an absent one.
+   *
+   *  It duplicates `unit` at the moment of extraction, which is the point:
+   *  `unit` is the mutable field a downstream assembly pass may rewrite,
+   *  `served_unit` is what the engine asserted, and UNIT-2 is the check that
+   *  the two still agree by the time the document reaches the render seam. */
+  served_unit?: string;
   basis?: string;
   /** Only meaningful on a Figure, but read defensively off any resolved
    *  object (matches the Python source's `f.get("caveats", [])`). */
@@ -742,6 +796,56 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
       quotedIds(block.figure_refs, block.claim_refs, claims),
       block.display_text,
     );
+  }
+
+  // UNIT-2 -- a unit must describe the value it labels.
+  //
+  // THE HOLE THIS CLOSES. Every rule above checks a RELATIONSHIP: claims
+  // against figures, bases against each other, caveats against quotation
+  // sites. Not one of them ever asked whether a figure's `unit` is the right
+  // unit for that figure's `value`, so a dollar amount labeled 'percent'
+  // satisfied all of them and shipped -- twice, in the same quarter. A unit
+  // error is only visible in rendered output, and by then nothing is checking.
+  //
+  // Two independent predicates, both scoped to what can be decided from the
+  // document alone:
+  //
+  //  (a) CONTRADICTS THE SERVED CONTRACT. When `served_unit` is present, the
+  //      analysis engine asserted this figure's unit (see `served_unit`), and
+  //      `unit` disagreeing means something rewrote it after extraction. This
+  //      NEVER fires when no contract was served -- a pre-0.2.0 envelope, a
+  //      hand-authored figure, a Derived. Version skew must not manufacture
+  //      findings: the rule fails only where a contract EXISTS and disagrees.
+  //
+  //  (b) IMPLAUSIBLE PERCENT MAGNITUDE. A cheap backstop that needs no served
+  //      contract at all, so it still covers the unserved figures (a) cannot
+  //      reach. See PERCENT_IMPLAUSIBLE_LIMIT.
+  //
+  // Per FIGURE, not per quotation site (unlike UNIT-1): this is a property of
+  // the figure itself, wrong whether or not anyone quotes it. Derived objects
+  // are walked too -- they carry units and are exactly where a recompute can
+  // change scale without changing the label.
+  for (const f of allFigs.values()) {
+    const unit = f.unit;
+    const servedUnit = f.served_unit;
+    if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
+      findings.push({
+        rule: 'UNIT-2',
+        subject: f.id,
+        detail: `unit '${unit ?? ''}' contradicts the served contract '${servedUnit}'`,
+      });
+    }
+    const scale = unit !== undefined ? PERCENT_FAMILY_SCALE[unit] : undefined;
+    if (scale !== undefined && isFiniteNumber(f.value)) {
+      const displayed = Math.abs(f.value) * scale;
+      if (displayed > PERCENT_IMPLAUSIBLE_LIMIT) {
+        findings.push({
+          rule: 'UNIT-2',
+          subject: f.id,
+          detail: `unit '${unit}' renders ${f.value} as ${displayed.toFixed(1)}%, past the ${PERCENT_IMPLAUSIBLE_LIMIT}% plausibility ceiling — check for a ratio/percent scale error`,
+        });
+      }
+    }
   }
 
   return findings;

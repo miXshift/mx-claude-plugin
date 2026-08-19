@@ -16,13 +16,46 @@
  * extraction emits -- exactly as the upstream Python extractor does, which
  * is the cross-implementation parity this path must never break.
  *
+ * ── UNITS COME FROM THE ENGINE NOW ──────────────────────────────────────
+ * The analysis engine SERVES its own unit and severity contract, and those
+ * served values are authoritative. Read `envelope.engineVersion` (never
+ * `meta.engineSha`, which identifies a build, not a contract) and gate:
+ *   >= 0.2.0  `metrics[].format` and `insights[].format`
+ *             ({display, decimals, deltaUnit, direction}, lifted verbatim
+ *             from the engine's METRIC_DEFINITIONS), and `caveats[].severity`
+ *             (blocking | disclosure | context), computed server-side.
+ *   >= 0.3.0  `crossDomain.pairFormats` -- the unit contract for every served
+ *             crossDomain pair, dotted-keyed ('ops.revenue', 'ads.spend',
+ *             'tacos', 'tacosDecomposition', 'aspVsAdAov.asp', ...).
+ * Older engines simply omit them, so the local tables below survive as an
+ * explicit PRE-0.2.0 FALLBACK and nothing else. Two rules are load-bearing:
+ *   - An ABSENT served `format` on a >= 0.2.0 envelope means "this build
+ *     cannot format this metric", NEVER "count". The engine states that in
+ *     `metricFormatFor`'s own comment, and it is precisely the consumer-side
+ *     defect the field exists to kill: our `?? 'count'` fallback is how
+ *     ad-attributed DOLLARS rendered as bare numbers. On the served path an
+ *     absent format yields `CANNOT_FORMAT`, which the renderer prints WITH a
+ *     visible token rather than as a naked figure.
+ *   - A served `severity` is used VERBATIM. Severity is the engine's
+ *     judgment, and it can be RUN-DEPENDENT -- `lost_sales_regime_guard` is
+ *     `blocking` when the guard only DETECTED a suspect reference (the
+ *     suspect number is still in the totals, so neither the row nor the
+ *     lost-sales total may be quoted bare) and `disclosure` when it was
+ *     APPLIED (the number was corrected). No consumer-side kind-to-severity
+ *     table can express that, which is the whole argument for retiring ours.
+ * If a served unit is ever wrong, file it upstream -- do not patch around it
+ * here.
+ *
  * ⚠ THAT PARITY IS ABOUT SHAPE -- figure ids, source paths, values, and
  * which figures get emitted -- NOT about every field's contents. Four unit
- * LABELS deliberately diverge from `extract_figures.py`, because the Python
- * source labels them wrongly and a report that prints "22448.2%" for $22.4K
- * is worse than a temporary fork. All four are the same defect -- a unit that
- * does not describe the value stored -- and all four are settled against the
- * engine's own registry (`METRIC_DEFINITIONS`) and formatters:
+ * LABELS deliberately diverge from `extract_figures.py` ON THE PRE-0.2.0
+ * FALLBACK PATH, because the Python source labels them wrongly and a report
+ * that prints "22448.2%" for $22.4K is worse than a temporary fork. All four
+ * are the same defect -- a unit that does not describe the value stored --
+ * and all four are settled against the engine's own registry
+ * (`METRIC_DEFINITIONS`) and formatters, i.e. they are the served contract
+ * hand-copied. On a served envelope they are moot: the engine answers
+ * directly.
  *   (1) a bridge leg takes its unit from the ANCHOR metric, not from
  *       `component.valueUnit`;
  *   (2) `duo.*.delta_pts` is `points_fraction`, not `points`;
@@ -60,20 +93,28 @@ import type { Figure, Population, PopulationMember, CaveatRegistryEntry } from '
 const TOL = 0.011; // cent-level float tolerance on currency identities
 
 // ---------------------------------------------------------------------------
-// INTERIM-UNTIL-CATALOG metadata (the service catalog owns this eventually).
+// PRE-0.2.0 FALLBACK ONLY. Not the authority any more.
 //
-// Every entry below is now reconciled against the ENGINE's own metric
-// registry (`METRIC_DEFINITIONS[key].display`), which is the authority on how
-// a metric's LEVEL renders. Where our token and the engine's disagreed, the
-// engine won. Two conventions to keep straight while reading this:
+// These two tables are a hand-copy of the engine's metric registry, and the
+// engine now publishes that registry directly as `metrics[].format` /
+// `insights[].format` (>= 0.2.0). On any envelope that serves a format, the
+// served value wins and NOTHING below is consulted. They survive solely so a
+// pre-0.2.0 envelope still extracts with the units it extracted with before,
+// and they are frozen at that job: a NEW metric key does not belong here, it
+// belongs in the engine registry, where it is served to every consumer at
+// once. See `resolveLevelUnit` / `resolveChangeUnit` for the gate.
+//
+// The tables' own defect is exactly why they are being retired: a key missing
+// here falls back to 'count', so `ad_driven_sales` -- dollars -- rendered as a
+// bare number until someone noticed. A served format cannot go stale that way,
+// and its ABSENCE means "cannot format", never "count".
+//
+// Two conventions to keep straight while reading this:
 //   - our `ratio` means a stored FRACTION rendered ×100 with a "%" affix,
 //     which is exactly the engine's `percent`. These agree; they are not a
 //     defect. (Our `percent` means an ALREADY-WHOLE number — never the right
 //     mapping for an engine `percent` metric.)
 //   - our `count` is a whole bare number, i.e. the engine's `number`.
-// The key sets themselves are pinned to the engine's `OPS_FAMILY_METRICS` and
-// `ADS_METRIC_KEYS`: a key missing here silently falls back to 'count' below,
-// which is how dollar metrics ended up rendering as bare counts.
 // ---------------------------------------------------------------------------
 const OPS_UNITS: Record<string, string> = {
   ops: 'currency',
@@ -204,22 +245,229 @@ const AV_LANE_UNITS: Record<'asp' | 'adAov', string> = {
 // wherever this file emits them.
 // ---------------------------------------------------------------------------
 
-/** The unit a metric's CHANGE carries, given its level unit -- for the delta
- *  figure itself and for every leg that foots to it. Identity except for rate
- *  metrics, whose change is in points, stored as a fraction. */
+/** PRE-0.2.0 FALLBACK. The unit a metric's CHANGE carries, given its level
+ *  unit -- for the delta figure itself and for every leg that foots to it.
+ *  Identity except for rate metrics, whose change is in points, stored as a
+ *  fraction. The served contract states this directly as `deltaUnit`; this is
+ *  the inference we had to make before it did. */
 function changeUnitOf(levelUnit: string): string {
   return levelUnit === 'ratio' ? 'points_fraction' : levelUnit;
 }
 
-/** The unit for a bridge leg anchored on `metricKey`. The `?? 'count'`
- *  fallback deliberately matches the one the anchor's OWN p1/p2/delta figures
- *  use for an unmapped key, so a leg and the net change it foots to can never
- *  disagree about their unit. */
-function bridgeLegUnit(unitsMap: Record<string, string>, metricKey: string | undefined): string {
-  return changeUnitOf((metricKey && unitsMap[metricKey]) ?? 'count');
+// ---------------------------------------------------------------------------
+// THE SERVED UNIT CONTRACT (engine >= 0.2.0 / >= 0.3.0) -- the authority.
+// ---------------------------------------------------------------------------
+
+/** `metrics[].format` / `insights[].format` / a `crossDomain.pairFormats`
+ *  entry. The engine's `EnvelopeMetricFormat` / `CrossDomainPairFormat`, read
+ *  defensively: this arrives inside the same untrusted JSON as everything
+ *  else, so every field is validated before it is trusted rather than cast. */
+interface ServedFormat {
+  /** Engine `DisplayUnit`: currency | currency-2dp | number | percent |
+   *  percent-points. How a LEVEL renders. */
+  display: string;
+  /** Digits after the decimal point that display carries. */
+  decimals?: number;
+  /** How a CHANGE reads: 'absolute' in the metric's own unit, 'pts' in
+   *  percentage points (every rate metric). */
+  deltaUnit?: string;
 }
 
-// Which envelope caveat kinds bar bare quotation of a figure they ride on.
+/** A resolved unit, plus whatever else the served contract determines about
+ *  how the figure prints. `served` marks the unit as ENGINE-ASSERTED, which is
+ *  what lets the figure carry `served_unit` for UNIT-2 to check against. */
+interface UnitSpec {
+  unit: string;
+  precision?: number;
+  served?: boolean;
+}
+
+type SemVer = readonly [number, number, number];
+
+/** `metrics[].format`, `insights[].format`, `caveats[].severity`. */
+const SERVED_FORMAT_MIN: SemVer = [0, 2, 0];
+/** `crossDomain.pairFormats`. */
+const SERVED_PAIR_FORMATS_MIN: SemVer = [0, 3, 0];
+
+/** Engine `DisplayUnit` -> our renderer's LEVEL token. The engine's `percent`
+ *  stores a FRACTION rendered ×100 with a "%" affix, which is our `ratio`
+ *  exactly -- our own `percent` (an already-whole number) is never the right
+ *  mapping for it. An unmapped display is NOT coerced: the engine's token is
+ *  passed through verbatim, so a DisplayUnit member added upstream renders
+ *  through the renderer's unknown-unit fallback (number + visible token) and
+ *  is reportable, instead of being quietly rounded into one of ours. */
+const DISPLAY_UNIT: Record<string, string> = {
+  currency: 'currency',
+  'currency-2dp': 'currency-2dp',
+  number: 'number',
+  percent: 'ratio',
+  'percent-points': 'percent-points',
+};
+
+/** The unit a figure carries when the engine SERVES a contract but has no
+ *  entry for this figure -- version skew, i.e. the sidecar was written by a
+ *  newer engine than the one that built the envelope. It is deliberately NOT
+ *  a unit: the renderer's unknown-unit fallback prints the number with this
+ *  token attached, so a reader sees "we do not know how to label this" rather
+ *  than a bare number they will read as a count. Never emitted on the
+ *  pre-0.2.0 fallback path, where absence genuinely means "old engine". */
+const CANNOT_FORMAT = 'unformattable';
+
+/** `envelope.engineVersion` -> [major, minor, patch], or null when absent or
+ *  unparseable (both mean "assume pre-0.2.0" -- the fallback path).
+ *
+ *  Reads ONLY `envelope.engineVersion`. `meta.engineSha` identifies a build,
+ *  not a contract, and is never a version gate.
+ *
+ *  A prerelease/build suffix ('0.3.0-rc.1') is ignored, so an rc satisfies its
+ *  own release's gate. That is the safe direction: an rc of 0.3.0 does serve
+ *  pairFormats, and the alternative would fall back on a build that has the
+ *  contract. */
+function parseEngineVersion(raw: unknown): SemVer | null {
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  const m = /^\s*v?(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(raw));
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+}
+
+function engineAtLeast(v: SemVer | null, min: SemVer): boolean {
+  if (!v) return false;
+  for (let i = 0; i < 3; i++) {
+    if (v[i] !== min[i]) return v[i] > min[i];
+  }
+  return true;
+}
+
+/** Which served blocks this envelope actually carries, decided once per
+ *  extraction and threaded down rather than re-derived per figure. */
+interface ServedContract {
+  /** engine >= 0.2.0: metrics[]/insights[] carry `format`. When true, an
+   *  ABSENT format means CANNOT_FORMAT and the local tables are not consulted
+   *  at all. */
+  formats: boolean;
+  /** The `crossDomain.pairFormats` block, present only when the engine is
+   *  >= 0.3.0 AND the block is actually there. */
+  pairFormats: Rec | undefined;
+}
+
+function servedContractOf(env: Rec, crossDomain: Rec | undefined): ServedContract {
+  const version = parseEngineVersion(env.engineVersion);
+  const pf = engineAtLeast(version, SERVED_PAIR_FORMATS_MIN)
+    ? asRecord(crossDomain?.pairFormats)
+    : undefined;
+  return { formats: engineAtLeast(version, SERVED_FORMAT_MIN), pairFormats: pf };
+}
+
+/** Validate one served format object. A block missing a usable `display` is
+ *  treated as ABSENT rather than partially trusted -- same rule, same reason:
+ *  we would otherwise be inventing the half we could not read. */
+function readServedFormat(v: unknown): ServedFormat | undefined {
+  const r = asRecord(v);
+  if (!r) return undefined;
+  if (typeof r.display !== 'string' || r.display === '') return undefined;
+  const out: ServedFormat = { display: r.display };
+  if (typeof r.decimals === 'number' && Number.isFinite(r.decimals) && r.decimals >= 0) {
+    out.decimals = Math.trunc(r.decimals);
+  }
+  if (typeof r.deltaUnit === 'string') out.deltaUnit = r.deltaUnit;
+  return out;
+}
+
+/** Read a `format` off a metric summary or an insight entry. The engine puts
+ *  it on both; on an insight it can sit on the entry or on its nested
+ *  `insight` object depending on which shape the caller unwrapped. */
+function formatOf(...candidates: unknown[]): ServedFormat | undefined {
+  for (const c of candidates) {
+    const f = readServedFormat(c);
+    if (f) return f;
+  }
+  return undefined;
+}
+
+/** `decimals` -> the figure's `precision`. Carried through because the served
+ *  contract's precision is part of the same answer as its unit: `weeks_of_cover`
+ *  is display 'number' with decimals 1, and dropping the 1 would print "12"
+ *  where the fallback path prints "12.4". */
+function specOf(unit: string, fmt: ServedFormat): UnitSpec {
+  const spec: UnitSpec = { unit, served: true };
+  if (fmt.decimals !== undefined) spec.precision = fmt.decimals;
+  return spec;
+}
+
+/** The LEVEL unit (a p1/p2 figure). Served contract wins; on a served
+ *  envelope an absent format is CANNOT_FORMAT, never 'count'. */
+function resolveLevelUnit(
+  served: ServedContract,
+  fmt: ServedFormat | undefined,
+  metricKey: string | undefined,
+  fallback: Record<string, string>,
+): UnitSpec {
+  if (served.formats) {
+    if (!fmt) return { unit: CANNOT_FORMAT };
+    return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
+  }
+  return { unit: (metricKey && fallback[metricKey]) ?? 'count' };
+}
+
+/** The CHANGE unit -- a metric's own delta, an entity's `netChange`, and
+ *  every bridge leg that foots to one of those. The engine states the rule
+ *  mechanically: `deltaUnit: 'pts'` means the change reads in percentage
+ *  points, stored as a fraction (our `points_fraction`); `absolute` means the
+ *  change is in the level's own unit. This is the same rule `changeUnitOf`
+ *  encodes for the fallback path -- now read from the engine instead of
+ *  inferred from our own level token. */
+function resolveChangeUnit(
+  served: ServedContract,
+  fmt: ServedFormat | undefined,
+  metricKey: string | undefined,
+  fallback: Record<string, string>,
+): UnitSpec {
+  if (served.formats) {
+    if (!fmt) return { unit: CANNOT_FORMAT };
+    if (fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
+    return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
+  }
+  return { unit: changeUnitOf((metricKey && fallback[metricKey]) ?? 'count') };
+}
+
+/** A crossDomain figure's unit, from `pairFormats[<dotted path>]`. Same two
+ *  rules as the metric path: the served contract wins outright, and when the
+ *  block IS served but the path is missing (skew against the engine's closed
+ *  path union) that is CANNOT_FORMAT, not a guess. `fallback` is the unit
+ *  this extractor used before the contract existed. */
+function resolvePairUnit(
+  served: ServedContract,
+  path: string,
+  kind: 'level' | 'change',
+  fallback: string,
+): UnitSpec {
+  const pf = served.pairFormats;
+  if (!pf) return { unit: fallback };
+  const fmt = readServedFormat(pf[path]);
+  if (!fmt) return { unit: CANNOT_FORMAT };
+  if (kind === 'change' && fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
+  return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
+}
+
+// ---------------------------------------------------------------------------
+// PRE-0.2.0 FALLBACK ONLY -- which envelope caveat kinds bar bare quotation of
+// a figure they ride on.
+//
+// The engine now computes severity server-side and publishes it on every
+// caveat (>= 0.2.0), and a served severity is used VERBATIM. This table is
+// retained only for older envelopes, and it is retained knowing it is WRONG in
+// the general case, in two ways a consumer-side table cannot fix:
+//   1. It defaults an unrecognized kind to 'disclosure', so every kind the
+//      engine adds lands silently DOWNGRADED until somebody edits this file --
+//      `vc_shipped_view` sat at that default from the day it shipped.
+//   2. Severity can depend on the RUN, not just the kind. The engine grades
+//      `lost_sales_regime_guard` as BLOCKING when the guard only detected a
+//      suspect reference (the suspect number is still in the totals) and
+//      DISCLOSURE when it was applied (the number was corrected); it grades
+//      `vc_shipped_view` the same way against whether the run's basis is the
+//      shipped view. No table keyed on `kind` can express either.
+// So: never add a kind here. Send it to the engine.
+// ---------------------------------------------------------------------------
 const CAVEAT_SEVERITY: Record<string, string> = {
   filtered_scope: 'blocking',
   decomposition_degraded: 'blocking',
@@ -313,25 +561,34 @@ interface FigOpts {
   >;
 }
 
+/** `unit` takes either a bare token (the pre-0.2.0 fallback path, where there
+ *  is nothing else to say about it) or a resolved `UnitSpec`. A spec marked
+ *  `served` also stamps `served_unit`, which is the SAME value as `unit` here
+ *  by construction -- deliberately, and it is not redundant: `unit` is what a
+ *  downstream assembly pass may rewrite by hand, `served_unit` is what the
+ *  engine asserted, and UNIT-2 exists to notice when the two stop agreeing. */
 function fig(
   id: string,
   label: string,
   value: number,
-  unit: string,
+  unit: string | UnitSpec,
   basis: string,
   sourcePath: string,
   opts: FigOpts = {},
 ): ExtractedFigure {
+  const spec: UnitSpec = typeof unit === 'string' ? { unit } : unit;
   const f: ExtractedFigure = {
     id,
     label,
     value,
-    unit,
+    unit: spec.unit,
     basis,
     source_path: sourcePath,
     confidence: 'published',
     caveats: opts.caveats ? [...opts.caveats] : [],
   };
+  if (spec.precision !== undefined) f.precision = spec.precision;
+  if (spec.served) f.served_unit = spec.unit;
   if (opts.population !== undefined) f.population = opts.population;
   if (opts.extra) Object.assign(f, opts.extra);
   return f;
@@ -396,6 +653,7 @@ function extractEntity(
   env: Rec,
   domain: string,
   unitsMap: Record<string, string>,
+  served: ServedContract,
   registry: Record<string, CaveatRegistryEntry>,
   deltaCaveats: string[],
   selection: CompositeSelection | undefined,
@@ -416,7 +674,12 @@ function extractEntity(
     seen.add(identKey);
     if (variant !== 'primary' && mkey !== 'lost_sales') return; // secondary variants restate the same move; keep primary
 
-    const unit = (mkey && unitsMap[mkey]) ?? 'count';
+    // The engine puts `format` on insights precisely so an entity-scoped
+    // envelope -- whose insights are harvested from topDrivers -- is
+    // self-describing without a join back to metrics[].
+    const fmt = formatOf(entry.format, ins.format);
+    const levelSpec = resolveLevelUnit(served, fmt, mkey, unitsMap);
+    const changeSpec = resolveChangeUnit(served, fmt, mkey, unitsMap);
     const basis = domain === 'ads' ? (ADS_BASIS[mkey ?? ''] ?? ADS_BASIS_DEFAULT) : opsBasis(env, mkey);
     const base = `envelope:insights[${ii}]`;
     const stem = `${domain}.entity.${slug}.${mkey}`;
@@ -425,16 +688,17 @@ function extractEntity(
     for (const [side, field] of SIDE_FIELDS) {
       const v = entry[field];
       if (hasValue(v)) {
-        figures.push(fig(`${stem}.${side}`, label, v as number, unit, basis, `${base}.${field}`));
+        figures.push(fig(`${stem}.${side}`, label, v as number, levelSpec, basis, `${base}.${field}`));
       }
     }
     const netChange = entry.netChange;
     if (hasValue(netChange)) {
       figures.push(
-        // The CHANGE unit, not `unit` (this metric's LEVEL, which p1/p2 above
-        // correctly carry) -- see `changeUnitOf`. Same rule the legs below use,
-        // so an entity's rate delta and its own legs agree.
-        fig(`${stem}.delta`, label, netChange as number, changeUnitOf(unit), basis, `${base}.netChange`, {
+        // The CHANGE unit, not the LEVEL that p1/p2 above correctly carry --
+        // served `deltaUnit` when the engine publishes one, else
+        // `changeUnitOf`. Same rule the legs below use, so an entity's rate
+        // delta and its own legs agree.
+        fig(`${stem}.delta`, label, netChange as number, changeSpec, basis, `${base}.netChange`, {
           caveats: deltaCaveats,
           extra: { pct_change: (entry.pctChange as number | null | undefined) ?? null },
         }),
@@ -449,9 +713,10 @@ function extractEntity(
           `${domain}.entity.${slug}.bridge.${mkey}.${variant}.${comp.key as string}`,
           `${mkey} ${comp.key as string} leg (${variant}) — ${ekey}`,
           comp.impact as number,
-          // ANCHOR metric's change unit -- `unit` above is this insight's own
-          // metric. NOT comp.valueUnit; see `bridgeLegUnit`.
-          changeUnitOf(unit),
+          // ANCHOR metric's CHANGE unit -- the same `changeSpec` this
+          // insight's own delta carries, so a leg and the net it foots to can
+          // never disagree. NOT comp.valueUnit; see `resolveChangeUnit`.
+          changeSpec,
           basis,
           `${base}.components[${ci}].impact`,
           {
@@ -475,8 +740,9 @@ function extractEntity(
 
 /** The composite entries (INS-MONTHLY-01) do not return a single response:
  *  they return a BUNDLE whose real envelopes nest one level down --
- *  `{ ok, mom: { ops, ads, crossDomain }, yoy: { ops } | null, headline,
- *  limitations, meta }`. Handed that bundle unselected, the extractor used
+ *  `{ ok, mom: { ops, ads, crossDomain },
+ *     yoy: { ops, ads: null, crossDomain: null } | null,
+ *  headline, limitations, meta }`. Handed that bundle unselected, the extractor used
  *  to see no `envelope` key, treat the whole composite as a bare envelope,
  *  find no metrics or insights, and emit ZERO figures -- which then passed
  *  every --check invariant vacuously. That is the silent-empty failure the
@@ -494,7 +760,24 @@ function extractEntity(
  *  selection emits is therefore period-prefixed -- `mom.*` / `yoy.*`, see
  *  `extractFigures` below -- while the single-response path (no
  *  `selection`) keeps the bare ids above, unchanged, matching the upstream
- *  Python extractor. */
+ *  Python extractor.
+ *
+ *  ⚠ THERE IS NO `yoy.ads`, AND ITS ABSENCE IS NOT AN OVERSIGHT. A unit audit
+ *  flagged the missing selection; the server says otherwise. INS-MONTHLY-01
+ *  runs exactly ONE ads bridge per request, against the MoM window, and pins
+ *  the YoY leg as `{ ops: InsightEnvelope; ads: null; crossDomain: null }` --
+ *  `ads` typed as the LITERAL `null`, not `InsightEnvelope | null`, with the
+ *  producer's own comment saying these "are not 'null for now' -- the YoY leg
+ *  runs no ads bridge at all, so anything else here would be a lie the
+ *  compiler should refuse", and a served limitation string telling the reader
+ *  the same ("no advertising bridge is run for the year-ago window, so
+ *  yoy.ads and yoy.crossDomain are always null. That is the scope of this
+ *  comparison, not missing data"). Listing `yoy.ads` here would advertise a
+ *  choice -- in `--select`'s own help text and in the unselected-composite
+ *  error -- that can only ever fail. It becomes real the day the server widens
+ *  that type, which is the same day that limitation string comes off, and not
+ *  before. Note `yoy.ads` IS a present KEY on the bundle (holding null), so
+ *  its presence is not evidence of an envelope; only a non-null value is. */
 export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops'] as const;
 export type CompositeSelection = (typeof COMPOSITE_SELECTIONS)[number];
 
@@ -575,6 +858,9 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     : rawDoc;
   const domain = (env.bridgeDomain as string) ?? 'ops';
   const unitsMap = domain === 'ads' ? ADS_UNITS : OPS_UNITS;
+  const cd = asRecord(rawDoc.crossDomain);
+  // Decided ONCE, off `envelope.engineVersion` -- never `meta.engineSha`.
+  const served = servedContractOf(env, cd);
 
   // Envelope-level caveats become the registry; their ids ride every DELTA
   // figure (a comparison-period caveat qualifies the comparison, not either
@@ -586,14 +872,27 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     const c = asRecord(cRaw) ?? {};
     const kind = (c.kind as string) ?? 'unknown';
     const cid = `env.${kind}.${i}`;
-    registry[cid] = { text: (c.message as string) ?? '', severity: CAVEAT_SEVERITY[kind] ?? 'disclosure' };
+    // SERVED SEVERITY, VERBATIM. Presence is the gate here, not the version:
+    // severity is only ever written by an engine that computed it, and unlike
+    // `format` an ABSENT severity carries no meaning to interpret -- so there
+    // is nothing for a version gate to disambiguate. An unrecognized served
+    // value passes through unchanged rather than being folded back into our
+    // table's `disclosure` default: downgrading the engine's judgment to ours
+    // is the exact failure this field was published to end. If a served
+    // severity is ever wrong, file it upstream.
+    const servedSeverity =
+      typeof c.severity === 'string' && c.severity.trim() !== '' ? c.severity : undefined;
+    registry[cid] = {
+      text: (c.message as string) ?? '',
+      severity: servedSeverity ?? CAVEAT_SEVERITY[kind] ?? 'disclosure',
+    };
     deltaCaveats.push(cid);
   });
 
   // Entity-scoped envelope: a different shape entirely (metric rows live in
   // the insights, totals block is the RUN's account totals, not the entity).
   if (hasValue(env.entityKey)) {
-    return extractEntity(rawDoc, env, domain, unitsMap, registry, deltaCaveats, selection);
+    return extractEntity(rawDoc, env, domain, unitsMap, served, registry, deltaCaveats, selection);
   }
 
   const figures: ExtractedFigure[] = [];
@@ -602,7 +901,9 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
   metricsArr.forEach((mRaw, mi) => {
     const m = asRecord(mRaw) ?? {};
     const key = m.metricKey as string | undefined;
-    const unit = (key && unitsMap[key]) ?? 'count';
+    const fmt = formatOf(m.format);
+    const levelSpec = resolveLevelUnit(served, fmt, key, unitsMap);
+    const changeSpec = resolveChangeUnit(served, fmt, key, unitsMap);
     const basis = domain === 'ads' ? (ADS_BASIS[key ?? ''] ?? ADS_BASIS_DEFAULT) : opsBasis(env, key);
     const t = asRecord(m.totals) ?? {};
     const base = `envelope:metrics[${mi}].totals`;
@@ -610,7 +911,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     for (const side of ['p1', 'p2'] as const) {
       const v = t[side];
       if (hasValue(v)) {
-        figures.push(fig(`${domain}.${key}.${side}`, key ?? '', v as number, unit, basis, `${base}.${side}`));
+        figures.push(fig(`${domain}.${key}.${side}`, key ?? '', v as number, levelSpec, basis, `${base}.${side}`));
       }
     }
     const delta = t.delta;
@@ -627,11 +928,12 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
         };
       }
       figures.push(
-        // The CHANGE unit, not `unit` (the LEVEL, kept by p1/p2 above): a rate
-        // metric's delta is in POINTS. `bridgeLegUnit` derives every leg that
-        // foots to this figure through the same helper, so the two cannot
-        // disagree -- see `changeUnitOf`.
-        fig(`${domain}.${key}.delta`, key ?? '', delta as number, changeUnitOf(unit), basis, `${base}.delta`, {
+        // The CHANGE unit, not the LEVEL kept by p1/p2 above: a rate metric's
+        // delta is in POINTS. On a served envelope that comes from the
+        // engine's own `deltaUnit`; otherwise from `changeUnitOf`. Either way
+        // every leg that foots to this figure resolves through the SAME call,
+        // so the two cannot disagree.
+        fig(`${domain}.${key}.delta`, key ?? '', delta as number, changeSpec, basis, `${base}.delta`, {
           caveats: deltaCaveats,
           population: pop,
           extra: { pct_change: (t.pctChange as number | null | undefined) ?? null },
@@ -660,6 +962,10 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     if (seenInsights.has(identKey)) return;
     seenInsights.add(identKey);
 
+    // The insight's own served format IS the anchor metric's -- the engine
+    // lifts both from the same METRIC_DEFINITIONS entry -- so a leg and the
+    // anchor's delta resolve identically without a join back to metrics[].
+    const legSpec = resolveChangeUnit(served, formatOf(ins.format, entry.format), mkey, unitsMap);
     const components = asArray(ins.components) ?? [];
     components.forEach((compRaw, ci) => {
       const comp = asRecord(compRaw) ?? {};
@@ -671,8 +977,8 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
           comp.impact as number,
           // ANCHOR metric's change unit, NOT comp.valueUnit (which describes
           // the lever's own level, a number this figure does not carry) --
-          // see `bridgeLegUnit`.
-          bridgeLegUnit(unitsMap, mkey),
+          // see `resolveChangeUnit`.
+          legSpec,
           domain === 'ops' ? opsBasis(env, mkey) : ADS_BASIS_DEFAULT,
           `envelope:insights[${ii}].insight.components[${ci}].impact`,
           {
@@ -687,7 +993,12 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
   });
 
   // Cross-domain block (present only on the ops response with a companion).
-  const cd = asRecord(rawDoc.crossDomain);
+  //
+  // Every unit below now resolves through `crossDomain.pairFormats` when the
+  // engine serves one (>= 0.3.0), keyed by the engine's own dotted path. The
+  // hardcoded token passed alongside each call is the PRE-0.3.0 FALLBACK --
+  // what this extractor used before the contract existed -- and is consulted
+  // only when no pairFormats block is served.
   if (cd) {
     const soloBlocks: readonly (readonly [string, string, string])[] = [
       ['tacos', 'ratio', 'deltaPts'],
@@ -696,11 +1007,12 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     for (const [name, unit, ptsField] of soloBlocks) {
       const blk = asRecord(cd[name]);
       if (!blk) continue;
+      const levelSpec = resolvePairUnit(served, name, 'level', unit);
       for (const side of ['p1', 'p2'] as const) {
         const v = blk[side];
         if (hasValue(v)) {
           figures.push(
-            fig(`duo.${name}.${side}`, name, v as number, unit, 'cross_domain_joined', `crossDomain.${name}.${side}`),
+            fig(`duo.${name}.${side}`, name, v as number, levelSpec, 'cross_domain_joined', `crossDomain.${name}.${side}`),
           );
         }
       }
@@ -716,10 +1028,11 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
             // and attributed share are both `ratioPair(...)`, "in RATE units
             // (0.083 = 8.3%)"), so a 2.8-point move arrives as 0.028. Under
             // our `points` unit -- an already-whole number -- that rendered
-            // "0.0 pts" and erased the move. Same anchor rule as everywhere
-            // else in this file: the change unit of the block's own level
-            // unit, which for a ratio is `points_fraction` (x100 -> pts).
-            changeUnitOf(unit),
+            // "0.0 pts" and erased the move. The served contract says exactly
+            // this mechanically: display 'percent' + deltaUnit 'pts', i.e.
+            // our `points_fraction` (x100 -> pts). The fallback derives the
+            // same answer from the block's own level unit.
+            resolvePairUnit(served, name, 'change', changeUnitOf(unit)),
             'cross_domain_joined',
             `crossDomain.${name}.${ptsField}`,
           ),
@@ -729,6 +1042,13 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
 
     const td = asRecord(cd.tacosDecomposition);
     if (td) {
+      // The engine keeps the decomposition's LEGS out of pairFormats (each
+      // HorizontalBridgeComponent carries its own valueUnit) but puts its
+      // ENDPOINTS in, under `tacosDecomposition`. A leg stores an impact on
+      // those endpoints -- "in TACOS rate units (0.01 = 1 pt)" -- so the leg
+      // takes the ENDPOINTS' CHANGE unit, the same anchor rule the envelope
+      // bridges use. Served and fallback agree on `points_fraction` here.
+      const legSpec = resolvePairUnit(served, 'tacosDecomposition', 'change', 'points_fraction');
       const comps = asArray(td.components) ?? [];
       comps.forEach((compRaw, ci) => {
         const comp = asRecord(compRaw) ?? {};
@@ -738,7 +1058,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
             `duo.bridge.tacos.primary.${comp.key as string}`,
             `tacos ${comp.key as string} leg (cross-domain)`,
             comp.impact as number,
-            'points_fraction',
+            legSpec,
             'cross_domain_joined',
             `crossDomain.tacosDecomposition.components[${ci}].impact`,
             { extra: { net_change: (td.delta as number | null | undefined) ?? null } },
@@ -749,6 +1069,10 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
 
     const pp = asRecord(cd.paidPressure);
     if (pp) {
+      // A pressure INDEX served in rate units: >1 (>100% displayed) is a legal
+      // reading, not an error. The served contract says display 'percent',
+      // which is our 'ratio' -- the same token the fallback used.
+      const ppSpec = resolvePairUnit(served, 'paidPressure', 'level', 'ratio');
       for (const side of ['p1', 'p2'] as const) {
         const v = pp[side];
         if (hasValue(v)) {
@@ -757,7 +1081,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
               `duo.paidPressure.${side}`,
               'paid pressure',
               v as number,
-              'ratio',
+              ppSpec,
               'cross_domain_joined',
               `crossDomain.paidPressure.${side}`,
             ),
@@ -770,6 +1094,16 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     if (av) {
       for (const lane of ['asp', 'adAov'] as const) {
         const laneBlk = asRecord(av[lane]) ?? {};
+        // NOT a hardcoded 'currency'. The engine builds this block from two
+        // metric pairs it reads straight off the sidecars --
+        // `aspVsAdAov: { asp: pair(ops, 'ops_per_unit'),
+        // adAov: pair(ads, 'ad_aov') }` -- and serves each lane's contract
+        // under its own dotted path. The fallback reads the same two metrics
+        // out of our own maps, which is the hand-copy of that. Both are
+        // 'currency-2dp' (engine: display 'currency-2dp', decimals 2); at 0dp
+        // a $59.38 ad AOV printed "$59", and the ASP-vs-ad-AOV comparison is
+        // precisely a cents-level read.
+        const laneSpec = resolvePairUnit(served, `aspVsAdAov.${lane}`, 'level', AV_LANE_UNITS[lane]);
         for (const side of ['p1', 'p2'] as const) {
           const v = laneBlk[side];
           if (hasValue(v)) {
@@ -778,16 +1112,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
                 `duo.${lane}.${side}`,
                 lane,
                 v as number,
-                // NOT a hardcoded 'currency'. The engine builds this block from
-                // two metric pairs it reads straight off the sidecars --
-                // `aspVsAdAov: { asp: pair(ops, 'ops_per_unit'),
-                // adAov: pair(ads, 'ad_aov') }` -- so these figures ARE those
-                // metrics and take their units from the same maps their own
-                // domain figures do. Both are 'currency-2dp' (engine: display
-                // 'currency-2dp', decimals 2); at 0dp a $59.38 ad AOV printed
-                // "$59", and the ASP-vs-ad-AOV comparison is precisely a
-                // cents-level read.
-                AV_LANE_UNITS[lane],
+                laneSpec,
                 'cross_domain_joined',
                 `crossDomain.aspVsAdAov.${lane}.${side}`,
               ),
