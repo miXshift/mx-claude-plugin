@@ -4,6 +4,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFigures, checkFigures, CompositeSelectionError, COMPOSITE_SELECTIONS } from './extract.js';
 import type { ExtractDocument, ExtractedFigure, CompositeSelection } from './extract.js';
+// A served caveat severity is only meaningful if it actually BINDS, and the
+// binding lives in CAVEAT-1 -- so the severity tests below run the real
+// validator rather than asserting a string in the registry and stopping there.
+import { validateReportData } from './validate.js';
 // The unit a figure carries is only VISIBLE in rendered output -- the
 // report-contract validator checks claim/figure relationships, never units --
 // so the end-to-end block at the bottom of this file renders for real.
@@ -1538,5 +1542,468 @@ describe('rendered output catches a wrong unit that no validator can see', () =>
       'duo.paidPressure.p2',
     ]);
     expect(chipValues(html)).toEqual(['55.0%', '48.0%']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SERVED UNIT CONTRACT (engine >= 0.2.0 format/severity, >= 0.3.0
+// pairFormats).
+//
+// Every unit assertion that can be made end to end is made end to end: a unit
+// is only visible in the rendered string, so `renderServed` below renders for
+// real and the tests assert what a reader sees. Synthetic values throughout.
+// ---------------------------------------------------------------------------
+
+/** Chip values off a rendered page — same extraction the block above uses. */
+function servedChipValues(html: string): string[] {
+  return [...html.matchAll(/<span class="rr-figure-value[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
+}
+
+/** Extract, then render the named figures, exactly as the skill composes them. */
+function renderServed(response: unknown, ids: string[]): string {
+  const out = extractFigures(response);
+  const wanted = new Set(ids);
+  const doc: RenderReportDataDocument = {
+    currency: 'USD',
+    figures: out.figures.filter((f) => wanted.has(f.id)),
+    sections: [{ id: 'sec.served', figure_refs: ids }],
+    caveat_registry: out.caveat_registry,
+  };
+  return renderMonthlyReport(doc);
+}
+
+describe('served metric format (engine >= 0.2.0) is the authority; the local table is the pre-0.2.0 fallback', () => {
+  /** One ops envelope, one revenue metric, `engineVersion` and `format` under
+   *  the caller's control — the only two inputs the gate reads. */
+  function opsEnvelopeWith(
+    engineVersion: string | undefined,
+    format: unknown,
+    metricKey = 'ops',
+  ): unknown {
+    const metric: Record<string, unknown> = {
+      metricKey,
+      totals: { p1: 100000, p2: 144000, delta: 44000 },
+      topDrivers: [],
+    };
+    if (format !== undefined) metric.format = format;
+    const envelope: Record<string, unknown> = {
+      bridgeDomain: 'ops',
+      bridgeRunId: 'run-example-served-0001',
+      currency: 'USD',
+      caveats: [],
+      metrics: [metric],
+      insights: [],
+    };
+    if (engineVersion !== undefined) envelope.engineVersion = engineVersion;
+    return { envelope };
+  }
+
+  it('the SERVED format wins over the local table when the two disagree', () => {
+    // Deliberately divergent: our table says `ops` is 'currency' (0dp), the
+    // envelope here serves 'currency-2dp' at 2 decimals. Only precedence can
+    // produce the cents — if the table were consulted the page reads "$100,000".
+    const figs = byId(
+      extractFigures(opsEnvelopeWith('0.2.0', { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute' })),
+    );
+    expect(figs.get('ops.ops.p1')).toMatchObject({
+      unit: 'currency-2dp',
+      precision: 2,
+      served_unit: 'currency-2dp',
+    });
+    const html = renderServed(
+      opsEnvelopeWith('0.2.0', { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute' }),
+      ['ops.ops.p1'],
+    );
+    expect(servedChipValues(html)).toEqual(['$100,000.00']);
+  });
+
+  it('the LOCAL table is used, and only used, when the engine predates the field', () => {
+    // Same envelope, same served format, engine stamped 0.1.0 — below the gate.
+    // The format is ignored wholesale and the table answers: 'currency', 0dp.
+    for (const version of ['0.1.0', undefined]) {
+      const response = opsEnvelopeWith(version, {
+        display: 'currency-2dp',
+        decimals: 2,
+        deltaUnit: 'absolute',
+      });
+      const figs = byId(extractFigures(response));
+      expect(figs.get('ops.ops.p1')).toMatchObject({ unit: 'currency' });
+      // never stamped on the fallback path — nothing was served to record
+      expect(figs.get('ops.ops.p1')?.served_unit).toBeUndefined();
+      expect(figs.get('ops.ops.p1')?.precision).toBeUndefined();
+      expect(servedChipValues(renderServed(response, ['ops.ops.p1']))).toEqual(['$100,000']);
+    }
+  });
+
+  it('reads the gate off envelope.engineVersion, tolerating a v-prefix, a two-part version, and an rc suffix', () => {
+    const fmt = { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute' };
+    for (const version of ['0.2.0', 'v0.2.0', '0.2', '0.3.0-rc.1', '1.0.0', '0.10.0']) {
+      const figs = byId(extractFigures(opsEnvelopeWith(version, fmt)));
+      expect(figs.get('ops.ops.p1'), `engineVersion ${version} must serve`).toMatchObject({
+        unit: 'currency-2dp',
+      });
+    }
+    for (const version of ['0.1.9', 'not-a-version', '']) {
+      const figs = byId(extractFigures(opsEnvelopeWith(version, fmt)));
+      expect(figs.get('ops.ops.p1'), `engineVersion ${version} must fall back`).toMatchObject({
+        unit: 'currency',
+      });
+    }
+  });
+
+  it('an ABSENT format on a modern engine means CANNOT FORMAT — never a count, and never the local table', () => {
+    // THE DEFECT THIS FIELD EXISTS TO KILL, from the reader's side. Our table
+    // defaulted an unmapped key to 'count', which is how ad-attributed DOLLARS
+    // printed as a bare number indistinguishable from a unit count. On a served
+    // envelope an absent format is not a unit at all: the page shows the number
+    // WITH a visible "we cannot label this" token, so the gap is reportable.
+    const response = opsEnvelopeWith('0.2.0', undefined, 'ad_driven_sales');
+    const figs = byId(extractFigures(response));
+    expect(figs.get('ops.ad_driven_sales.p1')?.unit).toBe('unformattable');
+    expect(figs.get('ops.ad_driven_sales.p1')?.served_unit).toBeUndefined();
+
+    const chips = servedChipValues(renderServed(response, ['ops.ad_driven_sales.p1']));
+    expect(chips).toEqual(['100000 unformattable']);
+    // the exact string the old behavior produced, and the one that must not
+    // come back: a bare grouped number the reader reads as a count
+    expect(chips).not.toContain('100,000');
+  });
+
+  it('an absent format does NOT fall back to the local table even for a key the table knows', () => {
+    // `ops` is in OPS_UNITS. On a served envelope that is irrelevant: the
+    // engine did not answer for this metric, so neither do we. A table hit
+    // here would be a fabricated default — the same class of guess.
+    const figs = byId(extractFigures(opsEnvelopeWith('0.2.0', undefined)));
+    expect(figs.get('ops.ops.p1')?.unit).toBe('unformattable');
+  });
+
+  it('a malformed served format (no usable display) is treated as absent, not half-trusted', () => {
+    const figs = byId(extractFigures(opsEnvelopeWith('0.2.0', { decimals: 2, deltaUnit: 'absolute' })));
+    expect(figs.get('ops.ops.p1')?.unit).toBe('unformattable');
+  });
+
+  it('an engine display token we do not map passes through verbatim, visible and reportable', () => {
+    // A DisplayUnit added upstream must not be rounded into one of our tokens.
+    // It reaches the renderer's unknown-unit fallback, which prints the number
+    // WITH the engine's own token — enough for a reader to file it.
+    const response = opsEnvelopeWith('0.2.0', { display: 'furlongs', decimals: 0, deltaUnit: 'absolute' });
+    expect(byId(extractFigures(response)).get('ops.ops.p1')?.unit).toBe('furlongs');
+    // The served `decimals` still applies, so the number is grouped and
+    // precise; only the unit is unknown, and it is shown rather than dropped.
+    expect(servedChipValues(renderServed(response, ['ops.ops.p1']))).toEqual(['100,000 furlongs']);
+  });
+
+  it('served deltaUnit drives the CHANGE unit: a rate metric’s delta reads in points', () => {
+    // The engine states the rule mechanically (`deltaUnit: 'pts'`) instead of
+    // us inferring it from our own level token. Levels stay percentages.
+    const response = opsEnvelopeWith('0.2.0', { display: 'percent', decimals: 1, deltaUnit: 'pts' }, 'conversion');
+    const figs = byId(
+      extractFigures({
+        envelope: {
+          ...(asEnvelope(response)),
+          metrics: [
+            {
+              metricKey: 'conversion',
+              format: { display: 'percent', decimals: 1, deltaUnit: 'pts' },
+              totals: { p1: 0.2, p2: 0.25, delta: 0.05 },
+              topDrivers: [],
+            },
+          ],
+        },
+      }),
+    );
+    expect(figs.get('ops.conversion.p1')).toMatchObject({ unit: 'ratio', served_unit: 'ratio' });
+    expect(figs.get('ops.conversion.delta')).toMatchObject({
+      unit: 'points_fraction',
+      served_unit: 'points_fraction',
+    });
+  });
+
+  it('carries the served `decimals` through as precision, so a 1dp metric does not print whole', () => {
+    // weeks_of_cover is display 'number' with decimals 1. Dropping the 1 would
+    // print "12" where the pre-0.2.0 path prints "12.4" — the served contract's
+    // precision is part of the same answer as its unit.
+    const response = opsEnvelopeWith('0.2.0', { display: 'number', decimals: 1, deltaUnit: 'absolute' }, 'weeks_of_cover');
+    const wired = {
+      envelope: {
+        ...(asEnvelope(response)),
+        metrics: [
+          {
+            metricKey: 'weeks_of_cover',
+            format: { display: 'number', decimals: 1, deltaUnit: 'absolute' },
+            totals: { p1: 12.4, p2: 9.1, delta: -3.3 },
+            topDrivers: [],
+          },
+        ],
+      },
+    };
+    expect(servedChipValues(renderServed(wired, ['ops.weeks_of_cover.p1']))).toEqual(['12.4']);
+  });
+});
+
+/** Pull the envelope object back out of a `{envelope}` response wrapper, so a
+ *  test can vary its metrics without restating the whole envelope. */
+function asEnvelope(response: unknown): Record<string, unknown> {
+  return (response as { envelope: Record<string, unknown> }).envelope;
+}
+
+describe('served caveat severity is used verbatim, including a RUN-DEPENDENT one', () => {
+  /** The engine grades `lost_sales_regime_guard` by what the guard DID on this
+   *  run, not by the kind: blocking when it only DETECTED a suspect reference
+   *  (the suspect number is still in the totals), disclosure when it APPLIED
+   *  the correction. Same kind, same envelope shape, two severities. */
+  function guardRun(severity: string, message: string): unknown {
+    return {
+      envelope: {
+        engineVersion: '0.2.0',
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-example-guard-0001',
+        currency: 'USD',
+        caveats: [{ kind: 'lost_sales_regime_guard', severity, message }],
+        metrics: [
+          {
+            metricKey: 'lost_sales',
+            format: { display: 'currency', decimals: 0, deltaUnit: 'absolute' },
+            totals: { p1: 4000, p2: 5000, delta: 1000 },
+            topDrivers: [],
+          },
+        ],
+        insights: [],
+      },
+    };
+  }
+
+  const DETECTED = 'Lost-sales estimate for the flagged item is likely overstated. Do not quote this row or the lost-sales total bare.';
+  const APPLIED = 'Lost-sales reference for the flagged item was regime-adjusted; the in-period rate was used and confidence capped at Low.';
+
+  it('the SAME caveat kind is blocking on the DETECTED run and disclosure on the APPLIED run', () => {
+    const detected = extractFigures(guardRun('blocking', DETECTED));
+    const applied = extractFigures(guardRun('disclosure', APPLIED));
+    expect(detected.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('blocking');
+    expect(applied.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('disclosure');
+  });
+
+  it('our static table cannot express that, which is the whole argument: it grades BOTH runs `disclosure`', () => {
+    // A genuine pre-0.2.0 envelope carries no severity at all, so the
+    // kind-keyed table has to answer — and it has never heard of this kind, so
+    // both runs come out at its `disclosure` default. The DETECTED run, whose
+    // suspect number is still sitting in the totals, is silently downgraded to
+    // quotable. No table keyed on `kind` can do better, because the two runs
+    // ARE the same kind. This is the retirement argument, pinned.
+    const legacy = (severity: string, message: string): unknown => {
+      const doc = JSON.parse(JSON.stringify(guardRun(severity, message))) as {
+        envelope: Record<string, unknown>;
+      };
+      delete doc.envelope.engineVersion;
+      (doc.envelope.caveats as Record<string, unknown>[]).forEach((c) => delete c.severity);
+      return doc;
+    };
+    for (const [severity, message] of [
+      ['blocking', DETECTED],
+      ['disclosure', APPLIED],
+    ] as const) {
+      expect(
+        extractFigures(legacy(severity, message)).caveat_registry['env.lost_sales_regime_guard.0']
+          .severity,
+      ).toBe('disclosure');
+    }
+  });
+
+  it('a served severity is honored by PRESENCE, not by the version gate', () => {
+    // Deliberate: unlike `format`, an ABSENT severity carries no meaning to
+    // interpret, so there is nothing for a version gate to disambiguate — and
+    // a severity is only ever written by an engine that computed it. An
+    // unstamped envelope that nonetheless serves one is trusted.
+    const doc = JSON.parse(JSON.stringify(guardRun('blocking', DETECTED))) as {
+      envelope: Record<string, unknown>;
+    };
+    delete doc.envelope.engineVersion;
+    expect(extractFigures(doc).caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe(
+      'blocking',
+    );
+  });
+
+  it('the served blocking severity actually BINDS: CAVEAT-1 fires on the detected run and not on the applied one', () => {
+    // Severity that does not bind is decoration. This is the consequence that
+    // matters -- a section quoting the lost-sales total without carrying the
+    // caveat is a finding on the run where the suspect number is still in it.
+    const quoteWithoutCaveat = (response: unknown): ReturnType<typeof validateReportData> => {
+      const out = extractFigures(response);
+      return validateReportData({
+        figures: out.figures.filter((f) => f.id === 'ops.lost_sales.delta'),
+        caveat_registry: out.caveat_registry,
+        sections: [{ id: 'sec.availability', figure_refs: ['ops.lost_sales.delta'], caveats_rendered: [] }],
+      });
+    };
+    expect(quoteWithoutCaveat(guardRun('blocking', DETECTED))).toContainEqual(
+      expect.objectContaining({ rule: 'CAVEAT-1', subject: 'sec.availability' }),
+    );
+    expect(quoteWithoutCaveat(guardRun('disclosure', APPLIED)).some((f) => f.rule === 'CAVEAT-1')).toBe(
+      false,
+    );
+  });
+
+  it('a severity our table has never heard of passes through unchanged rather than being downgraded', () => {
+    const out = extractFigures({
+      envelope: {
+        engineVersion: '0.2.0',
+        bridgeDomain: 'ops',
+        caveats: [{ kind: 'vc_shipped_view', severity: 'blocking', message: 'shipped view governs every total' }],
+        metrics: [],
+        insights: [],
+      },
+    });
+    expect(out.caveat_registry['env.vc_shipped_view.0'].severity).toBe('blocking');
+  });
+
+  it('falls back to the local table when a caveat carries no severity at all', () => {
+    const out = extractFigures({
+      envelope: {
+        engineVersion: '0.2.0',
+        bridgeDomain: 'ops',
+        caveats: [{ kind: 'filtered_scope', message: 'filtered run' }],
+        metrics: [],
+        insights: [],
+      },
+    });
+    expect(out.caveat_registry['env.filtered_scope.0'].severity).toBe('blocking');
+  });
+});
+
+describe('crossDomain.pairFormats (engine >= 0.3.0) drives every crossDomain unit', () => {
+  /** The real served contract for the paths this extractor emits, verbatim in
+   *  shape from the engine's `pairFormatsFor`. */
+  const REAL_PAIR_FORMATS = {
+    tacos: { display: 'percent', decimals: 1, deltaUnit: 'pts', direction: 'lower-better' },
+    tacosDecomposition: { display: 'percent', decimals: 1, deltaUnit: 'pts', direction: 'lower-better' },
+    attributedShare: { display: 'percent', decimals: 1, deltaUnit: 'pts', direction: null },
+    paidPressure: { display: 'percent', decimals: 1, deltaUnit: 'pts', direction: null },
+    'aspVsAdAov.asp': { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute', direction: 'higher-better' },
+    'aspVsAdAov.adAov': { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute', direction: 'higher-better' },
+  };
+
+  function duoResponse(engineVersion: string | undefined, pairFormats: unknown): unknown {
+    const envelope: Record<string, unknown> = {
+      bridgeDomain: 'ops',
+      bridgeRunId: 'run-example-duo-0001',
+      currency: 'USD',
+      caveats: [],
+      metrics: [],
+      insights: [],
+    };
+    if (engineVersion !== undefined) envelope.engineVersion = engineVersion;
+    const crossDomain: Record<string, unknown> = {
+      tacos: { p1: 0.083, p2: 0.111, deltaPts: 0.028 },
+      paidPressure: { p1: 0.55, p2: 0.48 },
+      aspVsAdAov: { asp: { p1: 50.0, p2: 48.0 }, adAov: { p1: 61.2, p2: 59.38 } },
+    };
+    if (pairFormats !== undefined) crossDomain.pairFormats = pairFormats;
+    return { envelope, crossDomain };
+  }
+
+  it('stamps every crossDomain figure as engine-asserted and renders it right', () => {
+    const response = duoResponse('0.3.0', REAL_PAIR_FORMATS);
+    const figs = byId(extractFigures(response));
+    expect(figs.get('duo.tacos.p1')).toMatchObject({ unit: 'ratio', served_unit: 'ratio', precision: 1 });
+    expect(figs.get('duo.tacos.delta_pts')).toMatchObject({
+      unit: 'points_fraction',
+      served_unit: 'points_fraction',
+    });
+    expect(figs.get('duo.adAov.p2')).toMatchObject({ unit: 'currency-2dp', served_unit: 'currency-2dp' });
+    expect(
+      servedChipValues(renderServed(response, ['duo.tacos.p1', 'duo.tacos.delta_pts', 'duo.adAov.p2'])),
+    ).toEqual(['8.3%', '2.8 pts', '$59.38']);
+  });
+
+  it('pairFormats WINS over the hardcoded fallback when the two disagree', () => {
+    // Deliberately divergent on one path: paid pressure served as plain
+    // currency. Our fallback would print "55.0%"; only the served contract can
+    // produce "$0.55". This is precedence, not a claim about the real engine.
+    const response = duoResponse('0.3.0', {
+      ...REAL_PAIR_FORMATS,
+      paidPressure: { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute', direction: null },
+    });
+    expect(byId(extractFigures(response)).get('duo.paidPressure.p1')?.unit).toBe('currency-2dp');
+    expect(servedChipValues(renderServed(response, ['duo.paidPressure.p1']))).toEqual(['$0.55']);
+  });
+
+  it('the pairFormats gate is 0.3.0: a 0.2.0 envelope ignores the block entirely', () => {
+    // 0.2.0 serves metric formats but not this one. A block present on a 0.2.0
+    // envelope is not the contract, so the fallback answers and nothing is
+    // stamped as engine-asserted.
+    const figs = byId(
+      extractFigures(
+        duoResponse('0.2.0', {
+          ...REAL_PAIR_FORMATS,
+          paidPressure: { display: 'currency-2dp', decimals: 2, deltaUnit: 'absolute', direction: null },
+        }),
+      ),
+    );
+    expect(figs.get('duo.paidPressure.p1')).toMatchObject({ unit: 'ratio' });
+    expect(figs.get('duo.paidPressure.p1')?.served_unit).toBeUndefined();
+  });
+
+  it('a 0.3.0 envelope with no pairFormats block falls back cleanly rather than emitting nothing', () => {
+    const figs = byId(extractFigures(duoResponse('0.3.0', undefined)));
+    expect(figs.get('duo.tacos.p1')).toMatchObject({ unit: 'ratio' });
+    expect(figs.get('duo.tacos.p1')?.served_unit).toBeUndefined();
+  });
+
+  it('a path MISSING from a served pairFormats is cannot-format, not a guess', () => {
+    // The engine's path union is closed and the record is total, so a gap here
+    // is version skew. Same rule as a missing metric format: do not invent one.
+    const partial = { ...REAL_PAIR_FORMATS } as Record<string, unknown>;
+    delete partial.paidPressure;
+    const figs = byId(extractFigures(duoResponse('0.3.0', partial)));
+    expect(figs.get('duo.paidPressure.p1')?.unit).toBe('unformattable');
+    expect(figs.get('duo.tacos.p1')?.unit).toBe('ratio'); // the served paths still resolve
+  });
+
+  it('never crashes a formatter bootstrap on a malformed or missing contract block', () => {
+    for (const pf of [null, 'nonsense', 42, [], {}]) {
+      expect(() => extractFigures(duoResponse('0.3.0', pf))).not.toThrow();
+    }
+    expect(() => extractFigures(duoResponse('0.3.0', {}))).not.toThrow();
+  });
+});
+
+describe('COMPOSITE_SELECTIONS: there is no yoy.ads, and that is the server’s contract', () => {
+  // The audit that prompted this work flagged `yoy.ads` as a missing selection.
+  // It is not missing -- INS-MONTHLY-01 runs exactly ONE ads bridge per
+  // request, against the MoM window, and pins the YoY leg as
+  // `{ ops: InsightEnvelope; ads: null; crossDomain: null }` with `ads` typed
+  // as the LITERAL null. Adding the selection would advertise a choice, in
+  // --select's help text and in the unselected-composite error, that can only
+  // ever fail. These tests pin the reason so the next audit does not re-flag
+  // it, and would go red the day the server widens that type.
+  const opsEnvelope = (loadFixture('envelope-minimal.json') as { envelope: unknown }).envelope;
+
+  /** The bundle shape the server actually returns today. */
+  const bundle = {
+    ok: true,
+    mom: { ops: opsEnvelope, ads: { bridgeDomain: 'ads', caveats: [], metrics: [], insights: [] }, crossDomain: null },
+    yoy: { ops: opsEnvelope, ads: null, crossDomain: null },
+    headline: {},
+    limitations: [],
+    meta: {},
+  };
+
+  it('the enum offers exactly the three selections that can carry an envelope', () => {
+    expect([...COMPOSITE_SELECTIONS]).toEqual(['mom.ops', 'mom.ads', 'yoy.ops']);
+    expect((COMPOSITE_SELECTIONS as readonly string[]).includes('yoy.ads')).toBe(false);
+  });
+
+  it('yoy.ads is a PRESENT key holding null, so key presence is never evidence of an envelope', () => {
+    expect('ads' in bundle.yoy).toBe(true);
+    expect(bundle.yoy.ads).toBeNull();
+  });
+
+  it('the current bundle shape still extracts yoy.ops correctly, null ads leg and all', () => {
+    const out = extractFigures(bundle, 'yoy.ops');
+    const figs = byId(out);
+    expect(out.source.selection).toBe('yoy.ops');
+    expect(figs.get('yoy.ops.ops.p1')).toMatchObject({ value: 100000 });
+    expect(out.figures.filter((f) => f.id.includes('duo.'))).toEqual([]);
+    expect(checkFigures(out)).toEqual([]);
   });
 });
