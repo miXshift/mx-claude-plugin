@@ -498,9 +498,14 @@ function registerAutosyncSubcommand(context: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const t0 = Date.now();
       try {
+        // trigger:'manual' suppresses maybeAutoSync's internal preflight
+        // emit — this wrapper's track() below is the single authoritative
+        // row for a manual run (it also covers early-skip outcomes the
+        // internal tail never sees), so one invocation = one event.
         const result = await maybeAutoSync(brand, {
           dataDirOverride: root.dataDir,
           force: opts.force ?? false,
+          trigger: 'manual',
         });
 
         await track(
@@ -515,12 +520,15 @@ function registerAutosyncSubcommand(context: Command): void {
                 : 'skipped',
             duration_ms: Date.now() - t0,
             payload: {
+              trigger: 'manual',
               brand,
               force: opts.force ?? false,
               ran: result.ran,
               ...(result.ran
                 ? {
                     pulled: result.pulled,
+                    pushed: result.pushed,
+                    created: result.created,
                     conflicts: result.conflicts,
                     errors: result.errors,
                   }

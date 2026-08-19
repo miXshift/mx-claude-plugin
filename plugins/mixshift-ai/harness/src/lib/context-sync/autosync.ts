@@ -95,16 +95,15 @@ export interface AutoSyncOptions {
   identity?: string | null;
   env?: NodeJS.ProcessEnv;
   /**
-   * Telemetry provenance tag on the ContextAutosyncCompleted event this
-   * function emits for every attempt that clears the early-skip guards (see
-   * the module doc). Defaults to 'preflight' — today's only other caller,
-   * `mixshift context autosync` (commands/context.ts), does not pass this
-   * option and still emits its OWN ContextAutosyncCompleted event
-   * unconditionally, so a manual run currently produces two rows: the CLI
-   * command's own (untagged) row, and this function's ('preflight'-tagged)
-   * row for the real attempt underneath it. Wiring the command to pass
-   * 'manual' here (and drop its now-redundant track() call) is a follow-up,
-   * not part of this change.
+   * Telemetry provenance. 'preflight' (the default — the implicit
+   * resolveBrandFields hook) makes this function emit one
+   * ContextAutosyncCompleted event per attempt that clears the early-skip
+   * guards. 'manual' (passed by `mixshift context autosync` in
+   * commands/context.ts) SUPPRESSES the internal emit: the CLI wrapper owns
+   * its own single emission, which also covers the early-skip outcomes this
+   * function's telemetry tail never sees. Ledger outcome fields are written
+   * for both triggers; only the event is trigger-scoped, so one invocation
+   * always yields exactly one row.
    */
   trigger?: 'preflight' | 'manual';
 }
@@ -163,39 +162,47 @@ export async function maybeAutoSync(
       ledgerState.last_autosync_outcome = succeeded ? 'success' : 'failed';
       if (succeeded) ledgerState.last_autosync_success_at = finishedAt.toISOString();
       await saveState(brandSlug, ledgerState, options.dataDirOverride);
-      // AWAITED, not fire-and-forget: this fires once per real attempt (at
-      // most once per brand per AUTOSYNC_THROTTLE_MS), not per query, so
-      // track()'s cost (a handful of local file ops, no network) is
-      // negligible against the 2s budget. A detached `void track(...)`
-      // would risk the emit racing the process (or a caller's cleanup)
-      // exiting before the queue append lands — see push-after-write.ts's
-      // identical reasoning for its own ContextPushCompleted emit.
-      await track(
-        {
-          event_name: EventName.ContextAutosyncCompleted,
-          outcome: succeeded ? 'ok' : 'failed',
-          duration_ms: Date.now() - t0,
-          payload: {
-            trigger,
-            brand: brandSlug,
-            force: options.force ?? false,
-            ran: result.ran,
-            ...(result.ran
-              ? {
-                  pulled: result.pulled,
-                  pushed: result.pushed,
-                  created: result.created,
-                  conflicts: result.conflicts,
-                  errors: result.errors,
-                }
-              : {
-                  reason: result.reason,
-                  ...(result.reason === 'failed' ? { detail: result.detail } : {}),
-                }),
+      // Preflight attempts only: the manual `mixshift context autosync`
+      // wrapper (commands/context.ts) emits its OWN ContextAutosyncCompleted
+      // row covering every outcome — including the early skips this tail
+      // never sees — so emitting here too would double-count manual runs.
+      // The ledger outcome above is written for BOTH triggers; only the
+      // event is preflight-scoped.
+      if (trigger === 'preflight') {
+        // AWAITED, not fire-and-forget: this fires once per real attempt (at
+        // most once per brand per AUTOSYNC_THROTTLE_MS), not per query, so
+        // track()'s cost (a handful of local file ops, no network) is
+        // negligible against the 2s budget. A detached `void track(...)`
+        // would risk the emit racing the process (or a caller's cleanup)
+        // exiting before the queue append lands — see push-after-write.ts's
+        // identical reasoning for its own ContextPushCompleted emit.
+        await track(
+          {
+            event_name: EventName.ContextAutosyncCompleted,
+            outcome: succeeded ? 'ok' : 'failed',
+            duration_ms: Date.now() - t0,
+            payload: {
+              trigger,
+              brand: brandSlug,
+              force: options.force ?? false,
+              ran: result.ran,
+              ...(result.ran
+                ? {
+                    pulled: result.pulled,
+                    pushed: result.pushed,
+                    created: result.created,
+                    conflicts: result.conflicts,
+                    errors: result.errors,
+                  }
+                : {
+                    reason: result.reason,
+                    ...(result.reason === 'failed' ? { detail: result.detail } : {}),
+                  }),
+            },
           },
-        },
-        options.dataDirOverride,
-      );
+          options.dataDirOverride,
+        );
+      }
     }
     return result;
   }

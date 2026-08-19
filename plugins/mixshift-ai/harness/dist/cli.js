@@ -64764,9 +64764,11 @@ var init_events = __esm({
       ContextPushCompleted: "context_sync.push_completed",
       ContextSyncCompleted: "context_sync.sync_completed",
       ContextMigrateCompleted: "context_sync.migrate_completed",
-      // Manual `mixshift context autosync <brand>` runs only — the implicit
-      // preflight hook inside resolveBrandFields stays silent by design (it
-      // fires on every skill step; telemetry there would be noise).
+      // One row per autosync invocation, tagged payload.trigger: the implicit
+      // resolveBrandFields preflight emits for attempts that clear the guards
+      // ('preflight'; throttled/early-skip stays silent so the per-skill-step
+      // hook can't flood the table), and `mixshift context autosync` emits its
+      // own single 'manual' row covering every outcome.
       ContextAutosyncCompleted: "context_sync.autosync_completed",
       // Brand timeline (lib/timeline/ + `mixshift timeline`). Privacy: payloads
       // carry filters, counts, kinds + duration/outcome — never event contents
@@ -72402,30 +72404,32 @@ async function maybeAutoSync(brandSlug, options = {}) {
       ledgerState.last_autosync_outcome = succeeded ? "success" : "failed";
       if (succeeded) ledgerState.last_autosync_success_at = finishedAt.toISOString();
       await saveState(brandSlug, ledgerState, options.dataDirOverride);
-      await track(
-        {
-          event_name: EventName.ContextAutosyncCompleted,
-          outcome: succeeded ? "ok" : "failed",
-          duration_ms: Date.now() - t0,
-          payload: {
-            trigger,
-            brand: brandSlug,
-            force: options.force ?? false,
-            ran: result.ran,
-            ...result.ran ? {
-              pulled: result.pulled,
-              pushed: result.pushed,
-              created: result.created,
-              conflicts: result.conflicts,
-              errors: result.errors
-            } : {
-              reason: result.reason,
-              ...result.reason === "failed" ? { detail: result.detail } : {}
+      if (trigger === "preflight") {
+        await track(
+          {
+            event_name: EventName.ContextAutosyncCompleted,
+            outcome: succeeded ? "ok" : "failed",
+            duration_ms: Date.now() - t0,
+            payload: {
+              trigger,
+              brand: brandSlug,
+              force: options.force ?? false,
+              ran: result.ran,
+              ...result.ran ? {
+                pulled: result.pulled,
+                pushed: result.pushed,
+                created: result.created,
+                conflicts: result.conflicts,
+                errors: result.errors
+              } : {
+                reason: result.reason,
+                ...result.reason === "failed" ? { detail: result.detail } : {}
+              }
             }
-          }
-        },
-        options.dataDirOverride
-      );
+          },
+          options.dataDirOverride
+        );
+      }
     }
     return result;
   }
@@ -93751,7 +93755,8 @@ function registerAutosyncSubcommand(context) {
     try {
       const result = await maybeAutoSync(brand, {
         dataDirOverride: root.dataDir,
-        force: opts.force ?? false
+        force: opts.force ?? false,
+        trigger: "manual"
       });
       await track(
         {
@@ -93759,11 +93764,14 @@ function registerAutosyncSubcommand(context) {
           outcome: result.ran ? result.errors > 0 ? "failed" : "ok" : result.reason === "failed" ? "failed" : "skipped",
           duration_ms: Date.now() - t0,
           payload: {
+            trigger: "manual",
             brand,
             force: opts.force ?? false,
             ran: result.ran,
             ...result.ran ? {
               pulled: result.pulled,
+              pushed: result.pushed,
+              created: result.created,
               conflicts: result.conflicts,
               errors: result.errors
             } : { reason: result.reason }

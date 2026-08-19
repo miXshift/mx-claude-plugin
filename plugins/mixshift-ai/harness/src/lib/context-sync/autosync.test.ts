@@ -13,6 +13,7 @@ import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
 import { PUSH_AFTER_WRITE_ENV } from './push-after-write.js';
 import { contextSyncStatePath, brandDir, credentialsPath } from '../paths/resolve.js';
+import { loadState } from './state.js';
 import type { ContextSyncState } from './state.js';
 import type { WireManifestBrand } from './types.js';
 import { resolveBrandFields } from '../brain/read.js';
@@ -909,16 +910,22 @@ describe('ledger outcome + telemetry', () => {
     expect(vi.mocked(track)).not.toHaveBeenCalled();
   });
 
-  it('a caller-supplied trigger (e.g. "manual") is threaded into the telemetry payload', async () => {
+  it('trigger "manual" suppresses the internal emit (the CLI wrapper owns the row) but still records the ledger outcome', async () => {
     await makeBrandDir('acme');
     const { client } = countingClient([manifestBrand('acme', [])], {});
-    await maybeAutoSync('acme', {
+    const result = await maybeAutoSync('acme', {
       dataDirOverride: testDir,
       client,
       env: LIVE_ENV,
       trigger: 'manual',
     });
-    const [event] = vi.mocked(track).mock.calls[0]!;
-    expect(event).toMatchObject({ payload: { trigger: 'manual' } });
+    expect(result.ran).toBe(true);
+    // No internal ContextAutosyncCompleted for manual runs — commands/
+    // context.ts emits the single authoritative row for the invocation.
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+    // The ledger outcome is trigger-agnostic: written for manual runs too.
+    const state = await loadState('acme', testDir);
+    expect(state.last_autosync_outcome).toBe('success');
+    expect(state.last_autosync_success_at).toBeTruthy();
   });
 });
