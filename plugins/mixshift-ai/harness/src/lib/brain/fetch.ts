@@ -382,7 +382,14 @@ export async function fetchBrandBrain(
   if (!opts.refresh && existing.ok) {
     const fetchedAt = existing.brain.sources.seller?.fetched_at;
     if (fetchedAt && withinTtl(fetchedAt, now)) {
-      void track(
+      // AWAITED, not `void`: a detached queue append here races the caller's
+      // cleanup — fetch.test.ts's temp-dir rm hit ENOTEMPTY on CI (2026-08-19)
+      // exactly because this skipped_fresh return left the append in flight.
+      // Same class as the context-sync emits' awaited-track decision: this
+      // fires once per fetch (not per query), so one local file append is
+      // negligible, and awaiting is what guarantees a short-lived CLI process
+      // can't exit (or a test can't clean up) under it.
+      await track(
         {
           event_name: EventName.BrainFetchSkipped,
           payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS },

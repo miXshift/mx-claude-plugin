@@ -73065,7 +73065,7 @@ async function fetchBrandBrain(opts) {
   if (!opts.refresh && existing.ok) {
     const fetchedAt = existing.brain.sources.seller?.fetched_at;
     if (fetchedAt && withinTtl(fetchedAt, now)) {
-      void track(
+      await track(
         {
           event_name: EventName.BrainFetchSkipped,
           payload: { brand: slug, fetched_at: fetchedAt, ttl_days: BRAIN_TTL_DAYS }
