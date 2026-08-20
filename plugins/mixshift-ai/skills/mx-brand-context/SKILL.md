@@ -424,7 +424,7 @@ implements fb-78913's suggestion 3.
   a hybrid brand.
 - **Zero (`populated_count = 0` of `total_count`):** state plainly that the field was
   **"never configured in the platform"** — not "missing data", not a "data
-  gap" — and name the specific Dash field the AM would set it in (the
+  gap" — and name the specific MixShift field the AM would set it in (the
   Account Manager view, https://dash.mydashapplications.com/account-manager,
   or that field's own campaign/item settings screen) if they ever want it
   populated going forward. This is the common case for `campaign.Objective` /
