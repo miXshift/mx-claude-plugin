@@ -532,7 +532,7 @@ queries:
 
   - id: PORT-01
     dispatch: named
-    purpose: Portfolio taxonomy — one row per portfolio (PortfolioName, state, campaign_count) per seller, plus synthetic (no portfolio) and (orphaned portfolio) bucket rows. The three buckets three-way-partition the account's enabled/paused campaign universe exactly.
+    purpose: Portfolio taxonomy — one row per portfolio (PortfolioID, PortfolioName, PortfolioState, campaign_count) per seller, plus synthetic (no portfolio) and (orphaned portfolio) bucket rows. The three buckets three-way-partition the account's enabled/paused campaign universe exactly.
     consumers: [mx-brand-context]
     tier: 1
     notes: |
@@ -549,7 +549,7 @@ queries:
 
   - id: PORT-02
     dispatch: named
-    purpose: Dash context-field coverage audit — 13 rows of field_name/populated/total across campaign Objective/ItemGroup/Tag1-4, mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, and seller ACOSTarget.
+    purpose: Dash context-field coverage audit — 13 rows of field_name/populated_count/total_count across campaign Objective/ItemGroup/Tag1-4, mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, and seller ACOSTarget. Coverage only — it proves a field is set, never carries the value.
     consumers: [mx-brand-context]
     tier: 1
     notes: |

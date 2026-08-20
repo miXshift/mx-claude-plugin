@@ -181,8 +181,9 @@ a normal brand.
 3. If the AM confirms **single brand** (or the report itself proposed
    `single_brand`), or the AM explicitly wants the account handled
    **account-wide, undifferentiated** (the scope preamble's shape (c) — a
-   deliberate choice, not a default): continue straight into Phase 0.5 as
-   written. Nothing else in this skill changes.
+   deliberate choice, not a default): continue into Phase 0.4 (Existing
+   Context Port), then Phase 0.5 as written. Nothing else in this skill
+   changes.
 4. If the AM confirms **brand-nested**: stop the normal sequence here and
    follow **"Sub-brand path"** below. Return to this skill's Phase 5 only
    after every selected sub-brand has completed its own setup.
@@ -335,7 +336,7 @@ that impossible to do by accident.
 
 ## Phase 0.4 — Existing Context Port (fresh mode only)
 
-fb-78913 (Andy Thompson): before interviewing the account manager, check what
+fb-78913: before interviewing the account manager, check what
 MixShift already knows — from your own team's prior work, from fields the
 platform itself already tracks, and from how the account already organizes
 its campaigns. Three ordered moves.
@@ -396,16 +397,31 @@ Timing above): `field_name` / `populated_count` / `total_count` for campaign `Ob
 implements fb-78913's suggestion 3.
 
 - **Populated (`populated_count > 0`):** pre-fill the matching Phase 2 answer and
-  ask the AM to **confirm** it, never ask cold. The two direct hits: seller
-  `ACOSTarget` and/or `mws_items.TargetACOS` / `TargetTACOS` populated →
-  pre-fill `management.acos_target_pct` / `management.tacos_goal_pct`
-  (`kickoff.md` Step 4's "ACOS target %" / "TACOS target" questions) with the
-  number(s) found; if item-level targets vary meaningfully, say so and ask
-  whether the account-level number is still the right blended target or
-  whether per-sub-brand targets are warranted. `mws_items.Brand` / `ItemGroup`
-  coverage corroborates the brain's `sub_brands` / `item_groups` taxonomy
-  (Phase 1a) — cite the coverage number as your confidence level in that
-  taxonomy rather than treating the brain's list as unconditionally complete.
+  ask the AM to **confirm** it, never ask cold. PORT-02 only proves a field
+  IS set — it never carries the value. The values live in the brain
+  artifacts fetched in this same Phase 1 pass: seller `ACOSTarget`'s number
+  is in the brain's seller block, and `mws_items.TargetACOS` /
+  `TargetTACOS` values sit on the brain's SC catalog rows. Read the number
+  there; if it is somehow absent from those artifacts, ask cold — never
+  invent a value. The two direct hits: seller `ACOSTarget` and/or
+  `mws_items.TargetACOS` / `TargetTACOS` populated → pre-fill
+  `management.acos_target_pct` / `management.tacos_goal_pct`
+  (`kickoff.md` Step 4's "ACOS target %" / "TACOS target" questions) with
+  the value read from those artifacts; if item-level targets vary
+  meaningfully, say so and ask whether the account-level number is still
+  the right blended target or whether per-sub-brand targets are warranted.
+  `mws_items.Brand` / `ItemGroup` coverage corroborates the brain's
+  `sub_brands` / `item_groups` taxonomy (Phase 1a) — cite the coverage
+  number as your confidence level in that taxonomy rather than treating the
+  brain's list as unconditionally complete.
+
+  Scoping caveats: PORT-02 pools every seller id into one flat 13-row
+  result (no per-seller split), and its six `mws_items.*` rows read the SC
+  catalog only — a hybrid SC+VC brand's VC catalog (`vendor_items`) never
+  enters those counts. VC-side coverage for the same field family arrives
+  via the CS-09/11/12/13 pulls in this same prefetch; read those for the VC
+  half, and never present an `mws_items` coverage number as account-wide on
+  a hybrid brand.
 - **Zero (`populated_count = 0` of `total_count`):** state plainly that the field was
   **"never configured in the platform"** — not "missing data", not a "data
   gap" — and name the specific Dash field the AM would set it in (the
@@ -632,8 +648,9 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 - Before asking whether a promo caused a spike, check revenue, units, ASP/price proxy, spend, conversion. If ASP held while units spiked, treat as deal placement or demand surge rather than discount unless price history proves markdown.
 - Before asking the ACOS/TACOS target questions (`kickoff.md` Step 4), check
   Phase 0.4(b)'s PORT-02 read of seller `ACOSTarget` / `mws_items.TargetACOS`
-  / `TargetTACOS`. If populated, present the found number(s) and ask the AM
-  to confirm or correct rather than asking cold.
+  / `TargetTACOS`. If populated, read the actual value from the brain's
+  seller block / SC catalog rows (PORT-02 only proves it is set) and present
+  it for confirm-or-correct rather than asking cold.
 - Before asking the objective-config question (`kickoff.md` Step 4), check
   Phase 0.4(c)'s PORT-01 portfolio-name parse. If it proposed an objective
   vocabulary, present it and ask the AM to confirm, correct, or extend it
