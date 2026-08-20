@@ -390,12 +390,12 @@ true first setup.
 ### (b) PORT-02 — platform-field coverage audit
 
 Read PORT-02's 13-row result (from this run's prefetch artifact — see
-Timing above): `field_name` / `populated` / `total` for campaign `Objective`,
+Timing above): `field_name` / `populated_count` / `total_count` for campaign `Objective`,
 `ItemGroup`, `Tag1`–`Tag4`; `mws_items` `Brand`, `ItemGroup`, `TargetACOS`,
 `TargetTACOS`, `ItemCost`, `LeadTime`; and seller `ACOSTarget`. This
 implements fb-78913's suggestion 3.
 
-- **Populated (`populated > 0`):** pre-fill the matching Phase 2 answer and
+- **Populated (`populated_count > 0`):** pre-fill the matching Phase 2 answer and
   ask the AM to **confirm** it, never ask cold. The two direct hits: seller
   `ACOSTarget` and/or `mws_items.TargetACOS` / `TargetTACOS` populated →
   pre-fill `management.acos_target_pct` / `management.tacos_goal_pct`
@@ -406,7 +406,7 @@ implements fb-78913's suggestion 3.
   coverage corroborates the brain's `sub_brands` / `item_groups` taxonomy
   (Phase 1a) — cite the coverage number as your confidence level in that
   taxonomy rather than treating the brain's list as unconditionally complete.
-- **Zero (`populated = 0` of `total`):** state plainly that the field was
+- **Zero (`populated_count = 0` of `total_count`):** state plainly that the field was
   **"never configured in the platform"** — not "missing data", not a "data
   gap" — and name the specific Dash field the AM would set it in (the
   Account Manager view, https://dash.mydashapplications.com/account-manager,
@@ -423,8 +423,8 @@ implements fb-78913's suggestion 3.
 
 ### (c) PORT-01 — portfolio structure parse
 
-Read PORT-01 (same artifact): one row per named portfolio (`PortfolioName`,
-`state`, `campaign_count`) per seller, plus two synthetic bucket rows per
+Read PORT-01 (same artifact): one row per named portfolio (`PortfolioID`,
+`PortfolioName`, `PortfolioState`, `campaign_count`) per seller, plus two synthetic bucket rows per
 seller — `(no portfolio)` (enabled/paused campaigns with no portfolio
 assigned) and `(orphaned portfolio)` (campaigns pointing at a portfolio id
 that no longer resolves). **The three buckets partition the account's full
