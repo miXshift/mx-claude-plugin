@@ -549,7 +549,7 @@ queries:
 
   - id: PORT-02
     dispatch: named
-    purpose: Dash context-field coverage audit — 13 rows of field_name/populated_count/total_count across campaign Objective/ItemGroup/Tag1-4, mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, and seller ACOSTarget. Coverage only — it proves a field is set, never carries the value.
+    purpose: MixShift context-field coverage audit — 13 rows of field_name/populated_count/total_count across campaign Objective/ItemGroup/Tag1-4, mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, and seller ACOSTarget. Coverage only — it proves a field is set, never carries the value.
     consumers: [mx-brand-context]
     tier: 1
     notes: |
