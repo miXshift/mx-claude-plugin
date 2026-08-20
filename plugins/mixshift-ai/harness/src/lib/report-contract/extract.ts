@@ -436,9 +436,24 @@ function resolveChangeUnit(
 ): UnitSpec {
   if (served.formats) {
     if (!fmt) return { unit: CANNOT_FORMAT };
-    return specOf(changeTokenOf(fmt), fmt);
+    return servedSpec(changeTokenOf(fmt), fmt);
   }
   return { unit: changeUnitOf((metricKey && fallback[metricKey]) ?? 'count') };
+}
+
+/**
+ * `specOf`, except the CANNOT_FORMAT sentinel is never presented as a served
+ * contract.
+ *
+ * ⚠ The sentinel means "the engine did not tell us this unit". Stamping it as
+ * `served_unit` says the opposite -- that the engine's answer IS
+ * 'unformattable' -- and UNIT-2 arm (a) then fires against any document that
+ * labels the figure correctly: `unit 'points_fraction' contradicts the served
+ * contract 'unformattable'`, an ERROR, so `report render` refuses the RIGHT
+ * answer. Absence of a contract must stay absence.
+ */
+function servedSpec(unit: string, fmt: ServedFormat): UnitSpec {
+  return unit === CANNOT_FORMAT ? { unit: CANNOT_FORMAT } : specOf(unit, fmt);
 }
 
 /**
@@ -492,7 +507,7 @@ function resolvePairUnit(
   if (!fmt) return { unit: CANNOT_FORMAT };
   // Same rule as resolveChangeUnit, same reasons -- `duo.tacos.delta_pts` is
   // the case that bites: it would print "2.8%" for a 2.8-POINT move.
-  if (kind === 'change') return specOf(changeTokenOf(fmt), fmt);
+  if (kind === 'change') return servedSpec(changeTokenOf(fmt), fmt);
   return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
 }
 

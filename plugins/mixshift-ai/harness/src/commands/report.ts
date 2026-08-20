@@ -41,6 +41,58 @@ function figuresOpt(v: string[] | false | undefined): string[] | undefined {
 }
 
 /**
+ * Reject an unreadable `--figures` path ONCE, before any document is processed.
+ *
+ * ⚠ This deliberately does NOT live inside `loadServedContract`. A bad
+ * `--figures` value is a mistake in the COMMAND, not a property of any one
+ * document, and `report validate` runs its per-file body inside a try/catch
+ * that turns every throw into "<that document>: UNREADABLE". Throwing from
+ * inside the loop therefore blamed a report-data.json that reads perfectly
+ * well, counted it toward `unreadable`, and exited 2 -- pointing the operator
+ * at the wrong file, which is the same misattribution this round already had
+ * to fix in the render refusal.
+ *
+ * Silence is not an option either: skipping an unreadable path lets one typo
+ * switch the served-unit check off and report CLEAN.
+ */
+async function assertFiguresReadable(explicit: string[] | undefined): Promise<void> {
+  if (!explicit || explicit.length === 0) return;
+  for (const path of [...new Set(explicit.map((p) => resolve(p)))]) {
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new UserFacingError(
+        `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        'figures_unreadable',
+      );
+    }
+    // ⚠ READABILITY IS NOT ENOUGH. Proving the bytes exist and then letting the
+    // parse fail quietly downstream leaves the same fail-open this guard was
+    // written to close: a truncated figures file -- exactly what an
+    // interrupted `report extract --out` leaves on disk, since the write is
+    // not atomic -- reads fine, parses to nothing, contributes no index, and
+    // the run reports CLEAN. `report render` then writes the HTML.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new UserFacingError(
+        `--figures ${path} is not valid JSON: ${err instanceof Error ? err.message : String(err)}. ` +
+          'If an extract was interrupted, re-run `report extract --out` for it.',
+        'figures_unreadable',
+      );
+    }
+    if (!Array.isArray((parsed as { figures?: unknown })?.figures)) {
+      throw new UserFacingError(
+        `--figures ${path} is not a \`report extract\` document (no \`figures\` array).`,
+        'figures_unreadable',
+      );
+    }
+  }
+}
+
+/**
  * Build the served unit contract for a report-data document by reading the
  * `report extract` output it was composed from.
  *
@@ -70,42 +122,16 @@ function figuresOpt(v: string[] | false | undefined): string[] | undefined {
  * quietly: a stray `figures-notes.json` in the working directory must not take
  * down a render.
  */
-/**
- * Reject an unreadable `--figures` path ONCE, before any document is processed.
- *
- * ⚠ This deliberately does NOT live inside `loadServedContract`. A bad
- * `--figures` value is a mistake in the COMMAND, not a property of any one
- * document, and `report validate` runs its per-file body inside a try/catch
- * that turns every throw into "<that document>: UNREADABLE". Throwing from
- * inside the loop therefore blamed a report-data.json that reads perfectly
- * well, counted it toward `unreadable`, and exited 2 -- pointing the operator
- * at the wrong file, which is the same misattribution this round already had
- * to fix in the render refusal.
- *
- * Silence is not an option either: skipping an unreadable path lets one typo
- * switch the served-unit check off and report CLEAN.
- */
-async function assertFiguresReadable(explicit: string[] | undefined): Promise<void> {
-  if (!explicit || explicit.length === 0) return;
-  for (const path of [...new Set(explicit.map((p) => resolve(p)))]) {
-    try {
-      await readFile(path, 'utf8');
-    } catch (err) {
-      throw new UserFacingError(
-        `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
-        'figures_unreadable',
-      );
-    }
-  }
-}
-
 async function loadServedContract(
   docPath: string,
   explicit: string[] | undefined,
   noFigures: boolean,
 ): Promise<{ index?: ServedContractIndex; sources: string[]; conflicts: string[] }> {
   const none = { sources: [] as string[], conflicts: [] as string[] };
-  if (noFigures) return none;
+  // --no-figures means SKIP, including any stamp the document carries. Without
+  // suppressAll the check would quietly continue off the figure's own
+  // model-copied served_unit and the flag would be a lie.
+  if (noFigures) return { ...none, index: { suppressAll: true } };
 
   let candidates: string[];
   if (explicit && explicit.length > 0) {
@@ -129,7 +155,6 @@ async function loadServedContract(
   const units: Record<string, string> = {};
   const origin: Record<string, string> = {};
   const conflicts = new Set<string>();
-  const sources: string[] = [];
 
   for (const path of candidates) {
     let parsed: unknown;
@@ -140,12 +165,10 @@ async function loadServedContract(
     }
     const figures = (parsed as { figures?: unknown })?.figures;
     if (!Array.isArray(figures)) continue;
-    let used = false;
     for (const f of figures) {
       const id = (f as { id?: unknown })?.id;
       const servedUnit = (f as { served_unit?: unknown })?.served_unit;
       if (typeof id !== 'string' || typeof servedUnit !== 'string' || servedUnit === '') continue;
-      used = true;
       if (units[id] !== undefined && units[id] !== servedUnit) {
         // Two extractions disagree about the same figure. One of them is not
         // this document's -- a leftover from another run, brand, or month.
@@ -157,7 +180,6 @@ async function loadServedContract(
       units[id] = servedUnit;
       origin[id] = path;
     }
-    if (used) sources.push(path);
   }
 
   for (const id of conflicts) {
@@ -165,9 +187,15 @@ async function loadServedContract(
     delete origin[id];
   }
 
-  return Object.keys(units).length > 0
-    ? { index: { units, origin }, sources, conflicts: [...conflicts] }
-    : { sources, conflicts: [...conflicts] };
+  // `sources` is used to tell the operator where a served unit came from, so
+  // it must list only files that still contribute a SURVIVING unit -- naming a
+  // file whose every entry was retired sends them to inspect an irrelevant one.
+  const contributing = [...new Set(Object.values(origin))].sort();
+  const index: ServedContractIndex | undefined =
+    Object.keys(units).length > 0 || conflicts.size > 0
+      ? { units, origin, suppressed: [...conflicts] }
+      : undefined;
+  return { index, sources: contributing, conflicts: [...conflicts] };
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -198,6 +226,11 @@ interface FileResult {
    *  JSON -- processing continues to the next file rather than aborting
    *  the whole batch before any result prints. */
   error?: string;
+  /** Figure ids whose served-unit check was RETIRED because two figures files
+   *  disagreed about them. Carried into --json because a silently-skipped
+   *  check reads identical to a passing one, and Step 6 records this output
+   *  as the run's audit trail. */
+  served_unit_conflicts?: string[];
 }
 
 /**
@@ -269,11 +302,15 @@ export function registerReportCommands(program: Command): void {
             const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
             for (const id of served.conflicts) {
               console.error(
-                `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; ` +
-                  'the served-unit check is skipped for it. Remove the stale one.',
+                `  warn [UNIT-2] ${file}: ${id} -- two figures files disagree on this figure's ` +
+                  'served unit; the served-unit check is skipped for it. Remove the stale one.',
               );
             }
-            results.push({ file, findings: validateReportData(doc, served.index) });
+            results.push({
+              file,
+              findings: validateReportData(doc, served.index),
+              ...(served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}),
+            });
           } catch (err) {
             anyUnreadable = true;
             results.push({ file, error: err instanceof Error ? err.message : String(err) });
@@ -437,8 +474,14 @@ export function registerReportCommands(program: Command): void {
           // Name the sidecars. A UNIT-2 contract finding cites a value that
           // appears nowhere in report-data.json, so "fix report-data.json"
           // alone sends the operator to debug a file that looks correct.
+          // Only when a served-contract finding is actually among the
+          // blockers. Appending it to a BASIS-1 or TRACE-1 refusal points at
+          // files that had nothing to do with the failure.
+          const blamesServedUnit = blocking.some(
+            (f) => f.rule === 'UNIT-2' && f.detail.includes('served by '),
+          );
           const servedHint =
-            served.sources.length > 0
+            blamesServedUnit && served.sources.length > 0
               ? ` Served units were read from: ${served.sources.join(', ')} — if one of those is ` +
                 'from another run, remove it or pass --no-figures.'
               : '';

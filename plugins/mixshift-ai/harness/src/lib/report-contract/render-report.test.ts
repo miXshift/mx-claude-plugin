@@ -843,4 +843,46 @@ describe('a document-authored `precision` degrades, never crashes the render', (
   it('still honours a precision that IS in domain', () => {
     expect(renderMonthlyReport(docWithPrecision(2))).toContain('$1,000.00');
   });
+
+  /** `weeks` defaults to 1dp, unlike currency's 0dp, so a precision that is
+   *  wrongly accepted as 0 is visible as "12" where "12.4" belongs. */
+  const weeksDoc = (precision: unknown) =>
+    ({
+      meta: { brand: 'Example', period: 'Jun 2026' },
+      figures: [
+        {
+          id: 'f1',
+          label: 'Weeks',
+          value: 12.4,
+          unit: 'weeks',
+          precision,
+          basis: 'ordered_revenue',
+          source_path: 'envelope:metrics[0].totals.p1',
+        },
+      ],
+      sections: [{ id: 's', title: 'S', prose: 'x', figure_refs: ['f1'], caveats_rendered: [] }],
+    }) as unknown as RenderReportDataDocument;
+
+  it.each([[-0.5], [-0.9], [0.5], [1.5]])(
+    'rejects the non-integer precision %p instead of truncating it into the valid range',
+    (precision) => {
+      // Math.trunc(-0.5) is -0, which PASSES a `>= 0` gate — so a nonsense
+      // precision would silently become 0 decimals and OVERRIDE the unit's own
+      // default rather than falling back to it. Checking integer-ness BEFORE
+      // truncating is what closes that.
+      expect(renderMonthlyReport(weeksDoc(precision))).toContain('12.4');
+    },
+  );
+
+  it('treats an explicit -0 as the 0 the author meant, not as garbage', () => {
+    // -0 IS an integer and reads as zero decimals; rejecting it would be
+    // over-correction. The defect was fractional values truncating INTO range,
+    // not a signed zero.
+    expect(renderMonthlyReport(weeksDoc(-0))).toContain('12');
+  });
+
+  it('unused-doc guard: the in-domain path still applies the authored precision', () => {
+    expect(renderMonthlyReport(weeksDoc(3))).toContain('12.400');
+  });
+
 });

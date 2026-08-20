@@ -548,6 +548,19 @@ export interface ServedContractIndex {
    *  Without this the refusal points the operator at report-data.json, which
    *  does not contain the contradicting value anywhere they can see it. */
   origin?: Record<string, string>;
+  /**
+   * Figures whose served contract was RETIRED as untrustworthy (two sources
+   * disagreed about them). Arm (a) must go fully silent for these.
+   *
+   * ⚠ Retiring the index entry alone does not do that: the check falls back to
+   * the figure's OWN `served_unit`, which the model copied, so the run prints
+   * "the served-unit check is skipped for it" and then blocks the render on
+   * exactly that figure anyway. Silence has to be explicit.
+   */
+  suppressed?: string[];
+  /** `--no-figures`: skip the served-contract arm outright, including any
+   *  stamp carried on the figure itself. The flag says skip; it must skip. */
+  suppressAll?: boolean;
 }
 
 export function validateReportData(
@@ -557,6 +570,8 @@ export function validateReportData(
   const findings: Finding[] = [];
   const servedUnits = served?.units ?? {};
   const servedOrigin = served?.origin ?? {};
+  const servedSuppressed = new Set(served?.suppressed ?? []);
+  const servedSuppressAll = served?.suppressAll === true;
 
   const figures = new Map<string, Figure>();
   for (const f of doc.figures ?? []) figures.set(f.id, f);
@@ -901,7 +916,9 @@ export function validateReportData(
     // is self-consistent and silently wrong -- which is the failure this rule
     // exists to catch, so the copy cannot be allowed to shadow the original.
     const indexUnit = servedUnits[f.id];
-    const servedUnit = indexUnit ?? f.served_unit;
+    const servedUnit = servedSuppressAll || servedSuppressed.has(f.id)
+      ? undefined
+      : (indexUnit ?? f.served_unit);
     if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
       const from = servedOrigin[f.id];
       findings.push({

@@ -1813,6 +1813,13 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
       // than an unformatted number because it is confidently wrong.
       expect(figs.get('ops.conversion.delta')?.unit).toBe('unformattable');
       expect(servedChipValues(renderServed(response, ['ops.conversion.delta']))).not.toContain('5.0%');
+      // ⚠ And it must NOT be stamped as a served contract. The sentinel means
+      // "the engine did not tell us"; presenting it as the engine's answer
+      // makes UNIT-2 arm (a) fire against a document that labels the figure
+      // CORRECTLY (`points_fraction` "contradicts" `unformattable`), so the
+      // render would refuse the right answer.
+      expect(figs.get('ops.conversion.delta')?.served_unit).toBeUndefined();
+      expect(figs.get('ops.conversion.delta')?.precision).toBeUndefined();
     },
   );
 

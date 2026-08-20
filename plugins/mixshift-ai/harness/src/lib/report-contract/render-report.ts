@@ -209,9 +209,12 @@ function precisionOf(precision: unknown, fallback: number): number {
 /** The same domain check, returning `undefined` for anything unusable so a
  *  caller's own `?? n` default survives. */
 function sanePrecision(precision: unknown): number | undefined {
-  if (typeof precision !== 'number' || !Number.isFinite(precision)) return undefined;
-  const p = Math.trunc(precision);
-  return p >= 0 && p <= MAX_FRACTION_DIGITS ? p : undefined;
+  // Integer-only, checked BEFORE any truncation. `Math.trunc(-0.5)` is `-0`,
+  // which passes `>= 0` — so a nonsense precision would silently become 0
+  // decimals and override the unit's own default rather than falling back to
+  // it. A fractional digit count is malformed either way; reject it.
+  if (typeof precision !== 'number' || !Number.isInteger(precision)) return undefined;
+  return precision >= 0 && precision <= MAX_FRACTION_DIGITS ? precision : undefined;
 }
 
 /** Fixed-precision, thousands-grouped, locale-PINNED (always en-US — never

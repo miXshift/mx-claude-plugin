@@ -450,3 +450,72 @@ describe('report validate -- served-unit sidecar discovery', () => {
     expect(process.exitCode).toBe(0);
   });
 });
+
+describe('report -- served-unit sidecar, round-3 hardening', () => {
+  const docWith = (unit: string) => ({
+    figures: [
+      {
+        id: 'mom.ops.ops.p2',
+        label: 'Revenue',
+        value: 1000,
+        unit,
+        served_unit: 'currency',
+        basis: 'ordered_revenue',
+        source_path: 'envelope:metrics[0].totals.p2',
+      },
+    ],
+  });
+  const sidecar = (servedUnit: string) => ({
+    figures: [{ id: 'mom.ops.ops.p2', served_unit: servedUnit }],
+  });
+
+  it('rejects a TRUNCATED --figures file instead of silently voiding the check', async () => {
+    // Non-atomic writeFile means an interrupted `report extract --out` leaves
+    // exactly this on disk. Readable bytes, unparseable content: the old guard
+    // proved the read and let the parse fail quietly, so the run said CLEAN.
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    const truncated = join(dir, 'figures.mom.json');
+    await writeFile(truncated, '{"figures": [{"id": "mom.ops.ops.p2", "served_u', 'utf8');
+    await expect(runCli({}, 'validate', doc, '--figures', truncated)).rejects.toThrow(
+      /is not valid JSON/,
+    );
+  });
+
+  it('rejects a --figures file that parses but is not an extract document', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    const notExtract = await writeJsonFile('figures.wrong.json', { notFigures: true });
+    await expect(runCli({}, 'validate', doc, '--figures', notExtract)).rejects.toThrow(
+      /no `figures` array/,
+    );
+  });
+
+  it('--no-figures really skips, including the stamp on the figure itself', async () => {
+    // The flag says skip. Falling back to the document's own model-copied
+    // served_unit would keep blocking and make the flag a lie.
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await runCli({}, 'validate', doc, '--no-figures');
+    expect(stdoutText()).not.toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('a RETIRED figure goes fully silent rather than falling back to the figure stamp', async () => {
+    // Two sidecars disagree, so the run prints "the check is skipped for it".
+    // Falling through to the figure's own served_unit would then block the
+    // render on that very figure, contradicting the line just printed.
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await writeJsonFile('figures.aaa.json', sidecar('currency'));
+    await writeJsonFile('figures.zzz.json', sidecar('number'));
+    await runCli({}, 'validate', doc);
+    expect(stdoutText()).not.toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('records a retired check in --json, where a skipped check otherwise reads as a pass', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await writeJsonFile('figures.aaa.json', sidecar('currency'));
+    await writeJsonFile('figures.zzz.json', sidecar('number'));
+    await runCli({ json: true }, 'validate', doc);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.results[0].served_unit_conflicts).toEqual(['mom.ops.ops.p2']);
+  });
+});
