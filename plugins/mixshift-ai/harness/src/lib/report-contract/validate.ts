@@ -83,13 +83,28 @@ const PERCENT_FAMILY_SCALE: Record<string, number> = {
  * number (35) labeled `ratio` and therefore displayed as 3500%. Anything that
  * survives 1000% is a number nobody could mistake for a rate.
  *
- * ⚠ It is not free of false positives, and the one real class is worth naming:
+ * ⚠ It is not free of false positives, and the real classes are worth naming:
  * ACOS and TACoS are genuine rates that pass 1000% on an account with
- * near-zero sales against live spend (spend 12× sales is ACOS 1200%). Those
- * are real readings, not scale errors. The rule reports rather than throws, so
- * such a figure surfaces as a finding to be dismissed by a human -- which is
- * the right trade against the alternative of a 3500% "rate" shipping silently,
- * the failure this rule exists to end.
+ * near-zero sales against live spend (spend 12× sales is ACOS 1200%), entity
+ * rows hit it far more often than totals do (one SD campaign type at 1200%
+ * ACOS stores 12.0 under `ratio`), and a hand-authored period-over-period
+ * CHANGE above 1000% is ordinary on a relaunched line or a brand's first ad
+ * month. Those are real readings, not scale errors.
+ *
+ * So this backstop is a WARNING, never an error. An earlier draft of this
+ * comment claimed such a figure "surfaces as a finding to be dismissed by a
+ * human"; that was false. `report render` refuses on ANY finding and the only
+ * override is a document-wide `--force`, which also waives BASIS-1 / TRACE-1 /
+ * CAVEAT-1 -- so a false positive on a correct figure was a choice between not
+ * shipping and shipping past the blocking-caveat gate. There is no
+ * per-finding waiver to reach for, which is exactly why this one must not
+ * block on its own.
+ *
+ * It is also why this is the ONLY warning-severity check in UNIT-2: it is the
+ * one arm that fires with no served contract behind it, which the engine
+ * author asked us not to fail on ("never fail on an absent served contract --
+ * only on present-and-disagreeing"). Arm (a), where the engine has actually
+ * told us the unit and the document disagrees, stays an error.
  */
 const PERCENT_IMPLAUSIBLE_LIMIT = 1000;
 
@@ -107,10 +122,28 @@ export type RuleId =
   | 'UNIT-1'
   | 'UNIT-2';
 
+/**
+ * `error` bars the render door; `warning` is reported and does not. Absent
+ * means `error`, so every rule that predates this field keeps blocking exactly
+ * as it did -- only a check that explicitly opts into `warning` is advisory.
+ *
+ * Reach for `warning` only where a finding can be RIGHT about the document and
+ * still be wrong about the world: a heuristic with a real false-positive class
+ * and no served contract behind it. Anything the engine or the contract can
+ * actually settle is an error.
+ */
+export type FindingSeverity = 'error' | 'warning';
+
 export interface Finding {
   rule: RuleId;
   subject: string;
   detail: string;
+  severity?: FindingSeverity;
+}
+
+/** Findings that bar the render door. */
+export function blockingFindings(findings: Finding[]): Finding[] {
+  return findings.filter((f) => (f.severity ?? 'error') === 'error');
 }
 
 export interface PopulationMember {
@@ -489,8 +522,36 @@ function evalCheck(
  *  contract. Pure function, never throws on a malformed-but-well-typed
  *  document (mirrors the Python source's `.get(...)` permissiveness) —
  *  returns the list of findings, empty when clean. */
-export function validateReportData(doc: ReportDataDocument): Finding[] {
+/**
+ * The served unit contract, keyed by FIGURE ID, as `report extract` resolved it
+ * off the envelope.
+ *
+ * ⚠ Why this is a parameter and not just read off the figure. `report extract`
+ * stamps `served_unit` on each figure it emits, but the document that reaches
+ * `validateReportData` is not that file: SKILL.md Step 5 has the MODEL compose
+ * report-data.json by hand from the extracted figures, and the worked examples
+ * it copies from carry no `served_unit`. So in the real pipeline the field
+ * simply never arrives, and a UNIT-2 arm that only reads the figure is a no-op
+ * exactly where a hand-written unit is most likely to be wrong -- which is the
+ * whole reason the rule exists.
+ *
+ * Passing the extractor's own output alongside the document closes that: the
+ * check no longer depends on a model copying a field it was never shown.
+ * Keyed by figure ID rather than `source_path` deliberately -- ids ARE
+ * period-prefixed (`mom.` / `yoy.`) and source paths are not, so a
+ * source_path-keyed map collides last-wins across a merged document.
+ */
+export interface ServedContractIndex {
+  /** figure id -> the unit the engine served for it */
+  units?: Record<string, string>;
+}
+
+export function validateReportData(
+  doc: ReportDataDocument,
+  served?: ServedContractIndex,
+): Finding[] {
   const findings: Finding[] = [];
+  const servedUnits = served?.units ?? {};
 
   const figures = new Map<string, Figure>();
   for (const f of doc.figures ?? []) figures.set(f.id, f);
@@ -827,7 +888,11 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
   // change scale without changing the label.
   for (const f of allFigs.values()) {
     const unit = f.unit;
-    const servedUnit = f.served_unit;
+    // The figure's own stamp first (present when the document came straight
+    // out of `report extract`), then the extractor's index (present whenever
+    // the caller handed us the figures file, which survives a hand-composed
+    // document). Either is the engine speaking; neither is a guess.
+    const servedUnit = f.served_unit ?? servedUnits[f.id];
     if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
       findings.push({
         rule: 'UNIT-2',
@@ -842,6 +907,10 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
         findings.push({
           rule: 'UNIT-2',
           subject: f.id,
+          // WARNING, not error -- see PERCENT_IMPLAUSIBLE_LIMIT. A 1200% ACOS
+          // on a near-zero-sales entity row is a real reading, and this arm
+          // has no served contract behind it to settle the question.
+          severity: 'warning',
           detail: `unit '${unit}' renders ${f.value} as ${displayed.toFixed(1)}%, past the ${PERCENT_IMPLAUSIBLE_LIMIT}% plausibility ceiling — check for a ratio/percent scale error`,
         });
       }

@@ -181,20 +181,44 @@ a bare id, MoM and YoY read as the same figure.
   written — which is the point. The one standing legitimate Derived: the day-normalised
   ex-event rate on older engines (see engine-pending rules).
 - **Caveats travel by reference to every quotation site.** A blocking caveat renders in
-  every section that quotes its figure — including the executive summary.
+  every section that quotes its figure — including the executive summary. Note that a
+  blocking caveat rides the **levels** as well as the delta: when the engine says a number
+  is not safe to quote bare, the number it means is usually the total.
+- **Copy `unit` and `served_unit` verbatim from the extracted figure.** `served_unit` is the
+  unit the analysis engine itself published; it is what lets the validator catch a unit that
+  got relabelled somewhere between extraction and here. If you copy `unit` but drop
+  `served_unit`, that check has nothing to compare against. Never author either by hand and
+  never "correct" a unit you find surprising — a served unit that looks wrong is a bug to
+  report upstream, not to patch here.
 - **Prose strings are written here, in the data file** — composing inside HTML markup
   produces template-shaped prose. Shared content (a table or Bottom Line appearing in both
   executive and full views) is authored ONCE and injected into both.
 
 ### Step 6 — Validate, then review
 
-Mechanical, all must pass, on every report built this session (a fix applied to one
-marketplace and left standing in its siblings is this skill's most-repeated historical
-defect):
+Mechanical, on every report built this session (a fix applied to one marketplace and left
+standing in its siblings is this skill's most-repeated historical defect):
 
 ```bash
 mixshift report validate <report-data.json>      # the harness report-contract validators
 python helpers/prose-lint.py <rendered.html>     # after Step 7's render
+```
+
+`report validate` reports two classes and only one of them is a gate:
+
+- **ERROR** — must be fixed. The fix goes in `report-data.json`, never in the rendered HTML.
+- **warn** — reported, does not block, and is sometimes correct as-is. Today the only
+  warning is UNIT-2's percent ceiling, which flags any percent-family figure that displays
+  past 1000%. That is usually a scale error, but a 1200% ACoS on an entity row with
+  near-zero sales against live spend is a real reading. **Look at every warning; do not
+  reflexively "fix" one by changing a unit** — relabelling a correct figure to silence it
+  is strictly worse than the warning.
+
+If validate ran from a different directory than the `figures.*.json` files, point it at
+them so the served-unit check has something to compare against:
+
+```bash
+mixshift report validate report-data.json --figures figures.mom.ops.json figures.mom.ads.json
 ```
 
 Then the judgment passes:

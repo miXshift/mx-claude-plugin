@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateReportData } from './validate.js';
+import { validateReportData, blockingFindings } from './validate.js';
 import type {
   ReportDataDocument,
   Finding,
@@ -712,6 +712,67 @@ describe('UNIT-2 (a unit must not contradict its served contract, or claim an im
     expect(found.find((f) => f.rule === 'UNIT-2')?.detail).toContain("contradicts the served contract 'currency'");
   });
 
+  it('is an ERROR when the engine and the document disagree', () => {
+    // Arm (a) has the engine's own word for it, so it bars the render door.
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({
+          id: 'ads.ad_driven_sales.p2',
+          label: 'Ad-attributed sales',
+          value: 22448.2,
+          unit: 'ratio',
+          served_unit: 'currency',
+        }),
+      ],
+    };
+    // This figure also trips arm (b) — 22448.2 under 'ratio' displays as
+    // 2,244,820% — so both arms report. Only the contract arm bars the door.
+    const found = validateReportData(doc).filter((f) => f.rule === 'UNIT-2');
+    expect(found).toHaveLength(2);
+    const errors = blockingFindings(found);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].detail).toContain("contradicts the served contract 'currency'");
+  });
+
+  it('reads the served contract from the extractor index when the document lost the stamp', () => {
+    // The real pipeline hand-composes report-data.json from the extracted
+    // figures, and the worked examples it copies carry no `served_unit` — so a
+    // rule that only reads the figure is a no-op exactly where a hand-written
+    // unit is most likely to be wrong. The index is keyed by figure ID, which
+    // IS period-prefixed, so a merged mom/yoy document cannot collide.
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({
+          id: 'mom.ads.ad_driven_sales.p2',
+          label: 'Ad-attributed sales',
+          value: 22448.2,
+          unit: 'ratio',
+        }),
+      ],
+    };
+    // Arm (b) fires on this figure regardless (22448.2 under 'ratio' displays
+    // as 2,244,820%), so isolate arm (a) by looking only at the ERRORS.
+    const withoutIndex = blockingFindings(validateReportData(doc)).filter((f) => f.rule === 'UNIT-2');
+    expect(withoutIndex).toHaveLength(0);
+    const withIndex = blockingFindings(
+      validateReportData(doc, { units: { 'mom.ads.ad_driven_sales.p2': 'currency' } }),
+    ).filter((f) => f.rule === 'UNIT-2');
+    expect(withIndex).toHaveLength(1);
+    expect(withIndex[0].subject).toBe('mom.ads.ad_driven_sales.p2');
+  });
+
+  it('prefers the figure’s own stamp over the index, and ignores an index entry for an absent figure', () => {
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({ id: 'mom.ads.acos.p2', label: 'ACOS', value: 0.3, unit: 'ratio', served_unit: 'ratio' }),
+      ],
+    };
+    const found = validateReportData(doc, {
+      units: { 'mom.ads.acos.p2': 'ratio', 'mom.ads.nothing.p2': 'currency' },
+    });
+    expect(found.some((f) => f.rule === 'UNIT-2')).toBe(false);
+  });
+
   it('does NOT fire when no contract was served — version skew must not manufacture findings', () => {
     // Same figure, same 'ratio' label, no served_unit: a pre-0.2.0 envelope, a
     // hand-authored figure, or a Derived. The rule has nothing to compare
@@ -779,6 +840,41 @@ describe('UNIT-2 (a unit must not contradict its served contract, or claim an im
     const found = validateReportData(doc);
     expect(found).toContainEqual(expect.objectContaining({ rule: 'UNIT-2', subject: 'ads.acos.p2' }));
     expect(found.find((f) => f.rule === 'UNIT-2')?.detail).toContain('4500.0%');
+  });
+
+  it('is a WARNING, so a real 1200% ACOS cannot force a --force render', () => {
+    // The backstop has a genuine false-positive class: ACOS/TACoS past 1000%
+    // on near-zero sales, entity rows far more often than totals, and any
+    // hand-authored period-over-period CHANGE on a relaunched line. When the
+    // gate refused on ANY finding, one such figure left the operator choosing
+    // between not shipping a correct report and passing --force, which waives
+    // BASIS-1 / TRACE-1 / CAVEAT-1 along with it. It must not block alone.
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'ads.entity.SD.acos.p2', label: 'ACoS (SD)', value: 12, unit: 'ratio' })],
+    };
+    const found = validateReportData(doc).filter((f) => f.rule === 'UNIT-2');
+    expect(found).toHaveLength(1);
+    expect(found[0].severity).toBe('warning');
+    // Reported, but the render door stays open.
+    expect(blockingFindings(validateReportData(doc))).toHaveLength(0);
+  });
+
+  it('still bars the door when the SAME figure also contradicts a served contract', () => {
+    // Warning and error coexist: the heuristic is advisory, the engine is not.
+    const doc: ReportDataDocument = {
+      figures: [
+        figure({
+          id: 'ads.entity.SD.acos.p2',
+          label: 'ACoS (SD)',
+          value: 12,
+          unit: 'ratio',
+          served_unit: 'currency',
+        }),
+      ],
+    };
+    const found = validateReportData(doc).filter((f) => f.rule === 'UNIT-2');
+    expect(found).toHaveLength(2);
+    expect(blockingFindings(found)).toHaveLength(1);
   });
 
   it('is scale-aware: the same number is fine under `percent`, which is already whole', () => {

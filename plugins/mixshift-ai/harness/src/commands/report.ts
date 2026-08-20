@@ -1,7 +1,13 @@
 import type { Command } from 'commander';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { validateReportData, type Finding, type ReportDataDocument } from '../lib/report-contract/validate.js';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import {
+  validateReportData,
+  blockingFindings,
+  type Finding,
+  type ReportDataDocument,
+  type ServedContractIndex,
+} from '../lib/report-contract/validate.js';
 import {
   extractFigures,
   checkFigures,
@@ -25,6 +31,64 @@ async function readJson<T>(file: string): Promise<T> {
       'report_data_unreadable',
     );
   }
+}
+
+/**
+ * Build the served unit contract for a report-data document by reading the
+ * `report extract` output it was composed from.
+ *
+ * `explicit` wins outright. With none given we look beside the document for
+ * `figures*.json`, which is the layout SKILL.md's own worked run produces
+ * (`report extract --out figures.mom.json` next to `report-data.json`). Finding
+ * nothing is not an error: pre-served-contract runs and hand-built test
+ * documents have no sidecar, and UNIT-2's contract arm is specified to stay
+ * silent when nothing was served rather than manufacture findings from skew.
+ *
+ * Anything unreadable or wrongly shaped is skipped rather than thrown --
+ * a stray `figures-notes.json` in the working directory must not take down a
+ * render.
+ */
+async function loadServedContract(
+  docPath: string,
+  explicit?: string[],
+): Promise<ServedContractIndex | undefined> {
+  let candidates: string[];
+  if (explicit && explicit.length > 0) {
+    candidates = explicit.map((p) => resolve(p));
+  } else {
+    const dir = dirname(resolve(docPath));
+    try {
+      const entries = await readdir(dir);
+      candidates = entries
+        .filter((e) => /^figures.*\.json$/i.test(e))
+        .sort()
+        .map((e) => join(dir, e));
+    } catch {
+      return undefined;
+    }
+  }
+
+  const units: Record<string, string> = {};
+  let found = false;
+  for (const path of candidates) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(path, 'utf8'));
+    } catch {
+      continue;
+    }
+    const figures = (parsed as { figures?: unknown })?.figures;
+    if (!Array.isArray(figures)) continue;
+    for (const f of figures) {
+      const id = (f as { id?: unknown })?.id;
+      const servedUnit = (f as { served_unit?: unknown })?.served_unit;
+      if (typeof id === 'string' && typeof servedUnit === 'string' && servedUnit !== '') {
+        units[id] = servedUnit;
+        found = true;
+      }
+    }
+  }
+  return found ? { units } : undefined;
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -100,7 +164,13 @@ export function registerReportCommands(program: Command): void {
         'documents. Exit 0 = all clean, 1 = findings, 2 = at least one file was unreadable ' +
         '(processing still continues through every file; 2 wins over 1 when both occur).',
     )
-    .action(async (files: string[], _opts: unknown, cmd: Command) => {
+    .option(
+      '--figures <path...>',
+      'the `report extract` output the document was composed from, so UNIT-2 can check ' +
+        'each unit against the contract the engine served (default: figures*.json beside ' +
+        'each document)',
+    )
+    .action(async (files: string[], opts: { figures?: string[] }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const results: FileResult[] = [];
@@ -112,18 +182,35 @@ export function registerReportCommands(program: Command): void {
         for (const file of files) {
           try {
             const doc = await readJson<ReportDataDocument>(file);
-            results.push({ file, findings: validateReportData(doc) });
+            const served = await loadServedContract(file, opts.figures);
+            results.push({ file, findings: validateReportData(doc, served) });
           } catch (err) {
             anyUnreadable = true;
             results.push({ file, error: err instanceof Error ? err.message : String(err) });
           }
         }
         const total = results.reduce((n, r) => n + (r.findings?.length ?? 0), 0);
+        // Only error-severity findings fail the run. A warning is a real
+        // report about the document that may still be right about the world
+        // (a 1200% ACOS on a near-zero-sales row), so it prints and does not
+        // gate -- see FindingSeverity.
+        const blocking = results.reduce(
+          (n, r) => n + blockingFindings(r.findings ?? []).length,
+          0,
+        );
+        const warnings = total - blocking;
         const unreadableCount = results.filter((r) => r.error !== undefined).length;
         if (root.json) {
           console.log(
             JSON.stringify(
-              { ok: total === 0 && !anyUnreadable, total, unreadable: unreadableCount, results },
+              {
+                ok: blocking === 0 && !anyUnreadable,
+                total,
+                blocking,
+                warnings,
+                unreadable: unreadableCount,
+                results,
+              },
               null,
               2,
             ),
@@ -137,16 +224,18 @@ export function registerReportCommands(program: Command): void {
             const findings = r.findings ?? [];
             console.log(`\n${r.file}: ${findings.length === 0 ? 'CLEAN' : `${findings.length} finding(s)`}`);
             for (const f of findings) {
-              console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+              const tag = (f.severity ?? 'error') === 'warning' ? 'warn' : 'ERROR';
+              console.log(`  ${tag} [${f.rule}] ${f.subject} -- ${f.detail}`);
             }
           }
           const summary = [
-            total === 0 ? null : `${total} finding(s)`,
+            blocking === 0 ? null : `${blocking} finding(s)`,
             unreadableCount === 0 ? null : `${unreadableCount} file(s) unreadable`,
           ].filter((s): s is string => s !== null);
-          console.log(`\n${summary.length === 0 ? 'PASS' : `FAIL: ${summary.join(', ')}`}`);
+          const pass = `PASS${warnings === 0 ? '' : ` (${warnings} warning(s))`}`;
+          console.log(`\n${summary.length === 0 ? pass : `FAIL: ${summary.join(', ')}`}`);
         }
-        process.exitCode = anyUnreadable ? 2 : total === 0 ? 0 : 1;
+        process.exitCode = anyUnreadable ? 2 : blocking === 0 ? 0 : 1;
       });
     });
 
@@ -217,15 +306,38 @@ export function registerReportCommands(program: Command): void {
     )
     .requiredOption('--out <path>', 'write the HTML artifact here')
     .option('--force', 'render even when the document has validator findings', false)
-    .action(async (file: string, opts: { out: string; force: boolean }, cmd: Command) => {
+    .option(
+      '--figures <path...>',
+      'the `report extract` output the document was composed from, so UNIT-2 can check ' +
+        'each unit against the contract the engine served (default: figures*.json beside ' +
+        'the document)',
+    )
+    .action(
+      async (
+        file: string,
+        opts: { out: string; force: boolean; figures?: string[] },
+        cmd: Command,
+      ) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const doc = await readJson<RenderReportDataDocument>(file);
-        const findings = validateReportData(doc);
-        if (findings.length > 0 && !opts.force) {
-          for (const f of findings) console.error(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        const served = await loadServedContract(file, opts.figures);
+        const findings = validateReportData(doc, served);
+        const blocking = blockingFindings(findings);
+        // Warnings are reported and never bar the door. Before this split the
+        // gate refused on ANY finding, so the single heuristic check in UNIT-2
+        // could force an operator to choose between not shipping a correct
+        // report and passing --force, which waives BASIS-1 / TRACE-1 /
+        // CAVEAT-1 along with it. That trade is now gone.
+        for (const f of findings) {
+          if ((f.severity ?? 'error') === 'warning') {
+            console.error(`  warn [${f.rule}] ${f.subject} -- ${f.detail}`);
+          }
+        }
+        if (blocking.length > 0 && !opts.force) {
+          for (const f of blocking) console.error(`  ERROR [${f.rule}] ${f.subject} -- ${f.detail}`);
           throw new UserFacingError(
-            `Refusing to render: ${findings.length} validator finding(s). Fix report-data.json ` +
+            `Refusing to render: ${blocking.length} validator finding(s). Fix report-data.json ` +
               '(corrections go to the data file, never the HTML) or pass --force.',
             'report_data_invalid',
           );
