@@ -24,6 +24,30 @@ starts at 0.5.39; earlier versions predate the changelog.
   attempt actually succeeded, separately from when it was last attempted, so
   a string of offline attempts no longer looks the same as a healthy one.
 
+- **Team brand contexts now show up automatically the moment you work an
+  account.** Previously, a brand's shared context only reached a machine if
+  someone explicitly pulled it there or ran brand setup on that machine
+  directly. Now, the first time any skill touches an account your team has
+  already set up elsewhere, whether that's a brand-new machine or a fresh
+  Cowork session, its shared context arrives in the background
+  automatically. Nothing to run, nothing to remember.
+
+- **Signing in now shows what your org has set up versus what's on this
+  machine.** Sign-in already reported your local brand count. It now also
+  reports how many brands your org has configured overall and how many of
+  those are not yet on this machine, so a new teammate or a fresh machine
+  can tell right away whether they're missing shared context instead of
+  finding out the hard way.
+
+- **Clearer guidance when a merchant isn't connected to MixShift yet.**
+  Brand setup's fallback for an account it couldn't find used to mean the
+  account manager had to hand-write the context files. It now checks
+  whether the merchant might just be listed under a different name,
+  explains exactly what it means when an account's Ads or Retail connection
+  is inactive, and if the merchant genuinely isn't in your MixShift account
+  yet, says so plainly with the next step instead of trying to work around
+  it.
+
 ### Fixed
 
 - **`context autosync`'s built-in help no longer says pull-only.** The

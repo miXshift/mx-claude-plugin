@@ -18,12 +18,40 @@
  *     NEVER throws.
  *   - A read stays a read: the brand slug must pass a strict safety
  *     pattern (brandDir() joins it into a filesystem path verbatim) AND
- *     the brand directory must already exist locally — otherwise the hook
+ *     EITHER the brand directory already exists locally OR the org-wide
+ *     manifest lists the slug (the seed path below) — otherwise the hook
  *     skips with no stamp, no mkdir, no save, so a typo'd or hostile slug
  *     can never create a phantom brand dir or touch anything outside
  *     clients/. Likewise, a tenant-identity mismatch with tracked docs on
  *     disk skips entirely: rebinding the ledger stays an explicit-sync
  *     behavior, never a passive-read side effect.
+ *   - Seed path (D-032, slice 2 — US1/US2): a MISSING brand dir is no
+ *     longer an automatic skip. getCachedOrgManifest (below) consults the
+ *     org-wide manifest — cached at <dataDir>/.context-sync-org-manifest.json
+ *     (see state.ts), TTL = AUTOSYNC_THROTTLE_MS by default, refreshed via
+ *     the SAME budgeted client.fetchManifest() this function already uses —
+ *     and a slug the org store lists gets SEEDED: falling through into the
+ *     exact same throttle-stamp-save + sync()/pull() flow as an
+ *     already-existing brand, so the dir gets created (a side effect of the
+ *     throttle-stamp save below, the same mkdir the guard above exists to
+ *     PREVENT for an unlisted slug) and the engine's normal doc pull/push
+ *     populates it. The path-safety property is UNCHANGED, not weakened:
+ *     mkdir only ever happens for a slug that ALSO passes isSafeBrandSlug
+ *     (re-checked as belt-and-braces right after the manifest confirms
+ *     membership) — the manifest only ever upgrades the TRUST SOURCE for
+ *     "is this a real brand" from "a local dir happens to exist" to "the
+ *     org store itself lists it"; a client-guessed or user-typed slug still
+ *     can never create anything. A slug NOT in the manifest skips exactly
+ *     as before seeding existed: no stamp, no mkdir. THROTTLING A MISSING
+ *     BRAND: it has no per-brand ledger yet to stamp `last_autosync_at`
+ *     against, so repeat seed ATTEMPTS for an unshared/typo'd slug are
+ *     throttled by the ORG-MANIFEST CACHE'S OWN TTL instead — a slug absent
+ *     from the cached manifest is not re-fetched against the network until
+ *     that cache expires — rather than a new per-slug mechanism. The
+ *     manifest check shares the sync/pull call's own AUTOSYNC_BUDGET_MS
+ *     race (its measured duration is subtracted from the budget left for
+ *     the op() call below), so a seed attempt's total wall-clock stays
+ *     bounded by one budget, not two back-to-back ones.
  *   - Throttled: at most one ATTEMPT per brand per AUTOSYNC_THROTTLE_MS,
  *     stamped in the per-brand ledger (`last_autosync_at`, schema-tolerant
  *     — see state.ts). Failures count as attempts so an offline machine
@@ -50,7 +78,10 @@
  * last_autosync_outcome / last_autosync_success_at on the ledger (see
  * state.ts) and fires one ContextAutosyncCompleted event — the SAME event
  * `mixshift context autosync` already emits — tagged payload.trigger
- * ('preflight' by default; a caller may pass 'manual'). Early-skip outcomes
+ * ('preflight' by default; a caller may pass 'manual'), plus
+ * payload.seeded:true when THIS attempt is the one that created the brand
+ * dir (absent otherwise) — so the seed path (US1/US2) is observable in the
+ * field. Early-skip outcomes
  * (disabled, unsafe slug, missing dir, throttled, foreign-tenant ledger, an
  * unpersistable stamp) get neither: this hook runs on every skill step but
  * only truly attempts a sync once per brand per throttle window, so
@@ -73,9 +104,16 @@ import { PUSH_AFTER_WRITE_ENV, TELEMETRY_EMIT_BUDGET_MS } from './push-after-wri
 import { runBudgetedStakeLeg, type StakeLegSummary } from '../timeline/stake-sync.js';
 import { createContextSyncClient, type ContextSyncClient } from './client.js';
 import { brandDirExists, isSafeBrandSlug } from './local.js';
-import { loadState, resolveLedgerIdentity, saveState, type ContextSyncState } from './state.js';
+import {
+  loadOrgManifestCache,
+  loadState,
+  resolveLedgerIdentity,
+  saveOrgManifestCache,
+  saveState,
+  type ContextSyncState,
+} from './state.js';
 import { DEADLINE, raceDeadline } from '../utils/deadline.js';
-import type { DocActionReport } from './types.js';
+import type { DocActionReport, WireManifestBrand } from './types.js';
 import { track, EventName } from '../telemetry/index.js';
 import { scrubDetail } from './telemetry-detail.js';
 
@@ -157,6 +195,15 @@ export async function maybeAutoSync(
   // itself is only ever stamped for a cleared attempt).
   let pastGuards = false;
   let ledgerState: ContextSyncState | undefined;
+  // True only when THIS attempt created the brand dir (the seed path).
+  // Read by finish() below to add payload.seeded to the telemetry event.
+  let seeded = false;
+  // Wall-clock time actually spent on the seed path's manifest check, if
+  // any (stays 0 when the dir already existed — see the budget note
+  // below). Subtracted from the sync/pull race's window further down so a
+  // seed attempt's manifest-check-plus-sync total stays bounded by one
+  // AUTOSYNC_BUDGET_MS, not two back-to-back ones.
+  let manifestElapsedMs = 0;
 
   /**
    * Common tail for every outcome that cleared the guards: persists
@@ -219,6 +266,10 @@ export async function maybeAutoSync(
                 brand: brandSlug,
                 force: options.force ?? false,
                 ran: result.ran,
+                // Present (true) only when THIS attempt created the brand
+                // dir; absent otherwise — additive field, same event (see
+                // the module doc and design D-032).
+                ...(seeded ? { seeded: true } : {}),
                 ...(result.ran
                   ? {
                       pulled: result.pulled,
@@ -277,19 +328,66 @@ export async function maybeAutoSync(
       return { ran: false, reason: 'skipped', detail: 'not a valid brand slug' };
     }
 
-    // Autosync serves EXISTING local brands only. Without this check the
+    // Configured budget, resolved once (hoisted ahead of its original spot
+    // further down) so the seed path's manifest check — the only new
+    // network call this function can make before its normal guards — can
+    // race it too, and its measured duration can be subtracted from the
+    // remaining budget the sync/pull race gets below.
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
+
+    // Autosync serves EXISTING local brands, OR one the org store itself
+    // vouches for (the seed path — D-032). Without SOME check here the
     // throttle stamp's saveState would mkdir clients/<slug>/ as a side
-    // effect, so any read of a typo'd slug would permanently create a
-    // phantom brand that status/sync/list then report forever. Fetching a
-    // brand-new brand stays an explicit `context pull --brand <slug>`.
+    // effect for ANY slug, so a read of a typo'd or hostile slug would
+    // permanently create a phantom brand that status/sync/list then report
+    // forever. A brand-new brand no source vouches for stays an explicit
+    // `context pull --brand <slug>`.
     if (!(await brandDirExists(brandSlug, options.dataDirOverride))) {
-      return {
-        ran: false,
-        reason: 'skipped',
-        detail:
-          'no local brand directory; fetch it explicitly with ' +
-          '`mixshift context pull --brand <slug>`',
-      };
+      const manifestCheckStart = Date.now();
+      const manifestResult = await getCachedOrgManifest({
+        dataDirOverride: options.dataDirOverride,
+        client: options.client,
+        fetchImpl: options.fetchImpl,
+        now: options.now,
+        throttleMs: options.throttleMs,
+        budgetMs,
+        env,
+      });
+      manifestElapsedMs = Date.now() - manifestCheckStart;
+
+      const listed =
+        manifestResult.ok &&
+        manifestResult.brands.some((b) => b.brand_slug === brandSlug);
+      if (!listed) {
+        // Covers BOTH sub-cases identically (offline/timeout during the
+        // manifest check, and a manifest that came back but doesn't list
+        // this slug): from the caller's perspective neither can vouch for
+        // this brand right now, so both get the same quiet "do it
+        // explicitly" outcome as a plain missing dir always has.
+        return {
+          ran: false,
+          reason: 'skipped',
+          detail:
+            'no local brand directory; fetch it explicitly with ' +
+            '`mixshift context pull --brand <slug>`',
+        };
+      }
+      // Belt-and-braces (design D-032): isSafeBrandSlug was already checked
+      // above, before ANY fs/network call, so this is provably true here
+      // today — kept as an explicit second gate so mkdir is NEVER reachable
+      // solely because the org manifest listed a slug, even under a future
+      // refactor that reorders these checks. The manifest is server data,
+      // not a trust source for local path safety.
+      if (!isSafeBrandSlug(brandSlug)) {
+        return { ran: false, reason: 'skipped', detail: 'not a valid brand slug' };
+      }
+      seeded = true;
+      // Fall through: the throttle-stamp save a few lines down creates
+      // clients/<slug>/ as a side effect of saveState's mkdir — the exact
+      // mechanism the comment above exists to prevent for an unlisted slug,
+      // now deliberate because the org store itself vouches for this slug.
+      // The normal sync()/pull() call further down (unchanged) then
+      // populates it exactly as it would for an already-existing brand.
     }
 
     const now = options.now ? options.now() : new Date();
@@ -360,9 +458,14 @@ export async function maybeAutoSync(
     // makes (manifest + per-doc fetches). The per-request timeouts inside
     // the client (30s/120s) are far looser, so simply REPLACING the signal
     // keeps the strictest bound without needing AbortSignal.any.
+    //
+    // raceMs is the budget REMAINING after the seed path's manifest check
+    // (if any) already spent part of it: 0 on the dir-exists path
+    // (manifestElapsedMs stays 0 there, so this is exactly budgetMs,
+    // unchanged) — see the module doc's budget note.
+    const raceMs = Math.max(0, budgetMs - manifestElapsedMs);
     const controller = new AbortController();
-    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
-    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    const abortTimer = setTimeout(() => controller.abort(), raceMs);
     abortTimer.unref?.();
     try {
       const baseFetch = options.fetchImpl ?? fetch;
@@ -394,15 +497,15 @@ export async function maybeAutoSync(
           dataDirOverride: options.dataDirOverride,
           // NEVER force: diverged docs stay untouched by design.
         }),
-        budgetMs,
+        raceMs,
       );
       if (raced === DEADLINE) {
         controller.abort(); // cut the budgeted fetches; a refresh dies on its own timer
-        debugLog(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        debugLog(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
         return await finish({
           ran: false,
           reason: 'failed',
-          detail: `timed out after ${budgetMs}ms`,
+          detail: `timed out after ${raceMs}ms`,
         });
       }
       if (!raced.ok) {
@@ -450,4 +553,96 @@ export async function maybeAutoSync(
 
 function debugLog(env: NodeJS.ProcessEnv, message: string): void {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// Org-wide manifest cache (D-032 seed path + login-time org-brand-count line)
+// ---------------------------------------------------------------------------
+
+export interface OrgManifestOptions {
+  dataDirOverride?: string;
+  /** Injectable for tests; defaults to the real HTTP client (budgeted). */
+  client?: ContextSyncClient;
+  /** Injectable for tests; the real path wraps this with the budget signal. */
+  fetchImpl?: typeof fetch;
+  /** Clock injection for tests. */
+  now?: () => Date;
+  /** Cache freshness window. Defaults to AUTOSYNC_THROTTLE_MS — this is
+   *  deliberately the SAME constant the per-brand ledger throttle uses (see
+   *  the module doc), not an independent knob. */
+  throttleMs?: number;
+  /** Wall-clock budget for a COLD fetch only; ignored on a cache hit.
+   *  Defaults to AUTOSYNC_BUDGET_MS. */
+  budgetMs?: number;
+  env?: NodeJS.ProcessEnv;
+}
+
+export type OrgManifestResult =
+  | { ok: true; brands: WireManifestBrand[]; fromCache: boolean }
+  | { ok: false };
+
+/**
+ * Org-wide brand manifest, cached at <dataDir>/.context-sync-org-manifest.json
+ * (see state.ts) with a TTL = AUTOSYNC_THROTTLE_MS by default. Shared by two
+ * callers that both want "does/how much does the org store know" without
+ * hammering GET /api/context/manifest on every call:
+ *   - maybeAutoSync's seed path (a missing brand dir consults this to decide
+ *     whether to seed);
+ *   - commands/auth.ts's login-time org-brand-count line (a natural
+ *     cache-warm moment).
+ *
+ * Quiet no-op contract, same shape as the rest of this module: a cache hit
+ * never touches the network; a cold/expired cache does ONE budgeted
+ * client.fetchManifest() call and, on success, persists the cache
+ * best-effort before returning it. A failed or over-budget cold fetch
+ * returns {ok:false} — NEVER throws, and never partially updates the cache.
+ */
+export async function getCachedOrgManifest(
+  options: OrgManifestOptions = {},
+): Promise<OrgManifestResult> {
+  const now = options.now ? options.now() : new Date();
+  const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
+  try {
+    const cached = await loadOrgManifestCache(options.dataDirOverride);
+    if (cached) {
+      const fetchedAt = Date.parse(cached.fetched_at);
+      if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
+        return { ok: true, brands: cached.brands, fromCache: true };
+      }
+    }
+
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
+    if (budgetMs <= 0) return { ok: false };
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        baseFetch(input, { ...init, signal: controller.signal })) as typeof fetch;
+      const client =
+        options.client ??
+        createContextSyncClient({
+          dataDirOverride: options.dataDirOverride,
+          fetchImpl: budgetedFetch,
+        });
+      const raced = await raceDeadline(client.fetchManifest(), budgetMs);
+      if (raced === DEADLINE || !raced.ok) return { ok: false };
+      // Best-effort persist; a failed cache write just means the next
+      // caller repeats this fetch — never fails the read we already have.
+      await saveOrgManifestCache(
+        { fetched_at: now.toISOString(), brands: raced.brands },
+        options.dataDirOverride,
+      );
+      return { ok: true, brands: raced.brands, fromCache: false };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    if (options.env?.MIXSHIFT_DEBUG) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[debug] getCachedOrgManifest: swallowed error: ${message}\n`);
+    }
+    return { ok: false };
+  }
 }

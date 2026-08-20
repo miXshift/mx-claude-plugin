@@ -22,6 +22,8 @@ import {
   runDiscoveryAndPersist,
   countByActivity,
 } from '../lib/clients/index.js';
+import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
+import { listLocalBrands } from '../lib/context-sync/local.js';
 import { networkErrorMessage } from '../lib/net/classify.js';
 import { resolveApiBaseHost } from '../lib/net/api-base.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
@@ -179,7 +181,29 @@ export function registerAuthCommands(program: Command): void {
               },
               root.dataDir,
             );
-            // Non-JSON: append a brand-count line to the success message.
+
+            // Org-manifest awareness line (D-032): sign-in is a natural
+            // cache-warm moment for the SAME org-manifest cache the
+            // context-sync seed path consults (see autosync.ts). Budgeted,
+            // best-effort, quiet no-op on offline/timeout — `org` just
+            // stays undefined and the line below never prints; this never
+            // errors and never delays sign-in beyond getCachedOrgManifest's
+            // own budget.
+            let org: { total: number; not_local: number } | undefined;
+            const manifestResult = await getCachedOrgManifest({
+              dataDirOverride: root.dataDir,
+            });
+            if (manifestResult.ok) {
+              const localSlugs = new Set(await listLocalBrands(root.dataDir));
+              const orgSlugs = manifestResult.brands.map((b) => b.brand_slug);
+              org = {
+                total: orgSlugs.length,
+                not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
+              };
+            }
+
+            // Non-JSON: append a brand-count line to the success message,
+            // then the org-awareness line right after it when available.
             // Also nudge toward curating key brands when the count is large
             // — agency managers with 200+ accounts don't want portfolio
             // skills running against all of them.
@@ -201,6 +225,20 @@ export function registerAuthCommands(program: Command): void {
                         `  mixshift brand key add <name-or-slug>   (accepts display names, acronyms, slugs)\n` +
                         `Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."\n`
                       : ''),
+              );
+              if (org) {
+                process.stdout.write(
+                  `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`,
+                );
+              }
+            } else {
+              // JSON: the counts gain fields here, appended once discovery
+              // (and the org fetch) finish — the base result already
+              // printed above via renderResult, before either ran. Same
+              // "print now, append once background work finishes" pattern
+              // as the non-JSON branch, in a machine-parseable shape.
+              process.stdout.write(
+                JSON.stringify({ brands: counts, ...(org ? { org } : {}) }, null, 2) + '\n',
               );
             }
           } catch (err) {

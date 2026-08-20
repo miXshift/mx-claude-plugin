@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { stringify as stringifyYaml } from 'yaml';
 import {
   maybeAutoSync,
+  getCachedOrgManifest,
   AUTOSYNC_ENV,
   AUTOSYNC_BUDGET_MS,
   AUTOSYNC_THROTTLE_MS,
@@ -12,7 +13,12 @@ import {
 import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
 import { PUSH_AFTER_WRITE_ENV, TELEMETRY_EMIT_BUDGET_MS } from './push-after-write.js';
-import { contextSyncStatePath, brandDir, credentialsPath } from '../paths/resolve.js';
+import {
+  contextSyncStatePath,
+  brandDir,
+  credentialsPath,
+  orgManifestCachePath,
+} from '../paths/resolve.js';
 import { loadState } from './state.js';
 import type { ContextSyncState } from './state.js';
 import type { WireManifestBrand } from './types.js';
@@ -240,8 +246,13 @@ describe('read-path safety', () => {
     },
   );
 
-  it('unknown-but-safe slug (typo): skipped, no phantom brand dir created', async () => {
-    const { client, state } = countingClient([], {});
+  it('unknown-but-safe slug (typo), absent from the org manifest: skipped, no phantom brand dir created', async () => {
+    // Since the seed path (D-032), a missing dir now consults the org
+    // manifest instead of skipping outright — so this DOES cost one fetch
+    // (see the "seed path" describe block below for the full contract).
+    // The path-safety property under test here is narrower and unchanged:
+    // a slug the manifest doesn't list still creates nothing.
+    const { client, state } = countingClient([manifestBrand('someone-else', [])], {});
     const result = await maybeAutoSync('tpyo', {
       dataDirOverride: testDir,
       client,
@@ -249,8 +260,10 @@ describe('read-path safety', () => {
     });
     expect(result.ran).toBe(false);
     if (!result.ran) expect(result.reason).toBe('skipped');
-    expect(state.manifestCalls).toBe(0);
-    expect(await readdir(testDir)).toEqual([]);
+    expect(state.manifestCalls).toBe(1);
+    // No clients/ tree at all: mkdir only ever happens for a slug the org
+    // store itself lists, and 'tpyo' isn't in it.
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
   });
 
   it('skips the network when the throttle stamp cannot be persisted', async () => {
@@ -1102,5 +1115,237 @@ describe('finish() telemetry emit is bounded (FIX D)', () => {
     // Bounded by TELEMETRY_EMIT_BUDGET_MS (plus real overhead) — nowhere
     // near a hang into the suite timeout.
     expect(elapsed).toBeLessThan(TELEMETRY_EMIT_BUDGET_MS + 2_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Seed path (D-032, slice 2 — US1/US2): a missing brand dir consults the
+// org-wide manifest instead of skipping outright. See the module doc's
+// "Seed path" bullet.
+// ---------------------------------------------------------------------------
+
+describe('seed path: missing dir consults the org manifest', () => {
+  it('manifest-listed slug seeds: dir created, doc pulled, ledger written, seeded:true emitted', async () => {
+    const { client } = countingClient(
+      [manifestBrand('newbrand', [{ key: 'narrative', content: 'from org store\n', revision: 1 }])],
+      { narrative: { content: 'from org store\n', revision: 1 } },
+    );
+
+    const result = await maybeAutoSync('newbrand', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(result.pulled).toBe(1);
+      expect(result.errors).toBe(0);
+    }
+
+    // The dir now exists and the doc landed — the engine handled it exactly
+    // as it would for an already-existing brand.
+    expect(
+      await readFile(join(brandDir('newbrand', testDir), 'narrative.md'), 'utf8'),
+    ).toBe('from org store\n');
+
+    // Ledger written (per-doc entry + outcome fields).
+    const ledger = await readLedger('newbrand');
+    expect(ledger.docs.narrative).toBeDefined();
+    expect(ledger.last_autosync_outcome).toBe('success');
+
+    // seeded:true on THIS attempt's telemetry row.
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      outcome: 'ok',
+      payload: { trigger: 'preflight', brand: 'newbrand', ran: true, seeded: true },
+    });
+  });
+
+  it('unlisted slug: no mkdir, no throttle stamp, no telemetry', async () => {
+    const { client, state } = countingClient([manifestBrand('other-brand', [])], {});
+    const result = await maybeAutoSync('ghost-town', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({
+      ran: false,
+      reason: 'skipped',
+      detail:
+        'no local brand directory; fetch it explicitly with ' +
+        '`mixshift context pull --brand <slug>`',
+    });
+    expect(state.manifestCalls).toBe(1); // consulted, just not found
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('unsafe slug never reaches the manifest, even when the manifest itself lists it', async () => {
+    const { client, state } = countingClient([manifestBrand('../evil', [])], {});
+    const result = await maybeAutoSync('../evil', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toEqual({ ran: false, reason: 'skipped', detail: 'not a valid brand slug' });
+    // isSafeBrandSlug is checked BEFORE brandDirExists/the manifest check —
+    // the manifest is never even consulted for a slug this shape.
+    expect(state.manifestCalls).toBe(0);
+  });
+
+  it('cache TTL honored: a second miss inside the window does not refetch', async () => {
+    const { client, state } = countingClient([manifestBrand('other-brand', [])], {});
+    await maybeAutoSync('ghost-town', { dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(state.manifestCalls).toBe(1);
+
+    const second = await maybeAutoSync('ghost-town', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(second.ran).toBe(false);
+    if (!second.ran) expect(second.reason).toBe('skipped');
+    // Served from the org-manifest cache — no second fetch inside the TTL.
+    expect(state.manifestCalls).toBe(1);
+  });
+
+  it('offline manifest fetch: quiet no-op, nothing persisted', async () => {
+    const failingClient: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'fetch failed',
+        friendly: 'unreachable',
+      }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+    const result = await maybeAutoSync('offline-brand', {
+      dataDirOverride: testDir,
+      client: failingClient,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
+    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('kill switch stays byte-silent for a seed-eligible (missing-dir) slug too', async () => {
+    const { client, state } = countingClient([manifestBrand('newbrand', [])], {});
+    const result = await maybeAutoSync('newbrand', {
+      dataDirOverride: testDir,
+      client,
+      env: { [AUTOSYNC_ENV]: 'off' },
+    });
+    expect(result).toEqual({ ran: false, reason: 'disabled' });
+    // The kill switch fires before ANY file or network activity — the
+    // manifest is never consulted, so no cache file, no clients/ tree.
+    expect(state.manifestCalls).toBe(0);
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
+    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('the dir-exists path is untouched: no org-manifest cache file appears for an ordinary sync', async () => {
+    await makeBrandDir('acme');
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result.ran).toBe(true);
+    // getCachedOrgManifest is only ever reached when brandDirExists() is
+    // false — an existing brand dir never triggers it, so the cache file
+    // this seed-path machinery writes must not appear here.
+    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCachedOrgManifest: the extracted manifest-cache helper, tested directly
+// (not just through maybeAutoSync's seed path).
+// ---------------------------------------------------------------------------
+
+describe('getCachedOrgManifest', () => {
+  it('cold cache: fetches once, persists the cache, returns fromCache:false', async () => {
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    expect(result).toMatchObject({ ok: true, fromCache: false });
+    expect(state.manifestCalls).toBe(1);
+    const cached = JSON.parse(await readFile(orgManifestCachePath(testDir), 'utf8'));
+    expect(cached.brands).toHaveLength(1);
+    expect(cached.brands[0].brand_slug).toBe('acme');
+  });
+
+  it('warm cache within TTL: zero client calls, fromCache:true', async () => {
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    expect(state.manifestCalls).toBe(1);
+
+    const second = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    expect(second).toMatchObject({ ok: true, fromCache: true });
+    expect(state.manifestCalls).toBe(1); // no new fetch
+  });
+
+  it('expired cache (past TTL): refetches', async () => {
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const t0 = new Date('2026-07-05T12:00:00.000Z');
+    await getCachedOrgManifest({ dataDirOverride: testDir, client, now: () => t0 });
+    expect(state.manifestCalls).toBe(1);
+
+    const past = new Date(t0.getTime() + AUTOSYNC_THROTTLE_MS + 1_000);
+    const second = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client,
+      now: () => past,
+    });
+    expect(second).toMatchObject({ ok: true, fromCache: false });
+    expect(state.manifestCalls).toBe(2);
+  });
+
+  it('a malformed cache file on disk is treated as cold, not a crash', async () => {
+    await mkdir(testDir, { recursive: true });
+    await writeFile(orgManifestCachePath(testDir), '{ not valid json', 'utf8');
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    expect(result).toMatchObject({ ok: true, fromCache: false });
+    expect(state.manifestCalls).toBe(1);
+  });
+
+  it('a fetch failure returns {ok:false} and writes nothing', async () => {
+    const failingClient: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'x',
+        friendly: 'unreachable',
+      }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client: failingClient });
+    expect(result).toEqual({ ok: false });
+    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('a client that throws is swallowed, never crashes the caller', async () => {
+    const throwingClient: ContextSyncClient = {
+      fetchManifest: async () => {
+        throw new Error('boom');
+      },
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+    await expect(
+      getCachedOrgManifest({ dataDirOverride: testDir, client: throwingClient }),
+    ).resolves.toEqual({ ok: false });
   });
 });

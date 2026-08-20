@@ -29011,6 +29011,9 @@ function contextSyncStatePath(brandSlug, dataDirOverride) {
 function indexPath(dataDirOverride) {
   return join4(clientsDir(dataDirOverride), "index.yaml");
 }
+function orgManifestCachePath(dataDirOverride) {
+  return join4(resolveDataDir(dataDirOverride), ".context-sync-org-manifest.json");
+}
 function outputDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "output");
 }
@@ -66662,6 +66665,39 @@ async function saveState(brandSlug, state, dataDirOverride) {
     return false;
   }
 }
+async function loadOrgManifestCache(dataDirOverride) {
+  try {
+    const raw = await readFile9(orgManifestCachePath(dataDirOverride), "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || typeof parsed.fetched_at !== "string" || !Array.isArray(parsed.brands)) {
+      return null;
+    }
+    const brands = parsed.brands.filter(
+      (b) => typeof b === "object" && b !== null && typeof b.brand_slug === "string" && Array.isArray(b.docs)
+    );
+    return { fetched_at: parsed.fetched_at, brands };
+  } catch {
+    return null;
+  }
+}
+async function saveOrgManifestCache(cache, dataDirOverride) {
+  try {
+    const path2 = orgManifestCachePath(dataDirOverride);
+    await mkdir4(dirname6(path2), { recursive: true });
+    const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
+    try {
+      await writeFile4(tmpPath, JSON.stringify(cache, null, 2) + "\n", "utf8");
+      await rename4(tmpPath, path2);
+      return true;
+    } catch (err) {
+      await unlink3(tmpPath).catch(() => {
+      });
+      throw err;
+    }
+  } catch {
+    return false;
+  }
+}
 var init_state = __esm({
   "src/lib/context-sync/state.ts"() {
     "use strict";
@@ -72463,6 +72499,8 @@ async function maybeAutoSync(brandSlug, options = {}) {
   const trigger = options.trigger ?? "preflight";
   let pastGuards = false;
   let ledgerState;
+  let seeded = false;
+  let manifestElapsedMs = 0;
   async function finish(result) {
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
@@ -72483,6 +72521,10 @@ async function maybeAutoSync(brandSlug, options = {}) {
                 brand: brandSlug,
                 force: options.force ?? false,
                 ran: result.ran,
+                // Present (true) only when THIS attempt created the brand
+                // dir; absent otherwise — additive field, same event (see
+                // the module doc and design D-032).
+                ...seeded ? { seeded: true } : {},
                 ...result.ran ? {
                   pulled: result.pulled,
                   pushed: result.pushed,
@@ -72524,12 +72566,31 @@ async function maybeAutoSync(brandSlug, options = {}) {
       debugLog2(env, `autosync: unsafe brand slug ${JSON.stringify(brandSlug)}; skipped`);
       return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
     }
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
     if (!await brandDirExists(brandSlug, options.dataDirOverride)) {
-      return {
-        ran: false,
-        reason: "skipped",
-        detail: "no local brand directory; fetch it explicitly with `mixshift context pull --brand <slug>`"
-      };
+      const manifestCheckStart = Date.now();
+      const manifestResult = await getCachedOrgManifest({
+        dataDirOverride: options.dataDirOverride,
+        client: options.client,
+        fetchImpl: options.fetchImpl,
+        now: options.now,
+        throttleMs: options.throttleMs,
+        budgetMs,
+        env
+      });
+      manifestElapsedMs = Date.now() - manifestCheckStart;
+      const listed = manifestResult.ok && manifestResult.brands.some((b) => b.brand_slug === brandSlug);
+      if (!listed) {
+        return {
+          ran: false,
+          reason: "skipped",
+          detail: "no local brand directory; fetch it explicitly with `mixshift context pull --brand <slug>`"
+        };
+      }
+      if (!isSafeBrandSlug(brandSlug)) {
+        return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
+      }
+      seeded = true;
     }
     const now = options.now ? options.now() : /* @__PURE__ */ new Date();
     const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
@@ -72564,9 +72625,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
     }
     pastGuards = true;
     ledgerState = state;
+    const raceMs = Math.max(0, budgetMs - manifestElapsedMs);
     const controller = new AbortController();
-    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
-    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    const abortTimer = setTimeout(() => controller.abort(), raceMs);
     abortTimer.unref?.();
     try {
       const baseFetch = options.fetchImpl ?? fetch;
@@ -72584,15 +72645,15 @@ async function maybeAutoSync(brandSlug, options = {}) {
           dataDirOverride: options.dataDirOverride
           // NEVER force: diverged docs stay untouched by design.
         }),
-        budgetMs
+        raceMs
       );
       if (raced === DEADLINE) {
         controller.abort();
-        debugLog2(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        debugLog2(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
         return await finish({
           ran: false,
           reason: "failed",
-          detail: `timed out after ${budgetMs}ms`
+          detail: `timed out after ${raceMs}ms`
         });
       }
       if (!raced.ok) {
@@ -72634,6 +72695,48 @@ async function maybeAutoSync(brandSlug, options = {}) {
 function debugLog2(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
+}
+async function getCachedOrgManifest(options = {}) {
+  const now = options.now ? options.now() : /* @__PURE__ */ new Date();
+  const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
+  try {
+    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
+    if (cached4) {
+      const fetchedAt = Date.parse(cached4.fetched_at);
+      if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
+        return { ok: true, brands: cached4.brands, fromCache: true };
+      }
+    }
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
+    if (budgetMs <= 0) return { ok: false };
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = ((input, init) => baseFetch(input, { ...init, signal: controller.signal }));
+      const client = options.client ?? createContextSyncClient({
+        dataDirOverride: options.dataDirOverride,
+        fetchImpl: budgetedFetch
+      });
+      const raced = await raceDeadline(client.fetchManifest(), budgetMs);
+      if (raced === DEADLINE || !raced.ok) return { ok: false };
+      await saveOrgManifestCache(
+        { fetched_at: now.toISOString(), brands: raced.brands },
+        options.dataDirOverride
+      );
+      return { ok: true, brands: raced.brands, fromCache: false };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    if (options.env?.MIXSHIFT_DEBUG) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[debug] getCachedOrgManifest: swallowed error: ${message}
+`);
+    }
+    return { ok: false };
+  }
 }
 
 // src/lib/binding/lens.ts
@@ -80871,6 +80974,7 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
 init_telemetry();
 init_plugin_version();
 init_clients();
+init_local();
 
 // src/lib/net/classify.ts
 function describeFetchFailure(err, host) {
@@ -80996,6 +81100,18 @@ function registerAuthCommands(program3) {
             },
             root.dataDir
           );
+          let org;
+          const manifestResult = await getCachedOrgManifest({
+            dataDirOverride: root.dataDir
+          });
+          if (manifestResult.ok) {
+            const localSlugs = new Set(await listLocalBrands(root.dataDir));
+            const orgSlugs = manifestResult.brands.map((b) => b.brand_slug);
+            org = {
+              total: orgSlugs.length,
+              not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length
+            };
+          }
           if (!root.json) {
             process.stdout.write(
               `
@@ -81015,6 +81131,16 @@ Mark them as "key" so portfolio skills default to those instead of all ${counts.
   mixshift brand key add <name-or-slug>   (accepts display names, acronyms, slugs)
 Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
 ` : "")
+            );
+            if (org) {
+              process.stdout.write(
+                `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
+`
+              );
+            }
+          } else {
+            process.stdout.write(
+              JSON.stringify({ brands: counts, ...org ? { org } : {} }, null, 2) + "\n"
             );
           }
         } catch (err) {
@@ -81548,31 +81674,6 @@ function exitCodeFor2(result) {
     case "failed":
       return 1;
   }
-}
-
-// src/commands/bootstrap.ts
-function registerBootstrapCommand(program3) {
-  program3.command("bootstrap").description("Create the initial context.yaml shell for a new brand").requiredOption("--brand <slug>", "brand slug (lowercase, hyphenated)").requiredOption("--brand-name <name>", "human-friendly display name").option(
-    "--seller-id <id>",
-    "SellerID from the warehouse seller table (can repeat)",
-    collect,
-    []
-  ).option(
-    "--account-type <type>",
-    "SC or VC; matches each --seller-id positionally",
-    collect,
-    []
-  ).option("--date <yyyy-mm-dd>", "brand setup data date", todayISO2()).action(
-    (opts) => {
-      notYetImplemented("bootstrap", opts);
-    }
-  );
-}
-function collect(value, prev) {
-  return [...prev, value];
-}
-function todayISO2() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
 // src/commands/validate.ts
@@ -82159,7 +82260,7 @@ async function executeOne(id, allParams, dataDirOverride) {
 function registerPrefetchCommand(program3) {
   program3.command("prefetch").description(
     "Run a skill's SQL batches against the warehouse and write data artifacts."
-  ).requiredOption("--brand <slug>", "brand slug (must be onboarded)").requiredOption("--skill <skill-id>", "skill ID (subdirectory under skills/)").option("--date <yyyy-mm-dd>", "run date (default: today)", todayISO3()).option(
+  ).requiredOption("--brand <slug>", "brand slug (must be onboarded)").requiredOption("--skill <skill-id>", "skill ID (subdirectory under skills/)").option("--date <yyyy-mm-dd>", "run date (default: today)", todayISO2()).option(
     "--param <name=value>",
     "override a standard param (repeatable). Values are JSON-parsed if possible \u2014 pass `--param lookback_days=7` for an int.",
     collectParam,
@@ -82193,7 +82294,7 @@ function registerPrefetchCommand(program3) {
     }
   });
 }
-function todayISO3() {
+function todayISO2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function collectParam(value, prev) {
@@ -82311,13 +82412,13 @@ function registerRenderCommand(program3) {
   ).option(
     "--adapter <name>",
     "override profile default: local-html | inline-markdown | google-doc | csv | terminal"
-  ).option("--date <yyyy-mm-dd>", "data date", todayISO4()).action(
+  ).option("--date <yyyy-mm-dd>", "data date", todayISO3()).action(
     (opts) => {
       notYetImplemented("render", opts);
     }
   );
 }
-function todayISO4() {
+function todayISO3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -83188,7 +83289,7 @@ function registerDataCommands(program3) {
       const root = cmd.optsWithGlobals();
       try {
         const outPath = resolvePath(
-          opts.out ?? `${outputDir(root.dataDir)}/${opts.table}-${todayISO5()}.csv`
+          opts.out ?? `${outputDir(root.dataDir)}/${opts.table}-${todayISO4()}.csv`
         );
         const result = await exportTable({
           table: opts.table,
@@ -83517,7 +83618,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}) {
   let report = () => {
   };
   const openTemp = () => {
-    state.tempPath = resolvePath(`${outputDir(dataDir)}/query-${todayISO5()}-${Date.now()}.csv`);
+    state.tempPath = resolvePath(`${outputDir(dataDir)}/query-${todayISO4()}-${Date.now()}.csv`);
     const s = createCsvFileSink(state.tempPath);
     report = progressReporter(s);
     return s;
@@ -83678,7 +83779,7 @@ function parseInt10(v) {
   if (Number.isNaN(n)) throw new Error(`Expected integer, got "${v}"`);
   return n;
 }
-function todayISO5() {
+function todayISO4() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -89362,9 +89463,9 @@ async function defaultOutPath(sellerId, reportType, dataDir) {
   const entry = await findReportType(reportType);
   const ext = entry?.documentFormat === "json" ? "json" : "tsv";
   const scope = sellerId || "unknown-merchant";
-  return reportOutputPath(scope, todayISO6(), reportType, ext, dataDir);
+  return reportOutputPath(scope, todayISO5(), reportType, ext, dataDir);
 }
-function todayISO6() {
+function todayISO5() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function sanitizeForFilename(s) {
@@ -94309,7 +94410,7 @@ function registerAdd(timeline) {
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -94670,7 +94771,7 @@ function registerSync(timeline) {
     }
   });
 }
-function collect2(value, prev) {
+function collect(value, prev) {
   return [...prev, value];
 }
 function parseEvidence(raw) {
@@ -94893,7 +94994,7 @@ function classifyMintError(err) {
   }
   return "endpoint_unreachable";
 }
-function collect3(value, prev) {
+function collect2(value, prev) {
   return [...prev, value];
 }
 function registerTaskCommands(program3) {
@@ -94905,7 +95006,7 @@ function registerTaskCommands(program3) {
   ).option(
     "--brand <slug>",
     "brand slug to ensure local context.yaml for (repeatable); pulls from the org store when not already present locally",
-    collect3,
+    collect2,
     []
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -95326,7 +95427,6 @@ program2.name("mixshift").description(
 registerProfileCommands(program2);
 registerAuthCommands(program2);
 registerBrandCommands(program2);
-registerBootstrapCommand(program2);
 registerValidateCommand(program2);
 registerPrefetchCommand(program2);
 registerRenderCommand(program2);
