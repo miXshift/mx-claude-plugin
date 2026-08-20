@@ -755,14 +755,21 @@ describe('US4 honest notice: org has this brand, this attempt could not reach it
   /** Warm the org-manifest CACHE FILE directly via getCachedOrgManifest (a
    *  throwaway client — this only seeds the disk cache maybeAutoSync's
    *  notice check reads; it is never itself invoked by the test's own
-   *  maybeAutoSync call below). */
-  async function warmCache(identity: string, brands: WireManifestBrand[]): Promise<void> {
+   *  maybeAutoSync call below). Optional `now` (red-team fix 2 tests below)
+   *  controls the STAMPED fetched_at, so a test can warm a cache that is
+   *  already old (or future-dated) as of the real clock. */
+  async function warmCache(
+    identity: string,
+    brands: WireManifestBrand[],
+    now?: () => Date,
+  ): Promise<void> {
     const { client } = countingClient(brands, {});
     const warm = await getCachedOrgManifest({
       dataDirOverride: testDir,
       client,
       env: LIVE_ENV,
       identity,
+      ...(now ? { now } : {}),
     });
     expect(warm.ok).toBe(true);
   }
@@ -835,6 +842,40 @@ describe('US4 honest notice: org has this brand, this attempt could not reach it
     ).toBe(1);
   });
 
+  it('red-team fix 1 (dedup race): two CONCURRENT failing attempts for the same brand print the notice exactly once', async () => {
+    // The ORIGINAL maybeNoticeUnreachable checked noticedUnreachableBrands,
+    // THEN awaited identity resolution + the cache read, THEN added to the
+    // set and wrote — two awaits sat between the check and the write, so
+    // two concurrent calls for the same brand could both pass the early
+    // check before either reached the write. Promise.all with a client that
+    // fails immediately (no real timers) maximizes interleaving: both calls
+    // race through the same identity/cache-read awaits in lockstep. The fix
+    // makes the final check-add-write tail fully synchronous, so this
+    // assertion holds deterministically regardless of how the two calls'
+    // earlier awaits happen to interleave.
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const callOptions = {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      force: true,
+    } as const;
+
+    const [a, b] = await Promise.all([
+      maybeAutoSync('acme', callOptions),
+      maybeAutoSync('acme', callOptions),
+    ]);
+
+    expect(a.ran).toBe(false);
+    expect(b.ran).toBe(false);
+    expect(
+      stderrChunks.filter((c) => c.includes('Your team has context for acme')).length,
+    ).toBe(1);
+  });
+
   it('does NOT fire on a successful attempt', async () => {
     await makeBrandDir('acme');
     await warmCache('id-A', [manifestBrand('acme', [])]);
@@ -894,6 +935,60 @@ describe('US4 honest notice: org has this brand, this attempt could not reach it
 
     expect(result.ran).toBe(false);
     expect(stderrText()).toBe('');
+  });
+
+  it('red-team fix 2: does NOT fire when the org-manifest cache is far older than UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS (a years-old cache cannot keep vouching for org membership)', async () => {
+    await makeBrandDir('acme');
+    const NOW = new Date('2026-08-20T12:00:00.000Z');
+    const sixYearsAgo = new Date(NOW.getTime() - 6 * 365 * 24 * 60 * 60 * 1_000);
+    await warmCache('id-A', [manifestBrand('acme', [])], () => sixYearsAgo);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      now: () => NOW,
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toBe('');
+  });
+
+  it('red-team fix 2: does NOT fire when the org-manifest cache is future-dated (clock-skew guard)', async () => {
+    await makeBrandDir('acme');
+    const NOW = new Date('2026-08-20T12:00:00.000Z');
+    const inOneHour = new Date(NOW.getTime() + 60 * 60 * 1_000);
+    await warmCache('id-A', [manifestBrand('acme', [])], () => inOneHour);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      now: () => NOW,
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toBe('');
+  });
+
+  it('red-team fix 2: still fires on a normally-aged (1 hour old) cache — well past the 15-minute fetch TTL but inside the 24-hour claim-validity window', async () => {
+    await makeBrandDir('acme');
+    const NOW = new Date('2026-08-20T12:00:00.000Z');
+    const oneHourAgo = new Date(NOW.getTime() - 60 * 60 * 1_000);
+    await warmCache('id-A', [manifestBrand('acme', [])], () => oneHourAgo);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      now: () => NOW,
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toContain('Your team has context for acme');
   });
 
   it('does NOT fire on a non-network failure kind (e.g. insufficient_scope): a different, already-surfaced problem', async () => {
@@ -987,6 +1082,150 @@ describe('US4 honest notice: org has this brand, this attempt could not reach it
 
     expect(result.ran).toBe(false);
     if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(stderrText()).toBe('');
+  });
+
+  // -------------------------------------------------------------------------
+  // Three previously-untested never-fire guards (red-team fixes 7+8): each
+  // one is an early-skip that never sets pastGuards, so maybeNoticeUnreachable
+  // is never reached — but until now nothing asserted that directly, with a
+  // matching warm cache in place so the notice WOULD have been eligible if
+  // the guard were ever bypassed.
+  // -------------------------------------------------------------------------
+
+  it('does NOT fire under the VITEST guard (no explicit env passed): disabled before any check', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    // No `env` at all -> options.env undefined -> the VITEST guard fires (we
+    // ARE under vitest). Identity is pinned so if this guard were ever
+    // bypassed, every other precondition for the notice is already met.
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      identity: 'id-A',
+    });
+
+    expect(result).toEqual({ ran: false, reason: 'disabled' });
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire on a tenant-identity mismatch with tracked docs on disk (rebind path, not a notice)', async () => {
+    await makeBrandDir('acme');
+    await writeLedger(
+      'acme',
+      {
+        narrative: {
+          server_revision: 3,
+          last_synced_hash: 'a'.repeat(64),
+          last_synced_at: '2026-07-01T00:00:00.000Z',
+        },
+      },
+      { identity: 'https://mcp.example.test#orgA' },
+    );
+    await warmCache('https://mcp.example.test#orgB', [manifestBrand('acme', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#orgB',
+    });
+
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire when the throttle stamp cannot be persisted (ledger path is a directory)', async () => {
+    await makeBrandDir('acme');
+    // Make the ledger PATH a directory so saveState's rename must fail.
+    await mkdir(contextSyncStatePath('acme', testDir), { recursive: true });
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(stderrText()).toBe('');
+  });
+
+  // -------------------------------------------------------------------------
+  // red-team fix 6: partial per-doc network failures on an otherwise
+  // structurally-successful (ran:true) attempt. Reconciled with fix 3's
+  // starvation logic: the notice fires when this attempt did NOT already
+  // prove the store reachable via a live manifest fetch, and stays silent
+  // when it did (a per-doc abort right after a live round trip is more
+  // likely the same budget death than genuine unreachability).
+  // -------------------------------------------------------------------------
+
+  it('red-team fix 6: fires when a ran:true dir-exists attempt has a network-shaped per-doc error (no live manifest fetch happened THIS attempt)', async () => {
+    await makeBrandDir('acme'); // dir-exists path: liveManifestFetchSucceeded never gets set
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const manifestOkDocUnreachable: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: true,
+        brands: [manifestBrand('acme', [{ key: 'narrative', content: 'hi', revision: 1 }])],
+      }),
+      fetchDoc: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'fetch failed',
+        friendly: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: manifestOkDocUnreachable,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) expect(result.errors).toBe(1);
+    expect(stderrText()).toContain('Your team has context for acme');
+  });
+
+  it('red-team fix 6: does NOT fire when THIS attempt already proved the store reachable via a live seed-path manifest fetch, even with a per-doc network error', async () => {
+    // No makeBrandDir: forces the seed path, whose getCachedOrgManifest call
+    // is a COLD fetch (no cache file yet) against the SAME client below ->
+    // fromCache:false -> liveManifestFetchSucceeded:true for this attempt.
+    const manifestOkDocUnreachable: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: true,
+        brands: [manifestBrand('acme', [{ key: 'narrative', content: 'hi', revision: 1 }])],
+      }),
+      fetchDoc: async () => ({
+        ok: false,
+        kind: 'host_unreachable',
+        message: 'fetch failed',
+        friendly: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: manifestOkDocUnreachable,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(result.errors).toBe(1);
+      expect(result.seeded).toBe(true);
+    }
     expect(stderrText()).toBe('');
   });
 });

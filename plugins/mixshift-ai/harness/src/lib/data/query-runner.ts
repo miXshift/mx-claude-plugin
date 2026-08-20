@@ -1675,23 +1675,27 @@ function classify(err: unknown): DataQueryFailure {
     };
   }
   if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EHOSTUNREACH') {
-    // NOT routed through classify.ts's describeFetchFailure/networkErrorMessage:
-    // those are shaped for undici's `TypeError: fetch failed` + `.cause.code`
-    // (Bash-subprocess fetch through the sandbox egress proxy). A raw mysql2
-    // connection error carries its `code` directly on the error object, over a
-    // different transport (a direct TCP connection, not an HTTP fetch through
-    // the proxy) — forcing it through the fetch classifier would either fail
-    // to match (no `.cause`) or, worse, falsely claim the sandbox-proxy/403
-    // narrative for a failure that never went near it. Minimal, honest
-    // upgrade instead: keep the existing diagnosis, add the doctor pointer.
+    // Red-team fix 4: NOT routed through classify.ts's
+    // describeFetchFailure/networkErrorMessage, and deliberately NOT
+    // pointed at `mixshift doctor` either — `mixshift doctor` only probes
+    // the datahub/API host, never the warehouse mysql host, so pointing a
+    // warehouse-unreachable user at it would diagnose the wrong thing. A
+    // raw mysql2 connection error also carries its `code` directly on the
+    // error object over a different transport (a direct TCP connection, not
+    // an HTTP fetch through the sandbox egress proxy) — forcing it through
+    // the fetch classifier would either fail to match (no `.cause`) or,
+    // worse, falsely claim the sandbox-proxy/403 narrative for a failure
+    // that never went near it. Accurate, self-contained guidance instead:
+    // this fleet's warehouse connections are commonly gated by a VPN or IP
+    // allowlist, so name that as the likely next thing to check.
     return {
       ok: false,
       kind: 'host_unreachable',
       raw_code: code,
       message,
       friendly:
-        'Could not reach the warehouse host. Check your network, or run ' +
-        '`mixshift doctor` if this keeps happening.',
+        'Could not reach the warehouse host. Check your network and, if you ' +
+        "connect through a VPN or allowlist, that this machine's IP is still allowed.",
     };
   }
   return {

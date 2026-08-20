@@ -242,6 +242,20 @@ export async function maybeAutoSync(
   // seed attempt's manifest-check-plus-sync total stays bounded by one
   // AUTOSYNC_BUDGET_MS, not two back-to-back ones.
   let manifestElapsedMs = 0;
+  // Red-team fix 3: true only when THIS attempt's seed-path manifest check
+  // (below) was a LIVE fetch that succeeded (getCachedOrgManifest's
+  // fromCache:false) — i.e. we just proved the org store itself is
+  // reachable right now. Read by both the DEADLINE branch and the ran:true
+  // partial-failure check further down (red-team fix 6): a budget death or
+  // a per-doc network error immediately AFTER a proven live round trip is
+  // starvation (the doc-sync half of the SAME shared budget ran out), not
+  // unreachability, so both suppress the "could not reach the org store"
+  // notice in that case. Stays false on the dir-exists path (no equivalent
+  // signal is available there — buildDocPairs does its own internal
+  // manifest fetch, invisible to this function) and on a seed attempt that
+  // resolved from a CACHE HIT, so both keep firing the notice exactly as
+  // before this fix.
+  let liveManifestFetchSucceeded = false;
   // FIX C: the exact brands list the seed decision was made from, set ONLY
   // on the seed path (stays undefined on the dir-exists path). Threaded
   // into op()'s EngineOptions.manifest below so buildDocPairs (engine.ts)
@@ -406,6 +420,10 @@ export async function maybeAutoSync(
         identity: options.identity,
       });
       manifestElapsedMs = Date.now() - manifestCheckStart;
+      // Red-team fix 3: record whether THIS was a live, successful round
+      // trip (not a cache hit) regardless of whether the slug turns out
+      // listed — see liveManifestFetchSucceeded's own comment above.
+      liveManifestFetchSucceeded = manifestResult.ok && !manifestResult.fromCache;
 
       const listed =
         manifestResult.ok &&
@@ -586,8 +604,19 @@ export async function maybeAutoSync(
         debugLog(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
         // A wall-clock budget death IS a network/offline shape by
         // construction (see maybeNoticeUnreachable's module doc) — no kind
-        // to check, unlike the !raced.ok branch below.
-        await maybeNoticeUnreachable(brandSlug, options, env);
+        // to check, unlike the !raced.ok branch below. Red-team fix 3:
+        // EXCEPT when this same attempt already proved the org store
+        // reachable via a live seed-path manifest fetch — see
+        // liveManifestFetchSucceeded's comment above. A cold-cache seed can
+        // spend most of its budget on that manifest round trip alone,
+        // starving the doc-sync half to DEADLINE right after a successful
+        // fetch; that is budget starvation, not unreachability, and the
+        // partial seed self-heals on the next touch (the throttle stamp is
+        // already saved either way). A dir-exists DEADLINE, or a
+        // cache-hit seed's DEADLINE, still fires exactly as before.
+        if (!liveManifestFetchSucceeded) {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({
           ran: false,
           reason: 'failed',
@@ -610,6 +639,30 @@ export async function maybeAutoSync(
       const created = raced.reports.filter((r) => r.action === 'created').length;
       const conflicts = raced.reports.filter((r) => r.action === 'conflict').length;
       const errors = raced.reports.filter((r) => r.action === 'error').length;
+      // Red-team fix 6: a structurally successful attempt (raced.ok, hence
+      // ran:true below) can still carry per-doc failures that are
+      // themselves network-shaped — buildDocPairs's manifest fetch
+      // succeeded (or was reused from the seed/cache), but an individual
+      // fetchDoc/putDoc call inside the SAME shared AbortController budget
+      // failed with kind:'host_unreachable', most often because the abort
+      // fired mid-loop, between docs, just before the outer race happened
+      // to settle ok. The honest-notice contract should cover this too (the
+      // org store WAS unreachable for at least one doc) — but reconciled
+      // with fix 3's starvation logic: when THIS attempt already proved the
+      // store reachable via a live manifest fetch, a per-doc error right
+      // after is far more likely the SAME budget abort than genuine
+      // unreachability, so stay silent there too, exactly like the DEADLINE
+      // branch above. `kind` is threaded onto DocActionReport additively by
+      // engine.ts (pullOneDoc/pushOneDoc), mirroring how BrandActionResult
+      // already threads the brand-level `kind` from a failed manifest
+      // fetch.
+      if (
+        errors > 0 &&
+        !liveManifestFetchSucceeded &&
+        raced.reports.some((r) => r.action === 'error' && r.kind === 'host_unreachable')
+      ) {
+        await maybeNoticeUnreachable(brandSlug, options, env);
+      }
       // Stake leg (zero-touch backfill): publish the brand's curated
       // structural_events even when nobody edits the brand. Cheap in the
       // steady state (the ledger hash skips with zero network) and bounded
@@ -873,12 +926,34 @@ export function __resetAutosyncNotices(): void {
 }
 
 /**
+ * Red-team fix 2: upper bound on how old the org-manifest CACHE may be for
+ * maybeNoticeUnreachable to trust its claim. The claim this notice makes
+ * ("your team has context for this brand") is about org MEMBERSHIP — a fact
+ * that changes rarely — never about live reachability (this check is a local
+ * disk read; it makes no network call of its own). Deliberately much longer
+ * than AUTOSYNC_THROTTLE_MS (the cache's own fetch-freshness TTL used
+ * elsewhere, e.g. getCachedOrgManifest's cache-hit window): that TTL exists
+ * purely for FETCH THRIFT (don't hit the manifest endpoint on every call),
+ * not to bound how long a membership claim stays honest, so reusing it here
+ * would silence the notice for perfectly normal, recently-used caches. Left
+ * unbounded (the pre-fix behavior), a long-abandoned cache file — the brand
+ * long since removed from the org, this machine never touched since — could
+ * keep claiming "your team has context" indefinitely. A day is generous
+ * relative to how often org membership actually changes, while still
+ * expiring a truly stale file; login and any successful
+ * getCachedOrgManifest call (the seed path, `mixshift context autosync`,
+ * sign-in's org-brand-count line) refresh the cache in practice, so a
+ * normally-used machine never gets close to this bound.
+ */
+export const UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+
+/**
  * Emit the US4 honest-failure notice: this session tried to reach the org
  * store for a brand it has good reason to believe the org HAS context for,
  * and could not. Modeled precisely on push-after-write.ts's
  * noticeLineFor/emitNotice pattern — one deduped stderr line per brand per
  * process, on by default, plain sentences, no em dashes — but unlike that
- * write-side notice this is called from only TWO call sites (both already
+ * write-side notice this is called from multiple call sites (all already
  * past every early-skip guard and already classified network-shaped), so
  * the "should we say anything" decision lives at the call site and this
  * function's own job is just the manifest-cache check + the dedup + the
@@ -891,12 +966,27 @@ export function __resetAutosyncNotices(): void {
  * throws: a broken cache read or a stderr write failure must never turn an
  * already-classified sync failure into a crash.
  *
- * Silent (no cache read even attempted) whenever:
+ * Silent whenever:
  *   - this brand already got the notice this process (dedup);
  *   - the cache is missing, or was fetched under a DIFFERENT tenant identity
  *     than this attempt's (cachedManifestIdentityMatches) — a cache we can't
  *     trust for THIS session says nothing about what the org has;
- *   - the (identity-valid) cache does not list this brand.
+ *   - the (identity-valid) cache does not list this brand;
+ *   - the cache is older than UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS, or its
+ *     fetched_at is in the future (clock skew / a corrupt timestamp) —
+ *     red-team fix 2.
+ *
+ * Race-free dedup (red-team fix 1): every ASYNC step (identity resolution,
+ * the cache read, and everything derived from it — membership, the fix-2 age
+ * check) runs FIRST. Only THEN does a fully SYNCHRONOUS tail re-check the
+ * dedup set, add to it, and write — no await sits between that recheck and
+ * the write, so the whole tail runs as one uninterruptible turn of the event
+ * loop. The ORIGINAL shape checked the dedup set, then awaited (identity +
+ * the cache read), then added and wrote; two concurrent calls for the same
+ * brand (two skill steps failing at once) could both pass the early check
+ * before either reached the write, printing the notice twice. This mirrors
+ * why push-after-write.ts's own notice dedup has always been race-free: its
+ * check-add-write has always been synchronous end to end.
  */
 async function maybeNoticeUnreachable(
   brandSlug: string,
@@ -904,6 +994,10 @@ async function maybeNoticeUnreachable(
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
   try {
+    // Fast path: skip every async step below when we already know we're
+    // done. Not itself sufficient for the dedup guarantee — see the
+    // synchronous recheck at the end, which is what actually makes this
+    // race-free.
     if (noticedUnreachableBrands.has(brandSlug)) return;
     const identity =
       options.identity !== undefined
@@ -912,6 +1006,23 @@ async function maybeNoticeUnreachable(
     const cached = await loadOrgManifestCache(options.dataDirOverride);
     if (!cached || !cachedManifestIdentityMatches(cached.identity, identity)) return;
     if (!cached.brands.some((b) => b.brand_slug === brandSlug)) return;
+    // Red-team fix 2: bound how old the cache may be for its claim to stay
+    // honest — see UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS. An unparseable or
+    // future-dated fetched_at is treated the same as "too old": either way,
+    // don't trust it.
+    const now = options.now ? options.now() : new Date();
+    const fetchedAt = Date.parse(cached.fetched_at);
+    if (
+      !Number.isFinite(fetchedAt) ||
+      fetchedAt > now.getTime() ||
+      now.getTime() - fetchedAt >= UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS
+    ) {
+      return;
+    }
+    // Red-team fix 1: synchronous tail from here on — no await between this
+    // recheck and the write, so no other concurrent call can interleave
+    // between them.
+    if (noticedUnreachableBrands.has(brandSlug)) return;
     noticedUnreachableBrands.add(brandSlug);
     process.stderr.write(unreachableNoticeLine(brandSlug));
   } catch (err) {

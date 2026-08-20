@@ -65188,10 +65188,10 @@ function describeFetchFailure(err, host) {
     return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
   }
   if (code === "ECONNREFUSED") {
-    return `Connection to ${host} was refused.`;
+    return `Connection to ${host} was refused. Run \`mixshift doctor\` if this keeps happening.`;
   }
   if (isTimeout || isAbort) {
-    return `Timed out connecting to ${host}.`;
+    return `Timed out connecting to ${host}. Run \`mixshift doctor\` if this keeps happening.`;
   }
   const raw = code || causeMessage || "";
   const detail = raw && raw !== "0" ? ` (${raw})` : "";
@@ -66122,7 +66122,7 @@ function classify(err) {
       kind: "host_unreachable",
       raw_code: code,
       message,
-      friendly: "Could not reach the warehouse host. Check your network, or run `mixshift doctor` if this keeps happening."
+      friendly: "Could not reach the warehouse host. Check your network and, if you connect through a VPN or allowlist, that this machine's IP is still allowed."
     };
   }
   return {
@@ -66986,7 +66986,9 @@ async function writeFileAtomic(path2, content) {
 async function pullOneDoc(brandSlug, pair, client, dataDirOverride) {
   const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
   if (!fetched.ok) {
-    return { report: reportFor(pair, "error", `fetch failed: ${fetched.friendly}`) };
+    return {
+      report: { ...reportFor(pair, "error", `fetch failed: ${fetched.friendly}`), kind: fetched.kind }
+    };
   }
   const { doc } = fetched;
   const valid = validateDocContent(pair.docType, doc.content);
@@ -67060,7 +67062,9 @@ async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
       report: reportFor(pair, "conflict", `${who}${conflictInstructions(brandSlug)}`)
     };
   }
-  return { report: reportFor(pair, "error", `push failed: ${result.friendly}`) };
+  return {
+    report: { ...reportFor(pair, "error", `push failed: ${result.friendly}`), kind: result.kind }
+  };
 }
 async function pull(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
@@ -72584,6 +72588,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
   let ledgerState;
   let seeded = false;
   let manifestElapsedMs = 0;
+  let liveManifestFetchSucceeded = false;
   let seedManifestBrands;
   async function finish(result) {
     if (pastGuards && ledgerState) {
@@ -72671,6 +72676,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
         identity: options.identity
       });
       manifestElapsedMs = Date.now() - manifestCheckStart;
+      liveManifestFetchSucceeded = manifestResult.ok && !manifestResult.fromCache;
       const listed = manifestResult.ok && manifestResult.brands.some((b) => b.brand_slug === brandSlug);
       if (!listed) {
         return {
@@ -72768,7 +72774,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
       if (raced === DEADLINE) {
         controller.abort();
         debugLog2(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
-        await maybeNoticeUnreachable(brandSlug, options, env);
+        if (!liveManifestFetchSucceeded) {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({
           ran: false,
           reason: "failed",
@@ -72787,6 +72795,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
       const created = raced.reports.filter((r) => r.action === "created").length;
       const conflicts = raced.reports.filter((r) => r.action === "conflict").length;
       const errors = raced.reports.filter((r) => r.action === "error").length;
+      if (errors > 0 && !liveManifestFetchSucceeded && raced.reports.some((r) => r.action === "error" && r.kind === "host_unreachable")) {
+        await maybeNoticeUnreachable(brandSlug, options, env);
+      }
       let stakeLeg;
       if (!publishDisabled) {
         stakeLeg = await runBudgetedStakeLeg(brandSlug, {
@@ -72889,6 +72900,7 @@ async function getCachedOrgManifest(options = {}) {
   }
 }
 var noticedUnreachableBrands = /* @__PURE__ */ new Set();
+var UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
 async function maybeNoticeUnreachable(brandSlug, options, env) {
   try {
     if (noticedUnreachableBrands.has(brandSlug)) return;
@@ -72896,6 +72908,12 @@ async function maybeNoticeUnreachable(brandSlug, options, env) {
     const cached4 = await loadOrgManifestCache(options.dataDirOverride);
     if (!cached4 || !cachedManifestIdentityMatches(cached4.identity, identity)) return;
     if (!cached4.brands.some((b) => b.brand_slug === brandSlug)) return;
+    const now = options.now ? options.now() : /* @__PURE__ */ new Date();
+    const fetchedAt = Date.parse(cached4.fetched_at);
+    if (!Number.isFinite(fetchedAt) || fetchedAt > now.getTime() || now.getTime() - fetchedAt >= UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS) {
+      return;
+    }
+    if (noticedUnreachableBrands.has(brandSlug)) return;
     noticedUnreachableBrands.add(brandSlug);
     process.stderr.write(unreachableNoticeLine(brandSlug));
   } catch (err) {

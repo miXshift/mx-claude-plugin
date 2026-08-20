@@ -99,21 +99,25 @@ describe('runQuery :: mysql path (BUG-009 BIGINT-as-string options)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// US4: the legacy path's host_unreachable message gets a minimal doctor-
-// pointer upgrade, WITHOUT borrowing classify.ts's fetch/sandbox-egress
-// framing — a raw mysql2 TCP connection error is a different transport than
-// the undici fetch failures classify.ts's describeFetchFailure classifies
-// (no `.cause`, no "fetch failed" top message), so forcing it through that
-// classifier would either not match at all or falsely claim the sandbox-
-// proxy narrative for a failure that never went near an HTTP fetch.
+// Red-team fix 4: the legacy path's host_unreachable message stays
+// self-contained network/VPN/allowlist guidance, WITHOUT a `mixshift
+// doctor` pointer (doctor only probes the datahub/API host, never the
+// warehouse mysql host — pointing a warehouse-unreachable user at it would
+// diagnose the wrong thing) and WITHOUT borrowing classify.ts's
+// fetch/sandbox-egress framing — a raw mysql2 TCP connection error is a
+// different transport than the undici fetch failures classify.ts's
+// describeFetchFailure classifies (no `.cause`, no "fetch failed" top
+// message), so forcing it through that classifier would either not match at
+// all or falsely claim the sandbox-proxy narrative for a failure that never
+// went near an HTTP fetch.
 // ---------------------------------------------------------------------------
 
-describe('runQuery :: mysql path network failure (US4 doctor pointer)', () => {
+describe('runQuery :: mysql path network failure (red-team fix 4)', () => {
   it.each([
     ['ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:3306'],
     ['ENOTFOUND', 'getaddrinfo ENOTFOUND warehouse.example.test'],
     ['EHOSTUNREACH', 'connect EHOSTUNREACH 10.0.0.1:3306'],
-  ])('classifies %s as host_unreachable with the doctor pointer, not the fetch-classifier text', async (code, message) => {
+  ])('classifies %s as host_unreachable with self-contained network/VPN guidance, not the doctor pointer or the fetch-classifier text', async (code, message) => {
     await saveCredentials(
       {
         ...newCredentials(),
@@ -130,12 +134,18 @@ describe('runQuery :: mysql path network failure (US4 doctor pointer)', () => {
       expect(result.kind).toBe('host_unreachable');
       expect(result.raw_code).toBe(code);
       expect(result.friendly).toBe(
-        'Could not reach the warehouse host. Check your network, or run ' +
-          '`mixshift doctor` if this keeps happening.',
+        'Could not reach the warehouse host. Check your network and, if you ' +
+          "connect through a VPN or allowlist, that this machine's IP is still allowed.",
       );
-      // Never borrows classify.ts's sandbox/allowlist framing — this never
-      // went near a fetch, so that language would misrepresent the failure.
-      expect(result.friendly).not.toMatch(/sandbox|allowlist|Cowork|Claude Code/i);
+      // `mixshift doctor` only probes the datahub/API host, never the
+      // warehouse mysql host — pointing at it here would diagnose the
+      // wrong thing (red-team fix 4).
+      expect(result.friendly).not.toContain('mixshift doctor');
+      // Never borrows classify.ts's sandbox-egress framing — this never
+      // went near a fetch, so that narrative would misrepresent the
+      // failure. "allowlist" itself is legitimate here: an IP allowlist on
+      // the warehouse DB, not the sandbox's egress allowlist.
+      expect(result.friendly).not.toMatch(/sandbox|Cowork|Claude Code/i);
     }
   });
 });

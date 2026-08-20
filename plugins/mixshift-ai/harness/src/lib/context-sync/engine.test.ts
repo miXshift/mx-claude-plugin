@@ -1257,4 +1257,38 @@ describe('buildDocPairs failure kind passthrough (US4)', () => {
       kind: 'insufficient_scope',
     });
   });
+
+  // red-team fix 7: pull and sync were covered above; push and computeStatus
+  // share the exact same buildDocPairs failure path (see its own kind
+  // passthrough at the manifest-fetch failure site) but had no assertion of
+  // their own.
+  it('push also surfaces kind:host_unreachable from a failed manifest fetch', async () => {
+    const client = failingClient(
+      'host_unreachable',
+      'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+    );
+
+    const result = await push('acme', { client, dataDirOverride: testDir });
+    expect(result).toEqual({
+      ok: false,
+      brand: 'acme',
+      message: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      kind: 'host_unreachable',
+    });
+  });
+
+  it('computeStatus also surfaces kind:host_unreachable from a failed manifest fetch', async () => {
+    const client = failingClient(
+      'host_unreachable',
+      'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+    );
+
+    const result = await computeStatus('acme', { client, dataDirOverride: testDir });
+    expect(result).toEqual({
+      ok: false,
+      brand: 'acme',
+      message: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      kind: 'host_unreachable',
+    });
+  });
 });

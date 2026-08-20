@@ -53,8 +53,10 @@ starts at 0.5.39; earlier versions predate the changelog.
   MixShift, and pointed you at `mixshift doctor` for the fix. Data queries
   and context sync used to just say "check your network" with nothing to
   act on. They now carry the same diagnosis, so a blocked proxy, a DNS
-  failure, or a timeout says what happened and points at `mixshift doctor`
-  no matter which command hit it.
+  failure, or a timeout says what happened and points at `mixshift doctor`.
+  The one exception is a direct legacy database connection, which `mixshift
+  doctor` does not check; that failure still tells you to check your
+  network, your VPN, or your IP allowlist instead.
 
 - **A heads-up when your team has context for a brand but this session
   couldn't reach it.** The background sync that runs before a skill reads a

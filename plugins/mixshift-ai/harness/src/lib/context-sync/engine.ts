@@ -63,8 +63,21 @@ export type BrandStatusResult =
   | { ok: true; brand: string; docs: DocStatusReport[] }
   | { ok: false; brand: string; message: string; kind?: ContextSyncFailureKind };
 
+/**
+ * A DocActionReport additionally carrying the classified failure `kind`
+ * (red-team fix 6) when action:'error' came from a client call
+ * (fetchDoc/putDoc) that itself returned one — additive and engine.ts-local
+ * (DocActionReport itself, in types.ts, is unchanged). Only pull/push/sync's
+ * BrandActionResult need this extra bit, to let autosync.ts's read-preflight
+ * tell a network-shaped per-doc failure (kind:'host_unreachable') apart from
+ * any other kind without re-parsing the report's `detail` text. Mirrors
+ * exactly how BrandActionResult/BrandStatusResult already carry the
+ * brand-level `kind` from a failed manifest fetch (see buildDocPairs).
+ */
+type DocActionReportWithKind = DocActionReport & { kind?: ContextSyncFailureKind };
+
 export type BrandActionResult =
-  | { ok: true; brand: string; reports: DocActionReport[] }
+  | { ok: true; brand: string; reports: DocActionReportWithKind[] }
   | { ok: false; brand: string; message: string; kind?: ContextSyncFailureKind };
 
 export interface MigrateBrandSummary {
@@ -473,10 +486,14 @@ async function pullOneDoc(
   pair: DocPair,
   client: ContextSyncClient,
   dataDirOverride: string | undefined,
-): Promise<{ report: DocActionReport; stateEntry?: ContextSyncDocState }> {
+): Promise<{ report: DocActionReportWithKind; stateEntry?: ContextSyncDocState }> {
   const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
   if (!fetched.ok) {
-    return { report: reportFor(pair, 'error', `fetch failed: ${fetched.friendly}`) };
+    // Red-team fix 6: thread the client failure's classified `kind`
+    // additively onto the report — see DocActionReportWithKind above.
+    return {
+      report: { ...reportFor(pair, 'error', `fetch failed: ${fetched.friendly}`), kind: fetched.kind },
+    };
   }
   const { doc } = fetched;
 
@@ -538,7 +555,7 @@ async function pushOneDoc(
   client: ContextSyncClient,
   baseRevision: number | undefined,
   force: boolean,
-): Promise<{ report: DocActionReport; stateEntry?: ContextSyncDocState }> {
+): Promise<{ report: DocActionReportWithKind; stateEntry?: ContextSyncDocState }> {
   const local = pair.local!;
   const put = (base: number | undefined): Promise<PutDocResult> =>
     client.putDoc({
@@ -582,7 +599,11 @@ async function pushOneDoc(
       report: reportFor(pair, 'conflict', `${who}${conflictInstructions(brandSlug)}`),
     };
   }
-  return { report: reportFor(pair, 'error', `push failed: ${result.friendly}`) };
+  // Red-team fix 6: thread the client failure's classified `kind`
+  // additively onto the report — see DocActionReportWithKind above.
+  return {
+    report: { ...reportFor(pair, 'error', `push failed: ${result.friendly}`), kind: result.kind },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -598,7 +619,7 @@ export async function pull(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
@@ -677,7 +698,7 @@ export async function push(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
@@ -790,7 +811,7 @@ export async function sync(
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
