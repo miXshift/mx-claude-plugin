@@ -33,9 +33,16 @@ vi.mock('../lib/context-sync/autosync.js', async (importOriginal) => {
   return { ...actual, getCachedOrgManifest: vi.fn() };
 });
 
+vi.mock('../lib/auth/login-flow.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/auth/login-flow.js')>();
+  return { ...actual, runAuthLogin: vi.fn(), pollDeviceFlow: vi.fn() };
+});
+
 import { registerAuthCommands } from './auth.js';
 import { runDiscoveryAndPersist } from '../lib/clients/index.js';
 import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
+import { runAuthLogin, pollDeviceFlow } from '../lib/auth/login-flow.js';
+import type { AuthLoginResult } from '../lib/auth/login-flow.js';
 import type { ClientsIndex, IndexBrand } from '../lib/clients/index-schema.js';
 import type { OrgManifestResult } from '../lib/context-sync/autosync.js';
 import { clientsDir } from '../lib/paths/resolve.js';
@@ -115,19 +122,19 @@ async function runSetup(extraArgs: string[] = []): Promise<void> {
 }
 
 /**
- * Extract the Nth (0-indexed) balanced top-level JSON object from stdout.
- * `auth setup --json` on a successful sign-in prints the base SetupResult
- * immediately, then (this piece) a SECOND JSON value once discovery + the
- * org-manifest fetch finish — so a plain "first '{' to end of string" parse
- * (fine for single-JSON-blob commands) breaks here. Brace-counts rather
- * than assuming no '{'/'}' appear inside string values, which holds for
- * every field these commands actually emit (slugs, counts, paths).
+ * Extract the Nth (0-indexed) balanced top-level JSON object from stdout,
+ * or return null when there is no Nth value. Used both to read the single
+ * document commands print AND to prove `auth setup --json` never prints a
+ * second one (its whole-stdout single-document contract predates slice 2
+ * and must survive it). Brace-counts rather than assuming no '{'/'}'
+ * appear inside string values, which holds for every field these commands
+ * actually emit (slugs, counts, paths).
  */
-function nthJsonValue(index: number): Record<string, unknown> {
+function nthJsonValue(index: number): Record<string, unknown> | null {
   let searchFrom = 0;
   for (let i = 0; i <= index; i++) {
     const start = stdout.indexOf('{', searchFrom);
-    expect(start, `no JSON value #${i} in stdout: ${stdout}`).toBeGreaterThanOrEqual(0);
+    if (start < 0) return null;
     let depth = 0;
     let end = -1;
     for (let pos = start; pos < stdout.length; pos++) {
@@ -148,7 +155,9 @@ function nthJsonValue(index: number): Record<string, unknown> {
 }
 
 function emittedJson(): Record<string, unknown> {
-  return nthJsonValue(0);
+  const first = nthJsonValue(0);
+  expect(first, `no JSON value in stdout: ${stdout}`).not.toBeNull();
+  return first as Record<string, unknown>;
 }
 
 beforeEach(async () => {
@@ -240,8 +249,8 @@ describe('auth setup — org-manifest awareness line (non-JSON)', () => {
   });
 });
 
-describe('auth setup — org-manifest awareness fields (JSON)', () => {
-  it('JSON output gains brands + org fields when both discovery and the manifest fetch succeed', async () => {
+describe('auth setup --json — single-document contract preserved', () => {
+  it('prints EXACTLY ONE JSON document even when discovery and the manifest fetch both succeed', async () => {
     mockedDiscovery.mockResolvedValue({
       index: fakeIndex(['acme']),
       previousDiscoveredAt: null,
@@ -258,25 +267,164 @@ describe('auth setup — org-manifest awareness fields (JSON)', () => {
 
     await runSetup(['--json']);
 
-    // Base SetupResult prints first (unchanged timing), then a second JSON
-    // value with the counts — same "print now, append once background work
-    // finishes" shape as the non-JSON branch's two stdout writes.
-    const extra = nthJsonValue(1);
-    expect(extra.brands).toMatchObject({ total: 1, active: 1 });
-    expect(extra.org).toEqual({ total: 2, not_local: 1 });
+    // `auth setup --json`'s stdout contract predates slice 2: ONE base
+    // SetupResult document, parseable via a whole-stdout JSON.parse. Org
+    // awareness must never add a second document here — it lives on
+    // `auth login --json` as the additive org_brands field instead.
+    const first = emittedJson();
+    expect(first.status).toBe('ok');
+    expect(nthJsonValue(1)).toBeNull();
+    expect(stdout).not.toContain('org_brands');
+    expect(stdout).not.toContain('"org"');
+  });
+});
+
+describe('auth login — org awareness (D-032 sign-in line)', () => {
+  const loginResult: AuthLoginResult = {
+    ok: true,
+    mode: 'device',
+    apiBase: 'https://svc.example.test',
+    personLabel: 'sam@example.com',
+    email: 'tenant@example.com',
+    userId: '42',
+    clientId: 'test-cli',
+    durationMs: 1234,
+  };
+
+  async function runLogin(extraArgs: string[] = []): Promise<void> {
+    const program = newProgram();
+    try {
+      await program.parseAsync(
+        [
+          'auth',
+          'login',
+          '--person-label',
+          'sam@example.com',
+          '--mode',
+          'device',
+          '--data-dir',
+          dataDir,
+          ...extraArgs,
+        ],
+        { from: 'user' },
+      );
+    } catch {
+      // exitOverride throws on non-zero exit; assertions read stdout instead.
+    }
+  }
+
+  it('human output appends "Your org has N brands set up. M not yet on this machine."', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue(loginResult);
+    await mkdir(join(clientsDir(dataDir), 'acme'), { recursive: true });
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [
+        { brand_slug: 'acme', docs: [] },
+        { brand_slug: 'other-brand', docs: [] },
+        { brand_slug: 'third-brand', docs: [] },
+      ],
+    });
+
+    await runLogin();
+
+    expect(stdout).toContain('✓ Signed in via device-code.');
+    expect(stdout).toContain('Your org has 3 brands set up. 2 not yet on this machine.');
   });
 
-  it('JSON output omits the org field (but keeps brands) when the manifest fetch fails', async () => {
-    mockedDiscovery.mockResolvedValue({ index: fakeIndex([]), previousDiscoveredAt: null });
+  it('--json merges org_brands into the SINGLE result document (no second document)', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue(loginResult);
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [{ brand_slug: 'acme', docs: [] }],
+    });
+
+    await runLogin(['--json']);
+
+    const doc = emittedJson();
+    expect(doc.ok).toBe(true);
+    expect(doc.org_brands).toEqual({ total: 1, not_local: 1 });
+    expect(nthJsonValue(1)).toBeNull();
+  });
+
+  it('offline: no org line, no org_brands field, sign-in output otherwise unchanged', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue(loginResult);
     mockedManifest.mockResolvedValue({ ok: false });
 
-    await runSetup(['--json']);
+    await runLogin();
+    expect(stdout).toContain('✓ Signed in via device-code.');
+    expect(stdout).not.toContain('Your org has');
 
-    const firstResult = emittedJson();
-    expect(firstResult.status).toBe('ok');
-
-    const extra = nthJsonValue(1);
-    expect(extra.brands).toBeDefined();
-    expect(extra.org).toBeUndefined();
+    stdout = '';
+    await runLogin(['--json']);
+    const doc = emittedJson();
+    expect(doc.ok).toBe(true);
+    expect(doc.org_brands).toBeUndefined();
   });
+});
+
+describe('auth device-poll — additive org_brands on the approved result only', () => {
+  async function runPoll(): Promise<void> {
+    const program = newProgram();
+    try {
+      await program.parseAsync(
+        [
+          'auth',
+          'device-poll',
+          'code-123',
+          '--person-label',
+          'sam@example.com',
+          '--data-dir',
+          dataDir,
+        ],
+        { from: 'user' },
+      );
+    } catch {
+      // exitOverride throws on non-zero exit codes (pending = 3).
+    }
+  }
+
+  it('approved: org_brands merged into the same single document', async () => {
+    vi.mocked(pollDeviceFlow).mockResolvedValue({ state: 'approved', result: loginResultFor() });
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [
+        { brand_slug: 'acme', docs: [] },
+        { brand_slug: 'other-brand', docs: [] },
+      ],
+    });
+
+    await runPoll();
+
+    const doc = emittedJson();
+    expect(doc.state).toBe('approved');
+    expect(doc.org_brands).toEqual({ total: 2, not_local: 2 });
+    expect(nthJsonValue(1)).toBeNull();
+  });
+
+  it('pending: untouched — no manifest fetch, no org_brands', async () => {
+    vi.mocked(pollDeviceFlow).mockResolvedValue({ state: 'pending' });
+
+    await runPoll();
+
+    const doc = emittedJson();
+    expect(doc.state).toBe('pending');
+    expect(doc.org_brands).toBeUndefined();
+    expect(mockedManifest).not.toHaveBeenCalled();
+  });
+
+  function loginResultFor(): AuthLoginResult {
+    return {
+      ok: true,
+      mode: 'device',
+      apiBase: 'https://svc.example.test',
+      personLabel: 'sam@example.com',
+      email: 'tenant@example.com',
+      userId: '42',
+      clientId: 'test-cli',
+      durationMs: 1234,
+    };
+  }
 });

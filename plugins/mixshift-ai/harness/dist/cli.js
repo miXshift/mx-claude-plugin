@@ -81100,18 +81100,7 @@ function registerAuthCommands(program3) {
             },
             root.dataDir
           );
-          let org;
-          const manifestResult = await getCachedOrgManifest({
-            dataDirOverride: root.dataDir
-          });
-          if (manifestResult.ok) {
-            const localSlugs = new Set(await listLocalBrands(root.dataDir));
-            const orgSlugs = manifestResult.brands.map((b) => b.brand_slug);
-            org = {
-              total: orgSlugs.length,
-              not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length
-            };
-          }
+          const org = await computeOrgAwareness(root.dataDir);
           if (!root.json) {
             process.stdout.write(
               `
@@ -81138,10 +81127,6 @@ Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
 `
               );
             }
-          } else {
-            process.stdout.write(
-              JSON.stringify({ brands: counts, ...org ? { org } : {} }, null, 2) + "\n"
-            );
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -81246,7 +81231,8 @@ function registerLoginSubcommand(auth) {
         noFallback: opts.noFallback ?? false,
         dataDirOverride: root.dataDir
       });
-      renderLoginResult(result, !!root.json);
+      const org = await computeOrgAwareness(root.dataDir);
+      renderLoginResult(result, !!root.json, org);
       return;
     } catch (err) {
       const message = networkErrorMessage(
@@ -81295,9 +81281,25 @@ function parseLoginMode(raw) {
     `--mode must be one of: pkce, device, auto (got "${raw}").`
   );
 }
-function renderLoginResult(result, json2) {
+async function computeOrgAwareness(dataDirOverride) {
+  try {
+    const manifest = await getCachedOrgManifest({ dataDirOverride });
+    if (!manifest.ok) return void 0;
+    const localSlugs = new Set(await listLocalBrands(dataDirOverride));
+    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    return {
+      total: orgSlugs.length,
+      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length
+    };
+  } catch {
+    return void 0;
+  }
+}
+function renderLoginResult(result, json2, org) {
   if (json2) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    const out = { ...result };
+    if (org) out.org_brands = org;
+    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
     return;
   }
   process.stdout.write(
@@ -81308,7 +81310,9 @@ function renderLoginResult(result, json2) {
   - api_base:      ${result.apiBase}
   - client_id:     ${result.clientId}
   - duration:      ${(result.durationMs / 1e3).toFixed(1)}s
-
+` + (org ? `
+Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
+` : "") + `
 Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 `
   );
@@ -81478,7 +81482,12 @@ function registerDevicePollSubcommand(auth) {
           maxWaitMs,
           dataDirOverride: root.dataDir
         });
-        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        const out = { ...result };
+        if (result.state === "approved") {
+          const org = await computeOrgAwareness(root.dataDir);
+          if (org) out.org_brands = org;
+        }
+        process.stdout.write(JSON.stringify(out, null, 2) + "\n");
         return;
       } catch (err) {
         const message = networkErrorMessage(

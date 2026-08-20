@@ -189,18 +189,7 @@ export function registerAuthCommands(program: Command): void {
             // stays undefined and the line below never prints; this never
             // errors and never delays sign-in beyond getCachedOrgManifest's
             // own budget.
-            let org: { total: number; not_local: number } | undefined;
-            const manifestResult = await getCachedOrgManifest({
-              dataDirOverride: root.dataDir,
-            });
-            if (manifestResult.ok) {
-              const localSlugs = new Set(await listLocalBrands(root.dataDir));
-              const orgSlugs = manifestResult.brands.map((b) => b.brand_slug);
-              org = {
-                total: orgSlugs.length,
-                not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
-              };
-            }
+            const org = await computeOrgAwareness(root.dataDir);
 
             // Non-JSON: append a brand-count line to the success message,
             // then the org-awareness line right after it when available.
@@ -231,16 +220,15 @@ export function registerAuthCommands(program: Command): void {
                   `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`,
                 );
               }
-            } else {
-              // JSON: the counts gain fields here, appended once discovery
-              // (and the org fetch) finish — the base result already
-              // printed above via renderResult, before either ran. Same
-              // "print now, append once background work finishes" pattern
-              // as the non-JSON branch, in a machine-parseable shape.
-              process.stdout.write(
-                JSON.stringify({ brands: counts, ...(org ? { org } : {}) }, null, 2) + '\n',
-              );
             }
+            // JSON mode deliberately prints NOTHING here: `auth setup
+            // --json`'s stdout contract has always been the single
+            // base-result document printed above via renderResult, and
+            // appending a second JSON document would break whole-stdout
+            // JSON.parse consumers of this backward-compat command. The
+            // machine-readable org awareness lives on `auth login --json`
+            // (additive org_brands field on its single result document) —
+            // the recommended sign-in path.
           } catch (err) {
             const message =
               err instanceof Error ? err.message : String(err);
@@ -374,7 +362,10 @@ function registerLoginSubcommand(auth: Command): void {
           dataDirOverride: root.dataDir,
         });
 
-        renderLoginResult(result, !!root.json);
+        // D-032: sign-in shows what the org has vs what's local. Best-effort
+        // and budgeted; undefined (offline/timeout) prints nothing org-side.
+        const org = await computeOrgAwareness(root.dataDir);
+        renderLoginResult(result, !!root.json, org);
 
         // UserIdentified is emitted inside runAuthLogin (lib/auth/login-flow.ts)
         // alongside AuthLoginCompleted, so both the PKCE path and the chat
@@ -442,9 +433,47 @@ function parseLoginMode(raw: string | undefined): 'pkce' | 'device' | 'auto' {
   );
 }
 
-function renderLoginResult(result: AuthLoginResult, json: boolean): void {
+interface OrgAwareness {
+  total: number;
+  not_local: number;
+}
+
+/**
+ * D-032 sign-in awareness: how many brands the org store holds vs how many
+ * are on this machine. Sign-in is a natural cache-warm moment for the SAME
+ * org-manifest cache the context-sync seed path consults (autosync.ts).
+ * Budgeted via getCachedOrgManifest's own deadline; best-effort — offline,
+ * timeout, or any error returns undefined and callers print nothing
+ * org-side. Never throws, never delays sign-in beyond the manifest budget.
+ */
+async function computeOrgAwareness(
+  dataDirOverride: string | undefined,
+): Promise<OrgAwareness | undefined> {
+  try {
+    const manifest = await getCachedOrgManifest({ dataDirOverride });
+    if (!manifest.ok) return undefined;
+    const localSlugs = new Set(await listLocalBrands(dataDirOverride));
+    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    return {
+      total: orgSlugs.length,
+      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function renderLoginResult(
+  result: AuthLoginResult,
+  json: boolean,
+  org?: OrgAwareness,
+): void {
   if (json) {
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    // ONE JSON document: org_brands is additive on the existing result
+    // shape, so whole-stdout JSON.parse consumers keep working unchanged.
+    const out: Record<string, unknown> = { ...result };
+    if (org) out.org_brands = org;
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
     return;
   }
   process.stdout.write(
@@ -454,6 +483,9 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
       `  - api_base:      ${result.apiBase}\n` +
       `  - client_id:     ${result.clientId}\n` +
       `  - duration:      ${(result.durationMs / 1000).toFixed(1)}s\n` +
+      (org
+        ? `\nYour org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`
+        : '') +
       `\nTry: \`mixshift data query --sql "SELECT 1"\` to verify ` +
       `warehouse access.\n`,
   );
@@ -742,7 +774,16 @@ function registerDevicePollSubcommand(auth: Command): void {
             maxWaitMs,
             dataDirOverride: root.dataDir,
           });
-          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+          // D-032, additive: on the approved (signed-in) result only, attach
+          // org_brands so the chat skill orchestrating this flow can relay
+          // the sign-in awareness line. Same single-document contract —
+          // consumers that ignore unknown fields are unaffected.
+          const out: Record<string, unknown> = { ...result };
+          if (result.state === 'approved') {
+            const org = await computeOrgAwareness(root.dataDir);
+            if (org) out.org_brands = org;
+          }
+          process.stdout.write(JSON.stringify(out, null, 2) + '\n');
           return;
         } catch (err) {
           const message = networkErrorMessage(
