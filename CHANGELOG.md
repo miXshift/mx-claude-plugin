@@ -26,6 +26,44 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **Monthly Performance Report Max now takes each figure's unit from the
+  analysis engine instead of a list kept inside the plugin.** The engine
+  publishes the unit and the precision for every metric it computes, along
+  with how serious each caveat is. Until now the plugin kept its own copy of
+  that information, which had to be updated by hand every time the engine
+  gained a metric, and a metric it had not heard of fell back to being
+  displayed as a plain count. Dollars could render as bare numbers that way.
+  The plugin now uses what the engine publishes, so a new metric is labelled
+  correctly the first time it appears. Reports built against an older engine
+  are unaffected and render exactly as before.
+
+- **A figure whose unit does not match the engine's is now caught before the
+  report is written.** The report checks have always tested how claims and
+  figures relate to each other, but never whether a unit actually describes
+  the number it labels, so a mislabelled figure passed every check and
+  shipped. A new check compares each figure's unit against the one the engine
+  published for it. It only runs where the engine has published a unit, so it
+  cannot invent problems on an older run. Point in `mixshift report validate`
+  or `mixshift report render` at the extracted figures with `--figures` if
+  you are working outside the folder they live in, or turn the check off for
+  a run with `--no-figures`.
+
+- **`mixshift report validate` now separates errors from warnings.** Every
+  finding used to block rendering, including one plausibility check that can
+  legitimately fire on a real number: an advertising cost of sale above
+  1000% is genuine on an account with almost no sales and live spend. Because
+  the only way past it was `--force`, which waives every other check too,
+  one false alarm on a correct figure meant either not shipping the report or
+  shipping it with all the real checks disabled. Warnings are now reported
+  and do not block; errors still do. Read the warnings rather than relabelling
+  a figure to silence one.
+
+- **A caveat the engine marks as blocking now attaches to the totals as well
+  as the change.** These caveats mean a number is not safe to quote on its
+  own, and the number they usually mean is a total, not the month-over-month
+  movement. Previously only the change carried the caveat, so a section could
+  quote the flagged total with no warning shown and no check complaining.
+
 - **`context autosync`'s built-in help no longer says pull-only.** The
   command's own description still described it as fetching server-side
   changes only ("nothing is pushed"), even though it has pushed
