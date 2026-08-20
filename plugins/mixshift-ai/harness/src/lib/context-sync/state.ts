@@ -291,12 +291,27 @@ export async function saveState(
 // brand-count line can both answer "does the org know this brand" without a
 // network round trip on every call. This module only persists/reads the
 // cache; it has no opinion on freshness — callers compare `fetched_at`
-// against their own TTL (AUTOSYNC_THROTTLE_MS by default).
+// against their own TTL (AUTOSYNC_THROTTLE_MS by default). Same for identity
+// (FIX A): this module just carries whatever `identity` the caller stamps on
+// save; it has no opinion on tenant matching either — getCachedOrgManifest
+// owns that comparison, exactly as it owns the TTL comparison.
 // ---------------------------------------------------------------------------
 
 export interface OrgManifestCache {
   /** ISO-8601 timestamp of the fetch this cache reflects. */
   fetched_at: string;
+  /**
+   * Server + tenant identity this cache was fetched under (see
+   * resolveLedgerIdentity above), mirroring the per-brand ledger's
+   * `identity` field. Absent on cache files written before FIX A existed, or
+   * when no identity was resolvable at fetch time (offline / no
+   * credentials). getCachedOrgManifest (autosync.ts) treats a mismatch — or
+   * identity present on only one side — as a cache MISS rather than serving
+   * a manifest fetched under a DIFFERENT tenant's login: without this, a
+   * cache warmed under org A's session answers silently for org B on the
+   * same machine within the TTL window.
+   */
+  identity?: string;
   /** Verbatim manifest payload from GET /api/context/manifest. */
   brands: WireManifestBrand[];
 }
@@ -327,7 +342,16 @@ export async function loadOrgManifestCache(
         typeof (b as { brand_slug?: unknown }).brand_slug === 'string' &&
         Array.isArray((b as { docs?: unknown }).docs),
     );
-    return { fetched_at: (parsed as { fetched_at: string }).fetched_at, brands };
+    // FIX A: tolerant reconstruction, same style as everything else here — a
+    // malformed/absent identity just degrades to "no stamp" (treated as a
+    // cache miss by getCachedOrgManifest whenever the CURRENT identity is
+    // resolvable; see its own comparison logic).
+    const storedIdentity = (parsed as { identity?: unknown }).identity;
+    return {
+      fetched_at: (parsed as { fetched_at: string }).fetched_at,
+      ...(typeof storedIdentity === 'string' ? { identity: storedIdentity } : {}),
+      brands,
+    };
   } catch {
     return null;
   }

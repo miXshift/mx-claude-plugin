@@ -20,11 +20,17 @@
  *     pattern (brandDir() joins it into a filesystem path verbatim) AND
  *     EITHER the brand directory already exists locally OR the org-wide
  *     manifest lists the slug (the seed path below) — otherwise the hook
- *     skips with no stamp, no mkdir, no save, so a typo'd or hostile slug
- *     can never create a phantom brand dir or touch anything outside
- *     clients/. Likewise, a tenant-identity mismatch with tracked docs on
- *     disk skips entirely: rebinding the ledger stays an explicit-sync
- *     behavior, never a passive-read side effect.
+ *     skips with no per-brand stamp and no mkdir, so a typo'd or hostile
+ *     slug can never create a phantom brand dir or touch anything outside
+ *     clients/. NOT quite "no save" though (FIX F): consulting the manifest
+ *     for a missing dir still costs one budgeted client.fetchManifest() call
+ *     per TTL window (getCachedOrgManifest below) and persists ITS OWN
+ *     org-wide cache file on a cold/expired cache, even for a slug that
+ *     turns out unlisted — that cache write is shared across every brand's
+ *     lookups, never a per-brand side effect, and still never touches
+ *     clients/<slug>/. Likewise, a tenant-identity mismatch with tracked
+ *     docs on disk skips entirely: rebinding the ledger stays an
+ *     explicit-sync behavior, never a passive-read side effect.
  *   - Seed path (D-032, slice 2 — US1/US2): a MISSING brand dir is no
  *     longer an automatic skip. getCachedOrgManifest (below) consults the
  *     org-wide manifest — cached at <dataDir>/.context-sync-org-manifest.json
@@ -173,6 +179,15 @@ export type AutoSyncResult =
       reports: DocActionReport[];
       /** Present when the publish half ran (see PUSH_AFTER_WRITE_ENV). */
       stake_events?: StakeLegSummary;
+      /**
+       * Present (true) only when THIS attempt is the one that created the
+       * brand dir (the seed path — D-032); absent otherwise (FIX H).
+       * Mirrors the same-named field already carried on the internal
+       * preflight telemetry payload (see finish()), now also surfaced on
+       * the result itself so a manual `mixshift context autosync` run (and
+       * its --json output) can report it too.
+       */
+      seeded?: boolean;
     };
 
 /**
@@ -196,7 +211,8 @@ export async function maybeAutoSync(
   let pastGuards = false;
   let ledgerState: ContextSyncState | undefined;
   // True only when THIS attempt created the brand dir (the seed path).
-  // Read by finish() below to add payload.seeded to the telemetry event.
+  // Read by finish() below to add payload.seeded to the telemetry event,
+  // and attached to the returned AutoSyncResult itself (FIX H).
   let seeded = false;
   // Wall-clock time actually spent on the seed path's manifest check, if
   // any (stays 0 when the dir already existed — see the budget note
@@ -204,6 +220,12 @@ export async function maybeAutoSync(
   // seed attempt's manifest-check-plus-sync total stays bounded by one
   // AUTOSYNC_BUDGET_MS, not two back-to-back ones.
   let manifestElapsedMs = 0;
+  // FIX C: the exact brands list the seed decision was made from, set ONLY
+  // on the seed path (stays undefined on the dir-exists path). Threaded
+  // into op()'s EngineOptions.manifest below so buildDocPairs (engine.ts)
+  // reuses the SAME manifest that justified creating this dir instead of
+  // fetching its own — see the op() call site for the full reasoning.
+  let seedManifestBrands: WireManifestBrand[] | undefined;
 
   /**
    * Common tail for every outcome that cleared the guards: persists
@@ -352,6 +374,14 @@ export async function maybeAutoSync(
         throttleMs: options.throttleMs,
         budgetMs,
         env,
+        // FIX A: thread the SAME identity override this call already
+        // supports for the ledger through to the org-manifest cache too, so
+        // a test (or a future caller) that pins identity gets ONE consistent
+        // answer from both. When undefined, getCachedOrgManifest falls back
+        // to its own resolveLedgerIdentity() read — identical in effect,
+        // just resolved once more (a cheap local file read, not a network
+        // call).
+        identity: options.identity,
       });
       manifestElapsedMs = Date.now() - manifestCheckStart;
 
@@ -382,6 +412,11 @@ export async function maybeAutoSync(
         return { ran: false, reason: 'skipped', detail: 'not a valid brand slug' };
       }
       seeded = true;
+      // FIX C: remember the exact brands list this decision was made from —
+      // op() below reuses it instead of buildDocPairs fetching its own (see
+      // that call site). Safe to assert `ok` here: `listed` above already
+      // required `manifestResult.ok`.
+      seedManifestBrands = manifestResult.ok ? manifestResult.brands : undefined;
       // Fall through: the throttle-stamp save a few lines down creates
       // clients/<slug>/ as a side effect of saveState's mkdir — the exact
       // mechanism the comment above exists to prevent for an unlisted slug,
@@ -495,6 +530,31 @@ export async function maybeAutoSync(
         op(brandSlug, {
           client,
           dataDirOverride: options.dataDirOverride,
+          // FIX C: on the seed path, reuse the EXACT manifest that just
+          // justified creating this dir (EngineOptions.manifest — see
+          // engine.ts's buildDocPairs, which otherwise fetches its own).
+          // Two reasons: (1) the manifest that justified the mkdir must be
+          // the manifest that resolves the docs — letting buildDocPairs
+          // fetch AGAIN risks it disagreeing with the seed decision (the
+          // brand deleted/renamed server-side in the gap, or the pre-check
+          // being a cache hit the fresh fetch wouldn't repeat) and finding
+          // NOTHING to pull, leaving a permanently empty orphan dir reported
+          // as a clean success. (2) a second live fetchManifest() call
+          // inside the SAME budget the pre-check already spent part of is
+          // exactly the double-spend that starves a seed attempt a plain
+          // dir-exists sync never pays (see the module doc's budget note;
+          // empirically, two ~900ms manifest round trips alone exceed the
+          // 2s default budget). The reused manifest can itself be up to
+          // AUTOSYNC_THROTTLE_MS stale (a cache hit) and is now
+          // identity-bound (FIX A), so staleness is bounded and scoped to
+          // the right tenant; per-doc CONTENT is always fetched LIVE by
+          // pullOneDoc regardless of where the manifest list came from, so a
+          // doc truly deleted server-side in the gap still surfaces as a
+          // per-doc 'error' (a failed, re-triable attempt), never silently
+          // resurrected or silently reported clean. The dir-exists path
+          // (seedManifestBrands stays undefined there) is unaffected:
+          // buildDocPairs fetches its own manifest exactly as before.
+          ...(seedManifestBrands !== undefined ? { manifest: seedManifestBrands } : {}),
           // NEVER force: diverged docs stay untouched by design.
         }),
         raceMs,
@@ -539,6 +599,13 @@ export async function maybeAutoSync(
         conflicts,
         errors,
         reports: raced.reports,
+        // FIX H: additive on the ran:true result itself (not just the
+        // internal telemetry payload, which already carried this via the
+        // closure `seeded` flag — see finish()'s payload construction
+        // above) — so a MANUAL `mixshift context autosync` run can surface
+        // the seed outcome too, not only the implicit preflight hook's own
+        // telemetry row.
+        ...(seeded ? { seeded: true } : {}),
         ...(stakeLeg !== undefined ? { stake_events: stakeLeg } : {}),
       });
     } finally {
@@ -574,12 +641,74 @@ export interface OrgManifestOptions {
   /** Wall-clock budget for a COLD fetch only; ignored on a cache hit.
    *  Defaults to AUTOSYNC_BUDGET_MS. */
   budgetMs?: number;
+  /**
+   * Ledger-identity override for tests; defaults to resolveLedgerIdentity()
+   * over the stored credentials, exactly like AutoSyncOptions.identity for
+   * the per-brand ledger. Explicit null = "no identity available" (the
+   * identity check degrades to TTL-only, same as when neither side has an
+   * identity to compare — see the comparison helper below). FIX A: this is
+   * what binds/verifies the persisted org-manifest cache to a tenant.
+   */
+  identity?: string | null;
+  /** Kill-switch + VITEST-guard env source (FIX E); defaults to
+   *  process.env. Passed explicitly by this module's own tests to opt back
+   *  in, exactly like AutoSyncOptions.env. Also used for MIXSHIFT_DEBUG
+   *  stderr lines. */
   env?: NodeJS.ProcessEnv;
 }
 
 export type OrgManifestResult =
   | { ok: true; brands: WireManifestBrand[]; fromCache: boolean }
   | { ok: false };
+
+/**
+ * Bound for the AWAITED cache-persist write inside getCachedOrgManifest
+ * below (FIX B) — separate from budgetMs/AUTOSYNC_BUDGET_MS, which bound
+ * only the NETWORK fetch. saveOrgManifestCache does local disk I/O only
+ * (tmp write + rename), normally negligible, but a slow write/rename (AV
+ * scanning the .tmp file, a network home directory) previously had no
+ * bound of its own: it sat, unraced, inside the budgeted path, so its
+ * elapsed time was silently charged to the caller's budget accounting
+ * (autosync.ts's `manifestElapsedMs`) with nothing stopping it from running
+ * long past what that accounting assumes. A small FIXED constant, not
+ * "budget remaining": the fetch above already spent an unpredictable share
+ * of `budgetMs`, and computing what's left only to hand it to a local disk
+ * write would conflate two different failure modes (a slow network vs. a
+ * slow filesystem) for no real benefit — the write itself is a few hundred
+ * bytes to a file we already know how to create. Deliberately small: on
+ * deadline we stop WAITING, not the write — the write usually still lands
+ * because the process lives past this call; the cache is an optimization
+ * (the next caller just repeats the fetch), never a correctness
+ * requirement. Mirrors TELEMETRY_EMIT_BUDGET_MS in push-after-write.ts,
+ * which carries the identical bound + reasoning for its own best-effort
+ * local write.
+ */
+export const ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
+
+/**
+ * Whether a cached org-manifest's recorded identity still matches the
+ * current one (FIX A). Mirrors state.ts's per-brand ledger identity check
+ * (see resolveLedgerIdentity), but STRICTER: the ledger tolerates a
+ * schema-1 file with NO identity field at all (silently adopts the current
+ * one) because a missing per-brand ledger only ever degrades ONE brand's
+ * verdict to 'diverged' at worst. A shared, org-wide cache with no identity
+ * binding is exactly the FIX A defect (a cache warmed under tenant A's
+ * login silently served under tenant B) — so here, identity absent on
+ * EITHER side while the OTHER side has one is ALSO treated as a mismatch,
+ * not a free pass. Only true absence on BOTH sides (no credentials
+ * resolvable right now, and the cache was never bound either — e.g. a
+ * pre-FIX-A file, or offline with no prior identity) skips the check and
+ * falls back to TTL-only gating, same as before identity binding existed.
+ */
+function cachedManifestIdentityMatches(
+  cachedIdentity: string | undefined,
+  currentIdentity: string | null | undefined,
+): boolean {
+  if (cachedIdentity === undefined) {
+    return currentIdentity === undefined || currentIdentity === null;
+  }
+  return typeof currentIdentity === 'string' && currentIdentity === cachedIdentity;
+}
 
 /**
  * Org-wide brand manifest, cached at <dataDir>/.context-sync-org-manifest.json
@@ -594,17 +723,52 @@ export type OrgManifestResult =
  * Quiet no-op contract, same shape as the rest of this module: a cache hit
  * never touches the network; a cold/expired cache does ONE budgeted
  * client.fetchManifest() call and, on success, persists the cache
- * best-effort before returning it. A failed or over-budget cold fetch
- * returns {ok:false} — NEVER throws, and never partially updates the cache.
+ * best-effort (bounded — ORG_MANIFEST_PERSIST_BUDGET_MS, FIX B) before
+ * returning it. A failed or over-budget cold fetch returns {ok:false} —
+ * NEVER throws, and never partially updates the cache.
+ *
+ * OWN guards (FIX E): this is a SECOND entry point into the module — unlike
+ * every other exported function here, it is called directly by auth.ts's
+ * computeOrgAwareness, not only through maybeAutoSync — so it carries its
+ * OWN copy of the kill switch (AUTOSYNC_ENV) and the VITEST test-isolation
+ * guard, checked first, before any file or network activity, exactly like
+ * maybeAutoSync's. BOTH callers (maybeAutoSync's seed path and
+ * commands/auth.ts's computeOrgAwareness) inherit these for free; neither
+ * needs its own copy.
+ *
+ * Identity-bound (FIX A): the persisted cache now records the resolving
+ * identity (options.identity, defaulting to resolveLedgerIdentity()) the
+ * same way the per-brand ledger does. A stored identity that does not
+ * match the current one (or is present on only one side) is treated as a
+ * cache MISS, never served — see cachedManifestIdentityMatches above.
  */
 export async function getCachedOrgManifest(
   options: OrgManifestOptions = {},
 ): Promise<OrgManifestResult> {
+  const env = options.env ?? process.env;
   const now = options.now ? options.now() : new Date();
   const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
   try {
+    // FIX E: kill switch, checked before any file or network activity —
+    // byte-for-byte the same check maybeAutoSync itself does.
+    const flag = (env[AUTOSYNC_ENV] ?? '').toLowerCase();
+    if (flag === 'off' || flag === '0' || flag === 'false') {
+      return { ok: false };
+    }
+    // FIX E: same VITEST test-isolation guard as maybeAutoSync — this
+    // function's own tests pass an explicit `env` to opt back in.
+    if (options.env === undefined && process.env.VITEST) {
+      debugLog(env, `getCachedOrgManifest: disabled under test runner (VITEST set)`);
+      return { ok: false };
+    }
+
+    const identity =
+      options.identity !== undefined
+        ? options.identity
+        : await resolveLedgerIdentity(options.dataDirOverride);
+
     const cached = await loadOrgManifestCache(options.dataDirOverride);
-    if (cached) {
+    if (cached && cachedManifestIdentityMatches(cached.identity, identity)) {
       const fetchedAt = Date.parse(cached.fetched_at);
       if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
         return { ok: true, brands: cached.brands, fromCache: true };
@@ -630,19 +794,28 @@ export async function getCachedOrgManifest(
       if (raced === DEADLINE || !raced.ok) return { ok: false };
       // Best-effort persist; a failed cache write just means the next
       // caller repeats this fetch — never fails the read we already have.
-      await saveOrgManifestCache(
-        { fetched_at: now.toISOString(), brands: raced.brands },
-        options.dataDirOverride,
+      // The WAIT is bounded too (ORG_MANIFEST_PERSIST_BUDGET_MS, FIX B, via
+      // raceDeadline): on deadline we stop waiting, not the write — see
+      // that constant's doc for why a small fixed bound beats computing
+      // budget-remaining here.
+      await raceDeadline(
+        saveOrgManifestCache(
+          {
+            fetched_at: now.toISOString(),
+            brands: raced.brands,
+            ...(identity ? { identity } : {}),
+          },
+          options.dataDirOverride,
+        ),
+        ORG_MANIFEST_PERSIST_BUDGET_MS,
       );
       return { ok: true, brands: raced.brands, fromCache: false };
     } finally {
       clearTimeout(abortTimer);
     }
   } catch (err) {
-    if (options.env?.MIXSHIFT_DEBUG) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[debug] getCachedOrgManifest: swallowed error: ${message}\n`);
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog(env, `getCachedOrgManifest: swallowed error: ${message}`);
     return { ok: false };
   }
 }

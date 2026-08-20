@@ -66675,7 +66675,12 @@ async function loadOrgManifestCache(dataDirOverride) {
     const brands = parsed.brands.filter(
       (b) => typeof b === "object" && b !== null && typeof b.brand_slug === "string" && Array.isArray(b.docs)
     );
-    return { fetched_at: parsed.fetched_at, brands };
+    const storedIdentity = parsed.identity;
+    return {
+      fetched_at: parsed.fetched_at,
+      ...typeof storedIdentity === "string" ? { identity: storedIdentity } : {},
+      brands
+    };
   } catch {
     return null;
   }
@@ -72501,6 +72506,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
   let ledgerState;
   let seeded = false;
   let manifestElapsedMs = 0;
+  let seedManifestBrands;
   async function finish(result) {
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
@@ -72576,7 +72582,15 @@ async function maybeAutoSync(brandSlug, options = {}) {
         now: options.now,
         throttleMs: options.throttleMs,
         budgetMs,
-        env
+        env,
+        // FIX A: thread the SAME identity override this call already
+        // supports for the ledger through to the org-manifest cache too, so
+        // a test (or a future caller) that pins identity gets ONE consistent
+        // answer from both. When undefined, getCachedOrgManifest falls back
+        // to its own resolveLedgerIdentity() read — identical in effect,
+        // just resolved once more (a cheap local file read, not a network
+        // call).
+        identity: options.identity
       });
       manifestElapsedMs = Date.now() - manifestCheckStart;
       const listed = manifestResult.ok && manifestResult.brands.some((b) => b.brand_slug === brandSlug);
@@ -72591,6 +72605,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
         return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
       }
       seeded = true;
+      seedManifestBrands = manifestResult.ok ? manifestResult.brands : void 0;
     }
     const now = options.now ? options.now() : /* @__PURE__ */ new Date();
     const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
@@ -72642,7 +72657,32 @@ async function maybeAutoSync(brandSlug, options = {}) {
       const raced = await raceDeadline(
         op(brandSlug, {
           client,
-          dataDirOverride: options.dataDirOverride
+          dataDirOverride: options.dataDirOverride,
+          // FIX C: on the seed path, reuse the EXACT manifest that just
+          // justified creating this dir (EngineOptions.manifest — see
+          // engine.ts's buildDocPairs, which otherwise fetches its own).
+          // Two reasons: (1) the manifest that justified the mkdir must be
+          // the manifest that resolves the docs — letting buildDocPairs
+          // fetch AGAIN risks it disagreeing with the seed decision (the
+          // brand deleted/renamed server-side in the gap, or the pre-check
+          // being a cache hit the fresh fetch wouldn't repeat) and finding
+          // NOTHING to pull, leaving a permanently empty orphan dir reported
+          // as a clean success. (2) a second live fetchManifest() call
+          // inside the SAME budget the pre-check already spent part of is
+          // exactly the double-spend that starves a seed attempt a plain
+          // dir-exists sync never pays (see the module doc's budget note;
+          // empirically, two ~900ms manifest round trips alone exceed the
+          // 2s default budget). The reused manifest can itself be up to
+          // AUTOSYNC_THROTTLE_MS stale (a cache hit) and is now
+          // identity-bound (FIX A), so staleness is bounded and scoped to
+          // the right tenant; per-doc CONTENT is always fetched LIVE by
+          // pullOneDoc regardless of where the manifest list came from, so a
+          // doc truly deleted server-side in the gap still surfaces as a
+          // per-doc 'error' (a failed, re-triable attempt), never silently
+          // resurrected or silently reported clean. The dir-exists path
+          // (seedManifestBrands stays undefined there) is unaffected:
+          // buildDocPairs fetches its own manifest exactly as before.
+          ...seedManifestBrands !== void 0 ? { manifest: seedManifestBrands } : {}
           // NEVER force: diverged docs stay untouched by design.
         }),
         raceMs
@@ -72681,6 +72721,13 @@ async function maybeAutoSync(brandSlug, options = {}) {
         conflicts,
         errors,
         reports: raced.reports,
+        // FIX H: additive on the ran:true result itself (not just the
+        // internal telemetry payload, which already carried this via the
+        // closure `seeded` flag — see finish()'s payload construction
+        // above) — so a MANUAL `mixshift context autosync` run can surface
+        // the seed outcome too, not only the implicit preflight hook's own
+        // telemetry row.
+        ...seeded ? { seeded: true } : {},
         ...stakeLeg !== void 0 ? { stake_events: stakeLeg } : {}
       });
     } finally {
@@ -72696,12 +72743,29 @@ function debugLog2(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
 }
+var ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
+function cachedManifestIdentityMatches(cachedIdentity, currentIdentity) {
+  if (cachedIdentity === void 0) {
+    return currentIdentity === void 0 || currentIdentity === null;
+  }
+  return typeof currentIdentity === "string" && currentIdentity === cachedIdentity;
+}
 async function getCachedOrgManifest(options = {}) {
+  const env = options.env ?? process.env;
   const now = options.now ? options.now() : /* @__PURE__ */ new Date();
   const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
   try {
+    const flag = (env[AUTOSYNC_ENV] ?? "").toLowerCase();
+    if (flag === "off" || flag === "0" || flag === "false") {
+      return { ok: false };
+    }
+    if (options.env === void 0 && process.env.VITEST) {
+      debugLog2(env, `getCachedOrgManifest: disabled under test runner (VITEST set)`);
+      return { ok: false };
+    }
+    const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
     const cached4 = await loadOrgManifestCache(options.dataDirOverride);
-    if (cached4) {
+    if (cached4 && cachedManifestIdentityMatches(cached4.identity, identity)) {
       const fetchedAt = Date.parse(cached4.fetched_at);
       if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
         return { ok: true, brands: cached4.brands, fromCache: true };
@@ -72721,20 +72785,24 @@ async function getCachedOrgManifest(options = {}) {
       });
       const raced = await raceDeadline(client.fetchManifest(), budgetMs);
       if (raced === DEADLINE || !raced.ok) return { ok: false };
-      await saveOrgManifestCache(
-        { fetched_at: now.toISOString(), brands: raced.brands },
-        options.dataDirOverride
+      await raceDeadline(
+        saveOrgManifestCache(
+          {
+            fetched_at: now.toISOString(),
+            brands: raced.brands,
+            ...identity ? { identity } : {}
+          },
+          options.dataDirOverride
+        ),
+        ORG_MANIFEST_PERSIST_BUDGET_MS
       );
       return { ok: true, brands: raced.brands, fromCache: false };
     } finally {
       clearTimeout(abortTimer);
     }
   } catch (err) {
-    if (options.env?.MIXSHIFT_DEBUG) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[debug] getCachedOrgManifest: swallowed error: ${message}
-`);
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog2(env, `getCachedOrgManifest: swallowed error: ${message}`);
     return { ok: false };
   }
 }
@@ -81011,6 +81079,7 @@ function extractMessage(err) {
 }
 
 // src/commands/auth.ts
+init_deadline();
 function registerAuthCommands(program3) {
   const auth = program3.command("auth").description(
     "Authenticate against the MixShift warehouse. Two flows: `login` (recommended) for the token-based mx-legacy-auth path, or `setup` for the legacy raw-MySQL path."
@@ -81100,7 +81169,6 @@ function registerAuthCommands(program3) {
             },
             root.dataDir
           );
-          const org = await computeOrgAwareness(root.dataDir);
           if (!root.json) {
             process.stdout.write(
               `
@@ -81121,6 +81189,7 @@ Mark them as "key" so portfolio skills default to those instead of all ${counts.
 Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
 ` : "")
             );
+            const org = await computeOrgAwareness(root.dataDir);
             if (org) {
               process.stdout.write(
                 `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
@@ -81281,11 +81350,17 @@ function parseLoginMode(raw) {
     `--mode must be one of: pkce, device, auto (got "${raw}").`
   );
 }
+var ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS = 1e3;
 async function computeOrgAwareness(dataDirOverride) {
   try {
     const manifest = await getCachedOrgManifest({ dataDirOverride });
     if (!manifest.ok) return void 0;
-    const localSlugs = new Set(await listLocalBrands(dataDirOverride));
+    const localBrands = await raceDeadline(
+      listLocalBrands(dataDirOverride),
+      ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS
+    );
+    if (localBrands === DEADLINE) return void 0;
+    const localSlugs = new Set(localBrands);
     const orgSlugs = manifest.brands.map((b) => b.brand_slug);
     return {
       total: orgSlugs.length,
@@ -94061,7 +94136,7 @@ function registerActionSubcommand(context, spec) {
 }
 function registerAutosyncSubcommand(context) {
   context.command("autosync <brand>").description(
-    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally; diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
+    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally, AND seeds one that does not exist here yet as long as your org's shared store already lists it (creating the local directory and pulling its docs); a slug your org store does not know about stays a no-op. Diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
   ).option("--force", "bypass the per-brand throttle window", false).action(async (brand, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
@@ -94086,7 +94161,11 @@ function registerAutosyncSubcommand(context) {
               pushed: result.pushed,
               created: result.created,
               conflicts: result.conflicts,
-              errors: result.errors
+              errors: result.errors,
+              // FIX H: surface the seed outcome on manual runs too —
+              // previously only the internal preflight hook's own
+              // (trigger-suppressed, for manual) emit carried this.
+              ...result.seeded ? { seeded: true } : {}
             } : { reason: result.reason }
           }
         },
@@ -94101,7 +94180,10 @@ function registerAutosyncSubcommand(context) {
               pulled: result.pulled,
               conflicts: result.conflicts,
               errors: result.errors,
-              reports: result.reports
+              reports: result.reports,
+              // FIX H: additive — present only when this run seeded
+              // (created) the brand's local directory.
+              ...result.seeded ? { seeded: true } : {}
             } : {
               status: "ok",
               ran: false,

@@ -122,7 +122,7 @@ This is the normal onboarding path. It reads warehouse seller rows for the slug,
 2. **Merchant exists (the AM confirms a match) → this is case A above.** Run `mixshift brand add <slug>` no matter what name they originally used. Before (or right after) adding it, check that candidate's Ads/Retail state and say plainly what an inactive surface means: `ads_active: false` means no live Ads connection in MixShift yet, so ads-side skills (bid health, search term negation, campaign data) have nothing to work with; `retail_active: false` means the same for retail/ops-side data (inventory, Seller/Vendor Central revenue, orders). Either can be false independently of the other — name the specific surface(s) affected, never a generic "not fully set up."
 
 3. **Merchant truly absent from the DB → this is a NO-OP.** No shell, no files, no hand-authored context.yaml, ever: if the account isn't in MixShift, there is no auth for it and nothing brand setup can do yet. Tell the operator, in substance:
-   > That merchant isn't in your MixShift account yet. Add it starting at https://www.mydashapplications.com/account-manager, then run brand setup again.
+   > That merchant isn't in your MixShift account yet. Add it starting at https://dash.mydashapplications.com/account-manager, then run brand setup again.
 
 ### Picking the brand when the tenant has many (top N + "show all")
 

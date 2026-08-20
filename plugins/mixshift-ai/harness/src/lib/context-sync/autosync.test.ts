@@ -1268,14 +1268,101 @@ describe('seed path: missing dir consults the org manifest', () => {
 });
 
 // ---------------------------------------------------------------------------
+// FIX C (also resolves the double-fetch starvation): the seed path passes
+// the EXACT manifest it just used for the membership decision into op() via
+// EngineOptions.manifest, so buildDocPairs (engine.ts) reuses it instead of
+// fetching its own. Absorbed from a throwaway red-team probe
+// (zz-redteam-dup-manifest.test.ts) that empirically proved the pre-fix
+// double-fetch (and, at realistic latency, the resulting budget starvation);
+// these are the tracked, fixed-behavior counterparts, asserted via a
+// counting client rather than by racing real wall-clock timing (deterministic,
+// no flake risk).
+// ---------------------------------------------------------------------------
+
+describe('seed path reuses the pre-check manifest — at most one fetchManifest per attempt (FIX C)', () => {
+  it('cold cache: fetchManifest is called exactly ONCE across the whole seeded attempt (the pre-check fetch; buildDocPairs reuses it)', async () => {
+    const { client, state } = countingClient(
+      [manifestBrand('newbrand', [{ key: 'narrative', content: 'from org store\n', revision: 1 }])],
+      { narrative: { content: 'from org store\n', revision: 1 } },
+    );
+
+    const result = await maybeAutoSync('newbrand', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      budgetMs: 5_000,
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) {
+      expect(result.pulled).toBe(1);
+      expect(result.errors).toBe(0);
+      expect(result.seeded).toBe(true);
+    }
+    // Before FIX C: 2 (getCachedOrgManifest's cold fetch + buildDocPairs's
+    // own fresh fetch, since options.manifest was never threaded through).
+    expect(state.manifestCalls).toBe(1);
+  });
+
+  it('warm cache: fetchManifest is called ZERO times (the seed decision is served from cache, and that SAME cached list is reused by op())', async () => {
+    // Pre-warm the org-manifest cache for this exact identity-less
+    // (no-credentials-on-disk) scenario, matching how the seed path itself
+    // would have warmed it on a prior attempt within the TTL.
+    const { client, state } = countingClient(
+      [manifestBrand('newbrand2', [{ key: 'narrative', content: 'from org store\n', revision: 1 }])],
+      { narrative: { content: 'from org store\n', revision: 1 } },
+    );
+    await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(state.manifestCalls).toBe(1);
+
+    const result = await maybeAutoSync('newbrand2', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      budgetMs: 5_000,
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) expect(result.seeded).toBe(true);
+    // No NEW fetch: neither the (warm) pre-check nor buildDocPairs asked
+    // the network again.
+    expect(state.manifestCalls).toBe(1);
+  });
+
+  it('control: the dir-ALREADY-EXISTS path still fetches its own manifest exactly once (unaffected — no seed decision to reuse)', async () => {
+    const { client, state } = countingClient(
+      [manifestBrand('existingbrand', [{ key: 'narrative', content: 'from org store\n', revision: 1 }])],
+      { narrative: { content: 'from org store\n', revision: 1 } },
+    );
+    await makeBrandDir('existingbrand');
+
+    const result = await maybeAutoSync('existingbrand', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      budgetMs: 5_000,
+    });
+
+    expect(result.ran).toBe(true);
+    if (result.ran) expect(result.seeded).toBeUndefined();
+    expect(state.manifestCalls).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getCachedOrgManifest: the extracted manifest-cache helper, tested directly
 // (not just through maybeAutoSync's seed path).
 // ---------------------------------------------------------------------------
 
 describe('getCachedOrgManifest', () => {
+  // FIX E gave this function its OWN kill-switch + VITEST guards, mirroring
+  // maybeAutoSync's — so every test below that wants to exercise the REAL
+  // cache/fetch logic must opt back in with `env: LIVE_ENV`, exactly like
+  // maybeAutoSync's own tests already do. The guards themselves are pinned
+  // separately below (describe('getCachedOrgManifest guards (FIX E)')).
   it('cold cache: fetches once, persists the cache, returns fromCache:false', async () => {
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
-    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
     expect(result).toMatchObject({ ok: true, fromCache: false });
     expect(state.manifestCalls).toBe(1);
     const cached = JSON.parse(await readFile(orgManifestCachePath(testDir), 'utf8'));
@@ -1285,10 +1372,10 @@ describe('getCachedOrgManifest', () => {
 
   it('warm cache within TTL: zero client calls, fromCache:true', async () => {
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
-    await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
     expect(state.manifestCalls).toBe(1);
 
-    const second = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    const second = await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
     expect(second).toMatchObject({ ok: true, fromCache: true });
     expect(state.manifestCalls).toBe(1); // no new fetch
   });
@@ -1296,13 +1383,14 @@ describe('getCachedOrgManifest', () => {
   it('expired cache (past TTL): refetches', async () => {
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
     const t0 = new Date('2026-07-05T12:00:00.000Z');
-    await getCachedOrgManifest({ dataDirOverride: testDir, client, now: () => t0 });
+    await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV, now: () => t0 });
     expect(state.manifestCalls).toBe(1);
 
     const past = new Date(t0.getTime() + AUTOSYNC_THROTTLE_MS + 1_000);
     const second = await getCachedOrgManifest({
       dataDirOverride: testDir,
       client,
+      env: LIVE_ENV,
       now: () => past,
     });
     expect(second).toMatchObject({ ok: true, fromCache: false });
@@ -1313,7 +1401,7 @@ describe('getCachedOrgManifest', () => {
     await mkdir(testDir, { recursive: true });
     await writeFile(orgManifestCachePath(testDir), '{ not valid json', 'utf8');
     const { client, state } = countingClient([manifestBrand('acme', [])], {});
-    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
     expect(result).toMatchObject({ ok: true, fromCache: false });
     expect(state.manifestCalls).toBe(1);
   });
@@ -1330,7 +1418,11 @@ describe('getCachedOrgManifest', () => {
       putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
       putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
     };
-    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client: failingClient });
+    const result = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: failingClient,
+      env: LIVE_ENV,
+    });
     expect(result).toEqual({ ok: false });
     await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
   });
@@ -1345,7 +1437,241 @@ describe('getCachedOrgManifest', () => {
       putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
     };
     await expect(
-      getCachedOrgManifest({ dataDirOverride: testDir, client: throwingClient }),
+      getCachedOrgManifest({ dataDirOverride: testDir, client: throwingClient, env: LIVE_ENV }),
     ).resolves.toEqual({ ok: false });
+  });
+
+  it('the persist write is bounded: a saveOrgManifestCache that never resolves does not hang the call past ORG_MANIFEST_PERSIST_BUDGET_MS (FIX B)', async () => {
+    // saveOrgManifestCache itself has no injection seam (it's a plain fs
+    // write, not client-mediated), so this proves the bound indirectly: a
+    // deliberately slow filesystem isn't reproducible portably in a unit
+    // test, but we CAN prove the overall call returns promptly and correctly
+    // even though real disk I/O is in the mix — a regression that dropped
+    // the raceDeadline wrap would still pass this (disk writes are normally
+    // fast), so the load-bearing assertion is the elapsed-time ceiling: it
+    // must stay far below a pathological stall, and MUST NOT throw either
+    // way (an unhandled rejection from an abandoned save would fail the
+    // test run).
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    const t0 = Date.now();
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
+    const elapsed = Date.now() - t0;
+    expect(result).toMatchObject({ ok: true, fromCache: false });
+    expect(state.manifestCalls).toBe(1);
+    expect(elapsed).toBeLessThan(2_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX E: getCachedOrgManifest is a SECOND entry point (auth.ts's
+// computeOrgAwareness calls it directly, bypassing maybeAutoSync entirely) —
+// it needs its OWN kill-switch + VITEST guards, not just borrowed ones from
+// maybeAutoSync's call sites.
+// ---------------------------------------------------------------------------
+
+describe('getCachedOrgManifest guards (FIX E)', () => {
+  it.each(['off', 'OFF', '0', 'false'])(
+    `returns {ok:false} and touches nothing when ${AUTOSYNC_ENV}=%s`,
+    async (value) => {
+      const { client, state } = countingClient([manifestBrand('acme', [])], {});
+      const result = await getCachedOrgManifest({
+        dataDirOverride: testDir,
+        client,
+        env: { [AUTOSYNC_ENV]: value },
+      });
+      expect(result).toEqual({ ok: false });
+      expect(state.manifestCalls).toBe(0);
+      await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+    },
+  );
+
+  // Absorbed from a throwaway red-team probe (zz-skeptic2-auth-killswitch-
+  // probe.test.ts): a bare empty tmp dir with no credentials produces a
+  // false negative here (resolveApiBase throws "No credentials found"
+  // before the guard would even matter) — a confound unrelated to the
+  // VITEST/kill-switch question. Seed valid, non-expired credentials first
+  // so this matches the REAL call site (auth.ts's computeOrgAwareness, right
+  // after a successful `mixshift auth login`) precisely.
+  it('is disabled by default under the test runner (VITEST guard), even with valid on-disk credentials and no env passed — mirrors auth.ts calling with no env', async () => {
+    await writeCredentials();
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    // No env passed -> options.env undefined -> process.env.VITEST applies,
+    // exactly like commands/auth.ts's computeOrgAwareness call site.
+    const result = await getCachedOrgManifest({ dataDirOverride: testDir, client });
+    expect(result).toEqual({ ok: false });
+    expect(state.manifestCalls).toBe(0);
+    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX A: the org-manifest cache is identity-bound, mirroring the per-brand
+// ledger's `identity` field — a cache warmed under one tenant's login must
+// never silently answer for a different tenant on the same machine within
+// the TTL window. Absorbed from a throwaway red-team probe
+// (zz-redteam-tenant-leak.test.ts) that empirically proved the pre-fix leak;
+// these are the tracked, fixed-behavior counterparts.
+// ---------------------------------------------------------------------------
+
+describe('org-manifest cache is identity-bound (FIX A)', () => {
+  it('cache written under identity A is NOT served under identity B: a fresh fetch runs under B instead', async () => {
+    const tenantA = countingClient([manifestBrand('tenant-a-only', [])], {});
+    const warm = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantA.client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#tenantA-user',
+    });
+    expect(warm).toMatchObject({ ok: true, fromCache: false });
+    expect(tenantA.state.manifestCalls).toBe(1);
+
+    // Different tenant, different client — if the stale tenant-A cache were
+    // served, tenantB.client would never be asked at all (the pre-fix bug).
+    const tenantB = countingClient([manifestBrand('tenant-b-brand', [])], {});
+    const second = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantB.client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#tenantB-user',
+    });
+
+    // FIXED: identity mismatch forces a cache MISS -> a fresh fetch against
+    // tenant B's OWN client -> tenant B's OWN (correct) brand list.
+    expect(tenantB.state.manifestCalls).toBe(1);
+    expect(second).toMatchObject({ ok: true, fromCache: false });
+    if (second.ok) {
+      expect(second.brands.map((b) => b.brand_slug)).toEqual(['tenant-b-brand']);
+    }
+  });
+
+  it("the fresh fetch under B overwrites the cache's identity binding (a later read under B is now a hit; under A is a miss)", async () => {
+    const tenantA = countingClient([manifestBrand('tenant-a-only', [])], {});
+    await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantA.client,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    const tenantB = countingClient([manifestBrand('tenant-b-brand', [])], {});
+    await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantB.client,
+      env: LIVE_ENV,
+      identity: 'id-B',
+    });
+    expect(tenantB.state.manifestCalls).toBe(1);
+
+    // Rebound to B: a THIRD read under B, same client, is now a cache HIT.
+    const hitUnderB = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantB.client,
+      env: LIVE_ENV,
+      identity: 'id-B',
+    });
+    expect(hitUnderB).toMatchObject({ ok: true, fromCache: true });
+    expect(tenantB.state.manifestCalls).toBe(1); // no new fetch
+
+    // ...while a read under A (the ORIGINAL identity) now misses again —
+    // the binding moved, not merely widened to accept both.
+    const missUnderA = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantA.client,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+    expect(missUnderA).toMatchObject({ ok: true, fromCache: false });
+    expect(tenantA.state.manifestCalls).toBe(2);
+  });
+
+  it('the cache file persists the identity that fetched it', async () => {
+    const tenantA = countingClient([manifestBrand('tenant-a-only', [])], {});
+    await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantA.client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#tenantA-user',
+    });
+    const raw = JSON.parse(await readFile(orgManifestCachePath(testDir), 'utf8'));
+    expect(raw.identity).toBe('https://mcp.example.test#tenantA-user');
+  });
+
+  it('both sides unresolvable (no identity at all): TTL-only gating, same as before identity binding existed', async () => {
+    // Neither call passes `identity`, and there are no credentials on disk
+    // in testDir, so resolveLedgerIdentity() resolves to null on both sides
+    // — the "true absence on both sides" case that skips the identity check
+    // entirely (see cachedManifestIdentityMatches's doc).
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
+    await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(state.manifestCalls).toBe(1);
+
+    const second = await getCachedOrgManifest({ dataDirOverride: testDir, client, env: LIVE_ENV });
+    expect(second).toMatchObject({ ok: true, fromCache: true });
+    expect(state.manifestCalls).toBe(1); // still a hit — TTL governs, not identity
+  });
+
+  it('a pre-FIX-A cache file (no identity field at all) is treated as a MISS once a real identity IS resolvable, and self-heals by rebinding', async () => {
+    // Simulates a cache written by a pre-fix build: fetched_at + brands
+    // only, no `identity` key.
+    await mkdir(testDir, { recursive: true });
+    await writeFile(
+      orgManifestCachePath(testDir),
+      JSON.stringify({
+        fetched_at: new Date().toISOString(),
+        brands: [manifestBrand('legacy-cached-brand', [])],
+      }),
+      'utf8',
+    );
+    const { client, state } = countingClient([manifestBrand('real-brand', [])], {});
+    const result = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#someone',
+    });
+    // Migration case: absent-on-one-side-only is a mismatch -> forced
+    // refetch -> the NEW (correctly bound) manifest, not the stale legacy one.
+    expect(result).toMatchObject({ ok: true, fromCache: false });
+    if (result.ok) {
+      expect(result.brands.map((b) => b.brand_slug)).toEqual(['real-brand']);
+    }
+    expect(state.manifestCalls).toBe(1);
+    const raw = JSON.parse(await readFile(orgManifestCachePath(testDir), 'utf8'));
+    expect(raw.identity).toBe('https://mcp.example.test#someone');
+  });
+
+  it("maybeAutoSync's seed path threads its identity option through: a slug only a STALE, differently-identified cache lists is NOT seeded", async () => {
+    // Warm the org-manifest cache as tenant A (identity option, no
+    // credentials on disk — mirrors the empirically-proven leak scenario).
+    const tenantA = countingClient([manifestBrand('tenant-a-only', [])], {});
+    await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client: tenantA.client,
+      env: LIVE_ENV,
+      identity: 'https://mcp.example.test#tenantA-user',
+    });
+
+    // maybeAutoSync now runs as tenant B, for tenant A's slug. tenant B's
+    // own client (used for the actual sync/pull engine call, AFTER the seed
+    // decision) legitimately doesn't know this brand either.
+    const tenantB = countingClient([manifestBrand('tenant-b-brand', [])], {});
+    const result = await maybeAutoSync('tenant-a-only', {
+      dataDirOverride: testDir,
+      client: tenantB.client,
+      identity: 'https://mcp.example.test#tenantB-user',
+      env: LIVE_ENV,
+    });
+
+    // FIXED: the identity mismatch forces the manifest check to refetch
+    // under tenant B, whose own org does NOT list 'tenant-a-only' — so the
+    // seed path never fires. No dir, no ledger, a quiet skip.
+    expect(result).toEqual({
+      ran: false,
+      reason: 'skipped',
+      detail:
+        'no local brand directory; fetch it explicitly with ' +
+        '`mixshift context pull --brand <slug>`',
+    });
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
   });
 });

@@ -33,6 +33,15 @@ vi.mock('../lib/context-sync/autosync.js', async (importOriginal) => {
   return { ...actual, getCachedOrgManifest: vi.fn() };
 });
 
+// FIX D: wraps the REAL listLocalBrands by default (existing tests below
+// rely on it actually reading the temp data dir), so only a test that
+// explicitly overrides it (mockImplementationOnce) diverges from real
+// behavior — see "computeOrgAwareness bounds the local read (FIX D)".
+vi.mock('../lib/context-sync/local.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/context-sync/local.js')>();
+  return { ...actual, listLocalBrands: vi.fn(actual.listLocalBrands) };
+});
+
 vi.mock('../lib/auth/login-flow.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/auth/login-flow.js')>();
   return { ...actual, runAuthLogin: vi.fn(), pollDeviceFlow: vi.fn() };
@@ -45,10 +54,12 @@ import { runAuthLogin, pollDeviceFlow } from '../lib/auth/login-flow.js';
 import type { AuthLoginResult } from '../lib/auth/login-flow.js';
 import type { ClientsIndex, IndexBrand } from '../lib/clients/index-schema.js';
 import type { OrgManifestResult } from '../lib/context-sync/autosync.js';
+import { listLocalBrands } from '../lib/context-sync/local.js';
 import { clientsDir } from '../lib/paths/resolve.js';
 
 const mockedDiscovery = vi.mocked(runDiscoveryAndPersist);
 const mockedManifest = vi.mocked(getCachedOrgManifest);
+const mockedListLocalBrands = vi.mocked(listLocalBrands);
 
 function indexBrand(slug: string): IndexBrand {
   return {
@@ -279,6 +290,44 @@ describe('auth setup --json — single-document contract preserved', () => {
   });
 });
 
+// FIX G: `auth setup`'s --json output never consumed org awareness (see the
+// single-document test above) — computing it unconditionally cost a
+// budgeted getCachedOrgManifest call on every --json run for a value that
+// was always thrown away. Pinned as its own mock-call assertion so a future
+// regression that reintroduces the unconditional call fails loudly, not just
+// as a wasted-budget observation.
+describe('auth setup --json — never computes org awareness (FIX G)', () => {
+  it('never calls getCachedOrgManifest when --json is passed, even though discovery + the mocked manifest would both succeed', async () => {
+    mockedDiscovery.mockResolvedValue({
+      index: fakeIndex(['acme']),
+      previousDiscoveredAt: null,
+    });
+    await mkdir(join(clientsDir(dataDir), 'acme'), { recursive: true });
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [{ brand_slug: 'acme', docs: [] }],
+    });
+
+    await runSetup(['--json']);
+
+    expect(mockedManifest).not.toHaveBeenCalled();
+  });
+
+  it('non-JSON setup still calls it exactly once (the guard is --json-scoped, not a blanket removal)', async () => {
+    mockedDiscovery.mockResolvedValue({
+      index: fakeIndex(['acme']),
+      previousDiscoveredAt: null,
+    });
+    await mkdir(join(clientsDir(dataDir), 'acme'), { recursive: true });
+    mockedManifest.mockResolvedValue({ ok: false });
+
+    await runSetup();
+
+    expect(mockedManifest).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('auth login — org awareness (D-032 sign-in line)', () => {
   const loginResult: AuthLoginResult = {
     ok: true,
@@ -361,6 +410,93 @@ describe('auth login — org awareness (D-032 sign-in line)', () => {
     const doc = emittedJson();
     expect(doc.ok).toBe(true);
     expect(doc.org_brands).toBeUndefined();
+  });
+});
+
+// FIX D: computeOrgAwareness's own doc promises it "never delays sign-in
+// beyond the manifest budget" — but the LOCAL listLocalBrands() read (after
+// a successful, budgeted getCachedOrgManifest call) had no bound of its own.
+// A separate describe block (not nested in "org awareness" above) needs its
+// own copy of the run-login helper — `it()` callbacks only close over
+// declarations from their OWN describe callback, not a sibling's.
+describe('auth login — computeOrgAwareness bounds the local listLocalBrands read (FIX D)', () => {
+  async function runLogin(extraArgs: string[] = []): Promise<void> {
+    const program = newProgram();
+    try {
+      await program.parseAsync(
+        [
+          'auth',
+          'login',
+          '--person-label',
+          'sam@example.com',
+          '--mode',
+          'device',
+          '--data-dir',
+          dataDir,
+          ...extraArgs,
+        ],
+        { from: 'user' },
+      );
+    } catch {
+      // exitOverride throws on non-zero exit; assertions read stdout instead.
+    }
+  }
+
+  it('a never-resolving listLocalBrands does not hang login: the org line is simply omitted, everything else unaffected', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue({
+      ok: true,
+      mode: 'device',
+      apiBase: 'https://svc.example.test',
+      personLabel: 'sam@example.com',
+      email: 'tenant@example.com',
+      userId: '42',
+      clientId: 'test-cli',
+      durationMs: 1234,
+    });
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [{ brand_slug: 'acme', docs: [] }],
+    });
+    mockedListLocalBrands.mockImplementationOnce(() => new Promise(() => {}));
+
+    const t0 = Date.now();
+    await runLogin();
+    const elapsed = Date.now() - t0;
+
+    // Sign-in itself, and its own local brand-count reporting elsewhere, are
+    // entirely unaffected — only the org-awareness line is missing.
+    expect(stdout).toContain('✓ Signed in via device-code.');
+    expect(stdout).not.toContain('Your org has');
+    // Bounded well under a real hang (the test runner's own timeout), and
+    // comfortably above the ~1s bound so this isn't a flaky race.
+    expect(elapsed).toBeLessThan(5_000);
+  });
+
+  it('--json form: a never-resolving listLocalBrands omits org_brands but still emits the single result document', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue({
+      ok: true,
+      mode: 'device',
+      apiBase: 'https://svc.example.test',
+      personLabel: 'sam@example.com',
+      email: 'tenant@example.com',
+      userId: '42',
+      clientId: 'test-cli',
+      durationMs: 1234,
+    });
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [{ brand_slug: 'acme', docs: [] }],
+    });
+    mockedListLocalBrands.mockImplementationOnce(() => new Promise(() => {}));
+
+    await runLogin(['--json']);
+
+    const doc = emittedJson();
+    expect(doc.ok).toBe(true);
+    expect(doc.org_brands).toBeUndefined();
+    expect(nthJsonValue(1)).toBeNull();
   });
 });
 
