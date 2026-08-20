@@ -27,6 +27,8 @@
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { intentHeader } from '../auth/intent.js';
+import { networkErrorMessage } from '../net/classify.js';
+import { resolveApiBaseHost } from '../net/api-base.js';
 import type {
   ContextSyncFailure,
   ContextSyncFailureKind,
@@ -51,14 +53,16 @@ export const CORPUS_TIMEOUT_MS = 120_000;
  *  worst-case stdout stall on a reachable-but-hanging host to ~2s, not 10s. */
 export const ASSIGNMENT_TIMEOUT_MS = 2_000;
 
-const UNREACHABLE_FRIENDLY =
-  'The MixShift auth service is unreachable. Check your network ' +
-  'or try again in a minute.';
-
 class ContextSyncNetworkError extends Error {
-  constructor(msg: string) {
+  /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+   *  failure at the point it was thrown (see authedRequest's doFetch) —
+   *  computed there because this class itself only carries a flattened
+   *  string message, losing the `.cause` classify.ts needs. */
+  readonly friendly: string;
+  constructor(msg: string, friendly: string) {
     super(msg);
     this.name = 'ContextSyncNetworkError';
+    this.friendly = friendly;
   }
 }
 
@@ -128,7 +132,12 @@ export function createContextSyncClient(
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new ContextSyncNetworkError(message);
+        // Classify HERE, while `err` still carries the raw fetch failure
+        // shape (undici's `.cause` with its `code`/`message`) —
+        // ContextSyncNetworkError below flattens to a plain string, and by
+        // the time failureFromException catches it that shape is gone.
+        const friendly = networkErrorMessage(err, resolveApiBaseHost(apiBase));
+        throw new ContextSyncNetworkError(message, friendly);
       }
     };
 
@@ -303,7 +312,9 @@ function failureFromException(err: unknown): ContextSyncFailure {
       ok: false,
       kind: 'host_unreachable',
       message: err.message,
-      friendly: UNREACHABLE_FRIENDLY,
+      // Sandbox-aware + doctor-pointing (classified in authedRequest, where
+      // the raw fetch failure's shape was still intact).
+      friendly: err.friendly,
     };
   }
   const message = err instanceof Error ? err.message : String(err);

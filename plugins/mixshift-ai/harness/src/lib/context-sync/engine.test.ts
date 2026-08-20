@@ -1202,3 +1202,59 @@ describe('tenant-bound ledger', () => {
     expect(state.docs.narrative!.last_synced_hash).toBe(hashContent('same\n'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// US4: a failed manifest fetch's classified `kind` survives onto
+// BrandActionResult, so autosync.ts's read-preflight can tell a network/
+// offline-shaped failure (kind:'host_unreachable') apart from a credentials
+// or server-side one (any other kind) without re-parsing the friendly TEXT.
+// ---------------------------------------------------------------------------
+
+describe('buildDocPairs failure kind passthrough (US4)', () => {
+  function failingClient(
+    kind: 'host_unreachable' | 'insufficient_scope',
+    friendly: string,
+  ): ContextSyncClient {
+    return {
+      fetchManifest: async () => ({ ok: false, kind, message: 'raw', friendly }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+  }
+
+  it('pull and sync both surface kind:host_unreachable from a failed manifest fetch', async () => {
+    const client = failingClient(
+      'host_unreachable',
+      'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+    );
+
+    const pullResult = await pull('acme', { client, dataDirOverride: testDir });
+    expect(pullResult).toEqual({
+      ok: false,
+      brand: 'acme',
+      message: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      kind: 'host_unreachable',
+    });
+
+    const syncResult = await sync('acme', { client, dataDirOverride: testDir });
+    expect(syncResult).toEqual({
+      ok: false,
+      brand: 'acme',
+      message: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+      kind: 'host_unreachable',
+    });
+  });
+
+  it('a non-network manifest failure carries its OWN kind through, never coerced to host_unreachable', async () => {
+    const client = failingClient('insufficient_scope', 'Your token lacks context:read.');
+
+    const result = await pull('acme', { client, dataDirOverride: testDir });
+    expect(result).toEqual({
+      ok: false,
+      brand: 'acme',
+      message: 'Your token lacks context:read.',
+      kind: 'insufficient_scope',
+    });
+  });
+});

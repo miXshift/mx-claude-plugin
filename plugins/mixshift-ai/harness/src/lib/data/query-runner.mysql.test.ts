@@ -97,3 +97,45 @@ describe('runQuery :: mysql path (BUG-009 BIGINT-as-string options)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// US4: the legacy path's host_unreachable message gets a minimal doctor-
+// pointer upgrade, WITHOUT borrowing classify.ts's fetch/sandbox-egress
+// framing — a raw mysql2 TCP connection error is a different transport than
+// the undici fetch failures classify.ts's describeFetchFailure classifies
+// (no `.cause`, no "fetch failed" top message), so forcing it through that
+// classifier would either not match at all or falsely claim the sandbox-
+// proxy narrative for a failure that never went near an HTTP fetch.
+// ---------------------------------------------------------------------------
+
+describe('runQuery :: mysql path network failure (US4 doctor pointer)', () => {
+  it.each([
+    ['ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:3306'],
+    ['ENOTFOUND', 'getaddrinfo ENOTFOUND warehouse.example.test'],
+    ['EHOSTUNREACH', 'connect EHOSTUNREACH 10.0.0.1:3306'],
+  ])('classifies %s as host_unreachable with the doctor pointer, not the fetch-classifier text', async (code, message) => {
+    await saveCredentials(
+      {
+        ...newCredentials(),
+        mysql: { host: 'h', port: 3306, user: 'u', password: 'p', database: 'd' },
+      },
+      testDir,
+    );
+    createConnection.mockRejectedValueOnce(Object.assign(new Error(message), { code }));
+
+    const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('host_unreachable');
+      expect(result.raw_code).toBe(code);
+      expect(result.friendly).toBe(
+        'Could not reach the warehouse host. Check your network, or run ' +
+          '`mixshift doctor` if this keeps happening.',
+      );
+      // Never borrows classify.ts's sandbox/allowlist framing — this never
+      // went near a fetch, so that language would misrepresent the failure.
+      expect(result.friendly).not.toMatch(/sandbox|allowlist|Cowork|Claude Code/i);
+    }
+  });
+});

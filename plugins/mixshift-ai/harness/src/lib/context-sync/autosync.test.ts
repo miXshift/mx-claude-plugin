@@ -9,6 +9,7 @@ import {
   AUTOSYNC_ENV,
   AUTOSYNC_BUDGET_MS,
   AUTOSYNC_THROTTLE_MS,
+  __resetAutosyncNotices,
 } from './autosync.js';
 import type { ContextSyncClient } from './client.js';
 import { hashContent } from './local.js';
@@ -704,6 +705,289 @@ describe('budget and failure isolation', () => {
     if (!result.ran && result.reason === 'failed') {
       expect(result.detail).toMatch(/credentials|auth/i);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// US4 honest notice: "your team has context here, this session just could
+// not reach it" (design doc §2 / research doc §2's "silent single 2s
+// attempt" gap). Modeled on push-after-write.ts's own notice tests.
+// ---------------------------------------------------------------------------
+
+describe('US4 honest notice: org has this brand, this attempt could not reach it', () => {
+  let stderrChunks: string[];
+  let stderrSpy: { mockRestore: () => void };
+
+  beforeEach(() => {
+    // The notice dedup is a module-level Set that outlives one test; clear
+    // it so each case starts with a clean slate (and dedup can be asserted
+    // directly). Mirrors push-after-write.test.ts's identical setup.
+    __resetAutosyncNotices();
+    stderrChunks = [];
+    stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: unknown): boolean => {
+        stderrChunks.push(String(chunk));
+        return true;
+      });
+  });
+
+  afterEach(() => {
+    stderrSpy.mockRestore();
+  });
+
+  const stderrText = (): string => stderrChunks.join('');
+
+  /** A client whose fetchManifest fails network-shaped (kind:'host_unreachable'),
+   *  exactly what client.ts/classify.ts now produce for a real sandbox block. */
+  const HOST_UNREACHABLE_CLIENT: ContextSyncClient = {
+    fetchManifest: async () => ({
+      ok: false,
+      kind: 'host_unreachable',
+      message: 'fetch failed',
+      friendly: 'Could not reach mcp.mixshift.io. Run `mixshift doctor` for the steps.',
+    }),
+    fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+  };
+
+  /** Warm the org-manifest CACHE FILE directly via getCachedOrgManifest (a
+   *  throwaway client — this only seeds the disk cache maybeAutoSync's
+   *  notice check reads; it is never itself invoked by the test's own
+   *  maybeAutoSync call below). */
+  async function warmCache(identity: string, brands: WireManifestBrand[]): Promise<void> {
+    const { client } = countingClient(brands, {});
+    const warm = await getCachedOrgManifest({
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      identity,
+    });
+    expect(warm.ok).toBe(true);
+  }
+
+  it('fires once, with the exact wording, when the cache says the org has this brand and the attempt fails network-shaped', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('failed');
+    expect(stderrText()).toBe(
+      'Your team has context for acme, but this session could not reach the ' +
+        'org store just now. Your local copy, if any, is unchanged. Run ' +
+        '`mixshift doctor` if this keeps happening.\n',
+    );
+  });
+
+  it('also fires on a budget DEADLINE (no `kind` available there; a wall-clock death is network-shaped by construction)', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+    // Same pattern as the "hung TOKEN REFRESH" budget-isolation test above:
+    // an expired token forces getValidAccessToken to refresh through the
+    // GLOBAL fetch, stubbed here to a Promise that never settles and never
+    // wires up the abort signal at all — deterministically hits raceDeadline's
+    // own timer (unlike racing an abortable client fetch against it, which
+    // can resolve via the abort-triggered envelope failure on the same tick).
+    await writeCredentials({ expired: true });
+    const hangingGlobalFetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    vi.stubGlobal('fetch', hangingGlobalFetch);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      budgetMs: 50,
+      identity: 'id-A',
+    });
+
+    expect(result).toEqual({ ran: false, reason: 'failed', detail: 'timed out after 50ms' });
+    expect(stderrText()).toContain('Your team has context for acme');
+  });
+
+  it('dedupes: two failed attempts for the same brand print the notice exactly once', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      force: true,
+    });
+    await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+      force: true, // bypass the throttle so this is a SECOND real attempt
+    });
+
+    expect(
+      stderrChunks.filter((c) => c.includes('Your team has context for acme')).length,
+    ).toBe(1);
+  });
+
+  it('does NOT fire on a successful attempt', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+    const { client } = countingClient([manifestBrand('acme', [])], {});
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(true);
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire when the manifest cache exists but has no entry for this brand', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('other-brand', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire when no org-manifest cache exists at all', async () => {
+    await makeBrandDir('acme');
+    // No warmCache call: cold, no cache file on disk.
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire when the cache was warmed under a DIFFERENT tenant identity', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-B', // different tenant than the cache was warmed under
+    });
+
+    expect(result.ran).toBe(false);
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire on a non-network failure kind (e.g. insufficient_scope): a different, already-surfaced problem', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+    const scopedClient: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: false,
+        kind: 'insufficient_scope',
+        message: 'missing scope',
+        friendly: 'Your token lacks context:read.',
+      }),
+      fetchDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putDoc: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+      putAssignment: async () => ({ ok: false, kind: 'unknown', message: 'x', friendly: 'x' }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: scopedClient,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('failed');
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire when MIXSHIFT_CONTEXT_AUTOSYNC=off, even with a matching warm cache', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: { [AUTOSYNC_ENV]: 'off' },
+      identity: 'id-A',
+    });
+
+    expect(result).toEqual({ ran: false, reason: 'disabled' });
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire on a throttled skip, even though the first attempt already failed network-shaped', async () => {
+    await makeBrandDir('acme');
+    await warmCache('id-A', [manifestBrand('acme', [])]);
+
+    await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+    expect(stderrChunks.length).toBe(1); // the first attempt's own notice
+
+    stderrChunks.length = 0; // isolate the throttled call's own output
+    const second = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(second).toEqual({ ran: false, reason: 'throttled' });
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire on an unsafe slug (never clears the guards)', async () => {
+    const result = await maybeAutoSync('../evil', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result).toEqual({ ran: false, reason: 'skipped', detail: 'not a valid brand slug' });
+    expect(stderrText()).toBe('');
+  });
+
+  it('does NOT fire on a missing-dir-and-unlisted skip (the seed path declines before any guard clears)', async () => {
+    // No makeBrandDir; the org manifest cache doesn't list this slug either.
+    await warmCache('id-A', [manifestBrand('other-brand', [])]);
+
+    const result = await maybeAutoSync('ghost-town', {
+      dataDirOverride: testDir,
+      client: HOST_UNREACHABLE_CLIENT,
+      env: LIVE_ENV,
+      identity: 'id-A',
+    });
+
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('skipped');
+    expect(stderrText()).toBe('');
   });
 });
 

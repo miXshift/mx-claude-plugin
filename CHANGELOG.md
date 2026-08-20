@@ -48,6 +48,22 @@ starts at 0.5.39; earlier versions predate the changelog.
   yet, says so plainly with the next step instead of trying to work around
   it.
 
+- **Clearer guidance when the sandbox blocks MixShift.** Signing in already
+  told you when a Claude Cowork or Claude Code network sandbox was blocking
+  MixShift, and pointed you at `mixshift doctor` for the fix. Data queries
+  and context sync used to just say "check your network" with nothing to
+  act on. They now carry the same diagnosis, so a blocked proxy, a DNS
+  failure, or a timeout says what happened and points at `mixshift doctor`
+  no matter which command hit it.
+
+- **A heads-up when your team has context for a brand but this session
+  couldn't reach it.** The background sync that runs before a skill reads a
+  brand's context used to fail silently, so an offline or blocked session
+  looked exactly like a brand with nothing new to sync. Now, when your org
+  is known to have context for a brand and a sync attempt can't reach the
+  store, MixShift says so once, and confirms your local copy (if any) is
+  unchanged, instead of staying quiet.
+
 ### Fixed
 
 - **`context autosync`'s built-in help no longer says pull-only.** The

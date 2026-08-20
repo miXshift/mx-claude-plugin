@@ -103,6 +103,28 @@
  * (TELEMETRY_EMIT_BUDGET_MS, raced via raceDeadline) so a locked/contended
  * local queue.jsonl cannot extend this hook's wall-clock promise beyond that
  * small extra margin, on top of AUTOSYNC_BUDGET_MS.
+ *
+ * US4 honest-failure notice ("sandboxed sessions fail honest, not silent"):
+ * this hook used to be silent on every failure by design (an implicit
+ * preflight hook firing on every skill step must not be chatty) — but
+ * silent-on-blocked and silent-on-nothing-to-sync were byte-identical to the
+ * user, the exact gap US4 targets. Past this point (every early-skip guard
+ * cleared) a network/offline-shaped failure — a budget death, or the
+ * underlying fetch classified 'host_unreachable' (client.ts / classify.ts,
+ * threaded through engine.ts's BrandActionResult.kind) — now ALSO checks the
+ * org-wide manifest CACHE (a local disk read, never network) for an
+ * identity-valid entry listing this brand. When both hold, maybeAutoSync
+ * prints ONE deduped stderr notice (see maybeNoticeUnreachable below),
+ * modeled on push-after-write.ts's own notice: "your team has context for
+ * this brand, this session just couldn't reach it, your local copy (if any)
+ * is unchanged, run `mixshift doctor` if it keeps happening." Every other
+ * failure/skip shape stays exactly as silent as before — a credentials or
+ * server-side failure is a different, already-surfaced problem, and a quiet
+ * early-skip (throttled/disabled/unsafe/missing-dir-and-unlisted) never even
+ * reaches the check. The manual `mixshift context autosync` command shares
+ * this exact code path, so a manual run can surface the same notice too —
+ * deliberately: the honesty this hook owes a silent preflight read applies
+ * just as much to an operator who asked for the sync directly.
  */
 
 import { pull, sync } from './engine.js';
@@ -562,6 +584,10 @@ export async function maybeAutoSync(
       if (raced === DEADLINE) {
         controller.abort(); // cut the budgeted fetches; a refresh dies on its own timer
         debugLog(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
+        // A wall-clock budget death IS a network/offline shape by
+        // construction (see maybeNoticeUnreachable's module doc) — no kind
+        // to check, unlike the !raced.ok branch below.
+        await maybeNoticeUnreachable(brandSlug, options, env);
         return await finish({
           ran: false,
           reason: 'failed',
@@ -570,6 +596,13 @@ export async function maybeAutoSync(
       }
       if (!raced.ok) {
         debugLog(env, `autosync(${brandSlug}): ${raced.message}`);
+        // US4: only a network/offline-shaped failure (engine.ts threads the
+        // manifest fetch's classified `kind` through buildDocPairs) earns the
+        // "could not reach the org store" notice — a credentials/scope/
+        // server-side failure is a different, already-surfaced problem.
+        if (raced.kind === 'host_unreachable') {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({ ran: false, reason: 'failed', detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === 'pulled').length;
@@ -818,4 +851,87 @@ export async function getCachedOrgManifest(
     debugLog(env, `getCachedOrgManifest: swallowed error: ${message}`);
     return { ok: false };
   }
+}
+
+// ---------------------------------------------------------------------------
+// User-facing notice: org has this brand, this attempt could not reach it
+// (US4 — "sandboxed sessions fail honest, not silent")
+// ---------------------------------------------------------------------------
+
+/** Brands we have already shown the "could not reach the org store" notice
+ *  for THIS process — the per-brand dedupe so a busy session (many skill
+ *  steps hitting the same offline/blocked brand) prints one line, not one
+ *  per step. A separate Set from push-after-write.ts's own noticedBrands:
+ *  different module, different notice, and a brand can legitimately earn
+ *  both in one process (a failed write notice AND a failed read notice). */
+const noticedUnreachableBrands = new Set<string>();
+
+/** Test-only: forget every emitted-notice memo so each case starts clean.
+ *  Mirrors push-after-write.ts's __resetPushAfterWriteNotices. */
+export function __resetAutosyncNotices(): void {
+  noticedUnreachableBrands.clear();
+}
+
+/**
+ * Emit the US4 honest-failure notice: this session tried to reach the org
+ * store for a brand it has good reason to believe the org HAS context for,
+ * and could not. Modeled precisely on push-after-write.ts's
+ * noticeLineFor/emitNotice pattern — one deduped stderr line per brand per
+ * process, on by default, plain sentences, no em dashes — but unlike that
+ * write-side notice this is called from only TWO call sites (both already
+ * past every early-skip guard and already classified network-shaped), so
+ * the "should we say anything" decision lives at the call site and this
+ * function's own job is just the manifest-cache check + the dedup + the
+ * write.
+ *
+ * The manifest-CACHE check (loadOrgManifestCache) is a local disk read, never
+ * a network call — this can never itself be the reason a read is slow, and it
+ * runs only after the budgeted sync/pull race has already settled, so it
+ * cannot meaningfully extend maybeAutoSync's wall-clock promise either. Never
+ * throws: a broken cache read or a stderr write failure must never turn an
+ * already-classified sync failure into a crash.
+ *
+ * Silent (no cache read even attempted) whenever:
+ *   - this brand already got the notice this process (dedup);
+ *   - the cache is missing, or was fetched under a DIFFERENT tenant identity
+ *     than this attempt's (cachedManifestIdentityMatches) — a cache we can't
+ *     trust for THIS session says nothing about what the org has;
+ *   - the (identity-valid) cache does not list this brand.
+ */
+async function maybeNoticeUnreachable(
+  brandSlug: string,
+  options: AutoSyncOptions,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  try {
+    if (noticedUnreachableBrands.has(brandSlug)) return;
+    const identity =
+      options.identity !== undefined
+        ? options.identity
+        : await resolveLedgerIdentity(options.dataDirOverride);
+    const cached = await loadOrgManifestCache(options.dataDirOverride);
+    if (!cached || !cachedManifestIdentityMatches(cached.identity, identity)) return;
+    if (!cached.brands.some((b) => b.brand_slug === brandSlug)) return;
+    noticedUnreachableBrands.add(brandSlug);
+    process.stderr.write(unreachableNoticeLine(brandSlug));
+  } catch (err) {
+    // Never let the notice turn an already-classified sync failure into a
+    // crash; the AutoSyncResult the caller returns already reflects the real
+    // outcome regardless of whether this line got printed.
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog(env, `maybeNoticeUnreachable(${brandSlug}): swallowed error: ${message}`);
+  }
+}
+
+/** Copy rules: no em dashes, plain sentences (house style for customer-
+ *  facing text). Substance: the org is known to have this brand's context;
+ *  this session specifically could not reach it just now; the local copy
+ *  (if the brand was ever synced here before) is untouched; where to look if
+ *  it keeps happening. */
+function unreachableNoticeLine(brandSlug: string): string {
+  return (
+    `Your team has context for ${brandSlug}, but this session could not reach the ` +
+    `org store just now. Your local copy, if any, is unchanged. Run ` +
+    '`mixshift doctor` if this keeps happening.\n'
+  );
 }

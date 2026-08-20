@@ -65170,6 +65170,61 @@ var init_telemetry = __esm({
   }
 });
 
+// src/lib/net/classify.ts
+function describeFetchFailure(err, host) {
+  const e = err ?? {};
+  const topMessage = String(e.message ?? "");
+  const cause = e.cause ?? {};
+  const code = String(cause.code ?? "");
+  const causeMessage = String(cause.message ?? "");
+  const isTimeout = e.name === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT";
+  const isAbort = e.name === "AbortError";
+  const isFetchFailure = topMessage === "fetch failed" || Boolean(e.cause);
+  if (!isFetchFailure && !isTimeout && !isAbort) return null;
+  if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
+    return `The sandbox blocked ${host}: your Claude network-egress allowlist does not include it. The fix depends on your plan (Cowork personal, Cowork Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for the exact steps and the full required-domain list.`;
+  }
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
+  }
+  if (code === "ECONNREFUSED") {
+    return `Connection to ${host} was refused.`;
+  }
+  if (isTimeout || isAbort) {
+    return `Timed out connecting to ${host}.`;
+  }
+  const raw = code || causeMessage || "";
+  const detail = raw && raw !== "0" ? ` (${raw})` : "";
+  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist not including ${host}. The exact fix depends on your plan; run \`mixshift doctor\` for the steps and the full required-domain list. Otherwise the service may be down or you are offline.`;
+}
+function networkErrorMessage(err, host) {
+  return describeFetchFailure(err, host) ?? extractMessage(err);
+}
+function extractMessage(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+var init_classify = __esm({
+  "src/lib/net/classify.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/net/api-base.ts
+function resolveApiBaseHost(apiBase) {
+  try {
+    return new URL(apiBase ?? DEFAULT_API_BASE).host;
+  } catch {
+    return new URL(DEFAULT_API_BASE).host;
+  }
+}
+var DEFAULT_API_BASE;
+var init_api_base = __esm({
+  "src/lib/net/api-base.ts"() {
+    "use strict";
+    DEFAULT_API_BASE = "https://mcp.mixshift.io";
+  }
+});
+
 // src/lib/data/query-runner.ts
 function querySqlTelemetry(sql, queryId) {
   if (queryId) return {};
@@ -65760,7 +65815,8 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new DatahubNetworkError(message);
+      const friendly = networkErrorMessage(err, resolveApiBaseHost(creds.api_base));
+      throw new DatahubNetworkError(message, friendly);
     }
   };
   let token = await getValidAccessToken(dataDirOverride);
@@ -65853,7 +65909,9 @@ async function runDatahubQuery(creds, sql, params, options) {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs
       };
     } else {
@@ -65982,7 +66040,9 @@ async function runNamedQuery(id, options = {}) {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs
       };
     } else {
@@ -66062,7 +66122,7 @@ function classify(err) {
       kind: "host_unreachable",
       raw_code: code,
       message,
-      friendly: "Could not reach the warehouse host. Check your network."
+      friendly: "Could not reach the warehouse host. Check your network, or run `mixshift doctor` if this keeps happening."
     };
   }
   return {
@@ -66104,15 +66164,23 @@ var init_query_runner = __esm({
     init_schema3();
     init_intent();
     init_telemetry();
+    init_classify();
+    init_api_base();
     SERVICE_ROW_CAP = 5e4;
     PAGE_BYTE_BUDGET = 8 * 1024 * 1024;
     PAGE_MAX_ROWS = SERVICE_ROW_CAP;
     FIRST_PAGE_PROBE_ROWS = 5e3;
     MAX_PAGINATED_ROWS = 2e6;
     DatahubNetworkError = class extends Error {
-      constructor(msg2) {
+      /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+       *  failure at the point it was thrown (see datahubAuthedPost's doFetch) —
+       *  computed there because this class itself only carries a flattened
+       *  string message, losing the `.cause` classify.ts needs. */
+      friendly;
+      constructor(msg2, friendly) {
         super(msg2);
         this.name = "DatahubNetworkError";
+        this.friendly = friendly;
       }
     };
   }
@@ -66315,7 +66383,8 @@ function createContextSyncClient(options = {}) {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new ContextSyncNetworkError(message);
+        const friendly = networkErrorMessage(err, resolveApiBaseHost(apiBase));
+        throw new ContextSyncNetworkError(message, friendly);
       }
     };
     let token = await getValidAccessToken(dataDirOverride);
@@ -66433,26 +66502,35 @@ function failureFromException(err) {
       ok: false,
       kind: "host_unreachable",
       message: err.message,
-      friendly: UNREACHABLE_FRIENDLY
+      // Sandbox-aware + doctor-pointing (classified in authedRequest, where
+      // the raw fetch failure's shape was still intact).
+      friendly: err.friendly
     };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, UNREACHABLE_FRIENDLY, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
+var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
 var init_client2 = __esm({
   "src/lib/context-sync/client.ts"() {
     "use strict";
     init_credentials();
     init_intent();
+    init_classify();
+    init_api_base();
     TEXT_DOC_TIMEOUT_MS = 3e4;
     CORPUS_TIMEOUT_MS = 12e4;
     ASSIGNMENT_TIMEOUT_MS = 2e3;
-    UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
     ContextSyncNetworkError = class extends Error {
-      constructor(msg2) {
+      /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+       *  failure at the point it was thrown (see authedRequest's doFetch) —
+       *  computed there because this class itself only carries a flattened
+       *  string message, losing the `.cause` classify.ts needs. */
+      friendly;
+      constructor(msg2, friendly) {
         super(msg2);
         this.name = "ContextSyncNetworkError";
+        this.friendly = friendly;
       }
     };
     KNOWN_FAILURE_KINDS = /* @__PURE__ */ new Set([
@@ -66739,7 +66817,7 @@ async function buildDocPairs(brandSlug, options) {
   let manifestBrands = options.manifest;
   if (!manifestBrands) {
     const manifest = await client.fetchManifest();
-    if (!manifest.ok) return { ok: false, message: manifest.friendly };
+    if (!manifest.ok) return { ok: false, message: manifest.friendly, kind: manifest.kind };
     manifestBrands = manifest.brands;
   }
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
@@ -66818,7 +66896,7 @@ async function buildDocPairs(brandSlug, options) {
 }
 async function computeStatus(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const docs = built.pairs.map((p) => ({
     key: p.key,
     docType: p.docType,
@@ -66986,7 +67064,7 @@ async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
 }
 async function pull(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67055,7 +67133,7 @@ async function pull(brandSlug, options = {}) {
 }
 async function push(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67144,7 +67222,7 @@ async function push(brandSlug, options = {}) {
 }
 async function sync(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67439,13 +67517,13 @@ function failureFromException2(err) {
       ok: false,
       kind: "host_unreachable",
       message: err.message,
-      friendly: UNREACHABLE_FRIENDLY2
+      friendly: UNREACHABLE_FRIENDLY
     };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TIMELINE_TIMEOUT_MS, LIST_ALL_CAP, UNREACHABLE_FRIENDLY2, TimelineNetworkError, KNOWN_FAILURE_KINDS2;
+var TIMELINE_TIMEOUT_MS, LIST_ALL_CAP, UNREACHABLE_FRIENDLY, TimelineNetworkError, KNOWN_FAILURE_KINDS2;
 var init_client3 = __esm({
   "src/lib/timeline/client.ts"() {
     "use strict";
@@ -67453,7 +67531,7 @@ var init_client3 = __esm({
     init_intent();
     TIMELINE_TIMEOUT_MS = 3e4;
     LIST_ALL_CAP = 2e3;
-    UNREACHABLE_FRIENDLY2 = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
+    UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
     TimelineNetworkError = class extends Error {
       constructor(msg2) {
         super(msg2);
@@ -72690,6 +72768,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
       if (raced === DEADLINE) {
         controller.abort();
         debugLog2(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
+        await maybeNoticeUnreachable(brandSlug, options, env);
         return await finish({
           ran: false,
           reason: "failed",
@@ -72698,6 +72777,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
       }
       if (!raced.ok) {
         debugLog2(env, `autosync(${brandSlug}): ${raced.message}`);
+        if (raced.kind === "host_unreachable") {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({ ran: false, reason: "failed", detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
@@ -72805,6 +72887,25 @@ async function getCachedOrgManifest(options = {}) {
     debugLog2(env, `getCachedOrgManifest: swallowed error: ${message}`);
     return { ok: false };
   }
+}
+var noticedUnreachableBrands = /* @__PURE__ */ new Set();
+async function maybeNoticeUnreachable(brandSlug, options, env) {
+  try {
+    if (noticedUnreachableBrands.has(brandSlug)) return;
+    const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
+    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
+    if (!cached4 || !cachedManifestIdentityMatches(cached4.identity, identity)) return;
+    if (!cached4.brands.some((b) => b.brand_slug === brandSlug)) return;
+    noticedUnreachableBrands.add(brandSlug);
+    process.stderr.write(unreachableNoticeLine(brandSlug));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog2(env, `maybeNoticeUnreachable(${brandSlug}): swallowed error: ${message}`);
+  }
+}
+function unreachableNoticeLine(brandSlug) {
+  return `Your team has context for ${brandSlug}, but this session could not reach the org store just now. Your local copy, if any, is unchanged. Run \`mixshift doctor\` if this keeps happening.
+`;
 }
 
 // src/lib/binding/lens.ts
@@ -80398,18 +80499,7 @@ init_load();
 init_save();
 init_telemetry();
 init_clients();
-
-// src/lib/net/api-base.ts
-var DEFAULT_API_BASE = "https://mcp.mixshift.io";
-function resolveApiBaseHost(apiBase) {
-  try {
-    return new URL(apiBase ?? DEFAULT_API_BASE).host;
-  } catch {
-    return new URL(DEFAULT_API_BASE).host;
-  }
-}
-
-// src/lib/auth/login-flow.ts
+init_api_base();
 var PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1e3;
 var DEVICE_POLL_INTERVAL_MS = 3e3;
 var DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -81043,42 +81133,8 @@ init_telemetry();
 init_plugin_version();
 init_clients();
 init_local();
-
-// src/lib/net/classify.ts
-function describeFetchFailure(err, host) {
-  const e = err ?? {};
-  const topMessage = String(e.message ?? "");
-  const cause = e.cause ?? {};
-  const code = String(cause.code ?? "");
-  const causeMessage = String(cause.message ?? "");
-  const isTimeout = e.name === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT";
-  const isAbort = e.name === "AbortError";
-  const isFetchFailure = topMessage === "fetch failed" || Boolean(e.cause);
-  if (!isFetchFailure && !isTimeout && !isAbort) return null;
-  if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
-    return `The sandbox blocked ${host}: your Claude network-egress allowlist does not include it. The fix depends on your plan (Cowork personal, Cowork Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for the exact steps and the full required-domain list.`;
-  }
-  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
-    return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
-  }
-  if (code === "ECONNREFUSED") {
-    return `Connection to ${host} was refused.`;
-  }
-  if (isTimeout || isAbort) {
-    return `Timed out connecting to ${host}.`;
-  }
-  const raw = code || causeMessage || "";
-  const detail = raw && raw !== "0" ? ` (${raw})` : "";
-  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist not including ${host}. The exact fix depends on your plan; run \`mixshift doctor\` for the steps and the full required-domain list. Otherwise the service may be down or you are offline.`;
-}
-function networkErrorMessage(err, host) {
-  return describeFetchFailure(err, host) ?? extractMessage(err);
-}
-function extractMessage(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-
-// src/commands/auth.ts
+init_classify();
+init_api_base();
 init_deadline();
 function registerAuthCommands(program3) {
   const auth = program3.command("auth").description(
@@ -92628,6 +92684,8 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
 
 // src/lib/net/doctor.ts
 init_credentials();
+init_api_base();
+init_classify();
 var REQUIRED_ALLOWLIST = [
   {
     domain: "mcp.mixshift.io",
