@@ -62,7 +62,7 @@ Produces a brand directory under `~/.mixshift/clients/<brand-slug>/` plus a huma
 
 **Schema source of truth:** the Zod schema in the harness (mirrored by `shared/clients/_schema/context.schema.yaml`). Validate with `mixshift brand validate <brand-slug>` before declaring complete.
 
-**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.3 (Shape Detection) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
+**Fresh sequence:** Phase 0 (Light Training) → Phase 0.25 (Bootstrap Context Shell) → Phase 0.3 (Shape Detection) → Phase 0.4 (Existing Context Port) → Phase 0.5 (Web/Social Scrub) → Phase 1 (Load Brain + Prefetched Baselines) → Phase 1a (Draft Context from Brain) → Phase 1.5 (Confirm Brain Enrichment) → Phase 2 (AM Intake) → Phase 3a (Finalize YAML + narrative + corpora) → Phase 3b (Render brand-context.html) → Phase 4 (Validate) → Phase 5 (Final Bottom Line)
 
 **Scope resolution (every account, single-brand or brand-nested):** a request resolves to one of three shapes before any skill acts on it: (a) a specific brand — its own slug, its own lens; (b) an account-level operation WITH per-sub-brand split-outs — account totals plus a section per label plus the unlabeled remainder, served as one run; or (c) explicitly account-wide, undifferentiated — today's whole-account behavior. Account-wide is an explicit choice the operator makes, never a silent default, on any account Phase 0.3 classifies as brand-nested. Single-brand accounts only ever have shape (a); this line is a no-op for them.
 
@@ -181,8 +181,9 @@ a normal brand.
 3. If the AM confirms **single brand** (or the report itself proposed
    `single_brand`), or the AM explicitly wants the account handled
    **account-wide, undifferentiated** (the scope preamble's shape (c) — a
-   deliberate choice, not a default): continue straight into Phase 0.5 as
-   written. Nothing else in this skill changes.
+   deliberate choice, not a default): continue into Phase 0.4 (Existing
+   Context Port), then Phase 0.5 as written. Nothing else in this skill
+   changes.
 4. If the AM confirms **brand-nested**: stop the normal sequence here and
    follow **"Sub-brand path"** below. Return to this skill's Phase 5 only
    after every selected sub-brand has completed its own setup.
@@ -333,6 +334,173 @@ that impossible to do by accident.
 
 ---
 
+## Phase 0.4 — Existing Context Port (fresh mode only)
+
+fb-78913: before interviewing the account manager, check what
+MixShift already knows — from your own team's prior work, from fields the
+platform itself already tracks, and from how the account already organizes
+its campaigns. Three ordered moves.
+
+**Timing:** move (a) is a cheap, standalone read — do it now. Moves (b) and
+(c) read PORT-01 and PORT-02, which ride the same single `mixshift prefetch
+--brand <brand-slug> --skill mx-brand-context --date <date>` call Phase 1
+(1b) already makes — both queries join Round 1's existing parallel batch
+(see `skill.manifest.yaml`), so there is no second fetch and no extra wait.
+Do move (a) here; finish (b) and (c) the moment Phase 1's prefetch returns,
+and fold whatever they pre-answer into the Phase 2 question set you build in
+Phase 1.5 → Phase 2. Never ask the AM a question these two moves already
+answered.
+
+### (a) Org-store check
+
+Since brand-context seeding (0.8.10), the account-touch seed path typically
+already pulled this brand's org-store context onto this machine the moment
+anything touched the account — but don't assume it landed; check explicitly.
+Phase 0.25's bootstrap can create a locally-sparse shell before that implicit
+seed ever gets a chance to fire, so the explicit surfaces still matter:
+
+```bash
+mixshift context status --brand <brand-slug>
+mixshift context pull --brand <brand-slug>
+```
+
+`status` gives a quick read of what's here versus the org store; `pull` is
+safe and idempotent either way (a no-op if you're already current, a fetch if
+not), so run it regardless rather than trying to infer from `status` alone
+whether it's worth it.
+
+If this surfaces populated context — sub-brands, brand terms, structural
+events, posture, goals already filled in, not just the Phase 0.25 bootstrap
+skeleton — say so plainly and offer to adopt it rather than re-deriving it:
+
+> MixShift already has brand context for **{brand}**, and it looks like a
+> teammate set this up already. Want me to pull it in and just confirm
+> what's here (and fill any real gaps), or would you rather rebuild from
+> scratch?
+
+On a yes (the expected answer — a teammate already did this work): treat the
+pulled `context.yaml` / `narrative.md` as your Phase 1a draft immediately,
+and narrow Phase 2 to the confirm-only pass below plus "has anything changed
+since this was set up", not the full `kickoff.md` interview. This does not
+violate the Phase 2 Hard Gate: the gate requires the AM confirm or correct
+before you finalize, not that you re-derive everything from zero. On an
+explicit rebuild request, or if the org store genuinely has nothing for this
+brand, continue with the rest of this skill exactly as written — this is a
+true first setup.
+
+### (b) PORT-02 — platform-field coverage audit
+
+Read PORT-02's 13-row result (from this run's prefetch artifact — see
+Timing above): `field_name` / `populated_count` / `total_count` for campaign `Objective`,
+`ItemGroup`, `Tag1`–`Tag4`; `mws_items` `Brand`, `ItemGroup`, `TargetACOS`,
+`TargetTACOS`, `ItemCost`, `LeadTime`; and seller `ACOSTarget`. This
+implements fb-78913's suggestion 3.
+
+- **Populated (`populated_count > 0`):** pre-fill the matching Phase 2 answer and
+  ask the AM to **confirm** it, never ask cold. PORT-02 only proves a field
+  IS set — it never carries the value. The values live in the brain
+  artifacts fetched in this same Phase 1 pass: seller `ACOSTarget`'s number
+  is in the brain's seller block, and `mws_items.TargetACOS` /
+  `TargetTACOS` values sit on the brain's SC catalog rows. Read the number
+  there; if it is somehow absent from those artifacts, ask cold — never
+  invent a value. The two direct hits: seller `ACOSTarget` and/or
+  `mws_items.TargetACOS` / `TargetTACOS` populated → pre-fill
+  `management.acos_target_pct` / `management.tacos_goal_pct`
+  (`kickoff.md` Step 4's "ACOS target %" / "TACOS target" questions) with
+  the value read from those artifacts; if item-level targets vary
+  meaningfully, say so and ask whether the account-level number is still
+  the right blended target or whether per-sub-brand targets are warranted.
+  `mws_items.Brand` / `ItemGroup` coverage corroborates the brain's
+  `sub_brands` / `item_groups` taxonomy (Phase 1a) — cite the coverage
+  number as your confidence level in that taxonomy rather than treating the
+  brain's list as unconditionally complete.
+
+  Scoping caveats: PORT-02 pools every seller id into one flat 13-row
+  result (no per-seller split), and its six `mws_items.*` rows read the SC
+  catalog only — a hybrid SC+VC brand's VC catalog (`vendor_items`) never
+  enters those counts. VC-side coverage for the same field family arrives
+  via the CS-09/11/12/13 pulls in this same prefetch; read those for the VC
+  half, and never present an `mws_items` coverage number as account-wide on
+  a hybrid brand.
+- **Zero (`populated_count = 0` of `total_count`):** state plainly that the field was
+  **"never configured in the platform"** — not "missing data", not a "data
+  gap" — and name the specific Dash field the AM would set it in (the
+  Account Manager view, https://dash.mydashapplications.com/account-manager,
+  or that field's own campaign/item settings screen) if they ever want it
+  populated going forward. This is the common case for `campaign.Objective` /
+  `campaign.ItemGroup` (near-universal 0-coverage in the wild) — it's exactly
+  why `campaign_structure.objectives` resolves from name-segment vocabulary
+  in Phase 3a instead: don't ask the AM to explain a gap that's a
+  platform-configuration fact, not something their account did wrong.
+- Fields with no current `context.yaml` slot (`ItemCost`, `LeadTime`,
+  `Tag1`–`4` absent a clear team-idiom mapping): report the coverage number
+  for completeness and move on. Don't force them into a schema field that
+  doesn't exist today.
+
+### (c) PORT-01 — portfolio structure parse
+
+Read PORT-01 (same artifact): one row per named portfolio (`PortfolioID`,
+`PortfolioName`, `PortfolioState`, `campaign_count`) per seller, plus two synthetic bucket rows per
+seller — `(no portfolio)` (enabled/paused campaigns with no portfolio
+assigned) and `(orphaned portfolio)` (campaigns pointing at a portfolio id
+that no longer resolves). **The three buckets partition the account's full
+enabled/paused campaign universe exactly** — named-portfolio campaigns +
+`(no portfolio)` + `(orphaned portfolio)` must sum to the account's total
+enabled/paused campaign count. State that arithmetic to yourself and to the
+user in one line before drawing any conclusion from it, e.g. "`<N> in named
+portfolios + <U> unassigned + <O> orphaned = <T> campaigns`" (use this
+account's real counts — the format is what matters, not these placeholders).
+If the three don't sum to the full count, treat the parse as unreliable and
+say so instead of using it silently.
+
+Interpret portfolio names as **candidate** structure, per Sam's signal-class
+call (design doc §3a: portfolios are the third operator-declared structure
+signal, alongside seller/account discovery and label-based sub-brand
+discovery) — never as settled fact:
+
+- **Lane tokens** (a short uppercase prefix, e.g. `NW | Nonbrand`) → candidate
+  brand-lane / sub-brand hints. Sub-brand **promotion** stays Phase 0.3's job
+  entirely — this move only seeds a hypothesis for that path to corroborate:
+  if Phase 0.3 already found a matching label, the lane token is confirming
+  evidence; if not, it's a naming hint only, not grounds on its own to open a
+  new sub-brand conversation.
+- **Objective vocabulary** (tokens like `Nonbrand`, `Competitor`,
+  `Complimentary`, `SD Audience`, `SD Retargeting` alongside `Brand`) →
+  propose a candidate `campaign_structure.objectives` token map for
+  `kickoff.md` Step 4's "Objective config" question. Present the vocabulary
+  you found and ask the AM to confirm, correct, or extend it, rather than
+  opening that question cold. A `Competitor` lane also corroborates Step 4's
+  "competitive context if conquesting is active" question — mention it as
+  supporting evidence, not proof.
+- **Agency-history prefixes** (e.g. `ACMEAGENCY - Northwind`) and **parked
+  markers** (a portfolio name or state suggesting it's retired, e.g.
+  containing `old`) → candidate account-history notes. Propose them as a
+  `structural_events[]` entry (`type: other`, a specific `kind` such as
+  `prior_agency`) for the AM to confirm via Step 2's "management transitions"
+  / "wind-down accounts" questions — never write them as confirmed history
+  without that confirmation.
+
+**Trust dial — read it from the bucket math, not the naming pattern alone.**
+A clean-looking `Lane | Objective` pattern on the named-portfolio rows says
+nothing on its own about how much of the account it actually covers. When
+`(no portfolio)` + `(orphaned portfolio)` together are a large share of the
+total (rough guide: a third or more), the convention is real but **declared
+intent, weakly enforced** — say exactly that to the AM, and confirm every
+inference from move (c) before relying on it for anything downstream
+(objective resolution, sub-brand hypotheses, history notes). A small
+unassigned/orphaned share earns more confidence, but every inference here is
+still PROPOSE, never auto-write: this phase nudges, per the house D-024 rule
+(same posture as Phase 0.3's coverage nudge), and the human confirms every
+inference before it becomes typed context.
+
+**Sub-brand binding note:** for an already-bound sub-brand (Phase 0.3),
+PORT-01 and PORT-02 read account-wide — portfolios and platform-field
+coverage are seller-level, not filtered by product label — exactly like the
+account-wide caveat Phase 0.3 already documents for non-label-aware queries.
+Don't present either finding as this sub-brand's own without saying so.
+
+---
+
 ## Phase 0.5 — Web & Social Scrub
 
 Run after Phase 0, before Phase 1. The AM doesn't need to be present. Search sequence and target signals are documented in `kickoff.md` Step 3.
@@ -478,6 +646,18 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 - If a question can be answered by the automated data review, answer it yourself and cite the finding in context rather than asking the operator.
 - Before asking about stockouts, check the brain's `stockouts` (detected FBA OOS windows) + revenue + session patterns. If data shows an inventory trough but no detected OOS window, record an advisory note instead of asking the operator to confirm a stockout.
 - Before asking whether a promo caused a spike, check revenue, units, ASP/price proxy, spend, conversion. If ASP held while units spiked, treat as deal placement or demand surge rather than discount unless price history proves markdown.
+- Before asking the ACOS/TACOS target questions (`kickoff.md` Step 4), check
+  Phase 0.4(b)'s PORT-02 read of seller `ACOSTarget` / `mws_items.TargetACOS`
+  / `TargetTACOS`. If populated, read the actual value from the brain's
+  seller block / SC catalog rows (PORT-02 only proves it is set) and present
+  it for confirm-or-correct rather than asking cold.
+- Before asking the objective-config question (`kickoff.md` Step 4), check
+  Phase 0.4(c)'s PORT-01 portfolio-name parse. If it proposed an objective
+  vocabulary, present it and ask the AM to confirm, correct, or extend it
+  rather than asking cold.
+- Before asking about agency changes or wind-down accounts (`kickoff.md`
+  Step 2), check Phase 0.4(c)'s agency-prefix / parked-marker findings and
+  lead with that hypothesis instead of an open question.
 
 **Critical execution rules** (model behavior, not AM-facing prose):
 - If TACOS is primary metric, derive ACOS thresholds from posture and the historical SC vs. ad-attributed ratio.

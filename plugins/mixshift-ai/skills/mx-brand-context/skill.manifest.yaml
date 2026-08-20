@@ -41,6 +41,14 @@ context_freshness_max_days: null
 # The remaining queries are the historical baselines the deep skill still pulls
 # at runtime. Catalog entries for the retired enrichment queries are KEPT —
 # the brain consumes them.
+#
+# Phase 0.4 (mx-ops#17 slice 4b, fb-78913 "port before intake"): PORT-01
+# (portfolio taxonomy) and PORT-02 (Dash context-field coverage audit) are
+# NEW gateway-native entries (born dispatch:named, no public .sql ancestor —
+# see shared/sql-library/catalog.yaml), added to Round 1 below so Phase 0.4
+# can pre-fill/confirm the Phase 2 questions they answer instead of asking
+# the AM cold. Neither is SC/VC-conditional or brain-derived; both are new
+# reads the brain does not carry.
 sql_ids:
   - CS-02
   - CS-03
@@ -58,12 +66,17 @@ sql_ids:
   - CS-23
   - CS-24
   - CS-26
+  # Phase 0.4 (mx-ops#17 slice 4b, US3 port step): portfolio taxonomy +
+  # Dash context-field coverage audit, both born dispatch:named (no public
+  # .sql ancestor). Ride Round 1 below — no separate fetch, no extra wait.
+  - PORT-01
+  - PORT-02
 pre_execution:
   enabled: true
   artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
   batch_plan:
     - round: 1
-      parallel: [CS-02, CS-03, CS-04, CS-05, CS-09, CS-11, CS-12, CS-13, CS-14, CS-15]
+      parallel: [CS-02, CS-03, CS-04, CS-05, CS-09, CS-11, CS-12, CS-13, CS-14, CS-15, PORT-01, PORT-02]
       notes: >
         Identity is no longer a prefetch round — the brand is bootstrapped
         (registry + brain) before cold-start runs, and the Phase 1 hard gate
@@ -71,6 +84,15 @@ pre_execution:
         ACOS, and structure baselines: CS-02 applies to SC; CS-03 applies to VC
         (both prefetched, skill picks whichever). CS-09/CS-11/CS-12/CS-13 apply
         to VC only. Non-matching queries return empty rows; skill discards.
+        PORT-01 (portfolio taxonomy: named portfolios plus synthetic
+        (no portfolio)/(orphaned portfolio) bucket rows, three-way partition
+        of the enabled/paused campaign universe) and PORT-02 (13-row Dash
+        context-field coverage audit: campaign Objective/ItemGroup/Tag1-4,
+        mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime,
+        seller ACOSTarget) are seller-level, not VC/SC-conditional, so both
+        run every time. Phase 0.4 reads them from this same Round 1 output
+        before Phase 2 intake opens; see SKILL.md Phase 0.4 for the read/parse
+        contract.
     - round: 2
       parallel: [CS-17, CS-18, CS-22, CS-23, CS-24, CS-26]
       notes: >
@@ -151,6 +173,16 @@ notes: >
   objectives from, and drives the standardized label_completeness coverage gap
   text — the brain's distinct_objectives do not reproduce that per-campaign
   grain, so it stays a runtime pull.
+
+  PORT-01/PORT-02 (Phase 0.4, mx-ops#17 slice 4b) are the "existing context
+  port" step's data: PORT-01 is portfolio taxonomy (named portfolios plus
+  synthetic (no portfolio)/(orphaned portfolio) buckets that three-way
+  partition the enabled/paused campaign universe); PORT-02 is a 13-row
+  Dash context-field coverage audit (campaign Objective/ItemGroup/Tag1-4,
+  mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, seller
+  ACOSTarget). Both are read before Phase 2 so populated platform fields get
+  pre-filled/confirmed instead of asked, and 0-coverage fields are explained
+  as "never configured in the platform" rather than treated as a data gap.
 
   This skill writes durable artifacts under ~/.mixshift/clients/<brand-slug>/:
   context.yaml, narrative.md, corpora/, plus a human-reviewable brand-context.html
