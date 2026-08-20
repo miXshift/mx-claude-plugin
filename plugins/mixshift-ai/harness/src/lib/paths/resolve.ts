@@ -284,6 +284,18 @@ export function indexPath(dataDirOverride?: string): string {
   return join(clientsDir(dataDirOverride), 'index.yaml');
 }
 
+/**
+ * Org-wide context-sync manifest cache (see lib/context-sync/state.ts and
+ * autosync.ts's seed path). Sibling to clients/, NOT per-brand: caches the
+ * full `GET /api/context/manifest` response so a missing local brand dir
+ * (autosync's seed path) and the login-time org-brand-count line
+ * (commands/auth.ts) can both check "what does the org store know" without
+ * a network round trip on every call. TTL-gated by the caller.
+ */
+export function orgManifestCachePath(dataDirOverride?: string): string {
+  return join(resolveDataDir(dataDirOverride), '.context-sync-org-manifest.json');
+}
+
 export function tmpDir(dataDirOverride?: string): string {
   return join(resolveDataDir(dataDirOverride), 'tmp');
 }

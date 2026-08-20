@@ -487,11 +487,14 @@ function registerAutosyncSubcommand(context: Command): void {
         'AND pushes conflict-free local changes within a ~2s budget, at ' +
         `most once per brand per ${AUTOSYNC_THROTTLE_MS / 60_000} minutes ` +
         `(--force bypasses the throttle). Serves brands that already exist ` +
-        'locally; diverged docs are never touched either direction. Never ' +
-        'blocks meaningfully and never fails loud: offline, missing ' +
-        'credentials, or any error is a quiet no-op and the read this hook ' +
-        `guards proceeds unchanged. Disable the implicit hook entirely with ` +
-        `${AUTOSYNC_ENV}=off.`,
+        'locally, AND seeds one that does not exist here yet as long as ' +
+        "your org's shared store already lists it (creating the local " +
+        'directory and pulling its docs); a slug your org store does not ' +
+        'know about stays a no-op. Diverged docs are never touched either ' +
+        'direction. Never blocks meaningfully and never fails loud: ' +
+        'offline, missing credentials, or any error is a quiet no-op and ' +
+        `the read this hook guards proceeds unchanged. Disable the ` +
+        `implicit hook entirely with ${AUTOSYNC_ENV}=off.`,
     )
     .option('--force', 'bypass the per-brand throttle window', false)
     .action(async (brand: string, opts: { force?: boolean }, cmd: Command) => {
@@ -531,6 +534,10 @@ function registerAutosyncSubcommand(context: Command): void {
                     created: result.created,
                     conflicts: result.conflicts,
                     errors: result.errors,
+                    // FIX H: surface the seed outcome on manual runs too —
+                    // previously only the internal preflight hook's own
+                    // (trigger-suppressed, for manual) emit carried this.
+                    ...(result.seeded ? { seeded: true } : {}),
                   }
                 : { reason: result.reason }),
             },
@@ -549,6 +556,9 @@ function registerAutosyncSubcommand(context: Command): void {
                     conflicts: result.conflicts,
                     errors: result.errors,
                     reports: result.reports,
+                    // FIX H: additive — present only when this run seeded
+                    // (created) the brand's local directory.
+                    ...(result.seeded ? { seeded: true } : {}),
                   }
                 : {
                     status: 'ok',

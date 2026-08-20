@@ -103,24 +103,26 @@ Read `kickoff.md` and walk the AM through Steps 1–2 before any DB queries. The
 
 ## Phase 0.25 — Bootstrap Context Shell (fresh mode only)
 
-Before running prefetch on a never-before-seen account, create a minimal shell using the harness. Two paths:
+Before running prefetch on a never-before-seen account, create a minimal shell using the harness.
 
 **A. If brand discovery already mapped the SellerID(s):**
 ```bash
 mixshift brand add <brand-slug>
 ```
-This is the normal onboarding path. It reads warehouse seller rows for the slug, builds a context.yaml skeleton (schema_version, brand_slug, brand_name, last_updated, accounts[], sources, management with sensible defaults), and writes it to `~/.mixshift/clients/<brand-slug>/`.
+This is the normal onboarding path. It reads warehouse seller rows for the slug, builds a context.yaml skeleton (schema_version, brand_slug, brand_name, last_updated, accounts[], sources, management with sensible defaults), and writes it to `~/.mixshift/clients/<brand-slug>/`. The shell it produces is allowed to be schema-incomplete at this point — Phase 3a finalizes it. If `context.yaml` already exists, do not overwrite — continue with the existing context.
 
-**B. If you need to build the shell manually for an edge-case account (discovery has not mapped the SellerID):**
-`mixshift bootstrap` is registered as a CLI command but not yet implemented (it returns `not_implemented`, exit code 2). Until it ships, hand-author the shell directly: create `~/.mixshift/clients/<brand-slug>/context.yaml` and `narrative.md` with the minimum shell fields below, matching the shape `mixshift brand add` produces. Confirm the SellerID(s) and account type with the AM first; never invent them.
+**B. If the merchant doesn't resolve (brand discovery hasn't mapped it) — discovery-miss flow, in order:**
 
-The shell exists so prefetch can bind SellerID(s), run date, and account type. It is allowed to be schema-incomplete at this point — Phase 3a finalizes it. The shell must be completed before validation or downstream skill consumption.
+1. **Ask whether it's listed under a different name first.** The name the operator gave may not match what MixShift's warehouse holds — an Amazon storefront name (`merchant_alias`) and the curated brand label can diverge over time. Run
+   ```bash
+   mixshift brand discover --format chat
+   ```
+   (read-only, re-queries the warehouse fresh — never mutates anything) and show the candidate merchants it returns: id/brand/accounts/types/markets plus the Ads/Retail columns. Ask directly: *"I don't see '<name they gave>' by that exact name. Could it be listed as one of these?"* For the underlying per-account names (not just the rolled-up display name), `mixshift brand discover --json` carries each account's `seller_name` and `merchant_alias` individually.
 
-Minimum shell fields:
-- `schema_version`, `brand_slug`, `brand_name`, `last_updated`
-- `accounts[]` with `seller_id`, `seller_name`, `account_type`, `status`, `role`
+2. **Merchant exists (the AM confirms a match) → this is case A above.** Run `mixshift brand add <slug>` no matter what name they originally used. Before (or right after) adding it, check that candidate's Ads/Retail state and say plainly what an inactive surface means: `ads_active: false` means no live Ads connection in MixShift yet, so ads-side skills (bid health, search term negation, campaign data) have nothing to work with; `retail_active: false` means the same for retail/ops-side data (inventory, Seller/Vendor Central revenue, orders). Either can be false independently of the other — name the specific surface(s) affected, never a generic "not fully set up."
 
-If SellerID or account type is unknown, pause before prefetch and ask the AM. Do not invent those fields. If `context.yaml` already exists, do not overwrite — continue with the existing context.
+3. **Merchant truly absent from the DB → this is a NO-OP.** No shell, no files, no hand-authored context.yaml, ever: if the account isn't in MixShift, there is no auth for it and nothing brand setup can do yet. Tell the operator, in substance:
+   > That merchant isn't in your MixShift account yet. Add it starting at https://dash.mydashapplications.com/account-manager, then run brand setup again.
 
 ### Picking the brand when the tenant has many (top N + "show all")
 

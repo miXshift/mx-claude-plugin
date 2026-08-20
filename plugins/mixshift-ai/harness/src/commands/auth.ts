@@ -22,9 +22,12 @@ import {
   runDiscoveryAndPersist,
   countByActivity,
 } from '../lib/clients/index.js';
+import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
+import { listLocalBrands } from '../lib/context-sync/local.js';
 import { networkErrorMessage } from '../lib/net/classify.js';
 import { resolveApiBaseHost } from '../lib/net/api-base.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
+import { DEADLINE, raceDeadline } from '../lib/utils/deadline.js';
 
 interface RootOptions {
   json?: boolean;
@@ -179,7 +182,9 @@ export function registerAuthCommands(program: Command): void {
               },
               root.dataDir,
             );
-            // Non-JSON: append a brand-count line to the success message.
+
+            // Non-JSON: append a brand-count line to the success message,
+            // then the org-awareness line right after it when available.
             // Also nudge toward curating key brands when the count is large
             // — agency managers with 200+ accounts don't want portfolio
             // skills running against all of them.
@@ -202,7 +207,32 @@ export function registerAuthCommands(program: Command): void {
                         `Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."\n`
                       : ''),
               );
+              // Org-manifest awareness line (D-032): sign-in is a natural
+              // cache-warm moment for the SAME org-manifest cache the
+              // context-sync seed path consults (see autosync.ts). Budgeted,
+              // best-effort, quiet no-op on offline/timeout — `org` just
+              // stays undefined and the line below never prints; this never
+              // errors and never delays sign-in beyond getCachedOrgManifest's
+              // own budget. FIX G: computed ONLY here (!root.json) — --json's
+              // stdout contract has never included this line (see the
+              // comment below), so computing it unconditionally cost a
+              // budgeted network fetch + a local directory read on every
+              // `--json` run for a value that was always thrown away.
+              const org = await computeOrgAwareness(root.dataDir);
+              if (org) {
+                process.stdout.write(
+                  `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`,
+                );
+              }
             }
+            // JSON mode deliberately prints NOTHING here: `auth setup
+            // --json`'s stdout contract has always been the single
+            // base-result document printed above via renderResult, and
+            // appending a second JSON document would break whole-stdout
+            // JSON.parse consumers of this backward-compat command. The
+            // machine-readable org awareness lives on `auth login --json`
+            // (additive org_brands field on its single result document) —
+            // the recommended sign-in path.
           } catch (err) {
             const message =
               err instanceof Error ? err.message : String(err);
@@ -336,7 +366,10 @@ function registerLoginSubcommand(auth: Command): void {
           dataDirOverride: root.dataDir,
         });
 
-        renderLoginResult(result, !!root.json);
+        // D-032: sign-in shows what the org has vs what's local. Best-effort
+        // and budgeted; undefined (offline/timeout) prints nothing org-side.
+        const org = await computeOrgAwareness(root.dataDir);
+        renderLoginResult(result, !!root.json, org);
 
         // UserIdentified is emitted inside runAuthLogin (lib/auth/login-flow.ts)
         // alongside AuthLoginCompleted, so both the PKCE path and the chat
@@ -404,9 +437,68 @@ function parseLoginMode(raw: string | undefined): 'pkce' | 'device' | 'auto' {
   );
 }
 
-function renderLoginResult(result: AuthLoginResult, json: boolean): void {
+interface OrgAwareness {
+  total: number;
+  not_local: number;
+}
+
+/** Bound for computeOrgAwareness's local listLocalBrands() read (FIX D) —
+ *  separate from getCachedOrgManifest's own network budget
+ *  (AUTOSYNC_BUDGET_MS), which already races the manifest fetch.
+ *  listLocalBrands only reads the local clients/ directory, normally
+ *  negligible, but this function's own doc promises it never delays sign-in
+ *  beyond the manifest budget — a slow/network-mounted home directory or an
+ *  unusually large clients/ tree had no bound of its own to keep that
+ *  promise. On deadline the org-awareness line simply doesn't print (org
+ *  resolves to undefined), same quiet no-op contract as every other branch
+ *  of this function. A small fixed constant, not a share of the manifest
+ *  budget: the two reads are independent (one network, one local disk) and
+ *  sequential, so there is no shared budget to divide. */
+const ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS = 1_000;
+
+/**
+ * D-032 sign-in awareness: how many brands the org store holds vs how many
+ * are on this machine. Sign-in is a natural cache-warm moment for the SAME
+ * org-manifest cache the context-sync seed path consults (autosync.ts).
+ * Budgeted via getCachedOrgManifest's own deadline for the network half,
+ * PLUS its own ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS race around the local
+ * listLocalBrands() read (FIX D). Best-effort — offline, timeout, or any
+ * error (including either deadline) returns undefined and callers print
+ * nothing org-side. Never throws, never delays sign-in beyond either budget.
+ */
+async function computeOrgAwareness(
+  dataDirOverride: string | undefined,
+): Promise<OrgAwareness | undefined> {
+  try {
+    const manifest = await getCachedOrgManifest({ dataDirOverride });
+    if (!manifest.ok) return undefined;
+    const localBrands = await raceDeadline(
+      listLocalBrands(dataDirOverride),
+      ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS,
+    );
+    if (localBrands === DEADLINE) return undefined;
+    const localSlugs = new Set(localBrands);
+    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    return {
+      total: orgSlugs.length,
+      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function renderLoginResult(
+  result: AuthLoginResult,
+  json: boolean,
+  org?: OrgAwareness,
+): void {
   if (json) {
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    // ONE JSON document: org_brands is additive on the existing result
+    // shape, so whole-stdout JSON.parse consumers keep working unchanged.
+    const out: Record<string, unknown> = { ...result };
+    if (org) out.org_brands = org;
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
     return;
   }
   process.stdout.write(
@@ -416,6 +508,9 @@ function renderLoginResult(result: AuthLoginResult, json: boolean): void {
       `  - api_base:      ${result.apiBase}\n` +
       `  - client_id:     ${result.clientId}\n` +
       `  - duration:      ${(result.durationMs / 1000).toFixed(1)}s\n` +
+      (org
+        ? `\nYour org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`
+        : '') +
       `\nTry: \`mixshift data query --sql "SELECT 1"\` to verify ` +
       `warehouse access.\n`,
   );
@@ -704,7 +799,16 @@ function registerDevicePollSubcommand(auth: Command): void {
             maxWaitMs,
             dataDirOverride: root.dataDir,
           });
-          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+          // D-032, additive: on the approved (signed-in) result only, attach
+          // org_brands so the chat skill orchestrating this flow can relay
+          // the sign-in awareness line. Same single-document contract —
+          // consumers that ignore unknown fields are unaffected.
+          const out: Record<string, unknown> = { ...result };
+          if (result.state === 'approved') {
+            const org = await computeOrgAwareness(root.dataDir);
+            if (org) out.org_brands = org;
+          }
+          process.stdout.write(JSON.stringify(out, null, 2) + '\n');
           return;
         } catch (err) {
           const message = networkErrorMessage(
