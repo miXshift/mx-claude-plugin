@@ -421,9 +421,26 @@ describe('report validate -- served-unit sidecar discovery', () => {
     // Failing open here means one typo voids the served-unit check and the
     // run reports CLEAN -- on the exact check that exists to catch a wrong unit.
     const doc = await writeJsonFile('report-data.json', docWith('count'));
-    await runCli({}, 'validate', doc, '--figures', join(dir, 'typo.json'));
+    await expect(runCli({}, 'validate', doc, '--figures', join(dir, 'typo.json'))).rejects.toThrow(
+      /--figures .*typo\.json could not be read/,
+    );
     expect(stdoutText()).not.toContain(': CLEAN');
-    expect(process.exitCode).not.toBe(0);
+  });
+
+  it('blames the FLAG, not the document, when --figures is unreadable', async () => {
+    // The per-file try/catch turns any throw inside the loop into
+    // "<document>: UNREADABLE". Reporting a perfectly readable report-data.json
+    // as unreadable sends the operator to debug the wrong file -- the same
+    // misattribution this round already had to fix in the render refusal.
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await runCli({ json: true }, 'validate', doc, '--figures', join(dir, 'typo.json')).catch(
+      () => {},
+    );
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.status).toBe('error');
+    expect(parsed.error_class).toBe('figures_unreadable');
+    // NOT attributed to the document, and not counted as an unreadable file.
+    expect(parsed.results).toBeUndefined();
   });
 
   it('ignores a well-formed stray file that carries no served units at all', async () => {

@@ -62,13 +62,43 @@ function figuresOpt(v: string[] | false | undefined): string[] | undefined {
  *     report-data.json, and pointing the operator there sends them to debug a
  *     file that looks correct. `--no-figures` opts out without reaching for
  *     `--force`, which would waive every other rule too.
- *   - An explicit `--figures` path that cannot be read THROWS. Skipping it
- *     would let one typo switch the served-unit check off and report CLEAN.
+ *   - An explicit `--figures` path that cannot be read is rejected up front by
+ *     `assertFiguresReadable`. Skipping it would let one typo switch the
+ *     served-unit check off and report CLEAN.
  *
  * A malformed or irrelevant file found by auto-discovery is still skipped
  * quietly: a stray `figures-notes.json` in the working directory must not take
  * down a render.
  */
+/**
+ * Reject an unreadable `--figures` path ONCE, before any document is processed.
+ *
+ * ⚠ This deliberately does NOT live inside `loadServedContract`. A bad
+ * `--figures` value is a mistake in the COMMAND, not a property of any one
+ * document, and `report validate` runs its per-file body inside a try/catch
+ * that turns every throw into "<that document>: UNREADABLE". Throwing from
+ * inside the loop therefore blamed a report-data.json that reads perfectly
+ * well, counted it toward `unreadable`, and exited 2 -- pointing the operator
+ * at the wrong file, which is the same misattribution this round already had
+ * to fix in the render refusal.
+ *
+ * Silence is not an option either: skipping an unreadable path lets one typo
+ * switch the served-unit check off and report CLEAN.
+ */
+async function assertFiguresReadable(explicit: string[] | undefined): Promise<void> {
+  if (!explicit || explicit.length === 0) return;
+  for (const path of [...new Set(explicit.map((p) => resolve(p)))]) {
+    try {
+      await readFile(path, 'utf8');
+    } catch (err) {
+      throw new UserFacingError(
+        `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        'figures_unreadable',
+      );
+    }
+  }
+}
+
 async function loadServedContract(
   docPath: string,
   explicit: string[] | undefined,
@@ -79,21 +109,7 @@ async function loadServedContract(
 
   let candidates: string[];
   if (explicit && explicit.length > 0) {
-    // ⚠ An explicit path that cannot be read is an ERROR, not a skip. Silently
-    // continuing means a single typo in --figures voids the served-unit check
-    // and the run reports CLEAN -- failing open on the exact check that exists
-    // to catch a wrong unit.
     candidates = [...new Set(explicit.map((p) => resolve(p)))];
-    for (const path of candidates) {
-      try {
-        await readFile(path, 'utf8');
-      } catch (err) {
-        throw new UserFacingError(
-          `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
-          'figures_unreadable',
-        );
-      }
-    }
   } else {
     const dir = dirname(resolve(docPath));
     try {
@@ -238,6 +254,9 @@ export function registerReportCommands(program: Command): void {
     .action(async (files: string[], opts: { figures?: string[] | false }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
+        // Before the loop, so a bad flag is a command error rather than a
+        // slander against the first document. See assertFiguresReadable.
+        await assertFiguresReadable(figuresOpt(opts.figures));
         const results: FileResult[] = [];
         let anyUnreadable = false;
         // Per-file try/catch: an unreadable file mid-list used to throw out
@@ -392,6 +411,7 @@ export function registerReportCommands(program: Command): void {
       ) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
+        await assertFiguresReadable(figuresOpt(opts.figures));
         const doc = await readJson<RenderReportDataDocument>(file);
         const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
         for (const id of served.conflicts) {
