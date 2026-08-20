@@ -373,10 +373,14 @@ function readServedFormat(v: unknown): ServedFormat | undefined {
   // never allowed to do. 20 is the domain every JS engine supports (newer V8
   // allows 100); no real served format exceeds 2, so the ceiling only ever
   // catches garbage.
-  const decimals =
-    typeof r.decimals === 'number' && Number.isFinite(r.decimals) ? Math.trunc(r.decimals) : undefined;
-  if (decimals !== undefined && decimals >= 0 && decimals <= MAX_SERVED_DECIMALS) {
-    out.decimals = decimals;
+  // Integer-checked BEFORE any truncation, and for the same reason
+  // render-report.ts's `sanePrecision` is: `Math.trunc(-0.5)` is `-0`, which
+  // passes a `>= 0` gate, so a fractional decimals would silently become 0 and
+  // override the unit's own default. That was fixed in the renderer and left
+  // standing here -- and THIS copy wins, because it stamps the figure's
+  // `precision` in the first place.
+  if (typeof r.decimals === 'number' && Number.isInteger(r.decimals)) {
+    if (r.decimals >= 0 && r.decimals <= MAX_SERVED_DECIMALS) out.decimals = r.decimals;
   }
   if (typeof r.deltaUnit === 'string') out.deltaUnit = r.deltaUnit;
   return out;

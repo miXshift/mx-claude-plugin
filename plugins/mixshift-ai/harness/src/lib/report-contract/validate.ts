@@ -915,10 +915,22 @@ export function validateReportData(
     // and "helpfully" makes served_unit agree with it produces a figure that
     // is self-consistent and silently wrong -- which is the failure this rule
     // exists to catch, so the copy cannot be allowed to shadow the original.
-    const indexUnit = servedUnits[f.id];
-    const servedUnit = servedSuppressAll || servedSuppressed.has(f.id)
-      ? undefined
-      : (indexUnit ?? f.served_unit);
+    // ⚠ `suppressAll` retires the INDEX, not the document's own stamp.
+    // `--no-figures` says to ignore figures FILES; a `served_unit` sitting on
+    // the figure is not a file, it is a self-contradiction inside the document
+    // (`unit: 'count'` against its own `served_unit: 'currency'`), and no
+    // sidecar has to exist for it to be wrong. Waiving that too made the
+    // render refusal's own advice self-defeating: it offers "remove it or pass
+    // --no-figures" as equivalents, and they returned OPPOSITE verdicts on the
+    // same document -- with the safer-sounding branch being the one that
+    // shipped the mislabeled figure.
+    //
+    // `suppressed` is different and does cover both: there the evidence was
+    // judged untrustworthy for that specific figure, and the run has already
+    // printed "the check is skipped for it", so blocking on it anyway would
+    // contradict the line it just wrote.
+    const indexUnit = servedSuppressAll ? undefined : servedUnits[f.id];
+    const servedUnit = servedSuppressed.has(f.id) ? undefined : (indexUnit ?? f.served_unit);
     if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
       const from = servedOrigin[f.id];
       findings.push({

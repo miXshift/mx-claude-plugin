@@ -489,14 +489,14 @@ describe('report -- served-unit sidecar, round-3 hardening', () => {
     );
   });
 
-  it('--no-figures really skips, including the stamp on the figure itself', async () => {
-    // The flag says skip. Falling back to the document's own model-copied
-    // served_unit would keep blocking and make the flag a lie.
-    const doc = await writeJsonFile('report-data.json', docWith('count'));
-    await runCli({}, 'validate', doc, '--no-figures');
-    expect(stdoutText()).not.toContain('contradicts the served contract');
-    expect(process.exitCode).toBe(0);
-  });
+  // ⚠ A `--no-figures` test lived here and asserted the WRONG thing: that the
+  // flag also waives the figure's own `served_unit`. That over-reached -- the
+  // in-document stamp is not a figures file, and a document whose `unit`
+  // contradicts its own `served_unit` is wrong with no sidecar anywhere. It
+  // also made the render refusal's advice self-defeating, since it offers
+  // "remove it or pass --no-figures" as equivalents and the two then returned
+  // OPPOSITE verdicts on the same document. Both halves of the correct
+  // behaviour are pinned in the round-4 block below.
 
   it('a RETIRED figure goes fully silent rather than falling back to the figure stamp', async () => {
     // Two sidecars disagree, so the run prints "the check is skipped for it".
@@ -517,5 +517,96 @@ describe('report -- served-unit sidecar, round-3 hardening', () => {
     await runCli({ json: true }, 'validate', doc);
     const parsed = JSON.parse(stdoutText());
     expect(parsed.results[0].served_unit_conflicts).toEqual(['mom.ops.ops.p2']);
+  });
+});
+
+describe('report -- served-unit sidecar, round-4 hardening', () => {
+  const docSelfContradicting = {
+    figures: [
+      {
+        id: 'mom.ops.ops.p2',
+        label: 'Revenue',
+        value: 1000,
+        unit: 'count',
+        served_unit: 'currency',
+        basis: 'ordered_revenue',
+        source_path: 'envelope:metrics[0].totals.p2',
+      },
+    ],
+  };
+  const docNoStamp = {
+    figures: [
+      {
+        id: 'mom.ops.ops.p2',
+        label: 'Revenue',
+        value: 1000,
+        unit: 'count',
+        basis: 'ordered_revenue',
+        source_path: 'envelope:metrics[0].totals.p2',
+      },
+    ],
+  };
+
+  it('--no-figures still catches a document that contradicts ITSELF', async () => {
+    // unit 'count' against the figure's own served_unit 'currency'. No sidecar
+    // is involved, so a flag about figures FILES has no business waiving it --
+    // and the render refusal offers "remove it or pass --no-figures" as
+    // equivalents, which must not return opposite verdicts.
+    const doc = await writeJsonFile('report-data.json', docSelfContradicting);
+    await runCli({}, 'validate', doc, '--no-figures');
+    expect(stdoutText()).toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('--no-figures does ignore the sidecar it is named for', async () => {
+    const doc = await writeJsonFile('report-data.json', docNoStamp);
+    await writeJsonFile('figures.mom.json', {
+      figures: [{ id: 'mom.ops.ops.p2', served_unit: 'currency' }],
+    });
+    await runCli({}, 'validate', doc, '--no-figures');
+    expect(stdoutText()).not.toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('refuses a TRUNCATED auto-discovered sidecar instead of quietly reporting CLEAN', async () => {
+    // The round-3 guard hardened --figures and left the DEFAULT path open:
+    // same document, same command, well-formed sidecar FAILed and truncated
+    // sidecar PASSed.
+    const doc = await writeJsonFile('report-data.json', docNoStamp);
+    await writeFile(join(dir, 'figures.mom.json'), '{"figures": [{"id": "mom.ops', 'utf8');
+    await expect(runCli({}, 'validate', doc)).rejects.toThrow(/is not valid JSON/);
+  });
+
+  it('blames the SIDECAR, not the document, when auto-discovery finds a corrupt one', async () => {
+    const doc = await writeJsonFile('report-data.json', docNoStamp);
+    await writeFile(join(dir, 'figures.mom.json'), '{"figures": [{"id": "mom.ops', 'utf8');
+    await runCli({ json: true }, 'validate', doc).catch(() => {});
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.error_class).toBe('figures_unreadable');
+    expect(parsed.message).toContain('figures.mom.json');
+    expect(parsed.results).toBeUndefined(); // never "<document>: UNREADABLE"
+  });
+
+  it('still skips a stray figures-*.json that parses but is not an extract document', async () => {
+    const doc = await writeJsonFile('report-data.json', docNoStamp);
+    await writeJsonFile('figures-notes.json', { notes: 'scratch' });
+    await runCli({}, 'validate', doc);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('report render --json records a retired check too, not just validate', async () => {
+    // render is the command that WRITES the artifact, so a silently-skipped
+    // check matters more here than in validate.
+    const doc = await writeJsonFile('report-data.json', docNoStamp);
+    await writeJsonFile('figures.aaa.json', {
+      figures: [{ id: 'mom.ops.ops.p2', served_unit: 'currency' }],
+    });
+    await writeJsonFile('figures.zzz.json', {
+      figures: [{ id: 'mom.ops.ops.p2', served_unit: 'number' }],
+    });
+    await runCli({ json: true }, 'render', doc, '--out', join(dir, 'out.html'));
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.ok).toBe(true);
+    expect(parsed.served_unit_conflicts).toEqual(['mom.ops.ops.p2']);
   });
 });

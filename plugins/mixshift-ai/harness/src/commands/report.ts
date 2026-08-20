@@ -160,9 +160,29 @@ async function loadServedContract(
     let parsed: unknown;
     try {
       parsed = JSON.parse(await readFile(path, 'utf8'));
-    } catch {
-      continue;
+    } catch (err) {
+      // ⚠ UNPARSEABLE IS NOT THE SAME AS IRRELEVANT, and the difference is the
+      // whole fail-open. A file named `figures*.json` that does not parse is
+      // almost certainly a CORRUPT extract artifact -- `report extract --out`
+      // writes non-atomically, so an interrupted run leaves exactly this --
+      // and quietly skipping it means the served-unit check silently does
+      // nothing and the run reports CLEAN. Reproduced on the auto-discovery
+      // path: identical document and command, well-formed sidecar FAILs and
+      // truncated sidecar PASSes.
+      //
+      // The explicit `--figures` path was hardened for this and the default
+      // path was not, which is the "fixed one path, left its sibling" shape
+      // this branch keeps repeating. Both now refuse.
+      throw new UserFacingError(
+        `${path} is not valid JSON: ${err instanceof Error ? err.message : String(err)}. ` +
+          'A `figures*.json` that will not parse is usually a `report extract --out` that was ' +
+          'interrupted; re-run the extract, delete the file, or pass --no-figures.',
+        'figures_unreadable',
+      );
     }
+    // A file that PARSES but carries no `figures` array is merely irrelevant --
+    // a stray `figures-notes.json` in the working directory -- and must not
+    // take down a render.
     const figures = (parsed as { figures?: unknown })?.figures;
     if (!Array.isArray(figures)) continue;
     for (const f of figures) {
@@ -283,7 +303,11 @@ export function registerReportCommands(program: Command): void {
         'each unit against the contract the engine served (default: figures*.json beside ' +
         'each document)',
     )
-    .option('--no-figures', 'ignore any figures*.json beside the document; skip the served-unit check')
+    .option(
+      '--no-figures',
+      'ignore any figures*.json beside the document (a served_unit carried on the figure ' +
+        'itself is still checked)',
+    )
     .action(async (files: string[], opts: { figures?: string[] | false }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
@@ -312,6 +336,14 @@ export function registerReportCommands(program: Command): void {
               ...(served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}),
             });
           } catch (err) {
+            // A corrupt figures*.json is an ENVIRONMENT problem, not a property
+            // of this document, so it must not be recorded as "<document>:
+            // UNREADABLE" -- that is the misattribution this round already had
+            // to fix once for --figures, and auto-discovery reintroduced it
+            // here. Auto-discovery is per-document so it cannot be hoisted
+            // before the loop the way --figures was; instead the error escapes
+            // the loop and fails the command, naming the sidecar.
+            if (err instanceof UserFacingError && err.errorClass === 'figures_unreadable') throw err;
             anyUnreadable = true;
             results.push({ file, error: err instanceof Error ? err.message : String(err) });
           }
@@ -439,7 +471,11 @@ export function registerReportCommands(program: Command): void {
         'each unit against the contract the engine served (default: figures*.json beside ' +
         'the document)',
     )
-    .option('--no-figures', 'ignore any figures*.json beside the document; skip the served-unit check')
+    .option(
+      '--no-figures',
+      'ignore any figures*.json beside the document (a served_unit carried on the figure ' +
+        'itself is still checked)',
+    )
     .action(
       async (
         file: string,
@@ -477,8 +513,14 @@ export function registerReportCommands(program: Command): void {
           // Only when a served-contract finding is actually among the
           // blockers. Appending it to a BASIS-1 or TRACE-1 refusal points at
           // files that had nothing to do with the failure.
+          // Structural, not a substring sniff of the rendered message. `detail`
+          // interpolates the figure's own `unit`, which is document-controlled,
+          // so a unit string containing "served by " could switch this hint on
+          // for a refusal that has nothing to do with sidecars. Ask the index
+          // instead: did this specific figure get its contract from a file?
+          const servedIds = new Set(Object.keys(served.index?.origin ?? {}));
           const blamesServedUnit = blocking.some(
-            (f) => f.rule === 'UNIT-2' && f.detail.includes('served by '),
+            (f) => f.rule === 'UNIT-2' && servedIds.has(f.subject),
           );
           const servedHint =
             blamesServedUnit && served.sources.length > 0
@@ -509,7 +551,25 @@ export function registerReportCommands(program: Command): void {
         const html = renderMonthlyReport(doc);
         await writeReportOutput(opts.out, html);
         if (root.json) {
-          console.log(JSON.stringify({ ok: true, out: opts.out, bytes: html.length, findings }, null, 2));
+          // `served_unit_conflicts` belongs here as much as on validate -- more
+          // so, since this is the command that WRITES the artifact. A retired
+          // check reads exactly like a passing one otherwise, and SKILL.md
+          // Step 6 records this output as the run's audit trail.
+          console.log(
+            JSON.stringify(
+              {
+                ok: true,
+                out: opts.out,
+                bytes: html.length,
+                findings,
+                ...(served.conflicts.length > 0
+                  ? { served_unit_conflicts: served.conflicts }
+                  : {}),
+              },
+              null,
+              2,
+            ),
+          );
         } else {
           console.log(`Rendered ${opts.out} (${html.length} bytes${findings.length ? `; ${findings.length} finding(s) overridden` : ''})`);
         }
