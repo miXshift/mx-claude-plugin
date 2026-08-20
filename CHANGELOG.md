@@ -66,6 +66,18 @@ starts at 0.5.39; earlier versions predate the changelog.
   store, MixShift says so once, and confirms your local copy (if any) is
   unchanged, instead of staying quiet.
 
+- **Brand setup now checks what MixShift already knows before it asks you
+  anything.** Before the account manager interview starts, brand setup
+  checks whether your team already set this brand up somewhere else and
+  offers to adopt that work instead of re-asking the same questions, reads
+  which target and campaign-organization fields are actually configured in
+  the platform today, and reads the account's existing portfolio names for
+  structure hints: brand lanes, campaign objectives, and prior-agency
+  history. Where the platform already has an answer, brand setup shows it
+  and asks you to confirm instead of asking cold. Where a field was
+  genuinely never set up in the platform, it says so plainly instead of
+  treating it like missing data.
+
 ### Fixed
 
 - **`context autosync`'s built-in help no longer says pull-only.** The
