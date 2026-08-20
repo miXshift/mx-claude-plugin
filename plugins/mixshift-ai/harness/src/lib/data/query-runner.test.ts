@@ -340,15 +340,27 @@ describe('runQuery :: datahub error envelope', () => {
 // ---------------------------------------------------------------------------
 
 describe('runQuery :: datahub network failure', () => {
-  it('classifies DNS / ECONNREFUSED as host_unreachable', async () => {
+  /** Build a `TypeError: fetch failed` carrying the given `cause`, mirroring
+   *  how Node's global fetch (undici) surfaces transport failures (see
+   *  lib/net/classify.test.ts's identical helper). The OLD version of this
+   *  test used a flat `Error` with `.code` set directly, which never
+   *  actually matched classify.ts's shape — it passed only because the
+   *  pre-US4 code never inspected the error at all, just hardcoded a
+   *  friendly string for anything DatahubNetworkError-wrapped. */
+  function fetchFailed(cause: unknown): Error {
+    const e = new TypeError('fetch failed');
+    (e as { cause?: unknown }).cause = cause;
+    return e;
+  }
+
+  it('classifies ENOTFOUND as host_unreachable and points at mixshift doctor', async () => {
     const creds = freshDatahubFixture();
     await saveDatahub(creds, testDir);
 
-    const mockFetch = vi.fn().mockRejectedValueOnce(
-      Object.assign(new Error('getaddrinfo ENOTFOUND mcp.mixshift.io'), {
-        code: 'ENOTFOUND',
-      }),
-    );
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND mcp.mixshift.io'), {
+      code: 'ENOTFOUND',
+    });
+    const mockFetch = vi.fn().mockRejectedValueOnce(fetchFailed(cause));
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
@@ -356,7 +368,29 @@ describe('runQuery :: datahub network failure', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.kind).toBe('host_unreachable');
-      expect(result.friendly).toMatch(/unreachable/i);
+      expect(result.friendly).toContain('Could not resolve mcp.mixshift.io');
+      expect(result.friendly).toContain('mixshift doctor');
+    }
+  });
+
+  it('classifies a sandbox proxy 403 as host_unreachable, naming the sandbox and mixshift doctor (not the old generic line)', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    const cause = new Error('Received HTTP code 403 from proxy after CONNECT');
+    const mockFetch = vi.fn().mockRejectedValueOnce(fetchFailed(cause));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('host_unreachable');
+      expect(result.friendly).toContain('sandbox blocked mcp.mixshift.io');
+      expect(result.friendly).toContain('mixshift doctor');
+      expect(result.friendly).not.toBe(
+        'The MixShift auth service is unreachable. Check your network or try again in a minute.',
+      );
     }
   });
 });
