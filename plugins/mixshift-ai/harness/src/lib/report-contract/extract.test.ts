@@ -88,8 +88,22 @@ describe('extractFigures over envelope-minimal.json (ops total-scope + crossDoma
     expect(delta?.caveats).toEqual(
       expect.arrayContaining(['env.filtered_scope.0', 'env.surge_window.1', 'env.matched_window.2']),
     );
-    // p1/p2 (level) figures do NOT carry the comparison-period caveats
-    expect(figs.get('ops.ops.p1')?.caveats).toEqual([]);
+  });
+
+  it('rides ONLY the blocking caveats on the level figures', () => {
+    // A caveat that qualifies the COMPARISON (surge_window, matched_window)
+    // has nothing to say about either period's own level, so it stays off.
+    // A BLOCKING one does: it says the number is not safe to quote bare, and
+    // p1/p2 are numbers. This fixture's three caveats are filtered_scope
+    // (blocking), surge_window (disclosure) and matched_window (context), so
+    // exactly one crosses over.
+    //
+    // Binding blocking to the delta alone is what left a suspect lost-sales
+    // TOTAL quotable clean while its delta was correctly barred -- the caveat
+    // text on that kind names the total outright.
+    for (const side of ['p1', 'p2'] as const) {
+      expect(figs.get(`ops.ops.${side}`)?.caveats).toEqual(['env.filtered_scope.0']);
+    }
   });
 
   it('emits bridge leg figures per insight variant, namespaced ops.bridge.<metric>.<variant>.<component>', () => {
@@ -1727,6 +1741,110 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
     );
     expect(servedChipValues(renderServed(response, ['ops.weeks_of_cover.p1']))).toEqual(['12.4']);
   });
+
+  // -------------------------------------------------------------------------
+  // The served format's UNREADABLE HALVES. readServedFormat refuses to
+  // half-trust a format whose `display` is unusable; these pin the same rule
+  // onto `deltaUnit` and `decimals`, which it originally did not apply.
+  // -------------------------------------------------------------------------
+
+  it('a served rate delta reads in POINTS, never as a percentage of itself', () => {
+    // conversion 20% -> 25% is a five-POINT move, stored 0.05. Labelling that
+    // delta with the LEVEL token renders "5.0%", which a reader takes as a 5%
+    // relative rise. deltaUnit 'pts' is what says otherwise.
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'percent', decimals: 1, deltaUnit: 'pts' },
+      'conversion',
+      { p1: 0.2, p2: 0.25, delta: 0.05 },
+    );
+    expect(byId(extractFigures(response)).get('ops.conversion.delta')).toMatchObject({
+      unit: 'points_fraction',
+    });
+    expect(servedChipValues(renderServed(response, ['ops.conversion.delta']))).toEqual(['5.0 pts']);
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['a near-synonym', 'points'],
+    ['the wrong case', 'PTS'],
+    ['a drifted token', 'ppt'],
+  ])(
+    'refuses to invent a change unit when deltaUnit is %s, rather than silently using the level',
+    (_label, deltaUnit) => {
+      const format: Record<string, unknown> = { display: 'percent', decimals: 1 };
+      if (deltaUnit !== undefined) format.deltaUnit = deltaUnit;
+      const response = opsEnvelopeWith('0.2.0', format, 'conversion', {
+        p1: 0.2,
+        p2: 0.25,
+        delta: 0.05,
+      });
+      const figs = byId(extractFigures(response));
+      // The LEVEL is still readable — `display` was fine, only the delta half
+      // was not — so this is not a blanket rejection of the format.
+      expect(figs.get('ops.conversion.p1')).toMatchObject({ unit: 'ratio' });
+      // The delta refuses. The failure it replaces is "5.0%", which is worse
+      // than an unformatted number because it is confidently wrong.
+      expect(figs.get('ops.conversion.delta')?.unit).toBe('unformattable');
+      expect(servedChipValues(renderServed(response, ['ops.conversion.delta']))).not.toContain('5.0%');
+    },
+  );
+
+  it('ignores a served `decimals` outside the formatter domain instead of killing the render', () => {
+    // toFixed / toLocaleString THROW a RangeError past their fraction-digit
+    // domain, and a throw in the renderer writes no HTML at all. A malformed
+    // document has to degrade, never crash.
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'currency', decimals: 1e9, deltaUnit: 'absolute' },
+      'ops',
+      { p1: 100000, p2: 144000, delta: 44000 },
+    );
+    const figs = byId(extractFigures(response));
+    expect(figs.get('ops.ops.p1')?.precision).toBeUndefined();
+    expect(() => renderServed(response, ['ops.ops.p1'])).not.toThrow();
+    expect(servedChipValues(renderServed(response, ['ops.ops.p1']))).toEqual(['$100,000']);
+  });
+
+  it('a bridge leg inherits the anchor metric format when the insight carries none', () => {
+    // Presence skew between metrics[] and insights[]: the delta would render
+    // "$44,000" while its own legs rendered "20000 unformattable". They foot
+    // to each other, so they cannot disagree about the unit.
+    const response = {
+      envelope: {
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-leg-inherit-0001',
+        currency: 'USD',
+        engineVersion: '0.2.0',
+        caveats: [],
+        metrics: [
+          {
+            metricKey: 'ops',
+            totals: { p1: 100000, p2: 144000, delta: 44000 },
+            topDrivers: [],
+            format: { display: 'currency', decimals: 0, deltaUnit: 'absolute' },
+          },
+        ],
+        insights: [
+          {
+            insight: {
+              scope: 'total',
+              metricKey: 'ops',
+              variantKey: 'primary',
+              netChange: 44000,
+              components: [
+                { key: 'price', impact: 20000 },
+                { key: 'volume', impact: 24000 },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const figs = byId(extractFigures(response));
+    expect(figs.get('ops.bridge.ops.primary.price')).toMatchObject({ unit: 'currency' });
+    expect(figs.get('ops.ops.delta')).toMatchObject({ unit: 'currency' });
+  });
 });
 
 describe('served caveat severity is used verbatim, including a RUN-DEPENDENT one', () => {
@@ -1764,6 +1882,50 @@ describe('served caveat severity is used verbatim, including a RUN-DEPENDENT one
     expect(detected.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('blocking');
     expect(applied.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('disclosure');
   });
+
+  it('binds the DETECTED run\'s blocking caveat to the lost-sales TOTAL, not just the delta', () => {
+    // The caveat text names the row and the total outright. Binding it to the
+    // delta alone left p1/p2 with `caveats: []`, so a section quoting the
+    // suspect $5,000 total validated clean and rendered no caveat block.
+    const figs = byId(extractFigures(guardRun('blocking', DETECTED)));
+    for (const id of ['ops.lost_sales.p1', 'ops.lost_sales.p2', 'ops.lost_sales.delta']) {
+      expect(figs.get(id)?.caveats).toContain('env.lost_sales_regime_guard.0');
+    }
+  });
+
+  it('does NOT bind the APPLIED run\'s disclosure caveat to the levels', () => {
+    // Once the correction is applied the number is sound; the caveat only
+    // explains why it reads low. Levels stay clean.
+    const figs = byId(extractFigures(guardRun('disclosure', APPLIED)));
+    expect(figs.get('ops.lost_sales.p2')?.caveats ?? []).toEqual([]);
+    expect(figs.get('ops.lost_sales.delta')?.caveats).toContain('env.lost_sales_regime_guard.0');
+  });
+
+  it.each([['Blocking'], [' blocking'], ['BLOCKING'], ['blocking ']])(
+    'canonicalizes a served severity of %p so the blocking gate still recognizes it',
+    (served) => {
+      // Both consumers test `=== 'blocking'` by exact lowercase equality.
+      // Retiring the kind-keyed table removed the only thing in this path that
+      // could only ever produce a canonical token, so a TitleCase or padded
+      // value would be stored verbatim and silently stop binding.
+      const out = extractFigures(guardRun(served, DETECTED));
+      expect(out.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('blocking');
+      expect(byId(out).get('ops.lost_sales.p2')?.caveats).toContain(
+        'env.lost_sales_regime_guard.0',
+      );
+    },
+  );
+
+  it.each([['critical'], ['suppress'], ['error'], ['info']])(
+    'fails CLOSED on an unrecognized served severity of %p rather than treating it as harmless',
+    (served) => {
+      // We cannot interpret it, and the two directions are not symmetric:
+      // over-binding renders a caveat nobody needed and is visible;
+      // under-binding ships a suspect number bare and is silent.
+      const out = extractFigures(guardRun(served, DETECTED));
+      expect(out.caveat_registry['env.lost_sales_regime_guard.0'].severity).toBe('blocking');
+    },
+  );
 
   it('our static table cannot express that, which is the whole argument: it grades BOTH runs `disclosure`', () => {
     // A genuine pre-0.2.0 envelope carries no severity at all, so the

@@ -366,12 +366,24 @@ function readServedFormat(v: unknown): ServedFormat | undefined {
   if (!r) return undefined;
   if (typeof r.display !== 'string' || r.display === '') return undefined;
   const out: ServedFormat = { display: r.display };
-  if (typeof r.decimals === 'number' && Number.isFinite(r.decimals) && r.decimals >= 0) {
-    out.decimals = Math.trunc(r.decimals);
+  // Range-checked, not just sign-checked. `decimals` lands in the renderer's
+  // toFixed / toLocaleString calls, both of which THROW a RangeError outside
+  // their fraction-digit domain -- and a throw there kills the whole render
+  // and writes no HTML at all, which is the one thing a malformed document is
+  // never allowed to do. 20 is the domain every JS engine supports (newer V8
+  // allows 100); no real served format exceeds 2, so the ceiling only ever
+  // catches garbage.
+  const decimals =
+    typeof r.decimals === 'number' && Number.isFinite(r.decimals) ? Math.trunc(r.decimals) : undefined;
+  if (decimals !== undefined && decimals >= 0 && decimals <= MAX_SERVED_DECIMALS) {
+    out.decimals = decimals;
   }
   if (typeof r.deltaUnit === 'string') out.deltaUnit = r.deltaUnit;
   return out;
 }
+
+/** Max fraction digits we will accept from a served format. See readServedFormat. */
+const MAX_SERVED_DECIMALS = 20;
 
 /** Read a `format` off a metric summary or an insight entry. The engine puts
  *  it on both; on an insight it can sit on the entry or on its nested
@@ -425,7 +437,19 @@ function resolveChangeUnit(
   if (served.formats) {
     if (!fmt) return { unit: CANNOT_FORMAT };
     if (fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
-    return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
+    if (fmt.deltaUnit === 'absolute') return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
+    // ⚠ An absent or unrecognized `deltaUnit` is CANNOT_FORMAT, never a silent
+    // 'absolute'. The engine types this as the closed union
+    // 'absolute' | 'pts' and sets it on all 31 metric definitions, so anything
+    // else is skew -- and guessing 'absolute' is the expensive guess: it hands
+    // a rate's delta the LEVEL token, so a five-POINT conversion move
+    // (20% -> 25%, stored 0.05) renders "5.0%" and reads as a 5% relative
+    // rise. That defect shipped once already. This is the same rule
+    // readServedFormat applies to an unusable `display` -- we do not invent
+    // the half we could not read -- and the fallback path never had the hole,
+    // because changeUnitOf derives the change unit FROM the level token and
+    // structurally cannot disagree with it.
+    return { unit: CANNOT_FORMAT };
   }
   return { unit: changeUnitOf((metricKey && fallback[metricKey]) ?? 'count') };
 }
@@ -445,7 +469,13 @@ function resolvePairUnit(
   if (!pf) return { unit: fallback };
   const fmt = readServedFormat(pf[path]);
   if (!fmt) return { unit: CANNOT_FORMAT };
-  if (kind === 'change' && fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
+  if (kind === 'change') {
+    if (fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
+    // Same rule as resolveChangeUnit: an unreadable deltaUnit is not an
+    // implied 'absolute'. `duo.tacos.delta_pts` is the case that bites --
+    // it would print "2.8%" for a 2.8-POINT move.
+    if (fmt.deltaUnit !== 'absolute') return { unit: CANNOT_FORMAT };
+  }
   return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
 }
 
@@ -468,6 +498,36 @@ function resolvePairUnit(
 //      shipped view. No table keyed on `kind` can express either.
 // So: never add a kind here. Send it to the engine.
 // ---------------------------------------------------------------------------
+/**
+ * The engine's closed severity union. Both consumers of a registry entry test
+ * for `blocking` by exact lowercase equality (validate.ts CAVEAT-1,
+ * render-report.ts's caveat block), so a served value has to be canonicalized
+ * before it is stored -- retiring CAVEAT_SEVERITY removed the only thing in
+ * the path that could only ever produce a canonical token.
+ */
+const SERVED_SEVERITIES = new Set(['blocking', 'disclosure', 'context']);
+
+/**
+ * Canonicalize a served severity, failing CLOSED on anything we do not know.
+ *
+ * Trim and lowercase first: `"Blocking"` or `" blocking"` -- a TitleCase enum,
+ * a padding serializer -- would otherwise be stored verbatim and then fail
+ * every `=== 'blocking'` test, silently downgrading the exact caveat class
+ * that must never be downgraded.
+ *
+ * An UNRECOGNIZED value becomes `blocking` rather than passing through. The
+ * asymmetry is the point: over-binding renders a caveat the reader did not
+ * strictly need and is visible; under-binding ships a suspect number quoted
+ * bare and is silent. A new severity token upstream should make us render more
+ * caveats until we teach this set about it, not fewer.
+ */
+function normalizeSeverity(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim().toLowerCase();
+  if (t === '') return undefined;
+  return SERVED_SEVERITIES.has(t) ? t : 'blocking';
+}
+
 const CAVEAT_SEVERITY: Record<string, string> = {
   filtered_scope: 'blocking',
   decomposition_degraded: 'blocking',
@@ -867,6 +927,8 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
   // period's own level).
   const registry: Record<string, CaveatRegistryEntry> = {};
   const deltaCaveats: string[] = [];
+  // BLOCKING caveats ride the LEVEL figures too -- see levelCaveats below.
+  const levelCaveats: string[] = [];
   const caveatsArr = asArray(env.caveats) ?? [];
   caveatsArr.forEach((cRaw, i) => {
     const c = asRecord(cRaw) ?? {};
@@ -880,13 +942,26 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     // table's `disclosure` default: downgrading the engine's judgment to ours
     // is the exact failure this field was published to end. If a served
     // severity is ever wrong, file it upstream.
-    const servedSeverity =
-      typeof c.severity === 'string' && c.severity.trim() !== '' ? c.severity : undefined;
+    const servedSeverity = normalizeSeverity(c.severity);
+    const severity = servedSeverity ?? CAVEAT_SEVERITY[kind] ?? 'disclosure';
     registry[cid] = {
       text: (c.message as string) ?? '',
-      severity: servedSeverity ?? CAVEAT_SEVERITY[kind] ?? 'disclosure',
+      severity,
     };
     deltaCaveats.push(cid);
+    // ⚠ A BLOCKING caveat also rides the LEVEL figures. The delta-only rule
+    // above is right for a caveat that qualifies the COMPARISON, but blocking
+    // means "this number is not safe to quote bare", and the number it names
+    // is usually a level: `lost_sales_regime_guard` on a detected-but-not-
+    // applied run says outright "do not quote this row or the lost-sales
+    // TOTAL bare", and the total is p2. Binding it to the delta alone left
+    // `ops.lost_sales.p1` / `.p2` carrying `caveats: []`, so a section quoting
+    // the suspect total validated clean and rendered no caveat block.
+    //
+    // That is not a corner: detection always runs, substitution is opt-in, and
+    // our surface does not set it -- so BLOCKING is our default posture on
+    // every run where the guard fires, not an edge case.
+    if (severity === 'blocking') levelCaveats.push(cid);
   });
 
   // Entity-scoped envelope: a different shape entirely (metric rows live in
@@ -897,11 +972,17 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
 
   const figures: ExtractedFigure[] = [];
 
+  // metricKey -> the format served on metrics[]. The bridge legs below foot to
+  // one of these metrics' deltas, so when a leg carries no format of its own
+  // this is the one it must inherit. See the leg resolution for why.
+  const metricFormats = new Map<string, ServedFormat>();
+
   const metricsArr = asArray(env.metrics) ?? [];
   metricsArr.forEach((mRaw, mi) => {
     const m = asRecord(mRaw) ?? {};
     const key = m.metricKey as string | undefined;
     const fmt = formatOf(m.format);
+    if (key !== undefined && fmt !== undefined) metricFormats.set(key, fmt);
     const levelSpec = resolveLevelUnit(served, fmt, key, unitsMap);
     const changeSpec = resolveChangeUnit(served, fmt, key, unitsMap);
     const basis = domain === 'ads' ? (ADS_BASIS[key ?? ''] ?? ADS_BASIS_DEFAULT) : opsBasis(env, key);
@@ -911,7 +992,12 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     for (const side of ['p1', 'p2'] as const) {
       const v = t[side];
       if (hasValue(v)) {
-        figures.push(fig(`${domain}.${key}.${side}`, key ?? '', v as number, levelSpec, basis, `${base}.${side}`));
+        figures.push(
+          fig(`${domain}.${key}.${side}`, key ?? '', v as number, levelSpec, basis, `${base}.${side}`, {
+            // Blocking only -- a level is not qualified by a comparison caveat.
+            caveats: levelCaveats.length > 0 ? levelCaveats : undefined,
+          }),
+        );
       }
     }
     const delta = t.delta;
@@ -965,7 +1051,20 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     // The insight's own served format IS the anchor metric's -- the engine
     // lifts both from the same METRIC_DEFINITIONS entry -- so a leg and the
     // anchor's delta resolve identically without a join back to metrics[].
-    const legSpec = resolveChangeUnit(served, formatOf(ins.format, entry.format), mkey, unitsMap);
+    // ⚠ Inherit the ANCHOR metric's format when the insight carries none.
+    // `bridgeLegUnit` used to guarantee a leg and the net it foots to agreed,
+    // structurally: both were changeUnitOf(unitsMap[mkey]) -- same map, same
+    // key. Resolving the leg from `insights[].format` and the delta from
+    // `metrics[].format` splits that source, so PRESENCE SKEW between the two
+    // arrays breaks the agreement: with a format on the metric and none on the
+    // insight, the delta renders "$44,000" while its own legs render
+    // "20000 unformattable". BRIDGE-FOOTING compares values, not units, so
+    // nothing catches it. The engine lifts both from the same
+    // METRIC_DEFINITIONS entry, so falling back to the metric's format is not
+    // a guess -- it is the same answer by a second route.
+    const legFmt =
+      formatOf(ins.format, entry.format) ?? (mkey !== undefined ? metricFormats.get(mkey) : undefined);
+    const legSpec = resolveChangeUnit(served, legFmt, mkey, unitsMap);
     const components = asArray(ins.components) ?? [];
     components.forEach((compRaw, ci) => {
       const comp = asRecord(compRaw) ?? {};
