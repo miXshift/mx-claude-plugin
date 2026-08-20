@@ -544,6 +544,10 @@ function evalCheck(
 export interface ServedContractIndex {
   /** figure id -> the unit the engine served for it */
   units?: Record<string, string>;
+  /** figure id -> which file that unit came from, so a finding can name it.
+   *  Without this the refusal points the operator at report-data.json, which
+   *  does not contain the contradicting value anywhere they can see it. */
+  origin?: Record<string, string>;
 }
 
 export function validateReportData(
@@ -552,6 +556,7 @@ export function validateReportData(
 ): Finding[] {
   const findings: Finding[] = [];
   const servedUnits = served?.units ?? {};
+  const servedOrigin = served?.origin ?? {};
 
   const figures = new Map<string, Figure>();
   for (const f of doc.figures ?? []) figures.set(f.id, f);
@@ -888,16 +893,23 @@ export function validateReportData(
   // change scale without changing the label.
   for (const f of allFigs.values()) {
     const unit = f.unit;
-    // The figure's own stamp first (present when the document came straight
-    // out of `report extract`), then the extractor's index (present whenever
-    // the caller handed us the figures file, which survives a hand-composed
-    // document). Either is the engine speaking; neither is a guess.
-    const servedUnit = f.served_unit ?? servedUnits[f.id];
+    // ⚠ The INDEX wins over the figure's own stamp. Both claim to be the
+    // engine speaking, but only one of them is: the index is `report extract`
+    // output read off disk, while `served_unit` on the figure was copied there
+    // by the model composing report-data.json. A model that relabels a unit
+    // and "helpfully" makes served_unit agree with it produces a figure that
+    // is self-consistent and silently wrong -- which is the failure this rule
+    // exists to catch, so the copy cannot be allowed to shadow the original.
+    const indexUnit = servedUnits[f.id];
+    const servedUnit = indexUnit ?? f.served_unit;
     if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
+      const from = servedOrigin[f.id];
       findings.push({
         rule: 'UNIT-2',
         subject: f.id,
-        detail: `unit '${unit ?? ''}' contradicts the served contract '${servedUnit}'`,
+        detail:
+          `unit '${unit ?? ''}' contradicts the served contract '${servedUnit}'` +
+          (from ? ` (served by ${from})` : ''),
       });
     }
     const scale = unit !== undefined ? PERCENT_FAMILY_SCALE[unit] : undefined;

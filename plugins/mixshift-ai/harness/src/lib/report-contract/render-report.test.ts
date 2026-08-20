@@ -797,3 +797,50 @@ describe('renderMonthlyReport — an engine-unit figure reaches the page carryin
     expect(renderMonthlyReport(doc)).toContain('4.7 zorkmids');
   });
 });
+
+describe('a document-authored `precision` degrades, never crashes the render', () => {
+  /**
+   * ⚠ THE EXTRACTOR IS THE WRONG SEAM FOR THIS GUARD. `readServedFormat`
+   * range-checks the precision it reads off an ENVELOPE, but `report render`
+   * never reads envelopes -- it reads report-data.json, which SKILL.md Step 5
+   * has the MODEL compose by hand. A precision authored there goes straight to
+   * toFixed / toLocaleString, and both throw a RangeError outside 0..100,
+   * which kills the whole render and writes NO HTML at all.
+   */
+  const docWithPrecision = (precision: unknown): RenderReportDataDocument =>
+    ({
+      meta: { brand: 'Example', period: 'Jun 2026' },
+      figures: [
+        {
+          id: 'f1',
+          label: 'Revenue',
+          value: 1000,
+          unit: 'currency',
+          precision,
+          basis: 'ordered_revenue',
+          source_path: 'envelope:metrics[0].totals.p1',
+        },
+      ],
+      sections: [
+        { id: 's', title: 'S', prose: 'x', figure_refs: ['f1'], caveats_rendered: [] },
+      ],
+    }) as unknown as RenderReportDataDocument;
+
+  it.each([[1e9], [101], [-1], [NaN], ['2'], [null]])(
+    'renders rather than throwing on precision %p',
+    (precision) => {
+      expect(() => renderMonthlyReport(docWithPrecision(precision))).not.toThrow();
+      expect(renderMonthlyReport(docWithPrecision(precision)).length).toBeGreaterThan(0);
+    },
+  );
+
+  it('falls back to the unit’s own default precision instead of inventing one', () => {
+    // currency defaults to 0dp, so the garbage precision must leave "$1,000",
+    // not a differently-rounded number.
+    expect(renderMonthlyReport(docWithPrecision(1e9))).toContain('$1,000');
+  });
+
+  it('still honours a precision that IS in domain', () => {
+    expect(renderMonthlyReport(docWithPrecision(2))).toContain('$1,000.00');
+  });
+});

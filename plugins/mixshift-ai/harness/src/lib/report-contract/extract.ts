@@ -436,22 +436,43 @@ function resolveChangeUnit(
 ): UnitSpec {
   if (served.formats) {
     if (!fmt) return { unit: CANNOT_FORMAT };
-    if (fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
-    if (fmt.deltaUnit === 'absolute') return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
-    // ⚠ An absent or unrecognized `deltaUnit` is CANNOT_FORMAT, never a silent
-    // 'absolute'. The engine types this as the closed union
-    // 'absolute' | 'pts' and sets it on all 31 metric definitions, so anything
-    // else is skew -- and guessing 'absolute' is the expensive guess: it hands
-    // a rate's delta the LEVEL token, so a five-POINT conversion move
-    // (20% -> 25%, stored 0.05) renders "5.0%" and reads as a 5% relative
-    // rise. That defect shipped once already. This is the same rule
-    // readServedFormat applies to an unusable `display` -- we do not invent
-    // the half we could not read -- and the fallback path never had the hole,
-    // because changeUnitOf derives the change unit FROM the level token and
-    // structurally cannot disagree with it.
-    return { unit: CANNOT_FORMAT };
+    return specOf(changeTokenOf(fmt), fmt);
   }
   return { unit: changeUnitOf((metricKey && fallback[metricKey]) ?? 'count') };
+}
+
+/**
+ * The change token for a served format, or CANNOT_FORMAT when `deltaUnit` is
+ * unreadable AND the answer actually depends on it.
+ *
+ * Two things this gets right that a naive reading does not:
+ *
+ * 1. `deltaUnit: 'pts'` does NOT always mean `points_fraction`. It means the
+ *    change reads in percentage POINTS; how that is STORED follows the level.
+ *    A fraction-scaled level (`ratio`, from display 'percent') stores the
+ *    change as a fraction, so points_fraction is right and the renderer's ×100
+ *    lands correctly. An ALREADY-WHOLE level (`percent-points`) stores it
+ *    whole -- mapping that to points_fraction multiplies it a second time and
+ *    prints a 2.4-point move as "240.0 pts".
+ *
+ * 2. An unreadable `deltaUnit` is only ambiguous for a RATE. `changeUnitOf`
+ *    is the whole truth about the fallback path and it changes exactly one
+ *    token: ratio -> points_fraction. For currency, currency-2dp, number and
+ *    percent-points the change unit IS the level unit whichever way deltaUnit
+ *    reads, so refusing there would trade a correct render for a page full of
+ *    "44000 unformattable" beside a p1/p2 that render "$1,044,000" -- a worse
+ *    outcome than the defect being guarded against, and a NEW contradiction
+ *    between a delta and the levels it sits next to.
+ *
+ * So: refuse only where the guess would be load-bearing. That is the same
+ * principle readServedFormat applies to an unusable `display` -- do not invent
+ * the half you could not read -- scoped to where the half actually matters.
+ */
+function changeTokenOf(fmt: ServedFormat): string {
+  const level = DISPLAY_UNIT[fmt.display] ?? fmt.display;
+  if (fmt.deltaUnit === 'pts') return level === 'ratio' ? 'points_fraction' : level;
+  if (fmt.deltaUnit === 'absolute') return level;
+  return level === 'ratio' ? CANNOT_FORMAT : level;
 }
 
 /** A crossDomain figure's unit, from `pairFormats[<dotted path>]`. Same two
@@ -469,13 +490,9 @@ function resolvePairUnit(
   if (!pf) return { unit: fallback };
   const fmt = readServedFormat(pf[path]);
   if (!fmt) return { unit: CANNOT_FORMAT };
-  if (kind === 'change') {
-    if (fmt.deltaUnit === 'pts') return specOf('points_fraction', fmt);
-    // Same rule as resolveChangeUnit: an unreadable deltaUnit is not an
-    // implied 'absolute'. `duo.tacos.delta_pts` is the case that bites --
-    // it would print "2.8%" for a 2.8-POINT move.
-    if (fmt.deltaUnit !== 'absolute') return { unit: CANNOT_FORMAT };
-  }
+  // Same rule as resolveChangeUnit, same reasons -- `duo.tacos.delta_pts` is
+  // the case that bites: it would print "2.8%" for a 2.8-POINT move.
+  if (kind === 'change') return specOf(changeTokenOf(fmt), fmt);
   return specOf(DISPLAY_UNIT[fmt.display] ?? fmt.display, fmt);
 }
 
@@ -716,6 +733,7 @@ function extractEntity(
   served: ServedContract,
   registry: Record<string, CaveatRegistryEntry>,
   deltaCaveats: string[],
+  levelCaveats: string[],
   selection: CompositeSelection | undefined,
 ): ExtractDocument {
   const ekey = env.entityKey;
@@ -748,7 +766,17 @@ function extractEntity(
     for (const [side, field] of SIDE_FIELDS) {
       const v = entry[field];
       if (hasValue(v)) {
-        figures.push(fig(`${stem}.${side}`, label, v as number, levelSpec, basis, `${base}.${field}`));
+        figures.push(
+          fig(`${stem}.${side}`, label, v as number, levelSpec, basis, `${base}.${field}`, {
+            // Blocking caveats ride the levels here for the same reason they
+            // do at total scope -- and this path needs it MORE, not less: the
+            // regime guard flags a specific ASIN, so the entity row IS the
+            // suspect number the caveat names. Leaving it bound only at total
+            // scope would have fixed the summary and left the row it points at
+            // quotable bare.
+            caveats: levelCaveats.length > 0 ? levelCaveats : undefined,
+          }),
+        );
       }
     }
     const netChange = entry.netChange;
@@ -967,7 +995,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
   // Entity-scoped envelope: a different shape entirely (metric rows live in
   // the insights, totals block is the RUN's account totals, not the entity).
   if (hasValue(env.entityKey)) {
-    return extractEntity(rawDoc, env, domain, unitsMap, served, registry, deltaCaveats, selection);
+    return extractEntity(rawDoc, env, domain, unitsMap, served, registry, deltaCaveats, levelCaveats, selection);
   }
 
   const figures: ExtractedFigure[] = [];

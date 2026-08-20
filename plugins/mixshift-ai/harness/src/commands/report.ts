@@ -33,28 +33,67 @@ async function readJson<T>(file: string): Promise<T> {
   }
 }
 
+/** Commander maps `--no-figures` onto the POSITIVE key, so `opts.figures` is
+ *  `false` (not a `noFigures` boolean) when the flag is passed. Narrow it back
+ *  to the path list the loader wants. */
+function figuresOpt(v: string[] | false | undefined): string[] | undefined {
+  return Array.isArray(v) ? v : undefined;
+}
+
 /**
  * Build the served unit contract for a report-data document by reading the
  * `report extract` output it was composed from.
  *
  * `explicit` wins outright. With none given we look beside the document for
  * `figures*.json`, which is the layout SKILL.md's own worked run produces
- * (`report extract --out figures.mom.json` next to `report-data.json`). Finding
- * nothing is not an error: pre-served-contract runs and hand-built test
+ * (`report extract --out figures.mom.ops.json` next to `report-data.json`).
+ * Finding nothing is not an error: pre-served-contract runs and hand-built test
  * documents have no sidecar, and UNIT-2's contract arm is specified to stay
  * silent when nothing was served rather than manufacture findings from skew.
  *
- * Anything unreadable or wrongly shaped is skipped rather than thrown --
- * a stray `figures-notes.json` in the working directory must not take down a
- * render.
+ * ⚠ Auto-discovery makes ambient files a BLOCKING input to a user-facing
+ * command, so the two ways that goes wrong are handled explicitly:
+ *
+ *   - A stale or foreign sidecar could block a correct document, decided by
+ *     nothing but filename sort order. So sidecars that DISAGREE about a
+ *     figure retire that figure from the check (`conflicts`) instead of
+ *     last-wins, and `origin` records which file supplied each unit so the
+ *     refusal can name it -- the contradicting value appears nowhere in
+ *     report-data.json, and pointing the operator there sends them to debug a
+ *     file that looks correct. `--no-figures` opts out without reaching for
+ *     `--force`, which would waive every other rule too.
+ *   - An explicit `--figures` path that cannot be read THROWS. Skipping it
+ *     would let one typo switch the served-unit check off and report CLEAN.
+ *
+ * A malformed or irrelevant file found by auto-discovery is still skipped
+ * quietly: a stray `figures-notes.json` in the working directory must not take
+ * down a render.
  */
 async function loadServedContract(
   docPath: string,
-  explicit?: string[],
-): Promise<ServedContractIndex | undefined> {
+  explicit: string[] | undefined,
+  noFigures: boolean,
+): Promise<{ index?: ServedContractIndex; sources: string[]; conflicts: string[] }> {
+  const none = { sources: [] as string[], conflicts: [] as string[] };
+  if (noFigures) return none;
+
   let candidates: string[];
   if (explicit && explicit.length > 0) {
-    candidates = explicit.map((p) => resolve(p));
+    // ⚠ An explicit path that cannot be read is an ERROR, not a skip. Silently
+    // continuing means a single typo in --figures voids the served-unit check
+    // and the run reports CLEAN -- failing open on the exact check that exists
+    // to catch a wrong unit.
+    candidates = [...new Set(explicit.map((p) => resolve(p)))];
+    for (const path of candidates) {
+      try {
+        await readFile(path, 'utf8');
+      } catch (err) {
+        throw new UserFacingError(
+          `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
+          'figures_unreadable',
+        );
+      }
+    }
   } else {
     const dir = dirname(resolve(docPath));
     try {
@@ -64,12 +103,18 @@ async function loadServedContract(
         .sort()
         .map((e) => join(dir, e));
     } catch {
-      return undefined;
+      return none;
     }
   }
 
+  // id -> unit, plus where it came from, so a finding can name the file and
+  // so two sidecars that disagree can be detected rather than resolved by
+  // filename sort order.
   const units: Record<string, string> = {};
-  let found = false;
+  const origin: Record<string, string> = {};
+  const conflicts = new Set<string>();
+  const sources: string[] = [];
+
   for (const path of candidates) {
     let parsed: unknown;
     try {
@@ -79,16 +124,34 @@ async function loadServedContract(
     }
     const figures = (parsed as { figures?: unknown })?.figures;
     if (!Array.isArray(figures)) continue;
+    let used = false;
     for (const f of figures) {
       const id = (f as { id?: unknown })?.id;
       const servedUnit = (f as { served_unit?: unknown })?.served_unit;
-      if (typeof id === 'string' && typeof servedUnit === 'string' && servedUnit !== '') {
-        units[id] = servedUnit;
-        found = true;
+      if (typeof id !== 'string' || typeof servedUnit !== 'string' || servedUnit === '') continue;
+      used = true;
+      if (units[id] !== undefined && units[id] !== servedUnit) {
+        // Two extractions disagree about the same figure. One of them is not
+        // this document's -- a leftover from another run, brand, or month.
+        // Neither is trustworthy evidence, so the id is dropped rather than
+        // decided by sort order.
+        conflicts.add(id);
+        continue;
       }
+      units[id] = servedUnit;
+      origin[id] = path;
     }
+    if (used) sources.push(path);
   }
-  return found ? { units } : undefined;
+
+  for (const id of conflicts) {
+    delete units[id];
+    delete origin[id];
+  }
+
+  return Object.keys(units).length > 0
+    ? { index: { units, origin }, sources, conflicts: [...conflicts] }
+    : { sources, conflicts: [...conflicts] };
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -160,9 +223,10 @@ export function registerReportCommands(program: Command): void {
   report
     .command('validate <files...>')
     .description(
-      'Run the report-contract validators (BASIS-1..UNIT-1) over one or more report-data.json ' +
-        'documents. Exit 0 = all clean, 1 = findings, 2 = at least one file was unreadable ' +
-        '(processing still continues through every file; 2 wins over 1 when both occur).',
+      'Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json ' +
+        'documents. Exit 0 = no error-severity findings (warnings may still be reported), ' +
+        '1 = at least one error, 2 = at least one file was unreadable (processing still ' +
+        'continues through every file; 2 wins over 1 when both occur).',
     )
     .option(
       '--figures <path...>',
@@ -170,7 +234,8 @@ export function registerReportCommands(program: Command): void {
         'each unit against the contract the engine served (default: figures*.json beside ' +
         'each document)',
     )
-    .action(async (files: string[], opts: { figures?: string[] }, cmd: Command) => {
+    .option('--no-figures', 'ignore any figures*.json beside the document; skip the served-unit check')
+    .action(async (files: string[], opts: { figures?: string[] | false }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const results: FileResult[] = [];
@@ -182,8 +247,14 @@ export function registerReportCommands(program: Command): void {
         for (const file of files) {
           try {
             const doc = await readJson<ReportDataDocument>(file);
-            const served = await loadServedContract(file, opts.figures);
-            results.push({ file, findings: validateReportData(doc, served) });
+            const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
+            for (const id of served.conflicts) {
+              console.error(
+                `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; ` +
+                  'the served-unit check is skipped for it. Remove the stale one.',
+              );
+            }
+            results.push({ file, findings: validateReportData(doc, served.index) });
           } catch (err) {
             anyUnreadable = true;
             results.push({ file, error: err instanceof Error ? err.message : String(err) });
@@ -312,17 +383,24 @@ export function registerReportCommands(program: Command): void {
         'each unit against the contract the engine served (default: figures*.json beside ' +
         'the document)',
     )
+    .option('--no-figures', 'ignore any figures*.json beside the document; skip the served-unit check')
     .action(
       async (
         file: string,
-        opts: { out: string; force: boolean; figures?: string[] },
+        opts: { out: string; force: boolean; figures?: string[] | false },
         cmd: Command,
       ) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const doc = await readJson<RenderReportDataDocument>(file);
-        const served = await loadServedContract(file, opts.figures);
-        const findings = validateReportData(doc, served);
+        const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
+        for (const id of served.conflicts) {
+          console.error(
+            `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; ` +
+              'the served-unit check is skipped for it. Remove the stale one.',
+          );
+        }
+        const findings = validateReportData(doc, served.index);
         const blocking = blockingFindings(findings);
         // Warnings are reported and never bar the door. Before this split the
         // gate refused on ANY finding, so the single heuristic check in UNIT-2
@@ -336,9 +414,18 @@ export function registerReportCommands(program: Command): void {
         }
         if (blocking.length > 0 && !opts.force) {
           for (const f of blocking) console.error(`  ERROR [${f.rule}] ${f.subject} -- ${f.detail}`);
+          // Name the sidecars. A UNIT-2 contract finding cites a value that
+          // appears nowhere in report-data.json, so "fix report-data.json"
+          // alone sends the operator to debug a file that looks correct.
+          const servedHint =
+            served.sources.length > 0
+              ? ` Served units were read from: ${served.sources.join(', ')} — if one of those is ` +
+                'from another run, remove it or pass --no-figures.'
+              : '';
           throw new UserFacingError(
             `Refusing to render: ${blocking.length} validator finding(s). Fix report-data.json ` +
-              '(corrections go to the data file, never the HTML) or pass --force.',
+              '(corrections go to the data file, never the HTML) or pass --force.' +
+              servedHint,
             'report_data_invalid',
           );
         }

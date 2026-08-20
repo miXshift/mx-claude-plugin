@@ -186,12 +186,41 @@ function currencySymbol(code: string | undefined): string {
   return CURRENCY_SYMBOLS[code] ?? `${code} `;
 }
 
+/**
+ * Coerce a document-supplied `precision` into the fraction-digit domain every
+ * formatter below shares.
+ *
+ * ⚠ THIS IS THE SEAM THAT MATTERS, not the extractor. `readServedFormat`
+ * range-checks the precision it reads off an envelope, but `report render`
+ * does not read envelopes -- it reads report-data.json, which SKILL.md Step 5
+ * has the MODEL compose by hand. A `precision` authored there reaches
+ * `toFixed` / `toLocaleString` directly, and both THROW a RangeError outside
+ * 0..100, which kills the whole render and writes no HTML at all.
+ *
+ * Same rule as `unitToken`: a malformed document must degrade, not crash.
+ * Out-of-domain, non-integer, NaN and non-number all fall back to the caller's
+ * default rather than propagating.
+ */
+const MAX_FRACTION_DIGITS = 20;
+function precisionOf(precision: unknown, fallback: number): number {
+  return sanePrecision(precision) ?? fallback;
+}
+
+/** The same domain check, returning `undefined` for anything unusable so a
+ *  caller's own `?? n` default survives. */
+function sanePrecision(precision: unknown): number | undefined {
+  if (typeof precision !== 'number' || !Number.isFinite(precision)) return undefined;
+  const p = Math.trunc(precision);
+  return p >= 0 && p <= MAX_FRACTION_DIGITS ? p : undefined;
+}
+
 /** Fixed-precision, thousands-grouped, locale-PINNED (always en-US — never
  *  the host locale, so output cannot drift by environment). */
 function fixed(n: number, precision: number): string {
+  const p = precisionOf(precision, 0);
   return n.toLocaleString('en-US', {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
+    minimumFractionDigits: p,
+    maximumFractionDigits: p,
   });
 }
 
@@ -295,7 +324,12 @@ export function formatFigureValue(fig: FigureLike, currencyCode: string | undefi
   const unit = fig.unit ?? 'raw';
   const neg = n < 0;
   const a = Math.abs(n);
-  const prec = fig.precision;
+  // Sanitized to `undefined` when out of domain, so each case below keeps its
+  // OWN default (`?? 0` / `?? 1`) rather than inheriting one here. A garbage
+  // precision therefore renders the number at its normal precision instead of
+  // throwing a RangeError out of toFixed and killing the render. See
+  // `precisionOf`.
+  const prec = sanePrecision(fig.precision);
 
   let body: string;
   switch (unit) {

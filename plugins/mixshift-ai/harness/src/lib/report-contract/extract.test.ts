@@ -264,6 +264,32 @@ describe('entity-scope extraction (env.entityKey present)', () => {
   const out = extractFigures(entityDoc);
   const figs = byId(out);
 
+  it('binds a BLOCKING caveat to the entity row’s levels, not just its netChange', () => {
+    // The sibling fix bound blocking caveats to total-scope levels. Leaving
+    // the entity path on deltaCaveats alone would have fixed the summary and
+    // left the ROW it points at quotable bare — and the entity row is where
+    // it matters most: the regime guard flags a specific ASIN, so that row IS
+    // the suspect number the caveat names.
+    const blockingEntity = {
+      envelope: {
+        ...entityDoc.envelope,
+        caveats: [
+          { kind: 'lost_sales_regime_guard', severity: 'blocking', message: 'Do not quote this row bare.' },
+          { kind: 'surge_window', severity: 'disclosure', message: 'entity-scoped surge' },
+        ],
+      },
+    };
+    const figs = byId(extractFigures(blockingEntity));
+    const cid = 'env.lost_sales_regime_guard.0';
+    for (const id of ['ops.entity.item-group-a.ops.p1', 'ops.entity.item-group-a.ops.p2']) {
+      expect(figs.get(id)?.caveats).toEqual([cid]);
+    }
+    // The delta still carries BOTH — a comparison caveat qualifies the change.
+    expect(figs.get('ops.entity.item-group-a.ops.delta')?.caveats).toEqual(
+      expect.arrayContaining([cid, 'env.surge_window.1']),
+    );
+  });
+
   it('routes to the entity extraction path and records entityKey in source', () => {
     expect(out.source.entityKey).toBe('item-group-a');
     expect(out.source.bridgeRunId).toBe('run-entity-0001');
@@ -1770,7 +1796,7 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
     ['the wrong case', 'PTS'],
     ['a drifted token', 'ppt'],
   ])(
-    'refuses to invent a change unit when deltaUnit is %s, rather than silently using the level',
+    'refuses to invent a RATE change unit when deltaUnit is %s, rather than silently using the level',
     (_label, deltaUnit) => {
       const format: Record<string, unknown> = { display: 'percent', decimals: 1 };
       if (deltaUnit !== undefined) format.deltaUnit = deltaUnit;
@@ -1789,6 +1815,44 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
       expect(servedChipValues(renderServed(response, ['ops.conversion.delta']))).not.toContain('5.0%');
     },
   );
+
+  it.each([
+    ['absent', undefined],
+    ['a drifted token', 'ppt'],
+  ])(
+    'still formats a NON-rate delta when deltaUnit is %s, because the guess is not load-bearing there',
+    (_label, deltaUnit) => {
+      // changeUnitOf changes exactly one token (ratio -> points_fraction), so
+      // for currency the change unit IS the level unit whichever way deltaUnit
+      // reads. Refusing here would print "44000 unformattable" beside a p1/p2
+      // rendering "$100,000" — a new on-page contradiction, and worse than the
+      // defect being guarded against.
+      const format: Record<string, unknown> = { display: 'currency', decimals: 0 };
+      if (deltaUnit !== undefined) format.deltaUnit = deltaUnit;
+      const response = opsEnvelopeWith('0.2.0', format);
+      expect(byId(extractFigures(response)).get('ops.ops.delta')).toMatchObject({ unit: 'currency' });
+      expect(servedChipValues(renderServed(response, ['ops.ops.delta']))).toEqual(['$44,000']);
+    },
+  );
+
+  it('does not re-scale an ALREADY-WHOLE level when deltaUnit is pts', () => {
+    // 'pts' says the change reads in percentage POINTS; how it is STORED
+    // follows the level. `percent-points` is already whole, so mapping it to
+    // points_fraction would multiply it a second time and print a 2.4-point
+    // move as "240.0 pts".
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'percent-points', decimals: 1, deltaUnit: 'pts' },
+      'ad_driven_share',
+      { p1: 10.2, p2: 12.6, delta: 2.4 },
+    );
+    expect(byId(extractFigures(response)).get('ops.ad_driven_share.delta')).toMatchObject({
+      unit: 'percent-points',
+    });
+    expect(servedChipValues(renderServed(response, ['ops.ad_driven_share.delta']))).not.toContain(
+      '240.0 pts',
+    );
+  });
 
   it('ignores a served `decimals` outside the formatter domain instead of killing the render', () => {
     // toFixed / toLocaleString THROW a RangeError past their fraction-digit

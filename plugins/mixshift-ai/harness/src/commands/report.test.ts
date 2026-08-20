@@ -353,3 +353,83 @@ describe('report extract -- composite bundle guard (INS-MONTHLY-01 mom/yoy unwra
     expect(ids).not.toContain('ops.ops.p1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Served-unit sidecar discovery (fix round 2). `report validate` / `render`
+// read `report extract` output beside the document so UNIT-2's contract arm
+// survives the model-authored assembly seam. Auto-discovery is implicit
+// filesystem behaviour on a user-facing command, so its failure modes are the
+// point of these tests: a stray or stale file must not be able to block a
+// correct render, and a typo must not silently switch the check off.
+// ---------------------------------------------------------------------------
+
+describe('report validate -- served-unit sidecar discovery', () => {
+  /** A minimal document whose one figure carries NO served_unit, exactly as a
+   *  model-composed report-data.json does. */
+  const docWith = (unit: string) => ({
+    figures: [
+      {
+        id: 'mom.ops.ops.p2',
+        label: 'Revenue',
+        value: 1000,
+        unit,
+        basis: 'ordered_revenue',
+        source_path: 'envelope:metrics[0].totals.p2',
+      },
+    ],
+  });
+  const sidecar = (servedUnit: string) => ({
+    figures: [{ id: 'mom.ops.ops.p2', served_unit: servedUnit }],
+  });
+
+  it('catches a relabelled unit that the document alone cannot reveal', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await writeJsonFile('figures.mom.ops.json', sidecar('currency'));
+    await runCli({}, 'validate', doc);
+    expect(stdoutText()).toContain("contradicts the served contract 'currency'");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('names the sidecar in the finding, so the operator is not sent to debug a correct file', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    const side = await writeJsonFile('figures.mom.ops.json', sidecar('currency'));
+    await runCli({}, 'validate', doc);
+    // The contradicting value appears NOWHERE in report-data.json.
+    expect(stdoutText()).toContain(side);
+  });
+
+  it('drops a figure whose sidecars DISAGREE instead of letting filename sort order decide', async () => {
+    // One of these is from another run/brand/month. Neither is trustworthy,
+    // and last-alphabetical-wins would silently block a correct document.
+    const doc = await writeJsonFile('report-data.json', docWith('currency'));
+    await writeJsonFile('figures.aaa.json', sidecar('currency'));
+    await writeJsonFile('figures.zzz.json', sidecar('count'));
+    await runCli({}, 'validate', doc);
+    expect(stdoutText()).not.toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('--no-figures ignores the directory entirely', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await writeJsonFile('figures.mom.ops.json', sidecar('currency'));
+    await runCli({}, 'validate', doc, '--no-figures');
+    expect(stdoutText()).not.toContain('contradicts the served contract');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('ERRORS on an unreadable --figures path rather than silently switching the check off', async () => {
+    // Failing open here means one typo voids the served-unit check and the
+    // run reports CLEAN -- on the exact check that exists to catch a wrong unit.
+    const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await runCli({}, 'validate', doc, '--figures', join(dir, 'typo.json'));
+    expect(stdoutText()).not.toContain(': CLEAN');
+    expect(process.exitCode).not.toBe(0);
+  });
+
+  it('ignores a well-formed stray file that carries no served units at all', async () => {
+    const doc = await writeJsonFile('report-data.json', docWith('currency'));
+    await writeJsonFile('figures-notes.json', { figures: [{ id: 'mom.ops.ops.p2' }] });
+    await runCli({}, 'validate', doc);
+    expect(process.exitCode).toBe(0);
+  });
+});
