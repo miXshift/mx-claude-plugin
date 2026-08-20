@@ -157,22 +157,32 @@ async function loadServedContract(
   const conflicts = new Set<string>();
 
   for (const path of candidates) {
+    // ⚠ UNPARSEABLE IS NOT THE SAME AS IRRELEVANT, and the difference is the
+    // whole fail-open. A file named `figures*.json` that does not parse is
+    // almost certainly a CORRUPT extract artifact -- `report extract --out`
+    // writes non-atomically, so an interrupted run leaves exactly this -- and
+    // quietly skipping it means the served-unit check silently does nothing
+    // and the run reports CLEAN. Reproduced on the auto-discovery path:
+    // identical document and command, well-formed sidecar FAILs and truncated
+    // sidecar PASSes.
+    //
+    // Read and parse fail SEPARATELY so the remediation matches the failure:
+    // "re-run the extract" cures a truncated file and does nothing for a
+    // permissions error.
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new UserFacingError(
+        `${path} could not be read: ${err instanceof Error ? err.message : String(err)}. ` +
+          'Fix its permissions, delete the file, or pass --no-figures.',
+        'figures_unreadable',
+      );
+    }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(await readFile(path, 'utf8'));
+      parsed = JSON.parse(raw);
     } catch (err) {
-      // ⚠ UNPARSEABLE IS NOT THE SAME AS IRRELEVANT, and the difference is the
-      // whole fail-open. A file named `figures*.json` that does not parse is
-      // almost certainly a CORRUPT extract artifact -- `report extract --out`
-      // writes non-atomically, so an interrupted run leaves exactly this --
-      // and quietly skipping it means the served-unit check silently does
-      // nothing and the run reports CLEAN. Reproduced on the auto-discovery
-      // path: identical document and command, well-formed sidecar FAILs and
-      // truncated sidecar PASSes.
-      //
-      // The explicit `--figures` path was hardened for this and the default
-      // path was not, which is the "fixed one path, left its sibling" shape
-      // this branch keeps repeating. Both now refuse.
       throw new UserFacingError(
         `${path} is not valid JSON: ${err instanceof Error ? err.message : String(err)}. ` +
           'A `figures*.json` that will not parse is usually a `report extract --out` that was ' +
@@ -294,8 +304,10 @@ export function registerReportCommands(program: Command): void {
     .description(
       'Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json ' +
         'documents. Exit 0 = no error-severity findings (warnings may still be reported), ' +
-        '1 = at least one error, 2 = at least one file was unreadable (processing still ' +
-        'continues through every file; 2 wins over 1 when both occur).',
+        '1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still ' +
+        'continues through the remaining documents; 2 wins over 1 when both occur). ' +
+        'A corrupt figures*.json sidecar is different: it fails the whole command up front, ' +
+        'because it silently voids the served-unit check for every document.',
     )
     .option(
       '--figures <path...>',
@@ -327,7 +339,8 @@ export function registerReportCommands(program: Command): void {
             for (const id of served.conflicts) {
               console.error(
                 `  warn [UNIT-2] ${file}: ${id} -- two figures files disagree on this figure's ` +
-                  'served unit; the served-unit check is skipped for it. Remove the stale one.',
+                  'served unit; their evidence is discarded for it (a served_unit on the figure ' +
+                  'itself still applies). Remove the stale file.',
               );
             }
             results.push({

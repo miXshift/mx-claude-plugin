@@ -498,11 +498,37 @@ describe('report -- served-unit sidecar, round-3 hardening', () => {
   // OPPOSITE verdicts on the same document. Both halves of the correct
   // behaviour are pinned in the round-4 block below.
 
-  it('a RETIRED figure goes fully silent rather than falling back to the figure stamp', async () => {
-    // Two sidecars disagree, so the run prints "the check is skipped for it".
-    // Falling through to the figure's own served_unit would then block the
-    // render on that very figure, contradicting the line just printed.
+  it('quarreling sidecars retire the FILES, never the figure\'s own stamp', async () => {
+    // ⚠ This test once asserted full silence here, and that was the defect:
+    // two files disputing EACH OTHER impeach the files, not the document. This
+    // doc's unit 'count' contradicts its OWN served_unit 'currency' -- wrong
+    // under any resolution of the quarrel -- and ambient file garbage must not
+    // waive a check the explicit --no-figures flag keeps. The warn line says
+    // exactly what is discarded, so reporting the stamp finding alongside it
+    // is consistent, not contradictory.
     const doc = await writeJsonFile('report-data.json', docWith('count'));
+    await writeJsonFile('figures.aaa.json', sidecar('currency'));
+    await writeJsonFile('figures.zzz.json', sidecar('number'));
+    await runCli({}, 'validate', doc);
+    expect(stdoutText()).toContain('contradicts the served contract');
+    // And the finding blames the stamp, not a file that never served it.
+    expect(stdoutText()).toContain("the figure's own served_unit");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('quarreling sidecars ARE fully silent for a figure with no stamp of its own', async () => {
+    const doc = await writeJsonFile('report-data.json', {
+      figures: [
+        {
+          id: 'mom.ops.ops.p2',
+          label: 'Revenue',
+          value: 1000,
+          unit: 'count',
+          basis: 'ordered_revenue',
+          source_path: 'envelope:metrics[0].totals.p2',
+        },
+      ],
+    });
     await writeJsonFile('figures.aaa.json', sidecar('currency'));
     await writeJsonFile('figures.zzz.json', sidecar('number'));
     await runCli({}, 'validate', doc);

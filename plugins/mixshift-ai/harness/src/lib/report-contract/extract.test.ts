@@ -1861,6 +1861,38 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
     );
   });
 
+  it.each([[-0.5], [-0.9], [0.5], [1.5]])(
+    'rejects a FRACTIONAL served decimals of %p instead of truncating it into range',
+    (decimals) => {
+      // Mirrors render-report.test.ts's pin on sanePrecision, because THIS
+      // copy wins -- it stamps the figure's `precision` in the first place.
+      // Math.trunc(-0.5) is -0, which passes a `>= 0` gate, so a trunc-first
+      // implementation stamps precision 0 and silently overrides the unit's
+      // own display default. Both gates check integer-ness BEFORE truncation;
+      // a revert of either must go red here, not just in the renderer.
+      // A percent display renders 1dp by DEFAULT, so a laundered precision 0
+      // is visible: "20.4%" (rejected -> unit default) vs "20%" (trunc bug).
+      const response = opsEnvelopeWith(
+        '0.2.0',
+        { display: 'percent', decimals, deltaUnit: 'pts' },
+        'conversion',
+        { p1: 0.204, p2: 0.25, delta: 0.046 },
+      );
+      expect(byId(extractFigures(response)).get('ops.conversion.p1')?.precision).toBeUndefined();
+      expect(servedChipValues(renderServed(response, ['ops.conversion.p1']))).toEqual(['20.4%']);
+    },
+  );
+
+  it('still stamps an explicit integer -0 as the 0 the engine meant', () => {
+    const response = opsEnvelopeWith(
+      '0.2.0',
+      { display: 'percent', decimals: -0, deltaUnit: 'pts' },
+      'conversion',
+      { p1: 0.204, p2: 0.25, delta: 0.046 },
+    );
+    expect(servedChipValues(renderServed(response, ['ops.conversion.p1']))).toEqual(['20%']);
+  });
+
   it('ignores a served `decimals` outside the formatter domain instead of killing the render', () => {
     // toFixed / toLocaleString THROW a RangeError past their fraction-digit
     // domain, and a throw in the renderer writes no HTML at all. A malformed

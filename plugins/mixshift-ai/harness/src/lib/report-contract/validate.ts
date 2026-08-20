@@ -549,17 +549,24 @@ export interface ServedContractIndex {
    *  does not contain the contradicting value anywhere they can see it. */
   origin?: Record<string, string>;
   /**
-   * Figures whose served contract was RETIRED as untrustworthy (two sources
-   * disagreed about them). Arm (a) must go fully silent for these.
+   * Figures whose SIDECAR evidence was retired as untrustworthy (two files
+   * disagreed about them). Retires the INDEX entry for those ids -- and only
+   * the index entry.
    *
-   * ⚠ Retiring the index entry alone does not do that: the check falls back to
-   * the figure's OWN `served_unit`, which the model copied, so the run prints
-   * "the served-unit check is skipped for it" and then blocks the render on
-   * exactly that figure anyway. Silence has to be explicit.
+   * ⚠ It does NOT silence a `served_unit` carried on the figure itself. Two
+   * files disputing each other impeach the files, not the document: a figure
+   * whose `unit` contradicts its OWN stamp is wrong under any resolution of
+   * the quarrel, and letting ambient file garbage waive a check that even the
+   * explicit `--no-figures` flag keeps would invert the two. (An earlier
+   * revision suppressed both; the message printed alongside it now says
+   * exactly what is discarded, which was the real complaint.)
    */
   suppressed?: string[];
-  /** `--no-figures`: skip the served-contract arm outright, including any
-   *  stamp carried on the figure itself. The flag says skip; it must skip. */
+  /** `--no-figures`: ignore figures FILES. Retires the index the same way
+   *  `suppressed` does, for every id. A `served_unit` on the figure itself is
+   *  not a file and is still checked -- the render refusal offers "remove it
+   *  or pass --no-figures" as equivalents, and both must reach the same
+   *  verdict on the same document. */
   suppressAll?: boolean;
 }
 
@@ -915,30 +922,30 @@ export function validateReportData(
     // and "helpfully" makes served_unit agree with it produces a figure that
     // is self-consistent and silently wrong -- which is the failure this rule
     // exists to catch, so the copy cannot be allowed to shadow the original.
-    // ⚠ `suppressAll` retires the INDEX, not the document's own stamp.
-    // `--no-figures` says to ignore figures FILES; a `served_unit` sitting on
-    // the figure is not a file, it is a self-contradiction inside the document
-    // (`unit: 'count'` against its own `served_unit: 'currency'`), and no
-    // sidecar has to exist for it to be wrong. Waiving that too made the
-    // render refusal's own advice self-defeating: it offers "remove it or pass
-    // --no-figures" as equivalents, and they returned OPPOSITE verdicts on the
-    // same document -- with the safer-sounding branch being the one that
-    // shipped the mislabeled figure.
-    //
-    // `suppressed` is different and does cover both: there the evidence was
-    // judged untrustworthy for that specific figure, and the run has already
-    // printed "the check is skipped for it", so blocking on it anyway would
-    // contradict the line it just wrote.
-    const indexUnit = servedSuppressAll ? undefined : servedUnits[f.id];
-    const servedUnit = servedSuppressed.has(f.id) ? undefined : (indexUnit ?? f.served_unit);
+    // ⚠ Suppression -- both kinds -- retires the INDEX, never the document's
+    // own stamp. `--no-figures` says to ignore figures FILES, and a conflict
+    // between two files impeaches the files; in neither case is a
+    // `served_unit` sitting on the figure a file. A figure whose `unit`
+    // contradicts its OWN stamp (`'count'` against `'currency'`) is wrong with
+    // no sidecar anywhere, so an ambient-file quarrel must not waive a check
+    // the explicit flag keeps -- that inversion shipped once (a
+    // self-contradicting document rendered ok:true the moment two quarreling
+    // files appeared beside it) and the render refusal's "remove it or pass
+    // --no-figures" advice must reach one verdict, not two.
+    const suppressIndex = servedSuppressAll || servedSuppressed.has(f.id);
+    const indexUnit = suppressIndex ? undefined : servedUnits[f.id];
+    const servedUnit = indexUnit ?? f.served_unit;
     if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
-      const from = servedOrigin[f.id];
+      // Attribute a file ONLY when the file actually supplied the unit. When
+      // the contradiction came from the figure's own stamp, naming a sidecar
+      // sends the operator to a file that never served this value.
+      const from = indexUnit !== undefined ? servedOrigin[f.id] : undefined;
       findings.push({
         rule: 'UNIT-2',
         subject: f.id,
         detail:
           `unit '${unit ?? ''}' contradicts the served contract '${servedUnit}'` +
-          (from ? ` (served by ${from})` : ''),
+          (from ? ` (served by ${from})` : " (the figure's own served_unit)"),
       });
     }
     const scale = unit !== undefined ? PERCENT_FAMILY_SCALE[unit] : undefined;
