@@ -818,6 +818,42 @@ describe('US4 honest notice: org has this brand, this attempt could not reach it
     expect(stderrText()).toContain('Your team has context for acme');
   });
 
+  it('red-team fix 3: does NOT fire on a budget DEADLINE when THIS attempt already proved the store reachable via a live seed-path manifest fetch', async () => {
+    // No makeBrandDir: forces the seed path. fetchManifest resolves fast and
+    // live (no pre-warmed cache -> fromCache:false -> liveManifestFetchSucceeded
+    // true). fetchDoc then hangs forever, so the doc-sync half starves the
+    // SAME shared budget to DEADLINE right after that successful manifest
+    // round trip - starvation, not unreachability, per fix 3's reasoning.
+    const manifestFastDocHangs: ContextSyncClient = {
+      fetchManifest: async () => ({
+        ok: true,
+        brands: [manifestBrand('acme', [{ key: 'narrative', content: 'hi', revision: 1 }])],
+      }),
+      fetchDoc: () => new Promise(() => {}), // never resolves
+      putDoc: () => new Promise(() => {}),
+      putAssignment: async () => ({ ok: true }),
+    };
+
+    const result = await maybeAutoSync('acme', {
+      dataDirOverride: testDir,
+      client: manifestFastDocHangs,
+      env: LIVE_ENV,
+      budgetMs: 50,
+      identity: 'id-A',
+    });
+
+    // raceMs is budgetMs MINUS the seed-path's own (nonzero, by design here)
+    // manifest-check elapsed time — see the module doc's budget note — so
+    // the exact ms in the timeout detail is not deterministic; only its
+    // shape and the overall failed/DEADLINE outcome are.
+    expect(result.ran).toBe(false);
+    if (!result.ran) expect(result.reason).toBe('failed');
+    if (!result.ran && result.reason === 'failed') {
+      expect(result.detail).toMatch(/^timed out after \d+ms$/);
+    }
+    expect(stderrText()).toBe('');
+  });
+
   it('dedupes: two failed attempts for the same brand print the notice exactly once', async () => {
     await makeBrandDir('acme');
     await warmCache('id-A', [manifestBrand('acme', [])]);
