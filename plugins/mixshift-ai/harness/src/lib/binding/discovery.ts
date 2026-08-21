@@ -45,6 +45,18 @@
  */
 
 import { runNamedQuery, type DataQueryResult } from '../data/query-runner.js';
+import { UNCLASSIFIED_LABEL, normalizeLabel } from './label.js';
+import {
+  coerceRetailEconRow,
+  coerceAdsEconRow,
+  coerceVendorEconRow,
+  type Sbd05RetailEconRow,
+  type Sbd06AdsEconRow,
+  type Sbd07VendorEconRow,
+  type Sbd05RetailEconRowWire,
+  type Sbd06AdsEconRowWire,
+  type Sbd07VendorEconRowWire,
+} from './economics.js';
 import { discoverSellers } from '../discovery/seller-query.js';
 
 // ---------------------------------------------------------------------------
@@ -186,17 +198,13 @@ export function coerceMatchRow(row: Sbd04MatchRowWire): Sbd04MatchRow {
 }
 
 /** Blank/absent labels are a BUCKET, never a sub-brand candidate (design doc
- *  §3, the DHC-07/08 rule: `COALESCE(NULLIF(col,''),'(unclassified)')`). */
-export const UNCLASSIFIED_LABEL = '(unclassified)';
-
-/** Normalize a raw label value to the unclassified bucket when blank. The
- *  gateway is expected to already COALESCE server-side (matching the
- *  DHC-07/08 pattern), but this is defensive: a null/''/whitespace-only
- *  label must never silently count as a "distinct label" candidate. */
-export function normalizeLabel(raw: string | null | undefined): string {
-  const trimmed = (raw ?? '').trim();
-  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
-}
+ *  §3, the DHC-07/08 rule: `COALESCE(NULLIF(col,''),'(unclassified)')`).
+ *
+ *  DEFINED IN `./label.ts`, re-exported here so existing importers are
+ *  unaffected. It moved because economics.ts needs the SAME normalizer and
+ *  cannot import this module without a cycle — keying the two sides
+ *  differently is what let a whitespace-padded label lose its economics. */
+export { UNCLASSIFIED_LABEL, normalizeLabel };
 
 // ---------------------------------------------------------------------------
 // Per-side coverage
@@ -495,6 +503,11 @@ export interface LabelDiscoveryFetchResult {
   vendorRows: Sbd03VendorRow[];
   adsRows: Sbd02AdsRow[];
   matchRows: Sbd04MatchRow[];
+  /** Per-label economics (mx-ops#6): the dollars promotion candidates rank
+   *  on, and the observable activity their lifecycle is read from. */
+  retailEconRows: Sbd05RetailEconRow[];
+  adsEconRows: Sbd06AdsEconRow[];
+  vendorEconRows: Sbd07VendorEconRow[];
   /** One entry per query id that failed; the corresponding rows array above
    *  is empty for that side rather than the whole call throwing. The
    *  synthetic id `resolve_seller_ids` covers the AmazonSellerID -> internal
@@ -517,6 +530,35 @@ export function resolveSellerIds(
     .map((s) => s.seller_id);
 }
 
+/** How many discovery queries may be in flight at once. Three keeps the
+ *  connection burst narrow enough to avoid the connect-timeout drop that a
+ *  wide fan-out causes on a slow network, while still overlapping enough
+ *  that the whole fetch stays well inside the statement-timeout budget.
+ *  Exported so a test can assert the fan-out is actually bounded. */
+export const DISCOVERY_FETCH_CONCURRENCY = 3;
+
+/**
+ * Run `tasks` with at most `limit` in flight, preserving input order in the
+ * results. Rejections propagate (each task here already resolves to a typed
+ * failure envelope rather than throwing).
+ */
+async function mapWithConcurrency<T extends readonly (() => Promise<unknown>)[]>(
+  tasks: T,
+  limit: number,
+): Promise<{ -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+  const results = new Array<unknown>(tasks.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]!();
+    }
+  });
+  await Promise.all(workers);
+  return results as { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
+}
+
 /**
  * Fetch all four sbd-* named queries for one Amazon Seller ID. Resolves the
  * AmazonSellerID to internal numeric seller_id(s) first (sbd-01..04 are
@@ -532,7 +574,15 @@ export async function fetchLabelDiscovery(
   amazonSellerId: string,
   options: { dataDirOverride?: string; queryTimeoutMs?: number } = {},
 ): Promise<LabelDiscoveryFetchResult> {
-  const none = { retailRows: [], adsRows: [], vendorRows: [], matchRows: [] };
+  const none = {
+    retailRows: [],
+    adsRows: [],
+    vendorRows: [],
+    matchRows: [],
+    retailEconRows: [],
+    adsEconRows: [],
+    vendorEconRows: [],
+  };
 
   let sellers: Awaited<ReturnType<typeof discoverSellers>>;
   try {
@@ -567,12 +617,31 @@ export async function fetchLabelDiscovery(
     queryTimeoutMs: options.queryTimeoutMs,
   };
 
-  const [retail, ads, vendor, match] = await Promise.all([
-    runNamedQuery<Sbd01RetailRowWire>('sbd-01', queryOpts),
-    runNamedQuery<Sbd02AdsRowWire>('sbd-02', queryOpts),
-    runNamedQuery<Sbd03VendorRowWire>('sbd-03', queryOpts),
-    runNamedQuery<Sbd04MatchRowWire>('sbd-04', queryOpts),
-  ]);
+  // Bounded concurrency, NOT a bare Promise.all over all seven.
+  //
+  // Each simultaneous request opens its OWN connection, and on a network
+  // where a fresh connect is slow, a wide burst is what pushes one of them
+  // past the connect timeout — the reported failure behind mx-ops#6,
+  // where a 4-wide burst reliably dropped one query. The transient replay
+  // in query-runner is the safety net; keeping the burst narrow is what
+  // stops it being needed. Sockets freed by an earlier wave get reused by
+  // the next, so a narrower fan-out also opens fewer connections in total.
+  //
+  // The economics trio (sbd-05/06/07) took this call from four queries to
+  // seven, so widening the burst here would have made the very failure just
+  // fixed MORE likely rather than less.
+  const [retail, ads, vendor, match, retailEcon, adsEcon, vendorEcon] = await mapWithConcurrency(
+    [
+      () => runNamedQuery<Sbd01RetailRowWire>('sbd-01', queryOpts),
+      () => runNamedQuery<Sbd02AdsRowWire>('sbd-02', queryOpts),
+      () => runNamedQuery<Sbd03VendorRowWire>('sbd-03', queryOpts),
+      () => runNamedQuery<Sbd04MatchRowWire>('sbd-04', queryOpts),
+      () => runNamedQuery<Sbd05RetailEconRowWire>('sbd-05', queryOpts),
+      () => runNamedQuery<Sbd06AdsEconRowWire>('sbd-06', queryOpts),
+      () => runNamedQuery<Sbd07VendorEconRowWire>('sbd-07', queryOpts),
+    ] as const,
+    DISCOVERY_FETCH_CONCURRENCY,
+  );
 
   const errors: LabelDiscoveryFetchResult['errors'] = [];
   function rowsOf<WireRow, CleanRow>(
@@ -585,13 +654,35 @@ export async function fetchLabelDiscovery(
     return [];
   }
 
+  // Coerce all four sides BEFORE building the result. `rowsOf` is what
+  // PUSHES into `errors`, so evaluating `ok: errors.length === 0` inline as
+  // the first property of the object literal read `errors` while it was
+  // still empty — object-literal properties evaluate in source order, so
+  // `ok` was computed before any of the rowsOf() calls below it had run.
+  // That made `ok` unconditionally true whenever the seller-id resolution
+  // above succeeded, no matter how many queries failed, which in turn made
+  // classifyFetchOutcome always return 'ok' and left the command layer's
+  // fail-loud abort permanently unreachable. Root cause of the
+  // 2026-08-18 report (mx-ops#6): a dropped ads query rendered as a
+  // confident "no campaigns yet" instead of stopping the plan.
+  const retailRows = rowsOf('sbd-01', retail, coerceRetailRow);
+  const adsRows = rowsOf('sbd-02', ads, coerceAdsRow);
+  const vendorRows = rowsOf('sbd-03', vendor, coerceVendorRow);
+  const matchRows = rowsOf('sbd-04', match, coerceMatchRow);
+  const retailEconRows = rowsOf('sbd-05', retailEcon, coerceRetailEconRow);
+  const adsEconRows = rowsOf('sbd-06', adsEcon, coerceAdsEconRow);
+  const vendorEconRows = rowsOf('sbd-07', vendorEcon, coerceVendorEconRow);
+
   return {
     ok: errors.length === 0,
     resolvedSellerIds,
-    retailRows: rowsOf('sbd-01', retail, coerceRetailRow),
-    adsRows: rowsOf('sbd-02', ads, coerceAdsRow),
-    vendorRows: rowsOf('sbd-03', vendor, coerceVendorRow),
-    matchRows: rowsOf('sbd-04', match, coerceMatchRow),
+    retailRows,
+    adsRows,
+    vendorRows,
+    matchRows,
+    retailEconRows,
+    adsEconRows,
+    vendorEconRows,
     errors,
   };
 }
@@ -603,20 +694,41 @@ export async function fetchLabelDiscovery(
  *             succeeded.
  *   'error'   the seller-id resolution step failed (nothing to query at
  *             all — see the synthetic `resolve_seller_ids` error id), or
- *             ALL FOUR sbd-* queries failed.
- *   'partial' some but not all of the four sbd-* queries failed; the
- *             report is real (built from whichever sides succeeded) but
- *             incomplete.
+ *             EVERY sbd-* query failed.
+ *   'partial' some but not all of the sbd-* queries failed; the report is
+ *             real (built from whichever sides succeeded) but incomplete.
  */
 export type FetchOutcome = 'ok' | 'partial' | 'error';
 
 /** How many gateway named queries fetchLabelDiscovery calls per run (the
- *  four sbd-* entries) — used to tell "some failed" from "all failed". */
-const SBD_QUERY_COUNT = 4;
+ *  four discovery entries plus the three economics ones) — used to tell
+ *  "some failed" from "all failed". Must track the fan-out above: if it
+ *  drifts LOW, an all-failed run misreports as 'partial' and the caller
+ *  renders an empty plan instead of an error. A test pins the two together. */
+export const SBD_QUERY_COUNT = 7;
+
+/** The sbd-* entries `assembleCoverageReport` is actually built from.
+ *
+ *  The economics trio (sbd-05/06/07) is NOT read by `brand discover
+ *  --seller-id`, so it must never be able to lift the failure count and turn
+ *  a total failure of the data-bearing four into 'partial'. Raising
+ *  SBD_QUERY_COUNT from 4 to 7 did exactly that: with all four report
+ *  queries dead, `4 >= 7` is false, so the run classified 'partial', both
+ *  fail-loud guards (which key on 'error') stayed shut, and `classifyShape`
+ *  read a zero-row report as `proposal: 'single_brand'` — a confident
+ *  "this account is one brand" verdict, at exit 0, built from nothing.
+ *
+ *  That is the same defect class this whole change exists to remove, so the
+ *  count is no longer the only thing standing between a dropped query and a
+ *  fabricated answer. */
+const REPORT_BEARING_QUERY_IDS = ['sbd-01', 'sbd-02', 'sbd-03', 'sbd-04'] as const;
 
 export function classifyFetchOutcome(fetched: LabelDiscoveryFetchResult): FetchOutcome {
   if (fetched.ok) return 'ok';
-  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === 'resolve_seller_ids');
-  if (sellerResolutionFailed) return 'error';
-  return fetched.errors.length >= SBD_QUERY_COUNT ? 'error' : 'partial';
+  const failed = new Set(fetched.errors.map((e) => e.query_id));
+  if (failed.has('resolve_seller_ids')) return 'error';
+  // Nothing real to classify from: every query feeding the coverage report
+  // failed, whatever the economics side did.
+  if (REPORT_BEARING_QUERY_IDS.every((id) => failed.has(id))) return 'error';
+  return failed.size >= SBD_QUERY_COUNT ? 'error' : 'partial';
 }

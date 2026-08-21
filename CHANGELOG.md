@@ -110,6 +110,90 @@ starts at 0.5.39; earlier versions predate the changelog.
   the two figures are expected to differ, and a gap between them does not mean
   anything has failed to sync.
 
+- **A sub-brand promotion plan can no longer be built on data that failed to
+  load.** Sub-brand discovery runs four warehouse reads, and if one of them
+  failed the plan was still built and shown as if everything had loaded. A lost
+  ads read printed "no campaigns yet" as a statement of fact rather than
+  reporting that the figure was unavailable, so two runs of the same plan
+  minutes apart could disagree about how many campaigns a brand has. The plan
+  now stops and tells you a read did not complete, instead of presenting a
+  partial picture as a whole one. Re-running is also far less likely to be
+  needed: a read that fails to reach the service before it gets an answer is
+  now retried automatically, which covers the brief connection drops that
+  caused this most often. A read that genuinely returns nothing is still
+  reported as nothing, so "no campaigns yet" remains available when it is
+  actually true.
+
+- **Promotion candidates are ranked by money, not by how many items they
+  have.** The plan decided which brand labels were worth promoting by counting
+  catalog items, so a label sitting on a large but mostly inactive catalog
+  could be proposed ahead of one carrying most of the account's revenue and ad
+  spend — and a brand that was economically large but listed on relatively few
+  items could be left out of the plan altogether. Candidates are now ranked on
+  trailing revenue plus ad spend, and a label qualifies on either its catalog
+  footprint or its share of the account's money, so neither kind of brand gets
+  missed. Each item shows its trailing 365-day revenue and ad spend.
+
+- **Brands that look wound down, or too small to be worth their own brand, are
+  flagged rather than quietly proposed.** A brand with real revenue last year
+  and nothing recent, or one carrying a trivial share of the account, is no
+  longer offered for promotion by default. It still appears in the plan with
+  its real figures and a plain explanation of why it was held back, and can
+  still be promoted if the read is wrong — nothing is hidden and nothing is
+  removed from any total, so the plan continues to reconcile against Seller
+  Central and Vendor Central. Whether a brand is still trading is judged from
+  observable activity — recent orders and recent ad spend — rather than from
+  custom item labels, which every account uses differently.
+
+- **Sub-brand discovery and promotion are findable now.** Asking to build a
+  promotion plan did not reliably reach the right command, and `mixshift brand
+  --help` still described the command group as "list, add, edit, archive" with
+  no mention of `discover`, `promote`, or `demote`. The command group, the
+  capability map shown by `mixshift guide`, and the brand-context skill's own
+  description all list the sub-brand workflow now, and `brand discover` points
+  at `brand promote` as the next step.
+
+- **A total data outage can no longer come back as "this account is a single
+  brand".** When every one of the queries that builds the label report failed,
+  `mixshift brand discover` still reported a confident single-brand verdict —
+  reached by reading an empty result as evidence that the account has no
+  distinct brands — and exited as though it had succeeded. Anything reading
+  that output, including automation, would have taken a network outage for a
+  finding about the business. Discover now reports the failure, proposes
+  nothing, and exits non-zero.
+
+- **Promoting a brand can no longer create one that reads your whole account.**
+  A brand qualifying on its revenue alone, without appearing in the catalog or
+  ad coverage figures, could be turned into a sub-brand carrying no label
+  filter at all: it would have been scoped to the entire seller account while
+  describing itself as a sub-brand, and every figure it reported would have
+  been the account's, not the brand's. Promotion now refuses to create a brand
+  it cannot scope, and where the revenue figures identify which label field the
+  brand was found in, it uses that and creates the brand correctly.
+
+- **A brand with no revenue figures is no longer reported as "too small".** When
+  the revenue lookup returned nothing for a particular brand, that brand was
+  described as holding 0.00% of the account and held back as economically
+  trivial — stating as measurement something that was only missing data. A
+  brand we have no figures for is now proposed normally, and only a brand with
+  real figures behind it can be held back for being small.
+
+- **The plan no longer suggests moving your existing brand onto one it just
+  flagged.** When an account already has a single whole-account brand, the plan
+  proposes which label that brand should become. It picked whichever label
+  carried the most items, without checking whether that same label had been
+  flagged as wound down — so it could recommend, in one breath, both holding a
+  brand back and rebinding your history onto it. Only labels the plan actually
+  proposes are considered now. The percentages shown still count every label,
+  flagged ones included, so the figures continue to reconcile.
+
+- **A brand whose label carries stray spacing keeps its revenue figures.** The
+  revenue lookup matched labels exactly while the rest of the plan matched them
+  with surrounding whitespace trimmed, so a label stored as `" Acme "` on one
+  side and `"Acme"` on the other was treated as two different brands and lost
+  its figures — which then made it look economically trivial. Both sides now
+  match labels the same way.
+
 ## 0.8.9
 
 ### Added

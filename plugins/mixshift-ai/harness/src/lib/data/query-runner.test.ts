@@ -10,7 +10,12 @@ import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runQuery, streamQuery, FIRST_PAGE_PROBE_ROWS } from './query-runner.js';
+import {
+  runQuery,
+  streamQuery,
+  FIRST_PAGE_PROBE_ROWS,
+  TRANSIENT_NETWORK_RETRIES,
+} from './query-runner.js';
 import { createCsvFileSink } from '../output/csv-file-sink.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
@@ -357,10 +362,18 @@ describe('runQuery :: datahub network failure', () => {
     const creds = freshDatahubFixture();
     await saveDatahub(creds, testDir);
 
+    // `fetchFailed(cause)` (from #141) is the shape classify.ts actually
+    // inspects — a TypeError('fetch failed') carrying undici's `.cause`.
+    //
+    // mockRejectedValue, NOT ...Once (mx-ops#6): DNS is genuinely failing, so
+    // the transient-network replay fails too and the classification still has
+    // to land. Queuing a single rejection would leave the replayed attempts
+    // resolving to `undefined` and misreport the kind as 'unknown' — the test
+    // would then be asserting against the retry's absence, not the classifier.
     const cause = Object.assign(new Error('getaddrinfo ENOTFOUND mcp.mixshift.io'), {
       code: 'ENOTFOUND',
     });
-    const mockFetch = vi.fn().mockRejectedValueOnce(fetchFailed(cause));
+    const mockFetch = vi.fn().mockRejectedValue(fetchFailed(cause));
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
@@ -378,7 +391,11 @@ describe('runQuery :: datahub network failure', () => {
     await saveDatahub(creds, testDir);
 
     const cause = new Error('Received HTTP code 403 from proxy after CONNECT');
-    const mockFetch = vi.fn().mockRejectedValueOnce(fetchFailed(cause));
+    // mockRejectedValue, NOT ...Once (mx-ops#6): a sandbox proxy blocks every
+    // attempt, so the transient replay fails too and the classification still
+    // has to land. Queuing one rejection leaves the replayed attempts
+    // resolving to `undefined`, which degrades the kind to 'unknown'.
+    const mockFetch = vi.fn().mockRejectedValue(fetchFailed(cause));
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
@@ -392,6 +409,28 @@ describe('runQuery :: datahub network failure', () => {
         'The MixShift auth service is unreachable. Check your network or try again in a minute.',
       );
     }
+    expect(mockFetch).toHaveBeenCalledTimes(TRANSIENT_NETWORK_RETRIES + 1);
+  });
+
+  it('recovers a raw query when a connect failure is followed by a success', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, rows: [{ n: 1 }], rowCount: 1, durationMs: 3 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 
