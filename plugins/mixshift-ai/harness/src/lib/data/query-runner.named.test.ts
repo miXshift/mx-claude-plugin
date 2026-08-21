@@ -16,7 +16,7 @@ vi.mock('../telemetry/index.js', async (importOriginal) => {
   return { ...actual, track: vi.fn().mockResolvedValue(undefined) };
 });
 
-import { runNamedQuery } from './query-runner.js';
+import { runNamedQuery, TRANSIENT_NETWORK_RETRIES } from './query-runner.js';
 import { getValidAccessToken } from '../auth/credentials.js';
 import type { DatahubCreds, MysqlCreds } from '../auth/schema.js';
 
@@ -169,12 +169,71 @@ describe('runNamedQuery', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('maps network failures to host_unreachable', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+  it('maps network failures to host_unreachable once retries are exhausted', async () => {
+    // mockRejectedValue (not ...Once): the network is genuinely down, so
+    // every replay fails too. Previously this test queued a SINGLE rejection,
+    // which stopped describing the contract the moment transient retry landed.
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
 
     const result = await runNamedQuery('PING', { creds: datahubCreds });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.kind).toBe('host_unreachable');
+    expect(fetchMock).toHaveBeenCalledTimes(TRANSIENT_NETWORK_RETRIES + 1);
+  });
+});
+
+/**
+ * Transient-network replay (mx-ops#6).
+ *
+ * A caller that fans several named queries out at once opens several NEW
+ * connections simultaneously; on a network where each fresh connect is slow,
+ * one can exceed undici's 10s connect timeout and die while its siblings
+ * succeed. Gateway metering proved the dropped request never arrived. These
+ * pin the two halves of the contract: replay what never landed, never replay
+ * what the service already has.
+ */
+describe('runNamedQuery :: transient network replay', () => {
+  it('recovers when a connect failure is followed by a success', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        jsonResponse({ ok: true, rows: [{ n: 1 }], rowCount: 1, durationMs: 5, id: 'PING' }),
+      );
+
+    const result = await runNamedQuery('PING', { creds: datahubCreds });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rows).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT replay a request that blew its own time budget', async () => {
+    // AbortSignal.timeout rejects with a TimeoutError DOMException — the
+    // service HAD the request. Replaying spends the budget again on a query
+    // the server is already struggling with, so it must surface immediately.
+    const timeoutErr = new Error('The operation was aborted due to timeout');
+    timeoutErr.name = 'TimeoutError';
+    fetchMock.mockRejectedValue(timeoutErr);
+
+    const result = await runNamedQuery('PING', { creds: datahubCreds });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.kind).toBe('host_unreachable');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a non-retryable HTTP failure without replaying it', async () => {
+    // A classified error envelope is a real answer from the service, not a
+    // transport failure — one call, no replay.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ ok: false, kind: 'bad_params', message: 'nope', friendly: 'Nope.' }),
+    );
+
+    const result = await runNamedQuery('PING', { creds: datahubCreds });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.kind).toBe('bad_params');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('refuses legacy raw-MySQL credentials with a sign-in pointer', async () => {

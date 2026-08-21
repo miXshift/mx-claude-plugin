@@ -54,6 +54,9 @@ const OK_ROW_FIXTURE: LabelDiscoveryFetchResult = {
   matchRows: [
     { label: 'Forager Pantry', retail_asins: 40, ads_campaigns: 10, has_retail: true, has_ads: true },
   ],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
   errors: [],
 };
 
@@ -64,6 +67,9 @@ const SELLER_RESOLUTION_FAILED_FIXTURE: LabelDiscoveryFetchResult = {
   vendorRows: [],
   adsRows: [],
   matchRows: [],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
   errors: [
     {
       query_id: 'resolve_seller_ids',
@@ -80,11 +86,21 @@ const ALL_QUERIES_FAILED_FIXTURE: LabelDiscoveryFetchResult = {
   vendorRows: [],
   adsRows: [],
   matchRows: [],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
+  // ALL of them, which now means seven — the economics trio (sbd-05/06/07)
+  // included. Listing only the original four would leave this fixture
+  // classifying as 'partial' rather than 'error' and the test would then be
+  // asserting the wrong branch entirely.
   errors: [
     { query_id: 'sbd-01', message: 'x', friendly: 'unknown query' },
     { query_id: 'sbd-02', message: 'x', friendly: 'unknown query' },
     { query_id: 'sbd-03', message: 'x', friendly: 'unknown query' },
     { query_id: 'sbd-04', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-05', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-06', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-07', message: 'x', friendly: 'unknown query' },
   ],
 };
 
@@ -98,6 +114,9 @@ const PARTIAL_FAILURE_FIXTURE: LabelDiscoveryFetchResult = {
   vendorRows: [],
   adsRows: [],
   matchRows: [],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
   errors: [{ query_id: 'sbd-02', message: 'x', friendly: 'unknown query' }],
 };
 

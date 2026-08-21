@@ -50,7 +50,10 @@ interface RootOptions {
 export function registerBrandCommands(program: Command): void {
   const brand = program
     .command('brand')
-    .description('Brand portfolio management (list, add, edit, archive)');
+    .description(
+      'Brand portfolio management (list, add, edit, archive) and sub-brand ' +
+        'discovery (discover, promote, demote)',
+    );
 
   brand
     .command('list')
@@ -477,9 +480,10 @@ export function registerBrandCommands(program: Command): void {
         'dormant brands from the printed table; use --include-inactive to ' +
         'see them. The registry on disk always captures every brand. ' +
         'Pass --seller-id to run SUB-BRAND label discovery for one Amazon ' +
-        'seller account instead (mx-ops#6 P1) — a different question ' +
+        'seller account instead — a different question ' +
         '("what labels live inside this account") that never touches the ' +
-        'brand registry.',
+        'brand registry. Follow it with `brand promote` to build a ' +
+        'promotion plan from what it finds.',
     )
     .option(
       '--include-inactive',
@@ -495,7 +499,7 @@ export function registerBrandCommands(program: Command): void {
     .option(
       '--seller-id <id>',
       'run sub-brand label discovery for one Amazon Seller ID instead of the ' +
-        'normal account discovery (mx-ops#6 P1)',
+        'normal account discovery',
     )
     .option(
       '--emit-stake',

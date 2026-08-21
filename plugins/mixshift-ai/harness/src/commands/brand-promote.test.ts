@@ -56,6 +56,9 @@ const OK_FIXTURE: LabelDiscoveryFetchResult = {
   matchRows: [
     { label: 'Forager Pantry', retail_asins: 70, ads_campaigns: 5, has_retail: true, has_ads: true },
   ],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
   errors: [],
 };
 
@@ -66,7 +69,43 @@ const ALL_FAILED_FIXTURE: LabelDiscoveryFetchResult = {
   vendorRows: [],
   adsRows: [],
   matchRows: [],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
   errors: [{ query_id: 'resolve_seller_ids', message: 'no match', friendly: 'No seller found.' }],
+};
+
+/** ONE of the four sbd-* queries dropped on the wire (host_unreachable),
+ *  the other three fine. Mirrors a real reported run exactly:
+ *  retail complete and identical to a good run, ads empty with an error
+ *  recorded. `ok: false` because rowsOf() pushed the error — the whole
+ *  point is that classifyFetchOutcome must read this as 'partial'. */
+const ADS_DROPPED_FIXTURE: LabelDiscoveryFetchResult = {
+  ...OK_FIXTURE,
+  ok: false,
+  adsRows: [],
+  errors: [
+    {
+      query_id: 'sbd-02',
+      message: 'fetch failed',
+      friendly: 'The MixShift auth service is unreachable. Check your network or try again in a minute.',
+    },
+  ],
+};
+
+/** Run 1's shape: the match query dropped instead. Retail AND ads both
+ *  look healthy, so nothing in the rendered plan hints at a problem. */
+const MATCH_DROPPED_FIXTURE: LabelDiscoveryFetchResult = {
+  ...OK_FIXTURE,
+  ok: false,
+  matchRows: [],
+  errors: [
+    {
+      query_id: 'sbd-04',
+      message: 'fetch failed',
+      friendly: 'The MixShift auth service is unreachable. Check your network or try again in a minute.',
+    },
+  ],
 };
 
 const SELLER_ROW = {
@@ -160,6 +199,37 @@ describe('brand promote — dry-run default', () => {
 
   it('fails loud (never a fabricated plan) when discovery does not fully succeed', async () => {
     mockedFetch.mockResolvedValue(ALL_FAILED_FIXTURE);
+    await runPromote(['--seller-id', SELLER_ID]);
+    const out = emitted();
+    expect(out.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  // mx-ops#6: the reported failure was NOT every query
+  // failing — it was ONE of the four dropping on the wire while the other
+  // three succeeded, so `retailRows` was fully populated and only the ads
+  // side came back empty. The pre-existing ALL_FAILED_FIXTURE case cannot
+  // catch that: it fails seller-id resolution, which is a different branch
+  // (classifyFetchOutcome -> 'error', not 'partial'). These two guard the
+  // 'partial' branch on the side that actually broke.
+  it('aborts when ONLY the ads query drops, even though retail is complete', async () => {
+    mockedFetch.mockResolvedValue(ADS_DROPPED_FIXTURE);
+    await runPromote(['--seller-id', SELLER_ID]);
+    const out = emitted();
+    expect(out.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+    // The specific regression: a dropped ads query must never render as a
+    // confident "no campaigns yet" plan.
+    expect(JSON.stringify(out)).not.toContain('would_create');
+  });
+
+  // Run 1 of the customer's two runs lost sbd-04 (the retail<->ads match
+  // query) rather than sbd-02, and NOBODY NOTICED — an absent match row is
+  // invisible in the rendered plan in a way an absent campaign count is not.
+  // Which of the four drops is nondeterministic, so the guard has to hold
+  // for the silent one too, not just the visible one.
+  it('aborts when only the match query drops (the failure nobody can see)', async () => {
+    mockedFetch.mockResolvedValue(MATCH_DROPPED_FIXTURE);
     await runPromote(['--seller-id', SELLER_ID]);
     const out = emitted();
     expect(out.status).toBe('error');

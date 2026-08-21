@@ -65740,7 +65740,7 @@ async function runMysqlQuery(creds, sql, params, options) {
   }
 }
 async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOverride) {
-  const doFetch = async (bearer) => {
+  const doFetchOnce = async (bearer) => {
     try {
       return await fetch(`${creds.api_base}${path2}`, {
         method: "POST",
@@ -65757,7 +65757,19 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new DatahubNetworkError(message);
+      const budgetExpired = err instanceof Error && err.name === "TimeoutError";
+      throw new DatahubNetworkError(message, !budgetExpired);
+    }
+  };
+  const doFetch = async (bearer) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await doFetchOnce(bearer);
+      } catch (err) {
+        const transient = err instanceof DatahubNetworkError && err.retryable;
+        if (!transient || attempt >= TRANSIENT_NETWORK_RETRIES) throw err;
+        await new Promise((r) => setTimeout(r, TRANSIENT_RETRY_BACKOFF_MS[attempt]));
+      }
     }
   };
   let token = await getValidAccessToken(dataDirOverride);
@@ -66092,7 +66104,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, DatahubNetworkError;
+var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, DatahubNetworkError;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -66101,15 +66113,24 @@ var init_query_runner = __esm({
     init_schema3();
     init_intent();
     init_telemetry();
+    TRANSIENT_NETWORK_RETRIES = 2;
+    TRANSIENT_RETRY_BACKOFF_MS = [250, 1e3];
     SERVICE_ROW_CAP = 5e4;
     PAGE_BYTE_BUDGET = 8 * 1024 * 1024;
     PAGE_MAX_ROWS = SERVICE_ROW_CAP;
     FIRST_PAGE_PROBE_ROWS = 5e3;
     MAX_PAGINATED_ROWS = 2e6;
     DatahubNetworkError = class extends Error {
-      constructor(msg2) {
+      /** False when the request DID reach the service and we gave up waiting on
+       *  its answer (the AbortSignal.timeout budget fired). Retrying that just
+       *  spends the budget again on a query the server is already struggling
+       *  with, so only genuinely pre-response failures — DNS, TLS, connection
+       *  refused, connect timeout, socket hang-up — are replayed. */
+      retryable;
+      constructor(msg2, retryable = true) {
         super(msg2);
         this.name = "DatahubNetworkError";
+        this.retryable = retryable;
       }
     };
   }
@@ -76408,6 +76429,159 @@ var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated 
 
 // src/lib/binding/discovery.ts
 init_query_runner();
+
+// src/lib/binding/economics.ts
+function coerceAmount(raw) {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+function coerceStamp(raw) {
+  if (raw === null || raw === void 0) return null;
+  const s = String(raw).trim();
+  return s.length > 0 ? s : null;
+}
+function coerceRetailEconRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    revenue_365d: coerceAmount(row.revenue_365d),
+    revenue_90d: coerceAmount(row.revenue_90d),
+    units_365d: coerceAmount(row.units_365d),
+    last_order_at: coerceStamp(row.last_order_at),
+    sku_count: coerceAmount(row.sku_count)
+  };
+}
+function coerceAdsEconRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    spend_365d: coerceAmount(row.spend_365d),
+    spend_90d: coerceAmount(row.spend_90d),
+    ad_sales_365d: coerceAmount(row.ad_sales_365d),
+    last_spend_at: coerceStamp(row.last_spend_at),
+    campaigns_with_spend: coerceAmount(row.campaigns_with_spend)
+  };
+}
+function coerceVendorEconRow(row) {
+  return {
+    SellerID: row.SellerID,
+    source: row.source,
+    label: row.label,
+    revenue_365d: coerceAmount(row.revenue_365d),
+    revenue_90d: coerceAmount(row.revenue_90d),
+    units_365d: coerceAmount(row.units_365d),
+    last_order_at: coerceStamp(row.last_order_at),
+    asin_count: coerceAmount(row.asin_count)
+  };
+}
+var RECENT_ACTIVITY_SHARE = 0.02;
+var MIN_WEIGHT_FOR_LIFECYCLE = 1e3;
+function latestStamp(...stamps) {
+  let best = null;
+  for (const s of stamps) {
+    if (!s) continue;
+    if (best === null || s > best) best = s;
+  }
+  return best;
+}
+function classifyLifecycle(revenue365, revenue90, spend365, spend90) {
+  const weight365 = revenue365 + spend365;
+  const weight90 = revenue90 + spend90;
+  if (weight365 <= 0) {
+    return {
+      lifecycle: "unknown",
+      reason: "no trailing revenue or ad spend found in the last 365 days"
+    };
+  }
+  if (weight365 < MIN_WEIGHT_FOR_LIFECYCLE) {
+    return {
+      lifecycle: "unknown",
+      reason: `only ${fmtMoney(weight365)} of trailing activity in the last 365 days \u2014 too little to tell a live brand from a wound-down one`
+    };
+  }
+  if (weight90 <= 0) {
+    return {
+      lifecycle: "dormant",
+      reason: `${fmtMoney(weight365)} of activity in the last 365 days but nothing at all in the last 90`
+    };
+  }
+  const share = weight90 / weight365;
+  if (share < RECENT_ACTIVITY_SHARE) {
+    return {
+      lifecycle: "dormant",
+      reason: `only ${fmtMoney(weight90)} of activity in the last 90 days against ${fmtMoney(weight365)} across the year (${(share * 100).toFixed(1)}%)`
+    };
+  }
+  return {
+    lifecycle: "active",
+    reason: `${fmtMoney(weight90)} of activity in the last 90 days`
+  };
+}
+function fmtMoney(n) {
+  return Math.round(n).toLocaleString("en-US");
+}
+function assembleEconomics(input) {
+  const acc = /* @__PURE__ */ new Map();
+  const bucket = (label) => {
+    let e = acc.get(label);
+    if (!e) {
+      e = { revenue365: 0, revenue90: 0, spend365: 0, spend90: 0, stamps: [] };
+      acc.set(label, e);
+    }
+    return e;
+  };
+  for (const r of input.retailEconRows) {
+    const e = bucket(r.label);
+    e.revenue365 += r.revenue_365d;
+    e.revenue90 += r.revenue_90d;
+    e.stamps.push(r.last_order_at);
+  }
+  for (const r of input.vendorEconRows) {
+    const e = bucket(r.label);
+    e.revenue365 += r.revenue_365d;
+    e.revenue90 += r.revenue_90d;
+    e.stamps.push(r.last_order_at);
+  }
+  for (const r of input.adsEconRows) {
+    const e = bucket(r.label);
+    e.spend365 += r.spend_365d;
+    e.spend90 += r.spend_90d;
+    e.stamps.push(r.last_spend_at);
+  }
+  const out = /* @__PURE__ */ new Map();
+  for (const [label, e] of acc) {
+    const { lifecycle, reason } = classifyLifecycle(e.revenue365, e.revenue90, e.spend365, e.spend90);
+    out.set(label, {
+      label,
+      revenue_365d: e.revenue365,
+      revenue_90d: e.revenue90,
+      spend_365d: e.spend365,
+      spend_90d: e.spend90,
+      last_activity_at: latestStamp(...e.stamps),
+      economic_weight: e.revenue365 + e.spend365,
+      lifecycle,
+      lifecycle_reason: reason
+    });
+  }
+  return out;
+}
+function unknownEconomics(label) {
+  return {
+    label,
+    revenue_365d: 0,
+    revenue_90d: 0,
+    spend_365d: 0,
+    spend_90d: 0,
+    last_activity_at: null,
+    economic_weight: 0,
+    lifecycle: "unknown",
+    lifecycle_reason: "no economics data returned for this label"
+  };
+}
+
+// src/lib/binding/discovery.ts
 init_seller_query();
 function coerceCount(raw) {
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -76567,8 +76741,30 @@ function assembleCoverageReport(input) {
 function resolveSellerIds(amazonSellerId, sellers) {
   return sellers.filter((s) => s.amazon_seller_id === amazonSellerId).map((s) => s.seller_id);
 }
+var DISCOVERY_FETCH_CONCURRENCY = 3;
+async function mapWithConcurrency(tasks, limit) {
+  const results = new Array(tasks.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    for (; ; ) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]();
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 async function fetchLabelDiscovery(amazonSellerId, options = {}) {
-  const none = { retailRows: [], adsRows: [], vendorRows: [], matchRows: [] };
+  const none = {
+    retailRows: [],
+    adsRows: [],
+    vendorRows: [],
+    matchRows: [],
+    retailEconRows: [],
+    adsEconRows: [],
+    vendorEconRows: []
+  };
   let sellers;
   try {
     sellers = await discoverSellers({
@@ -76599,29 +76795,45 @@ async function fetchLabelDiscovery(amazonSellerId, options = {}) {
     dataDirOverride: options.dataDirOverride,
     queryTimeoutMs: options.queryTimeoutMs
   };
-  const [retail, ads, vendor, match] = await Promise.all([
-    runNamedQuery("sbd-01", queryOpts),
-    runNamedQuery("sbd-02", queryOpts),
-    runNamedQuery("sbd-03", queryOpts),
-    runNamedQuery("sbd-04", queryOpts)
-  ]);
+  const [retail, ads, vendor, match, retailEcon, adsEcon, vendorEcon] = await mapWithConcurrency(
+    [
+      () => runNamedQuery("sbd-01", queryOpts),
+      () => runNamedQuery("sbd-02", queryOpts),
+      () => runNamedQuery("sbd-03", queryOpts),
+      () => runNamedQuery("sbd-04", queryOpts),
+      () => runNamedQuery("sbd-05", queryOpts),
+      () => runNamedQuery("sbd-06", queryOpts),
+      () => runNamedQuery("sbd-07", queryOpts)
+    ],
+    DISCOVERY_FETCH_CONCURRENCY
+  );
   const errors = [];
   function rowsOf(queryId, result, coerce) {
     if (result.ok) return result.rows.map(coerce);
     errors.push({ query_id: queryId, message: result.message, friendly: result.friendly });
     return [];
   }
+  const retailRows = rowsOf("sbd-01", retail, coerceRetailRow);
+  const adsRows = rowsOf("sbd-02", ads, coerceAdsRow);
+  const vendorRows = rowsOf("sbd-03", vendor, coerceVendorRow);
+  const matchRows = rowsOf("sbd-04", match, coerceMatchRow);
+  const retailEconRows = rowsOf("sbd-05", retailEcon, coerceRetailEconRow);
+  const adsEconRows = rowsOf("sbd-06", adsEcon, coerceAdsEconRow);
+  const vendorEconRows = rowsOf("sbd-07", vendorEcon, coerceVendorEconRow);
   return {
     ok: errors.length === 0,
     resolvedSellerIds,
-    retailRows: rowsOf("sbd-01", retail, coerceRetailRow),
-    adsRows: rowsOf("sbd-02", ads, coerceAdsRow),
-    vendorRows: rowsOf("sbd-03", vendor, coerceVendorRow),
-    matchRows: rowsOf("sbd-04", match, coerceMatchRow),
+    retailRows,
+    adsRows,
+    vendorRows,
+    matchRows,
+    retailEconRows,
+    adsEconRows,
+    vendorEconRows,
     errors
   };
 }
-var SBD_QUERY_COUNT = 4;
+var SBD_QUERY_COUNT = 7;
 function classifyFetchOutcome(fetched) {
   if (fetched.ok) return "ok";
   const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === "resolve_seller_ids");
@@ -76919,10 +77131,44 @@ function meaningfulRetailLabels(retail) {
     (l) => l.label !== UNCLASSIFIED_LABEL && l.units / retail.total_units >= MEANINGFUL_LABEL_SHARE
   );
 }
+var MEANINGFUL_ECONOMIC_SHARE = 0.02;
+function flagFor(econ, totalWeight) {
+  if (econ.lifecycle === "dormant") {
+    return { status: "flagged", flag_reason: "dormant", flag_detail: econ.lifecycle_reason };
+  }
+  if (totalWeight <= 0) return { status: "would_create" };
+  const share = econ.economic_weight / totalWeight;
+  if (share < MEANINGFUL_ECONOMIC_SHARE) {
+    return {
+      status: "flagged",
+      flag_reason: "negligible",
+      flag_detail: `${fmtMoney(econ.economic_weight)} of trailing revenue and ad spend, ${(share * 100).toFixed(2)}% of this account`
+    };
+  }
+  return { status: "would_create" };
+}
 var DOMINANT_LABEL_SHARE_THRESHOLD = 0.5;
 async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = {}) {
   const amazonSellerId = report.seller_id;
-  const meaningfulLabels = meaningfulRetailLabels(report.retail);
+  const economics = opts.economics ?? /* @__PURE__ */ new Map();
+  const totalWeight = [...economics.values()].reduce((sum, e) => sum + e.economic_weight, 0);
+  const byMass = meaningfulRetailLabels(report.retail);
+  const candidateLabels = /* @__PURE__ */ new Map();
+  for (const l of byMass) candidateLabels.set(l.label, l);
+  if (totalWeight > 0) {
+    for (const [label, econ] of economics) {
+      if (label === UNCLASSIFIED_LABEL) continue;
+      if (candidateLabels.has(label)) continue;
+      if (econ.economic_weight / totalWeight < MEANINGFUL_ECONOMIC_SHARE) continue;
+      const seen = report.retail.labels.find((r) => r.label === label);
+      candidateLabels.set(label, {
+        label,
+        source: seen?.source ?? "",
+        units: seen?.units ?? 0
+      });
+    }
+  }
+  const meaningfulLabels = [...candidateLabels.values()];
   const { index } = await readIndex(opts.dataDirOverride);
   const candidateBrands = index.brands.filter(
     (b) => b.accounts.some((a) => resolvedSellerIds.includes(a.seller_id))
@@ -76947,6 +77193,14 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
       (e) => e.binding.amazon_seller_id === amazonSellerId && (e.binding.retail_label?.value === entry.label || e.binding.ads_label?.value === entry.label)
     );
     const adsBreakdown = report.ads.labels.find((l) => l.label === entry.label);
+    const econ = economics.get(entry.label) ?? unknownEconomics(entry.label);
+    const econFields = {
+      revenue_365d: econ.revenue_365d,
+      spend_365d: econ.spend_365d,
+      economic_weight: econ.economic_weight,
+      lifecycle: econ.lifecycle,
+      lifecycle_reason: econ.lifecycle_reason
+    };
     if (boundMatch) {
       items.push({
         label: entry.label,
@@ -76954,6 +77208,7 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
         retail_units: entry.units,
         ads_campaign_count: adsBreakdown?.units ?? 0,
         has_ads: adsBreakdown !== void 0,
+        ...econFields,
         proposed_slug: boundMatch.slug,
         status: "already_bound",
         existing_slug: boundMatch.slug
@@ -76968,10 +77223,23 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
       retail_units: entry.units,
       ads_campaign_count: adsBreakdown?.units ?? 0,
       has_ads: adsBreakdown !== void 0,
+      ...econFields,
       proposed_slug: proposedSlug,
-      status: "would_create"
+      // A flagged label is NOT dropped. It stays in the plan with its real
+      // numbers and its reason, so the operator sees the whole account and
+      // decides; it is simply not proposed for creation by default.
+      // Removing it would break the plan's totals against Seller Central
+      // and hide a brand someone may be looking for.
+      ...flagFor(econ, totalWeight)
     });
   }
+  items.sort((a, b) => {
+    const aFlagged = a.status === "flagged" ? 1 : 0;
+    const bFlagged = b.status === "flagged" ? 1 : 0;
+    if (aFlagged !== bFlagged) return aFlagged - bFlagged;
+    if (b.economic_weight !== a.economic_weight) return b.economic_weight - a.economic_weight;
+    return b.retail_units - a.retail_units;
+  });
   const oldBrand = oldBrandCandidate ? await buildOldBrandPlan(oldBrandCandidate, items, opts.dataDirOverride) : null;
   return {
     seller_id: amazonSellerId,
@@ -77432,7 +77700,7 @@ async function writeYamlAtomic3(path2, obj) {
 init_telemetry();
 function registerBrandPromoteCommands(brand) {
   brand.command("promote").description(
-    "Turn discovered sub-brand labels into real, bound brands (mx-ops#6 P2). Default is a DRY-RUN promotion plan; nothing is written. Pass --apply <decision-json> to execute ONE plan item at a time."
+    "Build a promotion plan: turn discovered sub-brand labels into real, bound brands. Default is a DRY-RUN plan; nothing is written. Pass --apply <decision-json> to execute ONE plan item at a time."
   ).requiredOption("--seller-id <id>", "the Amazon Seller ID to promote sub-brands for").option(
     "--apply <decision>",
     'apply ONE decision from the plan (JSON). Schema: {"action":"promote_label","label":"..."} | {"action":"retire_old_brand"} | {"action":"rebind_old_brand","label":"..."} | {"action":"cancel"}.'
@@ -77630,8 +77898,14 @@ async function preparePlan(sellerId, dataDir) {
   const sellers = await discoverSellers({ dataDirOverride: dataDir, includeInactive: true });
   const accounts = sellers.filter((s) => fetched.resolvedSellerIds.includes(s.seller_id));
   const sellerName = accounts[0]?.seller_name ?? sellerId;
+  const economics = assembleEconomics({
+    retailEconRows: fetched.retailEconRows,
+    adsEconRows: fetched.adsEconRows,
+    vendorEconRows: fetched.vendorEconRows
+  });
   const plan = await buildPromotionPlan(report, fetched.resolvedSellerIds, sellerName, {
-    dataDirOverride: dataDir
+    dataDirOverride: dataDir,
+    economics
   });
   return { plan, report, sellerName, resolvedSellerIds: fetched.resolvedSellerIds, fetchOutcome };
 }
@@ -77680,10 +77954,23 @@ Promotion plan for seller ${plan.seller_id}`);
   return lines.join("\n");
 }
 function renderPlanItem(item) {
-  const base = item.status === "already_bound" ? `  \u2713 "${item.label}": already bound to "${item.existing_slug}" (no action needed)` : `  + "${item.label}": would create "${item.proposed_slug}"`;
+  let base;
+  if (item.status === "already_bound") {
+    base = `  \u2713 "${item.label}": already bound to "${item.existing_slug}" (no action needed)`;
+  } else if (item.status === "flagged") {
+    const headline = item.flag_reason === "dormant" ? "looks wound down" : "too small to be worth its own brand";
+    base = `  ! "${item.label}": ${headline} \u2014 NOT proposed (would be "${item.proposed_slug}")`;
+  } else {
+    base = `  + "${item.label}": would create "${item.proposed_slug}"`;
+  }
+  const money = item.economic_weight > 0 ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend` : "      trailing 365d: no revenue or ad spend found";
   const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? "n/a"}]; ads: ${item.has_ads ? `${item.ads_campaign_count} campaign(s)` : "no campaigns yet"}`;
-  return `${base}
-${detail}`;
+  const lines = [base, money, detail];
+  if (item.status === "flagged") {
+    lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);
+    lines.push("      promote it anyway with --apply if that is wrong.");
+  }
+  return lines.join("\n");
 }
 function renderOldBrand(oldBrand) {
   const lines = [];
@@ -77729,7 +78016,9 @@ function emitError5(json2, message) {
 
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
-  const brand = program3.command("brand").description("Brand portfolio management (list, add, edit, archive)");
+  const brand = program3.command("brand").description(
+    "Brand portfolio management (list, add, edit, archive) and sub-brand discovery (discover, promote, demote)"
+  );
   brand.command("list").description(
     "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands; use --all to see everything or --only-inactive to see just dormants."
   ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).option(
@@ -78026,7 +78315,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     notYetImplemented("brand rename", { old: oldSlug, new: newSlug });
   });
   brand.command("discover").description(
-    'Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand. Pass --seller-id to run SUB-BRAND label discovery for one Amazon seller account instead (mx-ops#6 P1) \u2014 a different question ("what labels live inside this account") that never touches the brand registry.'
+    'Query the seller table, persist to ~/.mixshift/clients/index.yaml, and surface the brands you have access to. By default hides dormant brands from the printed table; use --include-inactive to see them. The registry on disk always captures every brand. Pass --seller-id to run SUB-BRAND label discovery for one Amazon seller account instead \u2014 a different question ("what labels live inside this account") that never touches the brand registry. Follow it with `brand promote` to build a promotion plan from what it finds.'
   ).option(
     "--include-inactive",
     "include dormant brands (no active ads or retail) in the printed table",
@@ -78037,7 +78326,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
     "terminal"
   ).option(
     "--seller-id <id>",
-    "run sub-brand label discovery for one Amazon Seller ID instead of the normal account discovery (mx-ops#6 P1)"
+    "run sub-brand label discovery for one Amazon Seller ID instead of the normal account discovery"
   ).option(
     "--emit-stake",
     "with --seller-id: also post a coverage-summary stake to the account timeline namespace",
@@ -93002,6 +93291,8 @@ var CATALOG = [
       { id: "mx-auth-service-setup", say: "set up an unattended credential", what: "a service credential for scheduled or CI runs" },
       { id: "mx-scheduled-task", say: "set up a scheduled task", what: "scheduled MixShift runs that survive fresh sandboxes" },
       { id: "mx-brand-context", say: "set up brand context for <brand>", what: "onboard a brand so the analytical skills know it" },
+      { id: "mx-brand-context", say: "find the sub-brands in my account", what: "discover the brands hiding under one seller account" },
+      { id: "mx-brand-context", say: "build a promotion plan", what: "plan which sub-brand labels become real brands" },
       { id: "mx-update", say: "update the plugin", what: "guide the update and walk post-update catch-up actions" }
     ]
   },

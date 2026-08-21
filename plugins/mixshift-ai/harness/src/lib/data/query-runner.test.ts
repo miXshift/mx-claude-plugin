@@ -10,7 +10,12 @@ import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runQuery, streamQuery, FIRST_PAGE_PROBE_ROWS } from './query-runner.js';
+import {
+  runQuery,
+  streamQuery,
+  FIRST_PAGE_PROBE_ROWS,
+  TRANSIENT_NETWORK_RETRIES,
+} from './query-runner.js';
 import { createCsvFileSink } from '../output/csv-file-sink.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
@@ -344,7 +349,11 @@ describe('runQuery :: datahub network failure', () => {
     const creds = freshDatahubFixture();
     await saveDatahub(creds, testDir);
 
-    const mockFetch = vi.fn().mockRejectedValueOnce(
+    // mockRejectedValue (not ...Once): DNS is genuinely failing, so the
+    // transient-network replay fails too and the classification still has to
+    // land. Queuing a single rejection would leave later attempts returning
+    // undefined and misreport the kind as 'unknown'.
+    const mockFetch = vi.fn().mockRejectedValue(
       Object.assign(new Error('getaddrinfo ENOTFOUND mcp.mixshift.io'), {
         code: 'ENOTFOUND',
       }),
@@ -358,6 +367,28 @@ describe('runQuery :: datahub network failure', () => {
       expect(result.kind).toBe('host_unreachable');
       expect(result.friendly).toMatch(/unreachable/i);
     }
+    expect(mockFetch).toHaveBeenCalledTimes(TRANSIENT_NETWORK_RETRIES + 1);
+  });
+
+  it('recovers a raw query when a connect failure is followed by a success', async () => {
+    const creds = freshDatahubFixture();
+    await saveDatahub(creds, testDir);
+
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, rows: [{ n: 1 }], rowCount: 1, durationMs: 3 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runQuery('SELECT 1', [], { dataDirOverride: testDir });
+
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 

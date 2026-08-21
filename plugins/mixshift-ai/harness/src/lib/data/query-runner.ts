@@ -155,6 +155,19 @@ export interface QueryShape {
   projected_cols: number | null;
 }
 
+/** How many times a PRE-RESPONSE network failure (DNS, TLS, connection
+ *  refused, connect timeout, socket hang-up) is replayed against the gateway
+ *  before it surfaces to the caller. Deliberately small: this exists to ride
+ *  out a single bad connect, not to paper over a service that is genuinely
+ *  down — two extra attempts, then the caller's fail-loud path takes over.
+ *  A request that DID reach the service and blew its time budget is never
+ *  replayed (see DatahubNetworkError.retryable). */
+export const TRANSIENT_NETWORK_RETRIES = 2;
+/** Backoff before each replay, indexed by attempt number. Short, because the
+ *  failure being ridden out is usually a ~10s connect timeout that has
+ *  already cost the user that long. */
+export const TRANSIENT_RETRY_BACKOFF_MS = [250, 1_000];
+
 /** Server-side per-request row cap on the datahub gateway (`/api/query`). A
  *  single request returning MORE than this is REJECTED outright, not
  *  truncated — so a large mask/export must be paged. */
@@ -1234,6 +1247,9 @@ interface DatahubQueryWire {
  * it to `host_unreachable`) and a plain Error when the session cannot be
  * refreshed. Shared by the raw-SQL gateway (/api/query) and the named
  * query pack (/api/named-query).
+ *
+ * A pre-response network failure is replayed up to TRANSIENT_NETWORK_RETRIES
+ * times before it surfaces — see the comment on `doFetch` below.
  */
 async function datahubAuthedPost(
   creds: DatahubCreds,
@@ -1242,7 +1258,7 @@ async function datahubAuthedPost(
   timeoutBudgetMs: number,
   dataDirOverride?: string,
 ): Promise<Response> {
-  const doFetch = async (bearer: string): Promise<Response> => {
+  const doFetchOnce = async (bearer: string): Promise<Response> => {
     try {
       return await fetch(`${creds.api_base}${path}`, {
         method: 'POST',
@@ -1259,7 +1275,38 @@ async function datahubAuthedPost(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new DatahubNetworkError(message);
+      // AbortSignal.timeout rejects with a TimeoutError DOMException. That
+      // means the service HAD the request and we stopped waiting — a
+      // different situation from never reaching it, and not worth replaying.
+      const budgetExpired = err instanceof Error && err.name === 'TimeoutError';
+      throw new DatahubNetworkError(message, !budgetExpired);
+    }
+  };
+
+  /**
+   * Replay a pre-response network failure a couple of times before giving up.
+   *
+   * Both callers here are read-only SELECT paths (`/api/query`,
+   * `/api/named-query`), so a replay cannot double-apply anything.
+   *
+   * Why this exists (mx-ops#6): callers that fan several
+   * queries out concurrently open several NEW connections at once, and on a
+   * network where each fresh connect is slow one of them can exceed undici's
+   * 10s connect timeout and die while its siblings succeed. Gateway metering
+   * confirmed the dropped request never arrived. The caller then has a
+   * partial result set through no fault of the query. One cheap retry turns
+   * that into a completed read; the fail-loud classification downstream is
+   * the backstop for when it genuinely cannot be completed.
+   */
+  const doFetch = async (bearer: string): Promise<Response> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await doFetchOnce(bearer);
+      } catch (err) {
+        const transient = err instanceof DatahubNetworkError && err.retryable;
+        if (!transient || attempt >= TRANSIENT_NETWORK_RETRIES) throw err;
+        await new Promise((r) => setTimeout(r, TRANSIENT_RETRY_BACKOFF_MS[attempt]));
+      }
     }
   };
 
@@ -1580,9 +1627,16 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
 }
 
 class DatahubNetworkError extends Error {
-  constructor(msg: string) {
+  /** False when the request DID reach the service and we gave up waiting on
+   *  its answer (the AbortSignal.timeout budget fired). Retrying that just
+   *  spends the budget again on a query the server is already struggling
+   *  with, so only genuinely pre-response failures — DNS, TLS, connection
+   *  refused, connect timeout, socket hang-up — are replayed. */
+  readonly retryable: boolean;
+  constructor(msg: string, retryable = true) {
     super(msg);
     this.name = 'DatahubNetworkError';
+    this.retryable = retryable;
   }
 }
 

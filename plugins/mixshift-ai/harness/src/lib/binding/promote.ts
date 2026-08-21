@@ -60,6 +60,7 @@ import { mintSlug, collectExistingSlugs } from './slug.js';
 import { readIndex, saveIndex } from '../clients/index.js';
 import { emptyIndex, type IndexBrand } from '../clients/index-schema.js';
 import { discoverSellers } from '../discovery/seller-query.js';
+import { unknownEconomics, fmtMoney, type LabelEconomics, type Lifecycle } from './economics.js';
 import type { BrandSuggestion } from '../discovery/brand-grouping.js';
 import { validateBrandContext } from '../context/load.js';
 import {
@@ -78,7 +79,16 @@ import { describeJsonType } from '../calibration/manifest-schema.js';
 // Plan shapes
 // ---------------------------------------------------------------------------
 
-export type PromotionItemStatus = 'would_create' | 'already_bound';
+export type PromotionItemStatus = 'would_create' | 'already_bound' | 'flagged';
+
+/** Why an item is in the plan but not proposed for creation by default.
+ *  - 'dormant'    observable activity says the brand has wound down.
+ *  - 'negligible' the brand is live enough, or too small to judge, but is
+ *                 economically trivial against this account. Distinct from
+ *                 dormant on purpose: "we can see it stopped" and "it never
+ *                 amounted to much" are different findings and an operator
+ *                 acts on them differently. */
+export type PromotionFlagReason = 'dormant' | 'negligible';
 
 export interface PromotionPlanItem {
   label: string;
@@ -89,10 +99,26 @@ export interface PromotionPlanItem {
   retail_units: number;
   ads_campaign_count: number;
   has_ads: boolean;
+  /** Trailing 365d ordered revenue (SC + VC) for this label. */
+  revenue_365d: number;
+  /** Trailing 365d ad spend for this label. */
+  spend_365d: number;
+  /** revenue_365d + spend_365d — what the plan ranks on. */
+  economic_weight: number;
+  /** Read from observable activity, never from a custom label column. */
+  lifecycle: Lifecycle;
+  /** Why `lifecycle` says what it says, in plain language. Shown to the
+   *  operator on any flagged item so the flag is auditable, not a verdict. */
+  lifecycle_reason: string;
   /** The slug mintSlug() would produce right now (would_create), or the
    *  slug of the brand this label is ALREADY bound to (already_bound). */
   proposed_slug: string;
   status: PromotionItemStatus;
+  /** Set only when status === 'flagged'. */
+  flag_reason?: PromotionFlagReason;
+  /** Set only when status === 'flagged' — plain-language justification the
+   *  operator reads, so the flag is auditable rather than a bare verdict. */
+  flag_detail?: string;
   existing_slug?: string;
 }
 
@@ -152,12 +178,69 @@ export const FIRST_LIVE_PROMOTION_NOTICE =
 
 /** Design doc §4.1/§4.2's "meaningful catalog/spend mass" gate, reused
  *  verbatim from discovery.ts rather than re-derived (same threshold
- *  classifyShape uses to decide brand_nested_candidate vs single_brand). */
+ *  classifyShape uses to decide brand_nested_candidate vs single_brand).
+ *
+ *  NOTE this is a CATALOG-MASS gate, not the ranking. It answers "is this
+ *  label a real segment of the account or a rounding error", which is a
+ *  question about breadth and is legitimately measured in items. What it
+ *  must NOT do is decide which candidates matter most — that is
+ *  `rankCandidates` below, and it ranks in dollars. Conflating the two is
+ *  the original defect: a label with many dormant ASINs outranked one with
+ *  few very large ones. */
 export function meaningfulRetailLabels(retail: SideCoverage): SideLabelBreakdown[] {
   if (retail.total_units <= 0) return [];
   return retail.labels.filter(
     (l) => l.label !== UNCLASSIFIED_LABEL && l.units / retail.total_units >= MEANINGFUL_LABEL_SHARE,
   );
+}
+
+/** A label carrying at least this share of the account's total economic
+ *  weight is a promotion candidate on economics alone, even when its
+ *  catalog footprint is too small to clear `MEANINGFUL_LABEL_SHARE`.
+ *
+ *  This is the half of the fix that ADDS candidates rather than reordering
+ *  them: the reported case had the account's largest brand by revenue and
+ *  ad spend missing from the plan entirely, because it was carried on
+ *  relatively few items. A brand worth a meaningful slice of the account's
+ *  money is a brand worth proposing, whatever its item count. */
+export const MEANINGFUL_ECONOMIC_SHARE = 0.02;
+
+/**
+ * Decide whether a candidate is proposed for creation or merely surfaced.
+ *
+ * Two independent reasons to hold one back, deliberately kept apart:
+ *
+ *   dormant    — observable activity says it wound down. Requires real
+ *                evidence; `unknown` lifecycle never lands here, because
+ *                absent data must not read as evidence of death.
+ *   negligible — it carries a trivial share of the account's money. This is
+ *                the case the catalog-mass gate cannot see: a label can hold
+ *                most of the ASINs and almost none of the value, which is
+ *                exactly how a long-dead brand with a big stale catalog got
+ *                proposed ahead of the account's largest earner.
+ *
+ * Returns no flag at all when there are no economics for the account —
+ * flagging on no evidence would hide real brands.
+ */
+function flagFor(
+  econ: LabelEconomics,
+  totalWeight: number,
+): { status: PromotionItemStatus; flag_reason?: PromotionFlagReason; flag_detail?: string } {
+  if (econ.lifecycle === 'dormant') {
+    return { status: 'flagged', flag_reason: 'dormant', flag_detail: econ.lifecycle_reason };
+  }
+  if (totalWeight <= 0) return { status: 'would_create' };
+  const share = econ.economic_weight / totalWeight;
+  if (share < MEANINGFUL_ECONOMIC_SHARE) {
+    return {
+      status: 'flagged',
+      flag_reason: 'negligible',
+      flag_detail:
+        `${fmtMoney(econ.economic_weight)} of trailing revenue and ad spend, ` +
+        `${(share * 100).toFixed(2)}% of this account`,
+    };
+  }
+  return { status: 'would_create' };
 }
 
 /** A label counts as the "dominant" sub-brand candidate for the old-brand
@@ -174,6 +257,12 @@ export const DOMINANT_LABEL_SHARE_THRESHOLD = 0.5;
 export interface BuildPromotionPlanOptions {
   dataDirOverride?: string;
   now?: Date;
+  /** Per-label economics, keyed by label. Optional: when absent every item
+   *  reports `unknown` lifecycle and zero weight, and ranking falls back to
+   *  catalog mass — the pre-economics behaviour, so a caller that cannot
+   *  reach the economics queries still gets a usable (if unranked) plan
+   *  rather than an empty one. */
+  economics?: Map<string, LabelEconomics>;
 }
 
 /**
@@ -190,7 +279,33 @@ export async function buildPromotionPlan(
   opts: BuildPromotionPlanOptions = {},
 ): Promise<PromotionPlan> {
   const amazonSellerId = report.seller_id;
-  const meaningfulLabels = meaningfulRetailLabels(report.retail);
+  const economics = opts.economics ?? new Map<string, LabelEconomics>();
+
+  // Candidates come from EITHER gate: meaningful catalog mass (breadth) or
+  // meaningful economic weight (money). Union, not intersection — a brand
+  // can be large in one and small in the other, and either alone is reason
+  // enough to put it in front of the operator.
+  const totalWeight = [...economics.values()].reduce((sum, e) => sum + e.economic_weight, 0);
+  const byMass = meaningfulRetailLabels(report.retail);
+  const candidateLabels = new Map<string, SideLabelBreakdown>();
+  for (const l of byMass) candidateLabels.set(l.label, l);
+  if (totalWeight > 0) {
+    for (const [label, econ] of economics) {
+      if (label === UNCLASSIFIED_LABEL) continue;
+      if (candidateLabels.has(label)) continue;
+      if (econ.economic_weight / totalWeight < MEANINGFUL_ECONOMIC_SHARE) continue;
+      // Economically significant but below the catalog-mass gate — exactly
+      // the brand the item-count ranking used to drop. Carry its real retail
+      // units through if discovery saw the label at all, else zero.
+      const seen = report.retail.labels.find((r) => r.label === label);
+      candidateLabels.set(label, {
+        label,
+        source: seen?.source ?? '',
+        units: seen?.units ?? 0,
+      });
+    }
+  }
+  const meaningfulLabels = [...candidateLabels.values()];
 
   const { index } = await readIndex(opts.dataDirOverride);
   const candidateBrands = index.brands.filter((b) =>
@@ -224,6 +339,14 @@ export async function buildPromotionPlan(
         (e.binding.retail_label?.value === entry.label || e.binding.ads_label?.value === entry.label),
     );
     const adsBreakdown = report.ads.labels.find((l) => l.label === entry.label);
+    const econ = economics.get(entry.label) ?? unknownEconomics(entry.label);
+    const econFields = {
+      revenue_365d: econ.revenue_365d,
+      spend_365d: econ.spend_365d,
+      economic_weight: econ.economic_weight,
+      lifecycle: econ.lifecycle,
+      lifecycle_reason: econ.lifecycle_reason,
+    };
     if (boundMatch) {
       items.push({
         label: entry.label,
@@ -231,6 +354,7 @@ export async function buildPromotionPlan(
         retail_units: entry.units,
         ads_campaign_count: adsBreakdown?.units ?? 0,
         has_ads: adsBreakdown !== undefined,
+        ...econFields,
         proposed_slug: boundMatch.slug,
         status: 'already_bound',
         existing_slug: boundMatch.slug,
@@ -245,10 +369,30 @@ export async function buildPromotionPlan(
       retail_units: entry.units,
       ads_campaign_count: adsBreakdown?.units ?? 0,
       has_ads: adsBreakdown !== undefined,
+      ...econFields,
       proposed_slug: proposedSlug,
-      status: 'would_create',
+      // A flagged label is NOT dropped. It stays in the plan with its real
+      // numbers and its reason, so the operator sees the whole account and
+      // decides; it is simply not proposed for creation by default.
+      // Removing it would break the plan's totals against Seller Central
+      // and hide a brand someone may be looking for.
+      ...flagFor(econ, totalWeight),
     });
   }
+
+  // Rank in dollars. This is the ordering the operator reads top-down, and
+  // ranking it by item count is what put a brand with $695 of trailing
+  // revenue above one worth millions. Ties (and accounts with no economics
+  // at all) fall back to catalog mass so ordering stays stable rather than
+  // arbitrary. Flagged-dormant items sort last within their weight so the
+  // actionable candidates lead.
+  items.sort((a, b) => {
+    const aFlagged = a.status === 'flagged' ? 1 : 0;
+    const bFlagged = b.status === 'flagged' ? 1 : 0;
+    if (aFlagged !== bFlagged) return aFlagged - bFlagged;
+    if (b.economic_weight !== a.economic_weight) return b.economic_weight - a.economic_weight;
+    return b.retail_units - a.retail_units;
+  });
 
   const oldBrand = oldBrandCandidate
     ? await buildOldBrandPlan(oldBrandCandidate, items, opts.dataDirOverride)
