@@ -56,7 +56,6 @@ import { getPluginVersion } from './lib/plugin-version.js';
 import { registerProfileCommands } from './commands/profile.js';
 import { registerBrandCommands } from './commands/brand.js';
 import { registerAuthCommands } from './commands/auth.js';
-import { registerBootstrapCommand } from './commands/bootstrap.js';
 import { registerValidateCommand } from './commands/validate.js';
 import { registerPrefetchCommand } from './commands/prefetch.js';
 import { registerRenderCommand } from './commands/render.js';
@@ -118,7 +117,6 @@ program
 registerProfileCommands(program);
 registerAuthCommands(program);
 registerBrandCommands(program);
-registerBootstrapCommand(program);
 registerValidateCommand(program);
 registerPrefetchCommand(program);
 registerRenderCommand(program);

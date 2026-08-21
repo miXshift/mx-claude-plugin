@@ -38,6 +38,7 @@ import {
   type PromotionPlanItem,
   type OldBrandPlan,
 } from '../lib/binding/promote.js';
+import { assembleEconomics, fmtMoney } from '../lib/binding/economics.js';
 import { previewDemotion, applyDemotion, type DemotionPreview } from '../lib/binding/demote.js';
 import { emitCoverageStake } from '../lib/binding/stake.js';
 import { track, EventName } from '../lib/telemetry/index.js';
@@ -51,8 +52,8 @@ export function registerBrandPromoteCommands(brand: Command): void {
   brand
     .command('promote')
     .description(
-      'Turn discovered sub-brand labels into real, bound brands (mx-ops#6 P2). ' +
-        'Default is a DRY-RUN promotion plan; nothing is written. Pass ' +
+      'Build a promotion plan: turn discovered sub-brand labels into real, ' +
+        'bound brands. Default is a DRY-RUN plan; nothing is written. Pass ' +
         '--apply <decision-json> to execute ONE plan item at a time.',
     )
     .requiredOption('--seller-id <id>', 'the Amazon Seller ID to promote sub-brands for')
@@ -300,8 +301,15 @@ async function preparePlan(sellerId: string, dataDir: string | undefined): Promi
   const accounts = sellers.filter((s) => fetched.resolvedSellerIds.includes(s.seller_id));
   const sellerName = accounts[0]?.seller_name ?? sellerId;
 
+  const economics = assembleEconomics({
+    retailEconRows: fetched.retailEconRows,
+    adsEconRows: fetched.adsEconRows,
+    vendorEconRows: fetched.vendorEconRows,
+  });
+
   const plan = await buildPromotionPlan(report, fetched.resolvedSellerIds, sellerName, {
     dataDirOverride: dataDir,
+    economics,
   });
 
   return { plan, report, sellerName, resolvedSellerIds: fetched.resolvedSellerIds, fetchOutcome };
@@ -333,7 +341,13 @@ function renderPlan(plan: PromotionPlan): string {
   if (plan.items.length === 0) {
     lines.push('No label carries meaningful retail mass yet; nothing to promote.');
   } else {
-    lines.push(`${plan.items.length} label(s) above the meaningful-mass gate:`);
+    // NOT "above the meaningful-mass gate": candidacy is the UNION of catalog
+    // mass and economic share, so this list deliberately includes labels that
+    // fail the mass gate and qualified on money instead. Claiming otherwise
+    // made `brand discover` and `brand promote` contradict each other on the
+    // same account ("exactly one label with meaningful mass" vs "2 label(s)
+    // above the meaningful-mass gate").
+    lines.push(`${plan.items.length} label(s) worth considering, by catalog mass or by revenue:`);
     for (const item of plan.items) {
       lines.push(renderPlanItem(item));
     }
@@ -362,14 +376,41 @@ function renderPlan(plan: PromotionPlan): string {
 }
 
 function renderPlanItem(item: PromotionPlanItem): string {
-  const base =
-    item.status === 'already_bound'
-      ? `  ✓ "${item.label}": already bound to "${item.existing_slug}" (no action needed)`
-      : `  + "${item.label}": would create "${item.proposed_slug}"`;
-  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? 'n/a'}]; ads: ${
-    item.has_ads ? `${item.ads_campaign_count} campaign(s)` : 'no campaigns yet'
-  }`;
-  return `${base}\n${detail}`;
+  let base: string;
+  if (item.status === 'already_bound') {
+    base = `  ✓ "${item.label}": already bound to "${item.existing_slug}" (no action needed)`;
+  } else if (item.status === 'flagged') {
+    // Shown, never hidden — the operator sees the whole account and decides.
+    // Promoting it is still possible, just no longer the default.
+    const headline =
+      item.flag_reason === 'dormant' ? 'looks wound down' : 'too small to be worth its own brand';
+    base = `  ! "${item.label}": ${headline} — NOT proposed (would be "${item.proposed_slug}")`;
+  } else {
+    base = `  + "${item.label}": would create "${item.proposed_slug}"`;
+  }
+  const money =
+    item.economic_weight > 0
+      ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend`
+      : '      trailing 365d: no revenue or ad spend found';
+  // "no campaigns yet" under a non-zero ad-spend figure is not an edge case:
+  // the coverage query counts only enabled/paused campaigns while the
+  // economics query deliberately does not filter State (money spent by a
+  // since-archived campaign was still spent). So has_ads === false alongside
+  // spend > 0 is the DEFINING signature of a wound-down brand — the flagship
+  // case this feature serves — and "yet" reads as "never had any", which is
+  // the opposite of what happened.
+  const adsDetail = item.has_ads
+    ? `${item.ads_campaign_count} campaign(s)`
+    : item.spend_365d > 0
+      ? 'no live campaigns (the spend above is historical)'
+      : 'no campaigns yet';
+  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? 'n/a'}]; ads: ${adsDetail}`;
+  const lines = [base, money, detail];
+  if (item.status === 'flagged') {
+    lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);
+    lines.push('      promote it anyway with --apply if that is wrong.');
+  }
+  return lines.join('\n');
 }
 
 function renderOldBrand(oldBrand: OldBrandPlan): string {

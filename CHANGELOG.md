@@ -3,26 +3,7 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
-## 0.8.10
-
-### Added
-
-- **`brand add` now tells you whether the new brand's context reached your
-  team.** Bootstrapping a brand auto-publishes its context to your org's
-  shared store in the background, but there was previously no way to tell
-  from the command's own output whether that publish actually succeeded,
-  only a separate notice printed on failure. `mixshift brand add <slug>` now
-  prints one confirmation line when the publish lands, and `--json` output
-  carries a `push` object (`attempted`, `published`, and a `reason`/`detail`
-  on anything short of success) so scripts can check it too.
-
-- **Context sync now reports what it's doing, and remembers whether it
-  actually worked.** The background push that runs after every brand-context
-  write, and the throttled sync that runs before skills read one, both emit
-  telemetry now, the same way the `context push`/`context autosync` commands
-  already did. The per-brand sync ledger also now tracks whether the last
-  attempt actually succeeded, separately from when it was last attempted, so
-  a string of offline attempts no longer looks the same as a healthy one.
+## 0.8.11
 
 ### Fixed
 
@@ -64,6 +45,84 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
+
+## 0.8.10
+
+### Added
+
+- **Team brand contexts now show up automatically the moment you work an
+  account.** Previously, a brand's shared context only reached a machine if
+  someone explicitly pulled it there or ran brand setup on that machine
+  directly. Now, the first time any skill touches an account your team has
+  already set up elsewhere, whether that's a brand-new machine or a fresh
+  Cowork session, its shared context arrives in the background
+  automatically. Nothing to run, nothing to remember.
+
+- **`brand add` now tells you whether the new brand's context reached your
+  team.** Bootstrapping a brand auto-publishes its context to your org's
+  shared store in the background, but there was previously no way to tell
+  from the command's own output whether that publish actually succeeded,
+  only a separate notice printed on failure. `mixshift brand add <slug>` now
+  prints one confirmation line when the publish lands, and `--json` output
+  carries a `push` object (`attempted`, `published`, and a `reason`/`detail`
+  on anything short of success) so scripts can check it too.
+
+- **Context sync now reports what it's doing, and remembers whether it
+  actually worked.** The background push that runs after every brand-context
+  write, and the throttled sync that runs before skills read one, both emit
+  telemetry now, the same way the `context push`/`context autosync` commands
+  already did. The per-brand sync ledger also now tracks whether the last
+  attempt actually succeeded, separately from when it was last attempted, so
+  a string of offline attempts no longer looks the same as a healthy one.
+
+- **Signing in now shows what your org has set up versus what's on this
+  machine.** Sign-in already reported your local brand count. It now also
+  reports how many brands your org has configured overall and how many of
+  those are not yet on this machine, so a new teammate or a fresh machine
+  can tell right away whether they're missing shared context instead of
+  finding out the hard way.
+
+- **Clearer guidance when a merchant isn't connected to MixShift yet.**
+  Brand setup's fallback for an account it couldn't find used to mean the
+  account manager had to hand-write the context files. It now checks
+  whether the merchant might just be listed under a different name,
+  explains exactly what it means when an account's Ads or Retail connection
+  is inactive, and if the merchant genuinely isn't in your MixShift account
+  yet, says so plainly with the next step instead of trying to work around
+  it.
+
+- **Clearer guidance when the sandbox blocks MixShift.** Signing in already
+  told you when a Claude Cowork or Claude Code network sandbox was blocking
+  MixShift, and pointed you at `mixshift doctor` for the fix. Data queries
+  and context sync used to just say "check your network" with nothing to
+  act on. They now carry the same diagnosis, so a blocked proxy, a DNS
+  failure, or a timeout says what happened and points at `mixshift doctor`.
+  The one exception is a direct legacy database connection, which `mixshift
+  doctor` does not check; that failure still tells you to check your
+  network, your VPN, or your IP allowlist instead.
+
+- **A heads-up when your team has context for a brand but this session
+  couldn't reach it.** The background sync that runs before a skill reads a
+  brand's context used to fail silently, so an offline or blocked session
+  looked exactly like a brand with nothing new to sync. Now, when your org
+  is known to have context for a brand and a sync attempt can't reach the
+  store, MixShift says so once, and confirms your local copy (if any) is
+  unchanged, instead of staying quiet.
+
+- **Brand setup now checks what MixShift already knows before it asks you
+  anything.** Before the account manager interview starts, brand setup
+  checks whether your team already set this brand up somewhere else and
+  offers to adopt that work instead of re-asking the same questions, reads
+  which target and campaign-organization fields are actually configured in
+  the platform today, and reads the account's existing portfolio names for
+  structure hints: brand lanes, campaign objectives, and prior-agency
+  history. Where the platform already has an answer, brand setup shows it
+  and asks you to confirm instead of asking cold. Where a field was
+  genuinely never set up in the platform, it says so plainly instead of
+  treating it like missing data.
+
+### Fixed
+
 - **`context autosync`'s built-in help no longer says pull-only.** The
   command's own description still described it as fetching server-side
   changes only ("nothing is pushed"), even though it has pushed
@@ -82,6 +141,16 @@ starts at 0.5.39; earlier versions predate the changelog.
   number can never be mistaken for each other in the same report. If you ran the
   smart-tier monthly report on 0.8.9, re-run it on this version.
 
+- **Monthly Performance Report Max now labels every figure with the unit of
+  the value it holds.** Some figures rendered in the wrong denomination: a
+  2.06x return on ad spend printed as "206.0%", an $0.85 cost per click
+  rounded to "$1", a dollar figure on a bridge could carry a percent label,
+  and a few ad-driven metrics printed as bare numbers instead of dollars. The
+  renderer now knows the reporting engine's unit vocabulary, a movement in a
+  rate is shown in points rather than as a percent of a percent, and every
+  figure carries the unit of the value it actually stores. The re-run advice
+  above covers this fix too.
+
 - **Portfolio budget caps now come from Amazon directly.** The stored copy of a
   portfolio's budget cap in the warehouse is often wrong, so asking what a
   portfolio is capped at could come back with a placeholder figure rather than
@@ -93,6 +162,90 @@ starts at 0.5.39; earlier versions predate the changelog.
   daily budgets: the cap exists to hold total portfolio spend below that sum, so
   the two figures are expected to differ, and a gap between them does not mean
   anything has failed to sync.
+
+- **A sub-brand promotion plan can no longer be built on data that failed to
+  load.** Sub-brand discovery runs four warehouse reads, and if one of them
+  failed the plan was still built and shown as if everything had loaded. A lost
+  ads read printed "no campaigns yet" as a statement of fact rather than
+  reporting that the figure was unavailable, so two runs of the same plan
+  minutes apart could disagree about how many campaigns a brand has. The plan
+  now stops and tells you a read did not complete, instead of presenting a
+  partial picture as a whole one. Re-running is also far less likely to be
+  needed: a read that fails to reach the service before it gets an answer is
+  now retried automatically, which covers the brief connection drops that
+  caused this most often. A read that genuinely returns nothing is still
+  reported as nothing, so "no campaigns yet" remains available when it is
+  actually true.
+
+- **Promotion candidates are ranked by money, not by how many items they
+  have.** The plan decided which brand labels were worth promoting by counting
+  catalog items, so a label sitting on a large but mostly inactive catalog
+  could be proposed ahead of one carrying most of the account's revenue and ad
+  spend, and a brand that was economically large but listed on relatively few
+  items could be left out of the plan altogether. Candidates are now ranked on
+  trailing revenue plus ad spend, and a label qualifies on either its catalog
+  footprint or its share of the account's money, so neither kind of brand gets
+  missed. Each item shows its trailing 365-day revenue and ad spend.
+
+- **Brands that look wound down, or too small to be worth their own brand, are
+  flagged rather than quietly proposed.** A brand with real revenue last year
+  and nothing recent, or one carrying a trivial share of the account, is no
+  longer offered for promotion by default. It still appears in the plan with
+  its real figures and a plain explanation of why it was held back, and can
+  still be promoted if the read is wrong: nothing is hidden and nothing is
+  removed from any total, so the plan continues to reconcile against Seller
+  Central and Vendor Central. Whether a brand is still trading is judged from
+  observable activity (recent orders and recent ad spend) rather than from
+  custom item labels, which every account uses differently.
+
+- **Sub-brand discovery and promotion are findable now.** Asking to build a
+  promotion plan did not reliably reach the right command, and `mixshift brand
+  --help` still described the command group as "list, add, edit, archive" with
+  no mention of `discover`, `promote`, or `demote`. The command group, the
+  capability map shown by `mixshift guide`, and the brand-context skill's own
+  description all list the sub-brand workflow now, and `brand discover` points
+  at `brand promote` as the next step.
+
+- **A total data outage can no longer come back as "this account is a single
+  brand".** When every one of the queries that builds the label report failed,
+  `mixshift brand discover` still reported a confident single-brand verdict,
+  reached by reading an empty result as evidence that the account has no
+  distinct brands, and exited as though it had succeeded. Anything reading
+  that output, including automation, would have taken a network outage for a
+  finding about the business. Discover now reports the failure, proposes
+  nothing, and exits non-zero.
+
+- **Promoting a brand can no longer create one that reads your whole account.**
+  A brand qualifying on its revenue alone, without appearing in the catalog or
+  ad coverage figures, could be turned into a sub-brand carrying no label
+  filter at all: it would have been scoped to the entire seller account while
+  describing itself as a sub-brand, and every figure it reported would have
+  been the account's, not the brand's. Promotion now refuses to create a brand
+  it cannot scope, and where the revenue figures identify which label field the
+  brand was found in, it uses that and creates the brand correctly.
+
+- **A brand with no revenue figures is no longer reported as "too small".** When
+  the revenue lookup returned nothing for a particular brand, that brand was
+  described as holding 0.00% of the account and held back as economically
+  trivial, stating as measurement something that was only missing data. A
+  brand we have no figures for is now proposed normally, and only a brand with
+  real figures behind it can be held back for being small.
+
+- **The plan no longer suggests moving your existing brand onto one it just
+  flagged.** When an account already has a single whole-account brand, the plan
+  proposes which label that brand should become. It picked whichever label
+  carried the most items, without checking whether that same label had been
+  flagged as wound down, so it could recommend, in one breath, both holding a
+  brand back and rebinding your history onto it. Only labels the plan actually
+  proposes are considered now. The percentages shown still count every label,
+  flagged ones included, so the figures continue to reconcile.
+
+- **A brand whose label carries stray spacing keeps its revenue figures.** The
+  revenue lookup matched labels exactly while the rest of the plan matched them
+  with surrounding whitespace trimmed, so a label stored as `" Acme "` on one
+  side and `"Acme"` on the other was treated as two different brands and lost
+  its figures, which then made it look economically trivial. Both sides now
+  match labels the same way.
 
 ## 0.8.9
 

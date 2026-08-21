@@ -42,31 +42,31 @@ describe('describeFetchFailure', () => {
     );
   });
 
-  it('classifies ECONNREFUSED', () => {
+  it('classifies ECONNREFUSED and points at mixshift doctor (red-team fix 5)', () => {
     const cause = Object.assign(new Error('connect ECONNREFUSED'), {
       code: 'ECONNREFUSED',
     });
     expect(describeFetchFailure(fetchFailed(cause), HOST)).toBe(
-      'Connection to mcp.mixshift.io was refused.',
+      'Connection to mcp.mixshift.io was refused. Run `mixshift doctor` if this keeps happening.',
     );
   });
 
-  it('classifies a TimeoutError as a timeout', () => {
+  it('classifies a TimeoutError as a timeout and points at mixshift doctor (red-team fix 5)', () => {
     const err = Object.assign(
       new Error('The operation was aborted due to timeout'),
       { name: 'TimeoutError' },
     );
     expect(describeFetchFailure(err, HOST)).toBe(
-      'Timed out connecting to mcp.mixshift.io.',
+      'Timed out connecting to mcp.mixshift.io. Run `mixshift doctor` if this keeps happening.',
     );
   });
 
-  it('classifies UND_ERR_CONNECT_TIMEOUT as a timeout', () => {
+  it('classifies UND_ERR_CONNECT_TIMEOUT as a timeout and points at mixshift doctor (red-team fix 5)', () => {
     const cause = Object.assign(new Error('Connect Timeout Error'), {
       code: 'UND_ERR_CONNECT_TIMEOUT',
     });
     expect(describeFetchFailure(fetchFailed(cause), HOST)).toBe(
-      'Timed out connecting to mcp.mixshift.io.',
+      'Timed out connecting to mcp.mixshift.io. Run `mixshift doctor` if this keeps happening.',
     );
   });
 

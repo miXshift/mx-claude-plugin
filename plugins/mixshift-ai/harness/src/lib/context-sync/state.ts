@@ -23,7 +23,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { loadCredentials } from '../auth/credentials.js';
-import { contextSyncStatePath } from '../paths/resolve.js';
+import { contextSyncStatePath, orgManifestCachePath } from '../paths/resolve.js';
+import type { WireManifestBrand } from './types.js';
 
 export interface ContextSyncDocState {
   /** Server revision adopted at last sync. */
@@ -277,6 +278,108 @@ export async function saveState(
     }
   } catch {
     // Advisory ledger — never worth failing the sync over.
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Org-wide manifest cache (D-032 seed path; see autosync.ts's
+// getCachedOrgManifest and its module doc). UNLIKE everything above, this is
+// NOT per-brand: one file at the data-dir root records the full org manifest
+// (every brand_slug the org store lists, with its doc inventory) plus when it
+// was fetched, so autosync's missing-dir branch and the login-time org-
+// brand-count line can both answer "does the org know this brand" without a
+// network round trip on every call. This module only persists/reads the
+// cache; it has no opinion on freshness — callers compare `fetched_at`
+// against their own TTL (AUTOSYNC_THROTTLE_MS by default). Same for identity
+// (FIX A): this module just carries whatever `identity` the caller stamps on
+// save; it has no opinion on tenant matching either — getCachedOrgManifest
+// owns that comparison, exactly as it owns the TTL comparison.
+// ---------------------------------------------------------------------------
+
+export interface OrgManifestCache {
+  /** ISO-8601 timestamp of the fetch this cache reflects. */
+  fetched_at: string;
+  /**
+   * Server + tenant identity this cache was fetched under (see
+   * resolveLedgerIdentity above), mirroring the per-brand ledger's
+   * `identity` field. Absent on cache files written before FIX A existed, or
+   * when no identity was resolvable at fetch time (offline / no
+   * credentials). getCachedOrgManifest (autosync.ts) treats a mismatch — or
+   * identity present on only one side — as a cache MISS rather than serving
+   * a manifest fetched under a DIFFERENT tenant's login: without this, a
+   * cache warmed under org A's session answers silently for org B on the
+   * same machine within the TTL window.
+   */
+  identity?: string;
+  /** Verbatim manifest payload from GET /api/context/manifest. */
+  brands: WireManifestBrand[];
+}
+
+/**
+ * Load the org-manifest cache. Missing file, unreadable file, malformed
+ * JSON, or a wrong shape all return null — never throws. A null return
+ * means "treat as cold": the caller re-fetches, exactly like a first run.
+ */
+export async function loadOrgManifestCache(
+  dataDirOverride?: string,
+): Promise<OrgManifestCache | null> {
+  try {
+    const raw = await readFile(orgManifestCachePath(dataDirOverride), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof (parsed as { fetched_at?: unknown }).fetched_at !== 'string' ||
+      !Array.isArray((parsed as { brands?: unknown }).brands)
+    ) {
+      return null;
+    }
+    const brands = (parsed as { brands: unknown[] }).brands.filter(
+      (b): b is WireManifestBrand =>
+        typeof b === 'object' &&
+        b !== null &&
+        typeof (b as { brand_slug?: unknown }).brand_slug === 'string' &&
+        Array.isArray((b as { docs?: unknown }).docs),
+    );
+    // FIX A: tolerant reconstruction, same style as everything else here — a
+    // malformed/absent identity just degrades to "no stamp" (treated as a
+    // cache miss by getCachedOrgManifest whenever the CURRENT identity is
+    // resolvable; see its own comparison logic).
+    const storedIdentity = (parsed as { identity?: unknown }).identity;
+    return {
+      fetched_at: (parsed as { fetched_at: string }).fetched_at,
+      ...(typeof storedIdentity === 'string' ? { identity: storedIdentity } : {}),
+      brands,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist the org-manifest cache atomically (tmp + rename), mirroring
+ * saveState's exact pattern. Best-effort: a failed save is swallowed — the
+ * worst outcome is the next caller re-fetching, never data loss. Returns
+ * true when the cache actually reached disk.
+ */
+export async function saveOrgManifestCache(
+  cache: OrgManifestCache,
+  dataDirOverride?: string,
+): Promise<boolean> {
+  try {
+    const path = orgManifestCachePath(dataDirOverride);
+    await mkdir(dirname(path), { recursive: true });
+    const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
+    try {
+      await writeFile(tmpPath, JSON.stringify(cache, null, 2) + '\n', 'utf8');
+      await rename(tmpPath, path);
+      return true;
+    } catch (err) {
+      await unlink(tmpPath).catch(() => {});
+      throw err;
+    }
+  } catch {
     return false;
   }
 }

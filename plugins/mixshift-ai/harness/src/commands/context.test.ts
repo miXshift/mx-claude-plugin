@@ -306,6 +306,80 @@ describe('autosync command', () => {
       payload: { trigger: 'manual' },
     });
   });
+
+  // FIX H (finding 17): the seed outcome was invisible on a manual run —
+  // maybeAutoSync's own internal telemetry tail carries payload.seeded, but
+  // that tail is SUPPRESSED for trigger:'manual' (the CLI wrapper owns the
+  // single row instead — see the test above), so seeded never reached
+  // anywhere a human or a script watching this command could see it.
+  it('a manual run against a missing-but-listed brand reports seeded:true in the telemetry emission', async () => {
+    vi.mocked(maybeAutoSync).mockResolvedValue({
+      ran: true,
+      pulled: 1,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+      seeded: true,
+    });
+
+    await runContext('autosync', 'newbrand', '--data-dir', tmpDataDir);
+
+    expect(vi.mocked(track)).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event).toMatchObject({
+      event_name: 'context_sync.autosync_completed',
+      payload: { trigger: 'manual', brand: 'newbrand', seeded: true },
+    });
+  });
+
+  it('a manual run against a missing-but-listed brand reports seeded:true in --json output', async () => {
+    let stdout = '';
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdout += String(chunk);
+      return true;
+    });
+    vi.mocked(maybeAutoSync).mockResolvedValue({
+      ran: true,
+      pulled: 1,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+      seeded: true,
+    });
+
+    await runContext('autosync', 'newbrand', '--json', '--data-dir', tmpDataDir);
+
+    const parsed = JSON.parse(stdout) as { status: string; ran: boolean; seeded?: boolean };
+    expect(parsed).toMatchObject({ status: 'ok', ran: true, seeded: true });
+  });
+
+  it('an ordinary (non-seeded) manual run omits `seeded` from both the telemetry payload and --json output', async () => {
+    let stdout = '';
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdout += String(chunk);
+      return true;
+    });
+    vi.mocked(maybeAutoSync).mockResolvedValue({
+      ran: true,
+      pulled: 0,
+      pushed: 0,
+      created: 0,
+      conflicts: 0,
+      errors: 0,
+      reports: [],
+    });
+
+    await runContext('autosync', 'acme', '--json', '--data-dir', tmpDataDir);
+
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect((event.payload as Record<string, unknown>).seeded).toBeUndefined();
+    const parsed = JSON.parse(stdout) as { seeded?: boolean };
+    expect(parsed.seeded).toBeUndefined();
+  });
 });
 
 describe('unknown --brand', () => {

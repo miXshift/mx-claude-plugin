@@ -43,6 +43,7 @@ import {
   type ContextSyncState,
 } from './state.js';
 import type {
+  ContextSyncFailureKind,
   DocActionReport,
   DocKey,
   DocStatusReport,
@@ -60,11 +61,24 @@ import type {
 
 export type BrandStatusResult =
   | { ok: true; brand: string; docs: DocStatusReport[] }
-  | { ok: false; brand: string; message: string };
+  | { ok: false; brand: string; message: string; kind?: ContextSyncFailureKind };
+
+/**
+ * A DocActionReport additionally carrying the classified failure `kind`
+ * (red-team fix 6) when action:'error' came from a client call
+ * (fetchDoc/putDoc) that itself returned one — additive and engine.ts-local
+ * (DocActionReport itself, in types.ts, is unchanged). Only pull/push/sync's
+ * BrandActionResult need this extra bit, to let autosync.ts's read-preflight
+ * tell a network-shaped per-doc failure (kind:'host_unreachable') apart from
+ * any other kind without re-parsing the report's `detail` text. Mirrors
+ * exactly how BrandActionResult/BrandStatusResult already carry the
+ * brand-level `kind` from a failed manifest fetch (see buildDocPairs).
+ */
+type DocActionReportWithKind = DocActionReport & { kind?: ContextSyncFailureKind };
 
 export type BrandActionResult =
-  | { ok: true; brand: string; reports: DocActionReport[] }
-  | { ok: false; brand: string; message: string };
+  | { ok: true; brand: string; reports: DocActionReportWithKind[] }
+  | { ok: false; brand: string; message: string; kind?: ContextSyncFailureKind };
 
 export interface MigrateBrandSummary {
   brand: string;
@@ -183,7 +197,7 @@ type PairsResult =
        *  and the next saveState should persist even if no action ran. */
       stateDirty: boolean;
     }
-  | { ok: false; message: string };
+  | { ok: false; message: string; kind?: ContextSyncFailureKind };
 
 async function buildDocPairs(
   brandSlug: string,
@@ -194,7 +208,13 @@ async function buildDocPairs(
   let manifestBrands = options.manifest;
   if (!manifestBrands) {
     const manifest = await client.fetchManifest();
-    if (!manifest.ok) return { ok: false, message: manifest.friendly };
+    // Thread the failure `kind` through (US4): a network/offline-shaped
+    // manifest fetch (kind:'host_unreachable', see client.ts) is what lets
+    // autosync.ts's read-preflight tell "could not reach the org store"
+    // apart from a credentials/scope/server-side failure without having to
+    // sniff the friendly TEXT, which only this call site can still classify
+    // reliably — pull/push/sync/computeStatus just pass it through unchanged.
+    if (!manifest.ok) return { ok: false, message: manifest.friendly, kind: manifest.kind };
     manifestBrands = manifest.brands;
   }
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
@@ -306,7 +326,7 @@ export async function computeStatus(
   options: EngineOptions = {},
 ): Promise<BrandStatusResult> {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
 
   const docs: DocStatusReport[] = built.pairs.map((p) => ({
     key: p.key,
@@ -466,10 +486,14 @@ async function pullOneDoc(
   pair: DocPair,
   client: ContextSyncClient,
   dataDirOverride: string | undefined,
-): Promise<{ report: DocActionReport; stateEntry?: ContextSyncDocState }> {
+): Promise<{ report: DocActionReportWithKind; stateEntry?: ContextSyncDocState }> {
   const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
   if (!fetched.ok) {
-    return { report: reportFor(pair, 'error', `fetch failed: ${fetched.friendly}`) };
+    // Red-team fix 6: thread the client failure's classified `kind`
+    // additively onto the report — see DocActionReportWithKind above.
+    return {
+      report: { ...reportFor(pair, 'error', `fetch failed: ${fetched.friendly}`), kind: fetched.kind },
+    };
   }
   const { doc } = fetched;
 
@@ -531,7 +555,7 @@ async function pushOneDoc(
   client: ContextSyncClient,
   baseRevision: number | undefined,
   force: boolean,
-): Promise<{ report: DocActionReport; stateEntry?: ContextSyncDocState }> {
+): Promise<{ report: DocActionReportWithKind; stateEntry?: ContextSyncDocState }> {
   const local = pair.local!;
   const put = (base: number | undefined): Promise<PutDocResult> =>
     client.putDoc({
@@ -575,7 +599,11 @@ async function pushOneDoc(
       report: reportFor(pair, 'conflict', `${who}${conflictInstructions(brandSlug)}`),
     };
   }
-  return { report: reportFor(pair, 'error', `push failed: ${result.friendly}`) };
+  // Red-team fix 6: thread the client failure's classified `kind`
+  // additively onto the report — see DocActionReportWithKind above.
+  return {
+    report: { ...reportFor(pair, 'error', `push failed: ${result.friendly}`), kind: result.kind },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -587,11 +615,11 @@ export async function pull(
   options: EngineOptions & { force?: boolean } = {},
 ): Promise<BrandActionResult> {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
@@ -666,11 +694,11 @@ export async function push(
   options: EngineOptions & { force?: boolean } = {},
 ): Promise<BrandActionResult> {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
@@ -779,11 +807,11 @@ export async function sync(
   options: EngineOptions = {},
 ): Promise<BrandActionResult> {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client =
     options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
 
-  const reports: DocActionReport[] = [...built.issues];
+  const reports: DocActionReportWithKind[] = [...built.issues];
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {

@@ -7,9 +7,12 @@ import {
   saveState,
   emptyState,
   resolveLedgerIdentity,
+  loadOrgManifestCache,
+  saveOrgManifestCache,
   type ContextSyncState,
+  type OrgManifestCache,
 } from './state.js';
-import { contextSyncStatePath, credentialsPath } from '../paths/resolve.js';
+import { contextSyncStatePath, credentialsPath, orgManifestCachePath } from '../paths/resolve.js';
 
 let testDir: string;
 
@@ -347,5 +350,64 @@ describe('resolveLedgerIdentity', () => {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, '{ not json', 'utf8');
     expect(await resolveLedgerIdentity(testDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Org-manifest cache: `identity` field (FIX A). This module is a DUMB
+// carrier for identity, same as it is for freshness (`fetched_at`) — it has
+// no opinion on tenant matching; getCachedOrgManifest (autosync.ts) owns
+// that comparison. These tests only pin the round-trip contract; the
+// comparison/mismatch behavior itself is covered in autosync.test.ts's "org-
+// manifest cache is identity-bound (FIX A)" suite.
+// ---------------------------------------------------------------------------
+
+describe('OrgManifestCache identity field (FIX A) — round-trip only, no comparison here', () => {
+  function sampleManifestCache(): OrgManifestCache {
+    return {
+      fetched_at: '2026-07-05T12:00:00.000Z',
+      brands: [{ brand_slug: 'acme', docs: [] }],
+    };
+  }
+
+  it('round-trips an identity through save/load', async () => {
+    await saveOrgManifestCache({ ...sampleManifestCache(), identity: 'https://mcp.mixshift.io#42' }, testDir);
+    const loaded = await loadOrgManifestCache(testDir);
+    expect(loaded?.identity).toBe('https://mcp.mixshift.io#42');
+    expect(loaded?.brands).toEqual(sampleManifestCache().brands);
+  });
+
+  it('is absent on a cache written with no identity (e.g. offline / no credentials at fetch time)', async () => {
+    await saveOrgManifestCache(sampleManifestCache(), testDir);
+    const loaded = await loadOrgManifestCache(testDir);
+    expect(loaded?.identity).toBeUndefined();
+  });
+
+  it('is absent on a pre-FIX-A file on disk that never had the field at all', async () => {
+    await mkdir(testDir, { recursive: true });
+    await writeFile(
+      orgManifestCachePath(testDir),
+      JSON.stringify({ fetched_at: '2026-07-05T12:00:00.000Z', brands: [] }),
+      'utf8',
+    );
+    const loaded = await loadOrgManifestCache(testDir);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.identity).toBeUndefined();
+  });
+
+  it('tolerates a non-string identity value by dropping it, without touching brands', async () => {
+    await mkdir(testDir, { recursive: true });
+    await writeFile(
+      orgManifestCachePath(testDir),
+      JSON.stringify({
+        fetched_at: '2026-07-05T12:00:00.000Z',
+        identity: 12345,
+        brands: [{ brand_slug: 'acme', docs: [] }],
+      }),
+      'utf8',
+    );
+    const loaded = await loadOrgManifestCache(testDir);
+    expect(loaded?.identity).toBeUndefined();
+    expect(loaded?.brands).toEqual([{ brand_slug: 'acme', docs: [] }]);
   });
 });

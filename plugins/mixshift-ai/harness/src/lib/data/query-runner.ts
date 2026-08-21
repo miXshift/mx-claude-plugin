@@ -25,6 +25,8 @@ import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { type MysqlCreds, type DatahubCreds, isDatahubCreds } from '../auth/schema.js';
 import { intentHeader } from '../auth/intent.js';
 import { track, EventName } from '../telemetry/index.js';
+import { networkErrorMessage } from '../net/classify.js';
+import { resolveApiBaseHost } from '../net/api-base.js';
 
 export type DataQueryFailureKind =
   | 'access_denied_table'
@@ -154,6 +156,19 @@ export interface QueryShape {
    *  null when select_star or when the projection cannot be determined. */
   projected_cols: number | null;
 }
+
+/** How many times a PRE-RESPONSE network failure (DNS, TLS, connection
+ *  refused, connect timeout, socket hang-up) is replayed against the gateway
+ *  before it surfaces to the caller. Deliberately small: this exists to ride
+ *  out a single bad connect, not to paper over a service that is genuinely
+ *  down — two extra attempts, then the caller's fail-loud path takes over.
+ *  A request that DID reach the service and blew its time budget is never
+ *  replayed (see DatahubNetworkError.retryable). */
+export const TRANSIENT_NETWORK_RETRIES = 2;
+/** Backoff before each replay, indexed by attempt number. Short, because the
+ *  failure being ridden out is usually a ~10s connect timeout that has
+ *  already cost the user that long. */
+export const TRANSIENT_RETRY_BACKOFF_MS = [250, 1_000];
 
 /** Server-side per-request row cap on the datahub gateway (`/api/query`). A
  *  single request returning MORE than this is REJECTED outright, not
@@ -1234,6 +1249,9 @@ interface DatahubQueryWire {
  * it to `host_unreachable`) and a plain Error when the session cannot be
  * refreshed. Shared by the raw-SQL gateway (/api/query) and the named
  * query pack (/api/named-query).
+ *
+ * A pre-response network failure is replayed up to TRANSIENT_NETWORK_RETRIES
+ * times before it surfaces — see the comment on `doFetch` below.
  */
 async function datahubAuthedPost(
   creds: DatahubCreds,
@@ -1242,7 +1260,7 @@ async function datahubAuthedPost(
   timeoutBudgetMs: number,
   dataDirOverride?: string,
 ): Promise<Response> {
-  const doFetch = async (bearer: string): Promise<Response> => {
+  const doFetchOnce = async (bearer: string): Promise<Response> => {
     try {
       return await fetch(`${creds.api_base}${path}`, {
         method: 'POST',
@@ -1259,7 +1277,44 @@ async function datahubAuthedPost(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new DatahubNetworkError(message);
+      // Classify HERE, while `err` still carries the raw fetch failure shape
+      // (undici's `.cause` with its `code`/`message`) — DatahubNetworkError
+      // below flattens to a plain string, and by the time the two call
+      // sites below (runDatahubQuery, runNamedQuery) catch it that shape is
+      // gone. `creds.api_base` is the exact host this request targeted.
+      const friendly = networkErrorMessage(err, resolveApiBaseHost(creds.api_base));
+      // AbortSignal.timeout rejects with a TimeoutError DOMException. That
+      // means the service HAD the request and we stopped waiting — a
+      // different situation from never reaching it, and not worth replaying.
+      const budgetExpired = err instanceof Error && err.name === 'TimeoutError';
+      throw new DatahubNetworkError(message, friendly, !budgetExpired);
+    }
+  };
+
+  /**
+   * Replay a pre-response network failure a couple of times before giving up.
+   *
+   * Both callers here are read-only SELECT paths (`/api/query`,
+   * `/api/named-query`), so a replay cannot double-apply anything.
+   *
+   * Why this exists (mx-ops#6): callers that fan several
+   * queries out concurrently open several NEW connections at once, and on a
+   * network where each fresh connect is slow one of them can exceed undici's
+   * 10s connect timeout and die while its siblings succeed. Gateway metering
+   * confirmed the dropped request never arrived. The caller then has a
+   * partial result set through no fault of the query. One cheap retry turns
+   * that into a completed read; the fail-loud classification downstream is
+   * the backstop for when it genuinely cannot be completed.
+   */
+  const doFetch = async (bearer: string): Promise<Response> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await doFetchOnce(bearer);
+      } catch (err) {
+        const transient = err instanceof DatahubNetworkError && err.retryable;
+        if (!transient || attempt >= TRANSIENT_NETWORK_RETRIES) throw err;
+        await new Promise((r) => setTimeout(r, TRANSIENT_RETRY_BACKOFF_MS[attempt]));
+      }
     }
   };
 
@@ -1374,9 +1429,9 @@ async function runDatahubQuery<Row>(
         ok: false,
         kind: 'host_unreachable',
         message: err.message,
-        friendly:
-          'The MixShift auth service is unreachable. Check your network ' +
-          'or try again in a minute.',
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs,
       };
     } else {
@@ -1555,9 +1610,9 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
         ok: false,
         kind: 'host_unreachable',
         message: err.message,
-        friendly:
-          'The MixShift auth service is unreachable. Check your network ' +
-          'or try again in a minute.',
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs,
       };
     } else {
@@ -1580,9 +1635,26 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
 }
 
 class DatahubNetworkError extends Error {
-  constructor(msg: string) {
+  /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+   *  failure at the point it was thrown (see datahubAuthedPost's doFetch) —
+   *  computed there because this class itself only carries a flattened
+   *  string message, losing the `.cause` classify.ts needs. */
+  readonly friendly: string;
+  /** False when the request DID reach the service and we gave up waiting on
+   *  its answer (the AbortSignal.timeout budget fired). Retrying that just
+   *  spends the budget again on a query the server is already struggling
+   *  with, so only genuinely pre-response failures — DNS, TLS, connection
+   *  refused, connect timeout, socket hang-up — are replayed.
+   *
+   *  Defaulted rather than required: every call site that constructs this
+   *  for a real fetch failure is pre-response, and defaulting keeps the
+   *  friendly-message change (#141) and the replay (mx-ops#6) independent. */
+  readonly retryable: boolean;
+  constructor(msg: string, friendly: string, retryable = true) {
     super(msg);
     this.name = 'DatahubNetworkError';
+    this.friendly = friendly;
+    this.retryable = retryable;
   }
 }
 
@@ -1661,12 +1733,27 @@ function classify(err: unknown): DataQueryFailure {
     };
   }
   if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EHOSTUNREACH') {
+    // Red-team fix 4: NOT routed through classify.ts's
+    // describeFetchFailure/networkErrorMessage, and deliberately NOT
+    // pointed at `mixshift doctor` either — `mixshift doctor` only probes
+    // the datahub/API host, never the warehouse mysql host, so pointing a
+    // warehouse-unreachable user at it would diagnose the wrong thing. A
+    // raw mysql2 connection error also carries its `code` directly on the
+    // error object over a different transport (a direct TCP connection, not
+    // an HTTP fetch through the sandbox egress proxy) — forcing it through
+    // the fetch classifier would either fail to match (no `.cause`) or,
+    // worse, falsely claim the sandbox-proxy/403 narrative for a failure
+    // that never went near it. Accurate, self-contained guidance instead:
+    // this fleet's warehouse connections are commonly gated by a VPN or IP
+    // allowlist, so name that as the likely next thing to check.
     return {
       ok: false,
       kind: 'host_unreachable',
       raw_code: code,
       message,
-      friendly: 'Could not reach the warehouse host. Check your network.',
+      friendly:
+        'Could not reach the warehouse host. Check your network and, if you ' +
+        "connect through a VPN or allowlist, that this machine's IP is still allowed.",
     };
   }
   return {
