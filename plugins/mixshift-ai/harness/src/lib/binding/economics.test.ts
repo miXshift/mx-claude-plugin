@@ -157,6 +157,71 @@ describe('assembleEconomics', () => {
     asin_count: 0,
   });
 
+  // mx-ops#6 red team, P3: economics keyed the RAW wire label while every
+  // coverage side keys normalizeLabel(). A label arriving padded on one side
+  // and clean on the other produced two keys that never joined, so the
+  // candidate silently lost its economics and then read as a brand with no
+  // money behind it — which the negligible gate would hold back.
+  it('keys on the normalized label, so a padded value joins its clean twin', () => {
+    const out = assembleEconomics({
+      retailEconRows: [retail('  Forager Pantry  ', 100_000, 40_000)],
+      adsEconRows: [ads('Forager Pantry', 10_000, 4_000)],
+      vendorEconRows: [],
+    });
+    expect([...out.keys()]).toEqual(['Forager Pantry']);
+    const e = out.get('Forager Pantry')!;
+    expect(e.revenue_365d).toBe(100_000);
+    expect(e.spend_365d).toBe(10_000);
+    expect(e.economic_weight).toBe(110_000);
+  });
+
+  it('folds a blank label into the unclassified bucket rather than keying ""', () => {
+    const out = assembleEconomics({
+      retailEconRows: [retail('   ', 5_000, 1_000)],
+      adsEconRows: [],
+      vendorEconRows: [],
+    });
+    expect([...out.keys()]).toEqual(['(unclassified)']);
+  });
+
+  // The label COLUMN each side reported has to survive assembly: an
+  // economics-only candidate has no coverage row to take a source from, and
+  // without one it reaches the write path with no label filter at all.
+  it('carries the retail and ads label columns through', () => {
+    const out = assembleEconomics({
+      retailEconRows: [retail('Forager Pantry', 100_000, 40_000)],
+      adsEconRows: [ads('Forager Pantry', 10_000, 4_000)],
+      vendorEconRows: [],
+    });
+    const e = out.get('Forager Pantry')!;
+    expect(e.retail_source).toBe('mws_items.Brand');
+    expect(e.ads_source).toBe('campaign.Brand');
+    expect(e.has_data).toBe(true);
+  });
+
+  it('takes the vendor column as the retail source when only VC saw the label', () => {
+    const out = assembleEconomics({
+      retailEconRows: [],
+      adsEconRows: [],
+      vendorEconRows: [vendor('Alpine Trail', 20_000, 8_000)],
+    });
+    const e = out.get('Alpine Trail')!;
+    expect(e.retail_source).toBe('vendor_items.CustomBrand');
+    expect(e.ads_source).toBeNull();
+  });
+
+  it('marks an assembled label as measured even when every figure is zero', () => {
+    const out = assembleEconomics({
+      retailEconRows: [retail('Zeroed Brand', 0, 0)],
+      adsEconRows: [],
+      vendorEconRows: [],
+    });
+    // has_data distinguishes "we looked and it earned nothing" from "we never
+    // saw a row" — the two must never collapse into the same signal.
+    expect(out.get('Zeroed Brand')!.has_data).toBe(true);
+    expect(unknownEconomics('Never Seen').has_data).toBe(false);
+  });
+
   it('sums SC and VC revenue for one label rather than letting one win', () => {
     // A brand can legitimately sell on both sides of the business; the
     // account's real revenue for it is the sum, and taking either alone

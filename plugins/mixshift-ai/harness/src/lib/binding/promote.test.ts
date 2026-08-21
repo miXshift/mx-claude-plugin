@@ -45,6 +45,7 @@ import {
   DOMINANT_LABEL_SHARE_THRESHOLD,
   FIRST_LIVE_PROMOTION_NOTICE,
   type PromotionPlan,
+  type PromotionPlanItem,
   type PromotionDecision,
 } from './promote.js';
 import { assembleEconomics } from './economics.js';
@@ -342,6 +343,86 @@ describe('buildPromotionPlan — economics', () => {
     expect(plan.items.at(-1)!.status).toBe('flagged');
   });
 
+  // mx-ops#6 red team, P2. unknownEconomics' zeros are PLACEHOLDERS. Reading
+  // them as a share computed 0/total = 0 < 2%, so a label the economics
+  // queries simply never returned was told it was "too small to be worth its
+  // own brand — 0.00% of this account". That is the same false-confidence
+  // failure this change exists to remove: absent data stated as measurement.
+  it('does NOT flag a label the economics queries never returned', async () => {
+    const report = assembleCoverageReport({
+      sellerId: SELLER_ID,
+      now: new Date('2026-08-12T00:00:00.000Z'),
+      retailRows: [
+        { SellerID: 1, source: 'mws_items.Brand', label: BIG, asin_count: 60, row_count: 60 },
+        { SellerID: 1, source: 'mws_items.Brand', label: 'No Econ Row', asin_count: 55, row_count: 55 },
+      ],
+      vendorRows: [],
+      adsRows: [],
+      matchRows: [],
+    });
+    // Economics covers BIG only; 'No Econ Row' is absent from the map, so it
+    // falls back to unknownEconomics with weight 0 against a $7.38M account.
+    const plan = await buildPromotionPlan(report, [1], 'Acme Agency', {
+      dataDirOverride: testDir,
+      economics: econMap(),
+    });
+    const orphan = plan.items.find((i) => i.label === 'No Econ Row')!;
+    expect(orphan.status).toBe('would_create');
+    expect(orphan.flag_reason).toBeUndefined();
+    expect(orphan.lifecycle).toBe('unknown');
+    // The genuinely-measured comparison still works on the same plan.
+    expect(plan.items.find((i) => i.label === BIG)!.status).toBe('would_create');
+  });
+
+  // mx-ops#6 red team, P2. The old-brand rebind picked the top label by ITEM
+  // COUNT and never read `status`, so on an account whose largest stale
+  // catalog is also its wound-down brand, the plan proposed re-binding the
+  // historical brand onto a label the SAME plan flagged as held back.
+  it('never proposes rebinding the old brand onto a flagged label', async () => {
+    await writeBrandContext(OLD_BRAND_SLUG, oldBrandContextYaml);
+    await writeIndex([{ slug: OLD_BRAND_SLUG, display_name: 'Acme House', sellerIds: [1] }]);
+
+    // DEAD carries 127 of 136 units (93%) — it wins on count by a landslide,
+    // and is exactly the label flagged negligible.
+    const plan = await buildPromotionPlan(econReport(), [1], 'Acme Agency', {
+      dataDirOverride: testDir,
+      economics: econMap(),
+    });
+    expect(plan.items.find((i) => i.label === DEAD)!.status).toBe('flagged');
+    expect(plan.old_brand!.dominant_label).not.toBe(DEAD);
+    // BIG holds only 9 of 136 units, far under the 50% dominance gate, so
+    // with the flagged label excluded nothing dominates and we retire.
+    expect(plan.old_brand!.proposed_disposition).toBe('retire');
+    expect(plan.old_brand!.dominant_label).toBeUndefined();
+  });
+
+  it('still rebinds onto an unflagged label that genuinely dominates', async () => {
+    await writeBrandContext(OLD_BRAND_SLUG, oldBrandContextYaml);
+    await writeIndex([{ slug: OLD_BRAND_SLUG, display_name: 'Acme House', sellerIds: [1] }]);
+
+    // Same shape, but the big earner also carries the catalog.
+    const report = assembleCoverageReport({
+      sellerId: SELLER_ID,
+      now: new Date('2026-08-12T00:00:00.000Z'),
+      retailRows: [
+        { SellerID: 1, source: 'mws_items.Brand', label: BIG, asin_count: 120, row_count: 120 },
+        { SellerID: 1, source: 'mws_items.Brand', label: DEAD, asin_count: 16, row_count: 16 },
+      ],
+      vendorRows: [],
+      adsRows: [{ SellerID: 1, source: 'campaign.Brand', label: BIG, campaign_count: 41 }],
+      matchRows: [],
+    });
+    const plan = await buildPromotionPlan(report, [1], 'Acme Agency', {
+      dataDirOverride: testDir,
+      economics: econMap(),
+    });
+    expect(plan.old_brand!.proposed_disposition).toBe('rebind_as_dominant');
+    expect(plan.old_brand!.dominant_label).toBe(BIG);
+    // The share the operator reads is still measured against EVERY label's
+    // units, flagged included, so it reconciles against the account.
+    expect(plan.old_brand!.rationale).toContain('88%');
+  });
+
   it('promotes an economically significant label that misses the catalog-mass gate', async () => {
     // The other half of the reported defect: the account's largest brand by
     // money was absent from the plan entirely because it sat on few items.
@@ -580,8 +661,8 @@ describe('buildTriageProposals', () => {
     lifecycle_reason: 'fixture',
   };
   const items = [
-    { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, ...liveEcon, proposed_slug: 'forager-pantry', status: 'would_create' as const },
-    { label: 'Alpine Trail', retail_source: 'mws_items.Brand', retail_units: 30, ads_campaign_count: 0, has_ads: false, ...liveEcon, proposed_slug: 'alpine-trail', status: 'would_create' as const },
+    { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, ads_source: null, ...liveEcon, proposed_slug: 'forager-pantry', status: 'would_create' as const },
+    { label: 'Alpine Trail', retail_source: 'mws_items.Brand', retail_units: 30, ads_campaign_count: 0, has_ads: false, ads_source: null, ...liveEcon, proposed_slug: 'alpine-trail', status: 'would_create' as const },
   ];
 
   function loadContext(): BrandContext {
@@ -650,7 +731,7 @@ describe('applyPromotionDecision — fail-closed on malformed/unknown decisions'
       seller_id: SELLER_ID,
       generated_at: '2026-08-12T00:00:00.000Z',
       items: [
-        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
+        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, ads_source: null, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
       ],
       old_brand: null,
       additional_unbound_brands: [],
@@ -770,7 +851,7 @@ describe('applyPromotionDecision — promote_label (real filesystem writes)', ()
       seller_id: SELLER_ID,
       generated_at: '2026-08-12T00:00:00.000Z',
       items: [
-        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
+        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, ads_source: null, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
       ],
       old_brand: null,
       additional_unbound_brands: [],
@@ -877,7 +958,7 @@ describe('applyPromotionDecision — retire_old_brand / rebind_old_brand', () =>
       seller_id: SELLER_ID,
       generated_at: '2026-08-12T00:00:00.000Z',
       items: [
-        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
+        { label: 'Forager Pantry', retail_source: 'mws_items.Brand', retail_units: 70, ads_campaign_count: 5, has_ads: true, ads_source: null, revenue_365d: 100_000, spend_365d: 10_000, economic_weight: 110_000, lifecycle: 'active', lifecycle_reason: 'fixture', proposed_slug: 'forager-pantry', status: 'would_create' },
       ],
       old_brand: {
         slug: OLD_BRAND_SLUG,
@@ -978,7 +1059,7 @@ describe('promotion write path — org-store safety regressions', () => {
           retail_source: 'mws_items.Brand',
           retail_units: 70,
           ads_campaign_count: 5,
-          has_ads: true,
+          has_ads: true, ads_source: null,
           revenue_365d: 100_000,
           spend_365d: 10_000,
           economic_weight: 110_000,
@@ -1009,6 +1090,88 @@ describe('promotion write path — org-store safety regressions', () => {
     const check = parseYaml(await readFile(path, 'utf-8')) as Record<string, unknown>;
     if (check.binding !== undefined) throw new Error('test setup failed: binding was not stripped');
   }
+
+  // mx-ops#6 red team, P2 — the write-path hazard, and the reason this pass
+  // gates the first live promotion.
+  //
+  // Both label filters are individually optional in the schema, so an
+  // economics-only candidate (admitted by the new economic-share gate, but
+  // returned by NO coverage query) reached the write path with an empty
+  // retail source and has_ads false, and the binding came out carrying
+  // amazon_seller_id and nothing else. That is a "sub-brand" scoped to the
+  // ENTIRE account, published org-wide, and indistinguishable downstream
+  // from a legitimately account-wide brand — while its own scope_note
+  // asserted a label filter it did not contain.
+  function unfilterableItem(): PromotionPlanItem {
+    return {
+      label: 'Econ Only',
+      retail_source: null,
+      retail_units: 0,
+      ads_campaign_count: 0,
+      has_ads: false,
+      ads_source: null,
+      revenue_365d: 500_000,
+      spend_365d: 0,
+      economic_weight: 500_000,
+      lifecycle: 'active',
+      lifecycle_reason: 'fixture',
+      proposed_slug: 'econ-only',
+      status: 'would_create',
+    };
+  }
+
+  function econOnlyPlan(item: PromotionPlanItem): PromotionPlan {
+    return {
+      seller_id: SELLER_ID,
+      generated_at: '2026-08-12T00:00:00.000Z',
+      items: [item],
+      old_brand: null,
+      additional_unbound_brands: [],
+      notice: FIRST_LIVE_PROMOTION_NOTICE,
+    };
+  }
+
+  it('REFUSES to write a sub-brand binding that would carry no label filter', async () => {
+    const result = await applyPromotionDecision(
+      econOnlyPlan(unfilterableItem()),
+      { action: 'promote_label', label: 'Econ Only' },
+      opts,
+    );
+    expect(result.status).not.toBe('ok');
+    expect(result.did_write).toBe(false);
+    expect(result.detail).toMatch(/no label filter|Refusing to bind/i);
+  });
+
+  it('leaves nothing behind on disk or in the org store when it refuses', async () => {
+    await applyPromotionDecision(
+      econOnlyPlan(unfilterableItem()),
+      { action: 'promote_label', label: 'Econ Only' },
+      opts,
+    );
+    // Refusing after bootstrap but before the binding write would strand an
+    // unbound, sub-brand-named brand — the exact state the deferPush guard
+    // above exists to prevent, so the refusal must land before any publish.
+    expect(pushSnapshots).toHaveLength(0);
+    await expect(access(ctxPathFor('econ-only'))).rejects.toThrow();
+  });
+
+  it('binds on the ads column when only economics saw the label', async () => {
+    // The same candidate becomes promotable once economics reports WHICH
+    // column it read the label from. Failing closed is the floor, not the
+    // goal: the operator should get the brand, correctly scoped.
+    const item = { ...unfilterableItem(), ads_source: 'campaign.Brand' };
+    const result = await applyPromotionDecision(
+      econOnlyPlan(item),
+      { action: 'promote_label', label: 'Econ Only' },
+      opts,
+    );
+    expect(result.status).toBe('ok');
+    const parsed = parseYaml(await readFile(ctxPathFor('econ-only'), 'utf-8')) as {
+      binding?: { retail_label?: unknown; ads_label?: { source?: string; value?: string } };
+    };
+    expect(parsed.binding?.ads_label).toEqual({ source: 'campaign.Brand', value: 'Econ Only' });
+    expect(parsed.binding?.retail_label).toBeUndefined();
+  });
 
   it('never publishes an UNBOUND brand: every push during promotion sees the binding already written', async () => {
     const result = await applyPromotionDecision(

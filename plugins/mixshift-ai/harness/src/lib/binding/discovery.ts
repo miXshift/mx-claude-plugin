@@ -45,6 +45,7 @@
  */
 
 import { runNamedQuery, type DataQueryResult } from '../data/query-runner.js';
+import { UNCLASSIFIED_LABEL, normalizeLabel } from './label.js';
 import {
   coerceRetailEconRow,
   coerceAdsEconRow,
@@ -197,17 +198,13 @@ export function coerceMatchRow(row: Sbd04MatchRowWire): Sbd04MatchRow {
 }
 
 /** Blank/absent labels are a BUCKET, never a sub-brand candidate (design doc
- *  §3, the DHC-07/08 rule: `COALESCE(NULLIF(col,''),'(unclassified)')`). */
-export const UNCLASSIFIED_LABEL = '(unclassified)';
-
-/** Normalize a raw label value to the unclassified bucket when blank. The
- *  gateway is expected to already COALESCE server-side (matching the
- *  DHC-07/08 pattern), but this is defensive: a null/''/whitespace-only
- *  label must never silently count as a "distinct label" candidate. */
-export function normalizeLabel(raw: string | null | undefined): string {
-  const trimmed = (raw ?? '').trim();
-  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
-}
+ *  §3, the DHC-07/08 rule: `COALESCE(NULLIF(col,''),'(unclassified)')`).
+ *
+ *  DEFINED IN `./label.ts`, re-exported here so existing importers are
+ *  unaffected. It moved because economics.ts needs the SAME normalizer and
+ *  cannot import this module without a cycle — keying the two sides
+ *  differently is what let a whitespace-padded label lose its economics. */
+export { UNCLASSIFIED_LABEL, normalizeLabel };
 
 // ---------------------------------------------------------------------------
 // Per-side coverage

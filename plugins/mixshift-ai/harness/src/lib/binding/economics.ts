@@ -27,6 +27,8 @@
  *    operator makes explicitly, never one this code makes silently.
  */
 
+import { normalizeLabel } from './label.js';
+
 // ---------------------------------------------------------------------------
 // Wire rows (SBD-05 / SBD-06 / SBD-07)
 //
@@ -186,6 +188,22 @@ export interface LabelEconomics {
    *  is what a flagged candidate shows the operator, so it has to stand on
    *  its own without the reader knowing the thresholds. */
   lifecycle_reason: string;
+  /** Whether ANY economics row was actually returned for this label.
+   *
+   *  False is NOT the same as zero. Zero means "we looked and it earned
+   *  nothing"; false means "we never saw a row". Callers that hold a
+   *  candidate back for being economically trivial must check this first,
+   *  or they will tell an operator a brand is worth 0.00% of the account
+   *  when the truth is that we have no data on it at all. */
+  has_data: boolean;
+  /** The retail/vendor label COLUMN this label was read from (e.g.
+   *  `mws_items.ItemLabel1`), when SBD-05 or SBD-07 returned a row for it.
+   *  Carried so an economics-only candidate — one the coverage queries
+   *  never returned — can still be bound to a real label filter instead of
+   *  silently scoping to the whole account. */
+  retail_source: string | null;
+  /** The ads label column (SBD-06), same purpose. */
+  ads_source: string | null;
 }
 
 /** A label with trailing activity but none in the recent window reads as
@@ -286,25 +304,56 @@ export interface EconomicsInput {
 /**
  * Fold the three economics sides into one map keyed by label.
  *
- * Labels are matched by their verbatim value, the same way SBD-04 matches
- * retail against ads. A label present on only one side still gets an entry
- * — a brand can carry ad spend with no catalog revenue, or vice versa, and
- * both are real states worth showing.
+ * Labels are matched by their NORMALIZED value, the same way every coverage
+ * side keys (see ./label.ts). Keying the raw wire string here while
+ * discovery keyed the normalized one meant a label carrying stray
+ * whitespace on one side produced two map entries that never joined, and
+ * the candidate silently lost its economics.
+ *
+ * A label present on only one side still gets an entry — a brand can carry
+ * ad spend with no catalog revenue, or vice versa, and both are real states
+ * worth showing.
+ *
+ * The label COLUMN each side reported is carried through, so a candidate
+ * that only economics saw can still be bound to a real filter.
  */
 export function assembleEconomics(input: EconomicsInput): Map<string, LabelEconomics> {
   const acc = new Map<
     string,
-    { revenue365: number; revenue90: number; spend365: number; spend90: number; stamps: Array<string | null> }
+    {
+      revenue365: number;
+      revenue90: number;
+      spend365: number;
+      spend90: number;
+      stamps: Array<string | null>;
+      retailSource: string | null;
+      adsSource: string | null;
+    }
   >();
 
-  const bucket = (label: string) => {
+  const bucket = (rawLabel: string) => {
+    const label = normalizeLabel(rawLabel);
     let e = acc.get(label);
     if (!e) {
-      e = { revenue365: 0, revenue90: 0, spend365: 0, spend90: 0, stamps: [] };
+      e = {
+        revenue365: 0,
+        revenue90: 0,
+        spend365: 0,
+        spend90: 0,
+        stamps: [],
+        retailSource: null,
+        adsSource: null,
+      };
       acc.set(label, e);
     }
     return e;
   };
+
+  // First non-empty source wins. SC and VC both feed retailSource; they read
+  // the same custom-label column on their respective catalogs, and a label
+  // present on both sides reports the same column name from each.
+  const keepSource = (current: string | null, incoming: string): string | null =>
+    current ?? (incoming.trim().length > 0 ? incoming : null);
 
   // SC and VC revenue add together: one label can legitimately sell on both
   // sides of the business, and the account's real revenue for it is the sum.
@@ -313,18 +362,21 @@ export function assembleEconomics(input: EconomicsInput): Map<string, LabelEcono
     e.revenue365 += r.revenue_365d;
     e.revenue90 += r.revenue_90d;
     e.stamps.push(r.last_order_at);
+    e.retailSource = keepSource(e.retailSource, r.source);
   }
   for (const r of input.vendorEconRows) {
     const e = bucket(r.label);
     e.revenue365 += r.revenue_365d;
     e.revenue90 += r.revenue_90d;
     e.stamps.push(r.last_order_at);
+    e.retailSource = keepSource(e.retailSource, r.source);
   }
   for (const r of input.adsEconRows) {
     const e = bucket(r.label);
     e.spend365 += r.spend_365d;
     e.spend90 += r.spend_90d;
     e.stamps.push(r.last_spend_at);
+    e.adsSource = keepSource(e.adsSource, r.source);
   }
 
   const out = new Map<string, LabelEconomics>();
@@ -340,6 +392,11 @@ export function assembleEconomics(input: EconomicsInput): Map<string, LabelEcono
       economic_weight: e.revenue365 + e.spend365,
       lifecycle,
       lifecycle_reason: reason,
+      // A row came back for this label, so its numbers are measured — even
+      // when every one of them is zero.
+      has_data: true,
+      retail_source: e.retailSource,
+      ads_source: e.adsSource,
     });
   }
   return out;
@@ -360,5 +417,11 @@ export function unknownEconomics(label: string): LabelEconomics {
     economic_weight: 0,
     lifecycle: 'unknown',
     lifecycle_reason: 'no economics data returned for this label',
+    // The zeros above are PLACEHOLDERS, not measurements. Anything that
+    // reads them as "this brand earned nothing" is wrong; check this flag
+    // before drawing any conclusion from the numbers.
+    has_data: false,
+    retail_source: null,
+    ads_source: null,
   };
 }

@@ -76430,6 +76430,13 @@ var DATA_TIMING_TERMINAL = "After activation, most accounts are fully populated 
 // src/lib/binding/discovery.ts
 init_query_runner();
 
+// src/lib/binding/label.ts
+var UNCLASSIFIED_LABEL = "(unclassified)";
+function normalizeLabel(raw) {
+  const trimmed = (raw ?? "").trim();
+  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
+}
+
 // src/lib/binding/economics.ts
 function coerceAmount(raw) {
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -76524,31 +76531,44 @@ function fmtMoney(n) {
 }
 function assembleEconomics(input) {
   const acc = /* @__PURE__ */ new Map();
-  const bucket = (label) => {
+  const bucket = (rawLabel) => {
+    const label = normalizeLabel(rawLabel);
     let e = acc.get(label);
     if (!e) {
-      e = { revenue365: 0, revenue90: 0, spend365: 0, spend90: 0, stamps: [] };
+      e = {
+        revenue365: 0,
+        revenue90: 0,
+        spend365: 0,
+        spend90: 0,
+        stamps: [],
+        retailSource: null,
+        adsSource: null
+      };
       acc.set(label, e);
     }
     return e;
   };
+  const keepSource = (current, incoming) => current ?? (incoming.trim().length > 0 ? incoming : null);
   for (const r of input.retailEconRows) {
     const e = bucket(r.label);
     e.revenue365 += r.revenue_365d;
     e.revenue90 += r.revenue_90d;
     e.stamps.push(r.last_order_at);
+    e.retailSource = keepSource(e.retailSource, r.source);
   }
   for (const r of input.vendorEconRows) {
     const e = bucket(r.label);
     e.revenue365 += r.revenue_365d;
     e.revenue90 += r.revenue_90d;
     e.stamps.push(r.last_order_at);
+    e.retailSource = keepSource(e.retailSource, r.source);
   }
   for (const r of input.adsEconRows) {
     const e = bucket(r.label);
     e.spend365 += r.spend_365d;
     e.spend90 += r.spend_90d;
     e.stamps.push(r.last_spend_at);
+    e.adsSource = keepSource(e.adsSource, r.source);
   }
   const out = /* @__PURE__ */ new Map();
   for (const [label, e] of acc) {
@@ -76562,7 +76582,12 @@ function assembleEconomics(input) {
       last_activity_at: latestStamp(...e.stamps),
       economic_weight: e.revenue365 + e.spend365,
       lifecycle,
-      lifecycle_reason: reason
+      lifecycle_reason: reason,
+      // A row came back for this label, so its numbers are measured — even
+      // when every one of them is zero.
+      has_data: true,
+      retail_source: e.retailSource,
+      ads_source: e.adsSource
     });
   }
   return out;
@@ -76577,7 +76602,13 @@ function unknownEconomics(label) {
     last_activity_at: null,
     economic_weight: 0,
     lifecycle: "unknown",
-    lifecycle_reason: "no economics data returned for this label"
+    lifecycle_reason: "no economics data returned for this label",
+    // The zeros above are PLACEHOLDERS, not measurements. Anything that
+    // reads them as "this brand earned nothing" is wrong; check this flag
+    // before drawing any conclusion from the numbers.
+    has_data: false,
+    retail_source: null,
+    ads_source: null
   };
 }
 
@@ -76624,11 +76655,6 @@ function coerceMatchRow(row) {
     has_retail: coerceFlag(row.has_retail),
     has_ads: coerceFlag(row.has_ads)
   };
-}
-var UNCLASSIFIED_LABEL = "(unclassified)";
-function normalizeLabel(raw) {
-  const trimmed = (raw ?? "").trim();
-  return trimmed.length > 0 ? trimmed : UNCLASSIFIED_LABEL;
 }
 function buildSideCoverage(side, rows) {
   const byLabel = /* @__PURE__ */ new Map();
@@ -77136,6 +77162,7 @@ function flagFor(econ, totalWeight) {
   if (econ.lifecycle === "dormant") {
     return { status: "flagged", flag_reason: "dormant", flag_detail: econ.lifecycle_reason };
   }
+  if (!econ.has_data) return { status: "would_create" };
   if (totalWeight <= 0) return { status: "would_create" };
   const share = econ.economic_weight / totalWeight;
   if (share < MEANINGFUL_ECONOMIC_SHARE) {
@@ -77163,7 +77190,7 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
       const seen = report.retail.labels.find((r) => r.label === label);
       candidateLabels.set(label, {
         label,
-        source: seen?.source ?? "",
+        source: seen?.source ?? econ.retail_source ?? "",
         units: seen?.units ?? 0
       });
     }
@@ -77194,6 +77221,7 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
     );
     const adsBreakdown = report.ads.labels.find((l) => l.label === entry.label);
     const econ = economics.get(entry.label) ?? unknownEconomics(entry.label);
+    const adsSource = (adsBreakdown?.source || econ.ads_source) ?? null;
     const econFields = {
       revenue_365d: econ.revenue_365d,
       spend_365d: econ.spend_365d,
@@ -77208,6 +77236,7 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
         retail_units: entry.units,
         ads_campaign_count: adsBreakdown?.units ?? 0,
         has_ads: adsBreakdown !== void 0,
+        ads_source: adsSource,
         ...econFields,
         proposed_slug: boundMatch.slug,
         status: "already_bound",
@@ -77223,6 +77252,7 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
       retail_units: entry.units,
       ads_campaign_count: adsBreakdown?.units ?? 0,
       has_ads: adsBreakdown !== void 0,
+      ads_source: adsSource,
       ...econFields,
       proposed_slug: proposedSlug,
       // A flagged label is NOT dropped. It stays in the plan with its real
@@ -77252,9 +77282,10 @@ async function buildPromotionPlan(report, resolvedSellerIds, sellerName, opts = 
 }
 async function buildOldBrandPlan(brand, items, dataDirOverride) {
   const totalUnits = items.reduce((n, i) => n + i.retail_units, 0);
-  const dominant = [...items].sort((a, b) => b.retail_units - a.retail_units)[0];
+  const rebindable = items.filter((i) => i.status !== "flagged");
+  const dominant = [...rebindable].sort((a, b) => b.retail_units - a.retail_units)[0];
   const dominantShare = dominant && totalUnits > 0 ? dominant.retail_units / totalUnits : 0;
-  const proposeRebind = items.length > 0 && dominantShare >= DOMINANT_LABEL_SHARE_THRESHOLD;
+  const proposeRebind = rebindable.length > 0 && dominantShare >= DOMINANT_LABEL_SHARE_THRESHOLD;
   const validated = await validateBrandContext(brand.slug, dataDirOverride);
   const triage = validated.ok ? buildTriageProposals(validated.context, items) : [
     {
@@ -77419,8 +77450,10 @@ async function promoteLabelItem(item, amazonSellerId, opts) {
           resolvedSellerIds: opts.resolvedSellerIds,
           label: item.label,
           retailSource: item.retail_source ?? void 0,
-          hasAds: item.has_ads
+          hasAds: item.has_ads,
+          adsSource: item.ads_source ?? void 0
         });
+        if (recoveryBinding === null) return failClosed("label", noLabelFilterMessage(item.label));
         const recovered = await writeBindingBlock(slug, recoveryBinding, opts.dataDirOverride);
         if (!recovered.ok) return failClosed("label", recovered.detail);
         return {
@@ -77452,19 +77485,21 @@ async function promoteLabelItem(item, amazonSellerId, opts) {
     ads_active: accounts.some((a) => a.ads_active),
     retail_active: accounts.some((a) => a.retail_active)
   };
+  const binding = buildBindingBlock({
+    amazonSellerId,
+    resolvedSellerIds: opts.resolvedSellerIds,
+    label: item.label,
+    retailSource: item.retail_source ?? void 0,
+    hasAds: item.has_ads,
+    adsSource: item.ads_source ?? void 0
+  });
+  if (binding === null) return failClosed("label", noLabelFilterMessage(item.label));
   const { bootstrapBrand: bootstrapBrand2 } = await Promise.resolve().then(() => (init_bootstrap(), bootstrap_exports));
   try {
     await bootstrapBrand2(suggestion, { dataDirOverride: opts.dataDirOverride, deferPush: true });
   } catch (err) {
     return failClosed("label", err instanceof Error ? err.message : String(err));
   }
-  const binding = buildBindingBlock({
-    amazonSellerId,
-    resolvedSellerIds: opts.resolvedSellerIds,
-    label: item.label,
-    retailSource: item.retail_source ?? void 0,
-    hasAds: item.has_ads
-  });
   const writeResult = await writeBindingBlock(slug, binding, opts.dataDirOverride);
   if (!writeResult.ok) {
     return failClosed("label", writeResult.detail);
@@ -77501,8 +77536,10 @@ async function rebindOldBrand(slug, item, amazonSellerId, opts) {
     resolvedSellerIds: opts.resolvedSellerIds,
     label: item.label,
     retailSource: item.retail_source ?? void 0,
-    hasAds: item.has_ads
+    hasAds: item.has_ads,
+    adsSource: item.ads_source ?? void 0
   });
+  if (binding === null) return failClosed("label", noLabelFilterMessage(item.label));
   const writeResult = await writeBindingBlock(slug, binding, opts.dataDirOverride);
   if (!writeResult.ok) return failClosed("label", writeResult.detail);
   return {
@@ -77525,8 +77562,14 @@ function buildBindingBlock(args) {
   }
   if (args.hasAds) {
     binding.ads_label = { source: "campaign.Brand", value: args.label };
+  } else if (args.adsSource) {
+    binding.ads_label = { source: args.adsSource, value: args.label };
   }
+  if (!binding.retail_label && !binding.ads_label) return null;
   return binding;
+}
+function noLabelFilterMessage(label) {
+  return `Refusing to bind "${label}": neither a retail label column nor an ads label column is known for it, so the binding would carry no label filter and the new brand would read the entire seller account instead of this sub-brand. This usually means the discovery queries returned it on no side, or the gateway economics entries (sbd-05/06/07) are not deployed yet. Re-run \`brand promote\` once discovery reports a complete fetch.`;
 }
 function buildScopeNote(label, amazonSellerId) {
   return `This brand is a sub-brand: it is scoped to the "${label}" label under Amazon Seller ID ${amazonSellerId}. Any data fetch or analysis for this brand must use that label filter. Account-wide numbers for the seller account must never be attributed to this brand specifically.`;
@@ -77535,6 +77578,12 @@ async function writeBindingBlock(slug, binding, dataDirOverride) {
   const validatedBinding = bindingSchema.safeParse(binding);
   if (!validatedBinding.success) {
     return { ok: false, detail: `Refusing to write an invalid binding block: ${formatZodError(validatedBinding.error)}` };
+  }
+  if (validatedBinding.data.kind === "sub_brand" && !validatedBinding.data.retail_label && !validatedBinding.data.ads_label) {
+    return {
+      ok: false,
+      detail: `Refusing to write a sub-brand binding for "${slug}" with no label filter: it would scope to the whole seller account rather than to this sub-brand.`
+    };
   }
   const path2 = contextPath(slug, dataDirOverride);
   let raw;

@@ -99,6 +99,38 @@ starts at 0.5.39; earlier versions predate the changelog.
   description all list the sub-brand workflow now, and `brand discover` points
   at `brand promote` as the next step.
 
+- **Promoting a brand can no longer create one that reads your whole account.**
+  A brand qualifying on its revenue alone, without appearing in the catalog or
+  ad coverage figures, could be turned into a sub-brand carrying no label
+  filter at all: it would have been scoped to the entire seller account while
+  describing itself as a sub-brand, and every figure it reported would have
+  been the account's, not the brand's. Promotion now refuses to create a brand
+  it cannot scope, and where the revenue figures identify which label field the
+  brand was found in, it uses that and creates the brand correctly.
+
+- **A brand with no revenue figures is no longer reported as "too small".** When
+  the revenue lookup returned nothing for a particular brand, that brand was
+  described as holding 0.00% of the account and held back as economically
+  trivial — stating as measurement something that was only missing data. A
+  brand we have no figures for is now proposed normally, and only a brand with
+  real figures behind it can be held back for being small.
+
+- **The plan no longer suggests moving your existing brand onto one it just
+  flagged.** When an account already has a single whole-account brand, the plan
+  proposes which label that brand should become. It picked whichever label
+  carried the most items, without checking whether that same label had been
+  flagged as wound down — so it could recommend, in one breath, both holding a
+  brand back and rebinding your history onto it. Only labels the plan actually
+  proposes are considered now. The percentages shown still count every label,
+  flagged ones included, so the figures continue to reconcile.
+
+- **A brand whose label carries stray spacing keeps its revenue figures.** The
+  revenue lookup matched labels exactly while the rest of the plan matched them
+  with surrounding whitespace trimmed, so a label stored as `" Acme "` on one
+  side and `"Acme"` on the other was treated as two different brands and lost
+  its figures — which then made it look economically trivial. Both sides now
+  match labels the same way.
+
 ## 0.8.9
 
 ### Added

@@ -99,6 +99,12 @@ export interface PromotionPlanItem {
   retail_units: number;
   ads_campaign_count: number;
   has_ads: boolean;
+  /** The ads label column this label was seen on, when anything saw it
+   *  there. Distinct from `has_ads`, which reports what the COVERAGE query
+   *  returned and drives what the plan renders: a label can be absent from
+   *  coverage yet carry real ad spend in economics, and that still yields a
+   *  valid ads filter to bind on. Null when no side reported one. */
+  ads_source: string | null;
   /** Trailing 365d ordered revenue (SC + VC) for this label. */
   revenue_365d: number;
   /** Trailing 365d ad spend for this label. */
@@ -221,6 +227,14 @@ export const MEANINGFUL_ECONOMIC_SHARE = 0.02;
  *
  * Returns no flag at all when there are no economics for the account —
  * flagging on no evidence would hide real brands.
+ *
+ * Nor when there are no economics for THIS label specifically. A label the
+ * economics queries never returned arrives here as `unknownEconomics`,
+ * whose zeros are placeholders rather than measurements; reading them as a
+ * share would compute 0.00% and tell the operator a brand is too small to
+ * be worth promoting when the truth is we have no data on it. That is the
+ * same false-confidence failure this change exists to remove, so it is
+ * guarded on `has_data` and not on the numbers.
  */
 function flagFor(
   econ: LabelEconomics,
@@ -229,6 +243,9 @@ function flagFor(
   if (econ.lifecycle === 'dormant') {
     return { status: 'flagged', flag_reason: 'dormant', flag_detail: econ.lifecycle_reason };
   }
+  // No row for this label: we know nothing, so hold nothing back. It reached
+  // the plan on catalog mass, which is evidence enough to propose it.
+  if (!econ.has_data) return { status: 'would_create' };
   if (totalWeight <= 0) return { status: 'would_create' };
   const share = econ.economic_weight / totalWeight;
   if (share < MEANINGFUL_ECONOMIC_SHARE) {
@@ -297,10 +314,16 @@ export async function buildPromotionPlan(
       // Economically significant but below the catalog-mass gate — exactly
       // the brand the item-count ranking used to drop. Carry its real retail
       // units through if discovery saw the label at all, else zero.
+      //
+      // Fall back to the label COLUMN economics reported when coverage never
+      // returned a row. Without it this candidate reaches the write path with
+      // no source and no ads, and builds a binding carrying no label filter
+      // at all — a "sub-brand" scoped to the entire account, which is the
+      // smearing hazard design §11 exists to prevent.
       const seen = report.retail.labels.find((r) => r.label === label);
       candidateLabels.set(label, {
         label,
-        source: seen?.source ?? '',
+        source: seen?.source ?? econ.retail_source ?? '',
         units: seen?.units ?? 0,
       });
     }
@@ -340,6 +363,10 @@ export async function buildPromotionPlan(
     );
     const adsBreakdown = report.ads.labels.find((l) => l.label === entry.label);
     const econ = economics.get(entry.label) ?? unknownEconomics(entry.label);
+    // Coverage first, economics as the fallback: a label can be missing from
+    // the ads COVERAGE query and still carry real spend in economics, and
+    // that is enough to bind an ads filter on.
+    const adsSource = (adsBreakdown?.source || econ.ads_source) ?? null;
     const econFields = {
       revenue_365d: econ.revenue_365d,
       spend_365d: econ.spend_365d,
@@ -354,6 +381,7 @@ export async function buildPromotionPlan(
         retail_units: entry.units,
         ads_campaign_count: adsBreakdown?.units ?? 0,
         has_ads: adsBreakdown !== undefined,
+        ads_source: adsSource,
         ...econFields,
         proposed_slug: boundMatch.slug,
         status: 'already_bound',
@@ -369,6 +397,7 @@ export async function buildPromotionPlan(
       retail_units: entry.units,
       ads_campaign_count: adsBreakdown?.units ?? 0,
       has_ads: adsBreakdown !== undefined,
+      ads_source: adsSource,
       ...econFields,
       proposed_slug: proposedSlug,
       // A flagged label is NOT dropped. It stays in the plan with its real
@@ -414,9 +443,19 @@ async function buildOldBrandPlan(
   dataDirOverride?: string,
 ): Promise<OldBrandPlan> {
   const totalUnits = items.reduce((n, i) => n + i.retail_units, 0);
-  const dominant = [...items].sort((a, b) => b.retail_units - a.retail_units)[0];
+  // Only a label the plan would actually propose can be the survivor.
+  // Choosing the top label by units regardless of status let this recommend
+  // re-binding the account's historical brand onto a label the SAME plan
+  // flags as wound down or economically trivial — a self-contradicting
+  // proposal, and on the reported account the flagged label was also the
+  // one carrying the largest stale catalog, so it won on units every time.
+  const rebindable = items.filter((i) => i.status !== 'flagged');
+  const dominant = [...rebindable].sort((a, b) => b.retail_units - a.retail_units)[0];
+  // The share stays measured against EVERY label's units, flagged ones
+  // included, so the percentage the operator reads still reconciles against
+  // the account rather than against a filtered subset.
   const dominantShare = dominant && totalUnits > 0 ? dominant.retail_units / totalUnits : 0;
-  const proposeRebind = items.length > 0 && dominantShare >= DOMINANT_LABEL_SHARE_THRESHOLD;
+  const proposeRebind = rebindable.length > 0 && dominantShare >= DOMINANT_LABEL_SHARE_THRESHOLD;
 
   const validated = await validateBrandContext(brand.slug, dataDirOverride);
   const triage = validated.ok
@@ -706,7 +745,9 @@ async function promoteLabelItem(
           label: item.label,
           retailSource: item.retail_source ?? undefined,
           hasAds: item.has_ads,
+          adsSource: item.ads_source ?? undefined,
         });
+        if (recoveryBinding === null) return failClosed('label', noLabelFilterMessage(item.label));
         const recovered = await writeBindingBlock(slug, recoveryBinding, opts.dataDirOverride);
         if (!recovered.ok) return failClosed('label', recovered.detail);
         return {
@@ -742,6 +783,20 @@ async function promoteLabelItem(
     retail_active: accounts.some((a) => a.retail_active),
   };
 
+  // Build the binding BEFORE anything is created on disk. A candidate we
+  // cannot scope must not leave a bootstrapped directory behind: that strands
+  // exactly the unbound, sub-brand-named brand the orphan-recovery path below
+  // has to clean up, for a promotion that was never going to succeed.
+  const binding = buildBindingBlock({
+    amazonSellerId,
+    resolvedSellerIds: opts.resolvedSellerIds,
+    label: item.label,
+    retailSource: item.retail_source ?? undefined,
+    hasAds: item.has_ads,
+    adsSource: item.ads_source ?? undefined,
+  });
+  if (binding === null) return failClosed('label', noLabelFilterMessage(item.label));
+
   const { bootstrapBrand } = await import('../clients/bootstrap.js');
   try {
     // deferPush: publish ONCE, after the binding lands (see BootstrapOptions).
@@ -753,13 +808,6 @@ async function promoteLabelItem(
     return failClosed('label', err instanceof Error ? err.message : String(err));
   }
 
-  const binding = buildBindingBlock({
-    amazonSellerId,
-    resolvedSellerIds: opts.resolvedSellerIds,
-    label: item.label,
-    retailSource: item.retail_source ?? undefined,
-    hasAds: item.has_ads,
-  });
   const writeResult = await writeBindingBlock(slug, binding, opts.dataDirOverride);
   if (!writeResult.ok) {
     return failClosed('label', writeResult.detail);
@@ -814,7 +862,9 @@ async function rebindOldBrand(
     label: item.label,
     retailSource: item.retail_source ?? undefined,
     hasAds: item.has_ads,
+    adsSource: item.ads_source ?? undefined,
   });
+  if (binding === null) return failClosed('label', noLabelFilterMessage(item.label));
   const writeResult = await writeBindingBlock(slug, binding, opts.dataDirOverride);
   if (!writeResult.ok) return failClosed('label', writeResult.detail);
   return {
@@ -830,13 +880,30 @@ async function rebindOldBrand(
 // Binding block construction + write (shared by promote_label + rebind)
 // ---------------------------------------------------------------------------
 
+/**
+ * Build the binding block for a sub-brand, or return null when it would
+ * carry no label filter.
+ *
+ * Both `retail_label` and `ads_label` are optional in the schema, so a
+ * candidate with no retail source and no ads produced a `sub_brand` binding
+ * scoped only by `amazon_seller_id` — a "sub-brand" that silently reads the
+ * WHOLE account, published to the org store, and indistinguishable
+ * downstream from a legitimately account-wide brand. That is precisely the
+ * smearing design §11 forbids, and the scope_note would have asserted a
+ * label filter that the binding did not actually contain.
+ *
+ * Returning null makes it unbuildable rather than merely unlikely; every
+ * caller fails closed on it, and writeBindingBlock re-checks the invariant
+ * for any future caller that forgets.
+ */
 function buildBindingBlock(args: {
   amazonSellerId: string;
   resolvedSellerIds: readonly number[];
   label: string;
   retailSource?: string;
   hasAds: boolean;
-}): BindingBlock {
+  adsSource?: string;
+}): BindingBlock | null {
   const binding: BindingBlock = {
     kind: 'sub_brand',
     amazon_seller_id: args.amazonSellerId,
@@ -848,8 +915,26 @@ function buildBindingBlock(args: {
   }
   if (args.hasAds) {
     binding.ads_label = { source: 'campaign.Brand', value: args.label };
+  } else if (args.adsSource) {
+    // Coverage never returned this label, but economics saw spend under it,
+    // so the column economics reported is a valid filter to bind on.
+    binding.ads_label = { source: args.adsSource, value: args.label };
   }
+  if (!binding.retail_label && !binding.ads_label) return null;
   return binding;
+}
+
+/** The operator-facing explanation for a refused unfiltered binding. Shared
+ *  by all three write paths so they cannot drift. */
+function noLabelFilterMessage(label: string): string {
+  return (
+    `Refusing to bind "${label}": neither a retail label column nor an ads label column ` +
+    'is known for it, so the binding would carry no label filter and the new brand would ' +
+    'read the entire seller account instead of this sub-brand. This usually means the ' +
+    'discovery queries returned it on no side, or the gateway economics entries ' +
+    '(sbd-05/06/07) are not deployed yet. Re-run `brand promote` once discovery reports ' +
+    'a complete fetch.'
+  );
 }
 
 /** Plain-language, model-visible scope note (design doc §11's "old clients
@@ -881,6 +966,26 @@ async function writeBindingBlock(
   const validatedBinding = bindingSchema.safeParse(binding);
   if (!validatedBinding.success) {
     return { ok: false, detail: `Refusing to write an invalid binding block: ${formatZodError(validatedBinding.error)}` };
+  }
+
+  // LAST LINE OF DEFENCE. bindingSchema cannot express this: both label
+  // filters are individually optional (a sub-brand can legitimately live on
+  // retail only, or ads only), so only the pair being absent is illegal, and
+  // that is a cross-field rule. A sub_brand binding with neither filter
+  // scopes to the entire seller account while its scope_note claims
+  // otherwise. buildBindingBlock already refuses to construct one; this
+  // catches any future caller that assembles a binding by hand.
+  if (
+    validatedBinding.data.kind === 'sub_brand' &&
+    !validatedBinding.data.retail_label &&
+    !validatedBinding.data.ads_label
+  ) {
+    return {
+      ok: false,
+      detail:
+        `Refusing to write a sub-brand binding for "${slug}" with no label filter: it would ` +
+        'scope to the whole seller account rather than to this sub-brand.',
+    };
   }
 
   const path = contextPath(slug, dataDirOverride);
