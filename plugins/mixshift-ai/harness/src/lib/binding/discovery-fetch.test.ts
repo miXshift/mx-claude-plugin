@@ -198,6 +198,41 @@ describe('fetchLabelDiscovery — one dropped query must not pass as success', (
     expect(mockedRunNamedQuery).toHaveBeenCalledTimes(SBD_QUERY_COUNT);
   });
 
+  // mx-ops#6 red team round 2, the merge blocker. Raising SBD_QUERY_COUNT
+  // 4 -> 7 (needed for the economics trio) meant the count alone no longer
+  // detected "every query that feeds the report died": 4 failures out of a
+  // threshold of 7 read as 'partial', both fail-loud guards key on 'error'
+  // so neither fired, and classifyShape turned a zero-row report into a
+  // confident proposal at exit 0. Strictly worse than before this branch.
+  it('calls a total failure of the four REPORT-BEARING queries an error, not partial', async () => {
+    mockedRunNamedQuery.mockImplementation((id: string) => {
+      // The economics trio succeeds. It contributes nothing to the coverage
+      // report, so it must not be able to mask the four that do.
+      if (id === 'sbd-05') return Promise.resolve(ok([RETAIL_ECON_ROW]));
+      if (id === 'sbd-06') return Promise.resolve(ok([ADS_ECON_ROW]));
+      if (id === 'sbd-07') return Promise.resolve(ok([]));
+      return Promise.resolve(hostUnreachable());
+    });
+    const result = await fetchLabelDiscovery(SELLER_ID);
+    expect(result.errors.map((e) => e.query_id).sort()).toEqual([
+      'sbd-01', 'sbd-02', 'sbd-03', 'sbd-04',
+    ]);
+    // 4 failures against a threshold of 7 — the count says 'partial'.
+    expect(result.errors).toHaveLength(4);
+    expect(result.errors.length >= SBD_QUERY_COUNT).toBe(false);
+    // ...and the classifier must still say 'error'.
+    expect(classifyFetchOutcome(result)).toBe('error');
+  });
+
+  it('still calls a single report-query failure partial, not error', async () => {
+    // The guard above must not over-fire: losing one side is exactly the
+    // 'incomplete, not fabricated' case the command surfaces rather than
+    // aborting on.
+    respondPerQuery('sbd-02');
+    const result = await fetchLabelDiscovery(SELLER_ID);
+    expect(classifyFetchOutcome(result)).toBe('partial');
+  });
+
   it('bounds how many queries are in flight at once', async () => {
     // A wide burst opens a connection per request and is what pushed one
     // past the connect timeout in the first place. Adding the economics trio

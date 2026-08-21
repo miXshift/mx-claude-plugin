@@ -104,6 +104,36 @@ const ALL_QUERIES_FAILED_FIXTURE: LabelDiscoveryFetchResult = {
   ],
 };
 
+/**
+ * The four REPORT-BEARING queries fail; the economics trio succeeds.
+ *
+ * This is the case the fixture above cannot reach, and it is the one that
+ * actually happens: `brand discover --seller-id` builds its coverage report
+ * from sbd-01..04 only, so an outage that takes those four out leaves the
+ * report with zero rows regardless of what sbd-05/06/07 did. Before the
+ * REPORT_BEARING_QUERY_IDS guard, four failures against a threshold of seven
+ * classified as 'partial', so the classification substitution and the exit
+ * code (both keyed on 'error') stayed shut and `classifyShape` read the
+ * empty report as a confident `single_brand` at exit 0.
+ */
+const REPORT_QUERIES_FAILED_ECON_OK_FIXTURE: LabelDiscoveryFetchResult = {
+  ok: false,
+  resolvedSellerIds: [123],
+  retailRows: [],
+  vendorRows: [],
+  adsRows: [],
+  matchRows: [],
+  retailEconRows: [],
+  adsEconRows: [],
+  vendorEconRows: [],
+  errors: [
+    { query_id: 'sbd-01', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-02', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-03', message: 'x', friendly: 'unknown query' },
+    { query_id: 'sbd-04', message: 'x', friendly: 'unknown query' },
+  ],
+};
+
 const PARTIAL_FAILURE_FIXTURE: LabelDiscoveryFetchResult = {
   ok: false,
   resolvedSellerIds: [123],
@@ -161,8 +191,15 @@ describe('status/exit-code contract (FINDING 1a/1b)', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('status is "error" and exitCode is 1 when ALL four sbd-* queries fail', async () => {
+  it('status is "error" and exitCode is 1 when ALL SEVEN sbd-* queries fail', async () => {
     mockedFetch.mockResolvedValue(ALL_QUERIES_FAILED_FIXTURE);
+    await runSubbrandDiscovery({ sellerId: 'A1EXAMPLE23456' }, stubCommand({ json: true }));
+    expect(emitted().status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('status is "error" when the four REPORT queries fail even though economics succeeded', async () => {
+    mockedFetch.mockResolvedValue(REPORT_QUERIES_FAILED_ECON_OK_FIXTURE);
     await runSubbrandDiscovery({ sellerId: 'A1EXAMPLE23456' }, stubCommand({ json: true }));
     expect(emitted().status).toBe('error');
     expect(process.exitCode).toBe(1);
@@ -193,12 +230,26 @@ describe('classification override on total failure (FINDING 1c)', () => {
     expect(report.classification.evidence.join(' ')).toContain('A1EXAMPLE23456');
   });
 
-  it('proposal is null when all four queries fail', async () => {
+  it('proposal is null when all seven queries fail', async () => {
     mockedFetch.mockResolvedValue(ALL_QUERIES_FAILED_FIXTURE);
     await runSubbrandDiscovery({ sellerId: 'A1EXAMPLE23456' }, stubCommand({ json: true }));
     const out = emitted();
     const report = out.report as { classification: { proposal: unknown } };
     expect(report.classification.proposal).toBeNull();
+  });
+
+  it('NEVER fabricates single_brand from a zero-row report when only economics survived', async () => {
+    // The regression this guards: `classifyShape` on an empty report hits the
+    // `meaningfulRetail.length <= 1` branch and returns a confident
+    // `single_brand` with the evidence line "retail side has no label with
+    // meaningful catalog/spend mass" — which reads as a finding about the
+    // account rather than as the total data outage it actually is.
+    mockedFetch.mockResolvedValue(REPORT_QUERIES_FAILED_ECON_OK_FIXTURE);
+    await runSubbrandDiscovery({ sellerId: 'A1EXAMPLE23456' }, stubCommand({ json: true }));
+    const out = emitted();
+    const report = out.report as { classification: { proposal: unknown } };
+    expect(report.classification.proposal).toBeNull();
+    expect(process.exitCode).toBe(1);
   });
 
   it('a partial failure keeps a REAL classification built from whatever succeeded', async () => {

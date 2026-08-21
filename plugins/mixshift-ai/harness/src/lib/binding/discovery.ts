@@ -707,9 +707,28 @@ export type FetchOutcome = 'ok' | 'partial' | 'error';
  *  renders an empty plan instead of an error. A test pins the two together. */
 export const SBD_QUERY_COUNT = 7;
 
+/** The sbd-* entries `assembleCoverageReport` is actually built from.
+ *
+ *  The economics trio (sbd-05/06/07) is NOT read by `brand discover
+ *  --seller-id`, so it must never be able to lift the failure count and turn
+ *  a total failure of the data-bearing four into 'partial'. Raising
+ *  SBD_QUERY_COUNT from 4 to 7 did exactly that: with all four report
+ *  queries dead, `4 >= 7` is false, so the run classified 'partial', both
+ *  fail-loud guards (which key on 'error') stayed shut, and `classifyShape`
+ *  read a zero-row report as `proposal: 'single_brand'` — a confident
+ *  "this account is one brand" verdict, at exit 0, built from nothing.
+ *
+ *  That is the same defect class this whole change exists to remove, so the
+ *  count is no longer the only thing standing between a dropped query and a
+ *  fabricated answer. */
+const REPORT_BEARING_QUERY_IDS = ['sbd-01', 'sbd-02', 'sbd-03', 'sbd-04'] as const;
+
 export function classifyFetchOutcome(fetched: LabelDiscoveryFetchResult): FetchOutcome {
   if (fetched.ok) return 'ok';
-  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === 'resolve_seller_ids');
-  if (sellerResolutionFailed) return 'error';
-  return fetched.errors.length >= SBD_QUERY_COUNT ? 'error' : 'partial';
+  const failed = new Set(fetched.errors.map((e) => e.query_id));
+  if (failed.has('resolve_seller_ids')) return 'error';
+  // Nothing real to classify from: every query feeding the coverage report
+  // failed, whatever the economics side did.
+  if (REPORT_BEARING_QUERY_IDS.every((id) => failed.has(id))) return 'error';
+  return failed.size >= SBD_QUERY_COUNT ? 'error' : 'partial';
 }

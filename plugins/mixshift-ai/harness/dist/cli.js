@@ -76860,11 +76860,13 @@ async function fetchLabelDiscovery(amazonSellerId, options = {}) {
   };
 }
 var SBD_QUERY_COUNT = 7;
+var REPORT_BEARING_QUERY_IDS = ["sbd-01", "sbd-02", "sbd-03", "sbd-04"];
 function classifyFetchOutcome(fetched) {
   if (fetched.ok) return "ok";
-  const sellerResolutionFailed = fetched.errors.some((e) => e.query_id === "resolve_seller_ids");
-  if (sellerResolutionFailed) return "error";
-  return fetched.errors.length >= SBD_QUERY_COUNT ? "error" : "partial";
+  const failed = new Set(fetched.errors.map((e) => e.query_id));
+  if (failed.has("resolve_seller_ids")) return "error";
+  if (REPORT_BEARING_QUERY_IDS.every((id) => failed.has(id))) return "error";
+  return failed.size >= SBD_QUERY_COUNT ? "error" : "partial";
 }
 
 // src/lib/binding/stake.ts
@@ -77979,7 +77981,7 @@ Promotion plan for seller ${plan.seller_id}`);
   if (plan.items.length === 0) {
     lines.push("No label carries meaningful retail mass yet; nothing to promote.");
   } else {
-    lines.push(`${plan.items.length} label(s) above the meaningful-mass gate:`);
+    lines.push(`${plan.items.length} label(s) worth considering, by catalog mass or by revenue:`);
     for (const item of plan.items) {
       lines.push(renderPlanItem(item));
     }
@@ -78013,7 +78015,8 @@ function renderPlanItem(item) {
     base = `  + "${item.label}": would create "${item.proposed_slug}"`;
   }
   const money = item.economic_weight > 0 ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend` : "      trailing 365d: no revenue or ad spend found";
-  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? "n/a"}]; ads: ${item.has_ads ? `${item.ads_campaign_count} campaign(s)` : "no campaigns yet"}`;
+  const adsDetail = item.has_ads ? `${item.ads_campaign_count} campaign(s)` : item.spend_365d > 0 ? "no live campaigns (the spend above is historical)" : "no campaigns yet";
+  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? "n/a"}]; ads: ${adsDetail}`;
   const lines = [base, money, detail];
   if (item.status === "flagged") {
     lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);

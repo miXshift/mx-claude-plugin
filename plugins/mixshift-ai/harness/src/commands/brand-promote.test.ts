@@ -148,6 +148,18 @@ async function runPromote(args: string[]): Promise<void> {
   }
 }
 
+/** Same, but WITHOUT --json, so the human renderer actually runs. The plan
+ *  text is what an operator reads and decides on; asserting only the JSON
+ *  leaves every rendered sentence untested. */
+async function runPromoteHuman(args: string[]): Promise<void> {
+  const { program } = newProgram();
+  try {
+    await program.parseAsync(['brand', 'promote', ...args, '--data-dir', dataDir], { from: 'user' });
+  } catch {
+    // see above
+  }
+}
+
 async function runDemote(slug: string, args: string[]): Promise<void> {
   const { program } = newProgram();
   try {
@@ -234,6 +246,52 @@ describe('brand promote — dry-run default', () => {
     const out = emitted();
     expect(out.status).toBe('error');
     expect(process.exitCode).toBe(1);
+  });
+
+  // mx-ops#6 red team round 2. The ads COVERAGE query counts only
+  // enabled/paused campaigns; the ads ECONOMICS query deliberately does not
+  // filter State, because money spent by a since-archived campaign was still
+  // spent. So "has_ads false, spend > 0" is not an anomaly, it is the exact
+  // shape of a wound-down brand — and printing "no campaigns yet" directly
+  // under a non-zero spend figure told the operator the opposite of the truth.
+  it('says the spend is historical, not "no campaigns yet", for a wound-down label', async () => {
+    mockedFetch.mockResolvedValue({
+      ...OK_FIXTURE,
+      // 'Alpine Trail' carries real trailing spend but has no LIVE campaigns,
+      // so it never appears in adsRows.
+      adsEconRows: [
+        {
+          SellerID: 1, source: 'campaign.Brand', label: 'Alpine Trail',
+          spend_365d: 44_000, spend_90d: 0, ad_sales_365d: 120_000,
+          last_spend_at: '2025-12-02 00:00:00', campaigns_with_spend: 9,
+        },
+      ],
+      retailEconRows: [
+        {
+          SellerID: 1, source: 'mws_items.Brand', label: 'Alpine Trail',
+          revenue_365d: 300_000, revenue_90d: 0, units_365d: 900,
+          last_order_at: '2025-12-02 00:00:00', sku_count: 30,
+        },
+        {
+          SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry',
+          revenue_365d: 900_000, revenue_90d: 300_000, units_365d: 4_000,
+          last_order_at: '2026-08-11 00:00:00', sku_count: 70,
+        },
+      ],
+    });
+    await runPromoteHuman(['--seller-id', SELLER_ID]);
+    expect(stdout).toContain('the spend above is historical');
+    expect(stdout).not.toContain('no campaigns yet');
+  });
+
+  it('does not claim every listed label cleared the meaningful-mass gate', async () => {
+    // Candidacy is the UNION of catalog mass and economic share, so the list
+    // deliberately includes labels that FAIL the mass gate. Asserting they all
+    // passed it made `brand discover` and `brand promote` contradict each
+    // other on the same account.
+    mockedFetch.mockResolvedValue(OK_FIXTURE);
+    await runPromoteHuman(['--seller-id', SELLER_ID]);
+    expect(stdout).not.toContain('above the meaningful-mass gate');
   });
 });
 

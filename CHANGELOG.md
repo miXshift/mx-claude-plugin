@@ -99,6 +99,15 @@ starts at 0.5.39; earlier versions predate the changelog.
   description all list the sub-brand workflow now, and `brand discover` points
   at `brand promote` as the next step.
 
+- **A total data outage can no longer come back as "this account is a single
+  brand".** When every one of the queries that builds the label report failed,
+  `mixshift brand discover` still reported a confident single-brand verdict —
+  reached by reading an empty result as evidence that the account has no
+  distinct brands — and exited as though it had succeeded. Anything reading
+  that output, including automation, would have taken a network outage for a
+  finding about the business. Discover now reports the failure, proposes
+  nothing, and exits non-zero.
+
 - **Promoting a brand can no longer create one that reads your whole account.**
   A brand qualifying on its revenue alone, without appearing in the catalog or
   ad coverage figures, could be turned into a sub-brand carrying no label

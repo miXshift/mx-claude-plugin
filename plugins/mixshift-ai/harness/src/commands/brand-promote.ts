@@ -341,7 +341,13 @@ function renderPlan(plan: PromotionPlan): string {
   if (plan.items.length === 0) {
     lines.push('No label carries meaningful retail mass yet; nothing to promote.');
   } else {
-    lines.push(`${plan.items.length} label(s) above the meaningful-mass gate:`);
+    // NOT "above the meaningful-mass gate": candidacy is the UNION of catalog
+    // mass and economic share, so this list deliberately includes labels that
+    // fail the mass gate and qualified on money instead. Claiming otherwise
+    // made `brand discover` and `brand promote` contradict each other on the
+    // same account ("exactly one label with meaningful mass" vs "2 label(s)
+    // above the meaningful-mass gate").
+    lines.push(`${plan.items.length} label(s) worth considering, by catalog mass or by revenue:`);
     for (const item of plan.items) {
       lines.push(renderPlanItem(item));
     }
@@ -386,9 +392,19 @@ function renderPlanItem(item: PromotionPlanItem): string {
     item.economic_weight > 0
       ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend`
       : '      trailing 365d: no revenue or ad spend found';
-  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? 'n/a'}]; ads: ${
-    item.has_ads ? `${item.ads_campaign_count} campaign(s)` : 'no campaigns yet'
-  }`;
+  // "no campaigns yet" under a non-zero ad-spend figure is not an edge case:
+  // the coverage query counts only enabled/paused campaigns while the
+  // economics query deliberately does not filter State (money spent by a
+  // since-archived campaign was still spent). So has_ads === false alongside
+  // spend > 0 is the DEFINING signature of a wound-down brand — the flagship
+  // case this feature serves — and "yet" reads as "never had any", which is
+  // the opposite of what happened.
+  const adsDetail = item.has_ads
+    ? `${item.ads_campaign_count} campaign(s)`
+    : item.spend_365d > 0
+      ? 'no live campaigns (the spend above is historical)'
+      : 'no campaigns yet';
+  const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? 'n/a'}]; ads: ${adsDetail}`;
   const lines = [base, money, detail];
   if (item.status === 'flagged') {
     lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);
