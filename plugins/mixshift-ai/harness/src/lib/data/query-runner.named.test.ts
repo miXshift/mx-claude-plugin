@@ -180,6 +180,43 @@ describe('runNamedQuery', () => {
     if (!result.ok) expect(result.kind).toBe('host_unreachable');
     expect(fetchMock).toHaveBeenCalledTimes(TRANSIENT_NETWORK_RETRIES + 1);
   });
+
+  it('maps network failures to host_unreachable with the doctor-pointing text (US4)', async () => {
+    // mockRejectedValue, NOT ...Once (mx-ops#6): with the transient replay in
+    // place a single queued rejection leaves the later attempts resolving to
+    // `undefined`, and the kind degrades to 'unknown' — the assertion below
+    // would then be describing the retry's absence, not the classifier.
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    const result = await runNamedQuery('PING', { creds: datahubCreds });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('host_unreachable');
+      // No `.cause` on this bare TypeError, so classify.ts's helpers land on
+      // the "unclassified transport failure" bucket rather than a specific
+      // ENOTFOUND/403 branch — it still names the host and points at doctor.
+      expect(result.friendly).toContain('Could not reach mcp.test');
+      expect(result.friendly).toContain('mixshift doctor');
+    }
+  });
+
+  it('classifies an ENOTFOUND-shaped fetch failure the same way the raw-SQL path does', async () => {
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND mcp.test'), {
+      code: 'ENOTFOUND',
+    });
+    const fetchFailed = new TypeError('fetch failed');
+    (fetchFailed as { cause?: unknown }).cause = cause;
+    // Same reasoning as above: every replayed attempt must reject.
+    fetchMock.mockRejectedValue(fetchFailed);
+
+    const result = await runNamedQuery('PING', { creds: datahubCreds });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('host_unreachable');
+      expect(result.friendly).toContain('Could not resolve mcp.test');
+      expect(result.friendly).toContain('mixshift doctor');
+    }
+  });
 });
 
 /**

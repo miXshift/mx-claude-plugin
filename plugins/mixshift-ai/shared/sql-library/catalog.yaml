@@ -529,3 +529,37 @@ queries:
       Unlike the other born-named brain pulls, this keeps a committed .sql as
       the DEV-FALLBACK + server-side byte-diff reference (like DHC-01); the
       PROD body must still be registered in the mx-legacy-auth query pack.
+
+  - id: PORT-01
+    dispatch: named
+    purpose: Portfolio taxonomy — one row per portfolio (PortfolioID, PortfolioName, PortfolioState, campaign_count) per seller, plus synthetic (no portfolio) and (orphaned portfolio) bucket rows. The three buckets three-way-partition the account's enabled/paused campaign universe exactly.
+    consumers: [mx-brand-context]
+    tier: 1
+    notes: |
+      Born dispatch:named (no public .sql ancestor). Scoped by the brand's
+      seller ids (request sellerIds); one bucket set per seller. Feeds Phase
+      0.4's portfolio-name parse (mx-ops#17 slice 4b, fb-78913): lane tokens
+      as candidate brand-lane/sub-brand hints, objective vocabulary as a
+      candidate campaign_structure.objectives proposal, agency-prefix and
+      "parked" naming markers as candidate structural_events history notes.
+      All PROPOSE-CONFIRM (design doc D-024) — the skill never auto-writes
+      from this query's output. Seller-level, not label-scoped: for a bound
+      sub-brand this reads account-wide, same as any other non-label-aware
+      prefetch query.
+
+  - id: PORT-02
+    dispatch: named
+    purpose: MixShift context-field coverage audit — 13 rows of field_name/populated_count/total_count across campaign Objective/ItemGroup/Tag1-4, mws_items Brand/ItemGroup/TargetACOS/TargetTACOS/ItemCost/LeadTime, and seller ACOSTarget. Coverage only — it proves a field is set, never carries the value.
+    consumers: [mx-brand-context]
+    tier: 1
+    notes: |
+      Born dispatch:named (no public .sql ancestor). Scoped by the brand's
+      seller ids (request sellerIds). Feeds Phase 0.4's platform-field audit
+      (mx-ops#17 slice 4b, fb-78913 suggestion 3): a populated field
+      pre-fills the matching Phase 2 question for AM confirmation instead of
+      asking cold; a 0/N field is reported as "never configured in the
+      platform", not missing data. mws_items.LeadTime had no sanctioned read
+      anywhere in the querypack before this entry; portfolio.PortfolioName
+      (PORT-01) was the other such gap this slice closed. Seller-level, not
+      label-scoped: for a bound sub-brand this reads account-wide, same as
+      PORT-01.

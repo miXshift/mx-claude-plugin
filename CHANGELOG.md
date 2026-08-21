@@ -24,6 +24,60 @@ starts at 0.5.39; earlier versions predate the changelog.
   attempt actually succeeded, separately from when it was last attempted, so
   a string of offline attempts no longer looks the same as a healthy one.
 
+- **Team brand contexts now show up automatically the moment you work an
+  account.** Previously, a brand's shared context only reached a machine if
+  someone explicitly pulled it there or ran brand setup on that machine
+  directly. Now, the first time any skill touches an account your team has
+  already set up elsewhere, whether that's a brand-new machine or a fresh
+  Cowork session, its shared context arrives in the background
+  automatically. Nothing to run, nothing to remember.
+
+- **Signing in now shows what your org has set up versus what's on this
+  machine.** Sign-in already reported your local brand count. It now also
+  reports how many brands your org has configured overall and how many of
+  those are not yet on this machine, so a new teammate or a fresh machine
+  can tell right away whether they're missing shared context instead of
+  finding out the hard way.
+
+- **Clearer guidance when a merchant isn't connected to MixShift yet.**
+  Brand setup's fallback for an account it couldn't find used to mean the
+  account manager had to hand-write the context files. It now checks
+  whether the merchant might just be listed under a different name,
+  explains exactly what it means when an account's Ads or Retail connection
+  is inactive, and if the merchant genuinely isn't in your MixShift account
+  yet, says so plainly with the next step instead of trying to work around
+  it.
+
+- **Clearer guidance when the sandbox blocks MixShift.** Signing in already
+  told you when a Claude Cowork or Claude Code network sandbox was blocking
+  MixShift, and pointed you at `mixshift doctor` for the fix. Data queries
+  and context sync used to just say "check your network" with nothing to
+  act on. They now carry the same diagnosis, so a blocked proxy, a DNS
+  failure, or a timeout says what happened and points at `mixshift doctor`.
+  The one exception is a direct legacy database connection, which `mixshift
+  doctor` does not check; that failure still tells you to check your
+  network, your VPN, or your IP allowlist instead.
+
+- **A heads-up when your team has context for a brand but this session
+  couldn't reach it.** The background sync that runs before a skill reads a
+  brand's context used to fail silently, so an offline or blocked session
+  looked exactly like a brand with nothing new to sync. Now, when your org
+  is known to have context for a brand and a sync attempt can't reach the
+  store, MixShift says so once, and confirms your local copy (if any) is
+  unchanged, instead of staying quiet.
+
+- **Brand setup now checks what MixShift already knows before it asks you
+  anything.** Before the account manager interview starts, brand setup
+  checks whether your team already set this brand up somewhere else and
+  offers to adopt that work instead of re-asking the same questions, reads
+  which target and campaign-organization fields are actually configured in
+  the platform today, and reads the account's existing portfolio names for
+  structure hints: brand lanes, campaign objectives, and prior-agency
+  history. Where the platform already has an answer, brand setup shows it
+  and asks you to confirm instead of asking cold. Where a field was
+  genuinely never set up in the platform, it says so plainly instead of
+  treating it like missing data.
+
 ### Fixed
 
 - **`context autosync`'s built-in help no longer says pull-only.** The

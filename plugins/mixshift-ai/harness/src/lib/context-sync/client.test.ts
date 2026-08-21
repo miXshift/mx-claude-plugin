@@ -14,6 +14,8 @@ import { createContextSyncClient } from './client.js';
 let testDir: string;
 
 const API_BASE = 'https://mcp.example.test';
+/** Bare host classify.ts's messages name (see resolveApiBaseHost). */
+const API_BASE_HOST = new URL(API_BASE).host;
 
 beforeEach(async () => {
   testDir = join(
@@ -108,7 +110,7 @@ describe('fetchManifest', () => {
     ).toBe('Bearer test-token');
   });
 
-  it('maps thrown fetch errors to host_unreachable with the shared friendly copy', async () => {
+  it('maps thrown fetch errors to host_unreachable, classified via classify.ts (sandbox-aware, doctor pointer)', async () => {
     const fetchImpl = (async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
@@ -118,8 +120,30 @@ describe('fetchManifest', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.kind).toBe('host_unreachable');
-      expect(result.friendly).toMatch(/unreachable/i);
+      // No `.cause` on this bare TypeError, so classify.ts lands on the
+      // "unclassified transport failure" bucket — still names the host and
+      // points at doctor, unlike the old hardcoded UNREACHABLE_FRIENDLY.
+      expect(result.friendly).toContain(`Could not reach ${API_BASE_HOST}`);
+      expect(result.friendly).toContain('mixshift doctor');
       expect(result.message).toContain('fetch failed');
+    }
+  });
+
+  it('classifies a proxy 403 (sandbox egress allowlist) through the SAME path as the query-runner', async () => {
+    const cause = new Error('Received HTTP code 403 from proxy after CONNECT');
+    const fetchFailed = new TypeError('fetch failed');
+    (fetchFailed as { cause?: unknown }).cause = cause;
+    const fetchImpl = (async () => {
+      throw fetchFailed;
+    }) as unknown as typeof fetch;
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+
+    const result = await client.fetchManifest();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('host_unreachable');
+      expect(result.friendly).toContain(`sandbox blocked ${API_BASE_HOST}`);
+      expect(result.friendly).toContain('mixshift doctor');
     }
   });
 });

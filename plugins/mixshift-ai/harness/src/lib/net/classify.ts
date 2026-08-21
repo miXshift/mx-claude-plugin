@@ -69,11 +69,15 @@ export function describeFetchFailure(err: unknown, host: string): string | null 
   }
 
   if (code === 'ECONNREFUSED') {
-    return `Connection to ${host} was refused.`;
+    return (
+      `Connection to ${host} was refused. Run \`mixshift doctor\` if this keeps happening.`
+    );
   }
 
   if (isTimeout || isAbort) {
-    return `Timed out connecting to ${host}.`;
+    return (
+      `Timed out connecting to ${host}. Run \`mixshift doctor\` if this keeps happening.`
+    );
   }
 
   // Unclassified transport failure: the connection never completed but the

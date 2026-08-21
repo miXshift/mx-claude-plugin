@@ -29011,6 +29011,9 @@ function contextSyncStatePath(brandSlug, dataDirOverride) {
 function indexPath(dataDirOverride) {
   return join4(clientsDir(dataDirOverride), "index.yaml");
 }
+function orgManifestCachePath(dataDirOverride) {
+  return join4(resolveDataDir(dataDirOverride), ".context-sync-org-manifest.json");
+}
 function outputDir(dataDirOverride) {
   return join4(resolveDataDir(dataDirOverride), "output");
 }
@@ -65167,6 +65170,61 @@ var init_telemetry = __esm({
   }
 });
 
+// src/lib/net/classify.ts
+function describeFetchFailure(err, host) {
+  const e = err ?? {};
+  const topMessage = String(e.message ?? "");
+  const cause = e.cause ?? {};
+  const code = String(cause.code ?? "");
+  const causeMessage = String(cause.message ?? "");
+  const isTimeout = e.name === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT";
+  const isAbort = e.name === "AbortError";
+  const isFetchFailure = topMessage === "fetch failed" || Boolean(e.cause);
+  if (!isFetchFailure && !isTimeout && !isAbort) return null;
+  if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
+    return `The sandbox blocked ${host}: your Claude network-egress allowlist does not include it. The fix depends on your plan (Cowork personal, Cowork Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for the exact steps and the full required-domain list.`;
+  }
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
+  }
+  if (code === "ECONNREFUSED") {
+    return `Connection to ${host} was refused. Run \`mixshift doctor\` if this keeps happening.`;
+  }
+  if (isTimeout || isAbort) {
+    return `Timed out connecting to ${host}. Run \`mixshift doctor\` if this keeps happening.`;
+  }
+  const raw = code || causeMessage || "";
+  const detail = raw && raw !== "0" ? ` (${raw})` : "";
+  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist not including ${host}. The exact fix depends on your plan; run \`mixshift doctor\` for the steps and the full required-domain list. Otherwise the service may be down or you are offline.`;
+}
+function networkErrorMessage(err, host) {
+  return describeFetchFailure(err, host) ?? extractMessage(err);
+}
+function extractMessage(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+var init_classify = __esm({
+  "src/lib/net/classify.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/net/api-base.ts
+function resolveApiBaseHost(apiBase) {
+  try {
+    return new URL(apiBase ?? DEFAULT_API_BASE).host;
+  } catch {
+    return new URL(DEFAULT_API_BASE).host;
+  }
+}
+var DEFAULT_API_BASE;
+var init_api_base = __esm({
+  "src/lib/net/api-base.ts"() {
+    "use strict";
+    DEFAULT_API_BASE = "https://mcp.mixshift.io";
+  }
+});
+
 // src/lib/data/query-runner.ts
 function querySqlTelemetry(sql, queryId) {
   if (queryId) return {};
@@ -65757,8 +65815,9 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const friendly = networkErrorMessage(err, resolveApiBaseHost(creds.api_base));
       const budgetExpired = err instanceof Error && err.name === "TimeoutError";
-      throw new DatahubNetworkError(message, !budgetExpired);
+      throw new DatahubNetworkError(message, friendly, !budgetExpired);
     }
   };
   const doFetch = async (bearer) => {
@@ -65862,7 +65921,9 @@ async function runDatahubQuery(creds, sql, params, options) {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs
       };
     } else {
@@ -65991,7 +66052,9 @@ async function runNamedQuery(id, options = {}) {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
-        friendly: "The MixShift auth service is unreachable. Check your network or try again in a minute.",
+        // Sandbox-aware + doctor-pointing (classified in datahubAuthedPost,
+        // where the raw fetch failure's shape was still intact).
+        friendly: err.friendly,
         durationMs
       };
     } else {
@@ -66071,7 +66134,7 @@ function classify(err) {
       kind: "host_unreachable",
       raw_code: code,
       message,
-      friendly: "Could not reach the warehouse host. Check your network."
+      friendly: "Could not reach the warehouse host. Check your network and, if you connect through a VPN or allowlist, that this machine's IP is still allowed."
     };
   }
   return {
@@ -66113,6 +66176,8 @@ var init_query_runner = __esm({
     init_schema3();
     init_intent();
     init_telemetry();
+    init_classify();
+    init_api_base();
     TRANSIENT_NETWORK_RETRIES = 2;
     TRANSIENT_RETRY_BACKOFF_MS = [250, 1e3];
     SERVICE_ROW_CAP = 5e4;
@@ -66121,15 +66186,25 @@ var init_query_runner = __esm({
     FIRST_PAGE_PROBE_ROWS = 5e3;
     MAX_PAGINATED_ROWS = 2e6;
     DatahubNetworkError = class extends Error {
+      /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+       *  failure at the point it was thrown (see datahubAuthedPost's doFetch) —
+       *  computed there because this class itself only carries a flattened
+       *  string message, losing the `.cause` classify.ts needs. */
+      friendly;
       /** False when the request DID reach the service and we gave up waiting on
        *  its answer (the AbortSignal.timeout budget fired). Retrying that just
        *  spends the budget again on a query the server is already struggling
        *  with, so only genuinely pre-response failures — DNS, TLS, connection
-       *  refused, connect timeout, socket hang-up — are replayed. */
+       *  refused, connect timeout, socket hang-up — are replayed.
+       *
+       *  Defaulted rather than required: every call site that constructs this
+       *  for a real fetch failure is pre-response, and defaulting keeps the
+       *  friendly-message change (#141) and the replay (mx-ops#6) independent. */
       retryable;
-      constructor(msg2, retryable = true) {
+      constructor(msg2, friendly, retryable = true) {
         super(msg2);
         this.name = "DatahubNetworkError";
+        this.friendly = friendly;
         this.retryable = retryable;
       }
     };
@@ -66333,7 +66408,8 @@ function createContextSyncClient(options = {}) {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new ContextSyncNetworkError(message);
+        const friendly = networkErrorMessage(err, resolveApiBaseHost(apiBase));
+        throw new ContextSyncNetworkError(message, friendly);
       }
     };
     let token = await getValidAccessToken(dataDirOverride);
@@ -66451,26 +66527,35 @@ function failureFromException(err) {
       ok: false,
       kind: "host_unreachable",
       message: err.message,
-      friendly: UNREACHABLE_FRIENDLY
+      // Sandbox-aware + doctor-pointing (classified in authedRequest, where
+      // the raw fetch failure's shape was still intact).
+      friendly: err.friendly
     };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, UNREACHABLE_FRIENDLY, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
+var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
 var init_client2 = __esm({
   "src/lib/context-sync/client.ts"() {
     "use strict";
     init_credentials();
     init_intent();
+    init_classify();
+    init_api_base();
     TEXT_DOC_TIMEOUT_MS = 3e4;
     CORPUS_TIMEOUT_MS = 12e4;
     ASSIGNMENT_TIMEOUT_MS = 2e3;
-    UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
     ContextSyncNetworkError = class extends Error {
-      constructor(msg2) {
+      /** Sandbox-aware, doctor-pointing text classified from the raw fetch
+       *  failure at the point it was thrown (see authedRequest's doFetch) —
+       *  computed there because this class itself only carries a flattened
+       *  string message, losing the `.cause` classify.ts needs. */
+      friendly;
+      constructor(msg2, friendly) {
         super(msg2);
         this.name = "ContextSyncNetworkError";
+        this.friendly = friendly;
       }
     };
     KNOWN_FAILURE_KINDS = /* @__PURE__ */ new Set([
@@ -66683,6 +66768,44 @@ async function saveState(brandSlug, state, dataDirOverride) {
     return false;
   }
 }
+async function loadOrgManifestCache(dataDirOverride) {
+  try {
+    const raw = await readFile9(orgManifestCachePath(dataDirOverride), "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || typeof parsed.fetched_at !== "string" || !Array.isArray(parsed.brands)) {
+      return null;
+    }
+    const brands = parsed.brands.filter(
+      (b) => typeof b === "object" && b !== null && typeof b.brand_slug === "string" && Array.isArray(b.docs)
+    );
+    const storedIdentity = parsed.identity;
+    return {
+      fetched_at: parsed.fetched_at,
+      ...typeof storedIdentity === "string" ? { identity: storedIdentity } : {},
+      brands
+    };
+  } catch {
+    return null;
+  }
+}
+async function saveOrgManifestCache(cache, dataDirOverride) {
+  try {
+    const path2 = orgManifestCachePath(dataDirOverride);
+    await mkdir4(dirname6(path2), { recursive: true });
+    const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
+    try {
+      await writeFile4(tmpPath, JSON.stringify(cache, null, 2) + "\n", "utf8");
+      await rename4(tmpPath, path2);
+      return true;
+    } catch (err) {
+      await unlink3(tmpPath).catch(() => {
+      });
+      throw err;
+    }
+  } catch {
+    return false;
+  }
+}
 var init_state = __esm({
   "src/lib/context-sync/state.ts"() {
     "use strict";
@@ -66719,7 +66842,7 @@ async function buildDocPairs(brandSlug, options) {
   let manifestBrands = options.manifest;
   if (!manifestBrands) {
     const manifest = await client.fetchManifest();
-    if (!manifest.ok) return { ok: false, message: manifest.friendly };
+    if (!manifest.ok) return { ok: false, message: manifest.friendly, kind: manifest.kind };
     manifestBrands = manifest.brands;
   }
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
@@ -66798,7 +66921,7 @@ async function buildDocPairs(brandSlug, options) {
 }
 async function computeStatus(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const docs = built.pairs.map((p) => ({
     key: p.key,
     docType: p.docType,
@@ -66888,7 +67011,9 @@ async function writeFileAtomic(path2, content) {
 async function pullOneDoc(brandSlug, pair, client, dataDirOverride) {
   const fetched = await client.fetchDoc(brandSlug, pair.docType, pair.corpusName);
   if (!fetched.ok) {
-    return { report: reportFor(pair, "error", `fetch failed: ${fetched.friendly}`) };
+    return {
+      report: { ...reportFor(pair, "error", `fetch failed: ${fetched.friendly}`), kind: fetched.kind }
+    };
   }
   const { doc } = fetched;
   const valid = validateDocContent(pair.docType, doc.content);
@@ -66962,11 +67087,13 @@ async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
       report: reportFor(pair, "conflict", `${who}${conflictInstructions(brandSlug)}`)
     };
   }
-  return { report: reportFor(pair, "error", `push failed: ${result.friendly}`) };
+  return {
+    report: { ...reportFor(pair, "error", `push failed: ${result.friendly}`), kind: result.kind }
+  };
 }
 async function pull(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67035,7 +67162,7 @@ async function pull(brandSlug, options = {}) {
 }
 async function push(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67124,7 +67251,7 @@ async function push(brandSlug, options = {}) {
 }
 async function sync(brandSlug, options = {}) {
   const built = await buildDocPairs(brandSlug, options);
-  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message };
+  if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
   const client = options.client ?? createContextSyncClient({ dataDirOverride: options.dataDirOverride });
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
@@ -67419,13 +67546,13 @@ function failureFromException2(err) {
       ok: false,
       kind: "host_unreachable",
       message: err.message,
-      friendly: UNREACHABLE_FRIENDLY2
+      friendly: UNREACHABLE_FRIENDLY
     };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TIMELINE_TIMEOUT_MS, LIST_ALL_CAP, UNREACHABLE_FRIENDLY2, TimelineNetworkError, KNOWN_FAILURE_KINDS2;
+var TIMELINE_TIMEOUT_MS, LIST_ALL_CAP, UNREACHABLE_FRIENDLY, TimelineNetworkError, KNOWN_FAILURE_KINDS2;
 var init_client3 = __esm({
   "src/lib/timeline/client.ts"() {
     "use strict";
@@ -67433,7 +67560,7 @@ var init_client3 = __esm({
     init_intent();
     TIMELINE_TIMEOUT_MS = 3e4;
     LIST_ALL_CAP = 2e3;
-    UNREACHABLE_FRIENDLY2 = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
+    UNREACHABLE_FRIENDLY = "The MixShift auth service is unreachable. Check your network or try again in a minute.";
     TimelineNetworkError = class extends Error {
       constructor(msg2) {
         super(msg2);
@@ -72484,6 +72611,10 @@ async function maybeAutoSync(brandSlug, options = {}) {
   const trigger = options.trigger ?? "preflight";
   let pastGuards = false;
   let ledgerState;
+  let seeded = false;
+  let manifestElapsedMs = 0;
+  let liveManifestFetchSucceeded = false;
+  let seedManifestBrands;
   async function finish(result) {
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
@@ -72504,6 +72635,10 @@ async function maybeAutoSync(brandSlug, options = {}) {
                 brand: brandSlug,
                 force: options.force ?? false,
                 ran: result.ran,
+                // Present (true) only when THIS attempt created the brand
+                // dir; absent otherwise — additive field, same event (see
+                // the module doc and design D-032).
+                ...seeded ? { seeded: true } : {},
                 ...result.ran ? {
                   pulled: result.pulled,
                   pushed: result.pushed,
@@ -72545,12 +72680,41 @@ async function maybeAutoSync(brandSlug, options = {}) {
       debugLog2(env, `autosync: unsafe brand slug ${JSON.stringify(brandSlug)}; skipped`);
       return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
     }
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
     if (!await brandDirExists(brandSlug, options.dataDirOverride)) {
-      return {
-        ran: false,
-        reason: "skipped",
-        detail: "no local brand directory; fetch it explicitly with `mixshift context pull --brand <slug>`"
-      };
+      const manifestCheckStart = Date.now();
+      const manifestResult = await getCachedOrgManifest({
+        dataDirOverride: options.dataDirOverride,
+        client: options.client,
+        fetchImpl: options.fetchImpl,
+        now: options.now,
+        throttleMs: options.throttleMs,
+        budgetMs,
+        env,
+        // FIX A: thread the SAME identity override this call already
+        // supports for the ledger through to the org-manifest cache too, so
+        // a test (or a future caller) that pins identity gets ONE consistent
+        // answer from both. When undefined, getCachedOrgManifest falls back
+        // to its own resolveLedgerIdentity() read — identical in effect,
+        // just resolved once more (a cheap local file read, not a network
+        // call).
+        identity: options.identity
+      });
+      manifestElapsedMs = Date.now() - manifestCheckStart;
+      liveManifestFetchSucceeded = manifestResult.ok && !manifestResult.fromCache;
+      const listed = manifestResult.ok && manifestResult.brands.some((b) => b.brand_slug === brandSlug);
+      if (!listed) {
+        return {
+          ran: false,
+          reason: "skipped",
+          detail: "no local brand directory; fetch it explicitly with `mixshift context pull --brand <slug>`"
+        };
+      }
+      if (!isSafeBrandSlug(brandSlug)) {
+        return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
+      }
+      seeded = true;
+      seedManifestBrands = manifestResult.ok ? manifestResult.brands : void 0;
     }
     const now = options.now ? options.now() : /* @__PURE__ */ new Date();
     const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
@@ -72585,9 +72749,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
     }
     pastGuards = true;
     ledgerState = state;
+    const raceMs = Math.max(0, budgetMs - manifestElapsedMs);
     const controller = new AbortController();
-    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
-    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    const abortTimer = setTimeout(() => controller.abort(), raceMs);
     abortTimer.unref?.();
     try {
       const baseFetch = options.fetchImpl ?? fetch;
@@ -72602,22 +72766,53 @@ async function maybeAutoSync(brandSlug, options = {}) {
       const raced = await raceDeadline(
         op(brandSlug, {
           client,
-          dataDirOverride: options.dataDirOverride
+          dataDirOverride: options.dataDirOverride,
+          // FIX C: on the seed path, reuse the EXACT manifest that just
+          // justified creating this dir (EngineOptions.manifest — see
+          // engine.ts's buildDocPairs, which otherwise fetches its own).
+          // Two reasons: (1) the manifest that justified the mkdir must be
+          // the manifest that resolves the docs — letting buildDocPairs
+          // fetch AGAIN risks it disagreeing with the seed decision (the
+          // brand deleted/renamed server-side in the gap, or the pre-check
+          // being a cache hit the fresh fetch wouldn't repeat) and finding
+          // NOTHING to pull, leaving a permanently empty orphan dir reported
+          // as a clean success. (2) a second live fetchManifest() call
+          // inside the SAME budget the pre-check already spent part of is
+          // exactly the double-spend that starves a seed attempt a plain
+          // dir-exists sync never pays (see the module doc's budget note;
+          // empirically, two ~900ms manifest round trips alone exceed the
+          // 2s default budget). The reused manifest can itself be up to
+          // AUTOSYNC_THROTTLE_MS stale (a cache hit) and is now
+          // identity-bound (FIX A), so staleness is bounded and scoped to
+          // the right tenant; per-doc CONTENT is always fetched LIVE by
+          // pullOneDoc regardless of where the manifest list came from, so a
+          // doc truly deleted server-side in the gap still surfaces as a
+          // per-doc 'error' (a failed, re-triable attempt), never silently
+          // resurrected or silently reported clean. The dir-exists path
+          // (seedManifestBrands stays undefined there) is unaffected:
+          // buildDocPairs fetches its own manifest exactly as before.
+          ...seedManifestBrands !== void 0 ? { manifest: seedManifestBrands } : {}
           // NEVER force: diverged docs stay untouched by design.
         }),
-        budgetMs
+        raceMs
       );
       if (raced === DEADLINE) {
         controller.abort();
-        debugLog2(env, `autosync(${brandSlug}): budget of ${budgetMs}ms exceeded`);
+        debugLog2(env, `autosync(${brandSlug}): budget of ${raceMs}ms exceeded`);
+        if (!liveManifestFetchSucceeded) {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({
           ran: false,
           reason: "failed",
-          detail: `timed out after ${budgetMs}ms`
+          detail: `timed out after ${raceMs}ms`
         });
       }
       if (!raced.ok) {
         debugLog2(env, `autosync(${brandSlug}): ${raced.message}`);
+        if (raced.kind === "host_unreachable") {
+          await maybeNoticeUnreachable(brandSlug, options, env);
+        }
         return await finish({ ran: false, reason: "failed", detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
@@ -72625,6 +72820,9 @@ async function maybeAutoSync(brandSlug, options = {}) {
       const created = raced.reports.filter((r) => r.action === "created").length;
       const conflicts = raced.reports.filter((r) => r.action === "conflict").length;
       const errors = raced.reports.filter((r) => r.action === "error").length;
+      if (errors > 0 && !liveManifestFetchSucceeded && raced.reports.some((r) => r.action === "error" && r.kind === "host_unreachable")) {
+        await maybeNoticeUnreachable(brandSlug, options, env);
+      }
       let stakeLeg;
       if (!publishDisabled) {
         stakeLeg = await runBudgetedStakeLeg(brandSlug, {
@@ -72641,6 +72839,13 @@ async function maybeAutoSync(brandSlug, options = {}) {
         conflicts,
         errors,
         reports: raced.reports,
+        // FIX H: additive on the ran:true result itself (not just the
+        // internal telemetry payload, which already carried this via the
+        // closure `seeded` flag — see finish()'s payload construction
+        // above) — so a MANUAL `mixshift context autosync` run can surface
+        // the seed outcome too, not only the implicit preflight hook's own
+        // telemetry row.
+        ...seeded ? { seeded: true } : {},
         ...stakeLeg !== void 0 ? { stake_events: stakeLeg } : {}
       });
     } finally {
@@ -72655,6 +72860,95 @@ async function maybeAutoSync(brandSlug, options = {}) {
 function debugLog2(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
+}
+var ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
+function cachedManifestIdentityMatches(cachedIdentity, currentIdentity) {
+  if (cachedIdentity === void 0) {
+    return currentIdentity === void 0 || currentIdentity === null;
+  }
+  return typeof currentIdentity === "string" && currentIdentity === cachedIdentity;
+}
+async function getCachedOrgManifest(options = {}) {
+  const env = options.env ?? process.env;
+  const now = options.now ? options.now() : /* @__PURE__ */ new Date();
+  const throttleMs = options.throttleMs ?? AUTOSYNC_THROTTLE_MS;
+  try {
+    const flag = (env[AUTOSYNC_ENV] ?? "").toLowerCase();
+    if (flag === "off" || flag === "0" || flag === "false") {
+      return { ok: false };
+    }
+    if (options.env === void 0 && process.env.VITEST) {
+      debugLog2(env, `getCachedOrgManifest: disabled under test runner (VITEST set)`);
+      return { ok: false };
+    }
+    const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
+    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
+    if (cached4 && cachedManifestIdentityMatches(cached4.identity, identity)) {
+      const fetchedAt = Date.parse(cached4.fetched_at);
+      if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
+        return { ok: true, brands: cached4.brands, fromCache: true };
+      }
+    }
+    const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
+    if (budgetMs <= 0) return { ok: false };
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), budgetMs);
+    abortTimer.unref?.();
+    try {
+      const baseFetch = options.fetchImpl ?? fetch;
+      const budgetedFetch = ((input, init) => baseFetch(input, { ...init, signal: controller.signal }));
+      const client = options.client ?? createContextSyncClient({
+        dataDirOverride: options.dataDirOverride,
+        fetchImpl: budgetedFetch
+      });
+      const raced = await raceDeadline(client.fetchManifest(), budgetMs);
+      if (raced === DEADLINE || !raced.ok) return { ok: false };
+      await raceDeadline(
+        saveOrgManifestCache(
+          {
+            fetched_at: now.toISOString(),
+            brands: raced.brands,
+            ...identity ? { identity } : {}
+          },
+          options.dataDirOverride
+        ),
+        ORG_MANIFEST_PERSIST_BUDGET_MS
+      );
+      return { ok: true, brands: raced.brands, fromCache: false };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog2(env, `getCachedOrgManifest: swallowed error: ${message}`);
+    return { ok: false };
+  }
+}
+var noticedUnreachableBrands = /* @__PURE__ */ new Set();
+var UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+async function maybeNoticeUnreachable(brandSlug, options, env) {
+  try {
+    if (noticedUnreachableBrands.has(brandSlug)) return;
+    const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
+    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
+    if (!cached4 || !cachedManifestIdentityMatches(cached4.identity, identity)) return;
+    if (!cached4.brands.some((b) => b.brand_slug === brandSlug)) return;
+    const now = options.now ? options.now() : /* @__PURE__ */ new Date();
+    const fetchedAt = Date.parse(cached4.fetched_at);
+    if (!Number.isFinite(fetchedAt) || fetchedAt > now.getTime() || now.getTime() - fetchedAt >= UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS) {
+      return;
+    }
+    if (noticedUnreachableBrands.has(brandSlug)) return;
+    noticedUnreachableBrands.add(brandSlug);
+    process.stderr.write(unreachableNoticeLine(brandSlug));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    debugLog2(env, `maybeNoticeUnreachable(${brandSlug}): swallowed error: ${message}`);
+  }
+}
+function unreachableNoticeLine(brandSlug) {
+  return `Your team has context for ${brandSlug}, but this session could not reach the org store just now. Your local copy, if any, is unchanged. Run \`mixshift doctor\` if this keeps happening.
+`;
 }
 
 // src/lib/binding/lens.ts
@@ -80568,18 +80862,7 @@ init_load();
 init_save();
 init_telemetry();
 init_clients();
-
-// src/lib/net/api-base.ts
-var DEFAULT_API_BASE = "https://mcp.mixshift.io";
-function resolveApiBaseHost(apiBase) {
-  try {
-    return new URL(apiBase ?? DEFAULT_API_BASE).host;
-  } catch {
-    return new URL(DEFAULT_API_BASE).host;
-  }
-}
-
-// src/lib/auth/login-flow.ts
+init_api_base();
 var PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1e3;
 var DEVICE_POLL_INTERVAL_MS = 3e3;
 var DEVICE_POLL_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -81212,42 +81495,10 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
 init_telemetry();
 init_plugin_version();
 init_clients();
-
-// src/lib/net/classify.ts
-function describeFetchFailure(err, host) {
-  const e = err ?? {};
-  const topMessage = String(e.message ?? "");
-  const cause = e.cause ?? {};
-  const code = String(cause.code ?? "");
-  const causeMessage = String(cause.message ?? "");
-  const isTimeout = e.name === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT";
-  const isAbort = e.name === "AbortError";
-  const isFetchFailure = topMessage === "fetch failed" || Boolean(e.cause);
-  if (!isFetchFailure && !isTimeout && !isAbort) return null;
-  if (/\b403\b/.test(causeMessage) || /\b403\b/.test(topMessage)) {
-    return `The sandbox blocked ${host}: your Claude network-egress allowlist does not include it. The fix depends on your plan (Cowork personal, Cowork Team/Enterprise, or standalone Claude Code); run \`mixshift doctor\` for the exact steps and the full required-domain list.`;
-  }
-  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
-    return `Could not resolve ${host}. If you are in a sandbox (Claude Cowork or Claude Code), outbound traffic must go through its egress proxy and ${host} must be allowlisted. Run \`mixshift doctor\` for the full remediation.`;
-  }
-  if (code === "ECONNREFUSED") {
-    return `Connection to ${host} was refused.`;
-  }
-  if (isTimeout || isAbort) {
-    return `Timed out connecting to ${host}.`;
-  }
-  const raw = code || causeMessage || "";
-  const detail = raw && raw !== "0" ? ` (${raw})` : "";
-  return `Could not reach ${host}${detail}. In Claude Cowork or Claude Code this is almost always the sandbox egress allowlist not including ${host}. The exact fix depends on your plan; run \`mixshift doctor\` for the steps and the full required-domain list. Otherwise the service may be down or you are offline.`;
-}
-function networkErrorMessage(err, host) {
-  return describeFetchFailure(err, host) ?? extractMessage(err);
-}
-function extractMessage(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-
-// src/commands/auth.ts
+init_local();
+init_classify();
+init_api_base();
+init_deadline();
 function registerAuthCommands(program3) {
   const auth = program3.command("auth").description(
     "Authenticate against the MixShift warehouse. Two flows: `login` (recommended) for the token-based mx-legacy-auth path, or `setup` for the legacy raw-MySQL path."
@@ -81357,6 +81608,13 @@ Mark them as "key" so portfolio skills default to those instead of all ${counts.
 Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
 ` : "")
             );
+            const org = await computeOrgAwareness(root.dataDir);
+            if (org) {
+              process.stdout.write(
+                `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
+`
+              );
+            }
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -81461,7 +81719,8 @@ function registerLoginSubcommand(auth) {
         noFallback: opts.noFallback ?? false,
         dataDirOverride: root.dataDir
       });
-      renderLoginResult(result, !!root.json);
+      const org = await computeOrgAwareness(root.dataDir);
+      renderLoginResult(result, !!root.json, org);
       return;
     } catch (err) {
       const message = networkErrorMessage(
@@ -81510,9 +81769,31 @@ function parseLoginMode(raw) {
     `--mode must be one of: pkce, device, auto (got "${raw}").`
   );
 }
-function renderLoginResult(result, json2) {
+var ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS = 1e3;
+async function computeOrgAwareness(dataDirOverride) {
+  try {
+    const manifest = await getCachedOrgManifest({ dataDirOverride });
+    if (!manifest.ok) return void 0;
+    const localBrands = await raceDeadline(
+      listLocalBrands(dataDirOverride),
+      ORG_AWARENESS_LOCAL_BRANDS_BUDGET_MS
+    );
+    if (localBrands === DEADLINE) return void 0;
+    const localSlugs = new Set(localBrands);
+    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    return {
+      total: orgSlugs.length,
+      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length
+    };
+  } catch {
+    return void 0;
+  }
+}
+function renderLoginResult(result, json2, org) {
   if (json2) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    const out = { ...result };
+    if (org) out.org_brands = org;
+    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
     return;
   }
   process.stdout.write(
@@ -81523,7 +81804,9 @@ function renderLoginResult(result, json2) {
   - api_base:      ${result.apiBase}
   - client_id:     ${result.clientId}
   - duration:      ${(result.durationMs / 1e3).toFixed(1)}s
-
+` + (org ? `
+Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
+` : "") + `
 Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 `
   );
@@ -81693,7 +81976,12 @@ function registerDevicePollSubcommand(auth) {
           maxWaitMs,
           dataDirOverride: root.dataDir
         });
-        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        const out = { ...result };
+        if (result.state === "approved") {
+          const org = await computeOrgAwareness(root.dataDir);
+          if (org) out.org_brands = org;
+        }
+        process.stdout.write(JSON.stringify(out, null, 2) + "\n");
         return;
       } catch (err) {
         const message = networkErrorMessage(
@@ -81889,31 +82177,6 @@ function exitCodeFor2(result) {
     case "failed":
       return 1;
   }
-}
-
-// src/commands/bootstrap.ts
-function registerBootstrapCommand(program3) {
-  program3.command("bootstrap").description("Create the initial context.yaml shell for a new brand").requiredOption("--brand <slug>", "brand slug (lowercase, hyphenated)").requiredOption("--brand-name <name>", "human-friendly display name").option(
-    "--seller-id <id>",
-    "SellerID from the warehouse seller table (can repeat)",
-    collect,
-    []
-  ).option(
-    "--account-type <type>",
-    "SC or VC; matches each --seller-id positionally",
-    collect,
-    []
-  ).option("--date <yyyy-mm-dd>", "brand setup data date", todayISO2()).action(
-    (opts) => {
-      notYetImplemented("bootstrap", opts);
-    }
-  );
-}
-function collect(value, prev) {
-  return [...prev, value];
-}
-function todayISO2() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
 // src/commands/validate.ts
@@ -82500,7 +82763,7 @@ async function executeOne(id, allParams, dataDirOverride) {
 function registerPrefetchCommand(program3) {
   program3.command("prefetch").description(
     "Run a skill's SQL batches against the warehouse and write data artifacts."
-  ).requiredOption("--brand <slug>", "brand slug (must be onboarded)").requiredOption("--skill <skill-id>", "skill ID (subdirectory under skills/)").option("--date <yyyy-mm-dd>", "run date (default: today)", todayISO3()).option(
+  ).requiredOption("--brand <slug>", "brand slug (must be onboarded)").requiredOption("--skill <skill-id>", "skill ID (subdirectory under skills/)").option("--date <yyyy-mm-dd>", "run date (default: today)", todayISO2()).option(
     "--param <name=value>",
     "override a standard param (repeatable). Values are JSON-parsed if possible \u2014 pass `--param lookback_days=7` for an int.",
     collectParam,
@@ -82534,7 +82797,7 @@ function registerPrefetchCommand(program3) {
     }
   });
 }
-function todayISO3() {
+function todayISO2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function collectParam(value, prev) {
@@ -82652,13 +82915,13 @@ function registerRenderCommand(program3) {
   ).option(
     "--adapter <name>",
     "override profile default: local-html | inline-markdown | google-doc | csv | terminal"
-  ).option("--date <yyyy-mm-dd>", "data date", todayISO4()).action(
+  ).option("--date <yyyy-mm-dd>", "data date", todayISO3()).action(
     (opts) => {
       notYetImplemented("render", opts);
     }
   );
 }
-function todayISO4() {
+function todayISO3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -83529,7 +83792,7 @@ function registerDataCommands(program3) {
       const root = cmd.optsWithGlobals();
       try {
         const outPath = resolvePath(
-          opts.out ?? `${outputDir(root.dataDir)}/${opts.table}-${todayISO5()}.csv`
+          opts.out ?? `${outputDir(root.dataDir)}/${opts.table}-${todayISO4()}.csv`
         );
         const result = await exportTable({
           table: opts.table,
@@ -83858,7 +84121,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}) {
   let report = () => {
   };
   const openTemp = () => {
-    state.tempPath = resolvePath(`${outputDir(dataDir)}/query-${todayISO5()}-${Date.now()}.csv`);
+    state.tempPath = resolvePath(`${outputDir(dataDir)}/query-${todayISO4()}-${Date.now()}.csv`);
     const s = createCsvFileSink(state.tempPath);
     report = progressReporter(s);
     return s;
@@ -84019,7 +84282,7 @@ function parseInt10(v) {
   if (Number.isNaN(n)) throw new Error(`Expected integer, got "${v}"`);
   return n;
 }
-function todayISO5() {
+function todayISO4() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 
@@ -89703,9 +89966,9 @@ async function defaultOutPath(sellerId, reportType, dataDir) {
   const entry = await findReportType(reportType);
   const ext = entry?.documentFormat === "json" ? "json" : "tsv";
   const scope = sellerId || "unknown-merchant";
-  return reportOutputPath(scope, todayISO6(), reportType, ext, dataDir);
+  return reportOutputPath(scope, todayISO5(), reportType, ext, dataDir);
 }
-function todayISO6() {
+function todayISO5() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function sanitizeForFilename(s) {
@@ -92784,6 +93047,8 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
 
 // src/lib/net/doctor.ts
 init_credentials();
+init_api_base();
+init_classify();
 var REQUIRED_ALLOWLIST = [
   {
     domain: "mcp.mixshift.io",
@@ -94294,7 +94559,7 @@ function registerActionSubcommand(context, spec) {
 }
 function registerAutosyncSubcommand(context) {
   context.command("autosync <brand>").description(
-    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally; diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
+    `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally, AND seeds one that does not exist here yet as long as your org's shared store already lists it (creating the local directory and pulling its docs); a slug your org store does not know about stays a no-op. Diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
   ).option("--force", "bypass the per-brand throttle window", false).action(async (brand, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
@@ -94319,7 +94584,11 @@ function registerAutosyncSubcommand(context) {
               pushed: result.pushed,
               created: result.created,
               conflicts: result.conflicts,
-              errors: result.errors
+              errors: result.errors,
+              // FIX H: surface the seed outcome on manual runs too —
+              // previously only the internal preflight hook's own
+              // (trigger-suppressed, for manual) emit carried this.
+              ...result.seeded ? { seeded: true } : {}
             } : { reason: result.reason }
           }
         },
@@ -94334,7 +94603,10 @@ function registerAutosyncSubcommand(context) {
               pulled: result.pulled,
               conflicts: result.conflicts,
               errors: result.errors,
-              reports: result.reports
+              reports: result.reports,
+              // FIX H: additive — present only when this run seeded
+              // (created) the brand's local directory.
+              ...result.seeded ? { seeded: true } : {}
             } : {
               status: "ok",
               ran: false,
@@ -94652,7 +94924,7 @@ function registerAdd(timeline) {
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -95013,7 +95285,7 @@ function registerSync(timeline) {
     }
   });
 }
-function collect2(value, prev) {
+function collect(value, prev) {
   return [...prev, value];
 }
 function parseEvidence(raw) {
@@ -95236,7 +95508,7 @@ function classifyMintError(err) {
   }
   return "endpoint_unreachable";
 }
-function collect3(value, prev) {
+function collect2(value, prev) {
   return [...prev, value];
 }
 function registerTaskCommands(program3) {
@@ -95248,7 +95520,7 @@ function registerTaskCommands(program3) {
   ).option(
     "--brand <slug>",
     "brand slug to ensure local context.yaml for (repeatable); pulls from the org store when not already present locally",
-    collect3,
+    collect2,
     []
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -95669,7 +95941,6 @@ program2.name("mixshift").description(
 registerProfileCommands(program2);
 registerAuthCommands(program2);
 registerBrandCommands(program2);
-registerBootstrapCommand(program2);
 registerValidateCommand(program2);
 registerPrefetchCommand(program2);
 registerRenderCommand(program2);
