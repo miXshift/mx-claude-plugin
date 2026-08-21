@@ -1868,8 +1868,10 @@ describe('served metric format (engine >= 0.2.0) is the authority; the local tab
       // copy wins -- it stamps the figure's `precision` in the first place.
       // Math.trunc(-0.5) is -0, which passes a `>= 0` gate, so a trunc-first
       // implementation stamps precision 0 and silently overrides the unit's
-      // own display default. Both gates check integer-ness BEFORE truncation;
-      // a revert of either must go red here, not just in the renderer.
+      // own display default. Both gates check integer-ness BEFORE truncation.
+      // This pins the EXTRACT gate only: on these inputs nothing is stamped,
+      // so the renderer's sanePrecision never sees a fractional value here --
+      // its own revert is caught by render-report.test.ts's sibling it.each.
       // A percent display renders 1dp by DEFAULT, so a laundered precision 0
       // is visible: "20.4%" (rejected -> unit default) vs "20%" (trunc bug).
       const response = opsEnvelopeWith(

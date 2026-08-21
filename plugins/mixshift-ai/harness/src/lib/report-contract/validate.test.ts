@@ -773,6 +773,28 @@ describe('UNIT-2 (a unit must not contradict its served contract, or claim an im
     expect(found.some((f) => f.rule === 'UNIT-2')).toBe(false);
   });
 
+  it('retires a suppressed id from the index even when the loader left its unit behind', () => {
+    // The CLI loader deletes conflicted ids from `units` before it builds the
+    // index, so via `report validate` this line is defense in depth. This test
+    // constructs the overlapping index no loader produces, so the library's
+    // own `suppressed` term is pinned directly rather than through the loader.
+    const doc: ReportDataDocument = {
+      figures: [figure({ id: 'mom.ads.acos.p2', label: 'ACOS', value: 0.3, unit: 'ratio' })],
+    };
+    const index = { units: { 'mom.ads.acos.p2': 'currency' }, suppressed: ['mom.ads.acos.p2'] };
+    expect(validateReportData(doc, index).some((f) => f.rule === 'UNIT-2')).toBe(false);
+    // Suppression retires ONLY the index: the same figure carrying its own
+    // contradicted stamp still fails, attributed to the stamp, not a file.
+    const stamped: ReportDataDocument = {
+      figures: [
+        figure({ id: 'mom.ads.acos.p2', label: 'ACOS', value: 0.3, unit: 'ratio', served_unit: 'currency' }),
+      ],
+    };
+    const found = validateReportData(stamped, index).filter((f) => f.rule === 'UNIT-2');
+    expect(found).toHaveLength(1);
+    expect(found[0].detail).toContain("the figure's own served_unit");
+  });
+
   it('does NOT fire when no contract was served — version skew must not manufacture findings', () => {
     // Same figure, same 'ratio' label, no served_unit: a pre-0.2.0 envelope, a
     // hand-authored figure, or a Derived. The rule has nothing to compare

@@ -93179,7 +93179,7 @@ async function withReportErrorHandling(json2, fn) {
 function registerReportCommands(program3) {
   const report = program3.command("report").description("Report-contract tools: validate typed report-data documents at the render seam.");
   report.command("validate <files...>").description(
-    "Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json documents. Exit 0 = no error-severity findings (warnings may still be reported), 1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still continues through the remaining documents; 2 wins over 1 when both occur). A corrupt figures*.json sidecar is different: it fails the whole command up front, because it silently voids the served-unit check for every document."
+    "Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json documents. Exit 0 = no error-severity findings (warnings may still be reported), 1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still continues through the remaining documents; 2 wins over 1 when both occur). A corrupt sidecar is different, because it silently voids the served-unit check: an unreadable --figures path fails the whole command up front, and a corrupt auto-discovered figures*.json fails the run when its own document is reached."
   ).option(
     "--figures <path...>",
     "the `report extract` output the document was composed from, so UNIT-2 can check each unit against the contract the engine served (default: figures*.json beside each document)"
@@ -93326,7 +93326,7 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
         const served = await loadServedContract(file2, figuresOpt(opts.figures), opts.figures === false);
         for (const id of served.conflicts) {
           console.error(
-            `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; the served-unit check is skipped for it. Remove the stale one.`
+            `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; their evidence is discarded for it (a served_unit on the figure itself still applies). Remove the stale file.`
           );
         }
         const findings = validateReportData(doc, served.index);

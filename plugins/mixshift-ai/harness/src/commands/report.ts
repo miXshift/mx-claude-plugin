@@ -306,8 +306,9 @@ export function registerReportCommands(program: Command): void {
         'documents. Exit 0 = no error-severity findings (warnings may still be reported), ' +
         '1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still ' +
         'continues through the remaining documents; 2 wins over 1 when both occur). ' +
-        'A corrupt figures*.json sidecar is different: it fails the whole command up front, ' +
-        'because it silently voids the served-unit check for every document.',
+        'A corrupt sidecar is different, because it silently voids the served-unit check: ' +
+        'an unreadable --figures path fails the whole command up front, and a corrupt ' +
+        'auto-discovered figures*.json fails the run when its own document is reached.',
     )
     .option(
       '--figures <path...>',
@@ -503,7 +504,8 @@ export function registerReportCommands(program: Command): void {
         for (const id of served.conflicts) {
           console.error(
             `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; ` +
-              'the served-unit check is skipped for it. Remove the stale one.',
+              "their evidence is discarded for it (a served_unit on the figure itself still applies). " +
+              'Remove the stale file.',
           );
         }
         const findings = validateReportData(doc, served.index);

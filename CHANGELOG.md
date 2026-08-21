@@ -45,7 +45,6 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
-
 ## 0.8.10
 
 ### Added
