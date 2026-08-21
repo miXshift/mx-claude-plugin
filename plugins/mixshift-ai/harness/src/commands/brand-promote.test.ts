@@ -284,6 +284,60 @@ describe('brand promote — dry-run default', () => {
     expect(stdout).not.toContain('no campaigns yet');
   });
 
+  // mx-ops#6 red team round 2, the coverage gap. An experimental probe
+  // deleted the economics wiring five different ways and NOT ONE test in the
+  // 2281-test suite failed — every command fixture passed empty econ arrays,
+  // which is byte-identical to not passing economics at all. A skeptic
+  // correctly noted those particular mutations are compile errors under
+  // strict + noUnusedLocals and typecheck gates CI before tests, so they
+  // cannot ship. Both are right, and what neither covers is a SEMANTIC
+  // regression: wrong arrays wired to the right parameter names, a wire-shape
+  // change the coercion silently zeroes, a gateway field rename. All
+  // type-valid, all green, all of them turn the headline feature inert.
+  //
+  // This is the test that would go red.
+  it('carries economics through the command layer and ranks the plan on dollars', async () => {
+    mockedFetch.mockResolvedValue({
+      ...OK_FIXTURE,
+      // 'Alpine Trail' has 30 retail units to 'Forager Pantry''s 70, so item
+      // count alone ranks it SECOND. In dollars it is worth ~9x more.
+      retailEconRows: [
+        {
+          SellerID: 1, source: 'mws_items.Brand', label: 'Alpine Trail',
+          revenue_365d: 4_000_000, revenue_90d: 1_100_000, units_365d: 50_000,
+          last_order_at: '2026-08-11 00:00:00', sku_count: 30,
+        },
+        {
+          SellerID: 1, source: 'mws_items.Brand', label: 'Forager Pantry',
+          revenue_365d: 450_000, revenue_90d: 120_000, units_365d: 6_000,
+          last_order_at: '2026-08-11 00:00:00', sku_count: 70,
+        },
+      ],
+      adsEconRows: [
+        {
+          SellerID: 1, source: 'campaign.Brand', label: 'Alpine Trail',
+          spend_365d: 600_000, spend_90d: 160_000, ad_sales_365d: 2_000_000,
+          last_spend_at: '2026-08-11 00:00:00', campaigns_with_spend: 22,
+        },
+      ],
+      vendorEconRows: [],
+    });
+    await runPromote(['--seller-id', SELLER_ID]);
+    const plan = emitted().plan as {
+      items: Array<{ label: string; economic_weight: number; revenue_365d: number; spend_365d: number }>;
+    };
+    // Ranked on revenue + spend, so the smaller catalog leads.
+    expect(plan.items[0]!.label).toBe('Alpine Trail');
+    expect(plan.items[0]!.economic_weight).toBe(4_600_000);
+    expect(plan.items[0]!.revenue_365d).toBe(4_000_000);
+    expect(plan.items[0]!.spend_365d).toBe(600_000);
+    expect(plan.items[1]!.label).toBe('Forager Pantry');
+    // If economics stopped reaching buildPromotionPlan, every weight would be
+    // 0 and the order would fall back to catalog mass — both assertions above
+    // fail, which is the whole point of this test.
+    expect(plan.items[1]!.economic_weight).toBe(450_000);
+  });
+
   it('does not claim every listed label cleared the meaningful-mass gate', async () => {
     // Candidacy is the UNION of catalog mass and economic share, so the list
     // deliberately includes labels that FAIL the mass gate. Asserting they all
