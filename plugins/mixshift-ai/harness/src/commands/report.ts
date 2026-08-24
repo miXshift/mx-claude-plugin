@@ -1,7 +1,13 @@
 import type { Command } from 'commander';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { validateReportData, type Finding, type ReportDataDocument } from '../lib/report-contract/validate.js';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import {
+  validateReportData,
+  blockingFindings,
+  type Finding,
+  type ReportDataDocument,
+  type ServedContractIndex,
+} from '../lib/report-contract/validate.js';
 import {
   extractFigures,
   checkFigures,
@@ -25,6 +31,201 @@ async function readJson<T>(file: string): Promise<T> {
       'report_data_unreadable',
     );
   }
+}
+
+/** Commander maps `--no-figures` onto the POSITIVE key, so `opts.figures` is
+ *  `false` (not a `noFigures` boolean) when the flag is passed. Narrow it back
+ *  to the path list the loader wants. */
+function figuresOpt(v: string[] | false | undefined): string[] | undefined {
+  return Array.isArray(v) ? v : undefined;
+}
+
+/**
+ * Reject an unreadable `--figures` path ONCE, before any document is processed.
+ *
+ * ⚠ This deliberately does NOT live inside `loadServedContract`. A bad
+ * `--figures` value is a mistake in the COMMAND, not a property of any one
+ * document, and `report validate` runs its per-file body inside a try/catch
+ * that turns every throw into "<that document>: UNREADABLE". Throwing from
+ * inside the loop therefore blamed a report-data.json that reads perfectly
+ * well, counted it toward `unreadable`, and exited 2 -- pointing the operator
+ * at the wrong file, which is the same misattribution this round already had
+ * to fix in the render refusal.
+ *
+ * Silence is not an option either: skipping an unreadable path lets one typo
+ * switch the served-unit check off and report CLEAN.
+ */
+async function assertFiguresReadable(explicit: string[] | undefined): Promise<void> {
+  if (!explicit || explicit.length === 0) return;
+  for (const path of [...new Set(explicit.map((p) => resolve(p)))]) {
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new UserFacingError(
+        `--figures ${path} could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        'figures_unreadable',
+      );
+    }
+    // ⚠ READABILITY IS NOT ENOUGH. Proving the bytes exist and then letting the
+    // parse fail quietly downstream leaves the same fail-open this guard was
+    // written to close: a truncated figures file -- exactly what an
+    // interrupted `report extract --out` leaves on disk, since the write is
+    // not atomic -- reads fine, parses to nothing, contributes no index, and
+    // the run reports CLEAN. `report render` then writes the HTML.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new UserFacingError(
+        `--figures ${path} is not valid JSON: ${err instanceof Error ? err.message : String(err)}. ` +
+          'If an extract was interrupted, re-run `report extract --out` for it.',
+        'figures_unreadable',
+      );
+    }
+    if (!Array.isArray((parsed as { figures?: unknown })?.figures)) {
+      throw new UserFacingError(
+        `--figures ${path} is not a \`report extract\` document (no \`figures\` array).`,
+        'figures_unreadable',
+      );
+    }
+  }
+}
+
+/**
+ * Build the served unit contract for a report-data document by reading the
+ * `report extract` output it was composed from.
+ *
+ * `explicit` wins outright. With none given we look beside the document for
+ * `figures*.json`, which is the layout SKILL.md's own worked run produces
+ * (`report extract --out figures.mom.ops.json` next to `report-data.json`).
+ * Finding nothing is not an error: pre-served-contract runs and hand-built test
+ * documents have no sidecar, and UNIT-2's contract arm is specified to stay
+ * silent when nothing was served rather than manufacture findings from skew.
+ *
+ * ⚠ Auto-discovery makes ambient files a BLOCKING input to a user-facing
+ * command, so the two ways that goes wrong are handled explicitly:
+ *
+ *   - A stale or foreign sidecar could block a correct document, decided by
+ *     nothing but filename sort order. So sidecars that DISAGREE about a
+ *     figure retire that figure from the check (`conflicts`) instead of
+ *     last-wins, and `origin` records which file supplied each unit so the
+ *     refusal can name it -- the contradicting value appears nowhere in
+ *     report-data.json, and pointing the operator there sends them to debug a
+ *     file that looks correct. `--no-figures` opts out without reaching for
+ *     `--force`, which would waive every other rule too.
+ *   - An explicit `--figures` path that cannot be read is rejected up front by
+ *     `assertFiguresReadable`. Skipping it would let one typo switch the
+ *     served-unit check off and report CLEAN.
+ *
+ * A malformed or irrelevant file found by auto-discovery is still skipped
+ * quietly: a stray `figures-notes.json` in the working directory must not take
+ * down a render.
+ */
+async function loadServedContract(
+  docPath: string,
+  explicit: string[] | undefined,
+  noFigures: boolean,
+): Promise<{ index?: ServedContractIndex; sources: string[]; conflicts: string[] }> {
+  const none = { sources: [] as string[], conflicts: [] as string[] };
+  // --no-figures means SKIP, including any stamp the document carries. Without
+  // suppressAll the check would quietly continue off the figure's own
+  // model-copied served_unit and the flag would be a lie.
+  if (noFigures) return { ...none, index: { suppressAll: true } };
+
+  let candidates: string[];
+  if (explicit && explicit.length > 0) {
+    candidates = [...new Set(explicit.map((p) => resolve(p)))];
+  } else {
+    const dir = dirname(resolve(docPath));
+    try {
+      const entries = await readdir(dir);
+      candidates = entries
+        .filter((e) => /^figures.*\.json$/i.test(e))
+        .sort()
+        .map((e) => join(dir, e));
+    } catch {
+      return none;
+    }
+  }
+
+  // id -> unit, plus where it came from, so a finding can name the file and
+  // so two sidecars that disagree can be detected rather than resolved by
+  // filename sort order.
+  const units: Record<string, string> = {};
+  const origin: Record<string, string> = {};
+  const conflicts = new Set<string>();
+
+  for (const path of candidates) {
+    // ⚠ UNPARSEABLE IS NOT THE SAME AS IRRELEVANT, and the difference is the
+    // whole fail-open. A file named `figures*.json` that does not parse is
+    // almost certainly a CORRUPT extract artifact -- `report extract --out`
+    // writes non-atomically, so an interrupted run leaves exactly this -- and
+    // quietly skipping it means the served-unit check silently does nothing
+    // and the run reports CLEAN. Reproduced on the auto-discovery path:
+    // identical document and command, well-formed sidecar FAILs and truncated
+    // sidecar PASSes.
+    //
+    // Read and parse fail SEPARATELY so the remediation matches the failure:
+    // "re-run the extract" cures a truncated file and does nothing for a
+    // permissions error.
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new UserFacingError(
+        `${path} could not be read: ${err instanceof Error ? err.message : String(err)}. ` +
+          'Fix its permissions, delete the file, or pass --no-figures.',
+        'figures_unreadable',
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new UserFacingError(
+        `${path} is not valid JSON: ${err instanceof Error ? err.message : String(err)}. ` +
+          'A `figures*.json` that will not parse is usually a `report extract --out` that was ' +
+          'interrupted; re-run the extract, delete the file, or pass --no-figures.',
+        'figures_unreadable',
+      );
+    }
+    // A file that PARSES but carries no `figures` array is merely irrelevant --
+    // a stray `figures-notes.json` in the working directory -- and must not
+    // take down a render.
+    const figures = (parsed as { figures?: unknown })?.figures;
+    if (!Array.isArray(figures)) continue;
+    for (const f of figures) {
+      const id = (f as { id?: unknown })?.id;
+      const servedUnit = (f as { served_unit?: unknown })?.served_unit;
+      if (typeof id !== 'string' || typeof servedUnit !== 'string' || servedUnit === '') continue;
+      if (units[id] !== undefined && units[id] !== servedUnit) {
+        // Two extractions disagree about the same figure. One of them is not
+        // this document's -- a leftover from another run, brand, or month.
+        // Neither is trustworthy evidence, so the id is dropped rather than
+        // decided by sort order.
+        conflicts.add(id);
+        continue;
+      }
+      units[id] = servedUnit;
+      origin[id] = path;
+    }
+  }
+
+  for (const id of conflicts) {
+    delete units[id];
+    delete origin[id];
+  }
+
+  // `sources` is used to tell the operator where a served unit came from, so
+  // it must list only files that still contribute a SURVIVING unit -- naming a
+  // file whose every entry was retired sends them to inspect an irrelevant one.
+  const contributing = [...new Set(Object.values(origin))].sort();
+  const index: ServedContractIndex | undefined =
+    Object.keys(units).length > 0 || conflicts.size > 0
+      ? { units, origin, suppressed: [...conflicts] }
+      : undefined;
+  return { index, sources: contributing, conflicts: [...conflicts] };
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -55,6 +256,11 @@ interface FileResult {
    *  JSON -- processing continues to the next file rather than aborting
    *  the whole batch before any result prints. */
   error?: string;
+  /** Figure ids whose served-unit check was RETIRED because two figures files
+   *  disagreed about them. Carried into --json because a silently-skipped
+   *  check reads identical to a passing one, and Step 6 records this output
+   *  as the run's audit trail. */
+  served_unit_conflicts?: string[];
 }
 
 /**
@@ -96,13 +302,31 @@ export function registerReportCommands(program: Command): void {
   report
     .command('validate <files...>')
     .description(
-      'Run the report-contract validators (BASIS-1..UNIT-1) over one or more report-data.json ' +
-        'documents. Exit 0 = all clean, 1 = findings, 2 = at least one file was unreadable ' +
-        '(processing still continues through every file; 2 wins over 1 when both occur).',
+      'Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json ' +
+        'documents. Exit 0 = no error-severity findings (warnings may still be reported), ' +
+        '1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still ' +
+        'continues through the remaining documents; 2 wins over 1 when both occur). ' +
+        'A corrupt sidecar is different, because it silently voids the served-unit check: ' +
+        'an unreadable --figures path fails the whole command up front, and a corrupt ' +
+        'auto-discovered figures*.json fails the run when its own document is reached.',
     )
-    .action(async (files: string[], _opts: unknown, cmd: Command) => {
+    .option(
+      '--figures <path...>',
+      'the `report extract` output the document was composed from, so UNIT-2 can check ' +
+        'each unit against the contract the engine served (default: figures*.json beside ' +
+        'each document)',
+    )
+    .option(
+      '--no-figures',
+      'ignore any figures*.json beside the document (a served_unit carried on the figure ' +
+        'itself is still checked)',
+    )
+    .action(async (files: string[], opts: { figures?: string[] | false }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
+        // Before the loop, so a bad flag is a command error rather than a
+        // slander against the first document. See assertFiguresReadable.
+        await assertFiguresReadable(figuresOpt(opts.figures));
         const results: FileResult[] = [];
         let anyUnreadable = false;
         // Per-file try/catch: an unreadable file mid-list used to throw out
@@ -112,18 +336,54 @@ export function registerReportCommands(program: Command): void {
         for (const file of files) {
           try {
             const doc = await readJson<ReportDataDocument>(file);
-            results.push({ file, findings: validateReportData(doc) });
+            const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
+            for (const id of served.conflicts) {
+              console.error(
+                `  warn [UNIT-2] ${file}: ${id} -- two figures files disagree on this figure's ` +
+                  'served unit; their evidence is discarded for it (a served_unit on the figure ' +
+                  'itself still applies). Remove the stale file.',
+              );
+            }
+            results.push({
+              file,
+              findings: validateReportData(doc, served.index),
+              ...(served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}),
+            });
           } catch (err) {
+            // A corrupt figures*.json is an ENVIRONMENT problem, not a property
+            // of this document, so it must not be recorded as "<document>:
+            // UNREADABLE" -- that is the misattribution this round already had
+            // to fix once for --figures, and auto-discovery reintroduced it
+            // here. Auto-discovery is per-document so it cannot be hoisted
+            // before the loop the way --figures was; instead the error escapes
+            // the loop and fails the command, naming the sidecar.
+            if (err instanceof UserFacingError && err.errorClass === 'figures_unreadable') throw err;
             anyUnreadable = true;
             results.push({ file, error: err instanceof Error ? err.message : String(err) });
           }
         }
         const total = results.reduce((n, r) => n + (r.findings?.length ?? 0), 0);
+        // Only error-severity findings fail the run. A warning is a real
+        // report about the document that may still be right about the world
+        // (a 1200% ACOS on a near-zero-sales row), so it prints and does not
+        // gate -- see FindingSeverity.
+        const blocking = results.reduce(
+          (n, r) => n + blockingFindings(r.findings ?? []).length,
+          0,
+        );
+        const warnings = total - blocking;
         const unreadableCount = results.filter((r) => r.error !== undefined).length;
         if (root.json) {
           console.log(
             JSON.stringify(
-              { ok: total === 0 && !anyUnreadable, total, unreadable: unreadableCount, results },
+              {
+                ok: blocking === 0 && !anyUnreadable,
+                total,
+                blocking,
+                warnings,
+                unreadable: unreadableCount,
+                results,
+              },
               null,
               2,
             ),
@@ -137,16 +397,18 @@ export function registerReportCommands(program: Command): void {
             const findings = r.findings ?? [];
             console.log(`\n${r.file}: ${findings.length === 0 ? 'CLEAN' : `${findings.length} finding(s)`}`);
             for (const f of findings) {
-              console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+              const tag = (f.severity ?? 'error') === 'warning' ? 'warn' : 'ERROR';
+              console.log(`  ${tag} [${f.rule}] ${f.subject} -- ${f.detail}`);
             }
           }
           const summary = [
-            total === 0 ? null : `${total} finding(s)`,
+            blocking === 0 ? null : `${blocking} finding(s)`,
             unreadableCount === 0 ? null : `${unreadableCount} file(s) unreadable`,
           ].filter((s): s is string => s !== null);
-          console.log(`\n${summary.length === 0 ? 'PASS' : `FAIL: ${summary.join(', ')}`}`);
+          const pass = `PASS${warnings === 0 ? '' : ` (${warnings} warning(s))`}`;
+          console.log(`\n${summary.length === 0 ? pass : `FAIL: ${summary.join(', ')}`}`);
         }
-        process.exitCode = anyUnreadable ? 2 : total === 0 ? 0 : 1;
+        process.exitCode = anyUnreadable ? 2 : blocking === 0 ? 0 : 1;
       });
     });
 
@@ -217,16 +479,73 @@ export function registerReportCommands(program: Command): void {
     )
     .requiredOption('--out <path>', 'write the HTML artifact here')
     .option('--force', 'render even when the document has validator findings', false)
-    .action(async (file: string, opts: { out: string; force: boolean }, cmd: Command) => {
+    .option(
+      '--figures <path...>',
+      'the `report extract` output the document was composed from, so UNIT-2 can check ' +
+        'each unit against the contract the engine served (default: figures*.json beside ' +
+        'the document)',
+    )
+    .option(
+      '--no-figures',
+      'ignore any figures*.json beside the document (a served_unit carried on the figure ' +
+        'itself is still checked)',
+    )
+    .action(
+      async (
+        file: string,
+        opts: { out: string; force: boolean; figures?: string[] | false },
+        cmd: Command,
+      ) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
+        await assertFiguresReadable(figuresOpt(opts.figures));
         const doc = await readJson<RenderReportDataDocument>(file);
-        const findings = validateReportData(doc);
-        if (findings.length > 0 && !opts.force) {
-          for (const f of findings) console.error(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        const served = await loadServedContract(file, figuresOpt(opts.figures), opts.figures === false);
+        for (const id of served.conflicts) {
+          console.error(
+            `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; ` +
+              "their evidence is discarded for it (a served_unit on the figure itself still applies). " +
+              'Remove the stale file.',
+          );
+        }
+        const findings = validateReportData(doc, served.index);
+        const blocking = blockingFindings(findings);
+        // Warnings are reported and never bar the door. Before this split the
+        // gate refused on ANY finding, so the single heuristic check in UNIT-2
+        // could force an operator to choose between not shipping a correct
+        // report and passing --force, which waives BASIS-1 / TRACE-1 /
+        // CAVEAT-1 along with it. That trade is now gone.
+        for (const f of findings) {
+          if ((f.severity ?? 'error') === 'warning') {
+            console.error(`  warn [${f.rule}] ${f.subject} -- ${f.detail}`);
+          }
+        }
+        if (blocking.length > 0 && !opts.force) {
+          for (const f of blocking) console.error(`  ERROR [${f.rule}] ${f.subject} -- ${f.detail}`);
+          // Name the sidecars. A UNIT-2 contract finding cites a value that
+          // appears nowhere in report-data.json, so "fix report-data.json"
+          // alone sends the operator to debug a file that looks correct.
+          // Only when a served-contract finding is actually among the
+          // blockers. Appending it to a BASIS-1 or TRACE-1 refusal points at
+          // files that had nothing to do with the failure.
+          // Structural, not a substring sniff of the rendered message. `detail`
+          // interpolates the figure's own `unit`, which is document-controlled,
+          // so a unit string containing "served by " could switch this hint on
+          // for a refusal that has nothing to do with sidecars. Ask the index
+          // instead: did this specific figure get its contract from a file?
+          const servedIds = new Set(Object.keys(served.index?.origin ?? {}));
+          const blamesServedUnit = blocking.some(
+            (f) => f.rule === 'UNIT-2' && servedIds.has(f.subject),
+          );
+          const servedHint =
+            blamesServedUnit && served.sources.length > 0
+              ? ` Served units were read from: ${served.sources.join(', ')} — if one of those is ` +
+                'from another run, remove it or pass --no-figures.'
+              : '';
           throw new UserFacingError(
-            `Refusing to render: ${findings.length} validator finding(s). Fix report-data.json ` +
-              '(corrections go to the data file, never the HTML) or pass --force.',
+            `Refusing to render: ${blocking.length} validator finding(s). Fix report-data.json ` +
+              '(corrections go to the data file, never the HTML) or pass --force.' +
+              servedHint,
             'report_data_invalid',
           );
         }
@@ -247,7 +566,25 @@ export function registerReportCommands(program: Command): void {
         const html = renderMonthlyReport(doc);
         await writeReportOutput(opts.out, html);
         if (root.json) {
-          console.log(JSON.stringify({ ok: true, out: opts.out, bytes: html.length, findings }, null, 2));
+          // `served_unit_conflicts` belongs here as much as on validate -- more
+          // so, since this is the command that WRITES the artifact. A retired
+          // check reads exactly like a passing one otherwise, and SKILL.md
+          // Step 6 records this output as the run's audit trail.
+          console.log(
+            JSON.stringify(
+              {
+                ok: true,
+                out: opts.out,
+                bytes: html.length,
+                findings,
+                ...(served.conflicts.length > 0
+                  ? { served_unit_conflicts: served.conflicts }
+                  : {}),
+              },
+              null,
+              2,
+            ),
+          );
         } else {
           console.log(`Rendered ${opts.out} (${html.length} bytes${findings.length ? `; ${findings.length} finding(s) overridden` : ''})`);
         }

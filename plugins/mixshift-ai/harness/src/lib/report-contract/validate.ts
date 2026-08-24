@@ -35,6 +35,9 @@
  *   COMP-1    a claim's comparison_basis must match its figures' basis; a
  *             comparison claim may not mix bases
  *   UNIT-1    an item_days figure never renders as plain "days"
+ *   UNIT-2    a figure's unit must not contradict the served unit contract its
+ *             source_path resolved to, and a percent-family figure may not
+ *             claim an implausible magnitude
  *
  * The input document is untrusted JSON (it is assembled by a report-writing
  * pass and may be malformed), so every field the Python source reads via
@@ -53,6 +56,58 @@ const CAUSAL_LANG =
   /\b(caused?|causes|causing|drove|drives?|driving|due to|led to|leads to|because)\b/i;
 const DAYS_TEXT = /\b\d[\d,]*\s*days?\b/i;
 
+/**
+ * UNIT-2's percent family, mapped to the factor that turns a STORED value into
+ * the percentage the reader sees. `ratio` and `points_fraction` store a
+ * fraction and are displayed ×100; `percent` / `points` / `percent-points` /
+ * `pts` are already whole. Every one of these tokens is handled by
+ * render-report.ts's `formatFigureValue`; the scales here mirror it exactly,
+ * because the backstop below is a statement about the DISPLAYED number.
+ */
+const PERCENT_FAMILY_SCALE: Record<string, number> = {
+  ratio: 100,
+  points_fraction: 100,
+  percent: 1,
+  points: 1,
+  'percent-points': 1,
+  pts: 1,
+};
+
+/**
+ * The percent-family plausibility ceiling, in DISPLAYED percent.
+ *
+ * Deliberately loose. This is not a business rule about what a rate may be --
+ * it is a scale-error detector, and the error it detects is an order of
+ * magnitude off, not a few points: a fraction-scaled value (0.35) mislabeled
+ * as an already-whole `percent`, or the far more common inverse, a whole
+ * number (35) labeled `ratio` and therefore displayed as 3500%. Anything that
+ * survives 1000% is a number nobody could mistake for a rate.
+ *
+ * ⚠ It is not free of false positives, and the real classes are worth naming:
+ * ACOS and TACoS are genuine rates that pass 1000% on an account with
+ * near-zero sales against live spend (spend 12× sales is ACOS 1200%), entity
+ * rows hit it far more often than totals do (one SD campaign type at 1200%
+ * ACOS stores 12.0 under `ratio`), and a hand-authored period-over-period
+ * CHANGE above 1000% is ordinary on a relaunched line or a brand's first ad
+ * month. Those are real readings, not scale errors.
+ *
+ * So this backstop is a WARNING, never an error. An earlier draft of this
+ * comment claimed such a figure "surfaces as a finding to be dismissed by a
+ * human"; that was false. `report render` refuses on ANY finding and the only
+ * override is a document-wide `--force`, which also waives BASIS-1 / TRACE-1 /
+ * CAVEAT-1 -- so a false positive on a correct figure was a choice between not
+ * shipping and shipping past the blocking-caveat gate. There is no
+ * per-finding waiver to reach for, which is exactly why this one must not
+ * block on its own.
+ *
+ * It is also why this is the ONLY warning-severity check in UNIT-2: it is the
+ * one arm that fires with no served contract behind it, which the engine
+ * author asked us not to fail on ("never fail on an absent served contract --
+ * only on present-and-disagreeing"). Arm (a), where the engine has actually
+ * told us the unit and the document disagrees, stays an error.
+ */
+const PERCENT_IMPLAUSIBLE_LIMIT = 1000;
+
 export type RuleId =
   | 'BASIS-1'
   | 'TRACE-1'
@@ -64,12 +119,31 @@ export type RuleId =
   | 'CAUSE-1'
   | 'CAUSE-2'
   | 'COMP-1'
-  | 'UNIT-1';
+  | 'UNIT-1'
+  | 'UNIT-2';
+
+/**
+ * `error` bars the render door; `warning` is reported and does not. Absent
+ * means `error`, so every rule that predates this field keeps blocking exactly
+ * as it did -- only a check that explicitly opts into `warning` is advisory.
+ *
+ * Reach for `warning` only where a finding can be RIGHT about the document and
+ * still be wrong about the world: a heuristic with a real false-positive class
+ * and no served contract behind it. Anything the engine or the contract can
+ * actually settle is an error.
+ */
+export type FindingSeverity = 'error' | 'warning';
 
 export interface Finding {
   rule: RuleId;
   subject: string;
   detail: string;
+  severity?: FindingSeverity;
+}
+
+/** Findings that bar the render door. */
+export function blockingFindings(findings: Finding[]): Finding[] {
+  return findings.filter((f) => (f.severity ?? 'error') === 'error');
 }
 
 export interface PopulationMember {
@@ -91,6 +165,19 @@ export interface FigureCommon {
   label: string;
   value?: number;
   unit?: string;
+  /** The unit the ANALYSIS ENGINE's served contract assigns to the envelope
+   *  path this figure was extracted from -- `metrics[].format` /
+   *  `insights[].format` (engine >= 0.2.0) or `crossDomain.pairFormats`
+   *  (>= 0.3.0), resolved in extract.ts where the envelope is in hand and
+   *  stamped onto the figure so it survives document assembly. Absent
+   *  whenever no contract was served (a pre-0.2.0 envelope, a hand-authored
+   *  figure, a Derived), and UNIT-2 never fires on an absent one.
+   *
+   *  It duplicates `unit` at the moment of extraction, which is the point:
+   *  `unit` is the mutable field a downstream assembly pass may rewrite,
+   *  `served_unit` is what the engine asserted, and UNIT-2 is the check that
+   *  the two still agree by the time the document reaches the render seam. */
+  served_unit?: string;
   basis?: string;
   /** Only meaningful on a Figure, but read defensively off any resolved
    *  object (matches the Python source's `f.get("caveats", [])`). */
@@ -435,8 +522,63 @@ function evalCheck(
  *  contract. Pure function, never throws on a malformed-but-well-typed
  *  document (mirrors the Python source's `.get(...)` permissiveness) —
  *  returns the list of findings, empty when clean. */
-export function validateReportData(doc: ReportDataDocument): Finding[] {
+/**
+ * The served unit contract, keyed by FIGURE ID, as `report extract` resolved it
+ * off the envelope.
+ *
+ * ⚠ Why this is a parameter and not just read off the figure. `report extract`
+ * stamps `served_unit` on each figure it emits, but the document that reaches
+ * `validateReportData` is not that file: SKILL.md Step 5 has the MODEL compose
+ * report-data.json by hand from the extracted figures, and the worked examples
+ * it copies from carry no `served_unit`. So in the real pipeline the field
+ * simply never arrives, and a UNIT-2 arm that only reads the figure is a no-op
+ * exactly where a hand-written unit is most likely to be wrong -- which is the
+ * whole reason the rule exists.
+ *
+ * Passing the extractor's own output alongside the document closes that: the
+ * check no longer depends on a model copying a field it was never shown.
+ * Keyed by figure ID rather than `source_path` deliberately -- ids ARE
+ * period-prefixed (`mom.` / `yoy.`) and source paths are not, so a
+ * source_path-keyed map collides last-wins across a merged document.
+ */
+export interface ServedContractIndex {
+  /** figure id -> the unit the engine served for it */
+  units?: Record<string, string>;
+  /** figure id -> which file that unit came from, so a finding can name it.
+   *  Without this the refusal points the operator at report-data.json, which
+   *  does not contain the contradicting value anywhere they can see it. */
+  origin?: Record<string, string>;
+  /**
+   * Figures whose SIDECAR evidence was retired as untrustworthy (two files
+   * disagreed about them). Retires the INDEX entry for those ids -- and only
+   * the index entry.
+   *
+   * ⚠ It does NOT silence a `served_unit` carried on the figure itself. Two
+   * files disputing each other impeach the files, not the document: a figure
+   * whose `unit` contradicts its OWN stamp is wrong under any resolution of
+   * the quarrel, and letting ambient file garbage waive a check that even the
+   * explicit `--no-figures` flag keeps would invert the two. (An earlier
+   * revision suppressed both; the message printed alongside it now says
+   * exactly what is discarded, which was the real complaint.)
+   */
+  suppressed?: string[];
+  /** `--no-figures`: ignore figures FILES. Retires the index the same way
+   *  `suppressed` does, for every id. A `served_unit` on the figure itself is
+   *  not a file and is still checked -- the render refusal offers "remove it
+   *  or pass --no-figures" as equivalents, and both must reach the same
+   *  verdict on the same document. */
+  suppressAll?: boolean;
+}
+
+export function validateReportData(
+  doc: ReportDataDocument,
+  served?: ServedContractIndex,
+): Finding[] {
   const findings: Finding[] = [];
+  const servedUnits = served?.units ?? {};
+  const servedOrigin = served?.origin ?? {};
+  const servedSuppressed = new Set(served?.suppressed ?? []);
+  const servedSuppressAll = served?.suppressAll === true;
 
   const figures = new Map<string, Figure>();
   for (const f of doc.figures ?? []) figures.set(f.id, f);
@@ -742,6 +884,85 @@ export function validateReportData(doc: ReportDataDocument): Finding[] {
       quotedIds(block.figure_refs, block.claim_refs, claims),
       block.display_text,
     );
+  }
+
+  // UNIT-2 -- a unit must describe the value it labels.
+  //
+  // THE HOLE THIS CLOSES. Every rule above checks a RELATIONSHIP: claims
+  // against figures, bases against each other, caveats against quotation
+  // sites. Not one of them ever asked whether a figure's `unit` is the right
+  // unit for that figure's `value`, so a dollar amount labeled 'percent'
+  // satisfied all of them and shipped -- twice, in the same quarter. A unit
+  // error is only visible in rendered output, and by then nothing is checking.
+  //
+  // Two independent predicates, both scoped to what can be decided from the
+  // document alone:
+  //
+  //  (a) CONTRADICTS THE SERVED CONTRACT. When `served_unit` is present, the
+  //      analysis engine asserted this figure's unit (see `served_unit`), and
+  //      `unit` disagreeing means something rewrote it after extraction. This
+  //      NEVER fires when no contract was served -- a pre-0.2.0 envelope, a
+  //      hand-authored figure, a Derived. Version skew must not manufacture
+  //      findings: the rule fails only where a contract EXISTS and disagrees.
+  //
+  //  (b) IMPLAUSIBLE PERCENT MAGNITUDE. A cheap backstop that needs no served
+  //      contract at all, so it still covers the unserved figures (a) cannot
+  //      reach. See PERCENT_IMPLAUSIBLE_LIMIT.
+  //
+  // Per FIGURE, not per quotation site (unlike UNIT-1): this is a property of
+  // the figure itself, wrong whether or not anyone quotes it. Derived objects
+  // are walked too -- they carry units and are exactly where a recompute can
+  // change scale without changing the label.
+  for (const f of allFigs.values()) {
+    const unit = f.unit;
+    // ⚠ The INDEX wins over the figure's own stamp. Both claim to be the
+    // engine speaking, but only one of them is: the index is `report extract`
+    // output read off disk, while `served_unit` on the figure was copied there
+    // by the model composing report-data.json. A model that relabels a unit
+    // and "helpfully" makes served_unit agree with it produces a figure that
+    // is self-consistent and silently wrong -- which is the failure this rule
+    // exists to catch, so the copy cannot be allowed to shadow the original.
+    // ⚠ Suppression -- both kinds -- retires the INDEX, never the document's
+    // own stamp. `--no-figures` says to ignore figures FILES, and a conflict
+    // between two files impeaches the files; in neither case is a
+    // `served_unit` sitting on the figure a file. A figure whose `unit`
+    // contradicts its OWN stamp (`'count'` against `'currency'`) is wrong with
+    // no sidecar anywhere, so an ambient-file quarrel must not waive a check
+    // the explicit flag keeps -- that inversion shipped once (a
+    // self-contradicting document rendered ok:true the moment two quarreling
+    // files appeared beside it) and the render refusal's "remove it or pass
+    // --no-figures" advice must reach one verdict, not two.
+    const suppressIndex = servedSuppressAll || servedSuppressed.has(f.id);
+    const indexUnit = suppressIndex ? undefined : servedUnits[f.id];
+    const servedUnit = indexUnit ?? f.served_unit;
+    if (servedUnit !== undefined && servedUnit !== '' && unit !== servedUnit) {
+      // Attribute a file ONLY when the file actually supplied the unit. When
+      // the contradiction came from the figure's own stamp, naming a sidecar
+      // sends the operator to a file that never served this value.
+      const from = indexUnit !== undefined ? servedOrigin[f.id] : undefined;
+      findings.push({
+        rule: 'UNIT-2',
+        subject: f.id,
+        detail:
+          `unit '${unit ?? ''}' contradicts the served contract '${servedUnit}'` +
+          (from ? ` (served by ${from})` : " (the figure's own served_unit)"),
+      });
+    }
+    const scale = unit !== undefined ? PERCENT_FAMILY_SCALE[unit] : undefined;
+    if (scale !== undefined && isFiniteNumber(f.value)) {
+      const displayed = Math.abs(f.value) * scale;
+      if (displayed > PERCENT_IMPLAUSIBLE_LIMIT) {
+        findings.push({
+          rule: 'UNIT-2',
+          subject: f.id,
+          // WARNING, not error -- see PERCENT_IMPLAUSIBLE_LIMIT. A 1200% ACOS
+          // on a near-zero-sales entity row is a real reading, and this arm
+          // has no served contract behind it to settle the question.
+          severity: 'warning',
+          detail: `unit '${unit}' renders ${f.value} as ${displayed.toFixed(1)}%, past the ${PERCENT_IMPLAUSIBLE_LIMIT}% plausibility ceiling — check for a ratio/percent scale error`,
+        });
+      }
+    }
   }
 
   return findings;

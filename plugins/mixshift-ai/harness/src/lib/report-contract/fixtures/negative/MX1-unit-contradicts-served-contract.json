@@ -1,0 +1,47 @@
+{
+  "_note": "MixShift contract-class incident, appended per the append protocol: a figure's unit must describe the value it labels. Every other rule here checks a RELATIONSHIP -- claims against figures, bases against each other, caveats against quotation sites -- so a wrong unit passed every gate and shipped. Two instances, one per UNIT-2 predicate. (1) ads.ad_driven_sales.p2 is dollars the analysis engine served as 'currency' (served_unit), relabelled 'ratio' somewhere downstream, so the page printed '2244820.0%' for $22.4K. (2) ads.acos.p2 carries no served contract at all -- the pre-0.2.0 path the first predicate cannot reach -- and stores an already-whole 45 under 'ratio', which multiplies by 100 on the way to the page and prints '4500.0%' for a 45% ACoS. Both figures are otherwise clean: source paths resolve, bases are consistent, no claim quotes them wrongly.",
+  "_expected": ["UNIT-2"],
+  "schema_version": "2.0-draft",
+  "brand_slug": "brand-a",
+  "currency": "USD",
+  "figures": [
+    {
+      "id": "ads.ad_driven_sales.p2",
+      "label": "Ad-attributed sales, current",
+      "value": 22448.2,
+      "unit": "ratio",
+      "served_unit": "currency",
+      "basis": "console_authoritative",
+      "source_path": "envelope:metrics[3].totals.p2",
+      "caveats": []
+    },
+    {
+      "id": "ads.acos.p2",
+      "label": "ACoS, current",
+      "value": 45,
+      "unit": "ratio",
+      "basis": "console_authoritative",
+      "source_path": "envelope:metrics[4].totals.p2",
+      "caveats": []
+    }
+  ],
+  "derived": [],
+  "caveat_registry": {},
+  "claims": [
+    {
+      "id": "claim.ad-sales-level",
+      "kind": "observation",
+      "text": "Ad-attributed sales and ACoS both stand above their prior-period levels.",
+      "figure_refs": ["ads.ad_driven_sales.p2", "ads.acos.p2"]
+    }
+  ],
+  "sections": [
+    {
+      "id": "sec.advertising",
+      "figure_refs": ["ads.ad_driven_sales.p2", "ads.acos.p2"],
+      "claim_refs": ["claim.ad-sales-level"],
+      "caveats_rendered": [],
+      "display_text": "Ad-attributed sales and ACoS both stand above their prior-period levels."
+    }
+  ]
+}
