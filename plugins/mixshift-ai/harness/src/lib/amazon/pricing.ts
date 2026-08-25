@@ -169,7 +169,7 @@ export async function getFeaturedOfferExpectedPriceBatch(
   // Sync calls can take up to ~3 min on a 200-SKU job (5 batches @ 35s pacing).
   // Bump the default timeout above the standard 30s.
   const r = await amazonRequest(
-    { method: 'POST', path: FOEP_SYNC_PATH, body },
+    { method: 'POST', path: FOEP_SYNC_PATH, body, surface: 'pricing' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 240_000 },
   );
   if (!r.ok) return r;
@@ -183,7 +183,7 @@ export async function startFeaturedOfferExpectedPriceBatch(
 ): Promise<PricingStartResult | ReportFailure> {
   const body: Record<string, unknown> = { ...buildMerchantBody(input), skus: input.skus };
   const r = await amazonRequest(
-    { method: 'POST', path: FOEP_ASYNC_PATH, body },
+    { method: 'POST', path: FOEP_ASYNC_PATH, body, surface: 'pricing' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -206,7 +206,7 @@ export async function getCompetitiveSummaryBatch(
     body.includedData = input.includedData;
   }
   const r = await amazonRequest(
-    { method: 'POST', path: CS_SYNC_PATH, body },
+    { method: 'POST', path: CS_SYNC_PATH, body, surface: 'pricing' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 240_000 },
   );
   if (!r.ok) return r;
@@ -225,7 +225,7 @@ export async function startCompetitiveSummaryBatch(
     body.includedData = input.includedData;
   }
   const r = await amazonRequest(
-    { method: 'POST', path: CS_ASYNC_PATH, body },
+    { method: 'POST', path: CS_ASYNC_PATH, body, surface: 'pricing' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -245,6 +245,7 @@ export async function pollPricingRun(
     {
       method: 'GET',
       path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}`,
+      surface: 'pricing',
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
@@ -261,6 +262,7 @@ export async function getPricingRunResult<T = FoepResponseItem | CompetitiveSumm
     {
       method: 'GET',
       path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}/result`,
+      surface: 'pricing',
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );

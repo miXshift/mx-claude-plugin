@@ -70,6 +70,10 @@ export interface SpApiOperationView {
 export interface ListOperationsResult {
   ok: true;
   operations: SpApiOperationView[];
+  /** The service's merchant-identifier contract (sellerId vs legacySellerId,
+   *  and that there is no merchantId), passed through verbatim. Absent when
+   *  talking to a service that predates it. */
+  merchantIdentifiers?: unknown;
 }
 
 /** Query values: scalars or arrays (arrays join to Amazon's csv form). */
@@ -113,13 +117,25 @@ export async function listOperations(
 ): Promise<ListOperationsResult | ReportFailure> {
   const qs = family ? `?family=${encodeURIComponent(family)}` : '';
   const r = await amazonRequest(
-    { method: 'GET', path: `/api/amazon/spapi/operations${qs}` },
+    { method: 'GET', path: `/api/amazon/spapi/operations${qs}`, surface: 'spapi' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
   const raw = (r.json as { operations?: unknown }).operations;
   const operations = Array.isArray(raw) ? (raw as SpApiOperationView[]) : [];
-  return { ok: true, operations };
+  // Pass the merchant-identifier contract through. The service returns it next
+  // to the operation list precisely so an agent reads the accepted parameter
+  // names in the same payload as the call it is building; dropping it here
+  // would leave the surface with the most agents on it as the one surface that
+  // never sees it. Optional and untyped-through: an older service that does
+  // not send it just yields undefined.
+  const merchantIdentifiers = (r.json as { merchantIdentifiers?: unknown })
+    .merchantIdentifiers;
+  return {
+    ok: true,
+    operations,
+    ...(merchantIdentifiers !== undefined ? { merchantIdentifiers } : {}),
+  };
 }
 
 /** AWD (Amazon Warehousing & Distribution) is a newer SP-API role. A merchant
@@ -180,7 +196,7 @@ export async function spapiCall(
   // 60s: Data Kiosk getDocument and orders searches can be slow under load,
   // and unlike report documents the payload comes back inline.
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/spapi/call', body },
+    { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );
   if (!r.ok) {

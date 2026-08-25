@@ -539,6 +539,10 @@ export function mergeSqpDocuments(docs: string[], fullAsinList: string): string 
 export async function listMerchants(
   opts: ReportClientOptions = {},
 ): Promise<ListMerchantsResult | ReportFailure> {
+  // Deliberately NO surface: the merchant list is shared by reports, the
+  // passthrough, Ads and pricing alike, so naming any one of them here would
+  // be the very mislabelling this change removes. Falls back to
+  // surface-free wording.
   const r = await amazonRequest(
     { method: 'GET', path: '/api/amazon/merchants' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
@@ -591,7 +595,7 @@ export async function startReport(
   if (input.reportOptions) body.reportOptions = input.reportOptions;
 
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/reports', body },
+    { method: 'POST', path: '/api/amazon/reports', body, surface: 'report' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -620,7 +624,7 @@ export async function pollReport(
   opts: ReportClientOptions = {},
 ): Promise<PollReportResult | ReportFailure> {
   const r = await amazonRequest(
-    { method: 'GET', path: `/api/amazon/reports/${encodeURIComponent(runId)}` },
+    { method: 'GET', path: `/api/amazon/reports/${encodeURIComponent(runId)}`, surface: 'report' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -649,6 +653,7 @@ export async function getReportDocumentMeta(
     {
       method: 'GET',
       path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`,
+      surface: 'report',
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
@@ -1183,6 +1188,16 @@ interface RequestSpec {
   method: 'GET' | 'POST';
   path: string;
   body?: Record<string, unknown>;
+  /**
+   * Which caller-facing surface this call belongs to. Used ONLY to pick the
+   * fallback wording when the service did not send a `friendly` (see
+   * `defaultFriendly`) -- the service's own text always wins.
+   *
+   * This transport is shared by reports, the live SP-API passthrough, Ads and
+   * pricing, so it cannot infer the surface and the caller has to say. Omitted
+   * yields wording that names no surface: vaguer, never wrong.
+   */
+  surface?: AmazonSurface;
 }
 
 export type AmazonRequestSpec = RequestSpec;
@@ -1274,18 +1289,18 @@ export async function amazonRequest(
   try {
     json = await res.json();
   } catch {
-    return statusOnlyFailure(res.status);
+    return statusOnlyFailure(res.status, undefined, spec.surface);
   }
 
   if (isServerFailureEnvelope(json)) {
-    return toReportFailure(json, res.status);
+    return toReportFailure(json, res.status, spec.surface);
   }
 
   // Some infra errors arrive as valid JSON without our envelope (e.g. a CDN
   // error object). If the HTTP status is non-2xx and the body isn't our
   // success/ failure shape, treat it as a status-derived failure.
   if (!res.ok) {
-    return statusOnlyFailure(res.status, safeJsonPreview(json));
+    return statusOnlyFailure(res.status, safeJsonPreview(json), spec.surface);
   }
 
   return { ok: true, json };
@@ -1330,6 +1345,45 @@ async function resolveBaseAndToken(
 // Failure mapping
 // ---------------------------------------------------------------------------
 
+/**
+ * Which Amazon-facing surface a failure came from.
+ *
+ * `defaultFriendly` below is reached from every client module in this
+ * directory, not just reports, so any fallback message that names a surface
+ * has to take the name from here. Hardcoding is how the `unknown` fallback
+ * came to tell an Ads or passthrough caller that "the report request failed",
+ * mirroring the same defect the gateway carried in SpApiError.
+ */
+export type AmazonSurface = 'report' | 'spapi' | 'ads' | 'pricing';
+
+/** Sentence-initial request noun: `${label} failed ...`. */
+const SURFACE_REQUEST_LABEL: Record<AmazonSurface, string> = {
+  report: 'The report request',
+  spapi: 'The SP-API request',
+  ads: 'The Amazon Ads API request',
+  pricing: 'The pricing request',
+};
+
+/** Mid-sentence plural: `Amazon is rate-limiting ${plural} right now`. */
+const SURFACE_REQUEST_PLURAL: Record<AmazonSurface, string> = {
+  report: 'report requests',
+  spapi: 'SP-API requests',
+  ads: 'Amazon Ads API requests',
+  pricing: 'pricing requests',
+};
+
+/** Surface-free fallbacks. Vague on purpose; never name a surface here. */
+const NEUTRAL_REQUEST_LABEL = 'The request';
+const NEUTRAL_REQUEST_PLURAL = 'requests to this Amazon API';
+
+function requestLabel(surface?: AmazonSurface): string {
+  return surface ? SURFACE_REQUEST_LABEL[surface] : NEUTRAL_REQUEST_LABEL;
+}
+
+function requestPlural(surface?: AmazonSurface): string {
+  return surface ? SURFACE_REQUEST_PLURAL[surface] : NEUTRAL_REQUEST_PLURAL;
+}
+
 const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'spapi_not_configured',
   'ads_not_configured',
@@ -1361,6 +1415,7 @@ function isServerFailureEnvelope(
 function toReportFailure(
   json: Record<string, unknown>,
   httpStatus: number,
+  surface?: AmazonSurface,
 ): ReportFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const kind: ReportFailureKind = KNOWN_KINDS.has(rawKind)
@@ -1372,7 +1427,7 @@ function toReportFailure(
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly(kind),
+    friendly: serverFriendly ?? defaultFriendly(kind, surface),
     message,
     amazonSellerId: strOrUndef(json.amazonSellerId),
     reportType: strOrUndef(json.reportType),
@@ -1409,12 +1464,16 @@ function parseCandidates(v: unknown): MerchantCandidate[] | undefined {
 }
 
 /** Fallback when an infra layer answered with a bare status (no envelope). */
-function statusOnlyFailure(httpStatus: number, detail?: string): ReportFailure {
+function statusOnlyFailure(
+  httpStatus: number,
+  detail?: string,
+  surface?: AmazonSurface,
+): ReportFailure {
   const kind = statusToKind(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly(kind),
+    friendly: defaultFriendly(kind, surface),
     message:
       `Service returned HTTP ${httpStatus} without a recognized error ` +
       `envelope${detail ? `: ${detail}` : '.'}`,
@@ -1469,12 +1528,12 @@ function sessionFailureFromError(err: unknown): ReportFailure {
   };
 }
 
-function defaultFriendly(kind: ReportFailureKind): string {
+function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): string {
   switch (kind) {
     case 'spapi_not_configured':
       return (
         "Amazon SP-API isn't enabled for this MixShift account yet. Contact " +
-        'MixShift ops to turn on on-demand report pulls.'
+        'MixShift ops to turn it on.'
       );
     case 'ads_not_configured':
       return (
@@ -1490,14 +1549,19 @@ function defaultFriendly(kind: ReportFailureKind): string {
     case 'reauth_required':
       return (
         'This Amazon merchant needs to be re-authorized in MixShift before ' +
-        'reports can be pulled. Re-connect the account in the MixShift app, ' +
-        'then retry.'
+        'this call can run. Re-connect the account in the MixShift app, then ' +
+        'retry.'
       );
     case 'restricted_report':
       return (
-        'Amazon rejected this report as restricted. It requires a Restricted ' +
-        'Data Token / PII role that MixShift does not hold. Pull the report in ' +
-        'its default (non-PII) form, or choose a different report.'
+        surface === 'report'
+        ? 'Amazon rejected this report as restricted. It requires a Restricted ' +
+          'Data Token / PII role that MixShift does not hold. Pull the report in ' +
+          'its default (non-PII) form, or choose a different report.'
+        : 'Amazon denied access to this operation. It may need a role or ' +
+          'restricted-data access that MixShift does not hold, or this ' +
+          "merchant's authorization may predate that role and need " +
+          're-authorizing.'
       );
     case 'merchant_not_found':
       return (
@@ -1506,8 +1570,8 @@ function defaultFriendly(kind: ReportFailureKind): string {
       );
     case 'throttled':
       return (
-        'Amazon is rate-limiting report requests right now. Wait a moment and ' +
-        'retry.'
+        `Amazon is rate-limiting ${requestPlural(surface)} right now. Wait a ` +
+        'moment and retry.'
       );
     case 'report_fatal':
       return (
@@ -1537,7 +1601,7 @@ function defaultFriendly(kind: ReportFailureKind): string {
       );
     case 'unknown':
     default:
-      return 'The report request failed unexpectedly. Try again shortly.';
+      return `${requestLabel(surface)} failed unexpectedly. Try again shortly.`;
   }
 }
 

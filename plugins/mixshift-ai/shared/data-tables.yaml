@@ -29,14 +29,25 @@
 # the wrong choice costs time without changing the answer, which is exactly
 # why it goes unnoticed.
 #
-# Census over one tenant schema (2026-08-25): of 154 tables
-# carrying both columns, the integer `SellerID` leads an index on 90 and the
-# varchar leads one on 30 (18 tables have both); on 52 neither leads an index.
-# So the default is right far more often than not, but it is a default, not a
-# law. If a query on a large table is slow, EXPLAIN it and look at whether the
-# chosen key covers your date predicate before assuming the table is the
-# problem. Per-table exceptions are called out in the entry's description
-# (see `spapi_settlement`, where the split is measured).
+# Measured over the tables IN THIS CATALOG, on one tenant schema, 2026-08-25.
+# Of the 40 catalogued tables carrying both columns, the integer `SellerID`
+# leads an index on 32 and the varchar leads one on 12 (10 have both). Only
+# TWO are varchar-led WITHOUT the integer also leading:
+#
+#   mws_inventory_health
+#   vendor_netpureproductmargin_asin_daily
+#
+# and on six the seller filter is not index-served either way:
+# mws_inventory_fba_estimated_fees, sellermonthmetric, sponsoredbrandsmetric,
+# sqp_monthly, sqp_quarterly, sqp_weekly.
+#
+# So default to the integer and know that short exception list by name, rather
+# than treating the choice as a coin flip. It is still a default, not a law:
+# index topology lives in each tenant's own database and was measured in one of
+# them. If a query on a large table is slower than expected, EXPLAIN it and
+# check whether the chosen key covers your date predicate before assuming the
+# table is at fault. Per-table specifics live in the entry's description
+# (see `spapi_settlement`, where the split is measured end to end).
 #
 # If a caller hands you an Amazon merchant token and you need the integer,
 # translate once up front: seller.AmazonSellerID -> seller.ID.
@@ -429,3 +440,4 @@ tables:
     account_types: [SC]
     time_series: true
     requires_seller_id: true
+    date_column: "Posted-date-time"
