@@ -45,6 +45,19 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
+- **Settlement queries no longer take tens of seconds because of which seller
+  column they filter on.** Most seller-scoped warehouse tables carry two
+  seller columns that hold the same seller: an integer id and Amazon's own
+  merchant token. They are not interchangeable for speed, because the indexes
+  are generally built on the integer, and on the settlement table the integer
+  is the one paired with the posted date. Filtering by the merchant token plus
+  a date range therefore left the date with no index to use and scanned every
+  row for that seller: on a live account the identical one-month count took
+  13.4 seconds that way and 0.4 seconds filtering on the integer id. The table
+  catalog now says which column to filter on, both as a general rule and
+  specifically for settlements, so queries built from it take the fast path by
+  default. Same answer either way, which is why this was easy to miss.
+
 ## 0.8.10
 
 ### Added
