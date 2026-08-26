@@ -87329,6 +87329,9 @@ function exitCodeForKind(kind) {
     case "report_fatal":
       return 9;
     // Amazon returned FATAL / CANCELLED
+    case "bad_request":
+      return 12;
+    // Amazon rejected the request itself — terminal, fix and resend
     case "host_unreachable":
     case "download_failed":
     // transient download failure — retry the fetch
@@ -87892,6 +87895,7 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "ads_not_configured",
   "insufficient_scope",
   "reauth_required",
+  "bad_request",
   "restricted_report",
   "merchant_not_found",
   "throttled",
@@ -87920,7 +87924,11 @@ function toReportFailure(json2, httpStatus, surface) {
     reportId: strOrUndef(json2.reportId),
     status: strOrUndef(json2.status),
     candidates: parseCandidates(json2.candidates),
-    httpStatus
+    httpStatus,
+    ...strOrUndef(json2.amazon_error_code) !== void 0 ? { amazonErrorCode: strOrUndef(json2.amazon_error_code) } : {},
+    ...numOrUndef(json2.status) !== void 0 ? { amazonStatus: numOrUndef(json2.status) } : {},
+    ...json2.responsePayload !== void 0 ? { responsePayload: json2.responsePayload } : {},
+    ...strOrUndef(json2.responseText) !== void 0 ? { responseText: strOrUndef(json2.responseText) } : {}
   };
 }
 function parseCandidates(v) {
@@ -87953,6 +87961,8 @@ function statusOnlyFailure(httpStatus, detail, surface) {
 }
 function statusToKind(httpStatus) {
   switch (httpStatus) {
+    case 400:
+      return "bad_request";
     case 403:
       return "restricted_report";
     case 404:
@@ -87998,6 +88008,8 @@ function defaultFriendly(kind, surface) {
       return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
     case "reauth_required":
       return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Re-connect the account in the MixShift app, then retry.";
+    case "bad_request":
+      return `${requestLabel(surface)} was rejected by Amazon because of the request itself, not a MixShift or Amazon outage. Retrying it unchanged will not help.`;
     case "restricted_report":
       return surface === "report" ? "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report." : "Amazon denied access to this operation. It may need a role or restricted-data access that MixShift does not hold, or this merchant's authorization may predate that role and need re-authorizing.";
     case "merchant_not_found":
@@ -88882,7 +88894,13 @@ function registerCall(amazon) {
         await trackSpApi(EventName.AmazonSpApiCalled, "failed", startedAt, root.dataDir, {
           operation,
           kind: result.kind,
-          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+          ...result.httpStatus ? { http_status: result.httpStatus } : {},
+          // Amazon's OWN error code. The whole point: (operation,
+          // amazon_error_code) recurring across users is a catalog-gap
+          // signature. The CODE and not the message, because it is
+          // low-cardinality and carries no seller/order/ASIN identifiers.
+          ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
         });
         return emitFailure2(result, !!root.json);
       }
@@ -88947,6 +88965,12 @@ function emitFailure2(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      // Amazon's OWN code, status and response body. Previously dropped on the
+      // floor, which left a user reporting a failure with nothing complete to
+      // send and left us unable to tell a catalog gap from an outage.
+      amazon_error_code: failure.amazonErrorCode,
+      amazon_status: failure.amazonStatus,
+      amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
   } else {
@@ -90352,7 +90376,13 @@ function registerCall2(ads) {
           operation,
           kind: result.kind,
           ...opts.commit ? { committed: true } : {},
-          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+          ...result.httpStatus ? { http_status: result.httpStatus } : {},
+          // Amazon's OWN error code: (operation, amazon_error_code)
+          // recurring across users is a catalog-gap signature. The CODE and
+          // not the message, because it is low-cardinality and carries no
+          // seller/order/ASIN identifiers.
+          ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
         });
         return emitFailure4(result, !!root.json);
       }
@@ -90460,6 +90490,12 @@ function emitFailure4(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      // Amazon's OWN code, status and response body. Previously dropped on the
+      // floor, which left a user reporting a failure with nothing complete to
+      // send and left us unable to tell a catalog gap from an outage.
+      amazon_error_code: failure.amazonErrorCode,
+      amazon_status: failure.amazonStatus,
+      amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
   } else {

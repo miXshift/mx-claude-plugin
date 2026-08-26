@@ -744,6 +744,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `not_authenticated` | 2 | Not signed in. Run `mixshift auth login`. |
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `restricted_report` | 4 | Amazon needs a Restricted Data Token / PII role MixShift does not hold (e.g. an Orders PII element). Drop the restricted field and re-run the non-PII form. Do NOT retry the same request unchanged. |
+| `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
 | `reauth_required` | 5 | This merchant's SP-API grant lapsed. Re-connect the account in the MixShift app, then retry. |
 | `spapi_not_configured` | 6 | Live SP-API operations are not enabled for this MixShift account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The merchant selector matched no merchant (or was ambiguous). Re-run `amazon merchants`, pick a row, and pass its `--legacy-seller-id`. A `candidates` list may be attached. |

@@ -162,3 +162,60 @@ describe('plugin-side surface labels', () => {
     expect(r.friendly).not.toMatch(/report/i);
   });
 });
+
+describe('bad_request: the caller learns what Amazon actually said', () => {
+  const envelope = {
+    ok: false,
+    kind: 'bad_request',
+    friendly: 'Amazon rejected this SP-API request (HTTP 400, InvalidInput): ShipmentStatusList is required.',
+    message: 'ShipmentStatusList is required',
+    status: 400,
+    amazon_error_code: 'InvalidInput',
+    responsePayload: { errors: [{ code: 'InvalidInput', message: 'ShipmentStatusList is required' }] },
+  };
+
+  it('keeps Amazon\'s error code, status and full body instead of dropping them', async () => {
+    const r = await amazonRequest(
+      { method: 'POST', path: '/api/amazon/spapi/call', surface: 'spapi' },
+      opts(fetchReturning(400, envelope) as unknown as typeof fetch),
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('bad_request');
+    expect(r.amazonErrorCode).toBe('InvalidInput');
+    // Amazon's status, NOT ours. This was silently lost to a field collision:
+    // the service sends a number under `status`, which report_fatal also uses
+    // as a string, and the string-only coercion dropped it.
+    expect(r.amazonStatus).toBe(400);
+    expect(r.httpStatus).toBe(400);
+    expect(r.responsePayload).toEqual(envelope.responsePayload);
+  });
+
+  it('is recognised as a known kind rather than degraded to unknown', async () => {
+    const r = await amazonRequest(
+      { method: 'POST', path: '/api/amazon/spapi/call', surface: 'spapi' },
+      opts(fetchReturning(400, envelope) as unknown as typeof fetch),
+    );
+    if (r.ok) return;
+    expect(r.kind).toBe('bad_request');
+    expect(r.friendly).toBe(envelope.friendly);
+  });
+
+  it('gets its own exit code so a script can stop instead of retrying', async () => {
+    const { exitCodeForKind } = await import('./reports');
+    expect(exitCodeForKind('bad_request')).toBe(12);
+    // Distinct from the generic failure code, which is the point.
+    expect(exitCodeForKind('unknown')).toBe(1);
+  });
+
+  it('a bare 400 with no envelope still classifies as bad_request', async () => {
+    const r = await amazonRequest(
+      { method: 'GET', path: '/api/amazon/spapi/operations', surface: 'spapi' },
+      opts(fetchReturning(400, { notOurEnvelope: true }) as unknown as typeof fetch),
+    );
+    if (r.ok) return;
+    expect(r.kind).toBe('bad_request');
+    expect(r.friendly).not.toMatch(/report/i);
+    expect(r.friendly).toMatch(/retrying it unchanged will not help/i);
+  });
+});

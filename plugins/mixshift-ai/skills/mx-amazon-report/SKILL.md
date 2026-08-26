@@ -750,6 +750,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `report_fatal` | 9 | Amazon returned FATAL / CANCELLED. Usually the report type does not apply to this merchant, or the window is invalid. Check `describe-report` and try a valid window. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
 | `download_failed` | 1 | The report document download stalled or dropped and did not finish after the built-in retries. The report itself is still ready, so just run the same `report get <runId> --out <file>` again in a moment. Not a report or auth problem. |
+| `bad_request` | 12 | **AMAZON rejected the request itself**: not an outage, not a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` carries its message. **Terminal: never retry it unchanged**, it will fail identically. Fix the parameters and resend. If the operation catalog's own notes led to this request, say so to the user and encourage `mixshift feedback` — a documented convention that is wrong affects every caller, and a repeat of the same code on the same operation is how we find it. |
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
 
 A separate, non-error case: `report get` (and `report run`) use **exit code

@@ -132,6 +132,7 @@ export type ReportFailureKind =
   | 'ads_not_configured' // 503 — Amazon Ads API creds not set on the service
   | 'insufficient_scope' // 403 — credential lacks a required scope (ads:write)
   | 'reauth_required' // 409 — merchant grant lapsed; +amazonSellerId
+  | 'bad_request' // 400 — AMAZON rejected the request; +amazonErrorCode. Terminal: do not retry
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
   | 'throttled' // 429 — Amazon rate limit; +retryAfterMs
@@ -162,6 +163,22 @@ export interface ReportFailure {
   candidates?: MerchantCandidate[];
   /** HTTP status of the failing call — diagnostics only; do not branch on it. */
   httpStatus?: number;
+  /** AMAZON's own error code on `bad_request` (`InvalidInput`,
+   *  `InvalidParameterValue`, ...). Low-cardinality and identifier-free, which
+   *  is why this is the field worth recording and quoting in a bug report. */
+  amazonErrorCode?: string;
+  /** AMAZON's own HTTP status, distinct from `httpStatus` (ours).
+   *
+   *  Previously lost: the service sends it as a NUMBER under `status`, but
+   *  `status` is also used as a report-processing STRING by report_fatal, and
+   *  the string-only coercion silently dropped the number. */
+  amazonStatus?: number;
+  /** Amazon's full response body, passed through verbatim when the service
+   *  captured it. Dropped entirely until now, which meant a user reporting a
+   *  failure had nothing complete to send us. */
+  responsePayload?: unknown;
+  /** Bounded raw text, when the body was not JSON. */
+  responseText?: string;
 }
 
 export interface ListMerchantsResult {
@@ -327,6 +344,8 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
       return 8; // Amazon rate limit — retry later
     case 'report_fatal':
       return 9; // Amazon returned FATAL / CANCELLED
+    case 'bad_request':
+      return 12; // Amazon rejected the request itself — terminal, fix and resend
     case 'host_unreachable':
     case 'download_failed': // transient download failure — retry the fetch
     case 'unknown':
@@ -1389,6 +1408,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'ads_not_configured',
   'insufficient_scope',
   'reauth_required',
+  'bad_request',
   'restricted_report',
   'merchant_not_found',
   'throttled',
@@ -1436,6 +1456,14 @@ function toReportFailure(
     status: strOrUndef(json.status),
     candidates: parseCandidates(json.candidates),
     httpStatus,
+    ...(strOrUndef(json.amazon_error_code) !== undefined
+      ? { amazonErrorCode: strOrUndef(json.amazon_error_code) }
+      : {}),
+    ...(numOrUndef(json.status) !== undefined ? { amazonStatus: numOrUndef(json.status) } : {}),
+    ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
+    ...(strOrUndef(json.responseText) !== undefined
+      ? { responseText: strOrUndef(json.responseText) }
+      : {}),
   };
 }
 
@@ -1483,6 +1511,8 @@ function statusOnlyFailure(
 
 function statusToKind(httpStatus: number): ReportFailureKind {
   switch (httpStatus) {
+    case 400:
+      return 'bad_request';
     case 403:
       return 'restricted_report';
     case 404:
@@ -1551,6 +1581,12 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
         'This Amazon merchant needs to be re-authorized in MixShift before ' +
         'this call can run. Re-connect the account in the MixShift app, then ' +
         'retry.'
+      );
+    case 'bad_request':
+      return (
+        `${requestLabel(surface)} was rejected by Amazon because of the ` +
+        'request itself, not a MixShift or Amazon outage. Retrying it ' +
+        'unchanged will not help.'
       );
     case 'restricted_report':
       return (

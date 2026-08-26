@@ -662,6 +662,7 @@ code for terminal scripts.
 | `not_authenticated` | 2 | Not signed in. Run `mixshift auth login`. |
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `restricted_report` | 4 | Amazon refused this call for an access/role reason MixShift does not hold. Do NOT retry unchanged. |
+| `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
 | `reauth_required` | 5 | This advertiser's grant lapsed. Re-connect the account in the MixShift app, then retry. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no profile. Re-run `ads profiles` and pick a listed row (use its `legacySellerId`). A multi-marketplace selector returns a `candidates` list; pick the marketplace and re-run. |

@@ -264,6 +264,12 @@ function registerCall(ads: Command): void {
             kind: result.kind,
             ...(opts.commit ? { committed: true } : {}),
             ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+            // Amazon's OWN error code: (operation, amazon_error_code)
+            // recurring across users is a catalog-gap signature. The CODE and
+            // not the message, because it is low-cardinality and carries no
+            // seller/order/ASIN identifiers.
+            ...(result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {}),
+            ...(result.amazonStatus ? { amazon_status: result.amazonStatus } : {}),
           });
           return emitFailure(result, !!root.json);
         }
@@ -407,6 +413,12 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      // Amazon's OWN code, status and response body. Previously dropped on the
+      // floor, which left a user reporting a failure with nothing complete to
+      // send and left us unable to tell a catalog gap from an outage.
+      amazon_error_code: failure.amazonErrorCode,
+      amazon_status: failure.amazonStatus,
+      amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
     });
   } else {

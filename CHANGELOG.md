@@ -45,6 +45,26 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
+- **When Amazon rejects your request, you now see Amazon's own reason, and the
+  plugin stops pretending it was a server problem.** A request Amazon refused
+  because of its own parameters used to come back looking like a MixShift
+  outage, so the natural response was to try again, and trying again could
+  never work. These failures are now reported as what they are: the request
+  itself, terminal until it changes. You get Amazon's own error code alongside
+  its message, and in `--json` the full response Amazon sent, so there is
+  something complete to act on or to send us. Scripts get a distinct exit code
+  (12) and can stop instead of retrying.
+
+- **Failures caused by our own documentation are now findable.** The operation
+  catalog is written by hand, so a required parameter Amazon enforces but does
+  not document, or a combination only valid together, can send every caller
+  into the same wall. When a call is rejected, the plugin now says so plainly
+  and points at `mixshift feedback`, and the Amazon error code is recorded with
+  the operation, so the same mistake repeating across accounts surfaces as a
+  pattern instead of waiting for someone to write in. The error code is
+  recorded, not the message: it is a short Amazon-defined label like
+  `InvalidInput` and carries no account, order or product identifiers.
+
 - **A failure on a non-report call no longer says a report failed.** When the
   service could not be reached, or answered in a shape the plugin did not
   recognize, the plugin fell back to its own wording, and that wording assumed

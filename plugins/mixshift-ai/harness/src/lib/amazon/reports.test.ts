@@ -893,6 +893,10 @@ describe('exitCodeForKind', () => {
       throttled: 8,
       report_fatal: 9,
       insufficient_scope: 11,
+      // Amazon rejected the request itself. Terminal and caller-fixable, so it
+      // gets its own code rather than the generic 1 -- a script can branch on
+      // "stop and fix the request" without parsing text.
+      bad_request: 12,
       host_unreachable: 1,
       download_failed: 1,
       unknown: 1,
