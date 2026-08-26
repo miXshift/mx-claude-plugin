@@ -188,10 +188,44 @@ const structuralEventSchema = z
 /** One curated Tier-3 structural event (the stake-sync input shape). */
 export type StructuralEvent = z.infer<typeof structuralEventSchema>;
 
+/**
+ * A confirmed campaign->bucket map for one dimension (D-039).
+ *
+ * This is NOT a naming pattern. `naming_pattern` describes accounts whose
+ * campaign names split positionally; most do not (one measured tenant carries
+ * 4,429 distinct first tokens across four coexisting conventions). For those,
+ * an agent classifies the names semantically, the USER CONFIRMS the buckets,
+ * and the result is stored here as explicit campaign ids. Ids, not patterns,
+ * so no agency's naming convention is ever baked into shared logic.
+ *
+ * It rides in brand context because brand context already syncs server-side
+ * (`context.yaml` -> doc_type 'context'), so a scheme confirmed on one machine
+ * is available on the next without re-confirming.
+ */
+const derivedLabelMapSchema = z.object({
+  buckets: z.record(z.string(), z.array(z.number().int().positive())).default({}),
+  confirmed_at: z.string().optional(),
+});
+
 const campaignStructureSchema = z.object({
   naming_pattern: z.string().min(1),
   account_codes: z.array(z.string()).default([]),
   objectives: z.array(z.string()).optional(),
+  /**
+   * Fallback labels for the dimensions the operator left empty in the platform.
+   * The raw warehouse column always wins where it is filled; these only fill
+   * gaps. Keyed by seller id, because one brand can span several sellers and a
+   * campaign id is only unique within one.
+   */
+  derived_labels: z
+    .record(
+      z.string(),
+      z.object({
+        objective: derivedLabelMapSchema.optional(),
+        item_group: derivedLabelMapSchema.optional(),
+      }),
+    )
+    .optional(),
 });
 
 const negationSchema = z.object({

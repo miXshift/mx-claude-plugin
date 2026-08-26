@@ -52,7 +52,9 @@ export type UsedDispatch =
   | 'named_local_dev'
   | 'named_repo_fallback'
   | 'sproc'
-  | 'sproc_local_dev';
+  | 'sproc_local_dev'
+  /** Catalog SQL re-grouped by a confirmed derived-label map (D-039). */
+  | 'derived_labels';
 
 export interface DispatchOptions {
   /**
@@ -71,6 +73,29 @@ export interface DispatchOptions {
   sellerIds?: Array<number | string>;
   dataDirOverride?: string;
   queryTimeoutMs?: number;
+  /**
+   * Execute THIS SQL instead of whatever the catalog entry would have run.
+   *
+   * The one caller today is the derived-label fallback (D-039): on accounts
+   * that never filled `campaign.Objective` / `ItemGroup`, DHC-07 and DHC-08
+   * group by an empty column and collapse to a single `(unclassified)` row, so
+   * the skill re-groups them by a CASE built from the user's confirmed label
+   * map. Aggregation stays in the database and the result shape is unchanged;
+   * only the grouping expression differs.
+   *
+   * This is not a new capability, it is the existing one made explicit: the
+   * `named_local_dev` and `named_repo_fallback` branches below already swap SQL
+   * text for a `dispatch: named` entry at runtime. The difference is that those
+   * choose between two committed texts, while this one is COMPUTED, so it is
+   * reported as its own `usedDispatch` value rather than masquerading as a
+   * normal named run -- a caller reading telemetry must be able to tell that
+   * the grouping was not the catalog's.
+   *
+   * Only ever build this with lib/labels/derived-labels.ts, which validates
+   * labels against an allowlist and campaign ids as integers. Never interpolate
+   * user text into SQL by hand.
+   */
+  sqlOverride?: string;
 }
 
 export interface DispatchSuccess<Row> {
@@ -192,6 +217,14 @@ export async function runDispatched<Row = Record<string, unknown>>(
   opts: DispatchOptions = {},
 ): Promise<DispatchResult<Row>> {
   const entry = await getQueryEntry(id);
+
+  // A computed override wins over every dispatch mode, including `named`.
+  // It has to: the whole point is that the server-side pack groups by a
+  // column this account left empty, so deferring to the pack would return
+  // the single `(unclassified)` row the override exists to replace.
+  if (opts.sqlOverride) {
+    return runSqlText<Row>(id, opts.sqlOverride, opts, 'derived_labels');
+  }
 
   if (entry.dispatch === 'named') {
     const localSql = await resolveLocalNamedSql(id, entry.sproc);
@@ -341,7 +374,7 @@ async function runSqlText<Row>(
  * a leading `--` comment header, then the statement. Strip the header so
  * what we send is just executable SQL.
  */
-function stripSqlHeader(raw: string): string {
+export function stripSqlHeader(raw: string): string {
   const lines = raw.split(/\r?\n/);
   let headerEnd = 0;
   for (let i = 0; i < lines.length; i++) {
