@@ -628,11 +628,39 @@ export interface ExtractSource {
   entityKey?: unknown;
 }
 
+/**
+ * One engine-authored "What we know" statement group, as data.
+ *
+ * Deliberately NOT a figure: a figure is a number with a unit that a claim
+ * quotes, and these are prose. They exist so a causal claim's `mechanism`
+ * (CAUSE-1) can cite the engine's own account of a move instead of the model
+ * authoring an unfalsifiable explanation.
+ */
+export interface EvidenceStatement {
+  /** Period-namespaced on a composite (`mom.evidence.ops.promo_pricing`), bare
+   *  otherwise. Same discipline as figure ids, for the same reason. */
+  id: string;
+  /** The metric root the group hangs off (ops, units, gv_conversion, ...). */
+  metric: string;
+  /** The group's one-line head, e.g. "promo pricing detected". */
+  head: string;
+  /** positive | negative | neutral, when the engine assigned one. */
+  tone?: string;
+  /** The group's statement lines, in the engine's own words. */
+  statements: string[];
+  /** Where in the response this came from, so a reader can go check it. */
+  source_path: string;
+}
+
 export interface ExtractDocument {
   schema_version: '2.0-draft';
   source: ExtractSource;
   caveat_registry: Record<string, CaveatRegistryEntry>;
   figures: ExtractedFigure[];
+  /** Present only when the run carried evidence. Absent, never empty: an empty
+   *  array would read as "the engine had nothing to say", which is a different
+   *  claim from "evidence was not requested". */
+  evidence?: EvidenceStatement[];
 }
 
 export type CheckRuleId =
@@ -885,6 +913,93 @@ function extractEntity(
  *  that type, which is the same day that limitation string comes off, and not
  *  before. Note `yoy.ads` IS a present KEY on the bundle (holding null), so
  *  its presence is not evidence of an envelope; only a non-null value is. */
+
+/**
+ * The "What we know" statements, extracted as typed, referenceable entries.
+ *
+ * WHY THESE ARE NOT FIGURES. A figure is a number with a unit that a claim
+ * quotes. A statement is engine-authored PROSE explaining why something moved.
+ * Forcing prose through the figure shape would hand every one of them a unit
+ * they do not have, and UNIT-2 would then police a contract that cannot apply.
+ * They land in their own `evidence[]` collection instead.
+ *
+ * WHAT THEY ARE FOR. `CAUSE-1` requires a causal claim to carry a `mechanism`.
+ * Until now the model had to author that prose unsupported, which is exactly
+ * the kind of unfalsifiable text this contract exists to eliminate. A served
+ * statement gives the mechanism a SOURCE: the model can quote the engine's own
+ * account of the move and cite the id, rather than inventing one.
+ *
+ * IDS ARE PERIOD-NAMESPACED, like figures. Evidence rides the leg
+ * (`mom.evidence` / `yoy.evidence`), the skill composes every selection's
+ * document into one report, and a MoM and a YoY statement about the same
+ * metric would otherwise be indistinguishable — the identical-ids failure this
+ * composite already shipped once at the figure layer.
+ *
+ * EMITTED ON THE OPS SELECTION ONLY for a composite. `mom.ops` and `mom.ads`
+ * both resolve to the SAME `mom.evidence` block, so emitting on each would
+ * duplicate every id across two documents the model merges. The ops leg is the
+ * one that carries it.
+ */
+function extractEvidence(
+  whole: Rec,
+  selection?: CompositeSelection,
+): EvidenceStatement[] {
+  // For a composite, evidence is a sibling of the leg's envelope; for a single
+  // response it sits at the top level next to `envelope`.
+  let block: Rec | undefined;
+  if (selection) {
+    if (!selection.endsWith('.ops')) return [];
+    const period = selection.split('.')[0]!;
+    block = asRecord(asRecord(whole[period])?.evidence);
+  } else {
+    block = asRecord(whole.evidence);
+  }
+  const statements = asRecord(block?.statements);
+  if (!statements) return [];
+
+  const prefix = selection ? `${selection.split('.')[0]}.evidence` : 'evidence';
+  const out: EvidenceStatement[] = [];
+  const used = new Set<string>();
+
+  for (const [metric, groupsRaw] of Object.entries(statements)) {
+    const groups = Array.isArray(groupsRaw) ? groupsRaw : [];
+    groups.forEach((groupRaw, i) => {
+      const g = asRecord(groupRaw);
+      if (!g) return;
+      const head = typeof g.head === 'string' ? g.head : '';
+      // Slug from the head so an id is readable and stable across runs; the
+      // index only breaks ties, so two groups with the same head on one metric
+      // stay distinct rather than colliding silently.
+      const slug =
+        head
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .slice(0, 48) || `group_${i}`;
+      let id = `${prefix}.${metric}.${slug}`;
+      if (used.has(id)) id = `${id}.${i}`;
+      used.add(id);
+
+      const questions = Array.isArray(g.questions) ? g.questions : [];
+      const lines = questions
+        .map((q) => asRecord(q)?.question)
+        .filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+
+      out.push({
+        id,
+        metric,
+        head,
+        ...(typeof g.tone === 'string' ? { tone: g.tone } : {}),
+        statements: lines,
+        source_path: selection
+          ? `${selection.split('.')[0]}.evidence.statements.${metric}[${i}]`
+          : `evidence.statements.${metric}[${i}]`,
+      });
+    });
+  }
+  return out;
+}
+
 export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops'] as const;
 export type CompositeSelection = (typeof COMPOSITE_SELECTIONS)[number];
 
@@ -943,6 +1058,10 @@ function selectFromComposite(doc: Rec, selection: CompositeSelection): Rec {
  *  the period prefix as a single post-extraction step. */
 function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelection): ExtractDocument {
   let rawDoc = asRecord(response) ?? {};
+  // Kept before the composite narrowing below, because evidence rides the LEG
+  // (`mom.evidence`, `yoy.evidence`) and is a SIBLING of the envelope that
+  // `selectFromComposite` selects — narrowing first would throw it away.
+  const wholeResponse = rawDoc;
   const composite = isCompositeResponse(rawDoc);
   if (composite) {
     if (!selection) {
@@ -1269,11 +1388,14 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     }
   }
 
+  const evidence = extractEvidence(wholeResponse, selection);
+
   return {
     schema_version: '2.0-draft',
     source: buildSource(env, rawDoc, domain, undefined, selection),
     caveat_registry: registry,
     figures,
+    ...(evidence.length ? { evidence } : {}),
   };
 }
 
