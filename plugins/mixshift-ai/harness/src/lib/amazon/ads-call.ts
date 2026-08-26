@@ -148,7 +148,7 @@ export async function listAdsProfiles(
   opts: ReportClientOptions = {},
 ): Promise<ListAdsProfilesResult | ReportFailure> {
   const r = await amazonRequest(
-    { method: 'GET', path: '/api/amazon/ads/profiles' },
+    { method: 'GET', path: '/api/amazon/ads/profiles', surface: 'ads' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -164,7 +164,7 @@ export async function listAdsOperations(
 ): Promise<ListAdsOperationsResult | ReportFailure> {
   const qs = family ? `?family=${encodeURIComponent(family)}` : '';
   const r = await amazonRequest(
-    { method: 'GET', path: `/api/amazon/ads/operations${qs}` },
+    { method: 'GET', path: `/api/amazon/ads/operations${qs}`, surface: 'ads' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
@@ -205,7 +205,7 @@ export async function adsCall(
   if (input.dryRun !== undefined) body.dryRun = input.dryRun;
 
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/ads/call', body },
+    { method: 'POST', path: '/api/amazon/ads/call', body, surface: 'ads' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );
   if (!r.ok) return r;

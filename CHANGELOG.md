@@ -45,6 +45,31 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
+- **A failure on a non-report call no longer says a report failed.** When the
+  service could not be reached, or answered in a shape the plugin did not
+  recognize, the plugin fell back to its own wording, and that wording assumed
+  every call was a report request. So a live Amazon call, an advertising call,
+  or a pricing call could fail with "the report request failed unexpectedly",
+  and a 403 on any of them was described as a restricted report needing a data
+  role. The fallback now names the surface you actually called, and says
+  nothing about reports when it does not know which surface you were on.
+  Failure messages the service itself supplies were already correct and are
+  unchanged.
+
+- **The table catalog now says which seller column to filter on, so settlement
+  queries take the fast path.** Most seller-scoped warehouse tables carry two
+  seller columns that hold the same seller: an integer id and Amazon's own
+  merchant token. They are not interchangeable for speed, because the indexes
+  are generally built on the integer, and on the settlement table the integer
+  is the one paired with the posted date. Filtering by the merchant token plus
+  a date range leaves the date with no index to use and scans every row for
+  that seller: on a live account the identical one-month count took 13.4
+  seconds that way and 0.37 seconds filtering on the integer id. The catalog
+  now records the rule, the settlement specifics, and the settlement date
+  column, so queries and date-range exports built from it use the covering
+  index. Writing the slow filter by hand still works and still returns the same
+  rows, which is why this was easy to miss.
+
 ## 0.8.10
 
 ### Added

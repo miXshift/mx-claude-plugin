@@ -13,6 +13,44 @@
 # need historical data over the last 90 days hit `_3mo`; archive is
 # typically not user-accessible. Add them to the catalog if a user
 # workflow needs them.
+#
+# WHICH SELLER COLUMN TO FILTER ON
+#
+# Most seller-scoped tables carry TWO seller columns: an integer `SellerID`
+# (the MixShift seller.ID) and a varchar `AmazonSellerID` (Amazon's own
+# A.../ENTITY... merchant token). They identify the same seller, but they are
+# not interchangeable for query planning, because the indexes are usually
+# built on the integer.
+#
+# Default to the integer `SellerID`. Filtering on `AmazonSellerID` instead
+# often means the composite index that pairs the seller with a date is not
+# used at all, which leaves a date range predicate with nothing to seek on and
+# turns a sub-second query into a scan. It is the same value either way, so
+# the wrong choice costs time without changing the answer, which is exactly
+# why it goes unnoticed.
+#
+# Measured over the tables IN THIS CATALOG, on one tenant schema, 2026-08-25.
+# Of the 40 catalogued tables carrying both columns, the integer `SellerID`
+# leads an index on 32 and the varchar leads one on 12 (10 have both). Only
+# TWO are varchar-led WITHOUT the integer also leading:
+#
+#   mws_inventory_health
+#   vendor_netpureproductmargin_asin_daily
+#
+# and on six the seller filter is not index-served either way:
+# mws_inventory_fba_estimated_fees, sellermonthmetric, sponsoredbrandsmetric,
+# sqp_monthly, sqp_quarterly, sqp_weekly.
+#
+# So default to the integer and know that short exception list by name, rather
+# than treating the choice as a coin flip. It is still a default, not a law:
+# index topology lives in each tenant's own database and was measured in one of
+# them. If a query on a large table is slower than expected, EXPLAIN it and
+# check whether the chosen key covers your date predicate before assuming the
+# table is at fault. Per-table specifics live in the entry's description
+# (see `spapi_settlement`, where the split is measured end to end).
+#
+# If a caller hands you an Amazon merchant token and you need the integer,
+# translate once up front: seller.AmazonSellerID -> seller.ID.
 
 schema_version: 1
 
@@ -380,8 +418,26 @@ tables:
   # ---------------------------------------------------------------------
 
   spapi_settlement:
-    description: "Amazon settlement reports — deposits, charges, refunds, reimbursements. Use for cash-flow reconciliation."
+    description: >-
+      Amazon settlement reports: deposits, charges, refunds, reimbursements.
+      Use for cash-flow reconciliation. Large table, tens of millions of rows
+      on a mature tenant, so the filter shape decides whether a query takes
+      milliseconds or tens of seconds.
+      TWO SELLER COLUMNS, INDEXED DIFFERENTLY, AND ONLY ONE OF THEM PAIRS WITH
+      THE DATE: filter by the INTEGER `SellerID` (indexed with
+      `Posted-date-time` in MIX_MAX_Record_IDX) whenever you are also filtering
+      or grouping by date. The varchar `AmazonSellerID` (Amazon's A.../ENTITY...
+      merchant token) is indexed with `Settlement-id` instead, so
+      `AmazonSellerID` + a date range gives the date predicate no index to use
+      and degrades to a scan of every row for that seller. Measured on a live
+      tenant: identical COUNT over one month, 374ms filtering on `SellerID`
+      versus 13,450ms filtering on `AmazonSellerID`. Use `AmazonSellerID` only
+      when you are looking up a specific `Settlement-id`, or translate the
+      token to the integer id first (seller.AmazonSellerID -> seller.ID).
+      Date column is `Posted-date-time`; it is nullable, so a row with no
+      posted date is excluded by any date range predicate.
     category: ops_revenue
     account_types: [SC]
     time_series: true
     requires_seller_id: true
+    date_column: "Posted-date-time"
