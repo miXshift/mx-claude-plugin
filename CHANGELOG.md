@@ -90,6 +90,13 @@ starts at 0.5.39; earlier versions predate the changelog.
   index. Writing the slow filter by hand still works and still returns the same
   rows, which is why this was easy to miss.
 
+- **A skill that has to search for the plugin's own program now picks the newest copy
+  it finds.** When the plugin's command is not on the PATH, a skill falls back to
+  locating the bundled program itself. That search took whichever copy it happened to
+  find first and then reused it for the rest of the session, and a machine keeps every
+  version it has ever installed, so a skill could run an older build than the one you
+  are on. It now takes the newest version it finds instead of the first result.
+
 ## 0.8.10
 
 ### Added
