@@ -92315,6 +92315,44 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
     figures: figures2
   };
 }
+function extractEvidence(whole, selection) {
+  let block;
+  if (selection) {
+    if (!selection.endsWith(".ops")) return [];
+    const period = selection.split(".")[0];
+    block = asRecord(asRecord(whole[period])?.evidence);
+  } else {
+    block = asRecord(whole.evidence);
+  }
+  const statements = asRecord(block?.statements);
+  if (!statements) return [];
+  const prefix = selection ? `${selection.split(".")[0]}.evidence` : "evidence";
+  const out = [];
+  const used = /* @__PURE__ */ new Set();
+  for (const [metric, groupsRaw] of Object.entries(statements)) {
+    const groups = Array.isArray(groupsRaw) ? groupsRaw : [];
+    groups.forEach((groupRaw, i) => {
+      const g = asRecord(groupRaw);
+      if (!g) return;
+      const head = typeof g.head === "string" ? g.head : "";
+      const slug = head.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || `group_${i}`;
+      let id = `${prefix}.${metric}.${slug}`;
+      if (used.has(id)) id = `${id}.${i}`;
+      used.add(id);
+      const questions = Array.isArray(g.questions) ? g.questions : [];
+      const lines = questions.map((q) => asRecord(q)?.question).filter((q) => typeof q === "string" && q.trim().length > 0);
+      out.push({
+        id,
+        metric,
+        head,
+        ...typeof g.tone === "string" ? { tone: g.tone } : {},
+        statements: lines,
+        source_path: selection ? `${selection.split(".")[0]}.evidence.statements.${metric}[${i}]` : `evidence.statements.${metric}[${i}]`
+      });
+    });
+  }
+  return out;
+}
 var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops"];
 function isCompositeResponse(response) {
   const doc = asRecord(response) ?? {};
@@ -92349,6 +92387,7 @@ function selectFromComposite(doc, selection) {
 }
 function extractFiguresUnprefixed(response, selection) {
   let rawDoc = asRecord(response) ?? {};
+  const wholeResponse = rawDoc;
   const composite = isCompositeResponse(rawDoc);
   if (composite) {
     if (!selection) {
@@ -92579,11 +92618,13 @@ function extractFiguresUnprefixed(response, selection) {
       }
     }
   }
+  const evidence = extractEvidence(wholeResponse, selection);
   return {
     schema_version: "2.0-draft",
     source: buildSource(env, rawDoc, domain2, void 0, selection),
     caveat_registry: registry2,
-    figures: figures2
+    figures: figures2,
+    ...evidence.length ? { evidence } : {}
   };
 }
 function periodPrefixOf(selection) {

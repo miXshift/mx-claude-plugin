@@ -27,7 +27,7 @@ handoff_optional: true
 
 # Monthly Performance Report Max
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
 **What this skill is:** the model's ONE job here is composing claims and prose against typed
 figures. Everything upstream of that is the intelligence service; everything downstream is
@@ -176,6 +176,20 @@ a bare id, MoM and YoY read as the same figure.
   to observations** (correct behavior, not a gap). `causal` needs a mechanism and tested
   alternatives; a decomposition leg is `tracking`, and tracking text may not use causal
   verbs. `comparison` may not mix bases.
+- **Use served evidence for a causal `mechanism` wherever one exists.** When the run was
+  made with `evidence: true`, `report extract` emits an `evidence[]` block alongside the
+  figures: the engine's own "What we know" statements, each with an `id`, the `metric` root
+  it hangs off, its `head`, and a `source_path`. Quote that account of the move and cite the
+  id, rather than composing a mechanism from the numbers yourself. An authored mechanism is
+  unfalsifiable prose; a served one is traceable to the engine that computed the move, which
+  is the whole reason `CAUSE-1` demands a mechanism at all. If no statement covers the move,
+  that absence is itself information: prefer `tracking` or `observation` over inventing a
+  cause.
+- **Evidence ids are period-namespaced exactly like figure ids** (`mom.evidence.*`,
+  `yoy.evidence.*`), because you compose every selection's document into ONE report. A
+  statement about last month and one about last year are otherwise indistinguishable, which
+  is the same silent-wrong class that once let a MoM `figure_ref` resolve to a YoY value.
+  Never quote a `mom.evidence.*` statement to explain a YoY move, or the reverse.
 - **Computing anything locally requires a `Derived`** with `inputs[]` and a written
   `why_not_published`. For a figure the engine publishes, that sentence cannot honestly be
   written — which is the point. The one standing legitimate Derived: the day-normalised
