@@ -44,4 +44,89 @@ describe('feedback command', () => {
       payload: { message: report },
     });
   });
+
+  it('carries capability_gap through to the event payload', async () => {
+    // The category the AGENT files, not the user: a step of the user's task had
+    // no MixShift operation, so the work left MixShift. It is the only record
+    // of that class of miss -- an uncataloged operation id is refused before
+    // any request is issued, so a gap the agent routes around emits nothing at
+    // all. If this stops reaching the payload, the gap goes back to invisible.
+    await buildProgram().parseAsync([
+      'node',
+      'mixshift',
+      'feedback',
+      'No SB ad-creation operation; placed 12 video creatives by hand in the console.',
+      '--category',
+      'capability_gap',
+      '--skill',
+      'mx-amazon-ads',
+    ]);
+
+    expect(track).toHaveBeenCalledOnce();
+    expect(vi.mocked(track).mock.calls[0][0]).toMatchObject({
+      // skill_id rides INSIDE payload, alongside category, not at the top
+      // level of the event.
+      payload: { category: 'capability_gap', skill_id: 'mx-amazon-ads' },
+    });
+  });
+
+  it('still defaults to comment when no category is given', async () => {
+    await buildProgram().parseAsync(['node', 'mixshift', 'feedback', 'just a note']);
+
+    expect(vi.mocked(track).mock.calls[0][0]).toMatchObject({
+      payload: { category: 'comment' },
+    });
+  });
+
+  it.each([
+    ['capabilty_gap', 'a typo'],
+    ['capability-gap', 'the hyphenated spelling'],
+    ['CAPABILITY_GAP', 'the wrong case'],
+    ['', 'an empty value'],
+  ])('rejects %s (%s) instead of filing it under a category nobody queries', async (bad) => {
+    // Without this, commander accepts any string and the TS union is erased at
+    // runtime, so a near-miss lands in the payload and the report is filed,
+    // looks fine, and is invisible to every query that groups by category.
+    // These cases are also what keeps the two tests above honest: they pass on
+    // an unmodified main, so THIS is the one that fails if validation is
+    // dropped.
+    const prev = process.exitCode;
+    await buildProgram().parseAsync([
+      'node',
+      'mixshift',
+      'feedback',
+      'a real report',
+      '--category',
+      bad,
+    ]);
+
+    expect(track).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prev;
+  });
+
+  it('names the full valid set when it rejects, so the caller can self-correct', async () => {
+    const written: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    const prev = process.exitCode;
+
+    await buildProgram().parseAsync([
+      'node',
+      'mixshift',
+      'feedback',
+      'x',
+      '--category',
+      'nope',
+    ]);
+
+    const out = written.join('');
+    for (const valid of ['bug', 'feature_request', 'comment', 'capability_gap', 'other']) {
+      expect(out).toContain(valid);
+    }
+    expect(out).toContain("got 'nope'");
+    process.exitCode = prev;
+  });
 });

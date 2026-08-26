@@ -7,13 +7,16 @@ description: >
   "it feels broken", "this isn't working", "this is confusing", "I wish this
   could do X". Covers bug reports, feature requests, and comments. Fire on the
   complaint and route it here; the skill always confirms with the user before
-  sending anything. Routes through `mixshift feedback`, which posts to MixShift
+  sending anything. ALSO fire with no complaint at all when YOU hit a capability
+  gap: no MixShift operation could do a step of the user's task, so the work had
+  to finish elsewhere. The user rarely reports those, because from their side the
+  job got done. Routes through `mixshift feedback`, which posts to MixShift
   ops in real time and records it for engineering triage. Works mid-session
   alongside any other skill. For "how do I fix X" where the user wants to solve a
   setup problem, that is mx-help; this skill is for reporting and venting, not
   troubleshooting.
 metadata:
-  version: "0.1.2"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - send feedback
@@ -89,6 +92,78 @@ This captures the friction *signal* even when the user declines (or ignores) the
 
 You can also invoke this skill **mid-session** if the user expresses frustration or asks for something the plugin doesn't currently do. Don't make the user wait until the end of the session to file feedback.
 
+### Detect capability gaps (the signal nobody else can send)
+
+This one does not come from the user. It comes from **you noticing what you could not do.**
+
+A capability gap is when the user had a concrete goal, a step of it had no MixShift
+operation behind it, and you had to send them to the Amazon console or another tool to
+finish. The user usually will not report it, because from where they sit the job got done.
+They may not even realize a piece of it happened outside MixShift.
+
+**Why this needs you.** If you *attempt* an operation id that does not exist, the service
+refuses it and that failure IS recorded. What is not recorded is the far more common path:
+you check the operation list first, correctly find nothing, and route around it. There is
+no call, so there is nothing to fail and nothing to record. The better you handle it, the
+more invisible the gap. Twice in August 2026 the only reason MixShift learned about a
+missing Sponsored Brands operation was a person choosing, unprompted, to type it out.
+
+**File one when all five are true:**
+
+1. The user had a real goal in this session (not a hypothetical or an aside).
+2. The missing step is something MixShift could plausibly do: an Amazon API operation, a
+   warehouse query, a report. Not "write my ad copy", "email my client", "build me a
+   dashboard". If it would not be an operation, it is not a capability gap.
+3. You actually checked and no cataloged operation covers it. Use `mixshift ads operations`
+   or `mixshift amazon operations`, rather than assuming.
+4. Finishing required leaving MixShift, or the step was abandoned.
+5. The blocker is a MISSING capability, not a failure of an existing one.
+
+**Do NOT file one when:**
+
+- An operation exists but errored, was throttled, or was rejected by Amazon. That is a `bug`.
+- The user lacks permission, a connected account, or a credential. That is a setup problem;
+  route to mx-help.
+- You already filed the same gap earlier in this session. Once per gap per session.
+
+#### The consent rules for this category are different. Read them.
+
+**Unlike the implicit-feedback section above, emit NOTHING before the user agrees.** No
+`telemetry emit`, no pre-emptive event. That section fires a detection event first and asks
+second, because the payload there is the user's own words. Here the payload is *yours*, so
+consent has to come first.
+
+**Show the exact message and get the yes on THAT.** Every other category passes through the
+user's own wording, so there is nothing to review. This one you compose, which means the
+user cannot consent to it without seeing it. Address the task first, then:
+
+> "MixShift has no operation for creating Sponsored Brands video ads, which is why I sent
+> you to the console for that step. Want me to report it? Here is exactly what I would
+> send: *'Needed to add video ads to existing SB video ad groups; no SB ad-creation
+> operation exists, so the creatives were hand-keyed into the console.'*"
+
+**Describe the missing capability and the SHAPE of the work. Never the account's specifics.**
+No ASINs, brand names, dollar figures, competitor names, launch dates, or strategy. The
+report is useful because of what MixShift could not do, not because of whose account it
+happened in. "Needed to attach existing video assets to live SB ad groups in bulk" is
+actionable; the same sentence with a budget and a product launch in it is the customer's
+business in a chat channel.
+
+**This is the one carve-out to the "don't editorialize" hard rule below.** That rule exists
+because the user's wording is the evidence. Here there is no user wording to preserve: you
+are the reporter. The rule still binds every other category.
+
+**No interactive user, no send.** In a scheduled task, CI, or any unattended run there is
+nobody to show the message to and nobody to consent. Do not file. Note it in the run output
+and move on.
+
+Then, with the user's go-ahead:
+
+```bash
+mixshift feedback "<what the user was trying to do, in shape terms, and the specific
+capability that was missing>"   --category capability_gap   --skill <current-skill-id>
+```
+
 ## Prerequisites
 
 - The user must have signed in (`mixshift auth login`) so we have an email to attach to the feedback. If they're not signed in, surface that and offer to walk them through the mx-auth-login skill first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
@@ -101,12 +176,13 @@ If the user already said what they want to send (e.g. "send feedback to mixshift
 
 > What's the feedback? I can categorize it as a bug, feature request, or general comment — or just tell me what's going on and I'll figure out the right tag.
 
-Classify into one of four categories based on the user's wording:
+Classify into one of five categories based on the user's wording:
 
 | Category | When |
 |---|---|
 | `bug` | Something is broken / wrong / not working as expected |
 | `feature_request` | "I wish this could…", "can you add…", "would be great if…" |
+| `capability_gap` | A step of the user's task had no MixShift operation, so the work had to leave MixShift (see below). Classified from YOUR experience of the task, not the user's wording |
 | `comment` | General observation, praise, "FYI", neutral notes |
 | `other` | Doesn't cleanly fit the above |
 
@@ -175,7 +251,7 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 ## Hard rules
 
 - **Don't silently submit.** Always confirm with the user before sending, even if the message seems obvious. They may want to tighten it.
-- **Don't editorialize the message.** Pass through the user's wording. You can suggest a clearer phrasing, but ultimately the user's words are the user's words.
+- **Don't editorialize the message.** Pass through the user's wording. You can suggest a clearer phrasing, but ultimately the user's words are the user's words. The single exception is `capability_gap`, where there are no user words to preserve because you are the reporter; that category has its own consent rules above, including showing the user the exact text first.
 - **Don't bundle multiple feedback items into one submission.** If the user has three different bugs, send three separate `mixshift feedback` invocations. Each routes / gets triaged / closed independently.
 - **Don't use this for table-access requests.** That has a dedicated flow: the mx-data-explore skill's error-handling path uses `mixshift feedback ... --category feature_request` with specific framing.
 - **IP whitelist isn't a thing anymore** (0.5.3+). If a user mentions an IP issue, point them at `mixshift auth login`; the auth service holds the single static egress IP server-side, so per-user whitelisting doesn't apply. The legacy `mixshift auth setup` raw-MySQL path that used per-user whitelisting is retired.
@@ -184,7 +260,7 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 
 ```
 ✓ Sent to MixShift ops. Thanks!
-  Category: <bug | feature_request | comment | other>
+  Category: <bug | feature_request | comment | capability_gap | other>
   <one-sentence summary if helpful>
 ```
 
