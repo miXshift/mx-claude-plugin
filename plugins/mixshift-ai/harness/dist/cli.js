@@ -87446,7 +87446,7 @@ async function startReport(input, opts = {}) {
   if (input.marketplace) body.marketplace = input.marketplace;
   if (input.reportOptions) body.reportOptions = input.reportOptions;
   const r = await amazonRequest(
-    { method: "POST", path: "/api/amazon/reports", body },
+    { method: "POST", path: "/api/amazon/reports", body, surface: "report" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -87468,7 +87468,7 @@ async function startReport(input, opts = {}) {
 }
 async function pollReport(runId, opts = {}) {
   const r = await amazonRequest(
-    { method: "GET", path: `/api/amazon/reports/${encodeURIComponent(runId)}` },
+    { method: "GET", path: `/api/amazon/reports/${encodeURIComponent(runId)}`, surface: "report" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -87484,7 +87484,8 @@ async function getReportDocumentMeta(runId, opts = {}) {
   const r = await amazonRequest(
     {
       method: "GET",
-      path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`
+      path: `/api/amazon/reports/${encodeURIComponent(runId)}/document`,
+      surface: "report"
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
@@ -87839,13 +87840,13 @@ async function amazonRequest(spec, opts) {
   try {
     json2 = await res.json();
   } catch {
-    return statusOnlyFailure(res.status);
+    return statusOnlyFailure(res.status, void 0, spec.surface);
   }
   if (isServerFailureEnvelope(json2)) {
-    return toReportFailure(json2, res.status);
+    return toReportFailure(json2, res.status, spec.surface);
   }
   if (!res.ok) {
-    return statusOnlyFailure(res.status, safeJsonPreview(json2));
+    return statusOnlyFailure(res.status, safeJsonPreview(json2), spec.surface);
   }
   return { ok: true, json: json2 };
 }
@@ -87866,6 +87867,26 @@ async function resolveBaseAndToken(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
+var SURFACE_REQUEST_LABEL = {
+  report: "The report request",
+  spapi: "The SP-API request",
+  ads: "The Amazon Ads API request",
+  pricing: "The pricing request"
+};
+var SURFACE_REQUEST_PLURAL = {
+  report: "report requests",
+  spapi: "SP-API requests",
+  ads: "Amazon Ads API requests",
+  pricing: "pricing requests"
+};
+var NEUTRAL_REQUEST_LABEL = "The request";
+var NEUTRAL_REQUEST_PLURAL = "requests to this Amazon API";
+function requestLabel(surface) {
+  return surface ? SURFACE_REQUEST_LABEL[surface] : NEUTRAL_REQUEST_LABEL;
+}
+function requestPlural(surface) {
+  return surface ? SURFACE_REQUEST_PLURAL[surface] : NEUTRAL_REQUEST_PLURAL;
+}
 var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "spapi_not_configured",
   "ads_not_configured",
@@ -87883,7 +87904,7 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
 function isServerFailureEnvelope(json2) {
   return typeof json2 === "object" && json2 !== null && json2.ok === false;
 }
-function toReportFailure(json2, httpStatus) {
+function toReportFailure(json2, httpStatus, surface) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
   const kind = KNOWN_KINDS.has(rawKind) ? rawKind : "unknown";
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
@@ -87891,7 +87912,7 @@ function toReportFailure(json2, httpStatus) {
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly(kind),
+    friendly: serverFriendly ?? defaultFriendly(kind, surface),
     message,
     amazonSellerId: strOrUndef(json2.amazonSellerId),
     reportType: strOrUndef(json2.reportType),
@@ -87920,12 +87941,12 @@ function parseCandidates(v) {
   }
   return out.length > 0 ? out : void 0;
 }
-function statusOnlyFailure(httpStatus, detail) {
+function statusOnlyFailure(httpStatus, detail, surface) {
   const kind = statusToKind(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly(kind),
+    friendly: defaultFriendly(kind, surface),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
@@ -87967,22 +87988,22 @@ function sessionFailureFromError(err) {
     message
   };
 }
-function defaultFriendly(kind) {
+function defaultFriendly(kind, surface) {
   switch (kind) {
     case "spapi_not_configured":
-      return "Amazon SP-API isn't enabled for this MixShift account yet. Contact MixShift ops to turn on on-demand report pulls.";
+      return "Amazon SP-API isn't enabled for this MixShift account yet. Contact MixShift ops to turn it on.";
     case "ads_not_configured":
       return "The Amazon Ads API isn't enabled on the MixShift service yet. Contact MixShift ops.";
     case "insufficient_scope":
       return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
     case "reauth_required":
-      return "This Amazon merchant needs to be re-authorized in MixShift before reports can be pulled. Re-connect the account in the MixShift app, then retry.";
+      return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Re-connect the account in the MixShift app, then retry.";
     case "restricted_report":
-      return "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report.";
+      return surface === "report" ? "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report." : "Amazon denied access to this operation. It may need a role or restricted-data access that MixShift does not hold, or this merchant's authorization may predate that role and need re-authorizing.";
     case "merchant_not_found":
       return "No Amazon merchant matched that selector. Run `mixshift amazon merchants` to see which merchants you can pull for.";
     case "throttled":
-      return "Amazon is rate-limiting report requests right now. Wait a moment and retry.";
+      return `Amazon is rate-limiting ${requestPlural(surface)} right now. Wait a moment and retry.`;
     case "report_fatal":
       return "Amazon could not generate this report (it returned a FATAL or CANCELLED status). This usually means the report type does not apply to this merchant, or the requested window is invalid.";
     case "host_unreachable":
@@ -87995,7 +88016,7 @@ function defaultFriendly(kind) {
       return "Your MixShift session expired. Run `mixshift auth login` to re-authenticate.";
     case "unknown":
     default:
-      return "The report request failed unexpectedly. Try again shortly.";
+      return `${requestLabel(surface)} failed unexpectedly. Try again shortly.`;
   }
 }
 function strOrUndef(v) {
@@ -88107,7 +88128,7 @@ var CS_ASYNC_PATH = "/api/amazon/pricing/get-competitive-summary-batch/start";
 async function getFeaturedOfferExpectedPriceBatch(input, opts = {}) {
   const body = { ...buildMerchantBody(input), skus: input.skus };
   const r = await amazonRequest(
-    { method: "POST", path: FOEP_SYNC_PATH, body },
+    { method: "POST", path: FOEP_SYNC_PATH, body, surface: "pricing" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 24e4 }
   );
   if (!r.ok) return r;
@@ -88116,7 +88137,7 @@ async function getFeaturedOfferExpectedPriceBatch(input, opts = {}) {
 async function startFeaturedOfferExpectedPriceBatch(input, opts = {}) {
   const body = { ...buildMerchantBody(input), skus: input.skus };
   const r = await amazonRequest(
-    { method: "POST", path: FOEP_ASYNC_PATH, body },
+    { method: "POST", path: FOEP_ASYNC_PATH, body, surface: "pricing" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -88131,7 +88152,7 @@ async function getCompetitiveSummaryBatch(input, opts = {}) {
     body.includedData = input.includedData;
   }
   const r = await amazonRequest(
-    { method: "POST", path: CS_SYNC_PATH, body },
+    { method: "POST", path: CS_SYNC_PATH, body, surface: "pricing" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 24e4 }
   );
   if (!r.ok) return r;
@@ -88146,7 +88167,7 @@ async function startCompetitiveSummaryBatch(input, opts = {}) {
     body.includedData = input.includedData;
   }
   const r = await amazonRequest(
-    { method: "POST", path: CS_ASYNC_PATH, body },
+    { method: "POST", path: CS_ASYNC_PATH, body, surface: "pricing" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -88156,7 +88177,8 @@ async function pollPricingRun(runId, opts = {}) {
   const r = await amazonRequest(
     {
       method: "GET",
-      path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}`
+      path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}`,
+      surface: "pricing"
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
@@ -88167,7 +88189,8 @@ async function getPricingRunResult(runId, opts = {}) {
   const r = await amazonRequest(
     {
       method: "GET",
-      path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}/result`
+      path: `/api/amazon/pricing/runs/${encodeURIComponent(runId)}/result`,
+      surface: "pricing"
     },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
@@ -88713,13 +88736,18 @@ import { readFile as readFile41 } from "node:fs/promises";
 async function listOperations(family, opts = {}) {
   const qs = family ? `?family=${encodeURIComponent(family)}` : "";
   const r = await amazonRequest(
-    { method: "GET", path: `/api/amazon/spapi/operations${qs}` },
+    { method: "GET", path: `/api/amazon/spapi/operations${qs}`, surface: "spapi" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
   const raw = r.json.operations;
   const operations = Array.isArray(raw) ? raw : [];
-  return { ok: true, operations };
+  const merchantIdentifiers = r.json.merchantIdentifiers;
+  return {
+    ok: true,
+    operations,
+    ...merchantIdentifiers !== void 0 ? { merchantIdentifiers } : {}
+  };
 }
 var AWD_REAUTH_FRIENDLY = `This merchant isn't authorized for Amazon Warehousing & Distribution (AWD) yet. AWD is a newly added SP-API role, so the merchant's existing connection does not include it. To enable AWD endpoints for this merchant:
   1. Go to https://www.mydashapplications.com/account-manager/SP-API-merchants
@@ -88744,7 +88772,7 @@ async function spapiCall(input, opts = {}) {
   if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
   if (input.body !== void 0) body.body = input.body;
   const r = await amazonRequest(
-    { method: "POST", path: "/api/amazon/spapi/call", body },
+    { method: "POST", path: "/api/amazon/spapi/call", body, surface: "spapi" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
   if (!r.ok) {
@@ -89985,7 +90013,7 @@ import { readFile as readFile42 } from "node:fs/promises";
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
   const r = await amazonRequest(
-    { method: "GET", path: "/api/amazon/ads/profiles" },
+    { method: "GET", path: "/api/amazon/ads/profiles", surface: "ads" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -89996,7 +90024,7 @@ async function listAdsProfiles(opts = {}) {
 async function listAdsOperations(family, opts = {}) {
   const qs = family ? `?family=${encodeURIComponent(family)}` : "";
   const r = await amazonRequest(
-    { method: "GET", path: `/api/amazon/ads/operations${qs}` },
+    { method: "GET", path: `/api/amazon/ads/operations${qs}`, surface: "ads" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
@@ -90021,7 +90049,7 @@ async function adsCall(input, opts = {}) {
   if (input.contentTypeOverride) body.contentTypeOverride = input.contentTypeOverride;
   if (input.dryRun !== void 0) body.dryRun = input.dryRun;
   const r = await amazonRequest(
-    { method: "POST", path: "/api/amazon/ads/call", body },
+    { method: "POST", path: "/api/amazon/ads/call", body, surface: "ads" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
   if (!r.ok) return r;

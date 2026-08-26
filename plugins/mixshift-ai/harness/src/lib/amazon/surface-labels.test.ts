@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { amazonRequest } from './reports';
+import { amazonRequest, type ReportClientOptions } from './reports';
 import { spapiCall } from './spapi-call';
 
 /**
@@ -27,9 +27,18 @@ function fetchReturning(status: number, body: unknown) {
   });
 }
 
-const opts = (fetchImpl: unknown) => ({
-  fetchImpl: fetchImpl as typeof fetch,
-  apiBase: 'https://example.test',
+/**
+ * `apiBaseOverride` is what skips credential resolution -- an earlier version
+ * of this file passed `apiBase`, which is not an option on ReportClientOptions
+ * at all, so every test fell through to real credential lookup. It passed
+ * locally (this machine has a session) and failed in CI with
+ * `not_authenticated`, i.e. it was never exercising the code it claimed to.
+ * Typed as ReportClientOptions, not cast, so a wrong field name is a compile
+ * error rather than a silently ignored one.
+ */
+const opts = (fetchImpl: typeof fetch): ReportClientOptions => ({
+  fetchImpl,
+  apiBaseOverride: 'https://example.test',
   tokenProvider: async () => 'tok',
 });
 
@@ -45,7 +54,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await amazonRequest(
       { method: 'POST', path: '/api/amazon/spapi/call', surface: 'spapi' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -63,7 +72,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await amazonRequest(
       { method: 'POST', path: '/api/amazon/ads/call', surface: 'ads' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -81,7 +90,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await amazonRequest(
       { method: 'POST', path: '/api/amazon/reports', surface: 'report' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -98,7 +107,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await amazonRequest(
       { method: 'GET', path: '/api/amazon/merchants' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -115,7 +124,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await amazonRequest(
       { method: 'POST', path: '/api/amazon/spapi/call', surface: 'spapi' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -128,7 +137,7 @@ describe('plugin-side surface labels', () => {
     const fetchImpl = fetchReturning(403, { notOurEnvelope: true });
     const r = await amazonRequest(
       { method: 'POST', path: '/api/amazon/spapi/call', surface: 'spapi' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -146,7 +155,7 @@ describe('plugin-side surface labels', () => {
     });
     const r = await spapiCall(
       { operation: 'fulfillment_inbound.get_shipments' },
-      opts(fetchImpl) as never,
+      opts(fetchImpl as unknown as typeof fetch),
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
