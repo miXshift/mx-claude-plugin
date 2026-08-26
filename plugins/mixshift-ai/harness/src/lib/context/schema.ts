@@ -188,11 +188,133 @@ const structuralEventSchema = z
 /** One curated Tier-3 structural event (the stake-sync input shape). */
 export type StructuralEvent = z.infer<typeof structuralEventSchema>;
 
-const campaignStructureSchema = z.object({
-  naming_pattern: z.string().min(1),
-  account_codes: z.array(z.string()).default([]),
-  objectives: z.array(z.string()).optional(),
+/**
+ * A confirmed campaign->bucket map for one dimension (D-039).
+ *
+ * This is NOT a naming pattern. `naming_pattern` describes accounts whose
+ * campaign names split positionally; most do not (one measured tenant carries
+ * thousands of distinct name shapes across several coexisting conventions). For those,
+ * an agent classifies the names semantically, the USER CONFIRMS the buckets,
+ * and the result is stored here as explicit campaign ids. Ids, not patterns,
+ * so no agency's naming convention is ever baked into shared logic.
+ *
+ * It rides in brand context because brand context already syncs server-side
+ * (`context.yaml` -> doc_type 'context'), so a scheme confirmed on one machine
+ * is available on the next without re-confirming.
+ */
+const derivedLabelMapSchema = z.object({
+  // These ids are hand-written into YAML, where `71` and `"71"` look identical
+  // to a person and parse differently, and rejecting the quoted form would fail
+  // the WHOLE context file (loadBrandContext throws) and take every skill for
+  // the brand offline. So the quoted form is accepted -- but NOT via
+  // z.coerce.number(), which is far too generous: it turns `'0x10'` into 16,
+  // `'1e3'` into 1000, `true` into 1 and `[5]` into 5, any of which would
+  // silently label the wrong campaign. Accept a real number, or a string that
+  // is nothing but digits, and nothing else.
+  buckets: z
+    .record(
+      z.string(),
+      z.array(
+        z
+          .union([z.number(), z.string().regex(/^\d+$/, 'campaign id must be digits only')])
+          .transform(Number)
+          .pipe(z.number().int().positive().safe()),
+      ),
+    )
+    .default({}),
+  confirmed_at: z.string().optional(),
 });
+
+/**
+ * Bucket names are composed into SQL downstream (lib/labels/derived-labels.ts
+ * builds a CASE from them), so they are validated against an ALLOWLIST here as
+ * well as there.
+ *
+ * Validating in BOTH places is deliberate rather than redundant: the check in
+ * the query builder fires at run time, where a rejection degrades to a stderr
+ * warning and the report silently falls back to a single `(unclassified)` row.
+ * The user sees a run that "worked" and a table that did not change. Checking
+ * at SAVE time instead surfaces it while the user is still looking at the
+ * bucket they just named and can simply rename it.
+ */
+const SAFE_BUCKET_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._/&+-]{0,63}$/;
+
+const derivedLabelsForSellerSchema = z
+  .object({
+    objective: derivedLabelMapSchema.optional(),
+    item_group: derivedLabelMapSchema.optional(),
+  })
+  // strict: a misspelled dimension (`objectives`) would otherwise parse clean,
+  // read back as undefined, and no-op silently -- the user confirms a scheme,
+  // nothing changes, and nothing says why.
+  .strict()
+  .superRefine((val, ctx) => {
+    for (const [dimension, map] of Object.entries(val)) {
+      if (!map) continue;
+      const seen = new Map<number, string>();
+      for (const [label, ids] of Object.entries(map.buckets ?? {})) {
+        if (!SAFE_BUCKET_LABEL.test(label)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [dimension, 'buckets', label],
+            message:
+              `Bucket name ${JSON.stringify(label)} cannot be used: names may contain only ` +
+              'letters, digits, spaces and . _ / & + - (max 64 characters), because they are ' +
+              'used to build the report query. Rename the bucket.',
+          });
+        }
+        // A campaign in two buckets would be silently attributed to whichever
+        // one is written first, producing a breakdown that still foots to the
+        // account total while sending someone's spend to the wrong row. There
+        // is no safe way to guess the intent, so refuse it at save time.
+        for (const id of ids ?? []) {
+          const prior = seen.get(id);
+          if (prior && prior !== label) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [dimension, 'buckets', label],
+              message:
+                `Campaign ${id} is in both ${JSON.stringify(prior)} and ${JSON.stringify(label)}. ` +
+                'Each campaign belongs to exactly one bucket per dimension.',
+            });
+          }
+          seen.set(id, label);
+        }
+      }
+    }
+  });
+
+const campaignStructureSchema = z
+  .object({
+    /**
+     * OPTIONAL since 0.8.11, and the reason matters: `derived_labels` exists
+     * precisely FOR the accounts whose campaign names do not split
+     * positionally, so requiring a naming pattern in order to record derived
+     * labels demanded the one thing those accounts cannot supply. Because
+     * loadBrandContext throws on a validation failure, that made "accept the
+     * health check's offer to classify your campaigns" a way to take every
+     * skill for the brand offline until someone hand-repaired the YAML.
+     */
+    naming_pattern: z.string().min(1).optional(),
+    account_codes: z.array(z.string()).default([]),
+    objectives: z.array(z.string()).optional(),
+    /**
+     * Fallback labels for the dimensions the operator left empty in the
+     * platform. The raw warehouse column always wins where it is filled; these
+     * only fill gaps. Keyed by seller id, because one brand can span several
+     * sellers and a campaign id is only unique within one.
+     */
+    derived_labels: z.record(z.string(), derivedLabelsForSellerSchema).optional(),
+  })
+  .refine((v) => v.naming_pattern !== undefined || v.derived_labels !== undefined, {
+    // Both may be absent by omitting the block entirely; what is not useful is
+    // a campaign_structure that claims to describe campaign structure and
+    // describes neither, which is how a half-written edit would look.
+    message:
+      'campaign_structure needs either naming_pattern or derived_labels. Omit the whole block ' +
+      'if the account has neither.',
+    path: ['naming_pattern'],
+  });
 
 const negationSchema = z.object({
   protected_terms: z.array(z.string()).default([]),

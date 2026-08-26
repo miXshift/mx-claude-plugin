@@ -229,6 +229,27 @@ shapes:
       Skills that parse CampaignName (mx-search-term-harvest, mx-daily-health-check
       dimensional tables) must use this pattern, not hardcoded splits.
 
+      derived_labels (optional) is the fallback for accounts whose campaign names
+      do NOT split positionally, which is most of them. Rather than a pattern, it
+      stores the buckets a user CONFIRMED, as explicit campaign ids, per seller:
+
+        derived_labels:
+          "71":
+            objective:
+              confirmed_at: "2026-08-26"
+              buckets:
+                Non-Brand: [1234, 1235]
+                Brand: [1240]
+            item_group:
+              buckets:
+                Hydration: [1234]
+
+      Used only where the warehouse column is EMPTY -- an operator's own label
+      always wins -- and only to group an existing query, never to write back to
+      the warehouse. Bucket names may contain letters, digits, spaces and
+      . _ / & + - (max 64 chars); anything else is refused, because these values
+      are composed into SQL.
+
   negation:
     required: [protected_terms, lane_rules]
     optional: [competitor_brands, asin_negation]

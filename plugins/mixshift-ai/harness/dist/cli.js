@@ -44327,7 +44327,7 @@ function normalizeLegacyTacosFields(raw) {
   delete normalizedMgmt.tacos_target_pct;
   return { ...obj, management: normalizedMgmt };
 }
-var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, structuralEventSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
+var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
 var init_schema2 = __esm({
   "src/lib/context/schema.ts"() {
     "use strict";
@@ -44422,10 +44422,79 @@ var init_schema2 = __esm({
       message: "a structural event of type 'other' requires a kind (what the event is, as a lowercase snake_case slug)",
       path: ["kind"]
     });
+    derivedLabelMapSchema = external_exports.object({
+      // These ids are hand-written into YAML, where `71` and `"71"` look identical
+      // to a person and parse differently, and rejecting the quoted form would fail
+      // the WHOLE context file (loadBrandContext throws) and take every skill for
+      // the brand offline. So the quoted form is accepted -- but NOT via
+      // z.coerce.number(), which is far too generous: it turns `'0x10'` into 16,
+      // `'1e3'` into 1000, `true` into 1 and `[5]` into 5, any of which would
+      // silently label the wrong campaign. Accept a real number, or a string that
+      // is nothing but digits, and nothing else.
+      buckets: external_exports.record(
+        external_exports.string(),
+        external_exports.array(
+          external_exports.union([external_exports.number(), external_exports.string().regex(/^\d+$/, "campaign id must be digits only")]).transform(Number).pipe(external_exports.number().int().positive().safe())
+        )
+      ).default({}),
+      confirmed_at: external_exports.string().optional()
+    });
+    SAFE_BUCKET_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._/&+-]{0,63}$/;
+    derivedLabelsForSellerSchema = external_exports.object({
+      objective: derivedLabelMapSchema.optional(),
+      item_group: derivedLabelMapSchema.optional()
+    }).strict().superRefine((val, ctx) => {
+      for (const [dimension, map2] of Object.entries(val)) {
+        if (!map2) continue;
+        const seen = /* @__PURE__ */ new Map();
+        for (const [label, ids] of Object.entries(map2.buckets ?? {})) {
+          if (!SAFE_BUCKET_LABEL.test(label)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [dimension, "buckets", label],
+              message: `Bucket name ${JSON.stringify(label)} cannot be used: names may contain only letters, digits, spaces and . _ / & + - (max 64 characters), because they are used to build the report query. Rename the bucket.`
+            });
+          }
+          for (const id of ids ?? []) {
+            const prior = seen.get(id);
+            if (prior && prior !== label) {
+              ctx.addIssue({
+                code: "custom",
+                path: [dimension, "buckets", label],
+                message: `Campaign ${id} is in both ${JSON.stringify(prior)} and ${JSON.stringify(label)}. Each campaign belongs to exactly one bucket per dimension.`
+              });
+            }
+            seen.set(id, label);
+          }
+        }
+      }
+    });
     campaignStructureSchema = external_exports.object({
-      naming_pattern: external_exports.string().min(1),
+      /**
+       * OPTIONAL since 0.8.11, and the reason matters: `derived_labels` exists
+       * precisely FOR the accounts whose campaign names do not split
+       * positionally, so requiring a naming pattern in order to record derived
+       * labels demanded the one thing those accounts cannot supply. Because
+       * loadBrandContext throws on a validation failure, that made "accept the
+       * health check's offer to classify your campaigns" a way to take every
+       * skill for the brand offline until someone hand-repaired the YAML.
+       */
+      naming_pattern: external_exports.string().min(1).optional(),
       account_codes: external_exports.array(external_exports.string()).default([]),
-      objectives: external_exports.array(external_exports.string()).optional()
+      objectives: external_exports.array(external_exports.string()).optional(),
+      /**
+       * Fallback labels for the dimensions the operator left empty in the
+       * platform. The raw warehouse column always wins where it is filled; these
+       * only fill gaps. Keyed by seller id, because one brand can span several
+       * sellers and a campaign id is only unique within one.
+       */
+      derived_labels: external_exports.record(external_exports.string(), derivedLabelsForSellerSchema).optional()
+    }).refine((v) => v.naming_pattern !== void 0 || v.derived_labels !== void 0, {
+      // Both may be absent by omitting the block entirely; what is not useful is
+      // a campaign_structure that claims to describe campaign structure and
+      // describes neither, which is how a half-written edit would look.
+      message: "campaign_structure needs either naming_pattern or derived_labels. Omit the whole block if the account has neither.",
+      path: ["naming_pattern"]
     });
     negationSchema = external_exports.object({
       protected_terms: external_exports.array(external_exports.string()).default([]),
@@ -71398,6 +71467,9 @@ function buildCallSql(sprocName) {
 }
 async function runDispatched(id, opts = {}) {
   const entry = await getQueryEntry(id);
+  if (opts.sqlOverride) {
+    return runSqlText(id, opts.sqlOverride, opts, "derived_labels");
+  }
   if (entry.dispatch === "named") {
     const localSql = await resolveLocalNamedSql(id, entry.sproc);
     if (localSql !== void 0) {
@@ -82413,6 +82485,87 @@ function readNumberFromUnknownObject(obj, key, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+// src/lib/labels/derived-labels.ts
+var LABEL_QUERY_COLUMNS = {
+  "DHC-07": { dimension: "objective", column: "Objective" },
+  "DHC-08": { dimension: "item_group", column: "ItemGroup" }
+};
+var UNCLASSIFIED = "(unclassified)";
+var SAFE_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._/&+-]{0,63}$/;
+var MAX_MAPPED_CAMPAIGNS = 5e3;
+var UnsafeLabelError = class extends Error {
+  constructor(label) {
+    super(
+      `Refusing to build a query from the label ${JSON.stringify(label)}: labels may contain only letters, digits, spaces and . _ / & + - (max 64 chars). Rename the bucket and re-confirm.`
+    );
+    this.name = "UnsafeLabelError";
+  }
+};
+function assertCampaignIds(ids, label) {
+  const out = [];
+  for (const raw of ids) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isInteger(n) || n <= 0 || !Number.isSafeInteger(n)) {
+      throw new UnsafeLabelError(`${label} -> campaign id ${String(raw)}`);
+    }
+    out.push(n);
+  }
+  return out;
+}
+function buildGroupingExpression(map2, column, tableAlias = "c") {
+  if (!map2) return null;
+  const entries = Object.entries(map2.buckets ?? {}).filter(([, ids]) => ids?.length);
+  if (entries.length === 0) return null;
+  assertIdentifier(column, tableAlias);
+  const totalIds = entries.reduce((n, [, ids]) => n + ids.length, 0);
+  if (totalIds > MAX_MAPPED_CAMPAIGNS) {
+    throw new UnsafeLabelError(
+      `${totalIds} campaign ids across ${entries.length} buckets (limit ${MAX_MAPPED_CAMPAIGNS})`
+    );
+  }
+  const raw = `NULLIF(${tableAlias}.${column}, '')`;
+  const whens = [];
+  const claimed = /* @__PURE__ */ new Map();
+  for (const [label, ids] of entries) {
+    if (!SAFE_LABEL.test(label)) throw new UnsafeLabelError(label);
+    const safeIds = assertCampaignIds(ids, label);
+    for (const id of safeIds) {
+      const prior = claimed.get(id);
+      if (prior && prior !== label) {
+        throw new UnsafeLabelError(`campaign ${id} is in both ${prior} and ${label}`);
+      }
+      claimed.set(id, label);
+    }
+    whens.push(
+      `WHEN ${tableAlias}.ID IN (${safeIds.join(",")}) THEN '${label}'`
+    );
+  }
+  return `COALESCE(${raw}, CASE ${whens.join(" ")} ELSE '${UNCLASSIFIED}' END)`;
+}
+function applyDerivedGrouping(sql, column, expression, tableAlias = "c") {
+  assertIdentifier(column, tableAlias);
+  const original = new RegExp(
+    `COALESCE\\(\\s*NULLIF\\(\\s*${tableAlias}\\.${column}\\s*,\\s*''\\s*\\)\\s*,\\s*${escapeRegExp2(`'${UNCLASSIFIED}'`)}\\s*\\)`,
+    "g"
+  );
+  const executable = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const realMatches = executable.match(original);
+  if (!realMatches || realMatches.length < 2) {
+    throw new Error(
+      `Cannot apply derived labels to this query: expected the COALESCE(NULLIF(${tableAlias}.${column},''),'${UNCLASSIFIED}') expression in both the SELECT and the GROUP BY, found ${realMatches?.length ?? 0} outside comments. The pack's shape changed; update lib/labels/derived-labels.ts rather than shipping a query whose grouping and labelling disagree.`
+    );
+  }
+  return sql.replace(original, () => expression);
+}
+function escapeRegExp2(literal2) {
+  return literal2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function assertIdentifier(...names) {
+  for (const n of names) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) throw new UnsafeLabelError(n);
+  }
+}
+
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir18, writeFile as writeFile18, rename as rename16 } from "node:fs/promises";
@@ -82437,6 +82590,7 @@ async function writePrefetchArtifacts(input) {
         ...q.purpose ? { purpose: q.purpose } : {},
         ...q.revision ? { revision: q.revision } : {},
         ...q.applied_params ? { applied_params: q.applied_params } : {},
+        ...q.used_dispatch ? { used_dispatch: q.used_dispatch } : {},
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows
@@ -82504,6 +82658,11 @@ function renderQuerySection(q) {
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
   if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
   if (q.applied_params) lines.push(`- **Applied params**: ${q.applied_params.join(", ")}`);
+  if (q.used_dispatch === "derived_labels") {
+    lines.push(
+      "- **Grouping**: from the CONFIRMED derived labels for this brand, not the warehouse column. Rows whose label the account never filled in were grouped by the scheme the user approved. Say so when presenting this table."
+    );
+  }
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }
@@ -82582,6 +82741,25 @@ async function runPrefetch(opts) {
     lensDecisions.push(lens.decision);
     return Object.keys(lens.params).length > 0 ? { ...params, ...lens.params } : params;
   };
+  const derivedByQueryId = /* @__PURE__ */ new Map();
+  const derivedSellerKey = String(params.seller_id ?? "");
+  const derivedForSeller = context.campaign_structure?.derived_labels?.[derivedSellerKey];
+  if (derivedForSeller) {
+    for (const [queryId, { dimension, column }] of Object.entries(LABEL_QUERY_COLUMNS)) {
+      if (!manifest.sql_ids.includes(queryId)) continue;
+      try {
+        const expression = buildGroupingExpression(derivedForSeller[dimension], column);
+        if (!expression) continue;
+        const { sql } = await readQuerySql(queryId);
+        derivedByQueryId.set(queryId, applyDerivedGrouping(sql, column, expression));
+      } catch (err) {
+        process.stderr.write(
+          `warning: derived labels not applied to ${queryId}: ${err instanceof Error ? err.message : String(err)}
+`
+        );
+      }
+    }
+  }
   const rounds = resolveBatchPlan(manifest);
   const queryOutputs = [];
   const perQueryResults = [];
@@ -82589,7 +82767,7 @@ async function runPrefetch(opts) {
   for (const round of rounds) {
     const settled = await Promise.all(
       round.parallel.map(
-        (id) => executeOne(id, paramsFor(id), opts.dataDirOverride).catch((err) => {
+        (id) => executeOne(id, paramsFor(id), opts.dataDirOverride, derivedByQueryId.get(id)).catch((err) => {
           if (err instanceof MissingParamsError) {
             return {
               id,
@@ -82729,10 +82907,11 @@ function buildPrefetchLensWarnings(decisions, results, slug) {
   }
   return warnings;
 }
-async function executeOne(id, allParams, dataDirOverride) {
+async function executeOne(id, allParams, dataDirOverride, sqlOverride) {
   const result = await runDispatched(id, {
     params: allParams,
-    dataDirOverride
+    dataDirOverride,
+    sqlOverride
   });
   if (!result.ok) {
     return { id, ok: false, queryResult: result.failure };
@@ -82754,7 +82933,8 @@ async function executeOne(id, allParams, dataDirOverride) {
       display_sql: result.displaySql,
       purpose,
       revision: result.revision,
-      applied_params: result.appliedParams
+      applied_params: result.appliedParams,
+      used_dispatch: result.usedDispatch
     }
   };
 }
