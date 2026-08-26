@@ -84300,10 +84300,17 @@ async function resolveActorEmail(dataDirOverride) {
 init_telemetry();
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
-    "Send feedback to MixShift ops (bug reports, feature requests, comments)."
+    "Send feedback to MixShift ops (bug reports, feature requests, comments, capability gaps)."
   ).option(
     "--category <cat>",
-    "bug | feature_request | comment | other",
+    // capability_gap: the user needed something MixShift has no operation for,
+    // so the work went somewhere else (usually hand-keying in Amazon's
+    // console). It is its own category because nothing else records it: the
+    // CLI refuses an uncataloged operation id BEFORE issuing a request, so a
+    // gap the agent correctly routes around emits no event at all. The better
+    // the agent behaves, the more invisible the gap -- twice in Aug 2026 the
+    // only reason we learned of one was a human choosing to type it out.
+    "bug | feature_request | comment | capability_gap | other",
     "comment"
   ).option("--skill <id>", "which skill triggered this (context)").option("--command <cmd>", "which command triggered this (context)").option("--brand <slug>", "which brand was involved (context)").action(
     async (message, opts, cmd) => {

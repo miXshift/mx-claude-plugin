@@ -1,12 +1,14 @@
 schema_version: 1
 skill_id: feedback
 display_name: Send Feedback to MixShift
-version: "0.1.2"
+version: "0.2.0"
 description: >
   Entry point for sending feedback to MixShift, and for catching complaints or
   frustration about the plugin even when the user does not say "feedback" (e.g.
   "this is broken", "this is too slow", "it feels broken", "this is confusing").
-  Covers bug reports, feature requests, and comments. Routes through the
+  Covers bug reports, feature requests, comments, and capability gaps (a step
+  the user needed that no MixShift operation covers, so the work had to leave
+  MixShift). Routes through the
   `mixshift feedback` CLI, which sends to the MixShift Discord ops channel +
   records the feedback in Supabase for the engineering team to triage and act
   on. The skill confirms before sending. Works alongside any other skill;
@@ -24,7 +26,7 @@ review_required: never
 sql_ids: []
 
 harness_commands:
-  - mixshift feedback "<message>" --category <bug|feature_request|comment|other>
+  - mixshift feedback "<message>" --category <bug|feature_request|comment|capability_gap|other>
 
 required_context_fields: []
 optional_context_fields: []

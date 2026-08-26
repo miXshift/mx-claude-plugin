@@ -5,7 +5,37 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.11
 
+### Added
+
+- **Sponsored Brands ads can now be created from MixShift.** Ask for the ad and
+  it gets built: brand video, video, product collection, or store spotlight.
+  Until now MixShift could read every part of a Sponsored Brands account and
+  build a whole plan, but had no way to create the ad itself, so the last step
+  had to be keyed into the Amazon console by hand. Creating an ad group is
+  covered too. Amazon treats each ad type as its own thing with its own
+  creative, so the MixShift skill now lays out which fields belong to which
+  type, in what order to build, and the two rules that decide whether Amazon
+  accepts the ad: the video and logo have to already exist in your Creative
+  Asset Library, and every advertised product has to appear on the Store page
+  you are sending shoppers to. Preview first, as with every other write.
+
+- **You can now tell MixShift when it could not do something at all.** Feedback
+  gained a "capability gap" type for the case where MixShift had no way to do a
+  step and the work had to happen somewhere else. Your assistant raises it on
+  its own when it hits one, and asks before sending anything. This is the one
+  kind of problem that leaves no trace otherwise, because nothing fails: the
+  work just quietly moves to another tool, and we never find out it was needed.
+
 ### Fixed
+
+- **The Sponsored Brands documentation no longer describes operations that do
+  not exist, or fields that a campaign will not accept.** The skill listed two
+  ad-creation operations that were never available, which meant a plan could be
+  built around them and only fall over at the last step. It also listed
+  creative and ad-format fields on the campaign itself, which Amazon moved onto
+  the ad. Both are corrected, and a release check now compares every operation
+  named in the documentation against the ones that actually exist, so this
+  cannot ship again.
 
 - **Monthly Performance Report Max now takes each figure's unit from the
   analysis engine instead of a list kept inside the plugin.** The engine

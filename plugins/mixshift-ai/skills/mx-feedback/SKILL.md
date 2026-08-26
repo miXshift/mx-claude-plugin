@@ -7,13 +7,17 @@ description: >
   "it feels broken", "this isn't working", "this is confusing", "I wish this
   could do X". Covers bug reports, feature requests, and comments. Fire on the
   complaint and route it here; the skill always confirms with the user before
-  sending anything. Routes through `mixshift feedback`, which posts to MixShift
+  sending anything. ALSO fire without any complaint at all when YOU hit a
+  capability gap: you were working on the user's task, no MixShift operation
+  could do a step, and you had to send them to the Amazon console or another
+  tool to finish it. That is a `capability_gap` report and the user will usually
+  never think to file it, because from their side the job got done. Routes through `mixshift feedback`, which posts to MixShift
   ops in real time and records it for engineering triage. Works mid-session
   alongside any other skill. For "how do I fix X" where the user wants to solve a
   setup problem, that is mx-help; this skill is for reporting and venting, not
   troubleshooting.
 metadata:
-  version: "0.1.2"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - send feedback
@@ -89,6 +93,59 @@ This captures the friction *signal* even when the user declines (or ignores) the
 
 You can also invoke this skill **mid-session** if the user expresses frustration or asks for something the plugin doesn't currently do. Don't make the user wait until the end of the session to file feedback.
 
+### Detect capability gaps (the signal nobody else can send)
+
+This one does not come from the user. It comes from **you noticing what you could not do.**
+
+A capability gap is when the user had a concrete goal, a step of it had no MixShift
+operation behind it, and you had to send them to the Amazon console, a spreadsheet, or
+another tool to finish. The user usually will not report it, because from where they sit
+the job got done. They may not even realize a piece of it happened outside MixShift.
+
+**Nothing else records this.** For catalog-driven work the CLI refuses an operation id it
+does not have *before* it issues any request, so a gap you correctly route around produces
+no error, no failed call, and no telemetry of any kind. The better you handle it, the more
+invisible it is. Twice in August 2026 the only reason MixShift learned about a missing
+Sponsored Brands operation was a person choosing, unprompted, to type it out.
+
+**File one when all four are true:**
+
+1. The user had a real goal in this session (not a hypothetical or an aside).
+2. You checked and no cataloged operation covers the step. Actually check, for example with
+   `mixshift ads operations` or `mixshift amazon spapi operations`, rather than assuming.
+3. Finishing required leaving MixShift, or the step was abandoned.
+4. The blocker is a MISSING capability, not a failure of an existing one.
+
+**Do NOT file one when:**
+
+- An operation exists but errored, was throttled, or was rejected by Amazon. That is a `bug`.
+- The user lacks permission, a connected account, or a credential. That is a setup problem;
+  route to mx-help.
+- The request is outside what MixShift is for.
+- You already filed the same gap earlier in this session. Once per gap per session.
+
+**Say it plainly, then send on a yes.** Address the task first, then:
+
+> "One thing worth flagging: MixShift has no operation for creating Sponsored Brands video
+> ads, which is why I sent you to the console for that last step. Want me to report it so
+> the team can add it? Takes 2 seconds."
+
+Then, with the user's go-ahead:
+
+```bash
+mixshift feedback "<what the user was trying to do, the specific operation or capability that
+was missing, and what they had to do instead>" \
+  --category capability_gap \
+  --skill <current-skill-id> \
+  --brand <brand-slug>
+```
+
+**Write the message so it can be acted on without you.** The single most useful thing is the
+user's goal in their own terms plus the exact missing capability. "Wanted to place 12 video
+creatives into 8 live SB video ad groups; there is no SB ad-creation operation, so the whole
+plan was built from API reads and then hand-keyed into the console" is worth more than "SB ad
+creation is missing", because it carries the size of the loss and where it stopped.
+
 ## Prerequisites
 
 - The user must have signed in (`mixshift auth login`) so we have an email to attach to the feedback. If they're not signed in, surface that and offer to walk them through the mx-auth-login skill first. (Without an email, the harness rejects feedback with a clear error — but it's friendlier to catch this upfront.)
@@ -101,12 +158,13 @@ If the user already said what they want to send (e.g. "send feedback to mixshift
 
 > What's the feedback? I can categorize it as a bug, feature request, or general comment — or just tell me what's going on and I'll figure out the right tag.
 
-Classify into one of four categories based on the user's wording:
+Classify into one of five categories based on the user's wording:
 
 | Category | When |
 |---|---|
 | `bug` | Something is broken / wrong / not working as expected |
 | `feature_request` | "I wish this could…", "can you add…", "would be great if…" |
+| `capability_gap` | A step of the user's task had no MixShift operation, so the work had to leave MixShift (see below). Classified from YOUR experience of the task, not the user's wording |
 | `comment` | General observation, praise, "FYI", neutral notes |
 | `other` | Doesn't cleanly fit the above |
 

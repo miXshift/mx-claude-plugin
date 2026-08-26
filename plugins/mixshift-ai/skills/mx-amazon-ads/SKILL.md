@@ -578,9 +578,38 @@ audit id is their undo path.
 - Updates: `sb.update_keywords` (bid and state), `sb.update_targets` (bid and
   state on SB product and category targets), `sb.update_negative_targets`
   (state, which is how you retire one).
-- Creation: `sb.create_campaigns`, `sb.create_ad_groups`, `sb.create_ads`,
-  `sb.create_keywords`, `sb.create_negative_keywords`, `sb.create_targets`,
-  `sb.create_negative_targets`.
+- Creation: `sb.create_campaigns`, `sb.create_ad_groups`, `sb.create_keywords`,
+  `sb.create_negative_keywords`, `sb.create_targets`, `sb.create_negative_targets`,
+  plus the four ad-creation operations below.
+
+**Creating an SB ad: pick the operation that matches the ad TYPE.** There is no
+single "create ad" call. Amazon gives each Sponsored Brands ad type its own
+endpoint, and their creatives are genuinely different shapes, so sending one
+type's fields to another is the most common validation failure:
+
+| operation | ad type | creative carries | landing page |
+| --- | --- | --- | --- |
+| `sb.create_brand_video_ads` | brand video | `asins`, `videoAssetIds`, brand logo, `headline` | Store |
+| `sb.create_video_ads` | video | `asins`, `videoAssetIds` only | product detail page |
+| `sb.create_product_collection_ads` | product collection | `asins`, brand logo, `headline`, `customImages` | Store |
+| `sb.create_store_spotlight_ads` | store spotlight | brand logo, `headline`, `subpages` (no top-level `asins`) | Store |
+
+Three things that decide whether the commit succeeds:
+
+- **Build in order:** campaign, then ad group, then keywords or targets, then the
+  ad. An SB ad group carries no bid of its own; bids live on the keywords and
+  targets inside it.
+- **Assets must already exist.** `videoAssetIds` and `brandLogoAssetID` are
+  Creative Asset Library ids (they look like
+  `amzn1.assetlibrary.asset1.<hash>:version_v1`). These operations attach
+  existing assets, they do not upload new ones, so upload in the Amazon console
+  first and read the ids back with `sb.list_ads`.
+- **Store landing pages gate the ASINs.** For any type whose landing page is a
+  Store, every advertised ASIN has to appear on that Store page or Amazon
+  rejects the ad. Check the Store page before committing.
+
+Always dry run an SB ad creation before committing. SB creative validation is
+strict, and the preview is where you find out cheaply.
 
 `sb.update_targets` is what to route a Sponsored Brands product-target bid
 change to. Before it existed, an account running SB product targeting had no
