@@ -22,6 +22,19 @@ starts at 0.5.39; earlier versions predate the changelog.
   the creative when the change is committed rather than during the preview, so
   commit one ad first and add the rest once it goes through.
 
+- **The daily health check can now break spend down by objective even when
+  your account never filled that field in.** Most accounts leave the Objective
+  and Item Group fields empty in the platform, so both breakdowns collapsed to
+  a single "unclassified" row holding all the spend: accurate, and no use for
+  deciding anything. When more than about a third of your spend is unlabelled,
+  the health check now offers to sort it out: it reads your campaign names,
+  proposes a set of buckets, and shows them to you to rename, merge or reject
+  before anything is used. Confirmed buckets are remembered against the brand,
+  so later runs pick them up, and new campaigns get caught the same way. A
+  label somebody actually typed in the platform always wins over a proposed
+  one, and nothing is written back to the platform or to Amazon: this changes
+  how the report groups, and nothing else.
+
 - **You can now tell MixShift when it could not do something at all.** Feedback
   gained a "capability gap" type for the case where MixShift had no way to do a
   step and the work had to happen somewhere else. Your assistant raises it on
