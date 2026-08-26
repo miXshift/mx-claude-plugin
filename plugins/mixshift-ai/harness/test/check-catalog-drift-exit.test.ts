@@ -143,14 +143,78 @@ describe('check-catalog-drift exit codes', () => {
     expect(r.status).toBe(0);
   });
 
-  it('only treats a BACKTICKED token as a capability claim', () => {
-    // Prose that mentions an operation in passing is not a promise. Flagging
-    // it would train people to ignore the gate, which is worse than not
-    // having one.
+  it('ignores bare prose but CATCHES a runnable command in a fenced block', () => {
+    // Two halves of one rule. Prose mentioning an operation is not a promise,
+    // and flagging it would train people to ignore the gate. But a
+    // copy-pasteable command IS the strongest promise the docs can make, and
+    // matching only backticks missed every one of them -- the original defect
+    // (`sb.create_ads`) was caught only because it happened to be written
+    // inline. Had it been written as a fenced example, this gate would have
+    // passed it.
     writeCatalog(['sb.create_targets']);
     writeSkill('mx-amazon-ads', 'There is no sb.create_ads operation yet; use `sb.create_targets`.');
+    expect(run().status, 'bare prose is not a claim').toBe(0);
+
+    writeSkill(
+      'mx-amazon-ads',
+      ['Run it:', '', '```bash', 'mixshift ads call sb.create_ads --commit', '```'].join('\n'),
+    );
     const r = run();
-    expect(r.status).toBe(0);
+    expect(r.status, 'a runnable command IS a claim').toBe(1);
+    expect(r.stderr).toContain('sb.create_ads');
+  });
+
+  it('does not count a commented-out catalog entry as a live capability', () => {
+    // Commenting an entry out is the likeliest way an operation gets retired.
+    // A raw regex over the source keeps counting it, so the gate would certify
+    // a capability the service refuses at runtime -- the exact case it exists
+    // to catch, inverted.
+    writeFileSync(
+      join(catalogDir, 'ads-operations.ts'),
+      [
+        'export const ADS_OPERATIONS = [',
+        "  { id: 'sb.create_targets', method: 'POST' },",
+        "  // { id: 'sb.create_ads', method: 'POST' },  // DISABLED: endpoint retired",
+        '];',
+        "/* { id: 'sb.create_video_ads' } */",
+      ].join('\n'),
+      'utf8',
+    );
+    writeSkill('mx-amazon-ads', 'Use `sb.create_ads` and `sb.create_video_ads`.');
+    const r = run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('sb.create_ads');
+    expect(r.stderr).toContain('sb.create_video_ads');
+  });
+
+  it('fails closed when the docs side yields too few claims to be a real check', () => {
+    // The mirror of the catalog-side guard, and the one that was missing: an
+    // empty or mis-pointed skills dir reported "0 missing" and exited 0. A
+    // partially-loaded catalog lands in the same place, because the namespace
+    // filter silently drops every reference belonging to a file that was not
+    // read. Both mean "not fully compared", never "they agree".
+    writeCatalog(['sb.create_targets']);
+    writeSkill('mx-amazon-ads', 'Uses `sb.create_targets`.');
+    const r = run({ MIXSHIFT_DRIFT_MIN_CLAIMS: '40' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/below the floor/i);
+  });
+
+  it('reads operation ids out of skill manifests, not just markdown', () => {
+    // skill.manifest.yaml lists harness_commands naming operation ids. Those
+    // are capability claims that the docs gate never looked at.
+    writeCatalog(['sb.create_targets']);
+    const dir = join(skillsDir, 'mx-amazon-ads');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), 'See the manifest.', 'utf8');
+    writeFileSync(
+      join(dir, 'skill.manifest.yaml'),
+      ['harness_commands:', '  - mixshift ads call sb.create_ads --commit'].join('\n'),
+      'utf8',
+    );
+    const r = run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('skill.manifest.yaml');
   });
 
   it('scans nested skill docs, not just top-level SKILL.md', () => {

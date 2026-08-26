@@ -17,7 +17,10 @@ starts at 0.5.39; earlier versions predate the changelog.
   type, in what order to build, and the two rules that decide whether Amazon
   accepts the ad: the video and logo have to already exist in your Creative
   Asset Library, and every advertised product has to appear on the Store page
-  you are sending shoppers to. Preview first, as with every other write.
+  you are sending shoppers to. Uploading a new video or logo is still done in
+  the Amazon console; MixShift attaches assets that already exist. Amazon checks
+  the creative when the change is committed rather than during the preview, so
+  commit one ad first and add the rest once it goes through.
 
 - **You can now tell MixShift when it could not do something at all.** Feedback
   gained a "capability gap" type for the case where MixShift had no way to do a
@@ -33,9 +36,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   ad-creation operations that were never available, which meant a plan could be
   built around them and only fall over at the last step. It also listed
   creative and ad-format fields on the campaign itself, which Amazon moved onto
-  the ad. Both are corrected, and a release check now compares every operation
-  named in the documentation against the ones that actually exist, so this
-  cannot ship again.
+  the ad. Both are corrected, and every release now checks that each operation
+  named in the documentation is one that actually exists.
 
 - **Monthly Performance Report Max now takes each figure's unit from the
   analysis engine instead of a list kept inside the plugin.** The engine

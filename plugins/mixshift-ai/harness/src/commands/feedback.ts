@@ -35,6 +35,21 @@ interface RootOptions {
  * inside the action handler. The cli.ts finally-block still runs after
  * us; it's just a no-op because we've already drained the queue.
  */
+/**
+ * The valid `--category` values, as DATA rather than only as a type. The type
+ * union is erased at compile time and commander accepts any string, so a
+ * runtime list is what actually keeps a typo out of the telemetry payload.
+ */
+export const FEEDBACK_CATEGORIES = [
+  'bug',
+  'feature_request',
+  'comment',
+  'capability_gap',
+  'other',
+] as const;
+
+export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
+
 export function registerFeedbackCommand(program: Command): void {
   program
     .command('feedback <message>')
@@ -45,10 +60,12 @@ export function registerFeedbackCommand(program: Command): void {
       '--category <cat>',
       // capability_gap: the user needed something MixShift has no operation for,
       // so the work went somewhere else (usually hand-keying in Amazon's
-      // console). It is its own category because nothing else records it: the
-      // CLI refuses an uncataloged operation id BEFORE issuing a request, so a
-      // gap the agent correctly routes around emits no event at all. The better
-      // the agent behaves, the more invisible the gap -- twice in Aug 2026 the
+      // console). It is its own category because of what does NOT get recorded.
+      // An uncataloged id that is actually ATTEMPTED is refused by the service,
+      // and that failure is captured. What is captured nowhere is the commoner
+      // path: the agent lists the operations, correctly finds nothing, and
+      // routes around it -- no call, so no failure, so no record. The better
+      // the agent behaves, the more invisible the gap. Twice in Aug 2026 the
       // only reason we learned of one was a human choosing to type it out.
       'bug | feature_request | comment | capability_gap | other',
       'comment',
@@ -60,7 +77,7 @@ export function registerFeedbackCommand(program: Command): void {
       async (
         message: string,
         opts: {
-          category: 'bug' | 'feature_request' | 'comment' | 'capability_gap' | 'other';
+          category: FeedbackCategory;
           skill?: string;
           command?: string;
           brand?: string;
@@ -68,6 +85,30 @@ export function registerFeedbackCommand(program: Command): void {
         cmd: Command,
       ) => {
         const root = cmd.optsWithGlobals<RootOptions>();
+
+        // Validate the category, the way `timeline add` validates stake
+        // categories. The union above is compile-time only and commander takes
+        // any string, so `capabilty_gap` or `capability-gap` used to land in the
+        // payload and stay there: the report is filed, looks fine, and is
+        // invisible to every query that groups by category. For a signal whose
+        // whole premise is "nothing else records this", a silently
+        // miscategorised report is as lost as an unfiled one. Fail loudly and
+        // name the valid set rather than guessing at a correction.
+        if (!FEEDBACK_CATEGORIES.includes(opts.category)) {
+          const invalid =
+            `--category must be one of: ${FEEDBACK_CATEGORIES.join(', ')} ` +
+            `(got '${opts.category}').`;
+          if (root.json) {
+            process.stdout.write(
+              JSON.stringify({ status: 'error', message: invalid }, null, 2) + '\n',
+            );
+          } else {
+            process.stderr.write(`error: ${invalid}\n`);
+          }
+          process.exitCode = 1;
+          return;
+        }
+
         try {
           // Resolve the best-known identity, but NEVER block on it: feedback is
           // a solicited send, so a missing email must not drop the message. (It

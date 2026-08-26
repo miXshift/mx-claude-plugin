@@ -84298,6 +84298,13 @@ async function resolveActorEmail(dataDirOverride) {
 
 // src/commands/feedback.ts
 init_telemetry();
+var FEEDBACK_CATEGORIES = [
+  "bug",
+  "feature_request",
+  "comment",
+  "capability_gap",
+  "other"
+];
 function registerFeedbackCommand(program3) {
   program3.command("feedback <message>").description(
     "Send feedback to MixShift ops (bug reports, feature requests, comments, capability gaps)."
@@ -84305,16 +84312,31 @@ function registerFeedbackCommand(program3) {
     "--category <cat>",
     // capability_gap: the user needed something MixShift has no operation for,
     // so the work went somewhere else (usually hand-keying in Amazon's
-    // console). It is its own category because nothing else records it: the
-    // CLI refuses an uncataloged operation id BEFORE issuing a request, so a
-    // gap the agent correctly routes around emits no event at all. The better
-    // the agent behaves, the more invisible the gap -- twice in Aug 2026 the
+    // console). It is its own category because of what does NOT get recorded.
+    // An uncataloged id that is actually ATTEMPTED is refused by the service,
+    // and that failure is captured. What is captured nowhere is the commoner
+    // path: the agent lists the operations, correctly finds nothing, and
+    // routes around it -- no call, so no failure, so no record. The better
+    // the agent behaves, the more invisible the gap. Twice in Aug 2026 the
     // only reason we learned of one was a human choosing to type it out.
     "bug | feature_request | comment | capability_gap | other",
     "comment"
   ).option("--skill <id>", "which skill triggered this (context)").option("--command <cmd>", "which command triggered this (context)").option("--brand <slug>", "which brand was involved (context)").action(
     async (message, opts, cmd) => {
       const root = cmd.optsWithGlobals();
+      if (!FEEDBACK_CATEGORIES.includes(opts.category)) {
+        const invalid = `--category must be one of: ${FEEDBACK_CATEGORIES.join(", ")} (got '${opts.category}').`;
+        if (root.json) {
+          process.stdout.write(
+            JSON.stringify({ status: "error", message: invalid }, null, 2) + "\n"
+          );
+        } else {
+          process.stderr.write(`error: ${invalid}
+`);
+        }
+        process.exitCode = 1;
+        return;
+      }
       try {
         const userEmail = await resolveActorEmail(root.dataDir);
         await track(
