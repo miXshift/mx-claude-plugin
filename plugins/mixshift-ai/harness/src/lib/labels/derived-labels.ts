@@ -2,18 +2,17 @@
  * Derived campaign labels: the fallback that makes the Objective and Item Group
  * breakdowns useful on accounts that never filled those columns in.
  *
- * THE PROBLEM (measured 2026-08-26 across 35 tenant warehouses, 388,165
- * campaigns): `campaign.Objective` is filled on 1.09% of campaigns, and only 7
- * of 35 tenants have ANY. `ItemGroup` is 2.99%. The columns are operator-typed
- * free text and almost nobody types them. DHC-07 and DHC-08 group by those
- * columns, so on a typical account the entire per-Objective table collapses to
- * one `(unclassified)` row: correct, and operationally useless, on an account
- * that may be spending thousands a day.
+ * THE PROBLEM: `campaign.Objective` and `ItemGroup` are operator-typed free
+ * text in the platform, and the large majority of accounts never fill them in
+ * (measured across customer warehouses; see decision D-039 for the figures).
+ * DHC-07 and DHC-08 group by those columns, so on a typical account the whole
+ * per-Objective table collapses to one `(unclassified)` row: correct, and
+ * operationally useless, on an account that may be spending thousands a day.
  *
  * THE FIX, and specifically why it is shaped this way (decision D-039):
- * campaign NAMES are not parseable positionally -- one tenant carries 4,429
- * distinct first tokens across four coexisting conventions, so no single
- * `naming_pattern` splits them -- but they are richly semantic, so an agent
+ * campaign NAMES are not parseable positionally -- a single account can carry
+ * thousands of distinct name shapes across several coexisting conventions, so
+ * no one `naming_pattern` splits them -- but they are semantic, so an agent
  * classifies them on sight and the USER CONFIRMS the resulting scheme. Those
  * confirmed labels live in brand context. This module turns them into the
  * GROUPING EXPRESSION for the existing queries.
@@ -24,8 +23,8 @@
  *     wherever it is filled; derived labels only fill the gap. Callers get one
  *     logical Objective, never `objective` beside `derived_objective`.
  *   - It does not write to the warehouse. There is no write path to
- *     `campaign.Objective` (the legacy app has 60 references to it and zero
- *     writes), and substitution happens at READ time.
+ *     `campaign.Objective` (the platform only ever reads and filters on that
+ *     column), and substitution happens at READ time.
  *   - It does not build a CASE over campaign-NAME patterns. A hardcoded CASE
  *     over name literals is the exact anti-pattern removed from CS-24/CS-14 in
  *     the 2026-08-03 audit: it bakes one agency's convention into shared SQL.
@@ -66,6 +65,9 @@ export const UNCLASSIFIED = '(unclassified)';
  * (`Non-Brand`, `Brand Defense`, `Top of Funnel`, `Auto/Catch-All`).
  */
 const SAFE_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._/&+-]{0,63}$/;
+
+/** Upper bound on ids in one dimension's map. See buildGroupingExpression. */
+const MAX_MAPPED_CAMPAIGNS = 5000;
 
 export class UnsafeLabelError extends Error {
   constructor(label: string) {
@@ -112,15 +114,36 @@ export function buildGroupingExpression(
   const entries = Object.entries(map.buckets ?? {}).filter(([, ids]) => ids?.length);
   if (entries.length === 0) return null;
 
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(column) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableAlias)) {
-    throw new UnsafeLabelError(`${tableAlias}.${column}`);
+  assertIdentifier(column, tableAlias);
+
+  // A ceiling on how much SQL a label map can generate. Real accounts sit well
+  // below this even at the top end, so anything approaching it is a malformed
+  // map rather than a real account; tens of thousands of ids would emit
+  // hundreds of KB of query text.
+  const totalIds = entries.reduce((n, [, ids]) => n + ids.length, 0);
+  if (totalIds > MAX_MAPPED_CAMPAIGNS) {
+    throw new UnsafeLabelError(
+      `${totalIds} campaign ids across ${entries.length} buckets (limit ${MAX_MAPPED_CAMPAIGNS})`,
+    );
   }
 
   const raw = `NULLIF(${tableAlias}.${column}, '')`;
   const whens: string[] = [];
+  const claimed = new Map<number, string>();
   for (const [label, ids] of entries) {
     if (!SAFE_LABEL.test(label)) throw new UnsafeLabelError(label);
     const safeIds = assertCampaignIds(ids, label);
+    // Overlap is refused at save time by the context schema, but this function
+    // is exported and takes a raw map, so refuse it here too. Silently letting
+    // the first WHEN win would attribute a campaign's spend to a bucket the
+    // user was never shown, in a table that still foots to the account total.
+    for (const id of safeIds) {
+      const prior = claimed.get(id);
+      if (prior && prior !== label) {
+        throw new UnsafeLabelError(`campaign ${id} is in both ${prior} and ${label}`);
+      }
+      claimed.set(id, label);
+    }
     whens.push(
       `WHEN ${tableAlias}.ID IN (${safeIds.join(',')}) THEN '${label}'`,
     );
@@ -147,61 +170,53 @@ export function applyDerivedGrouping(
   expression: string,
   tableAlias = 'c',
 ): string {
+  assertIdentifier(column, tableAlias);
+  // Built FROM the constant, not from a hand-copied literal. The two used to be
+  // written out separately, so changing UNCLASSIFIED would have left this regex
+  // matching the old text: the rewrite would still "succeed" while emitting a
+  // fallback row the skill's documented handling does not recognise.
   const original = new RegExp(
-    `COALESCE\\(\\s*NULLIF\\(\\s*${tableAlias}\\.${column}\\s*,\\s*''\\s*\\)\\s*,\\s*'\\(unclassified\\)'\\s*\\)`,
+    `COALESCE\\(\\s*NULLIF\\(\\s*${tableAlias}\\.${column}\\s*,\\s*''\\s*\\)\\s*,\\s*` +
+      `${escapeRegExp(`'${UNCLASSIFIED}'`)}\\s*\\)`,
     'g',
   );
-  const matches = sql.match(original);
-  if (!matches || matches.length < 2) {
+
+  // Count only occurrences in EXECUTABLE SQL. Counting raw text let a query
+  // pass this guard on a comment plus ONE real occurrence, rewriting the SELECT
+  // and leaving the GROUP BY untouched: the exact grouping-and-labelling
+  // disagreement the guard exists to prevent, producing a wrong table that
+  // still foots to the account total.
+  const executable = sql.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const realMatches = executable.match(original);
+  if (!realMatches || realMatches.length < 2) {
     throw new Error(
       `Cannot apply derived labels to this query: expected the ` +
         `COALESCE(NULLIF(${tableAlias}.${column},''),'${UNCLASSIFIED}') expression in both the ` +
-        `SELECT and the GROUP BY, found ${matches?.length ?? 0}. The pack's shape changed; update ` +
-        'lib/labels/derived-labels.ts rather than shipping a query whose grouping and labelling disagree.',
+        `SELECT and the GROUP BY, found ${realMatches?.length ?? 0} outside comments. The pack's ` +
+        `shape changed; update lib/labels/derived-labels.ts rather than shipping a query whose ` +
+        'grouping and labelling disagree.',
     );
   }
-  return sql.replace(original, expression);
+
+  // Function replacer, never a replacement STRING: `$&`, `` $` `` and `$'` are
+  // special there and would splice parts of the query into the output. No label
+  // can currently contain `$`, but this function is exported and `expression`
+  // is just a string, so removing the class costs nothing.
+  return sql.replace(original, () => expression);
+}
+
+/** Escape a literal so it can be embedded in a RegExp source. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
- * What share of SPEND carries a label once the raw column and the confirmed map
- * are both applied.
- *
- * Spend-weighted on purpose, and this is the whole reason the gate is usable: a
- * real account has thousands of campaigns and a long tail of dead ones, but the
- * money concentrates. One measured tenant has 16,055 campaigns of which 710
- * spent anything in 30 days, and 388 of those carry 95% of the spend. Gating on
- * row count would demand the user classify thousands of dead campaigns to clear
- * a threshold; gating on spend asks about the money they actually care about.
+ * SQL identifiers we interpolate must be plain identifiers. Enforced in BOTH
+ * exported functions: previously only the builder checked, while the rewriter
+ * interpolated the same values into a RegExp with the `.` unescaped.
  */
-export function labelCoverage(
-  rows: Array<{ campaign_id?: unknown; id?: unknown; objective?: unknown; spend?: unknown }>,
-  map: DerivedLabelMap | null | undefined,
-  rawField = 'objective',
-): { coveredSpend: number; totalSpend: number; ratio: number; unlabeledCampaigns: number[] } {
-  const labeled = new Set<number>();
-  for (const ids of Object.values(map?.buckets ?? {})) for (const id of ids ?? []) labeled.add(Number(id));
-
-  let coveredSpend = 0;
-  let totalSpend = 0;
-  const unlabeled: number[] = [];
-
-  for (const row of rows) {
-    const spend = Number((row as Record<string, unknown>).spend ?? 0) || 0;
-    totalSpend += spend;
-    const id = Number(row.campaign_id ?? row.id);
-    const rawValue = (row as Record<string, unknown>)[rawField];
-    const hasRaw = typeof rawValue === 'string' && rawValue.trim() !== '';
-    if (hasRaw || labeled.has(id)) coveredSpend += spend;
-    else if (Number.isInteger(id)) unlabeled.push(id);
+function assertIdentifier(...names: string[]): void {
+  for (const n of names) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) throw new UnsafeLabelError(n);
   }
-
-  return {
-    coveredSpend,
-    totalSpend,
-    // No spend is not a coverage failure -- there is nothing to attribute, so
-    // reporting 0% would send the user to classify campaigns that spent nothing.
-    ratio: totalSpend > 0 ? coveredSpend / totalSpend : 1,
-    unlabeledCampaigns: unlabeled,
-  };
 }

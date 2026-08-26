@@ -52,6 +52,12 @@ export interface QueryRunOutput<Row = Record<string, unknown>> {
    *  number is auditable against what the server really filtered on.
    *  Absent for dispatch:sql/sproc and for an older gateway deploy. */
   applied_params?: string[];
+  /** Which execution path actually ran. Present so a consumer can tell a
+   *  standard catalog run from one whose SQL was rewritten before execution:
+   *  `derived_labels` means the grouping came from a user-confirmed label map
+   *  rather than the warehouse column, which the health-check skill is
+   *  required to disclose in its narrative. Absent on older artifacts. */
+  used_dispatch?: string;
 }
 
 export interface PrefetchArtifactInput {
@@ -97,6 +103,7 @@ export async function writePrefetchArtifacts(
         ...(q.purpose ? { purpose: q.purpose } : {}),
         ...(q.revision ? { revision: q.revision } : {}),
         ...(q.applied_params ? { applied_params: q.applied_params } : {}),
+        ...(q.used_dispatch ? { used_dispatch: q.used_dispatch } : {}),
         duration_ms: q.duration_ms,
         row_count: q.rows.length,
         rows: q.rows,
@@ -195,6 +202,13 @@ function renderQuerySection(q: QueryRunOutput): string {
   lines.push(`- **Duration**: ${q.duration_ms} ms`);
   if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
   if (q.applied_params) lines.push(`- **Applied params**: ${q.applied_params.join(', ')}`);
+  if (q.used_dispatch === 'derived_labels') {
+    lines.push(
+      '- **Grouping**: from the CONFIRMED derived labels for this brand, not the warehouse column. ' +
+        'Rows whose label the account never filled in were grouped by the scheme the user approved. ' +
+        'Say so when presenting this table.',
+    );
+  }
   if (Object.keys(q.params).length > 0) {
     lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
   }

@@ -418,11 +418,19 @@ An `(unclassified)` row means those campaigns carry no Objective label in the ac
 
 **When most of the spend is unclassified, offer to fix it.** Most accounts never fill these columns in, so a single `(unclassified)` row holding ~all the spend is the normal case rather than a data problem. It is also fixable in about a minute, and the fix persists.
 
+**Never offer this in an unattended run.** This health check is designed to run as a scheduled
+task, where there is nobody to show buckets to and nobody to confirm them. If no user is present,
+report the unclassified share as part of the normal output and stop there.
+
 Offer it when the `(unclassified)` row holds **more than 30% of T-30 spend** — spend, never campaign count, because a real account has a long tail of dead campaigns and the money concentrates in a few dozen live ones. Do not offer more than once per run, and never interrupt the report to do it: finish the report, then raise it at the end.
 
 How to do it when the user says yes:
 
-1. Read the campaign names for the campaigns that actually spent, with their ids. Group them into the smallest set of buckets that explains the spend, using the names' own vocabulary rather than a house taxonomy — if the account says `NB` and `BRND`, the buckets are Non-Brand and Brand, not your preferred wording.
+1. Read the campaign names for the campaigns that actually spent, with their ids. **Skip any
+   campaign that already carries a label in the account**: those are the operator's own
+   classification, the report already groups them by it, and claiming them in a proposed
+   bucket would both overstate what that bucket controls and leave a stale guess behind if
+   the operator ever clears the label. Group them into the smallest set of buckets that explains the spend, using the names' own vocabulary rather than a house taxonomy — if the account says `NB` and `BRND`, the buckets are Non-Brand and Brand, not your preferred wording.
 2. **Show the user the buckets before anything is saved**: each bucket, its campaign count, and its share of T-30 spend, plus anything you could not place. Ask them to rename, merge, split or reject. The scheme is what gets confirmed, not each campaign — nobody reviews hundreds of rows.
 3. Save the confirmed result to `campaign_structure.derived_labels.<seller_id>.objective.buckets` in brand context (`item_group` for DHC-08), as bucket name to campaign ids, with `confirmed_at`. Brand context syncs server-side, so this holds for later runs and other machines.
 4. Re-run the prefetch. DHC-07/08 will group by the confirmed buckets automatically.
@@ -431,7 +439,16 @@ Three rules that keep this honest:
 
 - **A label the operator typed always wins.** Derived buckets only fill rows where the warehouse column is empty. Never propose overwriting a label someone entered.
 - **Nothing is written back to Amazon or the warehouse.** This changes how the report groups, and nothing else.
-- **Say which rows are derived** in the narrative the first time a derived scheme is used in a report, so nobody mistakes an inferred bucket for an operator's own classification.
+- **Say which rows are derived, in EVERY report that uses them, not just the first.** Confirmed
+  schemes persist and sync across machines, so later reports are read by people who were not
+  there for the confirmation and have no way to tell an inferred bucket from an operator's own
+  classification. The prefetch output marks it for you: a query section whose **Grouping** line
+  says the labels are derived must carry one plain sentence in the narrative saying so.
+- **Do not apply per-objective thresholds to a derived bucket.** The stored per-objective CI
+  distributions were calibrated on operator-typed labels, so testing an inferred bucket against
+  them reads a naming guess as a statistical baseline. Treat derived buckets the way the
+  `(unclassified)` rule already treats unlabeled spend: describe them, do not threshold them,
+  until an operator has confirmed the scheme is how they actually run the account.
 
 New campaigns appear constantly and will show up unclassified in later runs; the same threshold catches them, so top the scheme up rather than rebuilding it.
 

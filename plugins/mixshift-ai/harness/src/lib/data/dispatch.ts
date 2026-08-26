@@ -86,10 +86,11 @@ export interface DispatchOptions {
    * This is not a new capability, it is the existing one made explicit: the
    * `named_local_dev` and `named_repo_fallback` branches below already swap SQL
    * text for a `dispatch: named` entry at runtime. The difference is that those
-   * choose between two committed texts, while this one is COMPUTED, so it is
-   * reported as its own `usedDispatch` value rather than masquerading as a
-   * normal named run -- a caller reading telemetry must be able to tell that
-   * the grouping was not the catalog's.
+   * choose between two committed texts, while this one is COMPUTED, so it gets
+   * its own `usedDispatch` value rather than masquerading as a normal named
+   * run. Prefetch threads that value into the run artifacts (see
+   * QueryRunOutput.used_dispatch), which is how the health-check skill knows a
+   * table was grouped by a derived scheme and must say so in the narrative.
    *
    * Only ever build this with lib/labels/derived-labels.ts, which validates
    * labels against an allowlist and campaign ids as integers. Never interpolate
@@ -374,7 +375,7 @@ async function runSqlText<Row>(
  * a leading `--` comment header, then the statement. Strip the header so
  * what we send is just executable SQL.
  */
-export function stripSqlHeader(raw: string): string {
+function stripSqlHeader(raw: string): string {
   const lines = raw.split(/\r?\n/);
   let headerEnd = 0;
   for (let i = 0; i < lines.length; i++) {

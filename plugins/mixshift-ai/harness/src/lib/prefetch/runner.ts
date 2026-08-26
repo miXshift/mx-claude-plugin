@@ -39,7 +39,7 @@ import {
   type LensSummary,
   type QueryLensOutcome,
 } from '../binding/lens.js';
-import { runDispatched, MissingParamsError, stripSqlHeader } from '../data/dispatch.js';
+import { runDispatched, MissingParamsError } from '../data/dispatch.js';
 import { type DataQueryResult } from '../data/query-runner.js';
 import { writePrefetchArtifacts, type QueryRunOutput } from './artifacts.js';
 import { track, EventName } from '../telemetry/index.js';
@@ -153,16 +153,26 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
   };
 
   // Derived-label fallback (D-039). On an account that never filled
-  // `campaign.Objective` / `ItemGroup` -- which is most of them: 1.09% and
-  // 2.99% of campaigns fleet-wide as of 2026-08-26 -- DHC-07/08 group by an
-  // empty column and collapse to a single `(unclassified)` row. Where the user
-  // has CONFIRMED a label scheme in brand context, re-group by that instead.
+  // `campaign.Objective` / `ItemGroup` in the platform, which is the common
+  // case, DHC-07/08 group by an empty column and collapse to a single
+  // `(unclassified)` row. Where the user has CONFIRMED a label scheme in brand
+  // context, re-group by that instead.
   //
-  // The rewrite reads the committed `.sql` rather than the server-side pack
-  // text, exactly as the `named_repo_fallback` branch does. Those two copies
-  // are kept byte-identical on purpose, so this is safe today; if a pack is
-  // ever changed server-side without the repo copy, applyDerivedGrouping
-  // throws rather than silently running stale SQL.
+  // The rewrite reads the COMMITTED `.sql`, exactly as the
+  // `named_repo_fallback` branch does, and that carries a real limitation
+  // worth stating plainly: it CANNOT detect server-side drift. If the pack is
+  // edited in the service without the repo copy, this silently runs the stale
+  // repo text and DHC-07/08 disagree with every other query in the same
+  // report. applyDerivedGrouping only throws when the REPO copy's shape
+  // changes, which is the direction that cannot diverge unnoticed. The
+  // protection today is convention (the two are kept byte-identical) plus
+  // check-named-pack, which compares ID LISTS ONLY, not text.
+  //
+  // Related hazard: catalog.yaml marks these `.sql` files as a byte-diff
+  // reference "until the Phase 5 sweep". This path makes them load-bearing in
+  // production, so that sweep must not delete them without replacing this
+  // read -- if it does, readQuerySql throws, the catch below turns it into one
+  // stderr line, and the feature dies quietly.
   const derivedByQueryId = new Map<string, string>();
   const derivedSellerKey = String(params.seller_id ?? '');
   const derivedForSeller = context.campaign_structure?.derived_labels?.[derivedSellerKey];
@@ -173,14 +183,14 @@ export async function runPrefetch(opts: PrefetchOptions): Promise<PrefetchResult
         const expression = buildGroupingExpression(derivedForSeller[dimension], column);
         if (!expression) continue;
         const { sql } = await readQuerySql(queryId);
-        derivedByQueryId.set(queryId, applyDerivedGrouping(stripSqlHeader(sql), column, expression));
+        derivedByQueryId.set(queryId, applyDerivedGrouping(sql, column, expression));
       } catch (err) {
         // A bad label map must never take down the health check: the rest of
         // the report is unaffected, and the untouched pack still returns a
         // correct (if uninformative) `(unclassified)` row. Surface it rather
         // than swallowing it, so a malformed scheme gets fixed.
         process.stderr.write(
-          `warning: derived labels not applied to ${queryId} — ` +
+          `warning: derived labels not applied to ${queryId}: ` +
             `${err instanceof Error ? err.message : String(err)}\n`,
         );
       }
@@ -443,6 +453,7 @@ async function executeOne(
       purpose,
       revision: result.revision,
       applied_params: result.appliedParams,
+      used_dispatch: result.usedDispatch,
     },
   };
 }
