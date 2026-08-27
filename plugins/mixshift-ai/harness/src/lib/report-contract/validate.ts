@@ -120,7 +120,8 @@ export type RuleId =
   | 'CAUSE-2'
   | 'COMP-1'
   | 'UNIT-1'
-  | 'UNIT-2';
+  | 'UNIT-2'
+  | 'PRES-1';
 
 /**
  * `error` bars the render door; `warning` is reported and does not. Absent
@@ -614,6 +615,30 @@ export function validateReportData(
         subject: label,
         detail: `label carries ${bases.size} bases: ${sortedBases.join(', ')}`,
       });
+    }
+  }
+
+  // PRES-1 -- a presentation object is LAYOUT ONLY: every figure id it names
+  // must already be in the section's own figure_refs. The rule is the engine
+  // author's (2026-08-26) and exists because a second referencing channel
+  // would let figures silently escape TRACE-1 resolution and the CAVEAT-1
+  // blocking-caveat guarantee, both of which read figure_refs. His validator
+  // ignores the field entirely, so enforcing membership here is what keeps
+  // the two implementations answering identically.
+  for (const s of sections) {
+    const pres = (s as { presentation?: { rows?: { figures?: Record<string, unknown> }[] } }).presentation;
+    if (!pres || !Array.isArray(pres.rows)) continue;
+    const own = new Set(s.figure_refs ?? []);
+    for (const row of pres.rows) {
+      for (const id of Object.values(row?.figures ?? {})) {
+        if (typeof id === 'string' && !own.has(id)) {
+          findings.push({
+            rule: 'PRES-1',
+            subject: s.id ?? '(section)',
+            detail: `presentation references '${id}' which is not in the section's figure_refs; table membership must be expressed in figure_refs, with presentation describing layout only`,
+          });
+        }
+      }
     }
   }
 

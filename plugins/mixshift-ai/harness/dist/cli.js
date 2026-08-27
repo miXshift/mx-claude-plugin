@@ -91909,6 +91909,22 @@ function validateReportData(doc, served) {
       });
     }
   }
+  for (const s of sections) {
+    const pres = s.presentation;
+    if (!pres || !Array.isArray(pres.rows)) continue;
+    const own = new Set(s.figure_refs ?? []);
+    for (const row of pres.rows) {
+      for (const id of Object.values(row?.figures ?? {})) {
+        if (typeof id === "string" && !own.has(id)) {
+          findings.push({
+            rule: "PRES-1",
+            subject: s.id ?? "(section)",
+            detail: `presentation references '${id}' which is not in the section's figure_refs; table membership must be expressed in figure_refs, with presentation describing layout only`
+          });
+        }
+      }
+    }
+  }
   for (const f of figures2.values()) {
     if (!f.source_path) {
       findings.push({ rule: "TRACE-1", subject: f.id, detail: "figure has no source_path" });
@@ -93133,13 +93149,67 @@ function renderCaveats(caveatIds, registry2) {
   }
   return lines.join("\n");
 }
+var NEWLINE_JOIN = String.fromCharCode(10);
+var DEFAULT_TABLE_COLUMNS = [
+  { key: "p1", label: "Prior" },
+  { key: "p2", label: "Current" },
+  { key: "delta", label: "Change" },
+  { key: "pct_change", label: "% change" }
+];
+var EMPTY_CELL = "n/a";
+function presentationCell(id, allowed, figureIdx, currencyCode) {
+  if (!id) return { html: EMPTY_CELL, accent: "" };
+  if (!allowed.has(id)) {
+    return { html: `<span class="rr-caveat-missing">[not in figure_refs: ${escapeHtml(id)}]</span>`, accent: "" };
+  }
+  const fig2 = figureIdx.get(id);
+  if (!fig2) return { html: EMPTY_CELL, accent: "" };
+  const accentCls = figureAccentClass(fig2) ?? "";
+  return { html: escapeHtml(formatFigureValue(fig2, currencyCode)), accent: accentCls };
+}
+function renderMetricTable(pres, allowed, figureIdx, currencyCode) {
+  const cols = pres.columns?.length ? pres.columns : DEFAULT_TABLE_COLUMNS;
+  const head = cols.map((c) => `<th scope="col">${escapeHtml(c.label)}</th>`).join("");
+  const body = (pres.rows ?? []).map((row) => {
+    const cells = cols.map((c) => {
+      const cell = presentationCell(row.figures?.[c.key], allowed, figureIdx, currencyCode);
+      const cls = cell.accent ? ` class="${cell.accent}"` : "";
+      return `<td${cls}>${cell.html}</td>`;
+    }).join("");
+    return `<tr><th scope="row">${escapeHtml(row.label)}</th>${cells}</tr>`;
+  }).join(NEWLINE_JOIN);
+  return `<div class="rr-table-wrap"><table class="rr-table"><thead><tr><th scope="col"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+`;
+}
+function renderKpiCards(pres, allowed, figureIdx, currencyCode) {
+  const cards = (pres.rows ?? []).map((row) => {
+    const value = presentationCell(row.figures?.value, allowed, figureIdx, currencyCode);
+    const delta = presentationCell(row.figures?.delta, allowed, figureIdx, currencyCode);
+    const pct = presentationCell(row.figures?.pct_change, allowed, figureIdx, currencyCode);
+    const sub = [];
+    if (row.figures?.delta) sub.push(`<span class="rr-kpi-delta ${delta.accent}">${delta.html}</span>`);
+    if (row.figures?.pct_change) sub.push(`<span class="rr-kpi-delta ${pct.accent}">${pct.html}</span>`);
+    return `<div class="rr-kpi-card"><div class="rr-kpi-label">${escapeHtml(row.label)}</div><div class="rr-kpi-value">${value.html}</div>` + (sub.length ? `<div class="rr-kpi-sub">${sub.join(" ")}</div>` : "") + `</div>`;
+  }).join(NEWLINE_JOIN);
+  return `<div class="rr-kpi-grid">${cards}</div>
+`;
+}
+function renderPresentation(block, figureIdx, currencyCode) {
+  const pres = block.presentation;
+  if (!pres || !Array.isArray(pres.rows)) return null;
+  const allowed = new Set(block.figure_refs ?? []);
+  if (pres.kind === "metric_table") return renderMetricTable(pres, allowed, figureIdx, currencyCode);
+  if (pres.kind === "kpi_cards") return renderKpiCards(pres, allowed, figureIdx, currencyCode);
+  return null;
+}
 function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
   const title = block.title ? `<h2 class="rr-section-title">${escapeHtml(block.title)}</h2>
 ` : "";
   const prose = block.display_text ? `<p class="rr-prose">${block.display_text}</p>
 ` : "";
+  const presented = renderPresentation(block, figureIdx, currencyCode);
   const ids = quotedFigureIds(block, claims);
-  const figures2 = renderFigureStrip(ids, figureIdx, currencyCode);
+  const figures2 = presented ?? renderFigureStrip(ids, figureIdx, currencyCode);
   const caveats = renderCaveats(block.caveats_rendered ?? [], registry2);
   return `${title}${prose}${figures2}${caveats}`;
 }
@@ -93230,6 +93300,17 @@ body { background: var(--rc-bg); }
   margin: var(--space-2) 0 0;
 }
 .rr-caveat:first-child { margin-top: 0; }
+.rr-table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+.rr-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.rr-table th, .rr-table td { padding: 0.45rem 0.7rem; text-align: right; border-bottom: 1px solid var(--rc-border, #d8d8d8); }
+.rr-table thead th { font-weight: 600; color: var(--rc-muted, #666); border-bottom: 2px solid var(--rc-border, #c8c8c8); }
+.rr-table tbody th { text-align: left; font-weight: 600; }
+.rr-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.6rem; margin: 0.75rem 0; }
+.rr-kpi-card { border: 1px solid var(--rc-border, #d8d8d8); border-radius: 0.5rem; padding: 0.7rem 0.8rem; }
+.rr-kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--rc-muted, #666); }
+.rr-kpi-value { font-size: 1.3rem; font-weight: 700; margin-top: 0.15rem; font-variant-numeric: tabular-nums; }
+.rr-kpi-sub { margin-top: 0.15rem; font-size: 0.85rem; }
+.rr-kpi-delta { margin-right: 0.5rem; font-variant-numeric: tabular-nums; }
 .rr-caveat-missing { color: var(--rc-negative); font-style: normal; font-weight: 600; }
 .rr-footer {
   margin-top: var(--space-12);
