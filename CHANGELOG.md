@@ -35,6 +35,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   one, and nothing is written back to the platform or to Amazon: this changes
   how the report groups, and nothing else.
 
+- **Monthly Performance Report Max now explains why a number moved using the
+  analysis engine's own account, instead of writing its own.** The engine
+  already worked out what drove each change and published that reasoning, but
+  nothing in the report could reach it, so when the report said spend rose
+  because of something, that explanation was composed by the assistant rather
+  than sourced. It now quotes what the engine actually found and cites it. Where
+  the engine has no explanation for a particular movement, the report says what
+  it observed and leaves the cause open rather than inventing one, because a
+  movement nobody has explained yet is a different thing from a movement with a
+  confident-sounding guess attached to it.
+
 - **You can now tell MixShift when it could not do something at all.** Feedback
   gained a "capability gap" type for the case where MixShift had no way to do a
   step and the work had to happen somewhere else. Your assistant raises it on
