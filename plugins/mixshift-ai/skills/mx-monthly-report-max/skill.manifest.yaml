@@ -1,49 +1,64 @@
 schema_version: 1
 skill_id: mx-monthly-report-max   # smart-tier convention: <existing-skill-slug>-max, so both tiers sort and search together
 display_name: Monthly Performance Report Max
-version: "0.1.0"
+version: "2.0.0"
 description: >
-  Composes and publishes the intelligence-powered monthly Amazon performance report:
-  every figure is served by the MixShift Intelligence service (H-Bridge ops + ads +
-  cross-domain envelope), typed through a figure/claim contract with mechanical
-  validators, and rendered deterministically. Covers MoM and YoY comparisons, bridge
-  decompositions, item-group highlights, forecast beat/miss, and Looking Ahead.
-  The smart tier alongside mx-monthly-report; saves report as local HTML.
+  The max tier of MixShift reporting: prepares a client-ready performance brief and a
+  private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
+  Core figures come from the MixShift Intelligence service (typed extraction with
+  mechanical checks); the warehouse battery adds the daily series, availability,
+  page-view-weighted Buy Box and the mover reconciliation; the featured-offer diagnosis
+  goes live against current offer state. Checks what the last call promised against the
+  data. Zero required configuration; degrades to baseline and setup modes on young or
+  empty accounts (asks instead of asserting). The smart tier alongside mx-monthly-report.
 run_kind: per_account
-cadence: monthly
+cadence: on_demand   # cadence is a knob (monthly default; bi-weekly and QBR window forks), not a schedule
 risk_tier: 2
-allowed_tools: [insight_read, db_read, file_read, file_write, renderer, validator, prefetch]
+allowed_tools: [insight_read, db_read, file_read, file_write, validator, prefetch]
+  # The live featured-offer read (pricing.get_item_offers_batch) rides the mixshift CLI
+  # like other skills' live Amazon calls: a bash invocation, implicit here, read-only.
+  # renderer dropped in 2.0: documents are composed from assets/brief-template.html and
+  # linted mechanically (prose-lint + extract --check); the deterministic HTML renderer
+  # is not part of this skill's pipeline. validator = report extract --check + prose-lint.
 side_effect_policy: artifact_write
 review_required: always
 sql_ids: []
-  # Deliberately empty at scaffold: the envelope replaces account-level SQL. The residual
-  # set (campaign-type tables, SKU product-line revenue) is served by the engine at
-  # labelGroupBy/asin grain on engines >= 0.1.0; residual sql_ids get added here ONLY if
-  # the cold-render gate against the private golden envelope proves a gap on our engine version.
+  # Deliberately empty: account-level core figures come from the envelope, and the
+  # brief-specific battery ships as scripts/pull_figures.py with its SQL inline
+  # (references/queries.md is the annotated source of record for every query in it).
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type
+  # 2.0: everything else moved to optional. The skill runs observational on a bare
+  # account identity and labels every degraded framing; that is the product behavior,
+  # not a fallback.
+optional_context_fields:
   - management.primary_metric
   - management.acos_target_pct
   - management.attribution_window_days
   - management.tacos_in_bottom_line
+  - goals.monthly_total_sales_target
+  - goals.quarterly_total_sales_target
   - sub_brands
   - brand_terms
   - structural_events
-  - delivery.reports_local_dir
-  - delivery.archive_dir
-  - reporting.audience
-  - reporting.voice_lint
-optional_context_fields:
-  - goals.monthly_total_sales_target
-  - goals.quarterly_total_sales_target
   - capture_rate_calibration
   - attribution_rule
   - posture
+  - delivery.reports_local_dir
+  - delivery.archive_dir
+  - reporting.call_cadence
+  - reporting.brief_documents
+  - reporting.thresholds
+  - reporting.voice_lint
 artifacts:
-  - name: monthly-report.html
+  - name: client-brief.html
     type: report_html
-  - name: report-data.json
+  - name: internal-companion.html
+    type: report_html
+  - name: run sidecar (<date>-<run-id>.json)
+    type: json_artifact
+  - name: discoveries.json
     type: json_artifact
   - name: review.json
     type: json_artifact
@@ -54,23 +69,34 @@ trigger_phrases:
   - max monthly report
   - smart monthly report
   - monthly report with intelligence
+  - call brief
+  - client brief
+  - prep my call
+  - get me ready for the monthly
+  - QBR prep
+  - what moved this month
 notes: >
-  The smart tier of the monthly report: mx-monthly-report stays the standard tier and is
-  never modified by this skill's releases. One monthly report consumes one metered
-  intelligence request (INS-MONTHLY-01); re-renders re-read the artifact and are free.
-  Verdict maps footing plus caveats: GREEN means all footing checks pass with no blocking
-  caveats. OBSERVATIONAL applies when no target or no MoM comparison exists. Contract
-  enforcement lives in the harness (src/lib/report-contract, rule IDs BASIS-1..UNIT-1);
-  the nine shipped claim errors are permanent must-fail CI fixtures.
+  The max tier of the monthly report: mx-monthly-report stays the standard tier and is
+  never modified by this skill's releases. One run consumes one metered intelligence
+  request (INS-MONTHLY-01); re-reads of the envelope artifact are free. Produces TWO
+  documents (client brief + internal companion) by default; the internal one carries
+  owner-attributed commitments and numbers to keep off the call, and the handover must
+  say which URL is shareable. Verdict maps to footing plus caveats: GREEN means the
+  reconciliations pass with no blocking caveats. OBSERVATIONAL applies when no target or
+  no MoM comparison exists (baseline and setup account modes are always OBSERVATIONAL).
+  Typed-figure extraction checks live in the harness (report extract --check); the nine
+  shipped claim errors remain permanent must-fail CI fixtures on the report-contract lib.
 calibration:
   schema_version: 1
   fields:
     - id: acos_target
       label: "ACoS target"
-      prompt: "ACoS target the monthly report should frame against for {brand_name}?"
+      prompt: "ACoS target the brief should frame against for {brand_name}?"
       help: >
         Reference ACoS for the efficiency narrative and beat/miss framing. Defaults to
-        your brand's ACoS target (Tier-3 context.yaml, else the Tier-2 brain).
+        your brand's ACoS target (Tier-3 context.yaml, else the Tier-2 brain); absent
+        both, the brief runs observational and this question is offered once, with the
+        answer recorded in the run sidecar.
       type: percent
       range: { min: 0.05, max: 1.0 }
       seed_from: context.management.acos_target_pct

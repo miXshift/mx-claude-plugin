@@ -1,14 +1,80 @@
-# Borrow map — what this skill is made of, and how to lift each piece.
+# Borrow map: what this skill is made of, and how to lift each piece.
 #
 # Product bet on record (2026-08-12): users will want pieces of this skill more
 # often than the whole. Every component below is designed to be borrowed: it names its
 # home, its dependencies, and the smallest correct way to reuse it in another skill.
-# Keep this file honest — a component whose "how to lift" no longer works is a defect.
+# Keep this file honest: a component whose "how to lift" no longer works is a defect.
 
 schema_version: 1
 skill_id: mx-monthly-report-max
 
 components:
+  - id: two-document-structure
+    what: >
+      The client brief + internal companion split: a client-readable deliverable and a
+      private operator document (talking points in call order, numbers to keep off the
+      call, owner-attributed commitments, the agency's own misses, the next lever), with
+      the placement rules that keep blame out of the client copy.
+    home: SKILL.md (the split + Step 8) + references/brief-structure.md (section-by-section)
+    depends_on: [a publish target that gives each document its own URL or file]
+    how_to_lift: >
+      Copy the placement rules before the section list: owner names and verdicts internal
+      only, Things-to-check after the analysis, the shareability sentence at handover.
+      The section order transfers to any recurring client-facing analysis.
+    provenance: mx-call-brief (2026-08, built on a live account), merged in 2.0.
+
+  - id: figure-battery
+    what: >
+      The warehouse query battery with its six traps encoded: window alignment to data
+      load, like-day-count comparison, dark-day normalization, settled-window efficiency
+      verification, SKU-to-account reconciliation, and page-view-weighted Buy Box with a
+      last-7-days column.
+    home: scripts/pull_figures.py (executable) + references/queries.md (annotated source of record)
+    depends_on: [mixshift data query (gateway), Seller Central tables; VC fork documented in the reference]
+    how_to_lift: >
+      Lift individual queries from references/queries.md with their trap notes attached;
+      or run the script whole and consume its JSON. Never lift a query without its trap
+      note: the note is the component.
+    provenance: mx-call-brief (2026-08); each trap traces to a caught real-account error.
+
+  - id: account-modes
+    what: >
+      The progressive degrade ladder: Established / No-YoY / Baseline / Setup, resolved
+      from the data, named in the scope bar, with ask-instead-of-assert behavior and a
+      run-record ledger that makes run N+1 smarter than run N.
+    home: SKILL.md "Account modes" + "The run record"
+    depends_on: []
+    how_to_lift: >
+      Copy the mode ladder and the resolution rule (modes come from the data, never from
+      config), plus the sidecar ledger shape. Any per-account skill that must work on
+      day-zero accounts can adopt it unchanged.
+    provenance: 2.0 productization requirement (out-of-box behavior on empty accounts).
+
+  - id: featured-offer-diagnosis
+    what: >
+      The four-question featured-offer workflow: break/recovery dating from the daily
+      series, live offer state, suppression-vs-competitor fork (the fixes differ), and
+      the claim-scope rule (read the recovery, not the edit; "consistent with").
+    home: SKILL.md Step 6 + Step 3c (the live call)
+    depends_on: [live pricing read via the mixshift CLI (pricing.get_item_offers_batch), business-reports daily data]
+    how_to_lift: >
+      Copy the four questions in order and the suppression fork verbatim. The live-state
+      call is the load-bearing half; a warehouse-only version misclassifies recovered
+      items and must not claim current state.
+    provenance: mx-call-brief (2026-08), proven on live featured-offer incidents.
+
+  - id: brief-template
+    what: >
+      The instrument-panel design system for both documents: token block, three theme
+      states, IBM Plex pairing, tabular-nums figures, severity encoded in form (left
+      border + chip + state label), wide tables scrolling in their own container.
+    home: assets/brief-template.html (design) + references/brief-structure.md "Design"
+    depends_on: []
+    how_to_lift: >
+      Keep the token block, type pairing and component classes; replace the content.
+      Semantic colour carries direction and severity and stays separate from the accent.
+    provenance: mx-call-brief (2026-08).
+
   - id: report-contract
     what: >
       The typed figure/claim contract and its mechanical validators (rule IDs
@@ -21,7 +87,10 @@ components:
       Import validateReportData() from the harness lib, or call the CLI door
       (`mixshift report validate <file.json>`). Any skill that emits claims from data
       can adopt the contract wholesale; adopt the fixtures too or the contract is
-      decorative.
+      decorative. NOTE: as of 2.0 this skill uses the contract's extraction half
+      (`report extract --check`, typed figures documents); the claim-object validate and
+      render doors are not in this skill's pipeline but remain fully supported and
+      borrowable from the harness.
     provenance: >
       Ported from the mpr-v2 handover package (Python executable spec, same rule IDs,
       same 10 fixtures verbatim). Each rule maps to a shipped incident; see
@@ -43,7 +112,7 @@ components:
 
   - id: rules-provenance
     what: >
-      The case law: every validator rule and judgment rule annotated with the real
+      The case law: every composition and judgment rule annotated with the real
       incident that created it, plus the live append protocol at the top.
     home: rules-provenance.md (this skill directory)
     depends_on: []
@@ -56,12 +125,12 @@ components:
   - id: envelope-acquisition
     what: >
       The INS-MONTHLY-01 acquisition pattern: MoM + YoY pairs with ops/ads companions,
-      async poll for oversize accounts, degrade-and-label on not_enrolled/service
-      error, publish-day re-pull + diff (restatement discipline), metered disclosure.
-    home: SKILL.md Step 1 (pattern) + harness lib/intelligence (the client)
-    depends_on: [mixshift intelligence CLI (0.8.7+), tenant enrollment]
+      async poll for oversize accounts, degrade-and-label on service error, publish-day
+      re-pull + diff (restatement discipline), metered disclosure, probe-before-limit.
+    home: SKILL.md Step 3a (pattern) + harness lib/intelligence (the client)
+    depends_on: [mixshift intelligence CLI (0.8.7+)]
     how_to_lift: >
-      Any skill consuming an INS-* entry: copy Step 1's structure and keep all four
+      Any skill consuming an INS-* entry: copy Step 3a's structure and keep all four
       behaviors (degrade-and-label, async patience, re-pull+diff, metered disclosure).
       The CLI client is already shared; do not write your own HTTP.
     provenance: house pattern (gateway Phase 2) + mpr-v2 operating notes.
@@ -76,7 +145,7 @@ components:
   - id: review-manifest
     what: >
       The self-review artifact schema (review.json): substantiation findings + language
-      edits as a structured manifest with honest counts and validator exit codes.
+      edits as a structured manifest with honest counts.
     home: helpers/mpr-review-schema.json
     depends_on: []
     how_to_lift: Copy the schema; emit it at your own pre-publication gate.
@@ -84,25 +153,32 @@ components:
 
   - id: judgment-rules
     what: >
-      The analytical judgment residue (C1/C1a cross-item halo discovery, C2/C3
-      event-shift + clean comparator, C4 cover-build direction, probe-before-limit,
-      mechanism-testing) and the writing rules.
-    home: SKILL.md "Judgment rules" section
-    depends_on: [an envelope with evidence/halo data for C1; otherwise portable prose rules]
+      The analytical judgment residue: cross-item halo discovery with the
+      spend-recommendation guard, event-shift + clean-comparator discipline, cover-build
+      direction, probe-before-limit, mechanism-testing (publish the failed test), the
+      blended-benchmark non-finding, absolute contributions over growth rates, mix vs
+      blended metric labelling, statement-total reconciliation, bid-pullback language.
+    home: >
+      SKILL.md, distributed where each rule acts: Step 4 (mechanisms + cross-item +
+      inventory direction), Step 5 (bid-pullback), Step 7 (events, weak bases,
+      statement reconciliation), Step 8 (composition rules).
+    depends_on: [an envelope with evidence/halo data for the cross-item pair; otherwise portable prose rules]
     how_to_lift: >
-      Text-borrowable per rule. C1/C1a require halo flows from the envelope; the
-      writing rules transfer to any client-facing report skill unchanged.
-    provenance: mpr-v2 SKILL.md, adapted to house doors; incidents in rules-provenance.md.
+      Text-borrowable per rule. The halo reads require envelope evidence; the writing
+      rules transfer to any client-facing report skill unchanged. Check the engine
+      version before borrowing a rule the engine may now enforce (their eventual home is
+      the engine, not more skills); each rule retires here the release the engine adopts it.
+    provenance: mpr-v2 SKILL.md + mx-call-brief, merged in 2.0; incidents in rules-provenance.md.
 
-  - id: engine-pending-rules
+  - id: commitments-ledger
     what: >
-      Six methodology-universal rules (blended-benchmark non-finding, absolute
-      contributions, bid-pullback language, ex-surge day-normalisation, mix vs blended
-      metric, statement reconciliation) that bind in-skill until the engine adopts them.
-    home: SKILL.md "Engine-pending rules" section
-    depends_on: []
+      The prior-call commitments loop: source ladder (own ledger, meeting notes, living
+      doc, ask), three data verdicts (landed / not landed / not checkable), daily-series
+      check before any verdict, and internal-only placement of owners and scoreboard.
+    home: SKILL.md Steps 1 and 5 + "The run record"
+    depends_on: [optional meeting-notes MCP; works with none via the ask + sidecar ledger]
     how_to_lift: >
-      Borrow freely, but check the engine version first: each rule retires here the
-      release the engine starts enforcing it, and a borrowed copy must retire too.
-      Their eventual home is the engine, not more skills.
-    provenance: mpr-v2 package; design for engine adoption already merged upstream.
+      Copy the source ladder with its graceful bottom (ask one question, run without),
+      and the verdict placement rule. The sidecar ledger shape makes any recurring skill
+      self-feeding on accounts with no external notes source.
+    provenance: mx-call-brief (2026-08); the mid-month-landing false-negative is the case law.

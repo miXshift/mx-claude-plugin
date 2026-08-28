@@ -301,13 +301,13 @@ portable enforcement — "design a document that can't contain an unsourced figu
 what the report-contract now does. The deterministic read step (envelope → extractor)
 replaces the sub-agent entirely.
 
-### Step 2b's origin — attribution data-completeness
+### The attribution data-completeness guard's origin (now a Known trap in references/queries.md)
 Brand A (EU-2), April 2026: the DB's 14-day attribution columns were under-populated for SD, so
 canonical-window SQL returned suspiciously low ad_sales (DB SD ACOS 11.4% vs console 4.7%).
 The deterministic signal: `ad_sales_14d < ad_sales_7d` is mathematically impossible with
 complete data. *Kept in v2 for the residual-SQL set.*
 
-### Step 2c's origin — item-group classification
+### The item-group classification rule's origin (envelope groups are authoritative; context mapping is residual-SQL only)
 Brand A (EU-2), April 2026 shipped two mapping bugs requiring a client corrections pass: `SKU-X`
 (the small-format item) classified as Line-13 because its title contains "ALT-400+" (fixed by SKU
 regex); `SKU-Y` under a standalone "ALT-1300" group while MixShift's own view absorbs it

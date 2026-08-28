@@ -53,6 +53,27 @@ starts at 0.5.39; earlier versions predate the changelog.
   kind of problem that leaves no trace otherwise, because nothing fails: the
   work just quietly moves to another tool, and we never find out it was needed.
 
+### Changed
+
+- **Monthly Performance Report Max now prepares your client call, not just your
+  report.** Version 2.0 of the max tier produces two documents instead of one: a
+  client-ready performance brief you can share as is, and a private internal
+  companion with your talking points in call order, the numbers to keep off the
+  call, and every open commitment from the last call checked against the data
+  (landed, not landed, or not checkable). Before it writes anything, it works
+  out what actually moved and why: availability, pricing and Buy Box, catalog
+  mix, or demand, each tested rather than guessed, with Buy Box weighted by
+  page views so a two-week outage that already recovered is not reported as a
+  live problem. Featured-offer losses get diagnosed against Amazon's live offer
+  state, so the brief says whether the box was lost to a competitor or
+  suppressed, and what the fix is. Core figures still come from the MixShift
+  Intelligence service with the same typed extraction and checks. It also now
+  works out of the box on any account with zero setup: a brand-new or empty
+  account gets a baseline or setup read that asks questions instead of
+  asserting trends, and each run records what it learned so the next one starts
+  smarter. Monthly is the default; bi-weekly and QBR windows are a word in the
+  ask. The standard-tier monthly report is unchanged.
+
 ### Fixed
 
 - **The Sponsored Brands documentation no longer describes operations that do

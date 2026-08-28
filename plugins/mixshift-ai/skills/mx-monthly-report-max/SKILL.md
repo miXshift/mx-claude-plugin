@@ -1,362 +1,62 @@
 ---
 name: mx-monthly-report-max
-version: 0.1.0
+version: 2.0.0
 description: >
-  Composes and publishes the intelligence-powered monthly Amazon performance report:
-  every figure is served by the MixShift Intelligence service (H-Bridge ops + ads +
-  cross-domain envelope), typed through a figure/claim contract with mechanical
-  validators, and rendered deterministically. The smart tier alongside mx-monthly-report.
-  Covers MoM and YoY comparisons, bridge decompositions, item-group highlights,
-  forecast beat/miss, and Looking Ahead. Saves report as local HTML.
+  The max tier of MixShift reporting: prepares a client-ready performance brief and a
+  private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
+  Core figures come from the MixShift Intelligence service; the warehouse battery adds
+  the daily series, availability, page-view-weighted Buy Box, and live featured-offer
+  diagnosis. Checks what the last call promised against the data. Works out of the box
+  with zero configuration, on empty or brand-new accounts too (it asks instead of
+  asserting). The smart tier alongside mx-monthly-report.
   Triggers on: 'monthly report max', 'max monthly report', 'smart monthly report',
-               'monthly report with intelligence for [brand]'.
+  'call brief', 'client brief', 'prep my call with [client]', 'get me ready for the
+  [client] monthly', 'QBR prep', 'what moved this month for [brand]',
+  'anything I should flag before this call'.
 author: Claude
-last_updated: 2026-08-12
+last_updated: 2026-08-28
 dependencies:
-  - MixShift Intelligence service enrollment (INS-MONTHLY-01 via `mixshift intelligence`)
-  - harness report-contract (typed figure/claim validators + fixtures)
-  - brand context (context.yaml / narrative.md; degrade-and-label when absent)
-sample_input: "Smart monthly report for example brand, July 2026"
+  - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`)
+  - Warehouse read access via the gateway (`mixshift data query`)
+  - Brand context (optional; the brief sharpens as context accrues, never requires it)
+  - Meeting-notes source (optional; Google Drive or Fireflies MCP when connected)
+sample_input: "Get me ready for the Acme Outdoors monthly call"
 sample_output: |
-  ## July 2026 Monthly Report — example brand
-  Bottom line: OPS $X.XXM (−$X.XK MoM), TACOS X.X% (+X.X pts), YoY +X.X%
-  Full HTML report saved to [local reports dir]/monthly-report.html
+  Two documents published: "Acme Outdoors August Performance Review" (shareable) and
+  "Acme Outdoors August Call Notes" (internal). August is an availability story, not
+  a demand story: OPS $412K (-6.2% MoM), 10 items stocked out explain $53K of the gap.
 standalone: true
 handoff_optional: true
 ---
 
 # Monthly Performance Report Max
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), resolve the bundled CLI by scanning for it once and reuse the path: `MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"`, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
-**What this skill is:** the model's ONE job here is composing claims and prose against typed
-figures. Everything upstream of that is the intelligence service; everything downstream is
-deterministic code. The engine computes; the extractor types the figures; you write; the
-validators refuse a document that quotes a number without its basis, a superlative without its
-population, or a caveat-carrying figure without its caveat; the renderer writes the HTML.
+This skill produces **two documents**, and keeping them separate is the point.
 
-**How it differs from `mx-monthly-report`:** that skill is the standard tier and stays
-exactly as it is. This one is the smart tier — engine-served figures, additive-exact bridge
-decompositions with footing checks, evidence-as-data, and mechanical claim validation at the
-render seam. If the account's tenant is not enrolled in MixShift Intelligence, say so and
-offer the standard tier instead; do not half-run this one.
+The **client brief** is the deliverable. Write it so the client can read it directly: it
+explains what moved the period, quantifies each mechanism, and lists what the team is chasing
+next. It is honest about bad news and it never puts a named person on the defensive.
 
-**Why it is shaped this way:** nine claim errors shipped in one client-facing tab of a
-July 2026 report, caught by a cold reviewer rather than the build — and the rules that would
-have caught four of them were already written in the v1 skill the day they shipped. A rule in
-prose is checked by the same attention that wrote the sentence. The incident history behind
-every rule lives in [`rules-provenance.md`](rules-provenance.md); read an entry whenever a
-rule below feels arbitrary. New defects route by scope per the append protocol at the top of
-that file.
+The **internal companion** is the operator's. Talking points in call order, the numbers to
+keep off the call, owner-attributed asks, the agency's own unmet commitments, and the next
+lever. This is the half that would damage the relationship if it were shared, so it gets its
+own URL.
 
-**Terminology:** anything public-bound says "H-Bridge" or "MixShift bridge methodology".
+Default to producing both. If the user only wants one, they will say so. Both are skimmed
+once by a busy reader, so every section either changes what happens on the call or gets cut.
 
----
+**Why the client-facing default matters for the writing.** A brief written for internal eyes
+reaches for shorthand that reads badly to a client: naming who is late, calling a mechanism
+"their problem", framing the client's team as the obstacle. Writing the primary document for
+the client forces the analysis to stand on evidence instead of blame, which makes it better
+internal reading too.
 
-## Preflight
-
-1. **Brand context — degrade and label, never fail closed.** Load the brand-context fields in
-   one call via `mixshift brand context resolve <brand-slug> --json` (each carries
-   `{value, source, fetched_at}`), with `~/.mixshift/clients/<brand-slug>/context.yaml` +
-   `narrative.md` as the underlying files and the Tier-2 Brand Brain as fallback. The only
-   hard requirement is an account identity (`seller_id` + `account_type`) — if both are
-   absent, stop and say so. Any other missing field gets its documented default, labeled in
-   the report — never invented, never a stop. Do not extract numbers from narrative prose.
-2. **Freshness:** honor the context-freshness window (35 days; prior-closed-month backfill
-   exception applies) and the prior-run sidecar under
-   `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/` when present.
-3. **Audience flag** (`internal` | `client`) before any writing. Client mode: no nav, no
-   prior-month section, no internal tool references, no raw ASIN codes (nicknames from
-   context.yaml only), no agency-internal language, no unshipped plan items as "confirmed".
-4. **Metered disclosure:** one monthly report consumes one metered intelligence request.
-   Re-renders re-read the envelope artifact on disk; they never re-run the entry. Say this
-   before the first run of the session.
-
----
-
-## The pipeline
-
-### Step 1 — Acquire the run bundle
-
-INS-MONTHLY-01 returns one **composite bundle** for the whole run, not a single response —
-one MoM pair and one YoY pair, each an ops + ads companion, nested inside it:
-
-```bash
-mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out run.json
-```
-
-(params: `{"merchant": {"sellerId", "marketplaceId"}, "month", "grouping", "includeYoY"}`;
-oversize accounts return an async handle — poll with `mixshift intelligence poll`, never
-cancel on time.) The bundle shape is `{ok, mom: {ops, ads, crossDomain}, yoy: {ops, ads,
-crossDomain} | null, headline, limitations, meta}` — where the YoY leg's `ads` and
-`crossDomain` are ALWAYS null, because exactly one ads bridge runs per request, against the
-MoM window. That is the leg's scope, not missing data, and the run says so in its own
-limitations. `run.json` is never fed to the extractor as-is — Step 2 pulls
-each nested envelope out by name, one period-prefixed figures document per envelope.
-
-On `not_enrolled` or a service error: **degrade and label** — name the degradation in the
-report header and offer the standard-tier skill; never fail closed, never silently
-substitute locally-computed numbers for engine ones.
-
-**Re-pull on the day you publish, and diff.** Amazon restates recent months — measured on
-live accounts at magnitudes from low hundreds to ~$10K within days of a build. If two runs
-disagree, it is time, not grain. A figure quoted from a stale envelope is a defect.
-
-### Step 2 — Extract typed figures per envelope (never read raw envelope JSON)
-
-The bundle nests its envelopes, so extract each one the report needs by name instead of
-feeding `run.json` straight in: `mom.ops` for the retail/bridge figures plus the
-`crossDomain` cross-domain block (it rides the ops leg of the pair, never the ads leg),
-`mom.ads` for the ads figures, and `yoy.ops` when `includeYoY` was set. Each `--select`
-produces its own figures document (typed Figure objects with `source_path` into the
-envelope, basis/unit metadata, envelope caveats mapped into the caveat registry); require
-`--check` to pass on every one of them (required fields, envelope-rooted source paths,
-delta = p2 − p1, the ads SKU-split identity, bridge legs footing to net):
-
-```bash
-mixshift report extract run.json --select mom.ops --check --out figures.mom.ops.json
-mixshift report extract run.json --select mom.ads --check --out figures.mom.ads.json
-mixshift report extract run.json --select yoy.ops --check --out figures.yoy.ops.json  # only when includeYoY
-```
-
-**Every id a `--select` produces is prefixed with its period** — `mom.*` or `yoy.*` ahead of
-the usual domain shape, e.g. `mom.ops.ops.p1` and `yoy.ops.ops.p1` from the same metric in
-two different periods. MoM and YoY figures therefore never collide, even once every document
-this step produced is composed into one report. Never build or expect a bare, unprefixed id
-(`ops.ops.p1`) from a `--select` extraction — that shape belongs to a plain, non-composite
-response only, which this pipeline never hands the extractor.
-
-Record `source.engineVersion` off the `mom.ops` figures document for the sidecar, and
-compose the report against the full set of figures documents together — the period prefix is
-what makes that merge safe. Reading a 40–120KB envelope "carefully" in context is the
-reason-from-the-fragment-you-kept failure this step exists to prevent, composite bundle or
-not.
-
-### Step 3 — Residual SQL (declared, shrinking)
-
-The envelope serves campaign-TYPE tables (ads runs with `labelGroupBy: "CampaignType"`) and
-SKU-level product-line revenue (asin-grain runs) on engines ≥ 0.1.0 — **re-probe per engine,
-not per report**. Items below the insight serving threshold get no entity row — carry the
-account-total remainder explicitly rather than fabricating rows.
-
-Where residual SQL is still used (older engines only), it is pre-fetched only, recorded in
-the sidecar, no inline SQL, and two guards stay with it:
-
-- **Attribution completeness (SC):** for SB/SD rows, `ad_sales_14d < ad_sales_7d` is
-  impossible with complete data — flag, halt, offer paste-in or proceed-with-note; record
-  `attribution_state`.
-- **Item-group classification (SC):** when the tables come from the ENVELOPE, the engine's
-  own operational item groups are authoritative — verify entity rows foot to the account
-  total. `context.yaml::item_group_mapping` applies only to residual-SQL classification
-  (first-match-wins, fallback group), with the per-group SKU listing emitted for
-  confirmation. SKU titles are diagnostic input, never display strings.
-
-### Step 4 — Runtime inputs (forecast)
-
-The forecast upload must contain actuals **through the report month** or it is not provided:
-suppress the YTD/MoM beat-miss cards, the forecast table, and every "vs. forecast /
-projected / ahead / behind" phrase entirely — no fallback to a prior upload, no synthesis
-from trend. Surface the forecast state in the console output. Fixed vocabulary: "the
-MixShift revenue forecasting model" (first mention) / "the forecasting model" (the model) /
-"the forecast" (the number). "Plan" is banned.
-
-### Step 5 — Compose `report-data.json` (the model's actual work)
-
-Every number is a `figure_ref` into figures.json; every sentence that asserts something is a
-typed claim (Figure / Derived / Claim / Caveat / Section — the harness report-contract). A
-`figure_ref` built from a composite extraction names its period explicitly — `mom.ops.ops.p1`
-for the MoM figure, `yoy.ops.ops.p1` for the YoY figure of the same metric — never the bare
-`ops.ops.p1` shape. There is exactly one report-data.json and its figures come from every
-document Step 2 produced, so a `figure_ref` that drops the period is not just wrong style: on
-a bare id, MoM and YoY read as the same figure.
-
-- **Claims carry their kind**, and the kind carries obligations: `superlative`/`quantifier`
-  need a population with `complete: true` plus a machine-checkable form — until the envelope
-  serves the census, topDrivers populations are `complete: false` and such claims **degrade
-  to observations** (correct behavior, not a gap). `causal` needs a mechanism and tested
-  alternatives; a decomposition leg is `tracking`, and tracking text may not use causal
-  verbs. `comparison` may not mix bases.
-- **Use served evidence for a causal `mechanism` wherever one exists.** When the run was
-  made with `evidence: true`, `report extract` emits an `evidence[]` block alongside the
-  figures: the engine's own "What we know" statements, each with an `id`, the `metric` root
-  it hangs off, its `head`, and a `source_path`. Quote that account of the move and cite the
-  id, rather than composing a mechanism from the numbers yourself. An authored mechanism is
-  unfalsifiable prose; a served one is traceable to the engine that computed the move, which
-  is the whole reason `CAUSE-1` demands a mechanism at all. If no statement covers the move,
-  that absence is itself information: prefer `tracking` or `observation` over inventing a
-  cause.
-- **Evidence ids are period-namespaced exactly like figure ids** (`mom.evidence.*`,
-  `yoy.evidence.*`), because you compose every selection's document into ONE report. A
-  statement about last month and one about last year are otherwise indistinguishable, which
-  is the same silent-wrong class that once let a MoM `figure_ref` resolve to a YoY value.
-  Never quote a `mom.evidence.*` statement to explain a YoY move, or the reverse.
-- **Computing anything locally requires a `Derived`** with `inputs[]` and a written
-  `why_not_published`. For a figure the engine publishes, that sentence cannot honestly be
-  written — which is the point. The one standing legitimate Derived: the day-normalised
-  ex-event rate on older engines (see engine-pending rules).
-- **Caveats travel by reference to every quotation site.** A blocking caveat renders in
-  every section that quotes its figure — including the executive summary. Note that a
-  blocking caveat rides the **levels** as well as the delta: when the engine says a number
-  is not safe to quote bare, the number it means is usually the total.
-- **Copy `unit` and `served_unit` verbatim from the extracted figure.** `served_unit` is the
-  unit the analysis engine itself published; it is what lets the validator catch a unit that
-  got relabelled somewhere between extraction and here. If you copy `unit` but drop
-  `served_unit`, that check has nothing to compare against. Never author either by hand and
-  never "correct" a unit you find surprising — a served unit that looks wrong is a bug to
-  report upstream, not to patch here.
-- **Prose strings are written here, in the data file** — composing inside HTML markup
-  produces template-shaped prose. Shared content (a table or Bottom Line appearing in both
-  executive and full views) is authored ONCE and injected into both.
-
-### Step 6 — Validate, then review
-
-Mechanical, on every report built this session (a fix applied to one marketplace and left
-standing in its siblings is this skill's most-repeated historical defect):
-
-```bash
-mixshift report validate <report-data.json>      # the harness report-contract validators
-python helpers/prose-lint.py <rendered.html>     # after Step 7's render
-```
-
-`report validate` reports two classes and only one of them is a gate:
-
-- **ERROR** — must be fixed. The fix goes in `report-data.json`, never in the rendered HTML.
-- **warn** — reported, does not block, and is sometimes correct as-is. Today the only
-  warning is UNIT-2's percent ceiling, which flags any percent-family figure that displays
-  past 1000%. That is usually a scale error, but a 1200% ACoS on an entity row with
-  near-zero sales against live spend is a real reading. **Look at every warning; do not
-  reflexively "fix" one by changing a unit** — relabelling a correct figure to silence it
-  is strictly worse than the warning.
-
-If validate ran from a different directory than the `figures.*.json` files, point it at
-them so the served-unit check has something to compare against:
-
-```bash
-mixshift report validate report-data.json --figures figures.mom.ops.json figures.mom.ads.json
-```
-
-Then the judgment passes:
-
-- **Pass 0 — does the report answer the question it exists to answer?** With a current
-  forecast, the job is explaining the variance: name the largest component, size it, and
-  test the alternative explanations **in the report** (availability, seasonality, price,
-  calendar, mix, ad efficiency). The framing you were handed is a hypothesis, not a
-  finding — a "getting worse" story must survive a like-for-like rebuild (event-adjusted,
-  matched windows) before it ships. Without a forecast the same discipline applies against
-  the prior period.
-- **Substantiation:** every causal or comparative claim names its figure; every
-  residual-SQL number names why the envelope could not serve it. Emit `.review.json`
-  (schema: `helpers/mpr-review-schema.json`) with honest counts and the validator exit
-  codes — an empty corrections list means you found nothing, not that you skipped the pass.
-
-### Step 7 — Render, deliver, record
-
-Render `report-data.json` through the deterministic renderer to
-`<delivery.reports_local_dir>/monthly-report.html`. The renderer is the single HTML writer:
-it signs and formats every delta from the figure's unit/precision, sets visual accents from
-value sign (never prose tone), injects shared blocks once, suppresses forecast sections
-unless provided-current, and places caveats at quotation sites. **Corrections go to
-report-data.json, never the HTML.** Then:
-
-- **Sidecar:** the standard inputs plus envelope run ids, `engineVersion`, catalog
-  revisions, and the four state fields (forecast / attribution / item-group classification /
-  context freshness). Surface drift vs the prior sidecar in next month's header.
-- **Discoveries** (`.discoveries.json`): typed proposals only — mapping corrections, context
-  value disagreements, watch candidates, structural-event candidates. Humans promote.
-
----
-
-## Judgment rules (the residue that is genuinely yours)
-
-**Analytical:**
-
-- **C1 — cross-item discovery.** For the largest declining lines, read the halo flows both
-  ways from the envelope (confirm direction against the legend — Sources = halo-IN,
-  Targets = halo-OUT). An item whose demand is created by another item's advertising is
-  invisible at group grain and has been a third of an account's entire decline. Size the
-  pair; **carry the confound** (an event in the comparison period is part of the fall);
-  state it as tracking, never cause.
-- **C1a — run C1 on every item named in a spend recommendation**, not only the biggest
-  decline. The deciding measure is **(same-SKU ad sales + halo-out) ÷ ad spend** against
-  account ROAS — price-neutral, counts passed-on sales. A line has been recommended for
-  budget at $0.38/dollar while the just-cut line earned $1.34.
-- **C2/C3 — event-shift and clean comparator.** Check surge windows in BOTH periods before
-  attributing anything to demand; rebuild moved-event comparisons on a daily-rate basis; and
-  re-measure any move against the nearest event-free month before drawing a conclusion.
-- **C4 — cover-build direction.** Rising weeks-of-cover is a restock only if inventory rose;
-  on flat stock and falling demand it is a demand finding, and calling it a restock inverts
-  the meaning. A $0 cascade contribution means zero *contribution*, never "the lever held
-  still."
-- **Probe before declaring a limit.** Never write "the engine cannot do X" from a run you
-  did not create: request the grain, read the manifest entry and reason code, report an
-  override as a run-scoped defect. Fallbacks are declared, with their proxy checked.
-- **Test the mechanism before publishing it** — and publish the test, including when the
-  intuitive answer loses. A failed hypothesis has been the strongest finding in its section.
-- **Re-derivation upgrades findings as often as it catches errors.** Both directions pay.
-
-**Writing:**
-
-- Conclusion first, mechanism second. Sign every change figure, including adjective-shaped
-  ones. MoM/YoY labels on every delta in prose. Plain spoken register, US spelling — if a
-  phrase would not survive being read aloud on a client call, rewrite it. No internal report
-  names in client copy — say what the data means and attach the dollars.
-- **Every bullet stands alone:** the thing named, the move sized, the comparison that makes
-  it a problem, the action in the lead. These get pasted into emails months later.
-- **Every callout sentence must change a decision** — restating what a ratio implies, or
-  defending an item against a charge nobody made, is noise. When two callouts share a causal
-  mechanism, mirror their structure, place them adjacent, and state the magnitude comparison
-  explicitly.
-- No editorial certainty without brand-owner validation — "consistent with" for correlated
-  trends. Never assert a forward metric without the forecasting model or a confirmed target.
-  Never reference a seasonal driver without the model's seasonal index. Never state OOS
-  without the availability data.
-- **Sweep every fix across every sibling report in the session before replying** — fix it
-  where raised, grep the siblings for the same construction, fix or justify each, and say
-  which reports were swept.
-
----
-
-## Engine-pending rules (verbatim residents until the engine adopts them)
-
-These are methodology-universal truths that belong in the engine as finding-suppression
-rules or published caveats. Until they exist there, they bind here. Provenance has each
-one's story.
-
-1. **The blended-benchmark non-finding.** Never treat a line's gap to the blended account
-   conversion rate as a finding: conversion correlates with price point, so the top of the
-   ladder sits below the blend by construction, every month. This extends to share gaps and
-   revenue-per-session — revenue/session = conversion × ASP, so a cheap item trips it every
-   month. **Decompose the ratio before reporting it**; a drill signal is a place to look,
-   never a finding. Test: if the line's position vs the average would be the same in a good
-   month and a bad one, it is not evidence.
-2. **Attribution of a total to a component takes absolute contributions, not growth rates.**
-   A component can grow fastest and remain a minority of the change — sum the components in
-   currency and check the share before writing "X drove".
-3. **"Bid pullback," not budget language**, when spend fell because bids fell.
-4. **`exSurgePctChange` is not day-count normalised.** On engines ≥ 0.1.0 the evidence
-   block's window-comparability statements publish the correctly day-normalised ex-event
-   per-selling-day change — quote that and skip the local Derived. On older engines, compute
-   `(period − event) ÷ (days − event_days)` yourself and show the working.
-5. **A decomposition leg can oppose the blended metric of the same name — that is mix.**
-   Label the lever as per-line and explain the mix in prose; a reader who spots the
-   contradiction without the reason distrusts the whole table.
-6. **Reconcile statement-level figures against their metric totals** before publishing —
-   statement builders have quoted one entity's value as a period total.
-
----
-
-## Where things live (do not re-create them here)
-
-| Concern | Home |
-|---|---|
-| Figure/claim/caveat contract, validators, the nine shipped errors as must-fail CI fixtures | harness `src/lib/report-contract/` (borrow map: [`components.yaml`](components.yaml)) |
-| Incident history + append protocol | [`rules-provenance.md`](rules-provenance.md) |
-| Per-brand voice, section list, banned-terms additions | brand context (`reporting.*` fields) |
-| Scalar knobs (targets, thresholds) | calibration card + manifest-declared context fields |
-| Brand facts, structural events, item-group mapping | `~/.mixshift/clients/<brand>/context.yaml` |
-| Prose quality enforcement | `helpers/prose-lint.py` |
-
----
+**How this relates to `mx-monthly-report`:** that skill is the standard tier and stays
+exactly as it is. This is the max tier: Intelligence-served core figures, the commitment
+check against the prior call, mechanism separation, live featured-offer diagnosis, and the
+two-document output.
 
 ## Telemetry (required)
 
@@ -364,12 +64,472 @@ At the START of this skill, run:
 
 ```bash
 mixshift telemetry emit skill.invoked --skill mx-monthly-report-max
-# If natural-language trigger matched (NOT a /slash command), also run:
+# If a natural-language trigger matched (NOT a /slash command), also run:
 mixshift telemetry emit skill.trigger_phrase_matched --skill mx-monthly-report-max --trigger-phrase "<the user's exact phrase>"
 ```
 
-At the END of this skill, run:
+At the END, run:
 
 ```bash
 mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped>
 ```
+
+## The knobs (every one has a working default; none is required)
+
+Ask about none of these up front. Resolve each from the invocation, the data, and brand
+context, in that order; say in the scope bar what was resolved and from where. A user who
+wants a different setting will say so, and the answer gets recorded for next time (see
+"The run record").
+
+| Knob | Default | Override |
+|---|---|---|
+| Cadence | monthly; "bi-weekly" or "QBR"/"quarterly" in the ask switches it | `reporting.call_cadence` in context.yaml |
+| Documents | both; "just the client one" / "just my notes" narrows it | `reporting.brief_documents`: `both`, `client_only`, `internal_only` |
+| Publish | Artifact URLs when the Artifact tool exists; otherwise HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
+| Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
+| Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
+| Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
+| Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | none |
+
+**Threshold defaults** (quote the active values in the method notes; override via
+`reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
+worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
+SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days; sales floor for per-item
+Buy Box flags: the account's median item revenue in the current window (so thin accounts
+still flag something and large accounts do not flag noise).
+
+Cadence drives the windows: monthly compares month-to-date to the same day count of the
+prior month plus the same window last year; bi-weekly compares the last 14 loaded days to
+the prior 14; QBR compares the quarter to the prior quarter and the same quarter last year.
+Everything else in this skill is cadence-agnostic.
+
+## Account modes: never fail closed, never pad
+
+The only hard requirement is an account identity: `seller_id` + `account_type` (from
+`mixshift brand add`, or resolved in Step 2). If both are absent after Step 2, stop and say
+so. Everything else degrades.
+
+Resolve the mode from the data during Step 3, name it in the scope bar, and shape the
+documents to it:
+
+- **Established** (two-plus full months loaded, prior-year data present): full brief.
+- **No YoY** (account younger than about 13 months in the warehouse): omit YoY columns and
+  tiles, write `n/a`, and never substitute a category benchmark for the missing comparison.
+- **Baseline** (less than two months loaded): there is no MoM story to tell. Compare weeks
+  within the loaded span, label the document a baseline read, and let the masthead say that
+  plainly ("First full weeks on record: the baseline August will be measured against").
+  Things-to-check becomes mostly questions: launch timing, catalog completeness, what the
+  client considers this period's job.
+- **Setup** (connected but tables still empty or backfilling): produce a setup-status brief
+  instead of a performance brief: which data sources are connected, what has landed (state
+  the first and last loaded `DateTime` per table, nothing more), what has not, and the
+  questions that unblock the first real brief. No performance assertions at all, and no
+  invented timelines; if the user asks when data will land, say what is loaded so far and
+  offer to re-check tomorrow.
+
+The rule across all modes: **when evidence is absent, ask a question instead of writing a
+claim.** A question that names what would settle it reads as competence; a guess reads as
+filler until it is caught, and then it costs every other number its credibility.
+
+**Brand context follows the same posture.** Load whatever exists in one call via
+`mixshift brand context resolve <brand-slug> --json` (each field carries
+`{value, source, fetched_at}`). Missing context means observational mode for the affected
+framing, never a stop. Do not extract numbers from narrative prose. When a useful field is
+absent (a target, a nickname, a structural event), the brief runs without it and the run
+record proposes it for next time.
+
+## Step 1: Find out what the last call promised
+
+Do this **before** touching the warehouse. It is what separates a brief from a data dump,
+and it changes which numbers matter.
+
+Sources, in order; take the first that exists and say which one you used:
+
+1. **The prior run's ledger.** This skill records each run's commitments and open questions
+   in its run record (see below). If a prior run exists, its ledger is the primary source.
+2. **Meeting notes**, when a notes source is connected (Gemini and Fireflies notes usually
+   live in Drive under a predictable title: `search_files` with
+   `title contains '<account> Monthly'`, document mime type). Read the most recent one and
+   pull the **action items and their owners**, plus anything the client explicitly asked
+   about.
+3. **The account's living performance doc**, if there is one, for the prior period's
+   settled figures and any structural event already on record.
+4. **Ask.** One question, asked while the figures pull runs: "What did the last call
+   promise, and did the client ask for anything specific?" A blank answer is fine; the
+   brief runs without a commitments section and this run's asks seed the ledger for next
+   time.
+
+Internal notes often contain personal or sensitive material alongside the business content.
+Take only what bears on the account and leave the rest out of the brief entirely.
+
+You now have a list of open commitments. Step 5 checks each one against data, which is the
+single highest-value thing in the brief: it catches the action item everyone assumed was
+done.
+
+## Step 2: Resolve the account
+
+```bash
+mixshift brand list --json
+```
+
+One client often maps to several brand slugs and several SellerIDs (a Vendor Central row
+and a Seller Central row, plus other marketplaces). Do not assume. Confirm which SellerID
+actually carries data in the window before building anything on it:
+
+```sql
+SELECT SellerID, COUNT(*) rows_, MIN(DateTime) mn, MAX(DateTime) mx, ROUND(SUM(Cost),0) cost
+FROM campaignmetric WHERE SellerID IN (<all candidates>) AND DateTime >= '<window start>'
+GROUP BY SellerID
+```
+
+A SellerID that returns zero rows is not a data problem to debug; it is simply not the
+account being managed (or the account is in Setup mode; tell them apart by whether ANY
+candidate carries data). Say in the brief's scope line which SellerID and marketplace every
+figure covers, because a client with both 1P and 3P will otherwise assume the wrong one.
+
+## Step 3: Pull the figures
+
+Three sources, each with its own job. Disclose before the first envelope run of the
+session: one run consumes one metered intelligence request; re-reads of the artifact on
+disk are free.
+
+### 3a. Core figures: the Intelligence envelope
+
+```bash
+mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out run.json
+```
+
+(params: `{"merchant": {"sellerId", "marketplaceId"}, "month", "grouping", "includeYoY"}`;
+oversize accounts return an async handle: poll with `mixshift intelligence poll`, never
+cancel on time.) Then extract typed figures per envelope, never reading the raw envelope
+JSON (reasoning from a 40-120KB fragment you skimmed is the failure this step exists to
+prevent):
+
+```bash
+mixshift report extract run.json --select mom.ops --check --out figures.mom.ops.json
+mixshift report extract run.json --select mom.ads --check --out figures.mom.ads.json
+mixshift report extract run.json --select yoy.ops --check --out figures.yoy.ops.json  # when includeYoY
+```
+
+`--check` must pass on every document. Every id is period-prefixed (`mom.*`, `yoy.*`), so
+the documents compose without collisions. When the run was made with `evidence: true`, the
+extraction carries the engine's own `evidence[]` statements; causal claims in the brief
+quote those as their mechanism rather than inventing one. Record `source.engineVersion`
+from the `mom.ops` document for the run record.
+
+On a service error: **degrade and label.** Name the degradation in the method notes, pull
+the account totals from the warehouse battery instead, and keep going. Never silently
+substitute locally computed numbers where the envelope was expected; the label is what
+keeps the two sources distinguishable. (Enrollment errors are transient platform state,
+treated the same way.)
+
+**Re-pull on the day you publish, and diff.** Amazon restates recent data, at magnitudes
+measured from low hundreds to about $10K within days of a build. If two runs disagree, it
+is time, not grain. A figure quoted from a stale envelope is a defect.
+
+**Probe before declaring a limit.** Never write "the engine cannot do X" from a run you
+did not create: request the grain, read the manifest entry and reason code, and report an
+override as a run-scoped defect.
+
+### 3b. The brief's battery: the warehouse
+
+`scripts/pull_figures.py` runs the standard battery and emits one JSON with every figure
+the envelope does not serve, already delta'd: resolved windows, dark ad days, the
+settled-window efficiency check, daily series and exit rate, segment splits, ASIN movers
+with the reconciliation result, out-of-stock days, and Buy Box by ASIN (page-view weighted,
+month and last 7 days). It exists because each of these queries has a trap in it, and
+re-deriving them by hand each period is how a wrong number reaches a client.
+
+```bash
+python3 scripts/pull_figures.py --seller-id <SellerID> --as-of <data end> --out figures.json
+```
+
+Read `references/queries.md` when you need to go beyond the battery, when the account is
+Vendor Central (the script is Seller Central only; the reference carries the VC fork), or
+when a query errors. The six traps the battery encodes, so you can spot them anywhere else:
+
+1. **Align the window to the data, not the calendar.** Business reports load behind ad
+   data; trim both to the earlier `MAX(DateTime)` or the TACOS compares 26 days of spend
+   to 25 days of sales.
+2. **Compare like day counts.** Month-to-date goes against the same day count of the prior
+   month, labelled explicitly. Nobody reads a footnote.
+3. **Check for dark ad days in either window.** Count days with non-zero spend; normalize
+   short windows and show raw and normalized side by side. Scaling touches spend, ad sales
+   and TACOS; ACOS is a ratio and is left alone.
+4. **Verify every efficiency claim on a settled window.** Sponsored Products attributes on
+   a 7-day window, so the last week of a pull is still filling in. Re-run the comparison
+   excluding the last 7 days from both periods; if the move collapses, it was an
+   attribution artifact, not a finding.
+5. **Reconcile before quoting item movers.** The SKU sum must agree with the account total
+   within about half a percent; a doubled sum is almost always a join multiplying rows.
+6. **Never diagnose a Buy Box problem from a monthly average.** Weight by page views and
+   always read the daily series plus a last-7-days column; classify each flagged item as
+   still open, recovered, or no traffic (no traffic is usually stock or suppression, not
+   recovery).
+
+Where the envelope and the battery both serve a figure, the envelope wins and the battery
+is the cross-check; a disagreement beyond tolerance is a finding (usually restatement).
+
+### 3c. Live state: the featured offer
+
+For items Step 6 flags, go live rather than trusting the warehouse for current state:
+
+```bash
+mixshift amazon call pricing.get_item_offers_batch --legacy-seller-id <SellerID> --json \
+  --body '{"requests":[{"uri":"/products/pricing/v0/items/<ASIN>/offers","method":"GET","MarketplaceId":"<marketplace>","ItemCondition":"New"}]}'
+```
+
+Up to 20 ASINs per batch, about one batch per 10s. Read `Offers[].IsFeaturedMerchant`, the
+seller id on the winning offer, `ListingPrice`, `Summary.NumberOfOffers` and
+`Summary.CompetitivePriceThreshold`.
+
+## Step 4: Separate the mechanisms
+
+The brief's central job is answering "is this a demand problem or something we can fix".
+Do not reach for a cause. Test for each one and let the data pick.
+
+**Availability.** Count out-of-stock days per ASIN in both windows (a day counts when the
+maximum fulfillable quantity across every warehouse row is zero: "could not be bought", not
+"not owned"). Attribute decline to stockout only where the current window is materially
+worse than the prior one; many ASINs sit at zero permanently and are not news. Total the
+decline across just those ASINs so you can say what share of the gap availability explains.
+
+**Pricing and Buy Box.** **Weight Buy Box by page views everywhere**, at account, segment
+and item level. Losing the featured offer collapses traffic as well as conversion, so an
+unweighted mean gives a near-empty broken day the same standing as a busy healthy one;
+weighting can flip the sign of the month-over-month move, and the weighted figure is the
+one shoppers actually met. Surface per item, with a month column and a last-7-days column,
+anything above the sales floor sitting below the Buy Box floor or down more than the flag
+threshold. Classify each as still open, recovered, or no traffic. Step 6 diagnoses the
+open ones.
+
+**Catalog and mix.** Report listing breadth and availability separately; they routinely
+move in opposite directions and reporting only the flattering one will not survive the
+client's next question. Pair Amazon's account-level offer count with two constructed
+measures: **in-stock items per day** (label it as ours; it will not tie to the account
+row) and **share of page views landing on an in-stock item**, usually the most legible
+availability number in the document because it is stated from the shopper's side. When new
+or returning items are offsetting losses, say it out loud, and say the thin half in the
+same breath: broader and thinner at the same time is the honest description.
+
+**Traffic versus conversion.** Sessions against units per session. Traffic holding while
+units fall is the availability and Buy Box signature; traffic falling is a demand or
+ranking question. (Vendor Central has neither sessions nor Buy Box: use glance views as
+the traffic proxy and say so.)
+
+**Cross-item effects.** For the largest declining lines, read the halo flows both ways
+from the envelope's evidence (confirm direction against the legend: Sources = halo in,
+Targets = halo out). An item whose demand is created by another item's advertising is
+invisible at group grain and has been a third of an account's entire decline. Size the
+pair, carry any confounding event, and state it as tracking, never cause. Run the same
+read on **every item named in a spend recommendation**, not only the biggest decline: the
+deciding measure is (same-SKU ad sales + halo out) / ad spend against account ROAS. A line
+has been recommended for budget at $0.38 per dollar while the just-cut line earned $1.34.
+
+Two inventory readings that invert if taken naively: rising weeks-of-cover is a restock
+only if inventory rose (on flat stock and falling demand it is a demand finding), and a $0
+contribution from a lever means zero contribution, never "the lever held still".
+
+When a swing has no cause in the data, that is a finding, not a gap. Put it in
+Things-to-check as a question rather than inventing a mechanism. Two writing rules guard
+this section: attribution of a total to a component takes absolute contributions, not
+growth rates (a component can grow fastest and remain a minority of the change; sum in
+currency before writing "X drove"); and never treat a line's gap to a blended account
+ratio as a finding (conversion correlates with price point, so the top of the ladder sits
+below the blend by construction; decompose the ratio before reporting it). A decomposition
+leg can oppose the blended metric of the same name: that is mix, so label the lever as
+per-line and explain the mix in prose, or the reader who spots the contradiction distrusts
+the whole table. Test the mechanism before publishing it, and publish the test, including
+when the intuitive answer loses: a failed hypothesis has been the strongest finding in its
+section.
+
+## Step 5: Check the open commitments
+
+Take each item from Step 1 and ask what the data says. Three verdicts: **landed** (the
+metric moved; say so), **not landed** (it did not, or moved the wrong way), **not checkable
+from data** (say that). Check the daily series before writing any verdict: a month average
+can say "not landed" about a fix that landed mid-month, and telling a client their team's
+work failed when it worked is the worst error this skill can make.
+
+**Where each verdict goes.** The commitments table lives in the **internal companion**,
+with owners named, because that is a management artifact. What reaches the client brief is
+the substance without the scoreboard: a landed fix becomes a credited win in the narrative;
+an unlanded one becomes a neutral entry in Things-to-check. Own the agency's own misses
+explicitly in the internal doc: if the plan was to push spend somewhere and spend went down
+instead, the operator should walk into the call knowing that before the client raises it.
+When spend fell because bids fell, the language is "bid pullback", not budget language;
+lower spend is a bid or budget decision, and the brief names which.
+
+## Step 6: Diagnose the featured offer losses properly
+
+Buy Box work is where a brief earns its keep, because a lost featured offer is usually
+fixable this week and costs more than the item's own conversion: it drops the item out of
+most shopper paths and stops ads serving on it. Traffic collapse is the tell (measured on
+one reference account: page views down 79.9% during the loss, so the revenue gap was far
+larger than a conversion view would suggest).
+
+For each flagged item, four questions in order:
+
+1. **When did it break and has it recovered?** Pull the daily series, read off the break
+   and recovery dates, and compute the before, during and after daily sales rates. That
+   gives the impact and the proof of fix in one pass.
+2. **What does it look like right now?** The live call from Step 3c.
+3. **Suppression or a competitor?** The fix differs entirely, so do not guess. Another
+   seller id featured means a pricing or seller-authorization question. Nobody featured
+   with `NumberOfOffers` = 1 (ours) means Amazon suppressed the offer over a lower price
+   off Amazon: repricing is often not even permitted under MAP, and the fix is a dispute
+   evidenced by the competitor's item price plus shipping. `CompetitivePriceThreshold`
+   equal to our listing price means no headroom: say so plainly, because any upward price
+   move re-breaks the item.
+4. **What can you actually claim?** Break and recovery dates, rates either side, live
+   offer state, the threshold. You usually cannot state the date of a price edit (catalog
+   price history is sparse): say you are reading the recovery, not the edit, and attribute
+   with "consistent with" rather than "caused by".
+
+## Step 7: Pressure-test the numbers you plan to quote
+
+Two failure modes, both producing numbers that are arithmetically correct and materially
+misleading. These findings go in the **internal companion** ("numbers to keep off the
+call"), not the client brief.
+
+**Forecast and pacing.** Before quoting any target or beat/miss, reconcile the forecast to
+a *closed* month's actual on the same basis. Far apart means it measures something else (all
+channels, a rebased ceiling, an aspiration) and cannot support a pacing statement; say so
+and route it to an internal reconciliation instead of onto the call. A workbook with
+several unlabelled scenarios is itself the finding. Absent any current forecast, suppress
+every "vs plan / projected / ahead / behind" phrase; the run-rate close from the daily
+series is presented as arithmetic, never as a forecast.
+
+**Weak comparison bases.** A spectacular year-over-year number often means last year was
+broken. Pull the surrounding months of the prior year; if the base month is a trough
+against its own neighbours, the comp flatters the account rather than describing it. Use
+the number, but flag the weak base internally so nobody leans on it live.
+
+The same discipline for events: check surge windows in BOTH periods before attributing
+anything to demand, rebuild moved-event comparisons on a daily-rate basis, and re-measure
+any move against the nearest event-free period before drawing a conclusion. Where the
+envelope publishes day-normalised ex-event changes, quote those rather than computing your
+own; where it does not, show the working
+(`(period - event) / (days - event_days)`). And reconcile any statement-level figure
+against its metric total before quoting it: statement builders have quoted one entity's
+value as a period total.
+
+## Step 8: Write the two documents
+
+Structure, section-by-section purpose, and design rules are in
+`references/brief-structure.md`. Read it before writing. The order in brief:
+
+**Client brief:** masthead (a conclusion, not a topic), scope bar (account, SellerID,
+marketplace, exact windows, every correction applied, the mode from "Account modes", before
+the first number), bottom line (conclusion, mechanism, counterweight), headline metrics
+(tile strip + matched-window table), what actually moved (mechanism severity cards + mover
+tables), segment reads (only where the account genuinely splits), featured offer status,
+Things-to-check (after the analysis, no owner names, 5 to 7 rows with state chips), method
+and caveats.
+
+**Internal companion**, at its own URL: any correction to an earlier read first, what to
+tell the client (numbered in speaking order, with suggested spoken lines and framing
+traps), numbers to keep off the call, open commitments with owners and verdicts, our next
+lever (scoped tightly enough to execute).
+
+Composition rules that survive every mode:
+
+- Every number traces to a figures document (3a), the battery JSON (3b), a live call (3c),
+  or a query in the method notes. Nothing from general Amazon knowledge, industry
+  benchmarks, or assumed platform dynamics.
+- A superlative or "every/all/most" claim needs a complete population behind it; without
+  one it degrades to an observation (correct behavior, not a gap).
+- Causal claims quote served evidence as their mechanism where it exists; otherwise
+  "consistent with", never "caused by". Decomposition legs are tracking, and tracking text
+  does not use causal verbs.
+- Comparisons do not mix bases (settled vs unsettled, normalized vs raw, ordered vs
+  shipped) without saying so at the claim.
+- Never invent a product nickname: `ItemNickname`, else `ItemName`, else the raw ASIN, else
+  ask. Client-facing lines prefer the nickname.
+
+Build both documents from `assets/brief-template.html`: keep the token block, the type
+pairing and the component classes; replace the content. Publish per the Publish knob, give
+the two documents distinct names and favicons so they cannot be confused, and hand over
+both URLs while saying plainly which one is shareable. That one sentence is what stops the
+internal companion reaching a client.
+
+Then run the mechanical pass:
+
+```bash
+python3 helpers/prose-lint.py <each rendered html>
+```
+
+and fix what it flags in the source you write, not by hand-editing around the rule. Emit
+`.review.json` (schema: `helpers/mpr-review-schema.json`) with honest counts; an empty
+corrections list means you found nothing, not that you skipped the pass. When a fix is
+applied to one document or one sibling account in a multi-account session, sweep the same
+construction across the others before replying, and say which were swept.
+
+## Voice
+
+The non-negotiables, wherever the prose lands (the full set with examples is in
+`references/brief-structure.md`):
+
+- **No em dashes or en dashes.** Ranges as "Aug 1 to Aug 25", "$39K to $49K". Scan for
+  U+2014, U+2013, `&mdash;`, `&ndash;` before publishing.
+- **Sign every change** ("-8.1 pts") and **label every delta MoM or YoY**, in prose and
+  tables both.
+- **Lead with the answer**, then the evidence, in every paragraph and the document as a
+  whole.
+- **Say "ACOS" or "Total ACOS"**, never "blended ACOS".
+- **No squishy words.** "Significant", "meaningfully", "strong signal" each stand in for a
+  figure; write the figure.
+- **Own recommendations**: "Our read is", not "it could be argued".
+- **Caveats get their own sentence**, next to the claim they qualify.
+- Write spoken lines the way people talk; if a sentence would not survive being read aloud
+  on a call, rewrite it.
+
+If the organization ships its own writing-style skill, it wins where the two conflict.
+
+## Before publishing
+
+The errors that survive casual proofreading:
+
+- Every figure traces to a source per the composition rules; the scope bar names the
+  SellerID, marketplace, both window boundaries, and the account mode.
+- Windows are aligned to the data load date and to equal day counts; any dark-day
+  normalization is shown raw and normalized, and labelled.
+- Buy Box figures are page-view weighted and the scope bar says so; every Buy Box or
+  featured-offer claim was checked against the daily series and a last-7-days column, so
+  nothing already fixed is reported as broken.
+- Listing breadth and availability are separate rows, not one flattering number.
+- The client brief names no individual as an owner; Things-to-check sits after the
+  analysis; anything that would embarrass a person if the client read it is in the
+  internal companion only.
+- Any efficiency claim is verified on a settled window and says so; the SKU reconciliation
+  figure appears in the method notes; the envelope was re-pulled on publish day.
+- Every claimed cause has evidence; everything else is a question in Things-to-check.
+- No em or en dashes, no unsigned deltas, no unlabelled deltas; any run-rate close is
+  called arithmetic.
+- The agency's own unmet commitments are in the internal companion, not only the client's.
+- Both documents have distinct names and favicons, and the handover said which is
+  shareable.
+- In Baseline or Setup mode: no MoM/YoY language anywhere, and every absent comparison is
+  `n/a` or a question, never a benchmark.
+
+## The run record
+
+Write a sidecar to `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/` with the
+standard inputs plus: envelope run ids and `engineVersion`, the account mode, the active
+thresholds and where each came from, the commitments ledger (this period's open items,
+owners, verdicts, plus the questions this brief asked), and the forecast / attribution /
+context-freshness states. Surface drift against the prior sidecar in the next run's
+internal companion. This ledger is what makes run N+1 smarter than run N on accounts with
+no meeting notes and no context: the skill builds its own memory.
+
+Alongside it, emit `.discoveries.json` with typed proposals only (context values the run
+would have used, mapping corrections, structural-event candidates, watch candidates).
+Humans promote; the skill never writes brand context itself.
+
+## Case law
+
+The incident history behind the composition and writing rules lives in
+[`rules-provenance.md`](rules-provenance.md); read an entry whenever a rule above feels
+arbitrary. New defects route by scope per the append protocol at the top of that file:
+brand-specific to context, universal to this skill or its references, engine-class to the
+engine team. The borrowable-component map is [`components.yaml`](components.yaml).
