@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP Report Pull
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Pull Amazon DSP (Demand-Side Platform) reports for a merchant, on demand,
   straight from Amazon through MixShift's service. Drives the full DSP report
@@ -62,16 +62,46 @@ notes: >
   merchant_not_found (exit 7) with candidates.
 
   Two distinct ids: `--legacy-seller-id` selects which advertising LOGIN's token
-  the service uses; `--path accountId=<dspAdvertiserId>` is the DSP advertiser
-  being reported on. The dspAdvertiserId is discovered from
-  accounts.query_advertiser_accounts alternateIds[].dspAdvertiserId (carries a
-  region; the login must reach that region). It is NOT the profileId or
-  legacySellerId.
+  the service uses; the DSP advertiser id says which advertiser to act on. It is
+  NOT the profileId or legacySellerId, its width varies (13 and 18 digits both
+  occur, so never validate by length), and it is not the ENTITY... id beside it,
+  which Amazon rejects.
+
+  THE TWO DSP FAMILIES TAKE IT UNDER DIFFERENT PARAMETER NAMES, which is the
+  usual first failure: the v3 report operations take `--path accountId=<id>`
+  and are profile-scoped, while the /dsp/v1 account reads take
+  `--path advertiserId=<id>`, send no profile scope, and require it on every
+  call. Same value, two names, because Amazon names it differently per surface.
+
+  Discovery is accounts.list_manager_accounts -> linkedAccounts rows of type
+  DSP_ADVERTISING_ACCOUNT (authoritative, no parameters), with
+  accounts.query_advertiser_accounts as a second source when that looks
+  incomplete (query BOTH global filters and page both, or it appears to show no
+  DSP when the advertiser is present). De-duplicate by dspAdvertiserId: one
+  advertiser is commonly linked under several manager accounts. Do NOT infer
+  "has DSP" from the count of agency-type profiles; most agency profiles are
+  Amazon Attribution, and an account with none can still hold DSP advertisers.
+
+  Brand -> advertiser has NO reliable automatic mapping: the sponsored and DSP
+  records share no identifier, so have the user confirm which advertiser they
+  mean rather than guessing.
 
   DSP reporting is its own endpoint (/accounts/{accountId}/dsp/reports) with a
   type / dimensions / metrics body, distinct from Sponsored Ads v3 reporting
   (configuration / reportTypeId / columns) and the unified /adsApi/v1 reporting.
   Validated live 2026-06-14 (service: vnd type on Accept, body application/json).
+
+  The /dsp/v1 account reads (campaigns, ad groups, creatives, creative
+  associations, moderations, creative validation, eligible creatives) were
+  validated live 2026-08-28. Read-only; there is no create/attach path for DSP
+  creatives, and the skill says so rather than improvising one. Three traps the
+  skill body covers because each yields a confident wrong answer: a creative
+  carries NO state (live-vs-paused belongs to its ASSOCIATION to a line item);
+  ad-group inventoryType, creative adCreativeFormatType and creative
+  adExperience are three separate enums that share no values, so ONLINE_VIDEO
+  line items are served by VIDEO-typed creatives; and an empty body returns ONE
+  row rather than a first page, while the truncation signal differs per
+  operation.
 
   Report shape: body { startDate, endDate, type, dimensions, metrics }. Types:
   CAMPAIGN (dimensions ORDER/LINE_ITEM/CREATIVE, the validated known-good

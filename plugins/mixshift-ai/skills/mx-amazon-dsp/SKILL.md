@@ -1,18 +1,24 @@
 ---
 name: mx-amazon-dsp
 description: >
-  Pull Amazon DSP (Demand-Side Platform) reports for a merchant, on demand,
-  straight from Amazon through MixShift's service. DSP reporting is its own
-  async surface: you request a report by type (campaign, inventory, audience,
-  and so on) with a set of dimensions and metrics, Amazon generates it, and you
-  download the result as JSON. This skill owns the full DSP report loop:
-  discover the DSP advertiser id an advertising login can reach, build a report
-  request, submit it, poll it to completion across turns, and fetch the result.
-  Read-only: generating a report changes nothing advertiser-facing and needs no
-  write scope. Routes through the bundled harness CLI. Does not require
-  brand setup, only that the user has signed in (`mixshift auth login`).
+  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
+  through MixShift's service. Two surfaces, addressed differently. REPORTING is
+  async: request a report by type (campaign, inventory, audience, and so on)
+  with dimensions and metrics, poll it, download the JSON. CAMPAIGN AND CREATIVE
+  READS answer what is actually set up right now: which campaigns and line items
+  exist, which creatives the advertiser has, which creatives are attached to
+  which line items and whether they are live or paused, whether a placement was
+  approved or rejected and why, and which creatives Amazon considers eligible
+  for a given line item. Use it to audit a DSP account, explain why a creative
+  is not delivering, or find the id of a creative or line item. Also owns
+  discovering which DSP advertiser a login can reach, which is the step most
+  DSP work gets stuck on. Read-only throughout: nothing here changes an
+  advertiser, and no write scope is needed. Creating and attaching DSP
+  creatives is NOT available yet; say so plainly rather than improvising.
+  Routes through the bundled harness CLI. Does not require brand setup, only
+  that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -25,9 +31,18 @@ trigger_phrases:
   - dsp inventory report
   - run a dsp report
   - dsp advertiser report
+  - dsp creatives
+  - dsp line items
+  - dsp ad groups
+  - what creatives are running on dsp
+  - why is my dsp creative not delivering
+  - dsp creative approval
+  - is this creative eligible for dsp
+  - audit dsp account
+  - find my dsp advertiser id
 ---
 
-# Amazon DSP Report Pull
+# Amazon DSP: reporting and account reads
 
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
 
@@ -101,7 +116,8 @@ and metric vocabulary, separate from Sponsored Ads.
 |---|---|---|
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Direct the user to run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
 | Ads API enabled for the tenant | Inferred from a successful `ads profiles` call | If a call returns `ads_not_configured`, the Amazon Ads credentials are not set on the service for this MixShift account. Tell the user to contact MixShift ops. |
-| An advertising login with DSP access | `accounts.query_advertiser_accounts` returns rows whose `alternateIds` carry a `dspAdvertiserId` | No DSP ids here does NOT always mean "no DSP" — the active advertiser may sit on a separate DSP seat under a different login (see Discovery). Treat empty as definitive only after checking the warehouse `dsp_campaigns_metric`. |
+| An advertising login with DSP access | `accounts.list_manager_accounts` returns `linkedAccounts` rows with `accountType: DSP_ADVERTISING_ACCOUNT` | Empty here is NOT proof of "no DSP" on its own; work through Discovery below before saying so. Do NOT judge this by counting agency-type profiles: most agency profiles are Amazon Attribution, not DSP, and an account with none at all can still hold DSP advertisers. |
+| That login is authorized for the DSP **API** | A DSP read returns 200 rather than `reauth_required` | Owning DSP advertisers and being able to call the DSP API are different things. Some accounts have advertisers linked and still cannot call, on every login. See "When a DSP read fails" below before telling anyone to re-authorize. |
 
 Brand setup is **not required.** You only need a signed-in session.
 
@@ -145,15 +161,54 @@ the notes before calling. The operations, used in the order below:
 
 | Operation | Purpose |
 |---|---|
-| `accounts.query_advertiser_accounts` | Discover the DSP advertiser ids a login can reach (`alternateIds[].dspAdvertiserId`). |
+| `accounts.list_manager_accounts` | **Start discovery here.** `linkedAccounts[]` rows of type `DSP_ADVERTISING_ACCOUNT` carry `dspAdvertiserId`. No parameters. |
+| `accounts.query_advertiser_accounts` | Second discovery source (`alternateIds[].dspAdvertiserId`). Query both global filters and page both. |
 | `dsp.create_report` | Submit an async DSP report request (type + dimensions + metrics). Returns a `reportId`. |
 | `dsp.get_report` | Poll a report (IN_PROGRESS, SUCCESS, FAILURE). SUCCESS carries the presigned `location` url. |
+| `dsp.list_campaigns` | Campaigns, with budgets, flights and state. |
+| `dsp.list_ad_groups` | Line items, with `inventoryType`, bid, flights and state. |
+| `dsp.list_ad_creatives` | The advertiser's creatives, including console-built ones. |
+| `dsp.list_creative_associations` | Creative-to-line-item placements and whether each is ACTIVE or INACTIVE. |
+| `dsp.list_association_moderations` | Per-placement approval status with rejection reasons. |
+| `dsp.get_ad_creative_validation` | Which ad experiences a creative is valid for. |
+| `dsp.list_eligible_creatives` | Which creatives may attach to given line items. |
+
+**The two DSP families are addressed differently, and mixing them up is the
+usual first failure.** The report operations take the advertiser as
+`--path accountId=<id>`. The account-read operations take it as
+`--path advertiserId=<id>`. Same value, two parameter names, because Amazon
+names it differently on each surface.
 
 ## Discovery: find the DSP advertiser id
 
-You cannot request a report without a DSP advertiser id for the `accountId` path
-param. It is NOT the `profileId` and NOT the `legacySellerId`; it is the
-`dspAdvertiserId` carried in `accounts.query_advertiser_accounts`.
+Every DSP call needs a DSP advertiser id. It is NOT the `profileId` and NOT the
+`legacySellerId`; it is a numeric `dspAdvertiserId` in its own namespace. Note
+its width VARIES (13 and 18 digits both occur), so never validate it by length.
+It is also NOT the `ENTITY...` id that sits beside it, which Amazon rejects.
+
+**Start here. `accounts.list_manager_accounts` is the authoritative source and
+takes no parameters:**
+
+```bash
+mixshift ads call accounts.list_manager_accounts --legacy-seller-id <id> --json
+```
+
+Read `managerAccounts[].linkedAccounts[]` and keep the rows where
+`accountType` is `DSP_ADVERTISING_ACCOUNT`. Each carries `dspAdvertiserId`,
+`accountName` and `marketplaceId`.
+
+Three things about that list that will bite otherwise:
+
+- **De-duplicate by `dspAdvertiserId`.** One advertiser is commonly linked under
+  more than one manager account, so the raw row count overstates how many
+  advertisers exist.
+- **The manager account holding DSP is often not named after the brand or the
+  account.** Do not filter the list by name before looking at it.
+- **The DSP row's `profileId` is empty, and seller rows carry no
+  `dspAdvertiserId`.** There is no shared key between the two, by design. See
+  "Matching an advertiser to a brand" below.
+
+**Second source, worth querying when the first looks incomplete:**
 
 ```bash
 # global accounts (default body)
@@ -164,27 +219,33 @@ mixshift ads call accounts.query_advertiser_accounts --legacy-seller-id <id> \
   --body '{"isGlobalAccountFilter":{"include":[false]}}' --json
 ```
 
-Rules for discovery:
-
-- **Query BOTH global and non-global** for full coverage. The default body
-  (`{}`) returns global accounts only; pass
-  `{"isGlobalAccountFilter":{"include":[false]}}` for non-global.
+- **Query BOTH global and non-global, and page BOTH.** The default body (`{}`)
+  returns global accounts only. Skipping either half is the most common reason
+  this endpoint appears to show no DSP when the advertiser is right there.
 - **Pagination via `nextToken` in the body.** Empty pages with a valid
   `nextToken` are NORMAL; keep iterating until `nextToken` is absent.
-- Each account row carries an `alternateIds` array. The entries with a
-  `dspAdvertiserId` (plus a `region`) are the DSP advertisers. Match the one the
-  user means by `accountName` / `displayName`, and use its `dspAdvertiserId` as
-  the `--path accountId=` value.
+- The DSP advertisers are the `alternateIds` entries carrying a
+  `dspAdvertiserId` and a `region`.
 
-If the user already knows the DSP advertiser id, you can skip discovery and pass
-it directly.
+If the user already knows the DSP advertiser id, skip discovery and use it.
 
-**If `query_advertiser_accounts` surfaces no DSP advertiser (or only a stale
-one), the active advertiser may be on a SEPARATE DSP SEAT under a different login
-than the brand's seller row.** Managed/agency DSP is commonly run from a shared
-"DSP seat" login, so the seller-row login's query returns nothing or only an old
-advertiser. Resolve the ACTIVE advertiser from the WAREHOUSE (the source of truth
-for who is live):
+### Matching an advertiser to a brand
+
+**There is no reliable automatic mapping, and you should not invent one.** A
+brand appears as two unrelated records, one sponsored-ads and one DSP, with
+different ids and no common key. The only thing connecting them is a display
+name, and the two surfaces frequently name the same brand differently.
+
+So: **present the candidate advertisers and have the user confirm which one they
+mean**, then echo the id back. A confident wrong guess here reads every number
+off the wrong advertiser, and nothing downstream will look wrong.
+
+### Warehouse cross-check (fallback, and a gap-closer)
+
+The warehouse is still worth querying, for two reasons: it shows which
+advertiser is actually SPENDING, and it catches an advertiser the API calls
+missed (for example when the login you resolved reaches a different manager
+account than the one running DSP).
 
 ```bash
 # dsp_campaigns_metric is keyed by SEAT, not the brand's seller row — match on
@@ -197,11 +258,89 @@ mixshift data query --sql "SELECT CAST(advertiserId AS CHAR) AS advertiserId, ad
   active advertiser AND an older/deprecated one on a different seat. Derive
   "active" from recent `spend_30d` / `last_day`; surface both and say which is
   current.
-- Use the active row's `advertiserId` (the CAST-AS-CHAR string) as
-  `--path accountId=`. The live `dsp.create_report` routes through the brand's
-  seller-row login and succeeds once that seat is authorized — a
-  `reauth_required` here means the seat must be connected in the MixShift app,
-  not that the advertiser id is wrong.
+- Use the active row's `advertiserId` (the CAST-AS-CHAR string) as the
+  advertiser id for any call below.
+
+## Reading the DSP account (campaigns, creatives, placements)
+
+These answer "what is set up right now", as opposed to the reports, which
+answer "how did it perform". They are addressed DIFFERENTLY from the report
+operations, so read this before using them.
+
+**The advertiser id goes in `--path advertiserId=<id>`.** It is not put in the
+URL; the service sends it as a header. It is REQUIRED on all seven, and omitting
+it fails with an error that does not name the cause.
+
+The merchant selector is still required, and it is not decoration: it chooses
+which login's authorization the call is made with, and which regional host the
+request goes to. Pick a merchant in the same region as the advertiser.
+
+| Operation | Answers |
+|---|---|
+| `dsp.list_campaigns` | Which campaigns exist, with budgets, flights, state |
+| `dsp.list_ad_groups` | Which line items exist, with `inventoryType` (ONLINE_VIDEO, STREAMING_TV, DISPLAY), bid, flights, state |
+| `dsp.list_ad_creatives` | Which creatives the advertiser has, including ones built in the DSP console |
+| `dsp.list_creative_associations` | Which creatives are attached to which line items, and whether each placement is ACTIVE or INACTIVE |
+| `dsp.list_association_moderations` | Whether a placement was approved or rejected, with reasons |
+| `dsp.get_ad_creative_validation` | Which ad experiences one creative is valid for (this is where ONLINE_VIDEO lives on the creative side) |
+| `dsp.list_eligible_creatives` | Which creatives Amazon will let you attach to given line items |
+
+```bash
+mixshift ads call dsp.list_ad_groups --legacy-seller-id <id> \
+  --path advertiserId=<dspAdvertiserId> --body '{"maxResults":100}' --json
+```
+
+### Four things that produce a confidently wrong answer
+
+**1. "Live or paused" is a property of the PLACEMENT, not the creative.** A
+creative object has no state field at all. Whether something is running is on
+its association to a line item, and one creative can be attached to many line
+items. So "how many creatives are live" and "how many creatives exist" are
+different questions with different answers. Use `dsp.list_creative_associations`
+for anything about what is running.
+
+**2. Three different type systems, and they do not share values.** A line item's
+`inventoryType` says ONLINE_VIDEO. The creatives serving it are typed VIDEO. And
+ONLINE_VIDEO appears on the creative side only as an *ad experience*, from
+`dsp.get_ad_creative_validation`. Comparing a line item's type to a creative's
+type gives the wrong answer, and it looks right. **Never tell a user an
+advertiser has no online-video creatives because none are typed ONLINE_VIDEO.**
+When the question is "can this creative go here", ask Amazon with
+`dsp.list_eligible_creatives` instead of reasoning about types.
+
+**3. Always pass `maxResults`, and always page.** With no body these endpoints
+return ONE row, not a first page. Use 100. Then page with `nextToken` until it
+is absent, because the truncation signal differs per operation: campaigns and ad
+groups have no total field at all, `dsp.list_ad_creatives` reports only the size
+of the page you are holding, and the association, moderation and eligibility
+operations report the true total. Read the operation's own notes
+(`mixshift ads operations --family DSP`) rather than assuming.
+
+**4. An empty result is not an empty advertiser.** These return 200 with an
+empty array when the advertiser id is valid but is not the one the user meant,
+and an account can hold many. Re-check the id before reporting that something
+does not exist.
+
+### When a DSP read fails
+
+- **`reauth_required` (a 401 underneath) is usually about the merchant you
+  picked, not the advertiser id.** Try another merchant on the account before
+  telling anyone to re-authorize. And some accounts genuinely cannot call the
+  DSP API even though they own DSP advertisers, on every login: re-authorizing
+  will not fix that, and saying so early saves the user a pointless trip.
+- **`upstream_unavailable` on `dsp.get_ad_creative_validation` is often
+  advertiser-wide, not creative-specific.** Stop after the first one and report
+  that validation is unavailable for that advertiser. Do NOT walk the
+  advertiser's whole creative set: each attempt is retried upstream, so a sweep
+  costs minutes and tells you nothing new.
+
+### What is NOT available
+
+Creating a DSP creative, attaching one to a line item, and pausing or removing a
+placement are **not** in the catalog. There is no workaround through this
+surface. If the user wants to place a creative, say plainly that MixShift can
+show them the account and tell them exactly what to change, and that the change
+itself is made in the Amazon DSP console for now. Do not improvise a write.
 
 ## Building a report request
 
