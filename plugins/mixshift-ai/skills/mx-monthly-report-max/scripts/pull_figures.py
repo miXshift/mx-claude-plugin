@@ -68,9 +68,17 @@ CLI = None
 
 
 def query(sql, label=""):
-    """Run one read-only SQL query. Returns the rows list, or raises with the message."""
+    """Run one read-only SQL query. Returns the rows list, or raises with the message.
+
+    --inline matters: without it the CLI spills any result over its inline ceiling
+    (~500 rows) to a CSV and returns ok WITHOUT a rows key, which a naive reader
+    treats as an empty result. An account with a big catalog would then report zero
+    movers and zero out-of-stock items: a silent false negative on the exact
+    mechanisms the brief leads with. This JSON is machine-consumed, never pasted
+    into context, so inline is correct here.
+    """
     proc = subprocess.run(
-        CLI + ["data", "query", "--sql", sql, "--json"],
+        CLI + ["data", "query", "--sql", sql, "--inline", "--json"],
         capture_output=True, text=True,
     )
     # The CLI prints a telemetry banner and node warnings on first run; find the JSON.
@@ -82,7 +90,12 @@ def query(sql, label=""):
     if payload.get("status") != "ok":
         raise RuntimeError(f"{label}: {payload.get('failure_kind','error')}: "
                            f"{payload.get('message')} ({MARKET_SQL_TIMEOUT_HINT})")
-    return payload.get("rows", [])
+    if "rows" not in payload:
+        # Fail loudly rather than returning []: an ok-status payload without rows means
+        # the result still spilled to a file (out_path). Never read that as "no data".
+        raise RuntimeError(f"{label}: result spilled to a file ({payload.get('out_path', '?')}) "
+                           f"instead of returning inline rows; narrow the window or read the file.")
+    return payload["rows"]
 
 
 def f(v):
@@ -207,22 +220,19 @@ def dark_days(sid, w):
     out = {}
     for key in ("current", "prior_month", "prior_year"):
         s, e = w[key]
-        rows = query(f"""
-            SELECT COUNT(*) active_days, ROUND(SUM(sp),2) total_spend FROM (
-              SELECT DATE(DateTime) d, SUM(Cost) sp FROM campaignmetric
-              WHERE SellerID={sid} AND DateTime BETWEEN '{s}' AND '{e}'
-              GROUP BY d HAVING sp > 0) t
+        # List the ACTIVE days and derive the dark ones in Python: a day with no rows
+        # at all (the common outage shape) never appears in a GROUP BY, so asking SQL
+        # for zero-spend days misses exactly the days that matter.
+        arows = query(f"""
+            SELECT DATE(DateTime) d FROM campaignmetric
+            WHERE SellerID={sid} AND DateTime BETWEEN '{s}' AND '{e}'
+            GROUP BY d HAVING SUM(Cost) > 0
         """, f"dark days {key}")
-        active = i(rows[0]["active_days"]) if rows else 0
+        active_dates = {str(r["d"])[:10] for r in arows}
         cal = (dt.date.fromisoformat(e) - dt.date.fromisoformat(s)).days + 1
-        zeros = []
-        if active < cal:
-            zrows = query(f"""
-                SELECT DATE(DateTime) d, ROUND(SUM(Cost),2) sp FROM campaignmetric
-                WHERE SellerID={sid} AND DateTime BETWEEN '{s}' AND '{e}'
-                GROUP BY d HAVING sp = 0 ORDER BY d
-            """, f"zero days {key}")
-            zeros = [str(r["d"])[:10] for r in zrows]
+        all_dates = [str(dt.date.fromisoformat(s) + dt.timedelta(days=k)) for k in range(cal)]
+        zeros = [d for d in all_dates if d not in active_dates]
+        active = len(active_dates)
         out[key] = {"calendar_days": cal, "active_ad_days": active,
                     "zero_spend_days": zeros,
                     "normalization_factor": round(cal / active, 4) if active else None}
@@ -280,13 +290,27 @@ def daily_series(sid, w):
     return {"series": series, "pace": pace}
 
 
+def sql_lit(s):
+    """Escape a value for a single-quoted MySQL string literal. Backslash FIRST:
+    MySQL's default mode treats backslash as an escape, so doubling quotes alone
+    leaves a trailing-backslash value able to break out of the literal. Brand names
+    can arrive from meeting notes, so treat them as hostile."""
+    return s.replace("\\", "\\\\").replace("'", "''")
+
+
+def like_frag(s):
+    """sql_lit plus LIKE wildcard escaping, so a literal % or _ in a brand name
+    matches itself instead of anything."""
+    return sql_lit(s).replace("%", "\\%").replace("_", "\\_")
+
+
 def brand_case(brands, col="CampaignName"):
     """Prefer campaign name for the paid split: the campaign dimension table often has
     null Brand or missing rows, which silently drops spend into an unmapped bucket."""
     if not brands:
         return "'ALL'"
     whens = " ".join(
-        f"WHEN {col} LIKE '%{b.replace(chr(39), chr(39) * 2)}%' THEN '{b.replace(chr(39), chr(39) * 2)}'"
+        f"WHEN {col} LIKE '%{like_frag(b)}%' THEN '{sql_lit(b)}'"
         for b in brands)
     return f"CASE {whens} ELSE 'OTHER' END"
 
@@ -424,25 +448,29 @@ def oos_days(sid, w):
     sellable. Ignores inbound and reserved, so it reads as "could not be bought".
     """
     c, p = w["current"], w["prior_month"]
+    # Nickname via correlated subquery in the OUTER select, never a JOIN in the inner
+    # one: mws_items carries several rows per ASIN, and a JOIN with divergent nickname
+    # values splits one ASIN across grouped rows, inflating the stocked-out item count.
     rows = query(f"""
-        SELECT item, ASIN asin,
+        SELECT COALESCE((SELECT COALESCE(NULLIF(i.ItemNickname,''), i.ItemName)
+                         FROM mws_items i WHERE i.ASIN=t.ASIN AND i.SellerID={sid} LIMIT 1),
+                        t.ASIN) item, t.ASIN asin,
           SUM(CASE WHEN d BETWEEN '{c[0]}' AND '{c[1]}' THEN zero_day ELSE 0 END) cur_oos,
           SUM(CASE WHEN d BETWEEN '{p[0]}' AND '{p[1]}' THEN zero_day ELSE 0 END) pri_oos
         FROM (
-          SELECT COALESCE(NULLIF(i.ItemNickname,''), h.ASIN) item, h.ASIN, DATE(h.DateTime) d,
+          SELECT h.ASIN, DATE(h.DateTime) d,
             CASE WHEN MAX(h.FulfillableQuantity) <= 0 THEN 1 ELSE 0 END AS zero_day
           FROM mws_inventory_history h
-          LEFT JOIN mws_items i ON i.ASIN=h.ASIN AND i.SellerID=h.SellerID
           WHERE h.SellerID={sid}
             AND (h.DateTime BETWEEN '{c[0]}' AND '{c[1]}' OR h.DateTime BETWEEN '{p[0]}' AND '{p[1]}')
-          GROUP BY item, h.ASIN, d
-        ) t GROUP BY item, ASIN ORDER BY cur_oos DESC
+          GROUP BY h.ASIN, d
+        ) t GROUP BY t.ASIN ORDER BY cur_oos DESC
     """, "out of stock days")
     return [{"item": r["item"], "asin": r["asin"],
              "cur_oos_days": i(r["cur_oos"]), "pri_oos_days": i(r["pri_oos"])} for r in rows]
 
 
-def buybox_by_item(sid, w, min_sales=400):
+def buybox_by_item(sid, w, min_sales, bb_floor=92.0, bb_drop=5.0):
     """Page-view weighted, and month AND last 7 days.
 
     The last 7 days column is the one to act on. A monthly average blends a resolved
@@ -450,6 +478,12 @@ def buybox_by_item(sid, w, min_sales=400):
     then recovered reads as a persistent 58% problem on a simple month average when it
     is actually fixed. Diagnosing from the month average is how a brief tells a client
     an action item failed when it landed.
+
+    Flags an item when it sits below the floor (month or last 7 days) OR dropped more
+    than bb_drop points month over month, so a 99 -> 93 collapse is surfaced even
+    though 93 clears the floor. min_sales defaults to the account's median item
+    revenue (computed by the caller from the movers rows) so a thin account still
+    flags something and a large account does not flag noise.
     """
     c, p, l7 = w["current"], w["prior_month"], w["last7"]
 
@@ -466,7 +500,9 @@ def buybox_by_item(sid, w, min_sales=400):
         FROM business_reports_dpst_sku t WHERE t.SellerID={sid}
           AND (t.DateTime BETWEEN '{c[0]}' AND '{c[1]}' OR t.DateTime BETWEEN '{p[0]}' AND '{p[1]}')
         GROUP BY t.ChildAsin
-        HAVING cur_sales >= {min_sales} AND (cur_bb_pvw < 92 OR last7_bb_pvw < 92)
+        HAVING cur_sales >= {min_sales}
+           AND (cur_bb_pvw < {bb_floor} OR last7_bb_pvw < {bb_floor}
+                OR (pri_bb_pvw - cur_bb_pvw) >= {bb_drop})
         ORDER BY last7_bb_pvw ASC
     """, "buy box by item")
     out = []
@@ -505,9 +541,16 @@ def main():
     ap.add_argument("--as-of", default=str(dt.date.today()),
                     help="YYYY-MM-DD, defaults to today. Windows still clamp to the data load date.")
     ap.add_argument("--brands", default="",
-                    help="Comma separated sub-brand names as they appear in campaign names.")
-    ap.add_argument("--min-item-sales", type=int, default=400,
-                    help="Sales floor for the Buy Box table. Raise it for a larger account.")
+                    help="Comma separated sub-brand names as they appear in campaign names. "
+                         "Without it segment_ads is empty and the split comes from segment_retail only.")
+    ap.add_argument("--min-item-sales", type=int, default=None,
+                    help="Sales floor for the Buy Box table. Default: the account's median "
+                         "item revenue in the current window (reporting.thresholds.sales_floor "
+                         "overrides via this flag).")
+    ap.add_argument("--buybox-floor", type=float, default=92.0,
+                    help="Page-view-weighted Buy Box attention floor, percent (default 92).")
+    ap.add_argument("--buybox-drop", type=float, default=5.0,
+                    help="MoM drop in weighted Buy Box points that flags an item even above the floor (default 5).")
     ap.add_argument("--out", default="-")
     args = ap.parse_args()
 
@@ -516,10 +559,23 @@ def main():
     brands = [b.strip() for b in args.brands.split(",") if b.strip()]
     w = resolve_windows(sid, dt.date.fromisoformat(args.as_of))
 
+    mov = movers(sid, w)
+    floor = args.min_item_sales
+    if floor is None:
+        # Median item revenue among items that sold this window: the documented
+        # default, so thin accounts still flag something and large ones skip noise.
+        selling = sorted(x["cur"] for x in mov["items"] if (x["cur"] or 0) > 0)
+        floor = int(selling[len(selling) // 2]) if selling else 0
+
     result = {
         "seller_id": sid,
         "as_of": args.as_of,
         "windows": w,
+        "thresholds_applied": {"sales_floor": floor,
+                               "sales_floor_source": ("flag" if args.min_item_sales is not None
+                                                      else "median item revenue, current window"),
+                               "buybox_floor_pct": args.buybox_floor,
+                               "buybox_mom_drop_pts": args.buybox_drop},
         "account_ads": account_ads(sid, w),
         "account_retail": account_retail(sid, w),
         "dark_days": dark_days(sid, w),
@@ -528,9 +584,9 @@ def main():
         "segment_ads": segment_ads(sid, w, brands),
         "segment_retail": segment_retail(sid, w),
         "availability_breadth": availability_breadth(sid, w),
-        "movers": movers(sid, w),
+        "movers": mov,
         "oos_days": oos_days(sid, w),
-        "buybox_by_item": buybox_by_item(sid, w, args.min_item_sales),
+        "buybox_by_item": buybox_by_item(sid, w, floor, args.buybox_floor, args.buybox_drop),
         "monthly_history": history(sid),
     }
 
@@ -567,8 +623,10 @@ def main():
             fh.write(text)
         print(f"wrote {args.out}")
         rec = result["reconciliation"]
-        print(f"reconciliation: account ${rec['account_ops']:,.0f} vs SKU sum "
-              f"${rec['sku_sum']:,.0f} ({rec['gap_pct']}%)")
+        ao, ss = rec["account_ops"], rec["sku_sum"]
+        ao_s = f"${ao:,.0f}" if ao is not None else "n/a"
+        ss_s = f"${ss:,.0f}" if ss is not None else "n/a"
+        print(f"reconciliation: account {ao_s} vs SKU sum {ss_s} ({rec['gap_pct']}%)")
         dd = result["dark_days"]
         for k, v in dd.items():
             if v["zero_spend_days"]:

@@ -21,7 +21,7 @@ components:
       Copy the placement rules before the section list: owner names and verdicts internal
       only, Things-to-check after the analysis, the shareability sentence at handover.
       The section order transfers to any recurring client-facing analysis.
-    provenance: mx-call-brief (2026-08, built on a live account), merged in 2.0.
+    provenance: mx-call-brief (field-proven), merged in 2.0.
 
   - id: figure-battery
     what: >
@@ -35,7 +35,7 @@ components:
       Lift individual queries from references/queries.md with their trap notes attached;
       or run the script whole and consume its JSON. Never lift a query without its trap
       note: the note is the component.
-    provenance: mx-call-brief (2026-08); each trap traces to a caught real-account error.
+    provenance: mx-call-brief (field-proven); each trap traces to a caught real-account error.
 
   - id: account-modes
     what: >
@@ -61,7 +61,7 @@ components:
       Copy the four questions in order and the suppression fork verbatim. The live-state
       call is the load-bearing half; a warehouse-only version misclassifies recovered
       items and must not claim current state.
-    provenance: mx-call-brief (2026-08), proven on live featured-offer incidents.
+    provenance: mx-call-brief (field-proven on real featured-offer incidents).
 
   - id: brief-template
     what: >
@@ -73,7 +73,7 @@ components:
     how_to_lift: >
       Keep the token block, type pairing and component classes; replace the content.
       Semantic colour carries direction and severity and stays separate from the accent.
-    provenance: mx-call-brief (2026-08).
+    provenance: mx-call-brief (field-proven).
 
   - id: report-contract
     what: >
@@ -181,4 +181,4 @@ components:
       Copy the source ladder with its graceful bottom (ask one question, run without),
       and the verdict placement rule. The sidecar ledger shape makes any recurring skill
       self-feeding on accounts with no external notes source.
-    provenance: mx-call-brief (2026-08); the mid-month-landing false-negative is the case law.
+    provenance: mx-call-brief (field-proven); the mid-month-landing false-negative is the case law.

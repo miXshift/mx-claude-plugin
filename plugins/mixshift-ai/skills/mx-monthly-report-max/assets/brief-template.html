@@ -383,7 +383,7 @@ footer{
     .flat    neutral or immaterial
   A falling ACOS is .up. A falling sales figure is .down. Direction of the metric, not the sign.
 
-  No em dashes, no en dashes, no &mdash;, no &ndash;. Use "to" for ranges and "n/a" for
+  No em dashes and no en dashes, as characters or as HTML entities. Use "to" for ranges and "n/a" for
   a comparison that does not exist.
 -->
 
@@ -451,15 +451,15 @@ footer{
 
 <section>
   <h2><span class="n">02</span>What actually moved</h2>
-  <p class="prose">{{Gross declines, gross gains, and the net. Then: how many mechanisms, and that they point at different owners.}}</p>
+  <p class="prose">{{Gross declines, gross gains, and the net. Then: how many mechanisms, and what each one is.}}</p>
 
   <div class="mech">
     <div class="card crit">
-      <h4>{{Mechanism}} <span class="chip crit">{{dollar impact}}</span> <span class="chip neutral">{{owner}}</span></h4>
+      <h4>{{Mechanism}} <span class="chip crit">{{dollar impact}}</span> <span class="chip neutral">{{kind}}</span></h4>
       <p>{{What it is and what it cost.}}</p>
     </div>
     <div class="card warn">
-      <h4>{{Mechanism}} <span class="chip warn">{{kind}}</span> <span class="chip neutral">{{owner}}</span></h4>
+      <h4>{{Mechanism}} <span class="chip warn">{{dollar impact}}</span> <span class="chip neutral">{{kind}}</span></h4>
       <p>{{Figures.}}</p>
       <p>{{Link to a prior action item where there is one.}}</p>
     </div>
@@ -606,16 +606,17 @@ footer{
 </section>
 
 <!-- INTERNAL COMPANION ONLY from here down -->
+<div class="internal-banner" style="margin:24px 0;padding:10px 14px;border:1px solid var(--crit,#c33);border-left:4px solid var(--crit,#c33);border-radius:4px;font-family:var(--mono,monospace);font-size:0.8rem;letter-spacing:0.06em;text-transform:uppercase;">Internal companion. Not for sharing. The client brief is a separate document at its own URL.</div>
 
 <div class="bottomline">
-  <p><strong>{{Any correction to an earlier read, first and plainly.}}</strong> {{If the analysis changed while the work was in progress, say what changed, how the earlier version was wrong, and what not to press on in the room. A correction buried further down is one he reads after the call.}}</p>
+  <p><strong>{{Any correction to an earlier read, first and plainly.}}</strong> {{If the analysis changed while the work was in progress, say what changed, how the earlier version was wrong, and what not to press on in the room. A correction buried further down gets read after the call.}}</p>
 </div>
 
 <section>
   <h2><span class="n">i01</span>What to tell {{contact}}</h2>
   <ol class="points">
     <li><b>{{Instruction, in call order.}}</b>
-      <span class="say">"{{The line as he would actually say it.}}"</span>
+      <span class="say">"{{The line as it would actually be said aloud.}}"</span>
     </li>
     <li><b>{{Instruction.}}</b>
       <span class="say">"{{Spoken line.}}"</span>
@@ -667,7 +668,7 @@ footer{
 
 <footer>
   Prepared for the {{client}} {{cadence}}, {{date}} &middot; {{Account}}, SellerID {{id}}<br>
-  Every figure traced to a warehouse query. Where a cause is not in the data, this brief says so instead of naming one.
+  Every figure traced to its source: the intelligence envelope, the warehouse battery, or a live offer check. Where a cause is not in the data, this brief says so instead of naming one.
 </footer>
 
 </div>

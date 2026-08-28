@@ -12,6 +12,16 @@ renderer, engine, brand context, or SKILL.md — see the append protocol below).
 of a report get this file; it tells them where this skill has failed before, which is where to
 look first.
 
+**2.0 pipeline note (2026-08-28).** Entries below that name CONTRACT rule ids
+(BASIS-1, POP-1/POP-2, TRACE-1, ...) or RENDERER behaviors describe enforcement in the
+harness report-contract doors (`mixshift report validate` / `report render`), which the
+2.0 skill does not run for its documents: the mechanical gates are now `report extract
+--check` plus `helpers/prose-lint.py` (including `--role client`, which refuses internal
+content in the client file), and those contract rules bind as composition rules in
+SKILL.md Step 8. The validators and fixtures remain fully alive in the harness and still
+enforce every one of these rules for any consumer of the contract doors; a defect that
+recurs because prose was the only gate is the signal to wire the door back in.
+
 ## How this file grows once the skill is live (the append protocol)
 
 A new defect routes by SCOPE, not by where it was found:

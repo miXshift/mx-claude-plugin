@@ -124,9 +124,10 @@ Four rows earn their place in every segment table beyond the obvious sales and e
 because together they separate "we cannot sell it" from "nobody wants it":
 
 - **Buy Box, page-view weighted.** Not a simple average. The weighted figure is what shoppers
-  actually met, and the two can disagree on direction: on one real month the account's simple
-  average read down 0.7 pts while the weighted figure was up 1.0 pt, and the affected brand's
-  weighted Buy Box had *improved* month over month even with a two week outage inside the window.
+  actually met, and the two can disagree on direction: on one reference month the account's
+  simple average read down about half a point while the weighted figure was up a full point,
+  and the affected brand's weighted Buy Box had *improved* month over month even with a
+  multi-week outage inside the window.
 - **In-stock items per day** and **listed items per day**, side by side. When listings rise while
   in-stock falls, the catalog got broader and thinner at once. Report both or the next question
   undoes you.
@@ -175,9 +176,9 @@ If the analysis changed while you were doing the work, put the correction at the
 document, before the talking points. the operator needs to know what *not* to press on, and a
 correction buried in section three gets read after the call.
 
-Write the spoken lines the way people talk. "Ten items that were sellable in July went out of
-stock in August, and those ten are $53K of it" is sayable. "Availability-driven revenue
-attrition totalled $53.3K" is not.
+Write the spoken lines the way people talk. "Ten items that were sellable last month went
+out of stock this month, and those ten are most of the gap" is sayable. "Availability-driven
+revenue attrition totalled $53,271" is not.
 
 Numbering here encodes real sequence, so it earns the numerals. Do not number sections that are
 not sequences.
@@ -275,9 +276,10 @@ and operated, not read. What that means in practice:
   guarded with `:not([data-theme="light"])`, and `[data-theme="dark"]` for the explicit toggle
 
 Title each artifact as a name, two to four words, specific to the account and occasion, and give
-the two documents distinct titles and favicons so they cannot be confused in the gallery. "Acme Outdoors
-August Performance Review" and "Acme Outdoors August Call Notes" work. "Monthly Performance Report Summary"
-does not, because it could sit on any page in the gallery.
+the two documents distinct titles and favicons so they cannot be confused in the gallery. The
+internal document's title always carries "(Internal)". "Acme Goods August Performance Review"
+and "Acme Goods August Call Notes (Internal)" work. "Monthly Performance Report Summary" does
+not, because it could sit on any page in the gallery.
 
 When handing over the URLs, say plainly which one is shareable. That one sentence is what stops
 the internal companion reaching a client.

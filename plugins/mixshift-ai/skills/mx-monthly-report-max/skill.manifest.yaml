@@ -75,6 +75,7 @@ trigger_phrases:
   - get me ready for the monthly
   - QBR prep
   - what moved this month
+  - anything I should flag before this call
 notes: >
   The max tier of the monthly report: mx-monthly-report stays the standard tier and is
   never modified by this skill's releases. One run consumes one metered intelligence

@@ -162,8 +162,10 @@ SELECT COUNT(*) AS active_days, ROUND(SUM(sp),2) AS total_spend FROM (
 ) t
 ```
 
-Run per window. If `active_days` is short of the calendar day count, list the zero days so you
-can name the outage dates, then normalize: `figure * calendar_days / active_days`. Apply to
+Run per window. Derive the dark dates by listing the ACTIVE days and subtracting from the
+calendar: a day with no rows at all (the common outage shape) never shows up in a GROUP BY,
+so asking SQL for zero-spend days misses exactly the days that matter. If `active_days` is
+short of the calendar day count, name the outage dates, then normalize: `figure * calendar_days / active_days`. Apply to
 spend, ad sales and TACOS. Leave ACOS alone.
 
 ## 4. Settled-window efficiency check
@@ -230,6 +232,11 @@ GROUP BY sub, period ORDER BY sub, period
 Check the `OTHER` bucket is empty or trivially small. If it is not, the naming convention has
 drifted and the split needs the dimension table instead. Discover the available labels with
 `SELECT DISTINCT Brand FROM campaign WHERE SellerID=<ID>`.
+
+When the envelope serves entity or item-group tables, the engine's own groups are
+authoritative; `context.yaml::item_group_mapping` applies only to battery or residual-SQL
+classification like this one (first match wins, with a fallback group), and the per-group
+membership should be shown for confirmation when it drives a client-facing split.
 
 Retail side, split on catalog brand with a correlated subquery to avoid row multiplication:
 
@@ -402,7 +409,7 @@ WHERE t.SellerID=<ID> AND t.ChildAsin='<ASIN>'
 
 Watch the page view column as well as the Buy Box column. Traffic collapsing alongside the box is
 what makes a featured offer loss cost more than a conversion-rate view suggests: on one real case
-page views fell 79.9% during the loss.
+page views fell about 80% during the loss.
 
 ## 9d. Live featured offer state
 
@@ -414,7 +421,7 @@ mixshift amazon call pricing.get_item_offers_batch --legacy-seller-id <ID> --jso
            "MarketplaceId":"ATVPDKIKX0DER","ItemCondition":"New"}]}'
 ```
 
-Up to 20 ASINs per batch, one batch per roughly 10 seconds, and each response item carries its
+Up to 20 ASINs per batch, one batch per roughly 12 seconds, and each response item carries its
 own status code. Read:
 
 | Field | Tells you |

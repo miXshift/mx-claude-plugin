@@ -63,8 +63,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   (landed, not landed, or not checkable). Before it writes anything, it works
   out what actually moved and why: availability, pricing and Buy Box, catalog
   mix, or demand, each tested rather than guessed, with Buy Box weighted by
-  page views so a two-week outage that already recovered is not reported as a
-  live problem. Featured-offer losses get diagnosed against Amazon's live offer
+  page views so an outage that already recovered is not reported as a live
+  problem. Featured-offer losses get diagnosed against Amazon's live offer
   state, so the brief says whether the box was lost to a competitor or
   suppressed, and what the fix is. Core figures still come from the MixShift
   Intelligence service with the same typed extraction and checks. It also now
