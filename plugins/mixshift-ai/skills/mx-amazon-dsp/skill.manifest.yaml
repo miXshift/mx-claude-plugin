@@ -1,16 +1,22 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
-display_name: Amazon DSP Report Pull
+display_name: Amazon DSP (reports + live account reads)
 version: "0.2.0"
 description: >
-  Pull Amazon DSP (Demand-Side Platform) reports for a merchant, on demand,
-  straight from Amazon through MixShift's service. Drives the full DSP report
-  loop: discover the DSP advertiser id an advertising login can reach, build a
-  report request (type + dimensions + metrics), submit it, poll to completion
-  across turns, and fetch the JSON result. Read-only: generating a report
-  mutates nothing advertiser-facing and needs no write scope. Routes through
-  the bundled harness CLI. Does not require brand setup, only that the
-  user has signed in (`mixshift auth login`).
+  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
+  through MixShift's service. Two surfaces, addressed differently. REPORTING is
+  the async loop: build a report request (type + dimensions + metrics), submit,
+  poll to completion across turns, fetch the JSON. ACCOUNT READS answer what is
+  set up right now: campaigns and line items, the advertiser's creatives
+  (including ones built in the DSP console), which creatives are attached to
+  which line items and whether each placement is live or paused, whether a
+  placement was approved or rejected, and which creatives Amazon considers
+  eligible for a given line item. Also owns discovering which DSP advertiser a
+  login can reach, the step most DSP work gets stuck on. Read-only throughout:
+  nothing here mutates an advertiser and no write scope is needed. Creating or
+  attaching a DSP creative is NOT available. Routes through the bundled harness
+  CLI. Does not require brand setup, only that the user has signed in
+  (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service. Requesting
 # a DSP report returns aggregated performance data and mutates nothing
@@ -27,12 +33,24 @@ sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
 # Harness commands the skill calls (DSP is the DSP family inside `ads call`;
 # there is no dedicated `dsp` subcommand).
+# NOTE the two parameter names: the report operations take --path accountId=,
+# the /dsp/v1 account reads take --path advertiserId=. Same value, different
+# name per surface. The two discovery operations are in the Accounts family, so
+# `ads operations --family DSP` does not list them.
 harness_commands:
   - mixshift ads profiles
   - mixshift ads operations --family DSP
+  - mixshift ads call accounts.list_manager_accounts
   - mixshift ads call accounts.query_advertiser_accounts
   - mixshift ads call dsp.create_report --path accountId= --body-file <file>
   - mixshift ads call dsp.get_report --path accountId= --path reportId=
+  - mixshift ads call dsp.list_campaigns --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_ad_groups --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_ad_creatives --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_creative_associations --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_association_moderations --path advertiserId= --body <json>
+  - mixshift ads call dsp.get_ad_creative_validation --path advertiserId= --path adCreativeId=
+  - mixshift ads call dsp.list_eligible_creatives --path advertiserId= --body <json>
 
 required_context_fields: []
 optional_context_fields: []
@@ -52,6 +70,15 @@ trigger_phrases:
   - dsp inventory report
   - run a dsp report
   - dsp advertiser report
+  - dsp creatives
+  - dsp line items
+  - dsp ad groups
+  - what creatives are running on dsp
+  - why is my dsp creative not delivering
+  - dsp creative approval
+  - is this creative eligible for dsp
+  - audit dsp account
+  - find my dsp advertiser id
 notes: >
   Auth model: DSP rides the Amazon Ads API, whose tokens are PER ADVERTISING
   LOGIN (not per seller). The service reads the tenant's stored advertising

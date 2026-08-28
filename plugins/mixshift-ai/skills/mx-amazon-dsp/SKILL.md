@@ -73,11 +73,13 @@ When characterizing this capability to the user, use these facts:
   tenant's stored advertising refresh token (keyed by the seller row's
   `idUserAccount`) and mints access tokens in memory. Nothing for the plugin to
   handle.
-- **Two different ids, do not confuse them.** `--legacy-seller-id` selects which
-  advertising LOGIN's token the service uses (the seller row whose login holds
-  the DSP seat). `--path accountId=<dspAdvertiserId>` is the DSP ADVERTISER you
-  are reporting on, a separate id you discover first (see "Discovery" below).
-  One login can reach many DSP advertisers.
+- **Two different ids, and the advertiser has two parameter names.**
+  `--legacy-seller-id` selects which advertising LOGIN's token the service uses
+  (the seller row whose login holds the DSP seat). The DSP ADVERTISER is a
+  separate id you discover first (see "Discovery" below), and it goes in
+  `--path accountId=` on the REPORT operations but `--path advertiserId=` on the
+  account reads. Same value, different name per surface, because Amazon names it
+  differently. One login can reach many DSP advertisers.
 - **Reads only.** Generating a report mutates nothing advertiser-facing, so the
   surface needs no `ads:write` scope. This skill never sends a write and never
   uses `--commit`.
@@ -87,15 +89,32 @@ reported through MixShift's service," not a guess.
 
 ## When to use this skill
 
-Trigger when the user wants a **DSP report**, for example:
+Trigger for either half of the surface.
+
+**A DSP report** (how it performed):
 
 - "Pull a DSP campaign report for Summit last week"
 - "What did our DSP audience segments do this month?"
 - "Get me DSP inventory performance by supply source"
 - "Download a DSP report with impressions, clicks, and spend"
 
-The core user story: *"I want Amazon DSP performance for one of my DSP
-advertisers, on demand, as a file I can analyze or build on."*
+**A DSP account read** (how it is set up right now):
+
+- "What creatives are running on DSP?"
+- "Why is this DSP creative not delivering?"
+- "Was that creative approved?"
+- "Can this creative run on that line item?"
+- "Audit our DSP account"
+- "What is our DSP advertiser id?"
+
+The core user story: *"I want to know what my DSP advertiser is doing, either as
+performance I can analyze or as the live setup I can act on, without opening the
+DSP console."*
+
+The two halves answer different questions and are addressed differently, so
+decide which one the user is asking for before picking an operation. "How did it
+do" is a report; "what is on it" or "why is it not delivering" is an account
+read.
 
 **Do NOT use this skill** for:
 
@@ -249,8 +268,8 @@ account than the one running DSP).
 
 ```bash
 # dsp_campaigns_metric is keyed by SEAT, not the brand's seller row — match on
-# advertiserName (NOT SellerID); read the id as a STRING (an 18-19 digit BIGINT
-# that JS rounds, so always CAST AS CHAR); pick the one with recent spend.
+# advertiserName (NOT SellerID); read the id as a STRING (a long BIGINT that JS
+# rounds, so always CAST AS CHAR); pick the one with recent spend.
 mixshift data query --sql "SELECT CAST(advertiserId AS CHAR) AS advertiserId, advertiserName, entityId AS seat, MAX(DATE(DateTime)) AS last_day, ROUND(SUM(CASE WHEN DateTime >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN totalCost ELSE 0 END),0) AS spend_30d FROM dsp_campaigns_metric WHERE advertiserName LIKE '%<brand>%' GROUP BY advertiserId, advertiserName, entityId ORDER BY last_day DESC" --json
 ```
 
@@ -258,8 +277,13 @@ mixshift data query --sql "SELECT CAST(advertiserId AS CHAR) AS advertiserId, ad
   active advertiser AND an older/deprecated one on a different seat. Derive
   "active" from recent `spend_30d` / `last_day`; surface both and say which is
   current.
-- Use the active row's `advertiserId` (the CAST-AS-CHAR string) as the
-  advertiser id for any call below.
+- Use the active row to identify WHICH advertiser the user means (by
+  `advertiserName` and recent spend). Do NOT assume the warehouse `advertiserId`
+  is interchangeable with the id Amazon's accounts API returns: reconcile it
+  against a `list_manager_accounts` row before passing it to any call below.
+  This matters more than it sounds. The account reads return **HTTP 200 with an
+  empty array** for an id that is valid but not the one you wanted, so an
+  unreconciled id produces "you have no creatives" rather than an error.
 
 ## Reading the DSP account (campaigns, creatives, placements)
 
@@ -268,8 +292,9 @@ answer "how did it perform". They are addressed DIFFERENTLY from the report
 operations, so read this before using them.
 
 **The advertiser id goes in `--path advertiserId=<id>`.** It is not put in the
-URL; the service sends it as a header. It is REQUIRED on all seven, and omitting
-it fails with an error that does not name the cause.
+URL; the service sends it as a header. It is REQUIRED on all seven. Omitting it fails
+before the request is sent, with an error naming the operation, the parameter
+and the header, so read that message rather than guessing at auth or access.
 
 The merchant selector is still required, and it is not decoration: it chooses
 which login's authorization the call is made with, and which regional host the
@@ -290,6 +315,28 @@ mixshift ads call dsp.list_ad_groups --legacy-seller-id <id> \
   --path advertiserId=<dspAdvertiserId> --body '{"maxResults":100}' --json
 ```
 
+**Two of the seven need more than the advertiser id, and both fail hard rather
+than degrading, so the pattern above does not generalize to them:**
+
+`dsp.get_ad_creative_validation` is a GET for ONE creative and also takes
+`--path adCreativeId=<id>`. It takes NO body; sending one is refused outright.
+
+```bash
+mixshift ads call dsp.get_ad_creative_validation --legacy-seller-id <id> \
+  --path advertiserId=<dspAdvertiserId> --path adCreativeId=<adCreativeId> --json
+```
+
+`dsp.list_eligible_creatives` REQUIRES a body naming the ad groups. Without
+`adGroupIdFilter` (or `adGroupDrafts`) it returns 400, so a generic
+`{"maxResults":100}` body fails on exactly the operation you were told to trust
+over guessing. Get the ad group ids from `dsp.list_ad_groups` first.
+
+```bash
+mixshift ads call dsp.list_eligible_creatives --legacy-seller-id <id> \
+  --path advertiserId=<dspAdvertiserId> \
+  --body '{"adGroupIdFilter":{"include":["<adGroupId>"]},"maxResults":100}' --json
+```
+
 ### Four things that produce a confidently wrong answer
 
 **1. "Live or paused" is a property of the PLACEMENT, not the creative.** A
@@ -300,7 +347,10 @@ different questions with different answers. Use `dsp.list_creative_associations`
 for anything about what is running.
 
 **2. Three different type systems, and they do not share values.** A line item's
-`inventoryType` says ONLINE_VIDEO. The creatives serving it are typed VIDEO. And
+`inventoryType` says ONLINE_VIDEO. The creatives serving it are typed VIDEO, at
+`adCreativeFormatProperties.adCreativeFormatType` (mind the path: there is no
+top-level `adCreativeFormatType`, so reading `creative.adCreativeFormatType`
+returns `undefined` on every row and reads as "nothing has a type"). And
 ONLINE_VIDEO appears on the creative side only as an *ad experience*, from
 `dsp.get_ad_creative_validation`. Comparing a line item's type to a creative's
 type gives the wrong answer, and it looks right. **Never tell a user an
@@ -308,13 +358,25 @@ advertiser has no online-video creatives because none are typed ONLINE_VIDEO.**
 When the question is "can this creative go here", ask Amazon with
 `dsp.list_eligible_creatives` instead of reasoning about types.
 
-**3. Always pass `maxResults`, and always page.** With no body these endpoints
-return ONE row, not a first page. Use 100. Then page with `nextToken` until it
-is absent, because the truncation signal differs per operation: campaigns and ad
-groups have no total field at all, `dsp.list_ad_creatives` reports only the size
-of the page you are holding, and the association, moderation and eligibility
-operations report the true total. Read the operation's own notes
-(`mixshift ads operations --family DSP`) rather than assuming.
+**3. On the five plain list operations, always pass `maxResults`, and always
+page.** With no body those return ONE row, not a first page. Use 100, which is
+the ceiling. Then page with `nextToken` until it is absent, because the
+truncation signal differs per operation: campaigns and ad groups have no total
+field at all, `dsp.list_ad_creatives` reports only the size of the page you are
+holding, and the association, moderation and eligibility operations report the
+true total.
+
+This rule does NOT extend to the other two. `dsp.list_eligible_creatives` needs
+its ad-group filter as well (above), and `dsp.get_ad_creative_validation` takes
+no body at all and its `totalResults` reads **0 even when validations came
+back** — count `validations.length` instead, or you will report a perfectly good
+creative as valid for nothing. When that operation returns errors, quote the
+`errorCode`; its `errorMessage` is sometimes degenerate and names no field, so
+relaying it verbatim hands the user a non-diagnosis.
+
+Read the operation's own notes rather than assuming. Note the two discovery
+operations are in the `Accounts` family, so `--family DSP` will not show them:
+run `mixshift ads operations` unfiltered, or `--family Accounts`, to read those.
 
 **4. An empty result is not an empty advertiser.** These return 200 with an
 empty array when the advertiser id is valid but is not the one the user meant,
@@ -324,15 +386,22 @@ does not exist.
 ### When a DSP read fails
 
 - **`reauth_required` (a 401 underneath) is usually about the merchant you
-  picked, not the advertiser id.** Try another merchant on the account before
-  telling anyone to re-authorize. And some accounts genuinely cannot call the
-  DSP API even though they own DSP advertisers, on every login: re-authorizing
-  will not fix that, and saying so early saves the user a pointless trip.
-- **`upstream_unavailable` on `dsp.get_ad_creative_validation` is often
-  advertiser-wide, not creative-specific.** Stop after the first one and report
-  that validation is unavailable for that advertiser. Do NOT walk the
-  advertiser's whole creative set: each attempt is retried upstream, so a sweep
-  costs minutes and tells you nothing new.
+  picked, not the advertiser id.** Work through it in this order: try another
+  merchant on the account first, since the token is per login; if every merchant
+  fails, THEN have the user re-authorize, because a lapsed grant looks exactly
+  the same. Only after both of those fail should you raise the third
+  possibility, that this account has DSP advertisers but no DSP API access,
+  which re-authorizing cannot fix and which MixShift ops has to confirm. Do not
+  lead with that one: telling a user re-authorizing is pointless when their
+  grant has simply expired closes the door on the fix.
+- **A failure on `dsp.get_ad_creative_validation` is often advertiser-wide, not
+  creative-specific.** It reaches you as `failure_kind: unknown` (the service's
+  own upstream_unavailable is not one of the kinds this CLI carries, so do not
+  wait for that string). The tell is the SECOND creative failing the same way:
+  stop there and report that validation is unavailable for that advertiser. Do
+  NOT walk the advertiser's whole creative set. Each attempt is retried upstream
+  before it returns, so a sweep costs minutes of wall clock and tells you nothing
+  new.
 
 ### What is NOT available
 
@@ -462,6 +531,7 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `ads_not_configured` | 6 | The Amazon Ads credentials are not set on the service for this account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no merchant. Re-run `ads profiles` and pick a listed row; prefer `--legacy-seller-id`. |
+| `reauth_required` | 5 | The 401 case. Do NOT jump to "re-authorize": work the order in "When a DSP read fails" — another merchant first, then re-authorize, and only then the no-DSP-API-access possibility. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. |
 
 Two DSP-specific cases that need their own handling:
@@ -481,15 +551,22 @@ These supersede other instructions:
 
 - **Read-only.** Generating a DSP report mutates nothing advertiser-facing;
   never send an Ads write and never use `--commit`.
-- **Discover the DSP advertiser id first — and beware separate seats.** The
-  `accountId` path param is a `dspAdvertiserId`, NOT the `profileId` or
-  `legacySellerId`. `accounts.query_advertiser_accounts` on the brand's
-  seller-row login may not surface it (the active advertiser is often on a
-  different DSP seat); resolve the ACTIVE one from `dsp_campaigns_metric` by
-  recent spend, reading the id with `CAST(advertiserId AS CHAR)` (the BIGINT
-  rounds as a JS number otherwise). Do not guess it.
-- **Keep the two ids straight.** `--legacy-seller-id` selects the login;
-  `--path accountId=` is the DSP advertiser. They are different.
+- **Discover the DSP advertiser id first, starting at
+  `accounts.list_manager_accounts`.** The advertiser id is NOT the `profileId`
+  or `legacySellerId`. Read `linkedAccounts[]` rows of type
+  `DSP_ADVERTISING_ACCOUNT`, de-duplicated. `accounts.query_advertiser_accounts`
+  is the second source, and it only looks empty when one global filter or one
+  page is skipped. The warehouse (`dsp_campaigns_metric`) is a CROSS-CHECK that
+  shows who is spending, not the resolver.
+- **Never pick the advertiser for the user.** There is no reliable brand →
+  advertiser mapping; the sponsored and DSP records share no identifier. Present
+  the candidates, have the user confirm, and echo the id back. Do NOT auto-select
+  by spend or by name similarity.
+- **Keep the two ids straight, and the two parameter names.**
+  `--legacy-seller-id` selects the LOGIN. The advertiser id goes in
+  `--path accountId=` for the report operations and `--path advertiserId=` for
+  the account reads. Same value, different parameter name per family; using the
+  wrong one silently omits the advertiser and the call fails as if unauthorized.
 - **Match dimensions and metrics to the `type`.** Start from the known-good
   `CAMPAIGN` + `["ORDER","LINE_ITEM","CREATIVE"]` shape; confirm other
   combinations against Amazon's reference. A FAILURE status is usually an
