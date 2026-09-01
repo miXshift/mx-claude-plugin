@@ -92496,16 +92496,18 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
   };
 }
 function extractEvidence(whole, selection) {
+  const none = { statements: [], evidenceVersion: null };
   let block;
   if (selection) {
-    if (!selection.endsWith(".ops")) return [];
+    if (!selection.endsWith(".ops")) return none;
     const period = selection.split(".")[0];
     block = asRecord(asRecord(whole[period])?.evidence);
   } else {
     block = asRecord(whole.evidence);
   }
   const statements = asRecord(block?.statements);
-  if (!statements) return [];
+  if (!statements) return none;
+  const evidenceVersion = typeof block?.evidenceVersion === "string" && block.evidenceVersion.trim().length > 0 ? block.evidenceVersion : null;
   const prefix = selection ? `${selection.split(".")[0]}.evidence` : "evidence";
   const out = [];
   const used = /* @__PURE__ */ new Set();
@@ -92515,7 +92517,9 @@ function extractEvidence(whole, selection) {
       const g = asRecord(groupRaw);
       if (!g) return;
       const head = typeof g.head === "string" ? g.head : "";
-      const slug = head.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || `group_${i}`;
+      const rawKind = typeof g.id === "string" ? g.id.trim() : "";
+      const kind = /^[a-z0-9][a-z0-9_-]{0,63}$/.test(rawKind) ? rawKind : null;
+      const slug = kind ?? (head.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || `group_${i}`);
       let id = `${prefix}.${metric}.${slug}`;
       if (used.has(id)) id = `${id}.${i}`;
       used.add(id);
@@ -92523,6 +92527,7 @@ function extractEvidence(whole, selection) {
       const lines = questions.map((q) => asRecord(q)?.question).filter((q) => typeof q === "string" && q.trim().length > 0);
       out.push({
         id,
+        ...kind ? { kind } : {},
         metric,
         head,
         ...typeof g.tone === "string" ? { tone: g.tone } : {},
@@ -92531,7 +92536,7 @@ function extractEvidence(whole, selection) {
       });
     });
   }
-  return out;
+  return { statements: out, evidenceVersion };
 }
 var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops"];
 function isCompositeResponse(response) {
@@ -92804,7 +92809,10 @@ function extractFiguresUnprefixed(response, selection) {
     source: buildSource(env, rawDoc, domain2, void 0, selection),
     caveat_registry: registry2,
     figures: figures2,
-    ...evidence.length ? { evidence } : {}
+    ...evidence.statements.length ? {
+      evidence: evidence.statements,
+      ...evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {}
+    } : {}
   };
 }
 function periodPrefixOf(selection) {

@@ -3,6 +3,22 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.12
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Changed
+
+- **Engine-written report evidence now keeps its identity when the wording
+  improves.** The analytics engine behind Report Max periodically rewords its
+  "What we know" statements to read better. Each statement card now carries a
+  stable id straight from the engine, and MixShift keys on that id rather than
+  on the sentence, so a wording improvement upstream never changes how your
+  reports cite their evidence. Reports also record which wording build phrased
+  the statements next to the engine version that computed the numbers, so
+  "why does this sentence read differently than last month" has a one-line
+  answer.
+
 ## 0.8.11
 
 ### Added

@@ -637,9 +637,17 @@ export interface ExtractSource {
  * authoring an unfalsifiable explanation.
  */
 export interface EvidenceStatement {
-  /** Period-namespaced on a composite (`mom.evidence.ops.promo_pricing`), bare
-   *  otherwise. Same discipline as figure ids, for the same reason. */
+  /** Period-namespaced on a composite (`mom.evidence.ops.ops-promo-pricing`),
+   *  bare otherwise. Same discipline as figure ids, for the same reason. The
+   *  last segment is `kind` when the engine stamped one, else a local slug of
+   *  the head. */
   id: string;
+  /** The engine's stable semantic slug of the card KIND (evidence >= 0.5.0,
+   *  e.g. `ops-promo-pricing`): wording-independent, stamped as cards are
+   *  touched, served verbatim. Key any routing on THIS, never on head or
+   *  statement text, which reword across evidence releases. Optional:
+   *  unstamped cards are contract-valid, not an error. */
+  kind?: string;
   /** The metric root the group hangs off (ops, units, gv_conversion, ...). */
   metric: string;
   /** The group's one-line head, e.g. "promo pricing detected". */
@@ -661,6 +669,12 @@ export interface ExtractDocument {
    *  array would read as "the engine had nothing to say", which is a different
    *  claim from "evidence was not requested". */
   evidence?: EvidenceStatement[];
+  /** Which wording build phrased the evidence statements (the evidence
+   *  block's own `evidenceVersion` stamp, served from evidence >= 0.2.0).
+   *  Present only alongside `evidence`. Independent of
+   *  `source.engineVersion` (engine 0.4.0 ships with evidence 0.5.0) —
+   *  never gate an evidence-shape decision on the engine's version stream. */
+  evidence_version?: string;
 }
 
 export type CheckRuleId =
@@ -943,19 +957,28 @@ function extractEntity(
 function extractEvidence(
   whole: Rec,
   selection?: CompositeSelection,
-): EvidenceStatement[] {
+): { statements: EvidenceStatement[]; evidenceVersion: string | null } {
+  const none = { statements: [], evidenceVersion: null };
   // For a composite, evidence is a sibling of the leg's envelope; for a single
   // response it sits at the top level next to `envelope`.
   let block: Rec | undefined;
   if (selection) {
-    if (!selection.endsWith('.ops')) return [];
+    if (!selection.endsWith('.ops')) return none;
     const period = selection.split('.')[0]!;
     block = asRecord(asRecord(whole[period])?.evidence);
   } else {
     block = asRecord(whole.evidence);
   }
   const statements = asRecord(block?.statements);
-  if (!statements) return [];
+  if (!statements) return none;
+
+  // evidence >= 0.2.0 stamps which wording build phrased the statements.
+  // Carried through so a statement-string question is triaged against the
+  // wording build, never against `engineVersion` (independent streams).
+  const evidenceVersion =
+    typeof block?.evidenceVersion === 'string' && block.evidenceVersion.trim().length > 0
+      ? block.evidenceVersion
+      : null;
 
   const prefix = selection ? `${selection.split('.')[0]}.evidence` : 'evidence';
   const out: EvidenceStatement[] = [];
@@ -967,15 +990,33 @@ function extractEvidence(
       const g = asRecord(groupRaw);
       if (!g) return;
       const head = typeof g.head === 'string' ? g.head : '';
-      // Slug from the head so an id is readable and stable across runs; the
-      // index only breaks ties, so two groups with the same head on one metric
-      // stay distinct rather than colliding silently.
+      // Prefer the engine's served stable id for the slug leg (evidence
+      // 0.5.0: `DriverQuestionGroup.id`, a wording-independent semantic slug
+      // of the card kind, stamped as cards are touched). Served VERBATIM so
+      // the id survives upstream wording releases; unstamped cards are
+      // contract-valid and keep the pre-0.5.0 derivation (slug of the head),
+      // so their historical ids do not move. The metric segment stays in the
+      // id either way: one kind legitimately rides several metric roots
+      // (promo pricing appears under ops, units and conversion in the same
+      // run), and the position prefix is what keeps those distinct,
+      // addressable citations.
+      //
+      // Verbatim is gated on the id LOOKING like the contract's slugs: this
+      // extractor also runs over user-supplied JSON files, and a kind can be
+      // quoted into a customer-facing citation, so a degenerate id (control
+      // bytes, dots that mimic our id segments, unbounded length) must not
+      // ride through. An id that fails the shape check is treated as
+      // unstamped, which degrades to the head slug rather than erroring —
+      // the same posture the contract prescribes for absence.
+      const rawKind = typeof g.id === 'string' ? g.id.trim() : '';
+      const kind = /^[a-z0-9][a-z0-9_-]{0,63}$/.test(rawKind) ? rawKind : null;
       const slug =
-        head
+        kind ??
+        (head
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '')
-          .slice(0, 48) || `group_${i}`;
+          .slice(0, 48) || `group_${i}`);
       let id = `${prefix}.${metric}.${slug}`;
       if (used.has(id)) id = `${id}.${i}`;
       used.add(id);
@@ -987,6 +1028,7 @@ function extractEvidence(
 
       out.push({
         id,
+        ...(kind ? { kind } : {}),
         metric,
         head,
         ...(typeof g.tone === 'string' ? { tone: g.tone } : {}),
@@ -997,7 +1039,7 @@ function extractEvidence(
       });
     });
   }
-  return out;
+  return { statements: out, evidenceVersion };
 }
 
 export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops'] as const;
@@ -1395,7 +1437,12 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
     source: buildSource(env, rawDoc, domain, undefined, selection),
     caveat_registry: registry,
     figures,
-    ...(evidence.length ? { evidence } : {}),
+    ...(evidence.statements.length
+      ? {
+          evidence: evidence.statements,
+          ...(evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {}),
+        }
+      : {}),
   };
 }
 
