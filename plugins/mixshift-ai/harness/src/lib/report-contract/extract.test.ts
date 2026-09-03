@@ -2266,15 +2266,17 @@ describe('UNIT-2 end to end: extraction stamps the contract, the validator catch
   });
 });
 
-describe('COMPOSITE_SELECTIONS: there is no yoy.ads, and that is the server’s contract', () => {
-  // The audit that prompted this work flagged `yoy.ads` as a missing selection.
-  // It is not missing -- INS-MONTHLY-01 runs exactly ONE ads bridge per
-  // request, against the MoM window, and pins the YoY leg as
-  // `{ ops: InsightEnvelope; ads: null; crossDomain: null }` with `ads` typed
-  // as the LITERAL null. Adding the selection would advertise a choice, in
-  // --select's help text and in the unselected-composite error, that can only
-  // ever fail. These tests pin the reason so the next audit does not re-flag
-  // it, and would go red the day the server widens that type.
+describe('COMPOSITE_SELECTIONS: yoy.ads exists since engine 0.4.0; null legs on older bundles still refuse cleanly', () => {
+  // HISTORY: through engine 0.3.x, INS-MONTHLY-01 ran exactly one ads bridge
+  // (MoM) and pinned the YoY leg as `{ ops, ads: null, crossDomain: null }`;
+  // the original version of this suite pinned that contract and promised to
+  // go red "the day the server widens that type". Engine 0.4.0 widened it
+  // (verified on a live bundle: populated yoy.ads with its own bridgeRunId,
+  // and a populated yoy.crossDomain), so yoy.ads is now a real selection.
+  // What SURVIVES from the old contract: an older bundle still carries the
+  // literal-null yoy.ads leg, so key presence is never evidence of an
+  // envelope, and selecting yoy.ads on such a bundle must refuse with the
+  // no-envelope error rather than extracting zero figures.
   const opsEnvelope = (loadFixture('envelope-minimal.json') as { envelope: unknown }).envelope;
 
   /** The bundle shape the server actually returns today. */
@@ -2287,9 +2289,8 @@ describe('COMPOSITE_SELECTIONS: there is no yoy.ads, and that is the server’s 
     meta: {},
   };
 
-  it('the enum offers exactly the three selections that can carry an envelope', () => {
-    expect([...COMPOSITE_SELECTIONS]).toEqual(['mom.ops', 'mom.ads', 'yoy.ops']);
-    expect((COMPOSITE_SELECTIONS as readonly string[]).includes('yoy.ads')).toBe(false);
+  it('the enum offers exactly the four selections that can carry an envelope on a 0.4.0+ bundle', () => {
+    expect([...COMPOSITE_SELECTIONS]).toEqual(['mom.ops', 'mom.ads', 'yoy.ops', 'yoy.ads']);
   });
 
   it('yoy.ads is a PRESENT key holding null, so key presence is never evidence of an envelope', () => {
@@ -2304,5 +2305,95 @@ describe('COMPOSITE_SELECTIONS: there is no yoy.ads, and that is the server’s 
     expect(figs.get('yoy.ops.ops.p1')).toMatchObject({ value: 100000 });
     expect(out.figures.filter((f) => f.id.includes('duo.'))).toEqual([]);
     expect(checkFigures(out)).toEqual([]);
+  });
+});
+
+// (i) engine 0.4.0 seams: the SKU-source split's per-leg identity, and the
+//     yoy.ads / yoy.crossDomain selections that 0.4.0 populates. The split's
+//     false-failure shape shipped as six spurious BRIDGE-FOOTING findings per
+//     bundle (field report, Rowdy Parrot run 2026-09-02), reproduced verbatim
+//     on a live 0.4.0 bundle before this fix.
+
+describe('checkFigures: BRIDGE-FOOTING source-split legs (engine 0.4.0 emission)', () => {
+  const componentDeltas = [
+    f({ id: 'mom.ads.ad_sales_same_sku.delta', value: -3269.97 }),
+    f({ id: 'mom.ads.ad_sales_other_sku.delta', value: -2717.58 }),
+  ];
+
+  it('anchors each source leg to its own component delta and passes when they match', () => {
+    const out = minimalOut({
+      figures: [
+        ...componentDeltas,
+        // the split rides under a HOST component whose net_change is the host's
+        // own net, NOT the legs' sum -- the exact false-failure shape.
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -3269.97 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2717.58, footing_ok: true, net_change: -3269.97 }),
+      ],
+    });
+    expect(checkFigures(out).filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
+  });
+
+  it('fires per-leg when a source leg disagrees with its component delta', () => {
+    const out = minimalOut({
+      figures: [
+        ...componentDeltas,
+        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -2717.58 }),
+        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_other', value: -9999.99, footing_ok: true, net_change: -2717.58 }),
+      ],
+    });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({
+        rule: 'BRIDGE-FOOTING',
+        subject: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_other',
+      }),
+    );
+  });
+
+  it('falls back to the net comparison (fail-closed) when no component delta anchors the legs', () => {
+    const out = minimalOut({
+      figures: [
+        // no *_sku.delta figures present -> anchoring impossible -> old rule applies
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -3269.97 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2717.58, footing_ok: true, net_change: -3269.97 }),
+      ],
+    });
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'BRIDGE-FOOTING', subject: 'mom.ads.bridge.ad_sales_same_sku.secondary' }),
+    );
+  });
+});
+
+describe('composite selections on engine 0.4.0 bundles (yoy.ads populated, yoy.crossDomain rides yoy.ops)', () => {
+  const opsEnvelope = (loadFixture('envelope-minimal.json') as { envelope: unknown }).envelope;
+  const adsEnvelope = {
+    bridgeDomain: 'ads',
+    bridgeRunId: 'run-example-ads-0002',
+    currency: 'USD',
+    caveats: [],
+    metrics: [
+      { metricKey: 'ad_spend', totals: { p1: 15000, p2: 16000, delta: 1000, pctChange: 0.0667 }, topDrivers: [] },
+    ],
+    insights: [],
+  };
+  const crossDomain = { tacos: { p1: 0.15, p2: 0.12, deltaPts: -0.03 } };
+  const composite = {
+    ok: true,
+    mom: { ops: opsEnvelope, ads: adsEnvelope, crossDomain },
+    yoy: { ops: opsEnvelope, ads: adsEnvelope, crossDomain },
+    headline: {},
+    limitations: [],
+    meta: {},
+  };
+
+  it('yoy.ads is selectable and yields yoy.ads-prefixed figures', () => {
+    const out = extractFigures(composite, 'yoy.ads');
+    expect(out.figures.length).toBeGreaterThan(0);
+    expect(out.figures.every((fig) => fig.id.startsWith('yoy.ads.'))).toBe(true);
+    expect(out.figures.some((fig) => fig.id === 'yoy.ads.ad_spend.delta')).toBe(true);
+  });
+
+  it('yoy.crossDomain rides the yoy.ops selection the way mom.crossDomain rides mom.ops', () => {
+    const out = extractFigures(composite, 'yoy.ops');
+    expect(out.figures.some((fig) => fig.id.startsWith('yoy.duo.'))).toBe(true);
   });
 });

@@ -1,0 +1,693 @@
+<title>Client Brief Template</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-sunk:#EDF0F4;
+  --ink:#151A21;
+  --ink-soft:#3F4854;
+  --ink-mute:#6A7481;
+  --rule:#D8DEE6;
+  --rule-soft:#E6EAF0;
+  --accent:#1F5C7A;
+  --accent-soft:#E4EEF3;
+  --good:#2E7D5B;
+  --good-soft:#E3F0E9;
+  --warn:#B4571C;
+  --warn-soft:#F8EBE0;
+  --crit:#96272B;
+  --crit-soft:#F7E5E5;
+  --shadow:0 1px 2px rgba(21,26,33,.05),0 8px 24px -16px rgba(21,26,33,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#10151C;
+    --surface:#171E27;
+    --surface-sunk:#1E262F;
+    --ink:#E9EEF4;
+    --ink-soft:#BAC5D2;
+    --ink-mute:#8B98A7;
+    --rule:#2A3441;
+    --rule-soft:#222B36;
+    --accent:#6FB2D2;
+    --accent-soft:#1B2C36;
+    --good:#6DC49B;
+    --good-soft:#17281F;
+    --warn:#E08B4C;
+    --warn-soft:#2C1F14;
+    --crit:#E0797D;
+    --crit-soft:#2C1718;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10151C;
+  --surface:#171E27;
+  --surface-sunk:#1E262F;
+  --ink:#E9EEF4;
+  --ink-soft:#BAC5D2;
+  --ink-mute:#8B98A7;
+  --rule:#2A3441;
+  --rule-soft:#222B36;
+  --accent:#6FB2D2;
+  --accent-soft:#1B2C36;
+  --good:#6DC49B;
+  --good-soft:#17281F;
+  --warn:#E08B4C;
+  --warn-soft:#2C1F14;
+  --crit:#E0797D;
+  --crit-soft:#2C1718;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.6;
+  margin:0;
+  padding:0 20px 96px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:940px;margin:0 auto;}
+.prose{max-width:66ch;}
+
+/* masthead */
+header.top{
+  padding:52px 0 30px;
+  border-bottom:2px solid var(--ink);
+  display:flex;
+  flex-wrap:wrap;
+  gap:24px 40px;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;
+  font-weight:500;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 10px;
+}
+h1{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-weight:600;
+  font-size:clamp(2rem,4.4vw,2.85rem);
+  line-height:1.1;
+  letter-spacing:-.015em;
+  margin:0;
+  text-wrap:balance;
+}
+.standfirst{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:1.05rem;
+  color:var(--ink-soft);
+  margin:14px 0 0;
+  max-width:52ch;
+}
+.stamp{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;
+  line-height:1.85;
+  color:var(--ink-mute);
+  text-align:right;
+  white-space:nowrap;
+}
+.stamp b{color:var(--ink-soft);font-weight:500;}
+
+/* scope bar */
+.scope{
+  margin-top:22px;
+  padding:16px 18px;
+  background:var(--surface-sunk);
+  border-left:3px solid var(--accent);
+  font-size:.875rem;
+  color:var(--ink-soft);
+}
+.scope p{margin:0;}
+.scope p+p{margin-top:8px;}
+
+/* sections */
+section{margin-top:52px;}
+h2{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:1.5rem;
+  font-weight:600;
+  letter-spacing:-.01em;
+  margin:0 0 6px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--rule);
+  text-wrap:balance;
+}
+h2 .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;
+  font-weight:500;
+  color:var(--accent);
+  vertical-align:.35em;
+  margin-right:12px;
+}
+h3{
+  font-size:1rem;
+  font-weight:600;
+  margin:30px 0 8px;
+  letter-spacing:-.005em;
+}
+p{margin:0 0 14px;}
+.lede{font-size:1.06rem;color:var(--ink);}
+
+/* bottom line */
+.bottomline{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-top:3px solid var(--accent);
+  box-shadow:var(--shadow);
+  padding:26px 28px;
+  margin-top:34px;
+}
+.bottomline p{margin:0 0 12px;font-size:1.06rem;}
+.bottomline p:last-child{margin-bottom:0;}
+.bottomline strong{font-weight:600;}
+
+/* things to check */
+.checkblock{
+  margin-top:22px;
+  background:var(--surface);
+  border:1px solid var(--rule);
+  padding:22px 26px 24px;
+}
+h2.checkhead{
+  font-size:1.2rem;
+  margin:0 0 4px;
+  padding-bottom:12px;
+}
+ul.checks{
+  list-style:none;padding:0;margin:0;
+  display:flex;flex-direction:column;
+}
+ul.checks li{
+  display:grid;
+  grid-template-columns:96px 1fr;
+  gap:16px;
+  padding:15px 0;
+  border-bottom:1px solid var(--rule-soft);
+  align-items:start;
+}
+ul.checks li:last-child{border-bottom:none;padding-bottom:0;}
+ul.checks p{margin:0;font-size:.93rem;color:var(--ink-soft);}
+ul.checks b{color:var(--ink);font-weight:600;}
+.cstate{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+  font-weight:600;padding:4px 0 0;display:block;
+}
+.cstate.crit{color:var(--crit);}
+.cstate.warn{color:var(--warn);}
+.cstate.neutral{color:var(--ink-mute);}
+.owner{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;color:var(--accent);font-weight:500;
+  display:block;margin-top:6px;letter-spacing:.03em;
+}
+@media (max-width:560px){
+  ul.checks li{grid-template-columns:1fr;gap:6px;}
+  .cstate{padding-top:0;}
+}
+
+/* metric strip */
+.strip{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;
+  background:var(--rule);
+  border:1px solid var(--rule);
+  margin-top:26px;
+}
+.tile{background:var(--surface);padding:16px 18px 18px;}
+.tile .k{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-mute);margin:0 0 8px;
+}
+.tile .v{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:1.34rem;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin:0;line-height:1.15;
+}
+.tile .d{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.74rem;margin:6px 0 0;font-variant-numeric:tabular-nums;
+}
+.up{color:var(--good);}
+.down{color:var(--crit);}
+.flat{color:var(--ink-mute);}
+.caution{color:var(--warn);}
+
+/* tables */
+.tscroll{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);background:var(--surface);}
+table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:600px;}
+caption{
+  caption-side:top;text-align:left;padding:14px 16px 12px;
+  font-size:.82rem;color:var(--ink-soft);border-bottom:1px solid var(--rule-soft);
+}
+caption b{color:var(--ink);font-weight:600;}
+th,td{padding:9px 16px;text-align:right;border-bottom:1px solid var(--rule-soft);}
+th:first-child,td:first-child{text-align:left;}
+thead th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.68rem;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-mute);font-weight:500;background:var(--surface-sunk);
+  border-bottom:1px solid var(--rule);
+}
+tbody td:not(:first-child){
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;
+}
+tbody tr:last-child td{border-bottom:none;}
+tbody th{font-weight:500;font-size:.86rem;}
+tr.rule-top td,tr.rule-top th{border-top:1px solid var(--rule);}
+
+/* severity cards */
+.mech{display:flex;flex-direction:column;gap:16px;margin-top:26px;}
+.card{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-left:4px solid var(--ink-mute);
+  padding:18px 20px;
+}
+.card.crit{border-left-color:var(--crit);}
+.card.warn{border-left-color:var(--warn);}
+.card.good{border-left-color:var(--good);}
+.card h4{
+  font-size:.95rem;font-weight:600;margin:0 0 6px;
+  display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;
+}
+.card p{margin:0;font-size:.92rem;color:var(--ink-soft);}
+.card p+p{margin-top:9px;}
+.chip{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;font-weight:600;white-space:nowrap;
+}
+.chip.crit{background:var(--crit-soft);color:var(--crit);}
+.chip.warn{background:var(--warn-soft);color:var(--warn);}
+.chip.good{background:var(--good-soft);color:var(--good);}
+.chip.neutral{background:var(--surface-sunk);color:var(--ink-mute);}
+
+/* talking points */
+ol.points{
+  list-style:none;counter-reset:pt;padding:0;margin:26px 0 0;
+  display:flex;flex-direction:column;gap:18px;
+}
+ol.points li{counter-increment:pt;padding-left:44px;position:relative;}
+ol.points li::before{
+  content:counter(pt);
+  position:absolute;left:0;top:1px;
+  width:28px;height:28px;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+ol.points b{font-weight:600;}
+ol.points .say{
+  display:block;margin-top:7px;font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:.95rem;color:var(--ink-soft);border-left:2px solid var(--rule);
+  padding-left:14px;
+}
+ul.plain{padding-left:20px;margin:14px 0 0;}
+ul.plain li{margin-bottom:10px;}
+ul.plain li:last-child{margin-bottom:0;}
+
+/* notes */
+.notes{
+  margin-top:26px;padding:22px 24px;
+  background:var(--surface-sunk);border:1px solid var(--rule-soft);
+  font-size:.86rem;color:var(--ink-soft);
+}
+.notes h3{margin-top:0;color:var(--ink);font-size:.95rem;}
+.notes ul{padding-left:20px;margin:0;}
+.notes li{margin-bottom:9px;}
+.notes li:last-child{margin-bottom:0;}
+.notes code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.85em;background:var(--surface);padding:1px 5px;
+  border:1px solid var(--rule-soft);
+}
+
+footer{
+  margin-top:60px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;color:var(--ink-mute);line-height:1.8;
+}
+
+@media (max-width:640px){
+  header.top{padding-top:36px;}
+  .stamp{text-align:left;}
+  .ask{grid-template-columns:1fr;gap:6px;}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+<!--
+  MixShift call brief template. Replace all {{...}} placeholders and the example content.
+
+  This one file carries BOTH documents. Sections 01 to 05 plus method are the CLIENT brief.
+  Everything after the "INTERNAL COMPANION ONLY" marker belongs in a second artifact at its own
+  URL: talking points, numbers to keep off the call, owner-attributed open items, next lever.
+  Split them into two files before publishing. Never leave an internal section in the client doc.
+
+  No owner names anywhere in the client brief, including Things to check.
+  Keep the token block, the two-theme structure, the IBM Plex pairing and the component classes.
+
+  Component classes available:
+    .scope                     scope bar, before the first number
+    .bottomline                conclusion block
+    .checkblock / ul.checks    Things to check; .cstate crit|warn|neutral, .owner
+    .strip / .tile             metric tiles; .up .down .flat .caution for deltas
+    .tscroll > table           any table, scrolls inside its own container
+    .mech / .card crit|warn|good   severity cards; .chip crit|warn|good|neutral
+    ol.points + span.say       numbered talking points with suggested spoken lines
+    .notes                     method and caveats
+    .prose                     constrains a paragraph to a readable measure
+
+  Delta colours are semantic, not decorative:
+    .up      good direction
+    .down    bad direction
+    .caution worth watching
+    .flat    neutral or immaterial
+  A falling ACOS is .up. A falling sales figure is .down. Direction of the metric, not the sign.
+
+  No em dashes and no en dashes, as characters or as HTML entities. Use "to" for ranges and "n/a" for
+  a comparison that does not exist.
+-->
+
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <p class="eyebrow">{{Client name}} &middot; {{Cadence}} call prep</p>
+    <h1>{{The month's conclusion, not its topic}}</h1>
+    <p class="standfirst">{{One line on what this brief contains.}}</p>
+  </div>
+  <div class="stamp">
+    <b>Call</b> {{day, date, time}}<br>
+    <b>Attendees</b> {{names}}<br>
+    <b>Prepared</b> {{date}}<br>
+    <b>Prior monthly</b> {{date}}
+  </div>
+</header>
+
+<div class="scope">
+  <p><b>Scope.</b> {{Account}} {{Seller Central|Vendor Central}} {{marketplace}} only (SellerID {{id}}). Window is <b>{{current window}}</b> against <b>{{prior month window}}</b> and <b>{{prior year window}}</b>. {{Why the window ends where it does, if the data load date drove it.}}</p>
+  <p><b>{{Any correction being applied.}}</b> {{What it is, which figures it touches, which it does not.}}</p>
+  <p><b>Buy Box and offer figures are page-view weighted.</b> {{Why: a simple daily average treats a quiet day and a busy day alike. Note it here if weighting changes the direction of the month over month move.}}</p>
+</div>
+
+<div class="bottomline">
+  <p><strong>{{The conclusion as one full bold clause, verb included; a bare label like "Bottom line." is a fragment and fails the lint.}}</strong> {{Then the mechanism. Then the counterweight.}}</p>
+</div>
+
+<section>
+  <h2><span class="n">01</span>Account headlines</h2>
+
+  <div class="strip">
+    <div class="tile">
+      <p class="k">{{Metric}}</p>
+      <p class="v">{{Level}}</p>
+      <p class="d down">{{signed delta}} MoM ({{pct}})</p>
+    </div>
+    <!-- five or so more tiles; pick what matters to this client -->
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <caption><b>{{Account, matched windows.}}</b> {{Anything a reader needs before the first number.}}</caption>
+      <thead>
+        <tr><th>Metric</th><th>{{Current}}</th><th>{{Prior month}}</th><th>MoM</th><th>{{Prior year}}</th><th>YoY</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>Ordered product sales</th><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td>{{}}</td><td class="up">{{}}</td></tr>
+        <tr><th>Units</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sessions</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Units per session</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Average selling price</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Ad spend, raw</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Ad spend, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="flat">n/a</td><td class="flat">n/a</td></tr>
+        <tr><th>Total ACOS</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>TACOS, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>{{Trajectory heading, stated as a finding}}</h3>
+  <p class="prose">{{Opening rate against exit rate. The run-rate close, called arithmetic.}}</p>
+</section>
+
+<section>
+  <h2><span class="n">02</span>What actually moved</h2>
+  <p class="prose">{{Gross declines, gross gains, and the net. Then: how many mechanisms, and what each one is.}}</p>
+
+  <div class="mech">
+    <div class="card crit">
+      <h4>{{Mechanism}} <span class="chip crit">{{dollar impact}}</span> <span class="chip neutral">{{kind}}</span></h4>
+      <p>{{What it is and what it cost.}}</p>
+    </div>
+    <div class="card warn">
+      <h4>{{Mechanism}} <span class="chip warn">{{dollar impact}}</span> <span class="chip neutral">{{kind}}</span></h4>
+      <p>{{Figures.}}</p>
+      <p>{{Link to a prior action item where there is one.}}</p>
+    </div>
+    <div class="card good">
+      <h4>{{What is working}} <span class="chip good">{{dollar impact}}</span> <span class="chip neutral">Working</span></h4>
+      <p>{{Figures. Say it out loud, because the topline hides it.}}</p>
+    </div>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <caption><b>{{Mover table title.}}</b> {{Definition of any non-obvious column, especially the out-of-stock count.}}</caption>
+      <thead>
+        <tr><th>Item</th><th>{{Cur}}</th><th>{{Pri}}</th><th>Change</th><th>{{Cur OOS days}}</th><th>{{Pri OOS days}}</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>{{Nickname, never a bare ASIN in client-facing rows}}</th><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Total</th><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">03</span>{{Segment}} reads</h2>
+  <div class="tscroll">
+    <table>
+      <caption><b>{{Segment A and Segment B, matched windows.}}</b> Buy Box is page-view weighted. In-stock items is the average count of items with fulfillable inventory on a given day. Page views on in-stock items is the share of segment page views that landed on something buyable. {{How each split was derived, and that the item counts are ours rather than Amazon's.}}</caption>
+      <thead>
+        <tr><th>Metric</th><th>A cur</th><th>A pri</th><th>A MoM</th><th>B cur</th><th>B pri</th><th>B MoM</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>Ordered product sales</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Units</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sessions</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Units per session</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Buy Box, page-view weighted</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>In-stock items per day</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Listed items per day</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Page views on in-stock items</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Ad spend</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Ad sales</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>ACOS</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>TACOS</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>{{Segment A finding}}</h3>
+  <p class="prose">{{Read. Cite the settled-window check on any efficiency claim.}}</p>
+
+  <h3>{{Segment B finding}}</h3>
+  <p class="prose">{{Read.}}</p>
+  <p class="prose">{{Where MixShift did not do what it said it would, say so here.}}</p>
+</section>
+
+<section>
+  <h2><span class="n">04</span>Featured offer status</h2>
+  <p class="prose">{{Why a lost featured offer costs more than its own conversion: it also drops the item out of shopper paths and stops ads serving.}}</p>
+
+  <div class="mech">
+    <div class="card good">
+      <h4>{{Item}}: lost {{date}}, recovered {{date}} <span class="chip good">Resolved</span></h4>
+      <p>{{Daily Buy Box before, during, after. Never a month average.}}</p>
+      <p>{{Sales per day before, during, after. Page view collapse. Implied shortfall.}}</p>
+      <p>{{Live offer state today: who holds the box, our price, the competitive price threshold. Suppression or competitor. Hedge the mechanism as "consistent with", since the price edit date is usually not in the data.}}</p>
+    </div>
+    <div class="card warn">
+      <h4>{{N}} items are still below 92% <span class="chip warn">Open</span></h4>
+      <p>{{Measured on the last seven days, not the month, so this is current state. Largest by sales, and most severe by percentage.}}</p>
+    </div>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <caption><b>Items below 92% Buy Box on the last seven days, above {{floor}} of sales.</b> All Buy Box columns are page-view weighted. The last seven days column is the one to act on: a month average blends a resolved problem with the days it was broken.</caption>
+      <thead>
+        <tr><th>Item</th><th>Cur sales</th><th>Prior BB</th><th>Cur BB</th><th>Last 7 days</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>{{Item}}</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td style="text-align:left"><span class="chip crit">Open</span></td></tr>
+        <tr class="rule-top"><th>{{Item}}</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="up">{{}}</td><td style="text-align:left"><span class="chip good">Resolved</span></td></tr>
+        <tr><th>{{Item}}</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="flat">no traffic</td><td style="text-align:left"><span class="chip neutral">Out of stock</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">05</span>Things to check</h2>
+  <p class="prose">{{Ordering note, e.g. in rough order of what would move next month most.}}</p>
+  <ul class="checks">
+    <li>
+      <span class="cstate crit">Blocking</span>
+      <div>
+        <p><b>{{The check, phrased as a shared question with no owner named.}}</b> {{The evidence, with figures.}} {{One sentence on why it matters now.}}</p>
+      </div>
+    </li>
+    <li>
+      <span class="cstate crit">Open</span>
+      <div>
+        <p><b>{{Live and costing money now.}}</b> {{Evidence.}}</p>
+      </div>
+    </li>
+    <li>
+      <span class="cstate warn">Pending</span>
+      <div>
+        <p><b>{{Waiting on something already in motion.}}</b> {{Status in the data.}}</p>
+      </div>
+    </li>
+    <li>
+      <span class="cstate neutral">Carried</span>
+      <div>
+        <p><b>{{Outstanding but not urgent.}}</b> {{Why it still matters.}}</p>
+      </div>
+    </li>
+    <li>
+      <span class="cstate neutral">Context</span>
+      <div>
+        <p><b>{{A swing with no cause in the data.}}</b> {{What the data shows and what would settle it.}}</p>
+      </div>
+    </li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">06</span>Method and caveats</h2>
+  <div class="notes">
+    <h3>How these numbers were built</h3>
+    <ul>
+      <li><b>Source.</b> {{Tables by name.}}</li>
+      <li><b>Account.</b> {{SellerID, marketplace, and what is deliberately excluded.}}</li>
+      <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
+      <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
+      <li><b>Normalization.</b> {{What was scaled, by what factor, which figures it touched and which it did not.}}</li>
+      <li><b>Out of stock definition.</b> {{State it, since it counts something in a non-obvious way.}}</li>
+      <li><b>Buy Box weighting.</b> {{Page-view weighted: Buy Box percentage times page views, over total page views. Say why, and say what n/a means where a comparison is unavailable.}}</li>
+      <li><b>In-stock and listed item counts.</b> {{Amazon reports average offer count only at account level, so segment rows use our own counts from inventory snapshots. Say they answer the same question but are not the same metric and will not tie to the account row.}}</li>
+      <li><b>Reconciliation.</b> {{SKU sum against account total, as a figure and a percentage gap.}}</li>
+      <li><b>Segment split.</b> {{How derived, and how much was unmapped.}}</li>
+      <li><b>Run rate close.</b> {{The arithmetic, stated as arithmetic.}}</li>
+    </ul>
+  </div>
+</section>
+
+<!-- INTERNAL COMPANION ONLY from here down -->
+<div class="internal-banner" style="margin:24px 0;padding:10px 14px;border:1px solid var(--crit,#c33);border-left:4px solid var(--crit,#c33);border-radius:4px;font-family:var(--mono,monospace);font-size:0.8rem;letter-spacing:0.06em;text-transform:uppercase;">Internal companion. Not for sharing. The client brief is a separate document at its own URL.</div>
+
+<div class="bottomline">
+  <p><strong>{{Any correction to an earlier read, first and plainly.}}</strong> {{If the analysis changed while the work was in progress, say what changed, how the earlier version was wrong, and what not to press on in the room. A correction buried further down gets read after the call.}}</p>
+</div>
+
+<section>
+  <h2><span class="n">i01</span>What to tell {{contact}}</h2>
+  <ol class="points">
+    <li><b>{{Instruction, in call order.}}</b>
+      <span class="say">"{{The line as it would actually be said aloud.}}"</span>
+    </li>
+    <li><b>{{Instruction.}}</b>
+      <span class="say">"{{Spoken line.}}"</span>
+    </li>
+    <li><b>{{A framing trap to avoid: a true statement that invites a question you cannot answer well.}}</b> {{Say both halves together instead.}}</li>
+    <li><b>{{Instruction that needs no scripted line.}}</b> {{Detail.}}</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="n">i02</span>{{N}} numbers to keep off the call</h2>
+  <div class="mech">
+    <div class="card crit">
+      <h4>{{The number}} <span class="chip crit">Broken input</span></h4>
+      <p>{{What is wrong, with the reconciliation that proves it.}}</p>
+      <p>{{Where it should go instead of onto the call.}}</p>
+    </div>
+    <div class="card warn">
+      <h4>{{The number}} <span class="chip warn">Weak base</span></h4>
+      <p>{{Surrounding months as evidence.}}</p>
+    </div>
+  </div>
+
+  <h3>Where I would not assert a cause</h3>
+  <ul class="plain">
+    <li><b>{{The swing.}}</b> {{What could explain it, why the data cannot separate the candidates, and what would settle it.}}</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">i03</span>Open items carried from {{prior call date}}</h2>
+  <div class="tscroll">
+    <table>
+      <caption><b>Action items from the {{date}} call,</b> with where the data says each one stands.</caption>
+      <thead><tr><th>Item</th><th>Owner</th><th>Status in the data</th></tr></thead>
+      <tbody>
+        <tr><th>{{Item}}</th><td style="text-align:left">{{Owner}}</td><td style="text-align:left"><span class="chip crit">Not landed</span> {{evidence}}</td></tr>
+        <tr><th>{{Item}}</th><td style="text-align:left">{{Owner}}</td><td style="text-align:left"><span class="chip neutral">Unverified</span> {{why}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section>
+  <h2><span class="n">i04</span>Our next lever</h2>
+  <p class="prose">{{The specific action the analysis implies, scoped tightly enough to execute: which rows, which exclusions, and what makes now the right time.}}</p>
+  <p class="prose">{{A second, smaller lever if there is one, with the money it is worth.}}</p>
+</section>
+
+<section>
+  <h2><span class="n">i05</span>Claims register</h2>
+  <p class="prose">{{One line: every assertion beyond the checked figures, its source, and what would change it. This table is what was approved at review.}}</p>
+  <div class="tscroll">
+    <table>
+      <caption><b>Assertions this brief makes,</b> with provenance and falsifiers. Sources: HCAM (intelligence envelope), Warehouse (battery), Live call, Context, Timeline, Notes, Derived.</caption>
+      <thead><tr><th>Claim</th><th>Source</th><th>Confidence</th><th>What would change it</th></tr></thead>
+      <tbody>
+        <tr><th>{{The assertion, one sentence}}</th><td style="text-align:left"><span class="chip neutral">{{Source}}</span></td><td style="text-align:left">{{asserted | consistent with | question}}</td><td style="text-align:left">{{The falsifier}}</td></tr>
+        <tr><th>{{Assertion}}</th><td style="text-align:left"><span class="chip neutral">{{Source}}</span></td><td style="text-align:left">{{confidence}}</td><td style="text-align:left">{{falsifier}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  Prepared for the {{client}} {{cadence}}, {{date}} &middot; {{Account}}, SellerID {{id}}<br>
+  Every figure traced to its source: the intelligence envelope, the warehouse battery, or a live offer check. Where a cause is not in the data, this brief says so instead of naming one.
+</footer>
+<!-- History lives in the HUB, not here: this document publishes as a fragment stacked
+     into the brand's persistent hub page (assets/hub-shell.html), whose month nav and
+     m-<period> anchors are the archive. Do not add per-period links to this footer. -->
+
+</div>

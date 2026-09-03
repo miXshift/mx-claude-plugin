@@ -19,6 +19,28 @@ starts at 0.5.39; earlier versions predate the changelog.
   "why does this sentence read differently than last month" has a one-line
   answer.
 
+- **Monthly Performance Report Max now prepares your client call, not just your
+  report.** Version 2.0 of the max tier produces two documents instead of one: a
+  client-ready performance brief you can share as is, and a private internal
+  companion with your talking points in call order, the numbers to keep off the
+  call, and every open commitment from the last call checked against the data
+  (landed, not landed, or not checkable). Each lives on a persistent per-brand
+  page that stacks every period's edition, newest on top: the link you share
+  once is the link your client bookmarks, new months just appear there, and
+  nobody re-sends URLs. Before it writes anything, it works
+  out what actually moved and why: availability, pricing and Buy Box, catalog
+  mix, or demand, each tested rather than guessed, with Buy Box weighted by
+  page views so an outage that already recovered is not reported as a live
+  problem. Featured-offer losses get diagnosed against Amazon's live offer
+  state, so the brief says whether the box was lost to a competitor or
+  suppressed, and what the fix is. Core figures still come from the MixShift
+  Intelligence service with the same typed extraction and checks. It also now
+  works out of the box on any account with zero setup: a brand-new or empty
+  account gets a baseline or setup read that asks questions instead of
+  asserting trends, and each run records what it learned so the next one starts
+  smarter. Monthly is the default; bi-weekly and QBR windows are a word in the
+  ask. The standard-tier monthly report is unchanged.
+
 ## 0.8.11
 
 ### Added
@@ -87,6 +109,9 @@ starts at 0.5.39; earlier versions predate the changelog.
   its own when it hits one, and asks before sending anything. This is the one
   kind of problem that leaves no trace otherwise, because nothing fails: the
   work just quietly moves to another tool, and we never find out it was needed.
+
+### Changed
+
 
 ### Fixed
 

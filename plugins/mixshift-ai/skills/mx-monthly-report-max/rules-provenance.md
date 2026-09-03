@@ -12,6 +12,16 @@ renderer, engine, brand context, or SKILL.md — see the append protocol below).
 of a report get this file; it tells them where this skill has failed before, which is where to
 look first.
 
+**2.0 pipeline note (2026-08-28).** Entries below that name CONTRACT rule ids
+(BASIS-1, POP-1/POP-2, TRACE-1, ...) or RENDERER behaviors describe enforcement in the
+harness report-contract doors (`mixshift report validate` / `report render`), which the
+2.0 skill does not run for its documents: the mechanical gates are now `report extract
+--check` plus `helpers/prose-lint.py` (including `--role client`, which refuses internal
+content in the client file), and those contract rules bind as composition rules in
+SKILL.md Step 8. The validators and fixtures remain fully alive in the harness and still
+enforce every one of these rules for any consumer of the contract doors; a defect that
+recurs because prose was the only gate is the signal to wire the door back in.
+
 ## How this file grows once the skill is live (the append protocol)
 
 A new defect routes by SCOPE, not by where it was found:
@@ -301,13 +311,13 @@ portable enforcement — "design a document that can't contain an unsourced figu
 what the report-contract now does. The deterministic read step (envelope → extractor)
 replaces the sub-agent entirely.
 
-### Step 2b's origin — attribution data-completeness
+### The attribution data-completeness guard's origin (now a Known trap in references/queries.md)
 Brand A (EU-2), April 2026: the DB's 14-day attribution columns were under-populated for SD, so
 canonical-window SQL returned suspiciously low ad_sales (DB SD ACOS 11.4% vs console 4.7%).
 The deterministic signal: `ad_sales_14d < ad_sales_7d` is mathematically impossible with
 complete data. *Kept in v2 for the residual-SQL set.*
 
-### Step 2c's origin — item-group classification
+### The item-group classification rule's origin (envelope groups are authoritative; context mapping is residual-SQL only)
 Brand A (EU-2), April 2026 shipped two mapping bugs requiring a client corrections pass: `SKU-X`
 (the small-format item) classified as Line-13 because its title contains "ALT-400+" (fixed by SKU
 regex); `SKU-Y` under a standalone "ALT-1300" group while MixShift's own view absorbs it

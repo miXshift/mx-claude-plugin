@@ -53,7 +53,7 @@ const CONTEXT_TOP_LEVEL = new Set([
   'active_watch', 'structural_events', 'objective_calibration', 'delivery',
   'open_gaps', 'posture', 'paused_campaigns', 'campaign_structure',
   'attribution_rule', 'negation', 'reporting', 'thresholds',
-  'detected_anomalies', 'skill_config',
+  'detected_anomalies', 'skill_config', 'item_lifecycle',
 ]);
 
 /**
