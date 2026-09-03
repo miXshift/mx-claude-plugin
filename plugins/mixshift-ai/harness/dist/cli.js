@@ -44566,6 +44566,18 @@ var init_schema2 = __esm({
       goals: goalsSchema.optional(),
       active_watch: external_exports.unknown().optional(),
       structural_events: external_exports.array(structuralEventSchema).optional(),
+      // Operator lifecycle declarations, keyed by ASIN. Canonical states today:
+      // end_of_life | discontinued | seasonal_out | launch. `state` is a plain string
+      // with the same FORWARD TOLERANCE as structural_events[].type: consumers frame
+      // known states and pass unknown ones through as labels, never reject.
+      item_lifecycle: external_exports.record(
+        external_exports.string(),
+        external_exports.object({
+          state: external_exports.string(),
+          date: external_exports.string().optional(),
+          note: external_exports.string().optional()
+        }).passthrough()
+      ).optional(),
       objective_calibration: external_exports.unknown().optional(),
       delivery: external_exports.unknown().optional(),
       open_gaps: external_exports.array(external_exports.unknown()).optional(),

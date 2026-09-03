@@ -451,6 +451,22 @@ export const contextSchema = z
     goals: goalsSchema.optional(),
     active_watch: z.unknown().optional(),
     structural_events: z.array(structuralEventSchema).optional(),
+    // Operator lifecycle declarations, keyed by ASIN. Canonical states today:
+    // end_of_life | discontinued | seasonal_out | launch. `state` is a plain string
+    // with the same FORWARD TOLERANCE as structural_events[].type: consumers frame
+    // known states and pass unknown ones through as labels, never reject.
+    item_lifecycle: z
+      .record(
+        z.string(),
+        z
+          .object({
+            state: z.string(),
+            date: z.string().optional(),
+            note: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
     objective_calibration: z.unknown().optional(),
     delivery: z.unknown().optional(),
     open_gaps: z.array(z.unknown()).optional(),

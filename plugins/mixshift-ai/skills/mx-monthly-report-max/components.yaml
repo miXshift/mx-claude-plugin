@@ -197,7 +197,7 @@ components:
       Portable to ANY skill that publishes on a user's behalf: review the assertions, not
       the rendering. Copy the register schema and the three-mode knob; the packet contents
       change per skill, the gate does not.
-    provenance: designed with Sam 2026-09-03 after the three-account cold-render lap.
+    provenance: designed 2026-09-03 after a three-account cold-render lap.
 
   - id: probe-catalog
     what: >
@@ -210,7 +210,7 @@ components:
     how_to_lift: >
       The table transfers to any diagnostic skill; keep the budget knob and the
       promote-question-to-finding provenance rule.
-    provenance: field-proven on the Skratch lap (reseller-at-parity finding), codified 2026-09-03.
+    provenance: field-proven on a live account (the reseller-at-parity finding), codified 2026-09-03.
 
   - id: run-ledger-write-backs
     what: >
@@ -225,7 +225,7 @@ components:
       The propose-only boundary and the restatement-diff trick (diff your prior window
       against what you PUBLISHED, not just what the warehouse says today) transfer to any
       recurring report.
-    provenance: designed with Sam 2026-09-03; restatement behavior observed on live accounts.
+    provenance: designed 2026-09-03; restatement behavior observed on live accounts.
 
   - id: item-lifecycle-annotations
     what: >
@@ -239,5 +239,5 @@ components:
       Belongs in brand context, not skill config, so every consumer (health check,
       portfolio scan, this report) honors the same facts; when the intelligence engine
       models lifecycle, this field is the migration path.
-    provenance: Todd's HydraPak end-of-life items, 2026-09-03; the lap's SkyFlask/Surge
-      declines are the live example of why unannotated wind-downs mislead.
+    provenance: a manager's end-of-life items on a live account, 2026-09-03; that lap's
+      unannotated wind-down declines are the live example of why the framing matters.

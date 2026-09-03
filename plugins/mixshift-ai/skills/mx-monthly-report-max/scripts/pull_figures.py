@@ -93,7 +93,12 @@ def query(sql, label=""):
     start = out.find("{")
     if start < 0:
         raise RuntimeError(f"{label}: no JSON in CLI output. stderr: {proc.stderr[:400]}")
-    payload = json.loads(out[start:])
+    try:
+        payload = json.loads(out[start:])
+    except json.JSONDecodeError as e:
+        # Malformed/partial CLI output (plausible near the 60s ceiling) must degrade
+        # per section like every other failure, not crash the whole battery.
+        raise RuntimeError(f"{label}: invalid JSON in CLI output: {e}")
     if payload.get("status") != "ok":
         raise RuntimeError(f"{label}: {payload.get('failure_kind','error')}: "
                            f"{payload.get('message')} ({MARKET_SQL_TIMEOUT_HINT})")

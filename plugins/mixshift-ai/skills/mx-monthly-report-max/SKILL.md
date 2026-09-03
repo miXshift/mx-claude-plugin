@@ -495,7 +495,8 @@ and caveats.
 **Internal companion**, at its own URL: any correction to an earlier read first, what to
 tell the client (numbered in speaking order, with suggested spoken lines and framing
 traps), numbers to keep off the call, open commitments with owners and verdicts, our next
-lever (scoped tightly enough to execute).
+lever (scoped tightly enough to execute), and the claims register as the final section
+(i05).
 
 Composition rules that survive every mode:
 
