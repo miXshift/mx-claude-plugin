@@ -197,4 +197,67 @@ try {
   // The tree rules above already ran; skip the log rule rather than fail.
   console.log('✓ check-no-internal-exposure: commit-message scan skipped (origin/main not resolvable)');
 }
+// 5. NAME-CLASS scan (denylist-driven, PRIVATE list): customer/brand names must
+//    never reach tracked content OR branch commit messages. The list itself is
+//    confidential, so it never lives in this repo: provide it via the
+//    EXPOSURE_DENYLIST env var (comma-separated names) or EXPOSURE_DENYLIST_FILE
+//    (path to a newline-separated file, e.g. from the private ops store locally
+//    or a CI secret). Absent both, this rule prints a WARNING and passes: the
+//    gate must not fail on machines without the private list, and CI is the
+//    enforcing surface. Closes the PR-METADATA exposure class (a brand name
+//    shipped in a squash-merge message on 2026-09-03, and in a PR title before
+//    that): scrubbing files while narrating brands in commit messages was the
+//    exact gap, because messages ARE published content on a public repo.
+try {
+  let names = [];
+  if (process.env.EXPOSURE_DENYLIST) {
+    names = process.env.EXPOSURE_DENYLIST.split(',').map((n) => n.trim()).filter(Boolean);
+  } else if (process.env.EXPOSURE_DENYLIST_FILE) {
+    const fs = await import('node:fs');
+    names = fs.readFileSync(process.env.EXPOSURE_DENYLIST_FILE, 'utf8')
+      .split(/\r?\n/)
+      .map((n) => n.trim())
+      .filter((n) => n && !n.startsWith('#'));
+  }
+  if (names.length === 0) {
+    console.log('WARN check-no-internal-exposure: name-class scan SKIPPED (no EXPOSURE_DENYLIST/_FILE configured); CI is the enforcing surface');
+  } else {
+    const hits = [];
+    const lower = names.map((n) => n.toLowerCase());
+    const scan = (text, where) => {
+      const t = text.toLowerCase();
+      for (let i = 0; i < lower.length; i++) {
+        if (t.includes(lower[i])) hits.push(where + ': contains a denylisted name (#' + (i + 1) + ')');
+      }
+    };
+    const REC_SEP = String.fromCharCode(1); // %x01 in the git format below
+    const FIELD_SEP = String.fromCharCode(0); // %x00
+    try {
+      const log = execFileSync('git', ['log', 'origin/main..HEAD', '--format=%H%x00%B%x01'], { encoding: 'utf8' });
+      for (const entry of log.split(REC_SEP).filter(Boolean)) {
+        const parts = entry.split(FIELD_SEP);
+        if (parts[1]) scan(parts[1], 'commit ' + parts[0].trim().slice(0, 9) + ' message');
+      }
+    } catch { /* no origin/main: tree half still runs */ }
+    try {
+      const diff = execFileSync('git', ['diff', 'origin/main...HEAD', '--unified=0'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      let file = '?';
+      for (const line of diff.split(String.fromCharCode(10))) {
+        if (line.startsWith('+++ b/')) file = line.slice(6);
+        else if (line.startsWith('+') && !line.startsWith('+++')) scan(line, file);
+      }
+    } catch { /* ditto */ }
+    if (hits.length) {
+      console.error('check-no-internal-exposure: DENYLISTED NAME reached the branch (names never printed here):');
+      for (const h of [...new Set(hits)].slice(0, 20)) console.error('  - ' + h);
+      console.error('Scrub the content AND the commit message (reword + amend/rebase) before pushing.');
+      process.exit(1);
+    }
+    console.log('OK  check-no-internal-exposure: name-class scan clean (' + names.length + ' denylisted names, messages + added lines)');
+  }
+} catch (err) {
+  console.error('check-no-internal-exposure: name-class scan errored: ' + (err && err.message ? err.message : err));
+  process.exit(1);
+}
+
 console.log('✓ check-no-internal-exposure: no internal paths tracked, no internal design-doc references in tracked content, no emails in branch commit messages');

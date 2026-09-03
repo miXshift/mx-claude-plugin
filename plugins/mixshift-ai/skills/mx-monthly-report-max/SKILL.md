@@ -651,6 +651,18 @@ are what need approval, so the review surface is the claims, not the HTML.
       changes ("if they are authorized, I stop flagging it; if not, enforcement gets the
       revenue back"). Never bury a question inside a claim: the reviewer must be able to
       answer the packet top to bottom without decoding which lines want a reply.
+
+      **Sequence them; never dump them.** Show the whole queue as one-line previews (so
+      the reviewer sees scope), then ask ONE question at a time, in this order:
+      (a) **carried questions first, oldest first** — close loops before opening new
+      ones; (b) **new fact-checks that change a claim in this report**, cheapest
+      certainty first ("is this seasonal?" beats "should I dig?"); (c) **judgment calls
+      last, re-derived after the facts**: an early answer often answers or sharpens a
+      later question, and the skill must actually rewrite the pending ones rather than
+      read a script ("two of these turned out to be seasonal endings; is the Chews fade
+      seasonal too, or do I dig?"). Acknowledge each answer with what it changed before
+      asking the next. Batch answers are always accepted ("1 authorized, 2 never
+      moved") and skip the walk; the queue is a default rhythm, not a gate per item.
    4. **What I will remember for next month** — the proposed write-backs as consequences
       ("I will watch X monthly until it closes"), not as data operations.
 
