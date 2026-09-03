@@ -185,7 +185,10 @@ column where that is the mechanism. Cap it at about ten rows a side.
 
 ## Segment reads
 
-Only where the account genuinely splits: sub-brands, marketplaces, product lines. A table with
+Only where the account genuinely splits: sub-brands, marketplaces, product lines. Honor
+`reporting.group_merges` from brand context: a replaced line and its successor compare as
+ONE group (the operator declares the merge once; every later report inherits it), and a
+merged pair never reports its halves as independent trends. A table with
 both segments side by side, then a short prose read per segment.
 
 Four rows earn their place in every segment table beyond the obvious sales and efficiency lines,
