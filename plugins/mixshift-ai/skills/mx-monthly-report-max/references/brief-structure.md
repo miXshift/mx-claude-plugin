@@ -206,6 +206,16 @@ every other causal claim in the brief be taken at face value.
 what the data says. Three verdicts, chipped: landed, not landed, not checkable. Include
 MixShift's own items, and check the daily series before writing "not landed" about any of them.
 
+## Claims register (i05, internal only)
+
+The internal companion closes with the claims register: one row per assertion the brief
+makes beyond its checked figures. Columns: the claim (one sentence), source (a chip:
+HCAM, Warehouse, Live call, Context, Timeline, Notes, or Derived), confidence (asserted /
+consistent with / question), and the falsifier (what evidence would change it). This is
+the review surface: the packet the operator approves is built from this table, and the
+published copy is the audit trail of what was approved. Keep it honest and short; a
+register padded with restated figures buries the four rows that carry judgment.
+
 ## Our next lever
 
 **Internal companion only.** The specific action the analysis implies, scoped tightly enough to

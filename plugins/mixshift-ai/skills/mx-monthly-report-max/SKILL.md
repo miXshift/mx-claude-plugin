@@ -89,7 +89,11 @@ wants a different setting will say so, and the answer gets recorded for next tim
 | Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
 | Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
-| Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | none |
+| Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list |
+| Review | `full`: nothing publishes before the review packet is approved. After three zero-edit approvals on a brand the skill may OFFER `claims_only`; `auto` only by explicit choice | `reporting.review`: `full`, `claims_only`, `auto` |
+| Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
+| Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
+| Style | document density `full`; `one_pager` collapses to masthead, bottom line, tiles, mechanisms, checks | `reporting.style.density`; manager defaults in `~/.mixshift/profile.yaml`, brand context wins on conflict |
 
 **Threshold defaults** (quote the active values in the method notes; override via
 `reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
@@ -157,7 +161,15 @@ Sources, in order; take the first that exists and say which one you used:
 4. **Ask.** One question, asked while the figures pull runs: "What did the last call
    promise, and did the client ask for anything specific?" A blank answer is fine; the
    brief runs without a commitments section and this run's asks seed the ledger for next
-   time.
+   time. When the ladder bottoms out here, NAME what was searched ("no notes source
+   returned anything: I looked in Drive and Fireflies") and invite a connector or a pasted
+   document in the same breath; that one line is the connector-activation motion and it
+   costs the user nothing to ignore.
+
+Also collect the INSTITUTIONAL record now, for the contradiction check in Step 4: brand
+context's `structural_events`, `stockouts`, `item_lifecycle` and any timeline or changelog
+the brand keeps. These sources never originate a number; they corroborate, contradict, or
+annotate what the data says, and every disagreement becomes a question.
 
 Internal notes often contain personal or sensitive material alongside the business content.
 Take only what bears on the account and leave the rest out of both documents and the run
@@ -344,6 +356,21 @@ units fall is the availability and Buy Box signature; traffic falling is a deman
 ranking question. (Vendor Central has neither sessions nor Buy Box: use glance views as
 the traffic proxy and say so.)
 
+**Reconcile the institutional record against what the data found.** Walk the Step 1
+institutional items: every in-window structural event, declared stockout, lifecycle state
+and timeline entry either explains a movement (cite it), is contradicted by the data
+(auto-question: "context says X, the data shows Y; which is stale?"), or is silent (fine).
+The contradiction case is mandatory, not optional: a stale context item that silently
+loses to the data this month ships a wrong brief the month the data is the stale one.
+
+**Lifecycle framing.** An item declared `end_of_life`, `seasonal_out` or `discontinued`
+in `item_lifecycle` never appears as an anomaly: its decline reports as a planned
+wind-down ("on pace" or "faster/slower than planned" when a date exists), it is excluded
+from availability alarms, and its mover-table row carries a neutral lifecycle chip.
+`launch` items get the opposite courtesy: no MoM percentage against a near-zero base.
+When a large unexplained decline LOOKS like a wind-down, ask, and on a yes propose the
+`item_lifecycle` entry in the discoveries file rather than writing it yourself.
+
 **Cross-item effects.** For the largest declining lines, read the halo flows both ways
 from the envelope's evidence (confirm direction against the legend: Sources = halo in,
 Targets = halo out). An item whose demand is created by another item's advertising is
@@ -413,6 +440,14 @@ For each flagged item, four questions in order:
    price history is sparse): say you are reading the recovery, not the edit, and attribute
    with "consistent with" rather than "caused by".
 
+**The probe rule, generalized.** Before ANY question ships in Things-to-check, ask: can a
+read-only call answer it right now? If yes and the probe budget allows (`max_live_probes`,
+default 5; disclose metered ones first), run it and promote the question to a finding with
+the probe as its provenance. The catalog of question-to-probe mappings lives in
+`references/queries.md` ("Probe catalog"); the featured-offer diagnosis above is the
+founding example: three Buy Box flags plus one live offers batch turned "why did Buy Box
+fall" into "a named second seller shares the box at price parity".
+
 ## Step 7: Pressure-test the numbers you plan to quote
 
 Two failure modes, both producing numbers that are arithmetically correct and materially
@@ -477,6 +512,15 @@ Composition rules that survive every mode:
 - Never invent a product nickname: `ItemNickname`, else `ItemName`, else the raw ASIN, else
   ask. Client-facing lines prefer the nickname. SKU titles are diagnostic input, never
   display strings.
+- While composing, maintain the **claims register**: every assertion beyond the checked
+  figures gets an entry with the claim, its provenance (HCAM | Warehouse | Live call |
+  Context | Timeline | Notes | Derived-from), its confidence (asserted / consistent-with /
+  question), and its falsifier (what evidence would change it). Deterministic figures are
+  already gated by `extract --check` and the figures walk; the register covers exactly the
+  layer the model adds: mechanism attributions, commitment verdicts, causal hedges, and
+  materiality selections (what was deemed too small to show is also a reviewable claim).
+  Emit it as `<run>.claims.json` and render it as the internal companion's final section
+  (i05); the client document carries provenance in the method notes instead of chips.
 - HTML-escape every data-sourced string before it enters a document: nicknames, titles,
   campaign names, and anything quoted from meeting notes are third-party text, not markup.
 - When two callouts share a causal mechanism, mirror their structure, place them adjacent,
@@ -508,6 +552,33 @@ rule. Emit one `.review.json` per rendered document (schema:
 corrections list means you found nothing, not that you skipped the pass. When a fix is
 applied to one document or one sibling account in a multi-account session, sweep the same
 construction across the others before replying, and say which were swept.
+
+## Step 9: The review gate
+
+Nothing publishes before review. The two-document build is cheap to regenerate; the facts
+are what need approval, so the review surface is the claims, not the HTML.
+
+1. **Present the review packet in chat**: the bottom line, the claims register (with
+   provenance chips and falsifiers), the open questions, the numbers-to-keep-off list,
+   the section list with anything omitted and why, and the **proposed write-backs**
+   (discoveries: context edits, lifecycle entries, watch items). Offer the rendered
+   drafts as files for anyone who wants to read the whole thing.
+2. **Take edits conversationally.** "That target is stale", "cut the chews section",
+   "that item is end-of-life" are one-line fixes: re-derive, update the register, show
+   the delta. An edit that corrects a context or timeline item routes the fix into the
+   proposed write-backs, so review feeds brand maintenance instead of patching one
+   document.
+3. **On approve**: publish both documents, apply the approved write-backs to the run
+   ledger, stamp the run record with who approved and what changed, and only then hand
+   over the URLs. The approval covers the claims; wording tweaks after approval do not
+   reopen it, new claims do.
+
+The `reporting.review` knob sets the gate: `full` (default) is the flow above;
+`claims_only` presents the packet and publishes unless objection within the same
+conversation turn; `auto` publishes immediately and attaches the register to the internal
+companion for after-the-fact reading. The trust ramp is explicit: after three consecutive
+zero-edit approvals on a brand, OFFER `claims_only` once; never loosen silently, and
+record the choice in the run record.
 
 ## Voice
 
@@ -563,22 +634,57 @@ The errors that survive casual proofreading:
 - Walk every table and tile in both rendered documents against its source (the figures
   documents, the battery JSON, the live call output): each number matches exactly, none
   was retyped from memory.
+- The review packet was presented and approved per the Review knob; the claims register
+  is emitted as `.claims.json` and rendered as internal section i05; approved write-backs
+  landed in the run ledger and discoveries file.
 - In Baseline or Setup mode: no MoM/YoY language anywhere, and every absent comparison is
   `n/a` or a question, never a benchmark.
 
-## The run record
+## The run record and write-backs
 
-Write a sidecar to `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/` with the
-standard inputs plus: envelope run ids and `engineVersion`, the account mode, the active
-thresholds and where each came from, the commitments ledger (this period's open items,
-owners, verdicts, plus the questions this brief asked), and the forecast / attribution /
-context-freshness states. Surface drift against the prior sidecar in the next run's
-internal companion. This ledger is what makes run N+1 smarter than run N on accounts with
-no meeting notes and no context: the skill builds its own memory.
+Two write domains, one rule: **run state writes freely to the skill's own ledger; anything
+durable about the brand is a proposal, surfaced in the review packet and applied only on
+approve.** The skill never edits brand context or a timeline itself.
 
-Alongside it, emit `.discoveries.json` with typed proposals only (context values the run
-would have used, mapping corrections, structural-event candidates, watch candidates).
-Humans promote; the skill never writes brand context itself.
+**The run ledger** (sidecar in `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/`),
+written every run, consumed mechanically by the next one:
+
+- The standard inputs: envelope run ids and `engineVersion`, account mode, active
+  thresholds and their sources, forecast / attribution / context-freshness states.
+- **The commitments ledger**: open items, owners, verdicts, plus this run's questions.
+  Next run treats unanswered questions as still open (re-ask once, then expire with a
+  note), and answered ones as facts with the answer's provenance.
+- **The approved claims register** (`.claims.json`): next run re-verifies every
+  time-sensitive claim ("recovering" must have recovered or escalate) and opens its
+  internal companion with a correction block for any prior claim the new data overturns.
+- **Watch items**: open mechanisms (a shared Buy Box, a suppression pattern, a stockout
+  awaiting inbound) carry an expected resolution; next run states each one closed,
+  still open, or escalated. Never re-discover an open watch as if it were news.
+- **A baseline snapshot** of this run's window figures. Next run diffs its prior-window
+  pull against what THIS run published and reports material restatements (over the 0.5%
+  tolerance) in the method notes: "July restated +$3.1K since the August brief." Amazon
+  restates; the brief should never look like it disagrees with itself silently.
+- **The publish registry**: artifact URLs per period, which is what makes
+  "never republish one document over the other's path" checkable and gives the client a
+  linkable history.
+- **Review deltas**: what the reviewer changed, per run. Three zero-edit runs is the
+  trust-ramp trigger; recurring edits of the same kind are voice or selection
+  calibration and, once a pattern repeats, become a proposed `reporting.voice_lint` or
+  style-knob entry rather than a thing the reviewer fixes monthly.
+
+**Proposals** (`.discoveries.json`), typed, promoted by humans via the review packet:
+
+- Context edits: stale targets, mapping corrections, nickname additions, contact map
+  updates, `item_lifecycle` entries, data quirks worth remembering per account (an
+  account whose daily feed serves no Buy Box; a catalog that needs the bounded top-20
+  availability probe), structural events once their cause is confirmed.
+- Timeline events, when the brand keeps one: the published brief itself (period, links,
+  headline conclusion), dated incidents (a stockout window, a Buy Box break and its
+  recovery), commitment landings, and material restatements. These are what make next
+  year's YoY explainable without archaeology.
+- One-observation facts stay marked as observed-once with their date ("run-and-ride
+  traffic faded late August 2026, N=1"); they harden into standing facts only on
+  recurrence or human confirmation. A claim carries its N here the same as everywhere.
 
 ## Case law
 

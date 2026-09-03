@@ -465,6 +465,21 @@ GROUP BY m ORDER BY m
 neighbours: if it is an obvious trough, the year-over-year comp is flattered by the base and the
 brief should say so.
 
+## Probe catalog
+
+Before any question ships in Things-to-check, check this table: a question with a probe is
+a finding waiting to be run (budget `reporting.max_live_probes`, default 5; disclose
+metered probes first).
+
+| Question | Probe | What it proves |
+|---|---|---|
+| Who holds the Buy Box now? | `pricing.get_item_offers_batch` on the flagged ASINs | Competitor vs suppression vs recovered (Step 6 fork) |
+| Is this near-zero item suppressed or stocked out? | Inventory history per ASIN (query 8, single-ASIN) + live offers | Stockout shows zero fulfillable; suppression shows inventory with no featured offer |
+| Did spend fall by bids or budgets? | Daily spend series per campaign (query 5 grain, `Cost` only) | A step change on a date is a budget cut; a proportional glide is bids |
+| Is the decline seasonal? | Same item, same window, prior year (query 7 with `prior_year`) | A matching prior-year dip is season; a flat prior year is not |
+| Is the traffic loss account-wide or item-local? | Page views for the flagged ASINs vs the account daily series | Local loss points at placement or listing; global points at demand or spend |
+| Did the last call's budget commitment land? | Like-day spend windows (query 1, spend only) | Landed / not landed in this channel; other channels stay "not visible here" |
+
 ## Scale ceiling
 
 The gateway enforces a 60-second statement ceiling. On catalogs with millions of inventory

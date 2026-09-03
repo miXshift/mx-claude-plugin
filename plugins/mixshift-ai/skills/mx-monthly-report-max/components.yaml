@@ -182,3 +182,62 @@ components:
       and the verdict placement rule. The sidecar ledger shape makes any recurring skill
       self-feeding on accounts with no external notes source.
     provenance: mx-call-brief (field-proven); the mid-month-landing false-negative is the case law.
+
+  - id: review-gate-claims-register
+    what: >
+      Publish-nothing-before-review: a chat review packet built from the claims register
+      (claim, provenance chip, confidence, falsifier) plus questions, keep-off numbers and
+      proposed write-backs; conversational edits re-derive and show the delta; approve
+      publishes, applies write-backs, and stamps the run record. Trust ramp is a knob
+      (full / claims_only / auto) that only ever loosens by explicit offer-and-accept
+      after three zero-edit approvals.
+    home: SKILL.md Step 9 + Step 8 register rule; i05 spec in references/brief-structure.md
+    depends_on: [nothing beyond the skill itself; the register is a JSON sidecar]
+    how_to_lift: >
+      Portable to ANY skill that publishes on a user's behalf: review the assertions, not
+      the rendering. Copy the register schema and the three-mode knob; the packet contents
+      change per skill, the gate does not.
+    provenance: designed with Sam 2026-09-03 after the three-account cold-render lap.
+
+  - id: probe-catalog
+    what: >
+      Question-to-probe table: before a question ships to the reader, check whether a
+      bounded read-only call answers it now, budgeted by reporting.max_live_probes with
+      metered-probe disclosure. Founding case: three Buy Box flags plus one live offers
+      batch turned "why did Buy Box fall" into "a named second seller at price parity".
+    home: references/queries.md "Probe catalog" + SKILL.md Step 6 probe rule
+    depends_on: [the curated Amazon call catalog and the read-only gateway]
+    how_to_lift: >
+      The table transfers to any diagnostic skill; keep the budget knob and the
+      promote-question-to-finding provenance rule.
+    provenance: field-proven on the Skratch lap (reseller-at-parity finding), codified 2026-09-03.
+
+  - id: run-ledger-write-backs
+    what: >
+      Two write domains: run state writes freely to the skill's own ledger (commitments,
+      claims register, watches, baseline snapshot for restatement diffs, publish registry,
+      review deltas); durable brand facts are typed PROPOSALS applied only through review
+      (context edits, item_lifecycle, data quirks, structural events, timeline events).
+      One-observation facts stay marked observed-once until they recur or a human confirms.
+    home: SKILL.md "The run record and write-backs"
+    depends_on: [the sidecar directory; optionally a brand timeline consumer]
+    how_to_lift: >
+      The propose-only boundary and the restatement-diff trick (diff your prior window
+      against what you PUBLISHED, not just what the warehouse says today) transfer to any
+      recurring report.
+    provenance: designed with Sam 2026-09-03; restatement behavior observed on live accounts.
+
+  - id: item-lifecycle-annotations
+    what: >
+      Brand-context item_lifecycle map (asin -> {state: end_of_life | discontinued |
+      seasonal_out | launch, date, note}) consumed as framing: EOL declines report as
+      planned wind-down and never as anomalies; launch items skip near-zero-base
+      percentages. The skill proposes entries on reviewer confirmation, never writes them.
+    home: SKILL.md knobs table + Step 4 lifecycle framing
+    depends_on: [context.yaml; degrades to nothing absent]
+    how_to_lift: >
+      Belongs in brand context, not skill config, so every consumer (health check,
+      portfolio scan, this report) honors the same facts; when the intelligence engine
+      models lifecycle, this field is the migration path.
+    provenance: Todd's HydraPak end-of-life items, 2026-09-03; the lap's SkyFlask/Surge
+      declines are the live example of why unannotated wind-downs mislead.

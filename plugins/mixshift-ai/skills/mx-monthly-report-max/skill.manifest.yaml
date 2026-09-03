@@ -51,6 +51,11 @@ optional_context_fields:
   - reporting.brief_documents
   - reporting.thresholds
   - reporting.voice_lint
+  - reporting.review
+  - reporting.sections
+  - reporting.max_live_probes
+  - reporting.style
+  - item_lifecycle
 artifacts:
   - name: client-brief.html
     type: report_html
@@ -61,6 +66,8 @@ artifacts:
   - name: discoveries.json
     type: json_artifact
   - name: review.json
+    type: json_artifact
+  - name: claims.json (the reviewed claims register)
     type: json_artifact
 verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
 pricing_tier: enterprise
