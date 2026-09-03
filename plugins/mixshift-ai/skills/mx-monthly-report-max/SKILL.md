@@ -642,6 +642,17 @@ Publish knob, give the two documents distinct names and favicons so they cannot 
 confused, and hand over both URLs or file paths while saying plainly which one is
 shareable. That one sentence is what stops the internal companion reaching a client.
 
+**Teach the feedback loop at the first handover** (and any time the user asks how to give
+feedback on a report). Annotations are invisible until someone says they exist, and they
+are how edits come back without a meeting. Three sentences, adapt verbatim: "You can
+comment directly on the published page: select any text and add a comment. Formatting and
+layout comments go to the template, so every future report inherits the fix; content
+comments go to this report's claims and next month's questions. Or just tell me the change
+in chat." Then route what comes back by class: format-class annotations become template
+edits, content-class become claims-register entries or Things-to-check questions,
+voice-class feed the voice profile (see "Voice profiles"). Repeat the teaching line
+whenever a new reviewer joins the loop; never assume a second reader was taught.
+
 Then run the mechanical pass:
 
 ```bash
@@ -825,7 +836,8 @@ The errors that survive casual proofreading:
   called arithmetic.
 - The agency's own unmet commitments are in the internal companion, not only the client's.
 - Both documents have distinct names and favicons, the internal one says "(Internal)" and
-  kept its banner, and the handover said which is shareable.
+  kept its banner, the handover said which is shareable, and a first handover (or a new
+  reviewer) got the annotation teaching lines.
 - `prose-lint.py --role client` passed on the client file, so it mechanically contains no
   internal section; the two documents are at two paths and neither was republished over
   the other.
