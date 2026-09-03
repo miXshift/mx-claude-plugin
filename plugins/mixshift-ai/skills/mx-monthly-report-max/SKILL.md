@@ -275,6 +275,15 @@ is time, not grain. A figure quoted from a stale envelope is a defect. The re-pu
 second metered request: skip it when the envelope was already pulled the same day, and say
 which day the envelope is from either way.
 
+**Resolve offer identities, always.** The offers call serves seller IDs, not names:
+match each offer against the account's own `AmazonSellerID` (from `mws_items`) so the
+report never asks "who holds the box" when one of the holders is the client themselves,
+and resolve any competitor via their public storefront page
+(`amazon.com/sp?seller=<SellerId>`), which names the business. Record competitor
+SellerIds in the run record so the next review says "the SAME seller as last month" or
+"a NEW one", which are different findings. The reviewer gets the listing URL and the
+storefront URL, never just "a second seller".
+
 **Probe before declaring a limit.** Never write "the engine cannot do X" from a run you
 did not create: request the grain, read the manifest entry and reason code, and report an
 override as a run-scoped defect.

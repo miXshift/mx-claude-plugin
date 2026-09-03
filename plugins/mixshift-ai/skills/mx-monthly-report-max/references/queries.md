@@ -490,7 +490,7 @@ metered probes first).
 
 | Question | Probe | What it proves |
 |---|---|---|
-| Who holds the Buy Box now? | `pricing.get_item_offers_batch` on the flagged ASINs | Competitor vs suppression vs recovered (Step 6 fork) |
+| Who holds the Buy Box now? | `pricing.get_item_offers_batch` on the flagged ASINs | Competitor vs suppression vs recovered (Step 6 fork). Match offers against the account's own `AmazonSellerID` (`mws_items`) to separate the client from the interloper; name the competitor via `amazon.com/sp?seller=<SellerId>`; record competitor SellerIds in the run record for month-over-month continuity |
 | Is this near-zero item suppressed or stocked out? | Inventory history per ASIN (query 8, single-ASIN) + live offers | Stockout shows zero fulfillable; suppression shows inventory with no featured offer |
 | Did spend fall by bids, budgets, or delivery? | Daily spend + impressions + CPC + CPM around the break date | Bid cuts cheapen the impression (CPC and CPM fall together); impressions down with CPC flat and CPM UP is less delivery, not cheaper clicks; a step change on a date points at a budget or state change. Say "bid pullback" only when bids are observed or the account's change log says so |
 | Did a promotion drive the lift? | `mws_orders_metric`: SUM(ItemPromotionDiscount) + promo-touched units (PromotionIds <> '') by month | Promo intensity flat or falling while conversion rises = not promo-driven. Gotchas: filter on `dtPurchasedOn` (the string PurchaseDate column does not compare as a date); never alias a column `lines` (reserved) |
