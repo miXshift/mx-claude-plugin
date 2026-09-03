@@ -603,6 +603,14 @@ Composition rules that survive every mode:
 - Every number traces to a figures document (3a), the battery JSON (3b), a live call (3c),
   or a query in the method notes. Nothing from general Amazon knowledge, industry
   benchmarks, or assumed platform dynamics.
+- **A commitment is verified on its own surface and against its own baseline.** A
+  channel-scoped commitment (spend into SP, DSP, a portfolio) is verified on that
+  channel's series, never the account total: a mix shift hides a landing (SP +$7K under
+  an SB pullback reads as +$2.5K "not landed"). A plan-relative commitment (a budget
+  pulled forward into this month's plan) is graded against the PLAN, not month over
+  month, and when the plan lives outside the warehouse (the client's budget tracker),
+  the owner's answer plus their tracker is the source and the verdict cites it. Every
+  verdict states its baseline.
 - **Attribute the reader's own actions to results wherever the data supports it.** The
   internal reader's job is proving value to their client: when a commitment they executed
   shows up in the numbers (a bid change, enforcement they drove, a restock they pushed),
