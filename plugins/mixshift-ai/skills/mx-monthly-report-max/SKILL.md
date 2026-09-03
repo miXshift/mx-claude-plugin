@@ -170,7 +170,10 @@ Sources, in order; take the first that exists and say which one you used:
    live in Drive under a predictable title: `search_files` with
    `title contains '<account> Monthly'`, document mime type). Read the most recent one and
    pull the **action items and their owners**, plus anything the client explicitly asked
-   about.
+   about. Run the durable-fact pass over the same notes (see "Recognizing durable
+   facts"): calls are full of standing facts stated in passing ("we're deprecating X",
+   "that flavor is seasonal", "budget comes forward from later months"), and a fact
+   captured from July's call is a question August's review never has to ask.
 3. **The account's living performance doc**, if there is one, for the prior period's
    settled figures and any structural event already on record.
 4. **Ask.** One question, asked while the figures pull runs: "What did the last call
@@ -789,7 +792,7 @@ are what need approval, so the review surface is the claims, not the HTML.
       later question, and the skill must actually rewrite the pending ones rather than
       read a script ("two of these turned out to be seasonal endings; is the Chews fade
       seasonal too, or do I dig?"). Acknowledge each answer with what it changed before
-      asking the next, and two disciplines ride every acknowledgment: (a) VERIFY the
+      asking the next, and three disciplines ride every acknowledgment: (a) VERIFY the
       verifiable: when an answer contains a checkable fact ("it's back in stock, I
       think"), check it before recording; a hedged answer becomes a verified fact or a
       sharper one (a relaunch on a NEW listing is a different fact than a restock), and
@@ -797,7 +800,12 @@ are what need approval, so the review surface is the claims, not the HTML.
       falsifiers: an answer that corrects one claim usually implicates its neighbors
       (a budget answer changed a commitment verdict AND re-derived the traffic
       question), so re-check every claim whose falsifier the answer touches before
-      moving on. Batch answers are always accepted ("1 authorized, 2 never
+      moving on. (c) SHOW the capture: classify the answer per "Recognizing durable
+      facts" and END the acknowledgment with what was recorded and at what durability
+      ("-> standing fact, every future report" / "-> this month's record only" /
+      "-> setting, persists"). The user must never have to ask "are you writing this
+      down?": capture is stated every time, and a statement with no capture line was
+      not captured. Batch answers are always accepted ("1 authorized, 2 never
       moved") and skip the walk; the queue is a default rhythm, not a gate per item.
    4. **What I will remember for next month** — the proposed write-backs as consequences
       ("I will watch X monthly until it closes"), not as data operations.
@@ -988,6 +996,29 @@ The errors that survive casual proofreading:
 Two write domains, one rule: **run state writes freely to the skill's own ledger; anything
 durable about the brand is a proposal, surfaced in the review packet and applied only on
 approve.** The skill never edits brand context or a timeline itself.
+
+**Recognizing durable facts is the skill's job, never the user's.** Classify every
+operator statement THE MOMENT it lands, in review answers, mid-run corrections, and
+meeting notes alike. Three classes:
+
+1. **A standing fact about the brand** -> context/timeline proposal, always. The tells:
+   habitual or timeless register ("Apple Cider IS a fall seasonal", "nobody IS
+   authorized", "we HAVE seasonal flavors"); category statements over instances ("these
+   two groups should be treated as one"); past events with dates ("was replaced last
+   year" -> a timeline event, date flagged approximate when hedged); and EVERY answer
+   that corrects a claim, because the misread recurs next month unless the fact that
+   prevents it is recorded.
+2. **A fact about this period only** ("the receiving was partial this time") -> run
+   record and claims register, not context.
+3. **An instruction or preference** ("one-pager", "call it X not Y") -> settings knob or
+   voice profile.
+
+The operational gate is the **next-month test**: would the next run's report read
+differently for knowing this? Yes means class 1, and hedges never block capture; they
+ride along as confidence ("probably not authorized" records the policy WITH the hedge).
+When unsure between classes, propose it as class 1 and let the reviewer strike it: an
+over-proposed fact costs one word at the gate, an uncaptured one costs a wrong report
+and a re-ask next month.
 
 **The run ledger** (sidecar in `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/`),
 written every run, consumed mechanically by the next one:
