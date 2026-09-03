@@ -126,8 +126,9 @@ The only hard requirement is an account identity: `seller_id` + `account_type` (
 `mixshift brand add`, or resolved in Step 2). If both are absent after Step 2, stop and say
 so. Everything else degrades.
 
-Resolve the mode from the data during Step 3, name it in the opening scope message and
-the internal companion's scope block, and shape the
+Resolve the mode from the data during Step 3, name it in the opening scope message (and,
+when it is not "established", lead the internal companion's exceptions block with it), and
+shape the
 documents to it:
 
 - **Established** (two-plus full months loaded, prior-year data present): full brief.
@@ -213,7 +214,7 @@ GROUP BY SellerID
 
 A SellerID that returns zero rows is not a data problem to debug; it is simply not the
 account being managed (or the account is in Setup mode; tell them apart by whether ANY
-candidate carries data). Say in the internal companion's scope block which SellerID and marketplace every
+candidate carries data). Say in the internal method notes (i06) which SellerID and marketplace every
 figure covers, because a client with both 1P and 3P will otherwise assume the wrong one.
 
 ## Step 3: Pull the figures
@@ -546,13 +547,15 @@ metrics (tile strip + matched-window table + the monthly trend chart), what actu
 the analysis, no owner names, 5 to 7 rows with state chips), a clean one-line footer. No scope bar, no method section: the client document
 carries findings, not apparatus.
 
-**Internal companion**, at its own URL: any correction to an earlier read first, the full
-technical scope block (account, SellerID, marketplace, exact windows, account mode, every
-correction applied, weighting math, thresholds), the LAYER RECEIPT right after it, what to
+**Internal companion**, at its own URL: EXCEPTIONS first and only when one exists (a
+correction to an earlier read, a correction applied to this run's figures, a basis or
+windowing change, a non-established account mode; no standing scope box, because a block
+that renders every month teaches the reader to skip it), then the LAYER RECEIPT, what to
 tell the client (numbered in speaking order, with suggested spoken lines and framing
 traps), numbers to keep off the call, open commitments with owners and verdicts, our next
 lever (scoped tightly enough to execute), the claims register (i05), and method and
-caveats (i06) closing the document.
+caveats (i06) closing the document with every routine scope fact (identity and mode,
+windows, weighting arithmetic, thresholds, bases): one audit home, no duplication.
 
 **The layer receipt is where the three-layer system becomes visible to the manager.** The
 client doc deliberately hides the machinery, so this block is the receipt of who found
@@ -829,14 +832,15 @@ ships its own writing-style skill, it wins where the two conflict.
 
 The errors that survive casual proofreading:
 
-- Every figure traces to a source per the composition rules; the internal scope block
-  names the SellerID, marketplace, both window boundaries, and the account mode.
+- Every figure traces to a source per the composition rules; the internal method notes
+  (i06) name the SellerID, marketplace, both window boundaries, the account mode, and the
+  threshold values applied.
 - The client doc passes the read-aloud test: no tooling nouns, no process narration, no
   scope or method section (`prose-lint --role client` enforces the fixed phrases).
 - Windows are aligned to the data load date and to equal day counts; any dark-day
   normalization is shown raw and normalized, and labelled.
 - Buy Box figures are page-view weighted; the client doc says so once in plain words at
-  the first table that uses them, the internal scope block carries the arithmetic. Every
+  the first table that uses them, the internal method notes carry the arithmetic. Every
   Buy Box or featured-offer claim was checked against the daily series and a last-7-days
   column, so nothing already fixed is reported as broken.
 - Listing breadth and availability are separate rows, not one flattering number.

@@ -415,6 +415,7 @@ footer{
   <div class="stamp">
     <b>Call</b> {{day, date, time}}<br>
     <b>Attendees</b> {{names}}<br>
+    <b>Window</b> {{current window, closed|MTD}}<br>
     <b>Prepared</b> {{date}}<br>
     <b>Prior monthly</b> {{date}}
   </div>
@@ -634,13 +635,7 @@ footer{
 <div class="internal-banner" style="margin:24px 0;padding:10px 14px;border:1px solid var(--crit,#c33);border-left:4px solid var(--crit,#c33);border-radius:4px;font-family:var(--mono,monospace);font-size:0.8rem;letter-spacing:0.06em;text-transform:uppercase;">Internal companion. Not for sharing. The client brief is a separate document at its own URL.</div>
 
 <div class="bottomline">
-  <p><strong>{{Any correction to an earlier read, first and plainly.}}</strong> {{If the analysis changed while the work was in progress, say what changed, how the earlier version was wrong, and what not to press on in the room. A correction buried further down gets read after the call.}}</p>
-</div>
-
-<div class="scope">
-  <p><b>Scope.</b> {{Account}} {{Seller Central|Vendor Central}} {{marketplace}} only (SellerID {{id}}). Window is <b>{{current window}}</b> against <b>{{prior month window}}</b> and <b>{{prior year window}}</b>. Account mode: {{mode}}. {{Why the window ends where it does, if the data load date drove it.}} {{Any correction being applied, which figures it touches, which it does not.}}</p>
-  <p><b>Buy Box figures are page-view weighted</b> (Buy Box percentage times page views, over total page views): a simple daily average treats a quiet day and a busy day alike. {{Traffic basis: which table serves account traffic and conversion, and any per-item basis caveat.}}</p>
-  <p><b>Thresholds applied:</b> {{active threshold values, quoted so a later reader can re-derive every flag.}}</p>
+  <p><strong>{{Exceptions first, and ONLY when one exists; otherwise DELETE this block.}}</strong> {{What belongs here: a correction to an earlier read (what changed, how the earlier version was wrong, what not to press on in the room); a correction applied to this run's figures (dark-day normalization: which figures it touches, which it does not); a basis or windowing change from last run; a non-established account mode and how it reframes the read. There is no standing scope box: routine scope facts (identity, windows, weighting, thresholds, basis) live in i06 where the checking reader goes, and a block that renders every month teaches the reader to skip it, which is fatal for the one month it matters.}}</p>
 </div>
 
 <div class="notes" style="margin-top:16px;">
@@ -729,11 +724,12 @@ footer{
     <h3>How these numbers were built</h3>
     <ul>
       <li><b>Source.</b> {{Tables by name, engine version, live-call date.}}</li>
-      <li><b>Account.</b> {{SellerID, marketplace, and what is deliberately excluded.}}</li>
+      <li><b>Account.</b> {{SellerID, Seller|Vendor Central, marketplace, account mode, and what is deliberately excluded.}}</li>
       <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
       <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
       <li><b>Normalization.</b> {{What was scaled, by what factor, which figures it touched and which it did not.}}</li>
       <li><b>Out of stock definition.</b> {{State it, since it counts something in a non-obvious way.}}</li>
+      <li><b>Thresholds applied.</b> {{Active values, quoted so a later reader can re-derive every flag.}}</li>
       <li><b>Buy Box weighting.</b> {{The arithmetic, and what n/a means where a comparison is unavailable.}}</li>
       <li><b>In-stock and listed item counts.</b> {{Amazon reports average offer count only at account level, so segment rows use our own counts from inventory snapshots. They answer the same question but are not the same metric and will not tie to the account row.}}</li>
       <li><b>Reconciliation.</b> {{SKU sum against account total, as a figure and a percentage gap.}}</li>

@@ -38,26 +38,25 @@ client brief: prepared date, the window, the account, the prior review date. For
 companion: call date and time, attendees, the client doc it pairs with, prior monthly. Attendees
 belong on the internal one because that is where the owner-attributed asks live.
 
-## Scope block (internal companion)
+## Exceptions first (internal companion; renders only when one exists)
 
-Right after the correction bottomline, before the first internal number. It carries:
+The internal doc opens with the exceptions block ONLY in a month that has one: a
+correction to an earlier read, a correction applied to this run's figures (dark-day
+normalization, and which figures it touches), a basis or windowing change from the prior
+run, or a non-established account mode reframing the read. In an ordinary month the block
+is absent, so its presence IS the signal; a standing scope box that renders every month
+trains the reader to skip it, which is fatal in the one month it matters.
 
-- Account, SellerID, marketplace, and whether this is Seller Central or Vendor Central
-- The three windows with exact dates, and the account mode
-- Why the windows end where they do, when the data load date drove it
-- Any correction being applied and to which figures, such as a dark-day normalization
-- The Buy Box weighting arithmetic and the traffic basis
-- The threshold values applied, quoted so a later reader can re-derive every flag
-
-The client still needs the account named and the windows dated (a client with both a 1P
-and a 3P account will otherwise assume the wrong one), and the masthead stamp block does
-that job on the client doc: account, marketplace, window, prepared date. What it never
-does is explain how the sausage was made.
+Every user story the old standing scope block claimed is served elsewhere: account
+identity and window are in both masthead stamps; the weighting, thresholds, bases,
+SellerID and mode live in i06 where the figure-checking reader goes; what the engine
+contributed is the layer receipt; on-call defensibility is i01's framing traps and i02's
+keep-off numbers.
 
 ## The layer receipt (internal companion)
 
-Right after the scope block: one compact block, one row per layer, showing what each part
-of the system contributed to THIS run. This is the manager's value surface; the client doc
+Right after the banner (below the exceptions block when one renders): one compact block,
+one row per layer, showing what each part of the system contributed to THIS run. This is the manager's value surface; the client doc
 deliberately hides the machinery, so without this block the three-layer system is
 invisible to the person paying for it.
 
@@ -299,7 +298,8 @@ properly, because it is what someone reads when they want to check a figure thre
 from now. None of it appears in the client document.
 
 - Source tables by name
-- Account, SellerID, marketplace, and what is deliberately excluded
+- Account, SellerID, marketplace, account mode, and what is deliberately excluded
+- The threshold values applied, quoted so a later reader can re-derive every flag
 - Attribution rule applied, per campaign type
 - Any unsettled-attribution caveat and which claim was verified on a settled window instead
 - Any normalization: what was scaled, by what factor, which figures it touched, which it did not
