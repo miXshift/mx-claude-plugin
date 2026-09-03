@@ -1,7 +1,14 @@
 # Brief structure and voice
 
-Two documents. The **client brief** is the account manager presenting to the client's
-executive team: every sentence must survive being read aloud in that meeting, and it
+Two documents, two readers, neither of them MixShift. The **internal companion**'s
+reader is an Amazon/ecommerce manager running the account for their client: fluent in
+Amazon operations, unaware of MixShift machinery, and trying to connect the actions they
+took to the results on the page so they can show their client the value. Machinery
+vocabulary is banned from both documents (table names, HCAM/envelope/battery, versions,
+internal file names); sources speak the reader's language (Intelligence run, Amazon data,
+Live check, Brand notes, Call history, Your answer at review, Derived), and query-level
+provenance lives in the run record. The **client brief** is that manager presenting to
+the client's executive team: every sentence must survive being read aloud in that meeting, and it
 carries findings, never apparatus (no tooling nouns, no process narration, no scope or
 method section; the one-plain-sentence exception for a method that genuinely needs client
 words, like Buy Box weighting). The **internal companion** holds the entire audit trail
@@ -60,16 +67,17 @@ one row per layer, showing what each part of the system contributed to THIS run.
 deliberately hides the machinery, so without this block the three-layer system is
 invisible to the person paying for it.
 
-- **Intelligence**: what the engine independently found, verified, or attributed, stated
-  as contributions ("confirmed the conversion mechanism with served evidence", "supplied
-  the seasonal comparison", "attributed the Buy Box move to rate, not mix"). Things a
-  hand read would have missed or could not prove.
+- **The intelligence run**: what it independently found, verified, or attributed, stated
+  as contributions ("confirmed the conversion mechanism", "supplied the seasonal
+  comparison", "attributed the Buy Box move to rate, not mix"). Things a hand read would
+  have missed or could not prove.
 - **Brand context**: which standing facts shaped the read (the target that framed the
   beat, tuned thresholds, lifecycle declarations that kept a planned decline from
   flagging, the voice profile). If context is empty, say so and say what filling it buys:
   on a young account this row is the setup pitch.
-- **Timeline + ledger**: which staked events and carried commitments explained movements
-  or received verdicts this run.
+- **Call history + prior reviews**: which staked events and carried commitments explained
+  movements or received verdicts this run, in action-to-result form where the reader's own
+  work shows up in the numbers.
 - **Written back**: what the run proposes to remember (event-stake candidates, lifecycle
   entries, watches), so the loop's other half is visible too.
 
@@ -238,9 +246,12 @@ If the analysis changed while you were doing the work, put the correction at the
 document, before the talking points. the operator needs to know what *not* to press on, and a
 correction buried in section three gets read after the call.
 
-Write the spoken lines the way people talk. "Ten items that were sellable last month went
-out of stock this month, and those ten are most of the gap" is sayable. "Availability-driven
-revenue attrition totalled $53,271" is not.
+Write the spoken lines the way people talk, and in the CLIENT register: a say-line is
+what the manager says out loud to the client, so it takes the same read-aloud test as the
+client brief (no basis talk, no machinery). "Ten items that were sellable last month went
+out of stock this month, and those ten are most of the gap" is sayable.
+"Availability-driven revenue attrition totalled $53,271" is not, and neither is "that
+survives the settled-window check".
 
 Numbering here encodes real sequence, so it earns the numerals. Do not number sections that are
 not sequences.
@@ -277,10 +288,12 @@ tell statements from questions and stops reading.
 
 ## Claims register (i05, internal only)
 
-The internal companion closes with the claims register: one row per assertion the brief
-makes beyond its checked figures. Columns: the claim (one sentence), source (a chip:
-HCAM, Warehouse, Live call, Context, Timeline, Notes, or Derived), confidence (asserted /
-consistent with / question), and the falsifier (what evidence would change it). This is
+The internal companion's audit centerpiece: one row per assertion the brief makes beyond
+its checked figures. Columns: the claim (one sentence), source (a chip, in reader
+language: Intelligence run, Amazon data, Live check, Brand notes, Call history, Your
+answer at review, or Derived; the machine taxonomy stays in claims.json), confidence
+(asserted / consistent with / question), and the falsifier (what evidence would change
+it). This is
 the review surface: the packet the operator approves is built from this table, and the
 published copy is the audit trail of what was approved. Keep it honest and short; a
 register padded with restated figures buries the four rows that carry judgment.
@@ -297,7 +310,9 @@ The internal companion's closing section, after the claims register, and worth w
 properly, because it is what someone reads when they want to check a figure three months
 from now. None of it appears in the client document.
 
-- Source tables by name
+- Sources in the reader's language: which Amazon reports (business, advertising,
+  inventory), the intelligence run, live checks with dates. Query-level provenance
+  (exact tables, run ids, versions) lives in the run record; say so here once
 - Account, SellerID, marketplace, account mode, and what is deliberately excluded
 - The threshold values applied, quoted so a later reader can re-derive every flag
 - Attribution rule applied, per campaign type

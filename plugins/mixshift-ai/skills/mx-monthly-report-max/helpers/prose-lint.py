@@ -271,11 +271,34 @@ CLIENT_REGISTER = [
     r'MixShift Intelligence',
     r'\bengine ?[Vv]ersion\b',
     r'\bcross-check\w*',
-    r'warehouse (?:table|batter|quer)\w*',
-    r'\b(?:business_reports_\w+|campaignmetric|sellermonthmetric|mws_\w+)\b',
     r'\bmatches ours\b|\bour read matches\b',
     r'\bthe scope bar\b|\bmethod notes\b',
 ]
+
+# MACHINERY vocabulary is banned from BOTH documents: the internal reader is the
+# AGENCY's Amazon manager (fluent in Amazon operations, unaware of MixShift
+# implementation), so table names, internal system names, versions and internal
+# file names never render. Product names the reader bought ("MixShift
+# Intelligence", "brand context") are allowed internally and stay in the
+# client-only list above. Query-level provenance lives in the run record.
+MACHINERY = [
+    r'\bHCAM\b',
+    r'\b(?:business_reports_\w+|campaignmetric|sellermonthmetric|mws_\w+)\b',
+    r'warehouse (?:table|batter|quer)\w*',
+    r'\bengine ?[Vv]ersion\b',
+    r'\b(?:claims\.json|context\.yaml|sidecar)\b',
+    r'intelligence envelope',
+]
+
+def check_machinery(body):
+    out = []
+    for pat in MACHINERY:
+        m = re.search(pat, body, re.I)
+        if m:
+            out.append(('machinery-vocabulary',
+                        'matched %r near "%s" (reader is the agency manager; implementation names live in the run record)'
+                        % (pat, body[max(0, m.start()-30):m.end()+30].replace('\n', ' '))))
+    return out
 
 def check_client_register(body):
     out = []
@@ -306,6 +329,8 @@ def lint(path, role=None):
     if role == 'client':
         findings.extend(check_client_has_no_internal(body))
         findings.extend(check_client_register(body))
+    if role in ('client', 'internal'):
+        findings.extend(check_machinery(body))
     for c in CHECKS:
         findings.extend(c(body))
     return findings

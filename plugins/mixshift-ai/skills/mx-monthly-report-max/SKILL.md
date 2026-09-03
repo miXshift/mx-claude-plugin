@@ -557,6 +557,20 @@ lever (scoped tightly enough to execute), the claims register (i05), and method 
 caveats (i06) closing the document with every routine scope fact (identity and mode,
 windows, weighting arithmetic, thresholds, bases): one audit home, no duplication.
 
+**Know the internal reader: an Amazon/ecommerce manager running this account for THEIR
+client.** They are fluent in Amazon operations (ACOS, Buy Box, attribution windows,
+Seller Central reports) and have never seen MixShift's machinery, so machinery vocabulary
+is banned from BOTH documents, the internal one included: no warehouse table names, no
+"HCAM"/"envelope"/"battery", no engine or schema versions, no internal file names
+(claims.json, context.yaml, sidecars). Product names the reader bought are fine
+("MixShift Intelligence", "brand context", "the timeline"); implementation names are not.
+Sources render in the reader's language: **Intelligence run, Amazon data, Live check,
+Brand notes, Call history, Your answer at review, Derived**. Query-level provenance
+(exact tables, run ids, versions) lives in the run record, where support or a later
+session can trace any figure on request; the document says so once in i06. And the
+spoken lines in i01 are CLIENT-register by definition: they are what the manager says
+out loud to the client, so they take the same read-aloud test as the client brief.
+
 **The layer receipt is where the three-layer system becomes visible to the manager.** The
 client doc deliberately hides the machinery, so this block is the receipt of who found
 what, one row per layer, each contribution named concretely: **Intelligence** (what the
@@ -589,6 +603,13 @@ Composition rules that survive every mode:
 - Every number traces to a figures document (3a), the battery JSON (3b), a live call (3c),
   or a query in the method notes. Nothing from general Amazon knowledge, industry
   benchmarks, or assumed platform dynamics.
+- **Attribute the reader's own actions to results wherever the data supports it.** The
+  internal reader's job is proving value to their client: when a commitment they executed
+  shows up in the numbers (a bid change, enforcement they drove, a restock they pushed),
+  the ledger verdict and the talking points say so in action-to-result form ("the
+  campaign push you ran shows up as +24% sessions on Booster"), never as weather that
+  happened. The ledger (i03) is the backward half of that story; the next lever (i04) is
+  the forward half.
 - **Charts are baked-static inline SVG composed at write time from battery data**: compute
   coordinates in the generator, emit literal markup, no chart library, no runtime fetch.
   Three types, all data-gated, at most three per document: the monthly TREND (headline
@@ -614,7 +635,10 @@ Composition rules that survive every mode:
 - While composing, maintain the **claims register**: every assertion beyond the checked
   figures gets an entry with the claim, its provenance (HCAM | Warehouse | Live call |
   Context | Timeline | Notes | Derived-from), its confidence (asserted / consistent-with /
-  question), and its falsifier (what evidence would change it). Deterministic figures are
+  question), and its falsifier (what evidence would change it). That enum is the MACHINE
+  taxonomy and stays in `claims.json` only; the rendered i05 table displays the
+  reader-language names (Intelligence run, Amazon data, Live check, Brand notes, Call
+  history, Your answer at review, Derived). Deterministic figures are
   already gated by `extract --check` and the figures walk; the register covers exactly the
   layer the model adds: mechanism attributions, commitment verdicts, causal hedges, and
   materiality selections (what was deemed too small to show is also a reviewable claim).

@@ -641,10 +641,10 @@ footer{
 <div class="notes" style="margin-top:16px;">
   <h3>What each layer contributed</h3>
   <ul>
-    <li><b>Intelligence.</b> {{What the engine independently found, verified, or attributed this run; the things a hand read would miss or could not prove.}}</li>
-    <li><b>Brand context.</b> {{Which standing facts shaped the read: target, thresholds, lifecycle declarations, voice. If empty: say so and what filling it buys.}}</li>
-    <li><b>Timeline + ledger.</b> {{Which staked events and carried commitments explained movements or got verdicts.}}</li>
-    <li><b>Written back.</b> {{What this run proposes to remember: stake candidates, lifecycle entries, watches.}}</li>
+    <li><b>The intelligence run.</b> {{What it independently found, verified, or attributed; the things a hand read would miss or could not prove. No versions, no machinery names.}}</li>
+    <li><b>Brand knowledge on file.</b> {{Which standing facts shaped the read: target, thresholds, lifecycle declarations, voice. If empty: say so and what filling it buys.}}</li>
+    <li><b>Call history + prior reviews.</b> {{Which past events and carried commitments explained movements or got verdicts; where the reader's own actions show up in the numbers, say so as action to result.}}</li>
+    <li><b>Remembered for next month.</b> {{What this review will keep, pending the reader's approval: events for the brand's timeline, lifecycle flags, watches.}}</li>
   </ul>
 </div>
 
@@ -708,7 +708,7 @@ footer{
   <p class="prose">{{One line: every assertion beyond the checked figures, its source, and what would change it. This table is what was approved at review.}}</p>
   <div class="tscroll">
     <table>
-      <caption><b>Assertions this brief makes,</b> with provenance and falsifiers. Sources: HCAM (intelligence envelope), Warehouse (battery), Live call, Context, Timeline, Notes, Derived.</caption>
+      <caption><b>Assertions this brief makes,</b> with sources and what would change each. Sources: Intelligence run, Amazon data, Live check, Brand notes, Call history, Your answer at review, Derived.</caption>
       <thead><tr><th>Claim</th><th>Source</th><th>Confidence</th><th>What would change it</th></tr></thead>
       <tbody>
         <tr><th>{{The assertion, one sentence}}</th><td style="text-align:left"><span class="chip neutral">{{Source}}</span></td><td style="text-align:left">{{asserted | consistent with | question}}</td><td style="text-align:left">{{The falsifier}}</td></tr>
@@ -723,7 +723,7 @@ footer{
   <div class="notes">
     <h3>How these numbers were built</h3>
     <ul>
-      <li><b>Source.</b> {{Tables by name, engine version, live-call date.}}</li>
+      <li><b>Source.</b> {{In the reader's language: which Amazon reports (business, advertising, inventory), the intelligence run, live checks with dates. Query-level provenance lives in the run record; say that any figure can be traced on request.}}</li>
       <li><b>Account.</b> {{SellerID, Seller|Vendor Central, marketplace, account mode, and what is deliberately excluded.}}</li>
       <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
       <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
@@ -742,7 +742,7 @@ footer{
 
 <footer>
   Prepared for the {{client}} {{cadence}}, {{date}} &middot; {{Account}}, SellerID {{id}}<br>
-  Every figure traced to its source: the intelligence envelope, the warehouse battery, or a live offer check. Where a cause is not in the data, this brief says so instead of naming one.
+  Every figure traced to its source: the intelligence run, Amazon reporting data, or a live offer check. Where a cause is not in the data, this brief says so instead of naming one.
 </footer>
 <!-- History lives in the HUB, not here: this document publishes as a fragment stacked
      into the brand's persistent hub page (assets/hub-shell.html), whose month nav and
