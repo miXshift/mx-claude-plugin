@@ -548,10 +548,23 @@ carries findings, not apparatus.
 
 **Internal companion**, at its own URL: any correction to an earlier read first, the full
 technical scope block (account, SellerID, marketplace, exact windows, account mode, every
-correction applied, weighting math, thresholds), what to tell the client (numbered in
-speaking order, with suggested spoken lines and framing traps), numbers to keep off the
-call, open commitments with owners and verdicts, our next lever (scoped tightly enough to
-execute), the claims register (i05), and method and caveats (i06) closing the document.
+correction applied, weighting math, thresholds), the LAYER RECEIPT right after it, what to
+tell the client (numbered in speaking order, with suggested spoken lines and framing
+traps), numbers to keep off the call, open commitments with owners and verdicts, our next
+lever (scoped tightly enough to execute), the claims register (i05), and method and
+caveats (i06) closing the document.
+
+**The layer receipt is where the three-layer system becomes visible to the manager.** The
+client doc deliberately hides the machinery, so this block is the receipt of who found
+what, one row per layer, each contribution named concretely: **Intelligence** (what the
+engine independently found, verified, or attributed this run, the things a hand read
+would have missed or could not prove), **Brand context** (which standing facts shaped the
+read: targets, thresholds, lifecycle declarations, voice), **Timeline + ledger** (which
+staked events and carried commitments explained movements or got verdicts), and **Written
+back** (what this run proposes to remember: event-stake candidates, lifecycle entries,
+watches). An empty layer says so honestly and says what filling it would buy; on a young
+account this row IS the setup pitch. Never pad it: a receipt that restates the report
+buries the four lines that prove the system earned its keep.
 
 Composition rules that survive every mode:
 
@@ -696,7 +709,9 @@ are what need approval, so the review surface is the claims, not the HTML.
       names, no metric jargon, no basis talk (that is the register's job, not the
       packet's). Each claim is one sentence a client could hear, plus "why it matters"
       in the reviewer's terms and "what would change my mind." Approving this section is
-      approving the report.
+      approving the report. It closes with the one-line layer receipt, counted: "the
+      intelligence run verified N of these and supplied M, brand context shaped K,
+      the timeline closed J commitments" (the full receipt is in the internal doc).
    3. **Questions for you** — everything only the reviewer or the client can answer,
       phrased as actual questions, each with why it is being asked and what the answer
       changes ("if they are authorized, I stop flagging it; if not, enforcement gets the

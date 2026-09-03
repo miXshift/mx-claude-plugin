@@ -54,6 +54,29 @@ and a 3P account will otherwise assume the wrong one), and the masthead stamp bl
 that job on the client doc: account, marketplace, window, prepared date. What it never
 does is explain how the sausage was made.
 
+## The layer receipt (internal companion)
+
+Right after the scope block: one compact block, one row per layer, showing what each part
+of the system contributed to THIS run. This is the manager's value surface; the client doc
+deliberately hides the machinery, so without this block the three-layer system is
+invisible to the person paying for it.
+
+- **Intelligence**: what the engine independently found, verified, or attributed, stated
+  as contributions ("confirmed the conversion mechanism with served evidence", "supplied
+  the seasonal comparison", "attributed the Buy Box move to rate, not mix"). Things a
+  hand read would have missed or could not prove.
+- **Brand context**: which standing facts shaped the read (the target that framed the
+  beat, tuned thresholds, lifecycle declarations that kept a planned decline from
+  flagging, the voice profile). If context is empty, say so and say what filling it buys:
+  on a young account this row is the setup pitch.
+- **Timeline + ledger**: which staked events and carried commitments explained movements
+  or received verdicts this run.
+- **Written back**: what the run proposes to remember (event-stake candidates, lifecycle
+  entries, watches), so the loop's other half is visible too.
+
+Keep each row to one or two sentences of named contributions. The review packet carries
+the counted one-line version at the end of "What this report says."
+
 ## Bottom line
 
 One paragraph, three moves: the conclusion, the mechanism, the counterweight. Open with the
