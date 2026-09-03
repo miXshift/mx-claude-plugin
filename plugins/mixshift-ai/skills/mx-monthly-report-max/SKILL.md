@@ -176,13 +176,6 @@ a bare id, MoM and YoY read as the same figure.
   to observations** (correct behavior, not a gap). `causal` needs a mechanism and tested
   alternatives; a decomposition leg is `tracking`, and tracking text may not use causal
   verbs. `comparison` may not mix bases.
-- **Follow `report-template.md` for structure.** It defines the canonical
-  section order (the engine author's v1 ruling), which sections are tables or
-  cards via `presentation`, the v1 scope cut, and the hard exclusions. Do not
-  invent sections or reorder; per-brand deviation is a later layer, not an
-  authoring choice. A `presentation` object is layout only — every id it names
-  must also be in that section's `figure_refs` (PRES-1 blocks the door
-  otherwise).
 - **Use served evidence for a causal `mechanism` wherever one exists.** When the run was
   made with `evidence: true`, `report extract` emits an `evidence[]` block alongside the
   figures: the engine's own "What we know" statements, each with an `id`, the `metric` root
