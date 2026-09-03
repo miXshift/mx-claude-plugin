@@ -6,7 +6,7 @@ import {
   afterEach,
   vi,
 } from 'vitest';
-import { mkdtemp, rm, stat, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, stat, readFile, writeFile, mkdir, utimes } from 'node:fs/promises';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -16,6 +16,7 @@ import {
   saveDatahub,
   clearDatahub,
   getValidAccessToken,
+  refreshLockPath,
   _refreshState,
 } from './credentials.js';
 import {
@@ -381,6 +382,286 @@ describe('getValidAccessToken', () => {
     expect(a).toBe('shared-token');
     expect(b).toBe('shared-token');
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-process refresh lock (C1)
+// ---------------------------------------------------------------------------
+
+describe('cross-process refresh lock', () => {
+  it('acquires the lock during the refresh critical section and releases it afterward', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+    const lockPath = refreshLockPath(testDir);
+
+    let lockExistedDuringFetch = false;
+    const mockFetch = vi.fn(async () => {
+      lockExistedDuringFetch = await stat(lockPath).then(
+        () => true,
+        () => false,
+      );
+      return mockRefreshResponse({ access_token: 'locked-refresh' });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const token = await getValidAccessToken(testDir);
+
+    expect(token).toBe('locked-refresh');
+    expect(lockExistedDuringFetch).toBe(true);
+    // Released afterward.
+    await expect(stat(lockPath)).rejects.toThrow();
+  });
+
+  it('takes over a stale lock (backdated mtime) instead of waiting out the full timeout', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    const lockPath = refreshLockPath(testDir);
+    await mkdir(join(testDir, 'auth'), { recursive: true });
+    await writeFile(
+      lockPath,
+      JSON.stringify({ pid: 999999, ts: new Date(Date.now() - 60_000).toISOString() }),
+    );
+    // Backdate mtime past the ~20s staleness threshold so acquisition
+    // takes it over instead of polling out the full ~15s wait.
+    const oldTime = new Date(Date.now() - 60_000);
+    await utimes(lockPath, oldTime, oldTime);
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(mockRefreshResponse({ access_token: 'took-over-lock' }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const start = Date.now();
+    const token = await getValidAccessToken(testDir);
+    const elapsed = Date.now() - start;
+
+    expect(token).toBe('took-over-lock');
+    // Fast takeover, not the ~15s wait-then-degrade path.
+    expect(elapsed).toBeLessThan(5_000);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads after acquiring a contested lock, finds a sibling's fresh token, and skips its own refresh call", async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      refresh_token: 'token-old',
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    const lockPath = refreshLockPath(testDir);
+    await mkdir(join(testDir, 'auth'), { recursive: true });
+    // Simulate another (real) process currently holding the lock.
+    await writeFile(lockPath, JSON.stringify({ pid: 424242, ts: new Date().toISOString() }));
+
+    const mockFetch = vi.fn(); // must NOT be called
+    vi.stubGlobal('fetch', mockFetch);
+
+    const siblingFinishes = async () => {
+      await new Promise((r) => setTimeout(r, 220));
+      // Simulate the sibling finishing its own refresh (rotating the
+      // on-disk refresh_token) and then releasing the lock, partway
+      // through our poll loop (which polls every ~150ms).
+      await saveDatahub(
+        {
+          ...stale,
+          refresh_token: 'token-fresh',
+          access_token: 'sibling-access',
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        },
+        testDir,
+      );
+      await rm(lockPath, { force: true });
+    };
+
+    const [token] = await Promise.all([getValidAccessToken(testDir), siblingFinishes()]);
+
+    expect(token).toBe('sibling-access');
+    expect(mockFetch).not.toHaveBeenCalled();
+  }, 10_000);
+});
+
+// ---------------------------------------------------------------------------
+// Stale-compare before clearing (C2)
+// ---------------------------------------------------------------------------
+
+describe('doRefresh :: stale-compare before clearing', () => {
+  it('does not clear when the on-disk token already rotated past the one just refused, and retries with the on-disk token', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      refresh_token: 'token-A',
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    let callCount = 0;
+    const mockFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      callCount++;
+      const body = JSON.parse(String(init.body)) as { refresh_token: string };
+      if (callCount === 1) {
+        expect(body.refresh_token).toBe('token-A');
+        // Simulate a sibling process winning the race: it rotates the
+        // on-disk refresh_token to B before our POST is refused.
+        await saveDatahub(
+          { ...stale, refresh_token: 'token-B', access_token: 'access-B' },
+          testDir,
+        );
+        return new Response(
+          JSON.stringify({ ok: false, error: 'invalid_refresh_token' }),
+          { status: 401, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      // Retry: must use the on-disk (winner's) token, not the stale one.
+      expect(body.refresh_token).toBe('token-B');
+      return mockRefreshResponse({
+        access_token: 'new-access-from-B',
+        refresh_token: 'token-C',
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const token = await getValidAccessToken(testDir);
+
+    expect(token).toBe('new-access-from-B');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub).toBeDefined(); // NOT cleared
+    expect(credentials?.datahub?.refresh_token).toBe('token-C');
+  });
+
+  it('clears on a genuine 401 (on-disk token matches the one just refused) without retrying', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      refresh_token: 'token-A',
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error: 'invalid_refresh_token' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    await expect(getValidAccessToken(testDir)).rejects.toThrow(
+      /session expired.*auth login/i,
+    );
+
+    // No retry -- the on-disk token matched the one that was refused.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUTH REQUIRED mapping (C3)
+// ---------------------------------------------------------------------------
+
+describe('doRefresh :: AUTH REQUIRED mapping', () => {
+  it.each(['session_expired', 'session_revoked'] as const)(
+    'maps the new %s body to a loud, prefixed error carrying the server message verbatim',
+    async (errorCode) => {
+      const stale = {
+        ...validDatahubFixture(),
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+      };
+      await saveDatahub(stale, testDir);
+
+      const serverMessage =
+        'Another sign-in replaced this session. Run `mixshift auth login` to continue.';
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: errorCode,
+            reason: 'replay',
+            message: serverMessage,
+          }),
+          { status: 401, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      let caught: unknown;
+      try {
+        await getValidAccessToken(testDir);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      const message = (caught as Error).message;
+      expect(message.startsWith('AUTH REQUIRED:')).toBe(true);
+      expect(message).toContain(serverMessage);
+    },
+  );
+
+  it('falls back to a sensible AUTH REQUIRED message when the server omits `message`', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: false, error: 'session_revoked', reason: 'revoked' }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    let caught: unknown;
+    try {
+      await getValidAccessToken(testDir);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message.startsWith('AUTH REQUIRED:')).toBe(true);
+    expect(message).toMatch(/mixshift auth login/);
+  });
+
+  it('preserves the existing unprefixed message for the old invalid_refresh_token shape', async () => {
+    const stale = {
+      ...validDatahubFixture(),
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    };
+    await saveDatahub(stale, testDir);
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error: 'invalid_refresh_token' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    let caught: unknown;
+    try {
+      await getValidAccessToken(testDir);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toMatch(/^Your MixShift session expired\. Run `mixshift auth login`/);
+    expect(message.startsWith('AUTH REQUIRED:')).toBe(false);
   });
 });
 
