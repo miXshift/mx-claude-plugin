@@ -531,7 +531,14 @@ Build both documents from `assets/brief-template.html`: keep the token block, th
 pairing and the component classes; replace the content. The template carries BOTH
 documents in one file, split at the "INTERNAL COMPANION ONLY" marker: **always split into
 two files before publishing, at two URLs or two file paths, and never republish one over
-the other's path.** The internal document keeps its rendered internal banner, and its
+the other's path.** Reports are PERSISTENT, one URL per period: name the files with the
+brand and period (`<brand>-2026-08-client-brief.html`, never a generic reusable name), so
+no later month's publish can land on an earlier month's URL even by accident; last month's
+link keeps working when this month's goes out, and the client shares each period as its
+own page. Render the footer's history line from the publish registry (prior periods,
+newest first, up to six), same document class only: the client brief links prior client
+briefs, the internal companion links prior internal notes, and an internal URL in a
+client footer is a leak, not a convenience.** The internal document keeps its rendered internal banner, and its
 title carries "(Internal)": "Acme Goods August Call Notes (Internal)". Publish per the
 Publish knob, give the two documents distinct names and favicons so they cannot be
 confused, and hand over both URLs or file paths while saying plainly which one is
@@ -637,6 +644,9 @@ The errors that survive casual proofreading:
 - The review packet was presented and approved per the Review knob; the claims register
   is emitted as `.claims.json` and rendered as internal section i05; approved write-backs
   landed in the run ledger and discoveries file.
+- File names are period-stamped (`<brand>-<period>-...`), the footer's history links come
+  from the publish registry, and every URL in the client file appears in the registry as a
+  CLIENT-class URL: an internal URL in the client footer fails this check.
 - In Baseline or Setup mode: no MoM/YoY language anywhere, and every absent comparison is
   `n/a` or a question, never a benchmark.
 
@@ -664,9 +674,10 @@ written every run, consumed mechanically by the next one:
   pull against what THIS run published and reports material restatements (over the 0.5%
   tolerance) in the method notes: "July restated +$3.1K since the August brief." Amazon
   restates; the brief should never look like it disagrees with itself silently.
-- **The publish registry**: artifact URLs per period, which is what makes
-  "never republish one document over the other's path" checkable and gives the client a
-  linkable history.
+- **The publish registry**: artifact URLs per period and per document class, which is
+  what makes "never republish over an earlier period" checkable and feeds the footer's
+  history line, so every period's document links its predecessors and the client keeps a
+  linkable history without a portal.
 - **Review deltas**: what the reviewer changed, per run. Three zero-edit runs is the
   trust-ramp trigger; recurring edits of the same kind are voice or selection
   calibration and, once a pattern repeats, become a proposed `reporting.voice_lint` or
