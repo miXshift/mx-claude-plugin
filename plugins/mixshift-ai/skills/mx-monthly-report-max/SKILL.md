@@ -284,6 +284,13 @@ SellerIds in the run record so the next review says "the SAME seller as last mon
 "a NEW one", which are different findings. The reviewer gets the listing URL and the
 storefront URL, never just "a second seller".
 
+**The bundle answers driver questions before the warehouse does.** The envelope's
+`topDrivers` serve GROUP-level and campaign-level deltas with basis-point contributions
+for every core metric, deterministically. When a question is "which group/campaign drove
+this move" or "how much did X contribute", read the drivers first and quote their
+figures; hand-query only for what the bundle does not carry (clicks-vs-sessions splits,
+prior-year baselines). The reviewer paid for the run; use all of it.
+
 **Probe before declaring a limit.** Never write "the engine cannot do X" from a run you
 did not create: request the grain, read the manifest entry and reason code, and report an
 override as a run-scoped defect.
@@ -782,7 +789,15 @@ are what need approval, so the review surface is the claims, not the HTML.
       later question, and the skill must actually rewrite the pending ones rather than
       read a script ("two of these turned out to be seasonal endings; is the Chews fade
       seasonal too, or do I dig?"). Acknowledge each answer with what it changed before
-      asking the next. Batch answers are always accepted ("1 authorized, 2 never
+      asking the next, and two disciplines ride every acknowledgment: (a) VERIFY the
+      verifiable: when an answer contains a checkable fact ("it's back in stock, I
+      think"), check it before recording; a hedged answer becomes a verified fact or a
+      sharper one (a relaunch on a NEW listing is a different fact than a restock), and
+      the verification is what the acknowledgment reports. (b) RE-RUN touched
+      falsifiers: an answer that corrects one claim usually implicates its neighbors
+      (a budget answer changed a commitment verdict AND re-derived the traffic
+      question), so re-check every claim whose falsifier the answer touches before
+      moving on. Batch answers are always accepted ("1 authorized, 2 never
       moved") and skip the walk; the queue is a default rhythm, not a gate per item.
    4. **What I will remember for next month** — the proposed write-backs as consequences
       ("I will watch X monthly until it closes"), not as data operations.
@@ -1002,6 +1017,11 @@ written every run, consumed mechanically by the next one:
   calibration and, once a pattern repeats, become a proposed `voice.md` edit,
   `reporting.voice_lint` entry, or style-knob change rather than a thing the reviewer
   fixes monthly.
+
+The probe catalog is SELF-EXTENDING: any gate question answered by a novel query gets
+proposed as a probe-catalog row (question, probe, what it proves, column gotchas) in the
+run record's write-backs, and promotion to `references/queries.md` rides the normal
+repo path. The catalog grows from real reviews, never from speculation.
 
 **Proposals** (`.discoveries.json`), typed, promoted by humans via the review packet:
 
