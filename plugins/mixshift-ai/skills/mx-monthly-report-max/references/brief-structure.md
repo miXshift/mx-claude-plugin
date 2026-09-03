@@ -1,8 +1,20 @@
 # Brief structure and voice
 
-Two documents. The **client brief** is written so the client can read it directly. The **internal
-companion** holds everything that would damage the relationship if shared: talking points, the
-numbers to keep off the call, owner-attributed asks, and MixShift's own misses.
+Two documents, two readers, neither of them MixShift. The **internal companion**'s
+reader is an Amazon/ecommerce manager running the account for their client: fluent in
+Amazon operations, unaware of MixShift machinery, and trying to connect the actions they
+took to the results on the page so they can show their client the value. Machinery
+vocabulary is banned from both documents (table names, HCAM/envelope/battery, versions,
+internal file names); sources speak the reader's language (Intelligence run, Amazon data,
+Live check, Brand notes, Call history, Your answer at review, Derived), and query-level
+provenance lives in the run record. The **client brief** is that manager presenting to
+the client's executive team: every sentence must survive being read aloud in that meeting, and it
+carries findings, never apparatus (no tooling nouns, no process narration, no scope or
+method section; the one-plain-sentence exception for a method that genuinely needs client
+words, like Buy Box weighting). The **internal companion** holds the entire audit trail
+plus everything that would damage the relationship if shared: the technical scope block,
+talking points, the numbers to keep off the call, owner-attributed asks, method and
+caveats, the claims register, and MixShift's own misses.
 
 The reader of either has fifteen minutes and a call to run. Every section either changes what
 happens on that call or comes out. This file spells out what each section is for, so you can tell
@@ -10,8 +22,9 @@ when a section has nothing to contribute and should be dropped rather than padde
 
 ## Client brief, in order
 
-Masthead, scope bar, bottom line, headline metrics, what actually moved, segment reads, featured
-offer status, things to check, method and caveats.
+Masthead, bottom line, headline metrics, what actually moved, segment reads, featured
+offer status, things to check, one-line footer. No scope bar and no method section: both
+live in the internal companion.
 
 Note that **things to check sits after the analysis, not before it**. Placed high it reads as a
 to-do list handed to the client. Placed after the evidence it reads as the conclusions the
@@ -32,17 +45,44 @@ client brief: prepared date, the window, the account, the prior review date. For
 companion: call date and time, attendees, the client doc it pairs with, prior monthly. Attendees
 belong on the internal one because that is where the owner-attributed asks live.
 
-## Scope bar
+## Exceptions first (internal companion; renders only when one exists)
 
-Before the first number, always. It carries:
+The internal doc opens with the exceptions block ONLY in a month that has one: a
+correction to an earlier read, a correction applied to this run's figures (dark-day
+normalization, and which figures it touches), a basis or windowing change from the prior
+run, or a non-established account mode reframing the read. In an ordinary month the block
+is absent, so its presence IS the signal; a standing scope box that renders every month
+trains the reader to skip it, which is fatal in the one month it matters.
 
-- Account, SellerID, marketplace, and whether this is Seller Central or Vendor Central
-- The three windows with exact dates
-- Why the windows end where they do, when the data load date drove it
-- Any correction being applied and to which figures, such as a dark-day normalization
+Every user story the old standing scope block claimed is served elsewhere: account
+identity and window are in both masthead stamps; the weighting, thresholds, bases,
+SellerID and mode live in i06 where the figure-checking reader goes; what the engine
+contributed is the layer receipt; on-call defensibility is i01's framing traps and i02's
+keep-off numbers.
 
-A client with both a 1P and a 3P account will otherwise assume the wrong one, and a brief that
-does not date its windows cannot be checked later.
+## The layer receipt (internal companion)
+
+Right after the banner (below the exceptions block when one renders): one compact block,
+one row per layer, showing what each part of the system contributed to THIS run. This is the manager's value surface; the client doc
+deliberately hides the machinery, so without this block the three-layer system is
+invisible to the person paying for it.
+
+- **The intelligence run**: what it independently found, verified, or attributed, stated
+  as contributions ("confirmed the conversion mechanism", "supplied the seasonal
+  comparison", "attributed the Buy Box move to rate, not mix"). Things a hand read would
+  have missed or could not prove.
+- **Brand context**: which standing facts shaped the read (the target that framed the
+  beat, tuned thresholds, lifecycle declarations that kept a planned decline from
+  flagging, the voice profile). If context is empty, say so and say what filling it buys:
+  on a young account this row is the setup pitch.
+- **Call history + prior reviews**: which staked events and carried commitments explained
+  movements or received verdicts this run, in action-to-result form where the reader's own
+  work shows up in the numbers.
+- **Written back**: what the run proposes to remember (event-stake candidates, lifecycle
+  entries, watches), so the loop's other half is visible too.
+
+Keep each row to one or two sentences of named contributions. The review packet carries
+the counted one-line version at the end of "What this report says."
 
 ## Bottom line
 
@@ -102,6 +142,32 @@ rate against the opening rate, and the run-rate close. Say plainly that the run-
 arithmetic. A month-to-date total and a month closing at 45% above its opening rate tell opposite
 stories and the client deserves both.
 
+## Charts
+
+Charts are baked-static inline SVG, composed at write time from battery data the way the
+tables are: coordinates computed in the generator, literal markup emitted, no chart
+library, no runtime fetch. They summarize what the tables already carry; a chart never
+introduces a new figure (the one exception, a bridge residual, must foot to the printed
+gross split and gets a method-notes line). At most three per document, each data-gated:
+
+- **Monthly trend** (in Headline metrics): ordered sales by month, 8+ closed months
+  required, in-progress months excluded. One hue (`var(--accent)`): current month at full
+  opacity, the same month last year at 0.62, the rest at 0.38, so the YoY comparison is
+  the thing the eye does first. Label only those two bars plus the season peak; per-bar
+  `<title>` tooltips carry the rest. Bars round at the value end only, square at the
+  baseline.
+- **Mechanism bridge** (in What actually moved, after the gross-split lede): prior month
+  to current month via the mechanisms. Anchors are level ticks with their values; deltas
+  are floating bars in `var(--good)`/`var(--crit)` with dotted connectors; every bar is
+  direct-labeled. The mechanism split must match the claims register's attribution row,
+  and the caption names the basis (item-level vs account).
+- **Daily line** (optional, wherever the story is intra-month shape, e.g. a stockout
+  recovery): the battery daily series, 2px accent line, crosshair + tooltip.
+
+SVG text wears the `.chartfig` text classes (ink tokens, never series colors); gridlines
+are `var(--rule-soft)`; viewBox width 940 so charts scale with the page. Dark mode comes
+free because every fill and stroke is a CSS token.
+
 ## What actually moved
 
 Open with the gross split: gross declines, gross gains, and the net. The net is the account
@@ -119,7 +185,10 @@ column where that is the mechanism. Cap it at about ten rows a side.
 
 ## Segment reads
 
-Only where the account genuinely splits: sub-brands, marketplaces, product lines. A table with
+Only where the account genuinely splits: sub-brands, marketplaces, product lines. Honor
+`reporting.group_merges` from brand context: a replaced line and its successor compare as
+ONE group (the operator declares the merge once; every later report inherits it), and a
+merged pair never reports its halves as independent trends. A table with
 both segments side by side, then a short prose read per segment.
 
 Four rows earn their place in every segment table beyond the obvious sales and efficiency lines,
@@ -136,12 +205,14 @@ because together they separate "we cannot sell it" from "nobody wants it":
 - **Share of page views landing on an in-stock item.** Usually the most legible availability
   number in the document, because it is stated from the shopper's side.
 
-Amazon reports offer count only at account level, so the segment counts are ours. Say so in the
-method notes and say they will not tie to the account row.
+Amazon reports offer count only at account level, so the segment counts are ours. Say so
+in the internal method notes (i06) and say they will not tie to the account row; the
+client caption states plainly what the counts mean, not where they came from.
 
-This is where the settled-window check gets cited, because efficiency deterioration is almost
-always concentrated in one segment rather than spread evenly. Naming the segment and the settled
-figure is what makes the claim defensible.
+This is where the settled-window check does its work, because efficiency deterioration is
+almost always concentrated in one segment rather than spread evenly. Run the check before
+writing the claim; the client copy asserts the verified result, and the internal method
+notes cite the settled figure that makes it defensible.
 
 Where a segment read implies an action on our side, say what the lever is in the client brief
 without turning it into a confession: "bids have room to come down on the rows serving
@@ -164,6 +235,18 @@ useful, as long as each row carries a status chip so nobody misreads a fixed ite
 Where the diagnosis distinguishes suppression from a competitor, say which, because the two have
 completely different fixes and the client's team will act on whichever you name.
 
+## Custom sections (per brand)
+
+Standing per-brand sections live as spec files in `clients/<brand>/report-sections/*.md`
+and render data-gated like every standard section. Spec format: frontmatter (`id`,
+`title`, `documents: client|internal|both`, `position: after <standard section id>`,
+`gating`, `added`), then plain-language composition notes: which data serves it, which
+figures matter, this brand's data gotchas, and why the client cares (the manager's own
+words, so the section keeps earning its place). Keep each spec under a screen; it is
+instructions to a future run, not documentation. Creation, persistence and removal all
+run through the review gate (see SKILL.md "Custom sections"); a section nobody asked to
+keep is a one-off, not a standing spec.
+
 ## What to tell the client
 
 **Internal companion only.** Numbered in speaking order, which is usually:
@@ -178,9 +261,12 @@ If the analysis changed while you were doing the work, put the correction at the
 document, before the talking points. the operator needs to know what *not* to press on, and a
 correction buried in section three gets read after the call.
 
-Write the spoken lines the way people talk. "Ten items that were sellable last month went
-out of stock this month, and those ten are most of the gap" is sayable. "Availability-driven
-revenue attrition totalled $53,271" is not.
+Write the spoken lines the way people talk, and in the CLIENT register: a say-line is
+what the manager says out loud to the client, so it takes the same read-aloud test as the
+client brief (no basis talk, no machinery). "Ten items that were sellable last month went
+out of stock this month, and those ten are most of the gap" is sayable.
+"Availability-driven revenue attrition totalled $53,271" is not, and neither is "that
+survives the settled-window check".
 
 Numbering here encodes real sequence, so it earns the numerals. Do not number sections that are
 not sequences.
@@ -217,10 +303,12 @@ tell statements from questions and stops reading.
 
 ## Claims register (i05, internal only)
 
-The internal companion closes with the claims register: one row per assertion the brief
-makes beyond its checked figures. Columns: the claim (one sentence), source (a chip:
-HCAM, Warehouse, Live call, Context, Timeline, Notes, or Derived), confidence (asserted /
-consistent with / question), and the falsifier (what evidence would change it). This is
+The internal companion's audit centerpiece: one row per assertion the brief makes beyond
+its checked figures. Columns: the claim (one sentence), source (a chip, in reader
+language: Intelligence run, Amazon data, Live check, Brand notes, Call history, Your
+answer at review, or Derived; the machine taxonomy stays in claims.json), confidence
+(asserted / consistent with / question), and the falsifier (what evidence would change
+it). This is
 the review surface: the packet the operator approves is built from this table, and the
 published copy is the audit trail of what was approved. Keep it honest and short; a
 register padded with restated figures buries the four rows that carry judgment.
@@ -231,13 +319,17 @@ register padded with restated figures buries the four rows that carry judgment.
 execute: which rows, which exclusions, and what makes now the right time. One or two paragraphs.
 This is the difference between a brief that describes a month and one that starts the next.
 
-## Method and caveats
+## Method and caveats (i06, internal only)
 
-Last, and worth writing properly, because it is what someone reads when they want to check a
-figure three months from now.
+The internal companion's closing section, after the claims register, and worth writing
+properly, because it is what someone reads when they want to check a figure three months
+from now. None of it appears in the client document.
 
-- Source tables by name
-- Account, SellerID, marketplace, and what is deliberately excluded
+- Sources in the reader's language: which Amazon reports (business, advertising,
+  inventory), the intelligence run, live checks with dates. Query-level provenance
+  (exact tables, run ids, versions) lives in the run record; say so here once
+- Account, SellerID, marketplace, account mode, and what is deliberately excluded
+- The threshold values applied, quoted so a later reader can re-derive every flag
 - Attribution rule applied, per campaign type
 - Any unsettled-attribution caveat and which claim was verified on a settled window instead
 - Any normalization: what was scaled, by what factor, which figures it touched, which it did not
@@ -257,8 +349,10 @@ entities before publishing.
 
 **Sign every change.** "-8.1 pts", not "8.1 pts". Both in prose and in tables.
 
-**Label every delta MoM or YoY.** Every single one. A brief read out of order otherwise
-mislabels itself.
+**Label every delta.** Every single one; a brief read out of order otherwise mislabels
+itself. In tables, tiles and chips the labels are MoM and YoY. In client PROSE the label
+is words: "up 5.3% on July", "down 16.5% vs last August"; a list of sibling deltas may
+share one label. The internal companion may use MoM/YoY anywhere.
 
 **Lead with the answer.** Conclusion first, evidence second, in every paragraph and in the
 document as a whole.
