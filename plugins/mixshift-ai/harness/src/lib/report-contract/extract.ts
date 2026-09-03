@@ -911,22 +911,18 @@ function extractEntity(
  *  `selection`) keeps the bare ids above, unchanged, matching the upstream
  *  Python extractor.
  *
- *  ⚠ THERE IS NO `yoy.ads`, AND ITS ABSENCE IS NOT AN OVERSIGHT. A unit audit
- *  flagged the missing selection; the server says otherwise. INS-MONTHLY-01
- *  runs exactly ONE ads bridge per request, against the MoM window, and pins
- *  the YoY leg as `{ ops: InsightEnvelope; ads: null; crossDomain: null }` --
- *  `ads` typed as the LITERAL `null`, not `InsightEnvelope | null`, with the
- *  producer's own comment saying these "are not 'null for now' -- the YoY leg
- *  runs no ads bridge at all, so anything else here would be a lie the
- *  compiler should refuse", and a served limitation string telling the reader
- *  the same ("no advertising bridge is run for the year-ago window, so
- *  yoy.ads and yoy.crossDomain are always null. That is the scope of this
- *  comparison, not missing data"). Listing `yoy.ads` here would advertise a
- *  choice -- in `--select`'s own help text and in the unselected-composite
- *  error -- that can only ever fail. It becomes real the day the server widens
- *  that type, which is the same day that limitation string comes off, and not
- *  before. Note `yoy.ads` IS a present KEY on the bundle (holding null), so
- *  its presence is not evidence of an envelope; only a non-null value is. */
+ *  `yoy.ads` EXISTS SINCE ENGINE 0.4.0. Through 0.3.x the server ran exactly
+ *  one ads bridge (MoM) and pinned the YoY leg's `ads`/`crossDomain` as
+ *  literal null, and an earlier version of this comment pinned that contract
+ *  ("it becomes real the day the server widens that type"). That day came:
+ *  0.4.0 serves a populated `yoy.ads` (its own bridgeRunId) and a populated
+ *  `yoy.crossDomain`, verified on a live bundle, so both ride
+ *  COMPOSITE_SELECTIONS below. What survives from the old contract: an older
+ *  bundle still carries the literal-null keys, so key PRESENCE is never
+ *  evidence of an envelope -- only a non-null value is -- and selecting
+ *  `yoy.ads` on a pre-0.4.0 bundle refuses with the no-envelope error rather
+ *  than extracting zero figures. See the matching HISTORY note in
+ *  extract.test.ts. */
 
 /**
  * The "What we know" statements, extracted as typed, referenceable entries.
@@ -1694,7 +1690,16 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
         for (const g of group) {
           const kind = SOURCE_LEG.exec(g.id)![1];
           const target = figById.get(`${prefix}.${parent}_${SOURCE_COMPONENT[kind]}.delta`);
-          if (typeof target?.value !== 'number' || typeof g.value !== 'number') {
+          // Number.isFinite matters: NaN/Infinity are typeof 'number', and a NaN
+          // anchor makes every comparison false -- a silent pass. Non-finite (or
+          // NUMERIC-flagged) anchors fail closed to the net comparison instead.
+          if (
+            typeof target?.value !== 'number' ||
+            !Number.isFinite(target.value) ||
+            invalidIds.has(target.id) ||
+            typeof g.value !== 'number' ||
+            !Number.isFinite(g.value)
+          ) {
             anchored = false;
             break;
           }

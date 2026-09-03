@@ -6,7 +6,9 @@
   Assembly, every publish:
     1. Paste the FULL <link> + <style> block from assets/brief-template.html where the
        STYLE placeholder sits below (assembly-time copy = one source of truth, no drift),
-       then keep the small hub-specific <style> block that follows it.
+       then keep the small hub-specific <style> block that follows it. Start the copy at
+       the <link rel="stylesheet"> line: do NOT also copy brief-template.html's own
+       <title> on its first line -- this shell already has the hub's title.
     2. Insert each period's stored fragment (the template's `.wrap` inner content, no
        <style> of its own) into its slot: the LATEST period as an open <article>, every
        earlier period inside a <details class="monthfold"> with its month + h1 conclusion

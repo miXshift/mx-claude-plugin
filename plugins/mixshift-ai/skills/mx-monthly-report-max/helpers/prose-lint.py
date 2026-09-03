@@ -50,8 +50,10 @@ IMPERATIVE = re.compile(r'^\s*(watch|review|read|flag|protect|decide|restore|re-
                         r'|confirm|establish|check|consider|hold|keep|cut|raise|lower|put|move|shift|add'
                         r'|reduce|increase|pause|resume|rebuild|replace|investigate|understand|prioritize'
                         r'|prioritise|treat|avoid|expect|plan|leave|let|make|take|give|find|set|run'
-                        r'|fix|replenish|diagnose|get|rebalance|redirect|cap|drop|push|defend|escalate'
-                        r'|negotiate|reorder|restock)\b', re.I)
+                        # cap/drop/push/reorder/restock stay OUT: they are common NOUNS in
+                        # this register, and whitelisting them silenced genuine label-fragments.
+                        r'|fix|replenish|diagnose|get|rebalance|redirect|defend|escalate'
+                        r'|negotiate)\b', re.I)
 
 def strip(html_frag):
     t = re.sub(r'<[^>]+>', ' ', html_frag)
