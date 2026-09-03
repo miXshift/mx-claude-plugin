@@ -1,8 +1,13 @@
 # Brief structure and voice
 
-Two documents. The **client brief** is written so the client can read it directly. The **internal
-companion** holds everything that would damage the relationship if shared: talking points, the
-numbers to keep off the call, owner-attributed asks, and MixShift's own misses.
+Two documents. The **client brief** is the account manager presenting to the client's
+executive team: every sentence must survive being read aloud in that meeting, and it
+carries findings, never apparatus (no tooling nouns, no process narration, no scope or
+method section; the one-plain-sentence exception for a method that genuinely needs client
+words, like Buy Box weighting). The **internal companion** holds the entire audit trail
+plus everything that would damage the relationship if shared: the technical scope block,
+talking points, the numbers to keep off the call, owner-attributed asks, method and
+caveats, the claims register, and MixShift's own misses.
 
 The reader of either has fifteen minutes and a call to run. Every section either changes what
 happens on that call or comes out. This file spells out what each section is for, so you can tell
@@ -10,8 +15,9 @@ when a section has nothing to contribute and should be dropped rather than padde
 
 ## Client brief, in order
 
-Masthead, scope bar, bottom line, headline metrics, what actually moved, segment reads, featured
-offer status, things to check, method and caveats.
+Masthead, bottom line, headline metrics, what actually moved, segment reads, featured
+offer status, things to check, one-line footer. No scope bar and no method section: both
+live in the internal companion.
 
 Note that **things to check sits after the analysis, not before it**. Placed high it reads as a
 to-do list handed to the client. Placed after the evidence it reads as the conclusions the
@@ -32,17 +38,21 @@ client brief: prepared date, the window, the account, the prior review date. For
 companion: call date and time, attendees, the client doc it pairs with, prior monthly. Attendees
 belong on the internal one because that is where the owner-attributed asks live.
 
-## Scope bar
+## Scope block (internal companion)
 
-Before the first number, always. It carries:
+Right after the correction bottomline, before the first internal number. It carries:
 
 - Account, SellerID, marketplace, and whether this is Seller Central or Vendor Central
-- The three windows with exact dates
+- The three windows with exact dates, and the account mode
 - Why the windows end where they do, when the data load date drove it
 - Any correction being applied and to which figures, such as a dark-day normalization
+- The Buy Box weighting arithmetic and the traffic basis
+- The threshold values applied, quoted so a later reader can re-derive every flag
 
-A client with both a 1P and a 3P account will otherwise assume the wrong one, and a brief that
-does not date its windows cannot be checked later.
+The client still needs the account named and the windows dated (a client with both a 1P
+and a 3P account will otherwise assume the wrong one), and the masthead stamp block does
+that job on the client doc: account, marketplace, window, prepared date. What it never
+does is explain how the sausage was made.
 
 ## Bottom line
 
@@ -102,6 +112,32 @@ rate against the opening rate, and the run-rate close. Say plainly that the run-
 arithmetic. A month-to-date total and a month closing at 45% above its opening rate tell opposite
 stories and the client deserves both.
 
+## Charts
+
+Charts are baked-static inline SVG, composed at write time from battery data the way the
+tables are: coordinates computed in the generator, literal markup emitted, no chart
+library, no runtime fetch. They summarize what the tables already carry; a chart never
+introduces a new figure (the one exception, a bridge residual, must foot to the printed
+gross split and gets a method-notes line). At most three per document, each data-gated:
+
+- **Monthly trend** (in Headline metrics): ordered sales by month, 8+ closed months
+  required, in-progress months excluded. One hue (`var(--accent)`): current month at full
+  opacity, the same month last year at 0.62, the rest at 0.38, so the YoY comparison is
+  the thing the eye does first. Label only those two bars plus the season peak; per-bar
+  `<title>` tooltips carry the rest. Bars round at the value end only, square at the
+  baseline.
+- **Mechanism bridge** (in What actually moved, after the gross-split lede): prior month
+  to current month via the mechanisms. Anchors are level ticks with their values; deltas
+  are floating bars in `var(--good)`/`var(--crit)` with dotted connectors; every bar is
+  direct-labeled. The mechanism split must match the claims register's attribution row,
+  and the caption names the basis (item-level vs account).
+- **Daily line** (optional, wherever the story is intra-month shape, e.g. a stockout
+  recovery): the battery daily series, 2px accent line, crosshair + tooltip.
+
+SVG text wears the `.chartfig` text classes (ink tokens, never series colors); gridlines
+are `var(--rule-soft)`; viewBox width 940 so charts scale with the page. Dark mode comes
+free because every fill and stroke is a CSS token.
+
 ## What actually moved
 
 Open with the gross split: gross declines, gross gains, and the net. The net is the account
@@ -136,12 +172,14 @@ because together they separate "we cannot sell it" from "nobody wants it":
 - **Share of page views landing on an in-stock item.** Usually the most legible availability
   number in the document, because it is stated from the shopper's side.
 
-Amazon reports offer count only at account level, so the segment counts are ours. Say so in the
-method notes and say they will not tie to the account row.
+Amazon reports offer count only at account level, so the segment counts are ours. Say so
+in the internal method notes (i06) and say they will not tie to the account row; the
+client caption states plainly what the counts mean, not where they came from.
 
-This is where the settled-window check gets cited, because efficiency deterioration is almost
-always concentrated in one segment rather than spread evenly. Naming the segment and the settled
-figure is what makes the claim defensible.
+This is where the settled-window check does its work, because efficiency deterioration is
+almost always concentrated in one segment rather than spread evenly. Run the check before
+writing the claim; the client copy asserts the verified result, and the internal method
+notes cite the settled figure that makes it defensible.
 
 Where a segment read implies an action on our side, say what the lever is in the client brief
 without turning it into a confession: "bids have room to come down on the rows serving
@@ -231,10 +269,11 @@ register padded with restated figures buries the four rows that carry judgment.
 execute: which rows, which exclusions, and what makes now the right time. One or two paragraphs.
 This is the difference between a brief that describes a month and one that starts the next.
 
-## Method and caveats
+## Method and caveats (i06, internal only)
 
-Last, and worth writing properly, because it is what someone reads when they want to check a
-figure three months from now.
+The internal companion's closing section, after the claims register, and worth writing
+properly, because it is what someone reads when they want to check a figure three months
+from now. None of it appears in the client document.
 
 - Source tables by name
 - Account, SellerID, marketplace, and what is deliberately excluded
@@ -257,8 +296,10 @@ entities before publishing.
 
 **Sign every change.** "-8.1 pts", not "8.1 pts". Both in prose and in tables.
 
-**Label every delta MoM or YoY.** Every single one. A brief read out of order otherwise
-mislabels itself.
+**Label every delta.** Every single one; a brief read out of order otherwise mislabels
+itself. In tables, tiles and chips the labels are MoM and YoY. In client PROSE the label
+is words: "up 5.3% on July", "down 16.5% vs last August"; a list of sibling deltas may
+share one label. The internal companion may use MoM/YoY anywhere.
 
 **Lead with the answer.** Conclusion first, evidence second, in every paragraph and in the
 document as a whole.

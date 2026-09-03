@@ -77,13 +77,21 @@ mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome 
 ## The knobs (every one has a working default; none is required)
 
 Ask about none of these up front. Resolve each from the invocation, the data, and brand
-context, in that order; say in the scope bar what was resolved and from where. The FIRST
+context, in that order; say in the run's opening scope message in chat what was resolved
+and from where. The FIRST
 review packet on a brand then confirms the resolved knobs once: one plain line per knob
 ("Report month: August, closed. Documents: both. Goals used: 22% ACOS target."), with
 "these persist for this brand unless you change one." Silence keeps them; an answer gets
 recorded and never re-asked. Every later packet shows only drift from the recorded
 settings. That is the whole knob conversation: the work always runs first, and the user
 gets the wheel exactly once, at the moment they can see what the defaults did.
+
+These knobs are invisible by design until they matter, so give them a front door: whenever
+the user asks anything shaped like "show report settings" or "how do I change the format",
+render the full sheet in chat: every knob, its current value, where that value lives
+(invocation, brand context, manager profile, or default) and the one-line way to change
+it. Every review packet's settings section ends with the reminder line "say 'show report
+settings' for everything else."; that line is how a hidden config system stays findable.
 
 | Knob | Default | Override |
 |---|---|---|
@@ -98,6 +106,7 @@ gets the wheel exactly once, at the moment they can see what the defaults did.
 | Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
 | Style | document density `full`; `one_pager` collapses to masthead, bottom line, tiles, mechanisms, checks | `reporting.style.density`; manager defaults in `~/.mixshift/profile.yaml`, brand context wins on conflict |
+| Voice | house voice (the Voice section + `references/brief-structure.md`) | voice profiles: `~/.mixshift/voice.md` (the manager's voice, all their brands) and `clients/<brand>/voice.md` (this client's register); brand wins on conflict. Seed and update them per "Voice profiles" below |
 
 **Threshold defaults** (quote the active values in the method notes; override via
 `reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
@@ -117,7 +126,8 @@ The only hard requirement is an account identity: `seller_id` + `account_type` (
 `mixshift brand add`, or resolved in Step 2). If both are absent after Step 2, stop and say
 so. Everything else degrades.
 
-Resolve the mode from the data during Step 3, name it in the scope bar, and shape the
+Resolve the mode from the data during Step 3, name it in the opening scope message and
+the internal companion's scope block, and shape the
 documents to it:
 
 - **Established** (two-plus full months loaded, prior-year data present): full brief.
@@ -203,7 +213,7 @@ GROUP BY SellerID
 
 A SellerID that returns zero rows is not a data problem to debug; it is simply not the
 account being managed (or the account is in Setup mode; tell them apart by whether ANY
-candidate carries data). Say in the brief's scope line which SellerID and marketplace every
+candidate carries data). Say in the internal companion's scope block which SellerID and marketplace every
 figure covers, because a client with both 1P and 3P will otherwise assume the wrong one.
 
 ## Step 3: Pull the figures
@@ -528,25 +538,53 @@ value as a period total.
 Structure, section-by-section purpose, and design rules are in
 `references/brief-structure.md`. Read it before writing. The order in brief:
 
-**Client brief:** masthead (a conclusion, not a topic), scope bar (account, SellerID,
-marketplace, exact windows, every correction applied, the mode from "Account modes", before
-the first number), bottom line (conclusion, mechanism, counterweight), headline metrics
-(tile strip + matched-window table), what actually moved (mechanism severity cards + mover
-tables), segment reads (only where the account genuinely splits), featured offer status,
-Things-to-check (after the analysis, no owner names, 5 to 7 rows with state chips), method
-and caveats.
+**Client brief:** masthead (a conclusion, not a topic; the stamp block carries account,
+window and prepared date), bottom line (conclusion, mechanism, counterweight), headline
+metrics (tile strip + matched-window table + the monthly trend chart), what actually moved
+(gross-split lede + bridge chart + mechanism severity cards + mover tables), segment reads
+(only where the account genuinely splits), featured offer status, Things-to-check (after
+the analysis, no owner names, 5 to 7 rows with state chips), a clean one-line footer. No scope bar, no method section: the client document
+carries findings, not apparatus.
 
-**Internal companion**, at its own URL: any correction to an earlier read first, what to
-tell the client (numbered in speaking order, with suggested spoken lines and framing
-traps), numbers to keep off the call, open commitments with owners and verdicts, our next
-lever (scoped tightly enough to execute), and the claims register as the final section
-(i05).
+**Internal companion**, at its own URL: any correction to an earlier read first, the full
+technical scope block (account, SellerID, marketplace, exact windows, account mode, every
+correction applied, weighting math, thresholds), what to tell the client (numbered in
+speaking order, with suggested spoken lines and framing traps), numbers to keep off the
+call, open commitments with owners and verdicts, our next lever (scoped tightly enough to
+execute), the claims register (i05), and method and caveats (i06) closing the document.
 
 Composition rules that survive every mode:
 
+- **The register rule, first: the client brief is the account manager presenting to the
+  client's executive team.** Every sentence must survive being read aloud in that meeting.
+  Never in client copy: tooling nouns (engine, envelope, battery, warehouse table names,
+  SQL, SellerID), process narration ("cross-checked against", "verified on settled
+  windows", "the engine attributes", "the live check says", "our read matches"), basis or
+  threshold talk. The FINDING always survives; only the apparatus moves. "The engine
+  attributes the move to rate, not mix" becomes "the decline is rate, not mix: item groups
+  held the offer less often". Verification still happens on every claim; the client copy
+  asserts the verified result, and the internal companion says how it was verified. When a
+  method genuinely needs client words (Buy Box weighting), one plain sentence ("Buy Box
+  here weights busy days more than quiet ones") at the first table that uses it, not the
+  arithmetic. `helpers/prose-lint.py --role client` enforces the fixed phrases.
+- **Client prose labels deltas with words**: "up 5.3% on July", "down 16.5% vs last
+  August". MoM/YoY abbreviations are furniture for tables, tiles and chips only; a list of
+  sibling deltas may share one label. The internal companion may use MoM/YoY anywhere.
 - Every number traces to a figures document (3a), the battery JSON (3b), a live call (3c),
   or a query in the method notes. Nothing from general Amazon knowledge, industry
   benchmarks, or assumed platform dynamics.
+- **Charts are baked-static inline SVG composed at write time from battery data**: compute
+  coordinates in the generator, emit literal markup, no chart library, no runtime fetch.
+  Three types, all data-gated, at most three per document: the monthly TREND (headline
+  metrics; needs 8+ closed months from `monthly_history`, in-progress months excluded;
+  single hue `var(--accent)`, current month full opacity, same-month-last-year 0.62, rest
+  0.38, label only those plus the season peak), the mechanism BRIDGE (what actually moved;
+  anchors as level ticks, deltas as floating `--good`/`--crit` bars, every bar labeled,
+  and the split must match the claims register's attribution), and an optional DAILY LINE
+  when the story is intra-month shape. A chart never introduces a figure: everything it
+  shows exists in a table or tile, except a bridge residual that must foot to the printed
+  gross split and gets a method-notes line. Full spec in the template's chart comment and
+  `references/brief-structure.md`.
 - A superlative or "every/all/most" claim needs a complete population behind it; without
   one it degrades to an observation (correct behavior, not a gap).
 - Causal claims quote served evidence as their mechanism where it exists; otherwise
@@ -564,8 +602,9 @@ Composition rules that survive every mode:
   already gated by `extract --check` and the figures walk; the register covers exactly the
   layer the model adds: mechanism attributions, commitment verdicts, causal hedges, and
   materiality selections (what was deemed too small to show is also a reviewable claim).
-  Emit it as `<run>.claims.json` and render it as the internal companion's final section
-  (i05); the client document carries provenance in the method notes instead of chips.
+  Emit it as `<run>.claims.json` and render it as the claims register (i05), followed
+  only by method and caveats (i06); the client document carries no provenance apparatus
+  at all. It asserts, and the internal companion holds the entire audit trail.
   The register is the technical AUDIT TRAIL; the review packet is its PLAIN-LANGUAGE
   projection. Every register row carries both voices: `claim` / `falsifier` (technical,
   for i05) and `plain_language` / `why_it_matters` (for the packet), plus
@@ -640,7 +679,8 @@ are what need approval, so the review surface is the claims, not the HTML.
    order** — the packet trains the reviewer, so the format never varies:
 
    1. **Settings this run used** — first run on a brand: every resolved knob, one plain
-      line each, "these persist unless you change one." Later runs: only drift.
+      line each, "these persist unless you change one." Later runs: only drift. Always
+      ends with: "say 'show report settings' for everything else."
    2. **What this report says** — the claims, FOR THE OPERATOR, in plain words. No table
       names, no metric jargon, no basis talk (that is the register's job, not the
       packet's). Each claim is one sentence a client could hear, plus "why it matters"
@@ -736,6 +776,26 @@ The non-negotiables, wherever the prose lands (the full set with examples is in
   the claim to what sold, and do not explain the limitation in the report (state what is
   known, per the session-context rule).
 
+### Voice profiles: shaping the writing to the user
+
+The house voice above is the default, not the ceiling. Two profile files tune it:
+
+- `~/.mixshift/voice.md`: the MANAGER's voice, applied to every brand they run.
+- `~/.mixshift/clients/<brand>/voice.md`: this CLIENT's register (formality, vocabulary,
+  what their executives respond to). Brand wins where the two conflict.
+
+Each is a short plain-language style sheet: dos, don'ts, favored and banned phrases,
+sentence-length preference, how the manager refers to themselves ("we" vs the agency
+name), example sentences. To SEED one, ask for material instead of preferences: two or
+three past reports, client emails, or call notes the user likes the sound of, then distill
+them into the profile and show it for approval; a user who says "write it like me" and has
+a writing-style skill installed already has a seed. To UPDATE one, use the review gate:
+when the reviewer rewrites copy at review, the diff is voice signal, and once a
+correction repeats it becomes a proposed voice.md edit in the packet's write-backs
+section (propose-only, like every durable write). Say yes once and the correction never
+needs making again; that is the difference between a tool that gets trained and one that
+gets re-edited monthly.
+
 Brand-context `reporting.voice_lint` additions apply on top of these. If the organization
 ships its own writing-style skill, it wins where the two conflict.
 
@@ -743,19 +803,23 @@ ships its own writing-style skill, it wins where the two conflict.
 
 The errors that survive casual proofreading:
 
-- Every figure traces to a source per the composition rules; the scope bar names the
-  SellerID, marketplace, both window boundaries, and the account mode.
+- Every figure traces to a source per the composition rules; the internal scope block
+  names the SellerID, marketplace, both window boundaries, and the account mode.
+- The client doc passes the read-aloud test: no tooling nouns, no process narration, no
+  scope or method section (`prose-lint --role client` enforces the fixed phrases).
 - Windows are aligned to the data load date and to equal day counts; any dark-day
   normalization is shown raw and normalized, and labelled.
-- Buy Box figures are page-view weighted and the scope bar says so; every Buy Box or
-  featured-offer claim was checked against the daily series and a last-7-days column, so
-  nothing already fixed is reported as broken.
+- Buy Box figures are page-view weighted; the client doc says so once in plain words at
+  the first table that uses them, the internal scope block carries the arithmetic. Every
+  Buy Box or featured-offer claim was checked against the daily series and a last-7-days
+  column, so nothing already fixed is reported as broken.
 - Listing breadth and availability are separate rows, not one flattering number.
 - The client brief names no individual as an owner; Things-to-check sits after the
   analysis; anything that would embarrass a person if the client read it is in the
   internal companion only.
-- Any efficiency claim is verified on a settled window and says so; the SKU reconciliation
-  figure appears in the method notes; the envelope was re-pulled on publish day.
+- Any efficiency claim is verified on a settled window; the client copy asserts the
+  result and the internal method notes (i06) say how, alongside the SKU reconciliation
+  figure; the envelope was re-pulled on publish day.
 - Every claimed cause has evidence; everything else is a question in Things-to-check.
 - No em or en dashes, no unsigned deltas, no unlabelled deltas; any run-rate close is
   called arithmetic.
@@ -809,8 +873,9 @@ written every run, consumed mechanically by the next one:
   stack on the MixShift platform later: the hub is just a renderer over them.
 - **Review deltas**: what the reviewer changed, per run. Three zero-edit runs is the
   trust-ramp trigger; recurring edits of the same kind are voice or selection
-  calibration and, once a pattern repeats, become a proposed `reporting.voice_lint` or
-  style-knob entry rather than a thing the reviewer fixes monthly.
+  calibration and, once a pattern repeats, become a proposed `voice.md` edit,
+  `reporting.voice_lint` entry, or style-knob change rather than a thing the reviewer
+  fixes monthly.
 
 **Proposals** (`.discoveries.json`), typed, promoted by humans via the review packet:
 
