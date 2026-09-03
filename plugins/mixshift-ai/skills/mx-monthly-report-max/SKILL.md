@@ -726,8 +726,14 @@ construction across the others before replying, and say which were swept.
 Nothing publishes before review. The two-document build is cheap to regenerate; the facts
 are what need approval, so the review surface is the claims, not the HTML.
 
-1. **Present the review packet in chat, in the same four sections every run, in this
-   order** — the packet trains the reviewer, so the format never varies:
+1. **Walk the review packet ONE SECTION PER MESSAGE, in the same four sections every
+   run, in this order** — the packet trains the reviewer, so the format never varies,
+   and it is a conversation, not a document: never send two sections in one message.
+   Each message ends with the one thing the reviewer can do next (confirm, edit,
+   answer, approve); silence or "go on" advances to the next section, an approve at
+   any point short-circuits the rest, and batch answers are accepted anywhere and
+   folded in. A reviewer who asks for "the whole packet" gets it in one message, that
+   once. The sections:
 
    1. **Settings this run used** — first run on a brand: every resolved knob, one plain
       line each, "these persist unless you change one." Later runs: only drift. Always
