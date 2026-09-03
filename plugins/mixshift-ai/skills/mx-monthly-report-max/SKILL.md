@@ -608,8 +608,13 @@ Composition rules that survive every mode:
   shows up in the numbers (a bid change, enforcement they drove, a restock they pushed),
   the ledger verdict and the talking points say so in action-to-result form ("the
   campaign push you ran shows up as +24% sessions on Booster"), never as weather that
-  happened. The ledger (i03) is the backward half of that story; the next lever (i04) is
-  the forward half.
+  happened. Attribution has two gates: QUOTE the commitment as recorded (source and
+  date) so the reader can recognize their own action, and pass a SCALE test: the action
+  must plausibly move the number (one purchased unit never explains a percent-level
+  lift). If the reader does not recognize the action, or corrects it, the verdict
+  downgrades to done-or-not-done with no result attribution, and the correction is
+  register-logged. The ledger (i03) is the backward half of that story; the next lever
+  (i04) is the forward half.
 - **Charts are baked-static inline SVG composed at write time from battery data**: compute
   coordinates in the generator, emit literal markup, no chart library, no runtime fetch.
   Three types, all data-gated, at most three per document: the monthly TREND (headline
