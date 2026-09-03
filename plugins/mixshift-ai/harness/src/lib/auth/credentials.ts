@@ -15,7 +15,7 @@
  * with zero user action.
  */
 
-import { mkdir, readFile, rename, writeFile, chmod, unlink } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile, chmod, unlink, open, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { credentialsPath } from '../paths/resolve.js';
 import { formatZodError } from '../profile/format-error.js';
@@ -172,14 +172,32 @@ export async function saveService(
 
 // ---------------------------------------------------------------------------
 // getValidAccessToken — returns a non-expired access_token, refreshing if
-// needed. The refresh is gated by an in-flight singleton so concurrent
-// callers don't both POST /auth/refresh (the second call would see its
-// already-rotated refresh_token and trigger the server's replay defense,
-// revoking every active session for the user).
+// needed. Two layers guard the refresh:
+//
+//   1. An in-process in-flight singleton (`_refreshState`) so concurrent
+//      callers within ONE process don't both POST /auth/refresh.
+//   2. A cross-process lockfile (`refresh.lock`; see
+//      refreshWithCrossProcessLock below) for what the singleton can't
+//      cover: every `mixshift` CLI invocation is its own OS process, so
+//      two invocations racing a refresh don't share `_refreshState` at
+//      all. The lock is best-effort — lock-plumbing failure or a full
+//      wait timeout degrades to proceeding without it rather than
+//      failing the command, and `doRefresh`'s stale-compare guard (see
+//      below) covers whatever race the lock doesn't catch.
 // ---------------------------------------------------------------------------
 
 const REFRESH_SAFETY_MARGIN_MS = 60_000;
 const REFRESH_REQUEST_TIMEOUT_MS = 30_000;
+
+/** Cross-process refresh lock: poll interval while waiting for another
+ *  process's lock to free up. */
+const REFRESH_LOCK_POLL_INTERVAL_MS = 150;
+/** Cross-process refresh lock: total time to wait for a contested lock
+ *  before degrading to "proceed without the lock". */
+const REFRESH_LOCK_WAIT_TIMEOUT_MS = 15_000;
+/** Cross-process refresh lock: a lock file older than this (by mtime) is
+ *  assumed to belong to a dead/crashed holder and is taken over. */
+const REFRESH_LOCK_STALE_MS = 20_000;
 
 /**
  * Module-level singleton tracking an in-flight refresh. `null` when no
@@ -203,13 +221,19 @@ export const _refreshState: { inFlight: Promise<DatahubCreds> | null } = {
  * rejected it (clock skew, server-side invalidation, etc.), so we need
  * a guaranteed-new token before retrying.
  *
- * Throws (with a clear "Run `mixshift auth login`" message) when:
+ * Throws (with a clear "Run `mixshift auth login`" message, prefixed
+ * `AUTH REQUIRED:` when the server names a specific non-retryable cause —
+ * see buildAuthRequiredError) when:
  *   - no datahub block is present
- *   - refresh fails with 401 (server already revoked all sessions for
- *     this user; datahub block is cleared as a side effect)
+ *   - refresh fails with 401 AND the on-disk refresh_token still matches
+ *     the one that was refused (a genuine expiry/revocation, not a
+ *     losing race against a sibling process's refresh) — the datahub
+ *     block is cleared as a side effect in that case only
  *
  * Concurrent calls during a refresh window all await the same refresh
- * promise — including concurrent force-refresh calls.
+ * promise — including concurrent force-refresh calls. That covers
+ * concurrent callers within one process; see refreshWithCrossProcessLock
+ * for the cross-process case (separate `mixshift` invocations).
  */
 export async function getValidAccessToken(
   dataDirOverride?: string,
@@ -245,7 +269,7 @@ export async function getValidAccessToken(
     return refreshed.access_token;
   }
 
-  _refreshState.inFlight = doRefresh(
+  _refreshState.inFlight = refreshWithCrossProcessLock(
     credentials.datahub,
     dataDirOverride,
   ).finally(() => {
@@ -254,6 +278,142 @@ export async function getValidAccessToken(
 
   const refreshed = await _refreshState.inFlight;
   return refreshed.access_token;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-process refresh lock.
+//
+// `_refreshState` only single-flights refreshes WITHIN one process. Every
+// `mixshift` CLI invocation is its own process, so two concurrent
+// invocations can each pass the in-process check above and both call
+// doRefresh with the same refresh_token — the loser then 401s against the
+// winner's already-rotated token. `refreshLockPath` names a sibling file
+// next to credentials.json (`refresh.lock`) that serializes the refresh
+// critical section across processes on this machine.
+//
+// This is deliberately best-effort, not a hard mutex: a stuck/unkillable
+// lock must never brick the CLI. Failure to acquire (plumbing error, or a
+// live contested lock that doesn't free up within the wait window)
+// degrades to proceeding WITHOUT the lock — the server's rotation grace
+// window and doRefresh's own stale-compare guard (below) absorb the
+// residual race.
+// ---------------------------------------------------------------------------
+
+export function refreshLockPath(dataDirOverride?: string): string {
+  return join(dirname(credentialsPath(dataDirOverride)), 'refresh.lock');
+}
+
+/**
+ * Acquire the cross-process refresh lock.
+ *
+ * Returns a release function to invoke (in a `finally`) once the critical
+ * section is done, or `null` when the lock could not be acquired within
+ * REFRESH_LOCK_WAIT_TIMEOUT_MS (or acquisition failed outright) — callers
+ * must treat `null` as "proceed without the lock", never as an error.
+ */
+async function acquireRefreshLock(
+  dataDirOverride: string | undefined,
+): Promise<(() => Promise<void>) | null> {
+  const lockPath = refreshLockPath(dataDirOverride);
+  const deadline = Date.now() + REFRESH_LOCK_WAIT_TIMEOUT_MS;
+
+  try {
+    await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+  } catch {
+    return null; // can't even ensure the auth dir exists -- degrade
+  }
+
+  for (;;) {
+    try {
+      const handle = await open(lockPath, 'wx', 0o600);
+      try {
+        await handle.writeFile(
+          JSON.stringify({ pid: process.pid, ts: new Date().toISOString() }),
+        );
+      } finally {
+        await handle.close();
+      }
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+        await unlink(lockPath).catch(() => {});
+      };
+    } catch (err) {
+      if (!isFileExistsError(err)) {
+        // Unexpected error (permissions, read-only fs, ...) — degrade
+        // rather than fail the caller over lock plumbing.
+        return null;
+      }
+      if (await isLockStale(lockPath)) {
+        // Presumed-dead holder (crashed before releasing). Take over:
+        // unlink and retry acquisition immediately.
+        await unlink(lockPath).catch(() => {});
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        return null; // waited long enough -- degrade: proceed lock-less
+      }
+      await new Promise((r) => setTimeout(r, REFRESH_LOCK_POLL_INTERVAL_MS));
+    }
+  }
+}
+
+async function isLockStale(lockPath: string): Promise<boolean> {
+  try {
+    const st = await stat(lockPath);
+    return Date.now() - st.mtimeMs > REFRESH_LOCK_STALE_MS;
+  } catch {
+    // Disappeared between our failed open() and this check (the holder
+    // released it) — not stale, just gone; the next loop iteration's
+    // open() will succeed.
+    return false;
+  }
+}
+
+/**
+ * Cross-process-safe wrapper around doRefresh. Steps:
+ *
+ *   1. Acquire `refresh.lock` (best-effort — see acquireRefreshLock).
+ *   2. Re-read credentials from disk. If the on-disk refresh_token
+ *      differs from `current.refresh_token` (the one this process loaded
+ *      BEFORE waiting for the lock), a sibling process already rotated
+ *      while we waited: reuse its access_token if it's still fresh,
+ *      otherwise refresh using ITS refresh_token (ours is stale and
+ *      would just 401).
+ *   3. Otherwise refresh with our own token, same as before this lock
+ *      existed.
+ *
+ * Always releases the lock (when held) in a `finally`.
+ */
+async function refreshWithCrossProcessLock(
+  current: DatahubCreds,
+  dataDirOverride: string | undefined,
+): Promise<DatahubCreds> {
+  const release = await acquireRefreshLock(dataDirOverride);
+  try {
+    const { credentials: onDisk } = await loadCredentials(dataDirOverride);
+    const onDiskDatahub = onDisk?.datahub;
+    if (onDiskDatahub && onDiskDatahub.refresh_token !== current.refresh_token) {
+      const expiresAtMs = Date.parse(onDiskDatahub.expires_at);
+      const fresh = expiresAtMs - Date.now() > REFRESH_SAFETY_MARGIN_MS;
+      if (fresh) {
+        return onDiskDatahub;
+      }
+      // `await` (not a bare `return`) is required here: this is inside a
+      // `finally`-bearing try block, and `finally` runs on the RETURN
+      // completion before the returned promise is awaited by anything.
+      // Returning the bare promise leaves a window where doRefresh can
+      // reject before `finally`'s own `await release()` finishes, which
+      // Node reports as a rejection "handled asynchronously" (a real,
+      // if usually harmless, unhandled-rejection warning) instead of
+      // cleanly propagating through this function's own rejection.
+      return await doRefresh(onDiskDatahub, dataDirOverride);
+    }
+    return await doRefresh(current, dataDirOverride);
+  } finally {
+    if (release) await release();
+  }
 }
 
 interface RefreshResponse {
@@ -265,9 +425,22 @@ interface RefreshResponse {
   user_id: string;
 }
 
+/** Shape of a /auth/refresh 401 body. New server: `session_expired` |
+ *  `session_revoked`, with an optional `reason` and human `message`. Old
+ *  server (pre-upgrade): `invalid_refresh_token`, no `message`. Loosely
+ *  typed since this is an unvalidated cast of network JSON, same as
+ *  RefreshResponse above. */
+interface Refresh401Body {
+  ok?: boolean;
+  error?: string;
+  reason?: string;
+  message?: string;
+}
+
 async function doRefresh(
   current: DatahubCreds,
   dataDirOverride: string | undefined,
+  isRetry: boolean = false,
 ): Promise<DatahubCreds> {
   let res: Response;
   try {
@@ -286,15 +459,39 @@ async function doRefresh(
   }
 
   if (res.status === 401) {
-    // Replay-revocation path: the server already invalidated every
-    // session for this user. Clear local datahub creds so the next
-    // command surfaces the friendly "Run auth login" message instead
-    // of looping on the dead refresh_token.
+    const body = await parseRefresh401Body(res);
+
+    // Stale-compare: was the token we just sent still the one on disk at
+    // the moment of refusal? A concurrent sibling process's refresh can
+    // rotate the token AFTER we read it but BEFORE our own POST lands —
+    // this lockfile (see refreshWithCrossProcessLock) narrows that
+    // window but cannot close it entirely (rotation can still happen
+    // during our own in-flight fetch). If the on-disk token has already
+    // moved on, this 401 says nothing about whether the SESSION is dead
+    // — only that OUR copy of the token was stale. Clearing here would
+    // delete the sibling's freshly-rotated, still-valid credentials —
+    // that was the bug.
+    const { credentials: onDisk } = await loadCredentials(dataDirOverride);
+    const onDiskDatahub = onDisk?.datahub;
+    if (onDiskDatahub && onDiskDatahub.refresh_token !== current.refresh_token) {
+      if (!isRetry) {
+        // Retry once with the token that's actually on disk. Bounded by
+        // `isRetry` so a token that keeps moving can't recurse forever.
+        return doRefresh(onDiskDatahub, dataDirOverride, true);
+      }
+      // Already retried once and STILL raced (the on-disk token moved
+      // again in between). Genuinely ambiguous — surface the auth error
+      // without touching disk rather than risk deleting yet another
+      // sibling's valid credentials.
+      throw buildAuthRequiredError(body);
+    }
+
+    // The token we just sent is (still) the one on disk: a real
+    // refusal, not a race. Safe to clear so the next command surfaces
+    // the clean "run auth login" message instead of looping on a dead
+    // refresh_token.
     await clearDatahub(dataDirOverride);
-    throw new Error(
-      'Your MixShift session expired. Run `mixshift auth login` to ' +
-        're-authenticate.',
-    );
+    throw buildAuthRequiredError(body);
   }
 
   if (!res.ok) {
@@ -318,6 +515,60 @@ async function doRefresh(
   };
   await saveDatahub(updated, dataDirOverride);
   return updated;
+}
+
+/**
+ * Best-effort parse of a /auth/refresh 401 body. Returns `null` for
+ * anything that isn't a JSON object (network error page, empty body, or
+ * any other unexpected shape) — callers fall back to the generic
+ * pre-upgrade message in that case, same as if the server had returned
+ * the old `invalid_refresh_token` shape.
+ */
+async function parseRefresh401Body(res: Response): Promise<Refresh401Body | null> {
+  try {
+    const raw = await res.text();
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Refresh401Body) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fallback text used both for the plain pre-upgrade message and as the
+ * `AUTH REQUIRED:` suffix when the server doesn't supply its own
+ * `message`. Deliberately a single shared string, not one per
+ * error/reason: several existing callers upstream (e.g.
+ * commands/task.ts's classifyMintError, lib/amazon/reports.ts and
+ * lib/intelligence/client.ts's sessionFailureFromError) still classify
+ * this function's thrown message by matching "session expired" / "refresh"
+ * in the text. A distinct "session was revoked" fallback would read
+ * better but would silently fall through those pattern-matches — keep the
+ * wording that already satisfies every existing consumer.
+ */
+const SESSION_EXPIRED_FALLBACK_MESSAGE =
+  'Your MixShift session expired. Run `mixshift auth login` to re-authenticate.';
+
+/**
+ * Map a /auth/refresh 401 body to the error thrown up to the caller.
+ *
+ * New server shape (`session_expired` | `session_revoked`): loud and
+ * non-retryable. The message is prefixed `AUTH REQUIRED:` so any caller —
+ * or a future CLI exit-code mapping, if one is ever added — can match on
+ * that prefix rather than parsing prose. The server's own `message` is
+ * used verbatim when present, since it names the specific cause (replay
+ * vs. revoked vs. plain expiry); otherwise the shared fallback above.
+ *
+ * Old server shape (`invalid_refresh_token`, no `message`) and the
+ * unparsable/absent-body case: keep the original pre-upgrade message
+ * verbatim, unprefixed, so a server that hasn't deployed the new refusal
+ * shape yet sees no behavior change.
+ */
+function buildAuthRequiredError(body: Refresh401Body | null): Error {
+  if (body?.error === 'session_expired' || body?.error === 'session_revoked') {
+    return new Error(`AUTH REQUIRED: ${body.message ?? SESSION_EXPIRED_FALLBACK_MESSAGE}`);
+  }
+  return new Error(SESSION_EXPIRED_FALLBACK_MESSAGE);
 }
 
 // ---------------------------------------------------------------------------
@@ -535,5 +786,14 @@ function isFileNotFoundError(err: unknown): boolean {
     err !== null &&
     'code' in err &&
     (err as { code: unknown }).code === 'ENOENT'
+  );
+}
+
+function isFileExistsError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: unknown }).code === 'EEXIST'
   );
 }

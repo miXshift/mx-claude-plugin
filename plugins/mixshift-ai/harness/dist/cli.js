@@ -63979,7 +63979,7 @@ var init_schema3 = __esm({
 });
 
 // src/lib/auth/credentials.ts
-import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod, unlink } from "node:fs/promises";
+import { mkdir as mkdir2, readFile as readFile4, rename as rename2, writeFile as writeFile2, chmod, unlink, open, stat } from "node:fs/promises";
 import { dirname as dirname3, join as join5 } from "node:path";
 async function loadCredentials(dataDirOverride) {
   const path2 = credentialsPath(dataDirOverride);
@@ -64076,7 +64076,7 @@ async function getValidAccessToken(dataDirOverride, forceRefresh = false) {
     const refreshed2 = await _refreshState.inFlight;
     return refreshed2.access_token;
   }
-  _refreshState.inFlight = doRefresh(
+  _refreshState.inFlight = refreshWithCrossProcessLock(
     credentials.datahub,
     dataDirOverride
   ).finally(() => {
@@ -64085,7 +64085,77 @@ async function getValidAccessToken(dataDirOverride, forceRefresh = false) {
   const refreshed = await _refreshState.inFlight;
   return refreshed.access_token;
 }
-async function doRefresh(current, dataDirOverride) {
+function refreshLockPath(dataDirOverride) {
+  return join5(dirname3(credentialsPath(dataDirOverride)), "refresh.lock");
+}
+async function acquireRefreshLock(dataDirOverride) {
+  const lockPath = refreshLockPath(dataDirOverride);
+  const deadline = Date.now() + REFRESH_LOCK_WAIT_TIMEOUT_MS;
+  try {
+    await mkdir2(dirname3(lockPath), { recursive: true, mode: 448 });
+  } catch {
+    return null;
+  }
+  for (; ; ) {
+    try {
+      const handle = await open(lockPath, "wx", 384);
+      try {
+        await handle.writeFile(
+          JSON.stringify({ pid: process.pid, ts: (/* @__PURE__ */ new Date()).toISOString() })
+        );
+      } finally {
+        await handle.close();
+      }
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+        await unlink(lockPath).catch(() => {
+        });
+      };
+    } catch (err) {
+      if (!isFileExistsError(err)) {
+        return null;
+      }
+      if (await isLockStale(lockPath)) {
+        await unlink(lockPath).catch(() => {
+        });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, REFRESH_LOCK_POLL_INTERVAL_MS));
+    }
+  }
+}
+async function isLockStale(lockPath) {
+  try {
+    const st = await stat(lockPath);
+    return Date.now() - st.mtimeMs > REFRESH_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+async function refreshWithCrossProcessLock(current, dataDirOverride) {
+  const release3 = await acquireRefreshLock(dataDirOverride);
+  try {
+    const { credentials: onDisk } = await loadCredentials(dataDirOverride);
+    const onDiskDatahub = onDisk?.datahub;
+    if (onDiskDatahub && onDiskDatahub.refresh_token !== current.refresh_token) {
+      const expiresAtMs = Date.parse(onDiskDatahub.expires_at);
+      const fresh = expiresAtMs - Date.now() > REFRESH_SAFETY_MARGIN_MS;
+      if (fresh) {
+        return onDiskDatahub;
+      }
+      return await doRefresh(onDiskDatahub, dataDirOverride);
+    }
+    return await doRefresh(current, dataDirOverride);
+  } finally {
+    if (release3) await release3();
+  }
+}
+async function doRefresh(current, dataDirOverride, isRetry = false) {
   let res;
   try {
     res = await fetch(`${current.api_base}/auth/refresh`, {
@@ -64101,10 +64171,17 @@ async function doRefresh(current, dataDirOverride) {
     );
   }
   if (res.status === 401) {
+    const body = await parseRefresh401Body(res);
+    const { credentials: onDisk } = await loadCredentials(dataDirOverride);
+    const onDiskDatahub = onDisk?.datahub;
+    if (onDiskDatahub && onDiskDatahub.refresh_token !== current.refresh_token) {
+      if (!isRetry) {
+        return doRefresh(onDiskDatahub, dataDirOverride, true);
+      }
+      throw buildAuthRequiredError(body);
+    }
     await clearDatahub(dataDirOverride);
-    throw new Error(
-      "Your MixShift session expired. Run `mixshift auth login` to re-authenticate."
-    );
+    throw buildAuthRequiredError(body);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "<unreadable>");
@@ -64123,6 +64200,21 @@ async function doRefresh(current, dataDirOverride) {
   };
   await saveDatahub(updated, dataDirOverride);
   return updated;
+}
+async function parseRefresh401Body(res) {
+  try {
+    const raw = await res.text();
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function buildAuthRequiredError(body) {
+  if (body?.error === "session_expired" || body?.error === "session_revoked") {
+    return new Error(`AUTH REQUIRED: ${body.message ?? SESSION_EXPIRED_FALLBACK_MESSAGE}`);
+  }
+  return new Error(SESSION_EXPIRED_FALLBACK_MESSAGE);
 }
 async function revokeReplacedSession(dataDirOverride, fetchImpl = fetch) {
   try {
@@ -64239,7 +64331,10 @@ async function writeServiceTokenCache(cache, dataDirOverride) {
 function isFileNotFoundError4(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
-var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, _refreshState, REPLACED_SESSION_LOGOUT_TIMEOUT_MS, SERVICE_TOKEN_SAFETY_MARGIN_MS, SERVICE_MINT_TIMEOUT_MS, _serviceMintState;
+function isFileExistsError(err) {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "EEXIST";
+}
+var REFRESH_SAFETY_MARGIN_MS, REFRESH_REQUEST_TIMEOUT_MS, REFRESH_LOCK_POLL_INTERVAL_MS, REFRESH_LOCK_WAIT_TIMEOUT_MS, REFRESH_LOCK_STALE_MS, _refreshState, SESSION_EXPIRED_FALLBACK_MESSAGE, REPLACED_SESSION_LOGOUT_TIMEOUT_MS, SERVICE_TOKEN_SAFETY_MARGIN_MS, SERVICE_MINT_TIMEOUT_MS, _serviceMintState;
 var init_credentials = __esm({
   "src/lib/auth/credentials.ts"() {
     "use strict";
@@ -64248,9 +64343,13 @@ var init_credentials = __esm({
     init_schema3();
     REFRESH_SAFETY_MARGIN_MS = 6e4;
     REFRESH_REQUEST_TIMEOUT_MS = 3e4;
+    REFRESH_LOCK_POLL_INTERVAL_MS = 150;
+    REFRESH_LOCK_WAIT_TIMEOUT_MS = 15e3;
+    REFRESH_LOCK_STALE_MS = 2e4;
     _refreshState = {
       inFlight: null
     };
+    SESSION_EXPIRED_FALLBACK_MESSAGE = "Your MixShift session expired. Run `mixshift auth login` to re-authenticate.";
     REPLACED_SESSION_LOGOUT_TIMEOUT_MS = 5e3;
     SERVICE_TOKEN_SAFETY_MARGIN_MS = 6e4;
     SERVICE_MINT_TIMEOUT_MS = 3e4;
@@ -64536,7 +64635,7 @@ var init_identity = __esm({
 });
 
 // src/lib/telemetry/queue.ts
-import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat } from "node:fs/promises";
+import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat as stat2 } from "node:fs/promises";
 import { dirname as dirname5 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
@@ -64591,7 +64690,7 @@ async function atomicWrite(path2, body) {
 }
 async function queueSizeBytes(dataDirOverride) {
   try {
-    const s = await stat(telemetryQueuePath(dataDirOverride));
+    const s = await stat2(telemetryQueuePath(dataDirOverride));
     return s.size;
   } catch {
     return 0;
@@ -69577,7 +69676,7 @@ init_telemetry();
 
 // src/commands/brand-view.ts
 init_clients();
-import { readdir as readdir2, stat as stat2, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
+import { readdir as readdir2, stat as stat3, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
 import { dirname as dirname12 } from "node:path";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
@@ -71135,7 +71234,7 @@ async function scanRecentRuns(slug, dataDir, limit) {
     for (const runDate of dateDirs) {
       const runDir = `${skillDir}/${runDate}`;
       try {
-        const s = await stat2(runDir);
+        const s = await stat3(runDir);
         if (!s.isDirectory()) continue;
       } catch {
         continue;
@@ -71161,7 +71260,7 @@ async function scanRecentRuns(slug, dataDir, limit) {
 }
 async function fileExists(path2) {
   try {
-    await stat2(path2);
+    await stat3(path2);
     return true;
   } catch {
     return false;
@@ -75155,7 +75254,7 @@ import { join as join12 } from "node:path";
 // src/lib/render/brand-context-report.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, readdir as readdir3, stat as stat3 } from "node:fs/promises";
+import { readFile as readFile21, readdir as readdir3, stat as stat4 } from "node:fs/promises";
 import { dirname as dirname17, join as join11 } from "node:path";
 async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
@@ -75426,7 +75525,7 @@ async function summarizeCorpora(dirPath) {
     for (const f of entries) {
       if (!f.endsWith(".csv")) continue;
       try {
-        const s = await stat3(join11(dirPath, f));
+        const s = await stat4(join11(dirPath, f));
         if (!s.isFile()) continue;
         const raw = await readFile21(join11(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
@@ -91104,7 +91203,7 @@ function safeJsonPreview2(json2) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir31, open, readFile as readFile43, rename as rename23, stat as stat4, unlink as unlink9, writeFile as writeFile28 } from "node:fs/promises";
+import { mkdir as mkdir31, open as open2, readFile as readFile43, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile28 } from "node:fs/promises";
 import { dirname as dirname36 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
@@ -91134,9 +91233,9 @@ function sleep2(ms) {
     t.unref?.();
   });
 }
-async function isLockStale(lockPath) {
+async function isLockStale2(lockPath) {
   try {
-    const st = await stat4(lockPath);
+    const st = await stat5(lockPath);
     return Date.now() - st.mtimeMs > LOCK_STALE_MS;
   } catch {
     return false;
@@ -91145,14 +91244,14 @@ async function isLockStale(lockPath) {
 async function acquireLock(lockPath) {
   for (let attempt = 0; attempt < LOCK_RETRY_ATTEMPTS; attempt++) {
     try {
-      const handle = await open(lockPath, "wx");
+      const handle = await open2(lockPath, "wx");
       await handle.close();
       return true;
     } catch (err) {
       if (err.code !== "EEXIST") {
         break;
       }
-      if (await isLockStale(lockPath)) {
+      if (await isLockStale2(lockPath)) {
         await unlink9(lockPath).catch(() => {
         });
         continue;
@@ -92496,16 +92595,18 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
   };
 }
 function extractEvidence(whole, selection) {
+  const none = { statements: [], evidenceVersion: null };
   let block;
   if (selection) {
-    if (!selection.endsWith(".ops")) return [];
+    if (!selection.endsWith(".ops")) return none;
     const period = selection.split(".")[0];
     block = asRecord(asRecord(whole[period])?.evidence);
   } else {
     block = asRecord(whole.evidence);
   }
   const statements = asRecord(block?.statements);
-  if (!statements) return [];
+  if (!statements) return none;
+  const evidenceVersion = typeof block?.evidenceVersion === "string" && block.evidenceVersion.trim().length > 0 ? block.evidenceVersion : null;
   const prefix = selection ? `${selection.split(".")[0]}.evidence` : "evidence";
   const out = [];
   const used = /* @__PURE__ */ new Set();
@@ -92515,7 +92616,9 @@ function extractEvidence(whole, selection) {
       const g = asRecord(groupRaw);
       if (!g) return;
       const head = typeof g.head === "string" ? g.head : "";
-      const slug = head.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || `group_${i}`;
+      const rawKind = typeof g.id === "string" ? g.id.trim() : "";
+      const kind = /^[a-z0-9][a-z0-9_-]{0,63}$/.test(rawKind) ? rawKind : null;
+      const slug = kind ?? (head.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || `group_${i}`);
       let id = `${prefix}.${metric}.${slug}`;
       if (used.has(id)) id = `${id}.${i}`;
       used.add(id);
@@ -92523,6 +92626,7 @@ function extractEvidence(whole, selection) {
       const lines = questions.map((q) => asRecord(q)?.question).filter((q) => typeof q === "string" && q.trim().length > 0);
       out.push({
         id,
+        ...kind ? { kind } : {},
         metric,
         head,
         ...typeof g.tone === "string" ? { tone: g.tone } : {},
@@ -92531,7 +92635,7 @@ function extractEvidence(whole, selection) {
       });
     });
   }
-  return out;
+  return { statements: out, evidenceVersion };
 }
 var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops"];
 function isCompositeResponse(response) {
@@ -92822,7 +92926,10 @@ function extractFiguresUnprefixed(response, selection) {
     source: buildSource(env, rawDoc, domain2, void 0, selection),
     caveat_registry: registry2,
     figures: figures2,
-    ...evidence.length ? { evidence } : {}
+    ...evidence.statements.length ? {
+      evidence: evidence.statements,
+      ...evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {}
+    } : {}
   };
 }
 function periodPrefixOf(selection) {
@@ -94408,8 +94515,8 @@ async function findSkillsDir() {
   for (let i = 0; i < 6; i++) {
     try {
       const candidate = join26(dir, "skills");
-      const stat6 = await fs.stat(candidate);
-      if (stat6.isDirectory()) return candidate;
+      const stat7 = await fs.stat(candidate);
+      if (stat7.isDirectory()) return candidate;
     } catch {
     }
     const parent = dirname39(dir);
@@ -94817,8 +94924,8 @@ function registerShareSkillCommand(program3) {
   );
 }
 async function collectBundle(path2) {
-  const stat6 = await fs2.stat(path2).catch(() => null);
-  if (!stat6) throw new Error(`Path not found: ${path2}`);
+  const stat7 = await fs2.stat(path2).catch(() => null);
+  if (!stat7) throw new Error(`Path not found: ${path2}`);
   const files = [];
   const skipped = [];
   let totalBytes = 0;
@@ -94856,7 +94963,7 @@ async function collectBundle(path2) {
     files.push({ path: relPath, content, bytes });
     totalBytes += bytes;
   };
-  if (stat6.isFile()) {
+  if (stat7.isFile()) {
     await addFile(path2, basename4(path2));
   } else {
     const walk = async (dir) => {
@@ -96081,7 +96188,7 @@ init_engine();
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
-import { readdir as readdir6, stat as stat5 } from "node:fs/promises";
+import { readdir as readdir6, stat as stat6 } from "node:fs/promises";
 import { basename as basename5, dirname as dirname40, join as join28 } from "node:path";
 var EXIT_CODES = {
   credential_missing: 6,
@@ -96150,7 +96257,7 @@ async function sortCandidatesByMtime(paths) {
   const stated = [];
   for (const p of paths) {
     try {
-      stated.push({ path: p, mtimeMs: (await stat5(p)).mtimeMs });
+      stated.push({ path: p, mtimeMs: (await stat6(p)).mtimeMs });
     } catch {
     }
   }
@@ -96162,7 +96269,7 @@ function dataDirFromCredentialPath(hitPath) {
 }
 async function pathExists(path2) {
   try {
-    await stat5(path2);
+    await stat6(path2);
     return true;
   } catch {
     return false;

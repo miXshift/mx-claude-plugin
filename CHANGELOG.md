@@ -3,9 +3,44 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.12
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Changed
+
+- **Engine-written report evidence now keeps its identity when the wording
+  improves.** The analytics engine behind Report Max periodically rewords its
+  "What we know" statements to read better. Each statement card now carries a
+  stable id straight from the engine, and MixShift keys on that id rather than
+  on the sentence, so a wording improvement upstream never changes how your
+  reports cite their evidence. Reports also record which wording build phrased
+  the statements next to the engine version that computed the numbers, so
+  "why does this sentence read differently than last month" has a one-line
+  answer.
+
 ## 0.8.11
 
 ### Added
+
+- **You can now see how your Amazon DSP account is actually set up, not just how
+  it performed.** DSP used to be reporting only: numbers, and nothing about what
+  produced them. MixShift can now read the account itself and answer the
+  questions that come up when something looks wrong. Which campaigns and line
+  items exist. Which creatives you have, including ones built in the DSP console
+  before you ever used MixShift. Which creatives are attached to which line
+  items, and whether each placement is running or paused. Whether a placement
+  was approved or rejected, and why. And which creatives Amazon will actually
+  let you put on a given line item, which is worth asking rather than guessing:
+  DSP names creative types and line-item types differently, so an "online video"
+  line item is served by creatives Amazon labels simply "video", and comparing
+  the two yourself gives the wrong answer. Finding your DSP advertiser in the
+  first place is also much better handled, because a brand's DSP account and its
+  Sponsored Ads account share no id and are often named differently; MixShift now
+  looks in the right place, shows you the candidates, and asks you to confirm
+  rather than guessing. Placing or changing a creative is still done in the
+  Amazon DSP console; this is read-only, and MixShift will tell you so instead of
+  pretending otherwise.
 
 - **Sponsored Brands ads can now be created from MixShift.** Ask for the ad and
   it gets built: brand video, video, product collection, or store spotlight.

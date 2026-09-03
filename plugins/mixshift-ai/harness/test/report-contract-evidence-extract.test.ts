@@ -130,3 +130,140 @@ describe('id shape', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe('served stable ids (evidence 0.5.0)', () => {
+  // DriverQuestionGroup.id: a wording-independent semantic slug of the card
+  // KIND, stamped as cards are touched. The contract's own rule: key on it
+  // where present, keep a content fallback, absence is not an error.
+  const stamped = () => ({
+    envelope: envelope(),
+    evidence: {
+      scope: { kind: 'total' },
+      evidenceVersion: '0.5.0',
+      statements: {
+        ops: [
+          {
+            id: 'ops-promo-pricing',
+            head: 'promo pricing detected',
+            tone: 'positive',
+            questions: [{ question: '9 ASINs were discounted in Mar 2026.' }],
+          },
+          // Unstamped sibling in the same run: the details sub-card ships
+          // without an id on the wire today. Must keep the head-slug id and
+          // carry no kind, not error and not collide.
+          { head: 'promo pricing detected — details', questions: [{ question: 'detail line' }] },
+        ],
+        units: [
+          {
+            id: 'ops-promo-pricing',
+            head: 'promo pricing detected',
+            questions: [{ question: 'Units rose.' }],
+          },
+        ],
+      },
+      notes: [],
+      companionAttached: false,
+    },
+  });
+
+  it('prefers the served id for the slug leg, verbatim, and surfaces it as kind', () => {
+    const doc = extractFigures(stamped()) as { evidence?: { id: string; kind?: string }[] };
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toContain('evidence.ops.ops-promo-pricing');
+    const stampedEntry = doc.evidence!.find((e) => e.id === 'evidence.ops.ops-promo-pricing')!;
+    expect(stampedEntry.kind).toBe('ops-promo-pricing');
+  });
+
+  it('one kind under two metric roots stays two distinct, addressable ids', () => {
+    const doc = extractFigures(stamped()) as { evidence?: { id: string }[] };
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toContain('evidence.ops.ops-promo-pricing');
+    expect(ids).toContain('evidence.units.ops-promo-pricing');
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('a degenerate served id is treated as unstamped, not served verbatim (red team 2026-09-01, P2)', () => {
+    // The extractor also runs over user-supplied JSON, and a kind can be
+    // quoted into a customer-facing citation. Ids that do not look like the
+    // contract's slugs (length-capped lowercase kebab) degrade to the head
+    // slug — the absence posture — never flow through.
+    const degenerate = (id: unknown) =>
+      extractFigures({
+        envelope: envelope(),
+        evidence: {
+          scope: { kind: 'total' },
+          statements: { ops: [{ id, head: 'promo pricing detected', questions: [{ question: 'x' }] }] },
+          notes: [],
+          companionAttached: false,
+        },
+      }) as { evidence?: { id: string; kind?: string }[] };
+
+    for (const bad of [
+      'a'.repeat(65), // over the 64-char cap, alphabet otherwise valid
+      'ops.promo.pricing', // dots mimic our id segments
+      'Ops-Promo', // wrong case — not the contract's alphabet
+      '-leading-dash',
+      'has space',
+      'ctrl\u0000byte', // control byte, written as an escape so the source stays text
+    ]) {
+      const doc = degenerate(bad);
+      expect(doc.evidence![0]!.id).toBe('evidence.ops.promo_pricing_detected');
+      expect('kind' in doc.evidence![0]!).toBe(false);
+    }
+  });
+
+  it('an unstamped card keeps its pre-0.5.0 head-slug id and carries no kind', () => {
+    const doc = extractFigures(stamped()) as { evidence?: { id: string; kind?: string }[] };
+    const fallback = doc.evidence!.find((e) => e.id.includes('details'))!;
+    expect(fallback.id).toBe('evidence.ops.promo_pricing_detected_details');
+    expect('kind' in fallback).toBe(false);
+  });
+
+  it('surfaces the block-level evidenceVersion as evidence_version, only when stamped', () => {
+    const withStamp = extractFigures(stamped()) as { evidence_version?: string };
+    expect(withStamp.evidence_version).toBe('0.5.0');
+    // Pre-0.2.0 block (the existing fixture has no stamp): field absent, not null.
+    const withoutStamp = extractFigures(single()) as Record<string, unknown>;
+    expect('evidence_version' in withoutStamp).toBe(false);
+  });
+});
+
+describe('newly served statement groups flow through unmodified', () => {
+  it('extracts groups under metric roots this code has never seen (append-only tolerance)', () => {
+    // Evidence 0.3.0 began serving two previously popup-only groups, one
+    // under a metric root (`sessions`) that never carried statements before.
+    // The extractor iterates metric keys generically, so these must flow
+    // through with zero code awareness — this pins that no allowlist creeps
+    // in later.
+    const doc = extractFigures({
+      envelope: envelope(),
+      evidence: {
+        scope: { kind: 'total' },
+        evidenceVersion: '0.5.0',
+        statements: {
+          ops: [
+            {
+              id: 'ads-paid-demand-vs-revenue',
+              head: 'revenue vs paid demand',
+              questions: [{ question: 'Paid demand moved with the total and likely contributed.' }],
+            },
+          ],
+          sessions: [
+            {
+              id: 'ads-paid-vs-traffic',
+              head: 'traffic vs paid clicks',
+              questions: [{ question: 'Paid clicks moved with the decline, but much less sharply than total traffic.' }],
+            },
+          ],
+        },
+        notes: [],
+        companionAttached: true,
+      },
+    }) as { evidence?: { id: string; kind?: string; metric: string }[] };
+
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toContain('evidence.ops.ads-paid-demand-vs-revenue');
+    expect(ids).toContain('evidence.sessions.ads-paid-vs-traffic');
+    expect(doc.evidence!.find((e) => e.metric === 'sessions')!.kind).toBe('ads-paid-vs-traffic');
+  });
+});
