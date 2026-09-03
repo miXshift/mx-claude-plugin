@@ -1,16 +1,22 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
-display_name: Amazon DSP Report Pull
-version: "0.1.0"
+display_name: Amazon DSP (reports + live account reads)
+version: "0.2.0"
 description: >
-  Pull Amazon DSP (Demand-Side Platform) reports for a merchant, on demand,
-  straight from Amazon through MixShift's service. Drives the full DSP report
-  loop: discover the DSP advertiser id an advertising login can reach, build a
-  report request (type + dimensions + metrics), submit it, poll to completion
-  across turns, and fetch the JSON result. Read-only: generating a report
-  mutates nothing advertiser-facing and needs no write scope. Routes through
-  the bundled harness CLI. Does not require brand setup, only that the
-  user has signed in (`mixshift auth login`).
+  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
+  through MixShift's service. Two surfaces, addressed differently. REPORTING is
+  the async loop: build a report request (type + dimensions + metrics), submit,
+  poll to completion across turns, fetch the JSON. ACCOUNT READS answer what is
+  set up right now: campaigns and line items, the advertiser's creatives
+  (including ones built in the DSP console), which creatives are attached to
+  which line items and whether each placement is live or paused, whether a
+  placement was approved or rejected, and which creatives Amazon considers
+  eligible for a given line item. Also owns discovering which DSP advertiser a
+  login can reach, the step most DSP work gets stuck on. Read-only throughout:
+  nothing here mutates an advertiser and no write scope is needed. Creating or
+  attaching a DSP creative is NOT available. Routes through the bundled harness
+  CLI. Does not require brand setup, only that the user has signed in
+  (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service. Requesting
 # a DSP report returns aggregated performance data and mutates nothing
@@ -27,12 +33,24 @@ sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
 # Harness commands the skill calls (DSP is the DSP family inside `ads call`;
 # there is no dedicated `dsp` subcommand).
+# NOTE the two parameter names: the report operations take --path accountId=,
+# the /dsp/v1 account reads take --path advertiserId=. Same value, different
+# name per surface. The two discovery operations are in the Accounts family, so
+# `ads operations --family DSP` does not list them.
 harness_commands:
   - mixshift ads profiles
   - mixshift ads operations --family DSP
+  - mixshift ads call accounts.list_manager_accounts
   - mixshift ads call accounts.query_advertiser_accounts
   - mixshift ads call dsp.create_report --path accountId= --body-file <file>
   - mixshift ads call dsp.get_report --path accountId= --path reportId=
+  - mixshift ads call dsp.list_campaigns --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_ad_groups --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_ad_creatives --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_creative_associations --path advertiserId= --body <json>
+  - mixshift ads call dsp.list_association_moderations --path advertiserId= --body <json>
+  - mixshift ads call dsp.get_ad_creative_validation --path advertiserId= --path adCreativeId=
+  - mixshift ads call dsp.list_eligible_creatives --path advertiserId= --body <json>
 
 required_context_fields: []
 optional_context_fields: []
@@ -52,6 +70,15 @@ trigger_phrases:
   - dsp inventory report
   - run a dsp report
   - dsp advertiser report
+  - dsp creatives
+  - dsp line items
+  - dsp ad groups
+  - what creatives are running on dsp
+  - why is my dsp creative not delivering
+  - dsp creative approval
+  - is this creative eligible for dsp
+  - audit dsp account
+  - find my dsp advertiser id
 notes: >
   Auth model: DSP rides the Amazon Ads API, whose tokens are PER ADVERTISING
   LOGIN (not per seller). The service reads the tenant's stored advertising
@@ -62,16 +89,46 @@ notes: >
   merchant_not_found (exit 7) with candidates.
 
   Two distinct ids: `--legacy-seller-id` selects which advertising LOGIN's token
-  the service uses; `--path accountId=<dspAdvertiserId>` is the DSP advertiser
-  being reported on. The dspAdvertiserId is discovered from
-  accounts.query_advertiser_accounts alternateIds[].dspAdvertiserId (carries a
-  region; the login must reach that region). It is NOT the profileId or
-  legacySellerId.
+  the service uses; the DSP advertiser id says which advertiser to act on. It is
+  NOT the profileId or legacySellerId, its width varies (13 and 18 digits both
+  occur, so never validate by length), and it is not the ENTITY... id beside it,
+  which Amazon rejects.
+
+  THE TWO DSP FAMILIES TAKE IT UNDER DIFFERENT PARAMETER NAMES, which is the
+  usual first failure: the v3 report operations take `--path accountId=<id>`
+  and are profile-scoped, while the /dsp/v1 account reads take
+  `--path advertiserId=<id>`, send no profile scope, and require it on every
+  call. Same value, two names, because Amazon names it differently per surface.
+
+  Discovery is accounts.list_manager_accounts -> linkedAccounts rows of type
+  DSP_ADVERTISING_ACCOUNT (authoritative, no parameters), with
+  accounts.query_advertiser_accounts as a second source when that looks
+  incomplete (query BOTH global filters and page both, or it appears to show no
+  DSP when the advertiser is present). De-duplicate by dspAdvertiserId: one
+  advertiser is commonly linked under several manager accounts. Do NOT infer
+  "has DSP" from the count of agency-type profiles; most agency profiles are
+  Amazon Attribution, and an account with none can still hold DSP advertisers.
+
+  Brand -> advertiser has NO reliable automatic mapping: the sponsored and DSP
+  records share no identifier, so have the user confirm which advertiser they
+  mean rather than guessing.
 
   DSP reporting is its own endpoint (/accounts/{accountId}/dsp/reports) with a
   type / dimensions / metrics body, distinct from Sponsored Ads v3 reporting
   (configuration / reportTypeId / columns) and the unified /adsApi/v1 reporting.
   Validated live 2026-06-14 (service: vnd type on Accept, body application/json).
+
+  The /dsp/v1 account reads (campaigns, ad groups, creatives, creative
+  associations, moderations, creative validation, eligible creatives) were
+  validated live 2026-08-28. Read-only; there is no create/attach path for DSP
+  creatives, and the skill says so rather than improvising one. Three traps the
+  skill body covers because each yields a confident wrong answer: a creative
+  carries NO state (live-vs-paused belongs to its ASSOCIATION to a line item);
+  ad-group inventoryType, creative adCreativeFormatType and creative
+  adExperience are three separate enums that share no values, so ONLINE_VIDEO
+  line items are served by VIDEO-typed creatives; and an empty body returns ONE
+  row rather than a first page, while the truncation signal differs per
+  operation.
 
   Report shape: body { startDate, endDate, type, dimensions, metrics }. Types:
   CAMPAIGN (dimensions ORDER/LINE_ITEM/CREATIVE, the validated known-good

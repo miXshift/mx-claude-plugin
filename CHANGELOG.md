@@ -3,9 +3,66 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.12
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Changed
+
+- **Engine-written report evidence now keeps its identity when the wording
+  improves.** The analytics engine behind Report Max periodically rewords its
+  "What we know" statements to read better. Each statement card now carries a
+  stable id straight from the engine, and MixShift keys on that id rather than
+  on the sentence, so a wording improvement upstream never changes how your
+  reports cite their evidence. Reports also record which wording build phrased
+  the statements next to the engine version that computed the numbers, so
+  "why does this sentence read differently than last month" has a one-line
+  answer.
+
+- **Monthly Performance Report Max now prepares your client call, not just your
+  report.** Version 2.0 of the max tier produces two documents instead of one: a
+  client-ready performance brief you can share as is, and a private internal
+  companion with your talking points in call order, the numbers to keep off the
+  call, and every open commitment from the last call checked against the data
+  (landed, not landed, or not checkable). Each lives on a persistent per-brand
+  page that stacks every period's edition, newest on top: the link you share
+  once is the link your client bookmarks, new months just appear there, and
+  nobody re-sends URLs. Before it writes anything, it works
+  out what actually moved and why: availability, pricing and Buy Box, catalog
+  mix, or demand, each tested rather than guessed, with Buy Box weighted by
+  page views so an outage that already recovered is not reported as a live
+  problem. Featured-offer losses get diagnosed against Amazon's live offer
+  state, so the brief says whether the box was lost to a competitor or
+  suppressed, and what the fix is. Core figures still come from the MixShift
+  Intelligence service with the same typed extraction and checks. It also now
+  works out of the box on any account with zero setup: a brand-new or empty
+  account gets a baseline or setup read that asks questions instead of
+  asserting trends, and each run records what it learned so the next one starts
+  smarter. Monthly is the default; bi-weekly and QBR windows are a word in the
+  ask. The standard-tier monthly report is unchanged.
+
 ## 0.8.11
 
 ### Added
+
+- **You can now see how your Amazon DSP account is actually set up, not just how
+  it performed.** DSP used to be reporting only: numbers, and nothing about what
+  produced them. MixShift can now read the account itself and answer the
+  questions that come up when something looks wrong. Which campaigns and line
+  items exist. Which creatives you have, including ones built in the DSP console
+  before you ever used MixShift. Which creatives are attached to which line
+  items, and whether each placement is running or paused. Whether a placement
+  was approved or rejected, and why. And which creatives Amazon will actually
+  let you put on a given line item, which is worth asking rather than guessing:
+  DSP names creative types and line-item types differently, so an "online video"
+  line item is served by creatives Amazon labels simply "video", and comparing
+  the two yourself gives the wrong answer. Finding your DSP advertiser in the
+  first place is also much better handled, because a brand's DSP account and its
+  Sponsored Ads account share no id and are often named differently; MixShift now
+  looks in the right place, shows you the candidates, and asks you to confirm
+  rather than guessing. Placing or changing a creative is still done in the
+  Amazon DSP console; this is read-only, and MixShift will tell you so instead of
+  pretending otherwise.
 
 - **Sponsored Brands ads can now be created from MixShift.** Ask for the ad and
   it gets built: brand video, video, product collection, or store spotlight.
@@ -55,27 +112,6 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
-- **Monthly Performance Report Max now prepares your client call, not just your
-  report.** Version 2.0 of the max tier produces two documents instead of one: a
-  client-ready performance brief you can share as is, and a private internal
-  companion with your talking points in call order, the numbers to keep off the
-  call, and every open commitment from the last call checked against the data
-  (landed, not landed, or not checkable). Each lives on a persistent per-brand
-  page that stacks every period's edition, newest on top: the link you share
-  once is the link your client bookmarks, new months just appear there, and
-  nobody re-sends URLs. Before it writes anything, it works
-  out what actually moved and why: availability, pricing and Buy Box, catalog
-  mix, or demand, each tested rather than guessed, with Buy Box weighted by
-  page views so an outage that already recovered is not reported as a live
-  problem. Featured-offer losses get diagnosed against Amazon's live offer
-  state, so the brief says whether the box was lost to a competitor or
-  suppressed, and what the fix is. Core figures still come from the MixShift
-  Intelligence service with the same typed extraction and checks. It also now
-  works out of the box on any account with zero setup: a brand-new or empty
-  account gets a baseline or setup read that asks questions instead of
-  asserting trends, and each run records what it learned so the next one starts
-  smarter. Monthly is the default; bi-weekly and QBR windows are a word in the
-  ask. The standard-tier monthly report is unchanged.
 
 ### Fixed
 

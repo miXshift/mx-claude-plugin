@@ -77,7 +77,7 @@ The plugin ships **27 skills**. Each is invoked naturally in chat: say what you 
 | `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Read-only. |
 | `mx-amazon-retail` | Live SP-API retail lookups: catalog, inventory, orders, finances, listings, offer pricing. The title / brand source for ASINs missing from the warehouse. Read-only. |
 | `mx-amazon-amc` | Run Amazon Marketing Cloud (AMC) clean-room SQL: submit a query, poll it, fetch the result CSV. Read-only. |
-| `mx-amazon-dsp` | Pull Amazon DSP reports (campaign, inventory, audience) on demand. Read-only. |
+| `mx-amazon-dsp` | Read your Amazon DSP account setup (campaigns, line items, creatives, approval status) and pull DSP reports on demand. Read-only. |
 | `mx-amazon-ads` | Read and change a live Amazon Ads account: campaign / ad group / keyword / target lists, live bids and budgets, recommendations, plus pause / enable, bid and budget edits, and keyword / target / negative create and delete across SP / SB / SD. Writes preview first and need your explicit confirmation. |
 | `mx-feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
 | `mx-share-skill` | Share a skill you built with the plugin so MixShift can add it to the library. Say "I built a skill". |
