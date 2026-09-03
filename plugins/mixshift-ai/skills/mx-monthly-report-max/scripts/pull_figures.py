@@ -44,6 +44,13 @@ def find_cli():
     env = os.environ.get("MIXSHIFT_CLI")
     if env and os.path.exists(env):
         return ["node", env]
+    # The script ships inside the plugin, two levels from the harness: resolve its own
+    # sibling FIRST. This also makes the script work on native Windows, where the
+    # POSIX find below resolves to DOS find.exe and silently returns nothing.
+    here = os.path.dirname(os.path.abspath(__file__))
+    sibling = os.path.normpath(os.path.join(here, "..", "..", "..", "harness", "dist", "cli.js"))
+    if os.path.exists(sibling):
+        return ["node", sibling]
     found = subprocess.run(
         ["find", "/", "-maxdepth", "9", "-type", "f", "-path", "*/harness/dist/cli.js"],
         capture_output=True, text=True,
@@ -559,12 +566,25 @@ def main():
     brands = [b.strip() for b in args.brands.split(",") if b.strip()]
     w = resolve_windows(sid, dt.date.fromisoformat(args.as_of))
 
-    mov = movers(sid, w)
+    # One slow table must not cost the whole battery: a 60s gateway timeout on a huge
+    # catalog's inventory history is survivable, an empty figures file is not. Each
+    # section degrades independently; what failed is recorded, labeled, and printed,
+    # and the brief runs on what landed (degrade and label, the skill's own rule).
+    failed = {}
+
+    def safe(name, fn, *a, **k):
+        try:
+            return fn(*a, **k)
+        except RuntimeError as e:
+            failed[name] = str(e)
+            return None
+
+    mov = safe("movers", movers, sid, w)
     floor = args.min_item_sales
     if floor is None:
         # Median item revenue among items that sold this window: the documented
         # default, so thin accounts still flag something and large ones skip noise.
-        selling = sorted(x["cur"] for x in mov["items"] if (x["cur"] or 0) > 0)
+        selling = sorted(x["cur"] for x in (mov or {}).get("items", []) if (x["cur"] or 0) > 0)
         floor = int(selling[len(selling) // 2]) if selling else 0
 
     result = {
@@ -576,19 +596,25 @@ def main():
                                                       else "median item revenue, current window"),
                                "buybox_floor_pct": args.buybox_floor,
                                "buybox_mom_drop_pts": args.buybox_drop},
-        "account_ads": account_ads(sid, w),
-        "account_retail": account_retail(sid, w),
-        "dark_days": dark_days(sid, w),
-        "settled_efficiency_check": settled_check(sid, w, brands),
-        "daily": daily_series(sid, w),
-        "segment_ads": segment_ads(sid, w, brands),
-        "segment_retail": segment_retail(sid, w),
-        "availability_breadth": availability_breadth(sid, w),
+        "account_ads": safe("account_ads", account_ads, sid, w),
+        "account_retail": safe("account_retail", account_retail, sid, w),
+        "dark_days": safe("dark_days", dark_days, sid, w),
+        "settled_efficiency_check": safe("settled_efficiency_check", settled_check, sid, w, brands),
+        "daily": safe("daily", daily_series, sid, w),
+        "segment_ads": safe("segment_ads", segment_ads, sid, w, brands),
+        "segment_retail": safe("segment_retail", segment_retail, sid, w),
+        "availability_breadth": safe("availability_breadth", availability_breadth, sid, w),
         "movers": mov,
-        "oos_days": oos_days(sid, w),
-        "buybox_by_item": buybox_by_item(sid, w, floor, args.buybox_floor, args.buybox_drop),
-        "monthly_history": history(sid),
+        "oos_days": safe("oos_days", oos_days, sid, w),
+        "buybox_by_item": safe("buybox_by_item", buybox_by_item, sid, w, floor, args.buybox_floor, args.buybox_drop),
+        "monthly_history": safe("monthly_history", history, sid),
+        "sections_failed": failed,
     }
+    # Sections that never ran because their inputs failed are labeled, not silent.
+    if result["account_ads"] is None or result["account_retail"] is None:
+        failed.setdefault("derived_ratios", "skipped: account section missing")
+    result["account_ads"] = result["account_ads"] or {}
+    result["account_retail"] = result["account_retail"] or {}
 
     # Derive the ratios and the reconciliation, so the brief never has to.
     for period, ad in result["account_ads"].items():
@@ -598,7 +624,7 @@ def main():
         ad["tacos"] = round(100 * sp_ / ops, 1) if sp_ and ops else None
         ad["ad_share_of_sales"] = round(100 * sa / ops, 1) if sa and ops else None
         ad["aov"] = round(sa / ad["orders"], 2) if sa and ad.get("orders") else None
-        nf = result["dark_days"].get(
+        nf = (result["dark_days"] or {}).get(
             {"A_current": "current", "B_prior_month": "prior_month",
              "C_prior_year": "prior_year"}[period], {}).get("normalization_factor")
         if nf and nf != 1 and sp_ and sa:
@@ -607,10 +633,10 @@ def main():
             ad["tacos_normalized"] = round(100 * sp_ * nf / ops, 1) if ops else None
 
     acct_cur = result["account_retail"].get("A_current", {}).get("ops")
-    sku_cur = result["movers"]["sum_cur"]
+    sku_cur = (result["movers"] or {}).get("sum_cur")
     result["reconciliation"] = {
         "account_ops": acct_cur, "sku_sum": sku_cur,
-        "gap_pct": round(100 * (sku_cur - acct_cur) / acct_cur, 2) if acct_cur else None,
+        "gap_pct": round(100 * (sku_cur - acct_cur) / acct_cur, 2) if (acct_cur and sku_cur is not None) else None,
         "note": ("Within about 0.5% is fine. A sum near 2x or 3x means a join multiplied "
                  "rows: use a correlated subquery for the nickname, not JOIN mws_items."),
     }
@@ -627,7 +653,9 @@ def main():
         ao_s = f"${ao:,.0f}" if ao is not None else "n/a"
         ss_s = f"${ss:,.0f}" if ss is not None else "n/a"
         print(f"reconciliation: account {ao_s} vs SKU sum {ss_s} ({rec['gap_pct']}%)")
-        dd = result["dark_days"]
+        for name, why in result["sections_failed"].items():
+            print(f"SECTION FAILED (brief runs without it, label the gap): {name}: {why[:140]}")
+        dd = result["dark_days"] or {}
         for k, v in dd.items():
             if v["zero_spend_days"]:
                 print(f"dark ad days in {k}: {', '.join(v['zero_spend_days'])} "

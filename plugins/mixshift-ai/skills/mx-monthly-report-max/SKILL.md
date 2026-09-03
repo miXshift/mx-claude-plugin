@@ -202,9 +202,15 @@ disk are free.
 mixshift intelligence run INS-MONTHLY-01 --params-file p.json --out run.json
 ```
 
-(params: `{"merchant": {"sellerId", "marketplaceId"}, "month", "grouping", "includeYoY"}`;
-oversize accounts return an async handle: poll with `mixshift intelligence poll`, never
-cancel on time.) Then extract typed figures per envelope, never reading the raw envelope
+(params: `{"merchant": {"legacySellerId"} or {"sellerId", "marketplaceId"}, "month",
+"includeYoY", "evidence": true}`; `legacySellerId` is the id `brand list` serves, so it is
+the form to reach for, and the service names exactly what it rejects. An oversize account
+refuses the sync run with `account_too_large_use_async`: retry the same command with
+`--async`, check with `mixshift intelligence poll <runId>` (status only, never the
+payload), and fetch with `mixshift intelligence get <runId> --out run.json` once ready;
+never cancel on time. A `poll` that reports done is not yet a success: `get` can still
+return an engine error for a run that failed terminally, and that failure degrades per the
+rule below.) Then extract typed figures per envelope, never reading the raw envelope
 JSON (reasoning from a 40-120KB fragment you skimmed is the failure this step exists to
 prevent):
 
@@ -219,6 +225,15 @@ the documents compose without collisions. When the run was made with `evidence: 
 extraction carries the engine's own `evidence[]` statements; causal claims in the brief
 quote those as their mechanism rather than inventing one. Record `source.engineVersion`
 from the `mom.ops` document for the run record.
+
+**The envelope compares calendar months.** On an in-progress month its MoM pair is the
+full prior month against the month to date, and its YoY pair has the same shape, so
+neither is quotable as a like-day delta: on a real account the calendar pair read down
+double digits while the matched-window truth was up 4.1%. For any in-progress window the
+battery's matched day-count figures carry every quoted MoM and YoY delta; the envelope
+anchors the closed-month baseline, the decomposition shape, and the evidence, and its
+in-progress deltas go on the internal companion's numbers-to-keep-off list, labeled with
+why.
 
 On a service error: **degrade and label.** Name the degradation in the method notes, pull
 the account totals from the warehouse battery instead, and keep going. Never silently

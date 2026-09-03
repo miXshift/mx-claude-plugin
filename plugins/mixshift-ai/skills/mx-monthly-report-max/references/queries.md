@@ -56,9 +56,16 @@ differs and mixing them produces figures that cannot be reconciled.
   below. Retail from `business_reports_dpst_date` and `_sku`. Buy Box, offer count, sessions and
   inventory all exist.
 - **VC (Vendor Central).** Ad metrics from `sellermonthmetric`, which is settled. Do not
-  aggregate raw `campaignmetric` for VC account-level ACOS. Retail from
-  `vendor_sales_manufacturing_asin`. There is no Buy Box and no session count; use glance views
-  from `vendor_traffic_asin_daily` as the traffic proxy and say so.
+  aggregate raw `campaignmetric` for VC account-level ACOS (like-day SPEND from it is fine,
+  labeled; it is attributed sales that unsettle). Retail from `vendor_sales_manufacturing_asin`,
+  on the ORDERED basis unless the client's convention says shipped; never mix bases in one
+  comparison. There is no Buy Box and no session count; use glance views from
+  `vendor_traffic_asin_daily` as the traffic proxy and say so. Two field-proven traps:
+  resolve VC windows from the VENDOR table's own `MAX(DateTime)`, not the ads table's
+  (vendor retail loads later, and a one-day misalignment flipped a real month's MoM sign
+  from -0.5% to the true +4.6%); and never read `sellermonthmetric`'s own ACoS columns,
+  which store a fraction rounded to one decimal (every month reads 0.2): compute ACOS from
+  spend over sales.
 
 **Attribution windows.** SC: Sponsored Products 7 day, Sponsored Brands 14 day, Sponsored
 Display 14 day. VC: all 14 day. The SC rule as SQL, which is the canonical form:
@@ -457,6 +464,17 @@ GROUP BY m ORDER BY m
 `days` catches partial months. Look at the prior-year comparison month against its own
 neighbours: if it is an obvious trough, the year-over-year comp is flattered by the base and the
 brief should say so.
+
+## Scale ceiling
+
+The gateway enforces a 60-second statement ceiling. On catalogs with millions of inventory
+rows (seen at about 8,600 listed items / 7.5M rows), the out-of-stock and availability
+breadth queries exceed it, the battery labels those sections failed, and the brief runs
+without them, saying so. A bounded variant still answers the question where it matters:
+run the same OOS query with `AND h.ASIN IN (<top 20 current-window sellers>)` and label it
+as top-20 coverage. The Intelligence engine can hit the same wall on these accounts
+(`account_too_large_use_async`, and the async run can itself time out terminally): that is
+a degrade-and-label, battery-carries-the-brief month, and an engine-team routing.
 
 ## Known traps
 

@@ -202,7 +202,7 @@ def check_unitless_signed_deltas(body):
     txt = strip(body)
     for m in re.finditer(r'\(\s*[-+]\d+(?:\.\d+)?\s*\)', txt):
         out.append(('paren-delta-missing-unit', txt[max(0, m.start()-50):m.end()+10]))
-    for m in re.finditer(r'[-+]\d+\.\d+(?=\s+(?!pts?\b|points\b|x\b|times\b)[a-z])', txt):
+    for m in re.finditer(r'[-+]\d+\.\d+(?=\s+(?!pts?\b|points\b|x\b|times\b|items?\b|days?\b|units?\b|sessions?\b|orders?\b|clicks?\b|rows?\b|servings?\b|per\b)[a-z])', txt):
         out.append(('signed-delta-missing-unit', txt[max(0, m.start()-50):m.end()+15]))
     return out
 

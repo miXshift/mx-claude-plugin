@@ -46,8 +46,10 @@ does not date its windows cannot be checked later.
 
 ## Bottom line
 
-One paragraph, three moves: the conclusion, the mechanism, the counterweight. A second short
-paragraph only if there is a genuinely separate second finding.
+One paragraph, three moves: the conclusion, the mechanism, the counterweight. Open with the
+conclusion as one full bold clause, verb included: a bare label like "Bottom line." is a
+verbless fragment and the lint flags it. A second short paragraph only if there is a
+genuinely separate second finding.
 
 The counterweight is the part people skip and it is what makes the brief trustworthy. If sales
 fell but the catalog is wider than ever and new items offset half the loss, that belongs in the
