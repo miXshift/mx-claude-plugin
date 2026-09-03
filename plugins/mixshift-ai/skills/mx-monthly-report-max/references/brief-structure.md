@@ -232,6 +232,18 @@ useful, as long as each row carries a status chip so nobody misreads a fixed ite
 Where the diagnosis distinguishes suppression from a competitor, say which, because the two have
 completely different fixes and the client's team will act on whichever you name.
 
+## Custom sections (per brand)
+
+Standing per-brand sections live as spec files in `clients/<brand>/report-sections/*.md`
+and render data-gated like every standard section. Spec format: frontmatter (`id`,
+`title`, `documents: client|internal|both`, `position: after <standard section id>`,
+`gating`, `added`), then plain-language composition notes: which data serves it, which
+figures matter, this brand's data gotchas, and why the client cares (the manager's own
+words, so the section keeps earning its place). Keep each spec under a screen; it is
+instructions to a future run, not documentation. Creation, persistence and removal all
+run through the review gate (see SKILL.md "Custom sections"); a section nobody asked to
+keep is a one-off, not a standing spec.
+
 ## What to tell the client
 
 **Internal companion only.** Numbered in speaking order, which is usually:

@@ -101,7 +101,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
 | Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
-| Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list |
+| Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list; per-brand ADDITIONS via `clients/<brand>/report-sections/` (see "Custom sections") |
 | Review | `full`: nothing publishes before the review packet is approved. After three zero-edit approvals on a brand the skill may OFFER `claims_only`; `auto` only by explicit choice | `reporting.review`: `full`, `claims_only`, `auto` |
 | Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
@@ -852,6 +852,46 @@ gets re-edited monthly.
 Brand-context `reporting.voice_lint` additions apply on top of these. If the organization
 ships its own writing-style skill, it wins where the two conflict.
 
+## Custom sections: shaping the report to a client over time
+
+Voice profiles tune how a brand's report SOUNDS; custom sections tune what it CONTAINS.
+When the manager asks for content the standard template does not carry ("add DSP
+performance to this report", "include a returns section", "show the top search terms"),
+the flow is:
+
+1. **Compose it this run.** Build the section from available data like any other: figures
+   from the battery or a documented query recorded in the run record, claims into the
+   register, presentation register in the client half, charts under the chart contract.
+   A custom section is never a gate bypass; it passes every check a standard section
+   passes. If the data does not exist, say what is missing and what connecting it would
+   take; do not fake a thin version.
+2. **Propose it as STANDING at the review gate.** The packet's write-backs section asks
+   once: "keep this section as part of every future report for this brand?" On yes, write
+   a spec file to `~/.mixshift/clients/<brand>/report-sections/<id>.md`; on no, it was a
+   one-off and the run record remembers it was produced once.
+3. **Every later run renders standing sections automatically**, data-gated like the rest:
+   the section appears when its gating data exists and is omitted (named in the packet as
+   drift) when it does not. Removal is the same one-sentence motion as every knob ("drop
+   the DSP section"), recorded, never re-asked.
+
+The spec file is short: frontmatter (`id`, `title`, `documents: client|internal|both`,
+`position` relative to a standard section, `gating` in one sentence, `added` date and by
+whom) then plain-language composition notes: which data, which figures matter, known
+gotchas for THIS brand's version of the data, and anything the manager said about why the
+client cares. The spec is a living file in the brand's own directory, exactly like
+voice.md: the skill maintains it through review-gate edits, and it travels with the brand,
+not the machine (and rides the same platform-hosted org-context path when that lands).
+
+**The promotion ladder keeps custom work reusable**: composed once (run record) -> standing
+for the brand (spec file) -> when the same section proves out for several brands, promote
+it into this skill's standard template as a data-gated section (the borrowable-component
+map in `components.yaml` is the promotion path), at which point the brand spec files
+retire in favor of the standard section plus per-brand `reporting.sections` preferences.
+One more document-length rule rides along: the fifteen-minute reader does not scale with
+section count, so when a custom section lands, the packet notes the document's length
+drift and invites a cut ("adding DSP takes the client doc to nine sections; segment reads
+carried the least signal this month if you want one out").
+
 ## Before publishing
 
 The errors that survive casual proofreading:
@@ -875,6 +915,9 @@ The errors that survive casual proofreading:
   result and the internal method notes (i06) say how, alongside the SKU reconciliation
   figure; the envelope was re-pulled on publish day.
 - Every claimed cause has evidence; everything else is a question in Things-to-check.
+- Any custom section passed the same gates as standard ones (figures traced, claims
+  registered, register rules, charts contract), and a NEW standing section was proposed
+  through the review packet, never silently persisted.
 - No em or en dashes, no unsigned deltas, no unlabelled deltas; any run-rate close is
   called arithmetic.
 - The agency's own unmet commitments are in the internal companion, not only the client's.
