@@ -57,9 +57,11 @@ optional_context_fields:
   - reporting.style
   - item_lifecycle
 artifacts:
-  - name: client-brief.html
+  - name: <brand>-performance-reviews.html (persistent client hub, one URL per brand)
     type: report_html
-  - name: internal-companion.html
+  - name: <brand>-call-notes-internal.html (persistent internal hub)
+    type: report_html
+  - name: fragments/<period>-{client,internal}.html (run-ledger fragments)
     type: report_html
   - name: run sidecar (<date>-<run-id>.json)
     type: json_artifact

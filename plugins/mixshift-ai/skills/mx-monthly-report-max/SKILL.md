@@ -22,9 +22,9 @@ dependencies:
   - Meeting-notes source (optional; Google Drive or Fireflies MCP when connected)
 sample_input: "Get me ready for the Acme Goods monthly call"
 sample_output: |
-  Two documents published: "Acme Goods August Performance Review" (shareable) and
-  "Acme Goods August Call Notes (Internal)". August is an availability story, not
-  a demand story: OPS $1.0M (-5.0% MoM), 12 stocked-out items explain $60K of the gap.
+  August added to both hubs: "Acme Goods Performance Reviews" (the one URL the client
+  bookmarks) and "Acme Goods Call Notes (Internal)". August is an availability story,
+  not a demand story: OPS $1.0M (-5.0% MoM), 12 stocked-out items explain $60K of the gap.
 standalone: true
 handoff_optional: true
 ---
@@ -85,7 +85,7 @@ wants a different setting will say so, and the answer gets recorded for next tim
 |---|---|---|
 | Cadence | monthly; "bi-weekly" or "QBR"/"quarterly" in the ask switches it | `reporting.call_cadence` in context.yaml |
 | Documents | both; "just the client one" / "just my notes" narrows it | `reporting.brief_documents`: `both`, `client_only`, `internal_only` |
-| Publish | Artifact URLs when the Artifact tool exists; otherwise HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
+| Publish | two persistent per-brand HUB artifacts (client + internal), each period stacking in place at one stable URL; without the Artifact tool, two hub HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
 | Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
 | Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
@@ -531,15 +531,23 @@ Composition rules that survive every mode:
 Build both documents from `assets/brief-template.html`: keep the token block, the type
 pairing and the component classes; replace the content. The template carries BOTH
 documents in one file, split at the "INTERNAL COMPANION ONLY" marker: **always split into
-two files before publishing, at two URLs or two file paths, and never republish one over
-the other's path.** Reports are PERSISTENT, one URL per period: name the files with the
-brand and period (`<brand>-2026-08-client-brief.html`, never a generic reusable name), so
-no later month's publish can land on an earlier month's URL even by accident; last month's
-link keeps working when this month's goes out, and the client shares each period as its
-own page. Render the footer's history line from the publish registry (prior periods,
-newest first, up to six), same document class only: the client brief links prior client
-briefs, the internal companion links prior internal notes, and an internal URL in a
-client footer is a leak, not a convenience.** The internal document keeps its rendered internal banner, and its
+two files before publishing, at two URLs, and never mix a fragment of one class into the
+other's page.**
+
+**Reports are persistent and the URL is shared ONCE: each brand gets two HUB artifacts,
+and every period's review stacks into them.** The client hub (`<brand>-performance-reviews.html`,
+title "<Brand> Performance Reviews") is the one link the manager ever sends: the client
+bookmarks it, and each month's brief appears there without a new URL. The internal hub
+(`<brand>-call-notes-internal.html`, title carries "(Internal)", banner kept) stacks the
+call notes the same way and is never shared. Mechanics, per `assets/hub-shell.html`:
+compose this period's documents from the template as usual, store each as a styleless
+FRAGMENT in the run ledger (`fragments/<period>-client.html`, `-internal.html`), then
+assemble each hub (shell + fragments newest-first: latest open, earlier periods collapsed
+with `#m-<period>` anchors and a month nav) and republish it AT ITS EXISTING URL: same
+file path in this conversation, or the registry's stored `url` from any other session.
+Publishing a hub as a new artifact defeats the whole feature; the first run on a brand is
+the only time a hub URL is created, and the handover that one time says which hub is
+shareable. Deep links are anchors on the one URL, so nothing ever needs re-sharing. The internal document keeps its rendered internal banner, and its
 title carries "(Internal)": "Acme Goods August Call Notes (Internal)". Publish per the
 Publish knob, give the two documents distinct names and favicons so they cannot be
 confused, and hand over both URLs or file paths while saying plainly which one is
@@ -645,9 +653,10 @@ The errors that survive casual proofreading:
 - The review packet was presented and approved per the Review knob; the claims register
   is emitted as `.claims.json` and rendered as internal section i05; approved write-backs
   landed in the run ledger and discoveries file.
-- File names are period-stamped (`<brand>-<period>-...`), the footer's history links come
-  from the publish registry, and every URL in the client file appears in the registry as a
-  CLIENT-class URL: an internal URL in the client footer fails this check.
+- Each hub was republished at its REGISTERED url (never a new artifact); this period's
+  fragments are period-stamped in the run ledger; the client hub contains no internal
+  fragment, section, or URL (`prose-lint.py --role client` runs on the assembled client
+  hub, not only the fragment); the month nav carries every registered period.
 - In Baseline or Setup mode: no MoM/YoY language anywhere, and every absent comparison is
   `n/a` or a question, never a benchmark.
 
@@ -675,10 +684,11 @@ written every run, consumed mechanically by the next one:
   pull against what THIS run published and reports material restatements (over the 0.5%
   tolerance) in the method notes: "July restated +$3.1K since the August brief." Amazon
   restates; the brief should never look like it disagrees with itself silently.
-- **The publish registry**: artifact URLs per period and per document class, which is
-  what makes "never republish over an earlier period" checkable and feeds the footer's
-  history line, so every period's document links its predecessors and the client keeps a
-  linkable history without a portal.
+- **The publish registry**: the two hub URLs per brand plus the per-period fragment
+  paths. It is what lets any later session republish the SAME hub URL (pass the stored
+  `url`), feeds the month nav, and makes "the client hub carries only client fragments"
+  checkable. The fragments plus this registry are also the substrate for hosting the
+  stack on the MixShift platform later: the hub is just a renderer over them.
 - **Review deltas**: what the reviewer changed, per run. Three zero-edit runs is the
   trust-ramp trigger; recurring edits of the same kind are voice or selection
   calibration and, once a pattern repeats, become a proposed `reporting.voice_lint` or

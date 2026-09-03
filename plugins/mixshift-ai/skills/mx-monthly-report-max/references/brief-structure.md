@@ -287,11 +287,12 @@ and operated, not read. What that means in practice:
 - All three theme states are handled: bare `:root` for light, `prefers-color-scheme: dark`
   guarded with `:not([data-theme="light"])`, and `[data-theme="dark"]` for the explicit toggle
 
-Title each artifact as a name, two to four words, specific to the account and occasion, and give
-the two documents distinct titles and favicons so they cannot be confused in the gallery. The
-internal document's title always carries "(Internal)". "Acme Goods August Performance Review"
-and "Acme Goods August Call Notes (Internal)" work. "Monthly Performance Report Summary" does
-not, because it could sit on any page in the gallery.
+The published pages are the two per-brand HUBS, and their titles are STABLE across every
+republish: "Acme Goods Performance Reviews" and "Acme Goods Call Notes (Internal)". Keep the
+favicon stable too; clients find a bookmarked tab by its icon. The month and its conclusion
+live inside each period's fragment (its masthead h1), not in the hub title. Generic titles
+("Monthly Performance Report Summary") still fail: the hub must read as this brand's page in
+a gallery of many.
 
 When handing over the URLs, say plainly which one is shareable. That one sentence is what stops
 the internal companion reaching a client.

@@ -60,7 +60,10 @@ starts at 0.5.39; earlier versions predate the changelog.
   client-ready performance brief you can share as is, and a private internal
   companion with your talking points in call order, the numbers to keep off the
   call, and every open commitment from the last call checked against the data
-  (landed, not landed, or not checkable). Before it writes anything, it works
+  (landed, not landed, or not checkable). Each lives on a persistent per-brand
+  page that stacks every period's edition, newest on top: the link you share
+  once is the link your client bookmarks, new months just appear there, and
+  nobody re-sends URLs. Before it writes anything, it works
   out what actually moved and why: availability, pricing and Buy Box, catalog
   mix, or demand, each tested rather than guessed, with Buy Box weighted by
   page views so an outage that already recovered is not reported as a live
