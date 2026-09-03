@@ -253,6 +253,49 @@ def check_client_has_no_internal(body):
                         'matched %r near "%s"' % (pat, body[max(0, m.start()-30):m.end()+30].replace('\n', ' '))))
     return out
 
+# Register phrases that must never appear in the CLIENT document (--role client):
+# the client brief is the account manager presenting to the client's executive team,
+# so tooling nouns, process narration and basis talk are findings there. Multi-word
+# phrases and schema-shaped tokens ONLY: banning bare common nouns ("engine",
+# "warehouse") false-positives on product titles, the same trap the imperative-verb
+# whitelist hit. The finding survives in client copy; the apparatus moves internal.
+CLIENT_REGISTER = [
+    r'settled[- ]window',
+    r'page[- ]view[- ]?weight\w*',
+    r'\bPV-weighted',
+    r'\bSellerID\b',
+    r'completeness trim',
+    r'\baccount mode\b',
+    r"\bengine's\b",
+    r'intelligence engine',
+    r'MixShift Intelligence',
+    r'\bengine ?[Vv]ersion\b',
+    r'\bcross-check\w*',
+    r'warehouse (?:table|batter|quer)\w*',
+    r'\b(?:business_reports_\w+|campaignmetric|sellermonthmetric|mws_\w+)\b',
+    r'\bmatches ours\b|\bour read matches\b',
+    r'\bthe scope bar\b|\bmethod notes\b',
+]
+
+def check_client_register(body):
+    out = []
+    for pat in CLIENT_REGISTER:
+        m = re.search(pat, body, re.I)
+        if m:
+            out.append(('internal-register-in-client-doc',
+                        'matched %r near "%s"' % (pat, body[max(0, m.start()-30):m.end()+30].replace('\n', ' '))))
+    # MoM/YoY are furniture for tables, tiles and chips; client PROSE labels deltas
+    # with words ("up 5.3% on July"). Strip the furniture, then scan what remains.
+    prose = re.sub(r'<table\b.*?</table>', ' ', body, flags=re.S | re.I)
+    prose = re.sub(r'<p class="d [^"]*">.*?</p>', ' ', prose, flags=re.S)
+    prose = re.sub(r'<span class="chip[^"]*">.*?</span>', ' ', prose, flags=re.S)
+    m = re.search(r'\b(MoM|YoY)\b', prose)
+    if m:
+        out.append(('mom-yoy-in-client-prose',
+                    'client prose labels deltas with words ("up 5.3%% on July"); MoM/YoY is table/tile/chip furniture. Near "%s"'
+                    % prose[max(0, m.start()-40):m.end()+40].replace('\n', ' ')))
+    return out
+
 CHECKS = [check_bold_openers, check_rest_fragments, check_template_repetition,
           check_dash_density, check_no_dashes, check_ambiguous_metrics,
           check_number_precision, check_unitless_signed_deltas, check_sentence_length]
@@ -262,6 +305,7 @@ def lint(path, role=None):
     findings = []
     if role == 'client':
         findings.extend(check_client_has_no_internal(body))
+        findings.extend(check_client_register(body))
     for c in CHECKS:
         findings.extend(c(body))
     return findings

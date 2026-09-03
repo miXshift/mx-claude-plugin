@@ -249,6 +249,14 @@ ul.checks b{color:var(--ink);font-weight:600;}
 .flat{color:var(--ink-mute);}
 .caution{color:var(--warn);}
 
+/* charts */
+.chartfig{margin:26px 0 0;padding:18px 18px 12px;background:var(--surface);border:1px solid var(--rule);}
+.chartfig svg{display:block;width:100%;height:auto;}
+.chartfig text{font-family:"IBM Plex Mono",ui-monospace,monospace;fill:var(--ink-mute);}
+.chartfig .cv{fill:var(--ink);font-weight:600;}
+.chartfig figcaption{font-size:.82rem;color:var(--ink-soft);margin-top:10px;}
+.chartfig figcaption b{color:var(--ink);}
+
 /* tables */
 .tscroll{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);background:var(--surface);}
 table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:600px;}
@@ -357,6 +365,15 @@ footer{
 <!--
   MixShift call brief template. Replace all {{...}} placeholders and the example content.
 
+  THE REGISTER RULE, before anything else: the client brief is the account manager
+  presenting to the client's executive team. Every sentence must survive being read
+  aloud in that meeting. The findings stay; the apparatus moves to the internal
+  companion. Never in the client document: tooling nouns (engine, envelope, battery,
+  warehouse table names, SQL, SellerID), process narration ("cross-checked against",
+  "verified on settled windows", "the engine attributes", "our read matches"), basis
+  and threshold talk, or a scope/method section. The client doc asserts; the internal
+  companion (scope block + i06 method notes + i05 claims register) audits.
+
   This one file carries BOTH documents. Sections 01 to 05 plus method are the CLIENT brief.
   Everything after the "INTERNAL COMPANION ONLY" marker belongs in a second artifact at its own
   URL: talking points, numbers to keep off the call, owner-attributed open items, next lever.
@@ -403,12 +420,8 @@ footer{
   </div>
 </header>
 
-<div class="scope">
-  <p><b>Scope.</b> {{Account}} {{Seller Central|Vendor Central}} {{marketplace}} only (SellerID {{id}}). Window is <b>{{current window}}</b> against <b>{{prior month window}}</b> and <b>{{prior year window}}</b>. {{Why the window ends where it does, if the data load date drove it.}}</p>
-  <p><b>{{Any correction being applied.}}</b> {{What it is, which figures it touches, which it does not.}}</p>
-  <p><b>Buy Box and offer figures are page-view weighted.</b> {{Why: a simple daily average treats a quiet day and a busy day alike. Note it here if weighting changes the direction of the month over month move.}}</p>
-</div>
-
+<!-- No scope bar here: the masthead stamp carries account + window for the client;
+     the full technical scope block lives in the internal companion. -->
 <div class="bottomline">
   <p><strong>{{The conclusion as one full bold clause, verb included; a bare label like "Bottom line." is a fragment and fails the lint.}}</strong> {{Then the mechanism. Then the counterweight.}}</p>
 </div>
@@ -444,6 +457,32 @@ footer{
       </tbody>
     </table>
   </div>
+
+  <figure class="chartfig">
+    <!-- CHARTS are baked-static inline SVG composed at WRITE TIME from battery data:
+         compute the coordinates in the generator, emit literal markup, no chart library
+         and no runtime data fetch. Three chart types, all data-gated, at most three
+         charts per document, and every value a chart shows must also exist in a table
+         or tile (charts summarize, never introduce figures, except a bridge residual
+         that must foot to the printed gross split):
+         1. TREND (here): monthly ordered sales, >= 8 closed months required (battery
+            monthly_history; in-progress months excluded). Single hue var(--accent);
+            current month full opacity, same-month-last-year 0.62, rest 0.38; label
+            only those plus the season peak. Rounded at the value end only, square at
+            the baseline; per-bar <title> tooltips.
+         2. BRIDGE (section 02, after the gross-split lede): prior month -> current
+            month by mechanism. Anchors as level ticks (var(--ink)) with values;
+            deltas as floating bars, var(--good)/var(--crit), dotted connectors,
+            every bar direct-labeled; the mechanism split must match the claims
+            register's availability attribution.
+         3. DAILY LINE (optional, when the story is intra-month shape, e.g. a stockout
+            recovery): battery daily series, 2px var(--accent) line, crosshair+tooltip
+            per the AOP pattern.
+         SVG text uses the .chartfig text classes (never series-colored text); axis
+         gridlines var(--rule-soft); viewBox width 940. -->
+    <svg viewBox="0 0 940 240" role="img" aria-label="{{Monthly ordered product sales, <first> to <last>}}">{{baked bars, gridlines, labels}}</svg>
+    <figcaption><b>{{Ordered product sales by month.}}</b> {{One line naming the comparison the reader should make.}}</figcaption>
+  </figure>
 
   <h3>{{Trajectory heading, stated as a finding}}</h3>
   <p class="prose">{{Opening rate against exit rate. The run-rate close, called arithmetic.}}</p>
@@ -487,7 +526,7 @@ footer{
   <h2><span class="n">03</span>{{Segment}} reads</h2>
   <div class="tscroll">
     <table>
-      <caption><b>{{Segment A and Segment B, matched windows.}}</b> Buy Box is page-view weighted. In-stock items is the average count of items with fulfillable inventory on a given day. Page views on in-stock items is the share of segment page views that landed on something buyable. {{How each split was derived, and that the item counts are ours rather than Amazon's.}}</caption>
+      <caption><b>{{Segment A and Segment B, matched windows.}}</b> Buy Box here weights busy days more than quiet ones, so it reflects what shoppers actually met. In-stock items is the average count of items buyable on a given day; page views on in-stock items is the share of traffic that landed on something buyable.</caption>
       <thead>
         <tr><th>Metric</th><th>A cur</th><th>A pri</th><th>A MoM</th><th>B cur</th><th>B pri</th><th>B MoM</th></tr>
       </thead>
@@ -496,7 +535,7 @@ footer{
         <tr><th>Units</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
         <tr><th>Sessions</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
         <tr><th>Units per session</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr class="rule-top"><th>Buy Box, page-view weighted</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Buy Box</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
         <tr><th>In-stock items per day</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
         <tr><th>Listed items per day</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
         <tr><th>Page views on in-stock items</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
@@ -509,7 +548,7 @@ footer{
   </div>
 
   <h3>{{Segment A finding}}</h3>
-  <p class="prose">{{Read. Cite the settled-window check on any efficiency claim.}}</p>
+  <p class="prose">{{Read. Efficiency claims were verified on settled windows BEFORE being written here; the client copy just asserts them, and the verification lives in the internal method notes.}}</p>
 
   <h3>{{Segment B finding}}</h3>
   <p class="prose">{{Read.}}</p>
@@ -535,7 +574,7 @@ footer{
 
   <div class="tscroll">
     <table>
-      <caption><b>Items below 92% Buy Box on the last seven days, above {{floor}} of sales.</b> All Buy Box columns are page-view weighted. The last seven days column is the one to act on: a month average blends a resolved problem with the days it was broken.</caption>
+      <caption><b>Items below 92% Buy Box on the last seven days, above {{floor}} of sales.</b> The last seven days column is the one to act on: a month average blends a resolved problem with the days it was broken.</caption>
       <thead>
         <tr><th>Item</th><th>Cur sales</th><th>Prior BB</th><th>Cur BB</th><th>Last 7 days</th><th>Status</th></tr>
       </thead>
@@ -585,31 +624,23 @@ footer{
   </ul>
 </section>
 
-<section>
-  <h2><span class="n">06</span>Method and caveats</h2>
-  <div class="notes">
-    <h3>How these numbers were built</h3>
-    <ul>
-      <li><b>Source.</b> {{Tables by name.}}</li>
-      <li><b>Account.</b> {{SellerID, marketplace, and what is deliberately excluded.}}</li>
-      <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
-      <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
-      <li><b>Normalization.</b> {{What was scaled, by what factor, which figures it touched and which it did not.}}</li>
-      <li><b>Out of stock definition.</b> {{State it, since it counts something in a non-obvious way.}}</li>
-      <li><b>Buy Box weighting.</b> {{Page-view weighted: Buy Box percentage times page views, over total page views. Say why, and say what n/a means where a comparison is unavailable.}}</li>
-      <li><b>In-stock and listed item counts.</b> {{Amazon reports average offer count only at account level, so segment rows use our own counts from inventory snapshots. Say they answer the same question but are not the same metric and will not tie to the account row.}}</li>
-      <li><b>Reconciliation.</b> {{SKU sum against account total, as a figure and a percentage gap.}}</li>
-      <li><b>Segment split.</b> {{How derived, and how much was unmapped.}}</li>
-      <li><b>Run rate close.</b> {{The arithmetic, stated as arithmetic.}}</li>
-    </ul>
-  </div>
-</section>
+<footer>
+  {{Client}} {{month year}} review &middot; Prepared {{date}} by {{manager or agency name}}
+</footer>
+<!-- The client footer stays this clean: no SellerID, no source tracing, no tool names.
+     Method, scope and provenance live in the internal companion (scope block + i06). -->
 
 <!-- INTERNAL COMPANION ONLY from here down -->
 <div class="internal-banner" style="margin:24px 0;padding:10px 14px;border:1px solid var(--crit,#c33);border-left:4px solid var(--crit,#c33);border-radius:4px;font-family:var(--mono,monospace);font-size:0.8rem;letter-spacing:0.06em;text-transform:uppercase;">Internal companion. Not for sharing. The client brief is a separate document at its own URL.</div>
 
 <div class="bottomline">
   <p><strong>{{Any correction to an earlier read, first and plainly.}}</strong> {{If the analysis changed while the work was in progress, say what changed, how the earlier version was wrong, and what not to press on in the room. A correction buried further down gets read after the call.}}</p>
+</div>
+
+<div class="scope">
+  <p><b>Scope.</b> {{Account}} {{Seller Central|Vendor Central}} {{marketplace}} only (SellerID {{id}}). Window is <b>{{current window}}</b> against <b>{{prior month window}}</b> and <b>{{prior year window}}</b>. Account mode: {{mode}}. {{Why the window ends where it does, if the data load date drove it.}} {{Any correction being applied, which figures it touches, which it does not.}}</p>
+  <p><b>Buy Box figures are page-view weighted</b> (Buy Box percentage times page views, over total page views): a simple daily average treats a quiet day and a busy day alike. {{Traffic basis: which table serves account traffic and conversion, and any per-item basis caveat.}}</p>
+  <p><b>Thresholds applied:</b> {{active threshold values, quoted so a later reader can re-derive every flag.}}</p>
 </div>
 
 <section>
@@ -679,6 +710,27 @@ footer{
         <tr><th>{{Assertion}}</th><td style="text-align:left"><span class="chip neutral">{{Source}}</span></td><td style="text-align:left">{{confidence}}</td><td style="text-align:left">{{falsifier}}</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">i06</span>Method and caveats</h2>
+  <div class="notes">
+    <h3>How these numbers were built</h3>
+    <ul>
+      <li><b>Source.</b> {{Tables by name, engine version, live-call date.}}</li>
+      <li><b>Account.</b> {{SellerID, marketplace, and what is deliberately excluded.}}</li>
+      <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
+      <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
+      <li><b>Normalization.</b> {{What was scaled, by what factor, which figures it touched and which it did not.}}</li>
+      <li><b>Out of stock definition.</b> {{State it, since it counts something in a non-obvious way.}}</li>
+      <li><b>Buy Box weighting.</b> {{The arithmetic, and what n/a means where a comparison is unavailable.}}</li>
+      <li><b>In-stock and listed item counts.</b> {{Amazon reports average offer count only at account level, so segment rows use our own counts from inventory snapshots. They answer the same question but are not the same metric and will not tie to the account row.}}</li>
+      <li><b>Reconciliation.</b> {{SKU sum against account total, as a figure and a percentage gap.}}</li>
+      <li><b>Segment split.</b> {{How derived, and how much was unmapped.}}</li>
+      <li><b>Run rate close.</b> {{The arithmetic, stated as arithmetic.}}</li>
+      <li><b>Causes.</b> {{Which claims carry asserted causes and on what evidence; which swings deliberately carry none.}}</li>
+    </ul>
   </div>
 </section>
 
