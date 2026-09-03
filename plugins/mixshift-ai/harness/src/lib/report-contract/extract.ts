@@ -1235,6 +1235,49 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
         }),
       );
     }
+
+    // Per-driver CHANGE figures, capped -- the template's driver tables
+    // (item-group highlights, top movers) need typed figures per entity, and
+    // until these existed the only presentable numbers were account totals.
+    //
+    // RANKED rows only. Upstream appends drill-signal-flagged entities beyond
+    // the display cap precisely so a consumer cannot read a tail row as a top
+    // mover, and stamps `includedBy` to tell them apart; an ABSENT marker
+    // means ranked (pre-marker sidecars never had appendees, per the engine
+    // author 2026-08-20). Filtering here means a driver FIGURE can never
+    // quietly be a drill appendee wearing a top-mover id.
+    //
+    // Capped at 5 per metric: the template rule is that the reader wants the
+    // finding, not the ranking -- the full 11-18 list is evidence, and the
+    // capped-out remainder is still countable through the delta figure's
+    // population above. Values are the driver's CHANGE in the metric's change
+    // unit (same changeSpec as the delta figure they decompose), and ids use
+    // RANK, not entity names: names are display labels, unbounded and
+    // collision-prone; rank is stable within a run and meaningless across
+    // runs, which is honest.
+    const DRIVER_FIGURE_CAP = 5;
+    const ranked = (asArray(m.topDrivers) ?? [])
+      .map((dRaw) => asRecord(dRaw) ?? {})
+      .filter((d2) => d2.includedBy === undefined || d2.includedBy === 'rank')
+      ;
+    ranked.slice(0, DRIVER_FIGURE_CAP).forEach((d2, rank) => {
+      const dv = d2.delta;
+      if (!hasValue(dv)) return;
+      const name = typeof d2.displayName === 'string' && d2.displayName.trim().length > 0
+        ? d2.displayName
+        : String(d2.entityKey ?? `entity ${rank + 1}`);
+      figures.push(
+        fig(
+          `${domain}.${key}.driver.${rank + 1}`,
+          name,
+          dv as number,
+          changeSpec,
+          basis,
+          `${base}.topDrivers[${rank}].delta`,
+          { caveats: deltaCaveats },
+        ),
+      );
+    });
   });
 
   // Bridge legs -- published decomposition; never re-derive (the revenue-

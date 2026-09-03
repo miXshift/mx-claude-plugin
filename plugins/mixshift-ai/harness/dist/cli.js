@@ -92773,6 +92773,24 @@ function extractFiguresUnprefixed(response, selection) {
         })
       );
     }
+    const DRIVER_FIGURE_CAP = 5;
+    const ranked = (asArray(m.topDrivers) ?? []).map((dRaw) => asRecord(dRaw) ?? {}).filter((d2) => d2.includedBy === void 0 || d2.includedBy === "rank");
+    ranked.slice(0, DRIVER_FIGURE_CAP).forEach((d2, rank) => {
+      const dv = d2.delta;
+      if (!hasValue(dv)) return;
+      const name = typeof d2.displayName === "string" && d2.displayName.trim().length > 0 ? d2.displayName : String(d2.entityKey ?? `entity ${rank + 1}`);
+      figures2.push(
+        fig(
+          `${domain2}.${key}.driver.${rank + 1}`,
+          name,
+          dv,
+          changeSpec,
+          basis,
+          `${base}.topDrivers[${rank}].delta`,
+          { caveats: deltaCaveats }
+        )
+      );
+    });
   });
   const seenInsights = /* @__PURE__ */ new Set();
   const insightsArr = asArray(env.insights) ?? [];
