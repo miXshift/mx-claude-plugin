@@ -110,9 +110,6 @@ starts at 0.5.39; earlier versions predate the changelog.
   kind of problem that leaves no trace otherwise, because nothing fails: the
   work just quietly moves to another tool, and we never find out it was needed.
 
-### Changed
-
-
 ### Fixed
 
 - **The Sponsored Brands documentation no longer describes operations that do

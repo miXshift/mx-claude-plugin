@@ -93058,7 +93058,7 @@ function checkFigures(out) {
         for (const g of group) {
           const kind = SOURCE_LEG.exec(g.id)[1];
           const target = figById.get(`${prefix}.${parent}_${SOURCE_COMPONENT[kind]}.delta`);
-          if (typeof target?.value !== "number" || typeof g.value !== "number") {
+          if (typeof target?.value !== "number" || !Number.isFinite(target.value) || invalidIds.has(target.id) || typeof g.value !== "number" || !Number.isFinite(g.value)) {
             anchored = false;
             break;
           }

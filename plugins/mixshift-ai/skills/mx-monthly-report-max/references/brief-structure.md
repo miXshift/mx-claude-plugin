@@ -206,6 +206,15 @@ every other causal claim in the brief be taken at face value.
 what the data says. Three verdicts, chipped: landed, not landed, not checkable. Include
 MixShift's own items, and check the daily series before writing "not landed" about any of them.
 
+## The review packet is plain language; i05 is the audit trail
+
+Two renderings of the same register, two audiences. The PACKET (chat, pre-publish) is for
+the operator deciding in thirty seconds per item: plain words, why-it-matters, questions
+clearly asked as questions. i05 (below) is for the operator three months later checking
+what was claimed and on what evidence: provenance chips, falsifiers, technical phrasing
+welcome. Writing the packet at i05's register is the failure mode: the reviewer cannot
+tell statements from questions and stops reading.
+
 ## Claims register (i05, internal only)
 
 The internal companion closes with the claims register: one row per assertion the brief

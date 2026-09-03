@@ -154,8 +154,10 @@ def resolve_windows(seller_id, as_of):
             FROM business_reports_dpst_date
             WHERE SellerID={seller_id} AND DateTime = '{end}'
         """, "field completeness")
-        sess = rows[0]["sess"] if rows else None
-        units = rows[0]["units"] if rows else None
+        # Gateway rows serve numerics as strings; coerce before comparing (a raw
+        # string-vs-int compare crashed the whole battery on first live contact).
+        sess = f(rows[0]["sess"]) if rows and rows[0]["sess"] is not None else None
+        units = f(rows[0]["units"]) if rows and rows[0]["units"] is not None else None
         if (units or 0) > 0 and not (sess or 0):
             trimmed.append(str(end))
             end = end - dt.timedelta(days=1)

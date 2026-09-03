@@ -77,9 +77,13 @@ mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome 
 ## The knobs (every one has a working default; none is required)
 
 Ask about none of these up front. Resolve each from the invocation, the data, and brand
-context, in that order; say in the scope bar what was resolved and from where. A user who
-wants a different setting will say so, and the answer gets recorded for next time (see
-"The run record").
+context, in that order; say in the scope bar what was resolved and from where. The FIRST
+review packet on a brand then confirms the resolved knobs once: one plain line per knob
+("Report month: August, closed. Documents: both. Goals used: 22% ACOS target."), with
+"these persist for this brand unless you change one." Silence keeps them; an answer gets
+recorded and never re-asked. Every later packet shows only drift from the recorded
+settings. That is the whole knob conversation: the work always runs first, and the user
+gets the wheel exactly once, at the moment they can see what the defaults did.
 
 | Knob | Default | Override |
 |---|---|---|
@@ -562,6 +566,11 @@ Composition rules that survive every mode:
   materiality selections (what was deemed too small to show is also a reviewable claim).
   Emit it as `<run>.claims.json` and render it as the internal companion's final section
   (i05); the client document carries provenance in the method notes instead of chips.
+  The register is the technical AUDIT TRAIL; the review packet is its PLAIN-LANGUAGE
+  projection. Every register row carries both voices: `claim` / `falsifier` (technical,
+  for i05) and `plain_language` / `why_it_matters` (for the packet), plus
+  `type: statement | question | write_back` so the packet can bucket rows without
+  guessing which ones want an answer.
 - HTML-escape every data-sourced string before it enters a document: nicknames, titles,
   campaign names, and anything quoted from meeting notes are third-party text, not markup.
 - When two callouts share a causal mechanism, mirror their structure, place them adjacent,
@@ -588,7 +597,8 @@ file path in this conversation, or the registry's stored `url` from any other se
 Publishing a hub as a new artifact defeats the whole feature; the first run on a brand is
 the only time a hub URL is created, and the handover that one time says which hub is
 shareable. Deep links are anchors on the one URL, so nothing ever needs re-sharing. The internal document keeps its rendered internal banner, and its
-title carries "(Internal)": "Acme Goods August Call Notes (Internal)". Publish per the
+title carries "(Internal)": "Acme Goods Call Notes (Internal)", stable across every
+republish per the hub rule. Publish per the
 Publish knob, give the two documents distinct names and favicons so they cannot be
 confused, and hand over both URLs or file paths while saying plainly which one is
 shareable. That one sentence is what stops the internal companion reaching a client.
@@ -626,11 +636,40 @@ construction across the others before replying, and say which were swept.
 Nothing publishes before review. The two-document build is cheap to regenerate; the facts
 are what need approval, so the review surface is the claims, not the HTML.
 
-1. **Present the review packet in chat**: the bottom line, the claims register (with
-   provenance chips and falsifiers), the open questions, the numbers-to-keep-off list,
-   the section list with anything omitted and why, and the **proposed write-backs**
-   (discoveries: context edits, lifecycle entries, watch items). Offer the rendered
-   drafts as files for anyone who wants to read the whole thing.
+1. **Present the review packet in chat, in the same four sections every run, in this
+   order** — the packet trains the reviewer, so the format never varies:
+
+   1. **Settings this run used** — first run on a brand: every resolved knob, one plain
+      line each, "these persist unless you change one." Later runs: only drift.
+   2. **What this report says** — the claims, FOR THE OPERATOR, in plain words. No table
+      names, no metric jargon, no basis talk (that is the register's job, not the
+      packet's). Each claim is one sentence a client could hear, plus "why it matters"
+      in the reviewer's terms and "what would change my mind." Approving this section is
+      approving the report.
+   3. **Questions for you** — everything only the reviewer or the client can answer,
+      phrased as actual questions, each with why it is being asked and what the answer
+      changes ("if they are authorized, I stop flagging it; if not, enforcement gets the
+      revenue back"). Never bury a question inside a claim: the reviewer must be able to
+      answer the packet top to bottom without decoding which lines want a reply.
+
+      **Sequence them; never dump them.** Show the whole queue as one-line previews (so
+      the reviewer sees scope), then ask ONE question at a time, in this order:
+      (a) **carried questions first, oldest first** — close loops before opening new
+      ones; (b) **new fact-checks that change a claim in this report**, cheapest
+      certainty first ("is this seasonal?" beats "should I dig?"); (c) **judgment calls
+      last, re-derived after the facts**: an early answer often answers or sharpens a
+      later question, and the skill must actually rewrite the pending ones rather than
+      read a script ("two of these turned out to be seasonal endings; is the Chews fade
+      seasonal too, or do I dig?"). Acknowledge each answer with what it changed before
+      asking the next. Batch answers are always accepted ("1 authorized, 2 never
+      moved") and skip the walk; the queue is a default rhythm, not a gate per item.
+   4. **What I will remember for next month** — the proposed write-backs as consequences
+      ("I will watch X monthly until it closes"), not as data operations.
+
+   State counts month over month ("two questions carried from last run, one resolved")
+   so the reviewer sees the loop converging. Offer the rendered drafts as files for
+   anyone who wants the whole document; the packet itself must be answerable without
+   opening them.
 2. **Take edits conversationally.** "That target is stale", "cut the chews section",
    "that item is end-of-life" are one-line fixes: re-derive, update the register, show
    the delta. An edit that corrects a context or timeline item routes the fix into the
@@ -779,10 +818,19 @@ written every run, consumed mechanically by the next one:
   updates, `item_lifecycle` entries, data quirks worth remembering per account (an
   account whose daily feed serves no Buy Box; a catalog that needs the bounded top-20
   availability probe), structural events once their cause is confirmed.
-- Timeline events, when the brand keeps one: the published brief itself (period, links,
-  headline conclusion), dated incidents (a stockout window, a Buy Box break and its
-  recovery), commitment landings, and material restatements. These are what make next
-  year's YoY explainable without archaeology.
+- **Event stakes.** What this report discovers becomes DATED EVENTS in the account's
+  staking system, and answered questions are the richest source: a stockout window
+  (start and end dates), a Buy Box break and its recovery, a reseller appearing on a
+  listing, a seasonal flavor ending, a commitment landing, a material restatement.
+  Emit each as an `event_stake_candidate` in the discoveries file with the staking
+  taxonomy's `type` (forward-tolerant, per the platform enum), the ASIN or account
+  scope, the date or date range, and one plain sentence. The loop is the point:
+  a Things-to-check item that gets ANSWERED on the call graduates into a staked event,
+  so next month's report cites it instead of re-asking, and next YEAR's YoY explains
+  itself without archaeology. Same propose-only rule as everything else: candidates
+  ride the review packet; approval stakes them.
+- Timeline events, when the brand keeps a separate narrative timeline: the published
+  brief itself (period, links, headline conclusion) and material restatements.
 - One-observation facts stay marked as observed-once with their date ("run-and-ride
   traffic faded late August 2026, N=1"); they harden into standing facts only on
   recurrence or human confirmation. A claim carries its N here the same as everywhere.

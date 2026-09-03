@@ -2311,13 +2311,13 @@ describe('COMPOSITE_SELECTIONS: yoy.ads exists since engine 0.4.0; null legs on 
 // (i) engine 0.4.0 seams: the SKU-source split's per-leg identity, and the
 //     yoy.ads / yoy.crossDomain selections that 0.4.0 populates. The split's
 //     false-failure shape shipped as six spurious BRIDGE-FOOTING findings per
-//     bundle (field report, Rowdy Parrot run 2026-09-02), reproduced verbatim
-//     on a live 0.4.0 bundle before this fix.
+//     bundle (field report, 2026-09-02), reproduced on a live 0.4.0 bundle
+//     before this fix. Figures below are synthetic; only the SHAPE is real.
 
 describe('checkFigures: BRIDGE-FOOTING source-split legs (engine 0.4.0 emission)', () => {
   const componentDeltas = [
-    f({ id: 'mom.ads.ad_sales_same_sku.delta', value: -3269.97 }),
-    f({ id: 'mom.ads.ad_sales_other_sku.delta', value: -2717.58 }),
+    f({ id: 'mom.ads.ad_sales_same_sku.delta', value: -3300 }),
+    f({ id: 'mom.ads.ad_sales_other_sku.delta', value: -2700 }),
   ];
 
   it('anchors each source leg to its own component delta and passes when they match', () => {
@@ -2326,8 +2326,8 @@ describe('checkFigures: BRIDGE-FOOTING source-split legs (engine 0.4.0 emission)
         ...componentDeltas,
         // the split rides under a HOST component whose net_change is the host's
         // own net, NOT the legs' sum -- the exact false-failure shape.
-        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -3269.97 }),
-        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2717.58, footing_ok: true, net_change: -3269.97 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3300, footing_ok: true, net_change: -3300 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2700, footing_ok: true, net_change: -3300 }),
       ],
     });
     expect(checkFigures(out).filter((p) => p.rule === 'BRIDGE-FOOTING')).toEqual([]);
@@ -2337,8 +2337,8 @@ describe('checkFigures: BRIDGE-FOOTING source-split legs (engine 0.4.0 emission)
     const out = minimalOut({
       figures: [
         ...componentDeltas,
-        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -2717.58 }),
-        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_other', value: -9999.99, footing_ok: true, net_change: -2717.58 }),
+        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_same', value: -3300, footing_ok: true, net_change: -2700 }),
+        f({ id: 'mom.ads.bridge.ad_sales_other_sku.secondary.ads_source_other', value: -9999.99, footing_ok: true, net_change: -2700 }),
       ],
     });
     expect(checkFigures(out)).toContainEqual(
@@ -2349,12 +2349,29 @@ describe('checkFigures: BRIDGE-FOOTING source-split legs (engine 0.4.0 emission)
     );
   });
 
+  it('a non-finite anchor value fails closed to the net comparison instead of silently passing', () => {
+    const out = minimalOut({
+      figures: [
+        f({ id: 'mom.ads.ad_sales_same_sku.delta', value: Number.POSITIVE_INFINITY }),
+        f({ id: 'mom.ads.ad_sales_other_sku.delta', value: -2700 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3300, footing_ok: true, net_change: -3300 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2700, footing_ok: true, net_change: -3300 }),
+      ],
+    });
+    // legs sum -6000 != group net -3300 -> the fallback net comparison fires,
+    // which is the fail-closed behavior (a NaN/Infinity anchor must never
+    // convert a broken identity into silence).
+    expect(checkFigures(out)).toContainEqual(
+      expect.objectContaining({ rule: 'BRIDGE-FOOTING', subject: 'mom.ads.bridge.ad_sales_same_sku.secondary' }),
+    );
+  });
+
   it('falls back to the net comparison (fail-closed) when no component delta anchors the legs', () => {
     const out = minimalOut({
       figures: [
         // no *_sku.delta figures present -> anchoring impossible -> old rule applies
-        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3269.97, footing_ok: true, net_change: -3269.97 }),
-        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2717.58, footing_ok: true, net_change: -3269.97 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_same', value: -3300, footing_ok: true, net_change: -3300 }),
+        f({ id: 'mom.ads.bridge.ad_sales_same_sku.secondary.ads_source_other', value: -2700, footing_ok: true, net_change: -3300 }),
       ],
     });
     expect(checkFigures(out)).toContainEqual(
