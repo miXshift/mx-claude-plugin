@@ -42,13 +42,16 @@ VERB = re.compile(r"""\b(
 |impl(?:y|ies|ied)|rul(?:e|es|ed)|plac(?:e|es|ed)|mean(?:s|t)?|cover(?:s|ed)?|span(?:s|ned)?
 |rest(?:s|ed)?|hinge(?:s|d)?|turn(?:s|ed)?|shar(?:e|es|ed)|mask(?:s|ed)?|offset(?:s)?
 |absorb(?:s|ed)?|pay(?:s)?|paid|cost(?:s)?|earn(?:s|ed)?|spend(?:s)?|spent
+|contain(?:s|ed)?|produc(?:e|es|ed)
 )\b""", re.I | re.X)
 
 # Action bullets legitimately open with a bare imperative ("Watch conversion.", "Put spend back behind X.")
 IMPERATIVE = re.compile(r'^\s*(watch|review|read|flag|protect|decide|restore|re-examine|reexamine|stop|start'
                         r'|confirm|establish|check|consider|hold|keep|cut|raise|lower|put|move|shift|add'
                         r'|reduce|increase|pause|resume|rebuild|replace|investigate|understand|prioritize'
-                        r'|prioritise|treat|avoid|expect|plan|leave|let|make|take|give|find|set|run)\b', re.I)
+                        r'|prioritise|treat|avoid|expect|plan|leave|let|make|take|give|find|set|run'
+                        r'|fix|replenish|diagnose|get|rebalance|redirect|cap|drop|push|defend|escalate'
+                        r'|negotiate|reorder|restock)\b', re.I)
 
 def strip(html_frag):
     t = re.sub(r'<[^>]+>', ' ', html_frag)
@@ -202,7 +205,7 @@ def check_unitless_signed_deltas(body):
     txt = strip(body)
     for m in re.finditer(r'\(\s*[-+]\d+(?:\.\d+)?\s*\)', txt):
         out.append(('paren-delta-missing-unit', txt[max(0, m.start()-50):m.end()+10]))
-    for m in re.finditer(r'[-+]\d+\.\d+(?=\s+(?!pts?\b|points\b|x\b|times\b|items?\b|days?\b|units?\b|sessions?\b|orders?\b|clicks?\b|rows?\b|servings?\b|per\b)[a-z])', txt):
+    for m in re.finditer(r'[-+]\d+\.\d+(?=\s+(?!pts?\b|points\b|x\b|times\b|items?\b|days?\b|units?\b|sessions?\b|orders?\b|clicks?\b|rows?\b|servings?\b|per\b|wks?\b|weeks?\b|hrs?\b|hours?\b)[a-z])', txt):
         out.append(('signed-delta-missing-unit', txt[max(0, m.start()-50):m.end()+15]))
     return out
 
@@ -274,6 +277,14 @@ def main(argv):
         f = lint(path, role=role)
         total += len(f)
         print('\n%s: %s' % (path, 'CLEAN' if not f else '%d finding(s)' % len(f)))
+        # Informational, never a finding: section word counts, so an over-long section
+        # is visible without pretending there is a correct length (the cold-read pass
+        # owns the judgment; past ~500 words usually hides a restatement).
+        body = body_of(io.open(path, encoding='utf-8').read())
+        for sm in re.finditer(r'<h2\b[^>]*>(.*?)</h2>(.*?)(?=<h2\b|<footer|$)', body, re.S):
+            words = len(strip(sm.group(2)).split())
+            if words > 400:
+                print('  [info] section "%s": %d words' % (strip(sm.group(1))[:50], words))
         for kind, detail in f:
             print('  [%s] %s' % (kind, detail))
     print('\n%s' % ('PASS' if total == 0 else 'FAIL: %d finding(s)' % total))

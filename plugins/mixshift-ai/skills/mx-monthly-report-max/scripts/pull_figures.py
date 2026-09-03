@@ -142,6 +142,25 @@ def resolve_windows(seller_id, as_of):
     end = min(d(maxes["retail"]), d(maxes["ads"]))
     if end > as_of:
         end = as_of
+
+    # Month-completeness is per FIELD, not per table: a final day can land with sales
+    # and units but zero sessions (seen live), silently inflating units-per-session by
+    # a whole day of numerator. If the end date has sales activity but no sessions
+    # while the prior day had both, step back a day (at most twice) and say so.
+    trimmed = []
+    for _ in range(2):
+        rows = query(f"""
+            SELECT SUM(Sessions) sess, SUM(UnitsOrdered) units
+            FROM business_reports_dpst_date
+            WHERE SellerID={seller_id} AND DateTime = '{end}'
+        """, "field completeness")
+        sess = rows[0]["sess"] if rows else None
+        units = rows[0]["units"] if rows else None
+        if (units or 0) > 0 and not (sess or 0):
+            trimmed.append(str(end))
+            end = end - dt.timedelta(days=1)
+        else:
+            break
     day = end.day
 
     def clamp(year, month, dom):
@@ -152,6 +171,7 @@ def resolve_windows(seller_id, as_of):
     return {
         "data_max_retail": str(maxes["retail"])[:10],
         "data_max_ads": str(maxes["ads"])[:10],
+        "trimmed_for_field_completeness": trimmed,
         "day_count": day,
         "current": [str(end.replace(day=1)), str(end)],
         "prior_month": [str(dt.date(pm_year, pm_month, 1)), str(clamp(pm_year, pm_month, day))],

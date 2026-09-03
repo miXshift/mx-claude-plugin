@@ -230,6 +230,7 @@ prevent):
 mixshift report extract run.json --select mom.ops --check --out figures.mom.ops.json
 mixshift report extract run.json --select mom.ads --check --out figures.mom.ads.json
 mixshift report extract run.json --select yoy.ops --check --out figures.yoy.ops.json  # when includeYoY
+mixshift report extract run.json --select yoy.ads --check --out figures.yoy.ads.json  # engine 0.4.0+ populates it; older bundles refuse cleanly
 ```
 
 `--check` must pass on every document. Every id is period-prefixed (`mom.*`, `yoy.*`), so
@@ -275,6 +276,19 @@ re-deriving them by hand each period is how a wrong number reaches a client.
 ```bash
 python3 scripts/pull_figures.py --seller-id <SellerID> --as-of <data end> --out figures.json
 ```
+
+**Account traffic and conversion come from the account daily table, never from summing
+the per-ASIN roll-up.** On Seller Central, `business_reports_dpst_sku` emits a row only on
+ASIN-days that SOLD something: verified on three separate accounts (27K+ rows over twelve
+months, zero rows with UnitsOrdered = 0), so a per-ASIN sessions sum drops exactly the
+non-converting traffic and biases every conversion rate upward, worst in the declining
+months you most need to explain. On one real account the roll-up basis read sessions
+-45% YoY and conversion UP when the account table read -12% and conversion DOWN. The
+battery already foots account traffic on `business_reports_dpst_date`; keep it that way,
+label any per-ASIN or per-group session figure as "sessions on selling days", and treat
+the ENGINE's traffic and conversion bridge legs as decomposition shape rather than
+quotable account rates until the engine foots them on the account table (routed).
+The per-account confirmation probe is in `references/queries.md`.
 
 Flags worth knowing: `--brands "A,B"` enables the paid sub-brand split (without it the
 retail split still runs); `--min-item-sales`, `--buybox-floor`, `--buybox-drop` override
@@ -356,6 +370,16 @@ units fall is the availability and Buy Box signature; traffic falling is a deman
 ranking question. (Vendor Central has neither sessions nor Buy Box: use glance views as
 the traffic proxy and say so.)
 
+**When traffic drives the bridge, chain it back through the ad funnel.** "Traffic fell"
+is where a weak brief stops. The ads envelope serves a clicks decomposition that foots
+(impressions leg + click-through leg = net paid clicks): surface it whenever paid clicks
+moved materially, because "we showed up less" and "the impression converted better" are
+different problems with different fixes. Then connect paid clicks to account sessions on
+matched days, which is the step that says whether an advertising decision caused a retail
+outcome. And before attributing a retail move to an advertising change, run the
+shared-inflection check: do both series break on the same date? Cheap, and it turns a
+correlation into something defensible (probe catalog has the query shape).
+
 **Reconcile the institutional record against what the data found.** Walk the Step 1
 institutional items: every in-window structural event, declared stockout, lifecycle state
 and timeline entry either explains a movement (cite it), is contradicted by the data
@@ -363,11 +387,27 @@ and timeline entry either explains a movement (cite it), is contradicted by the 
 The contradiction case is mandatory, not optional: a stale context item that silently
 loses to the data this month ships a wrong brief the month the data is the stale one.
 
+**"Bid pullback" is an observation about bids, and this data has no bids.** The daily ad
+table carries cost, clicks, impressions and CPC, not bid values, so never assert a bid
+cut from it. Read the signature instead: a genuine bid reduction cheapens the impression,
+so CPC and CPM fall together; impressions collapsing while CPC holds flat and CPM RISES
+means the account bought less delivery, not cheaper clicks, and the remaining room is not
+in bids. On one real account that distinction reversed the recommendation. A
+`structural_events` entry of type `strategy_change` is ATTRIBUTED context, not
+measurement: quote it as "per the account's change log", and cross-check its signature
+before building on it.
+
 **Lifecycle framing.** An item declared `end_of_life`, `seasonal_out` or `discontinued`
 in `item_lifecycle` never appears as an anomaly: its decline reports as a planned
 wind-down ("on pace" or "faster/slower than planned" when a date exists), it is excluded
 from availability alarms, and its mover-table row carries a neutral lifecycle chip.
 `launch` items get the opposite courtesy: no MoM percentage against a near-zero base.
+The same declarations gate EXTERNAL estimates: a lost-sales or availability figure from
+any source that cannot see lifecycle declarations (today that includes the hosted
+intelligence service) prices deliberate wind-downs as supply failures, and on one real
+account read 4x the true figure. Before quoting such an estimate on an account with
+`item_lifecycle` entries, reconcile it against the declarations and either exclude the
+declared items or label the figure as unadjusted; never headline it raw.
 When a large unexplained decline LOOKS like a wind-down, ask, and on a yes propose the
 `item_lifecycle` entry in the discoveries file rather than writing it yourself.
 
@@ -563,7 +603,19 @@ python3 helpers/prose-lint.py --role internal <internal-companion html>
 The `--role client` run mechanically refuses a client file that still contains any
 internal section, and both runs enforce the dash ban on literal characters as well as
 entities. Fix what the lint flags in the source you write, not by hand-editing around the
-rule. Emit one `.review.json` per rendered document (schema:
+rule. The lint operates on rendered HTML regardless of who or what produced it: it is
+never skipped because the document came from a template, a prior report, or any path
+other than the usual one.
+
+**Then read the finished prose cold, as a named pass.** The lint catches what it can
+detect; this pass catches what it cannot: clunky constructions, cleft sentences ("What X
+did not deliver was Y"), abstract-noun openers, paragraphs following the same template as
+their neighbor, and verbs fighting the direction rule. Then read for LENGTH: every caveat
+appears once, at the site that needs it; if two adjacent paragraphs make the same point
+at different altitudes, keep the better one; a section past roughly 500 words usually
+contains a restatement. On one real build this pass cut 10% of the words with nothing of
+substance removed. Record the pass in `.review.json`; an empty corrections list means you
+read it and found nothing, not that you skipped it. Emit one `.review.json` per rendered document (schema:
 `helpers/mpr-review-schema.json`) with honest counts; an empty
 corrections list means you found nothing, not that you skipped the pass. When a fix is
 applied to one document or one sibling account in a multi-account session, sweep the same
@@ -617,6 +669,33 @@ The non-negotiables, wherever the prose lands (the full set with examples is in
 - **No internal report or tool names in client copy**: say what the data means and attach
   the dollars. Anything public-bound about the methodology says "H-Bridge" or "MixShift
   bridge methodology".
+
+- **Session context is not report content.** Anything learned from the operator during
+  the run, a correction, a caveat they explain, a mechanism they teach, their phrasing
+  for a hypothesis, changes what you write and how confident you are; it does not earn a
+  place in the document. Before keeping any sentence that explains WHY a number is
+  measured the way it is, ask whether a reader who never saw the conversation would act
+  differently for having read it. State what is known; do not narrate how you came to
+  know it. (In register terms: operator-taught mechanisms are Context/Notes-provenance
+  claims and belong in the internal companion or method notes at most.)
+- **Verbs agree with the direction of the move, and with whether it helps.** Reserve
+  "gave back", "gave up", "cost", "eroded" for movements that hurt; "clawed back",
+  "recovered", "offset", "absorbed" for movements that help. For lower-is-better metrics
+  (ACOS, TACOS, CPC, lost sales) a fall is a gain and takes a positive verb; that
+  polarity flip is the trap, and it has shipped.
+- **Recommendations describe what the data supports, not what the reader should stop
+  doing.** Prefer "X has limited room left" to "stop doing X". Imperatives are for
+  operational actions (replenish, cap, rebalance), never for judgments about past
+  decisions, which read as blame in a client-facing document.
+- **Points and TACOS figures carry one decimal** by default, and a rounded decomposition
+  must still foot: check the rounded legs sum to the rounded net, not just the format.
+- **A table titled or aimed at movement ranks by dollar impact, largest negative first.**
+  A state table may rank by size, but never under a "where the month moved" heading:
+  ranking the movers table by size buries the finding.
+- **Price and promotion reads from order data describe units sold, not the offer.** A
+  variant discounted late in the month that has not sold since is invisible there; scope
+  the claim to what sold, and do not explain the limitation in the report (state what is
+  known, per the session-context rule).
 
 Brand-context `reporting.voice_lint` additions apply on top of these. If the organization
 ships its own writing-style skill, it wins where the two conflict.

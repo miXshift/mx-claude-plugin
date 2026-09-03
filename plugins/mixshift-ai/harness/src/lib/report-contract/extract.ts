@@ -1000,7 +1000,7 @@ function extractEvidence(
   return out;
 }
 
-export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops'] as const;
+export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops', 'yoy.ads'] as const;
 export type CompositeSelection = (typeof COMPOSITE_SELECTIONS)[number];
 
 export function isCompositeResponse(response: unknown): boolean {
@@ -1022,10 +1022,11 @@ export class CompositeSelectionError extends Error {
 
 /** Resolve a composite bundle down to the single response the extractor
  *  understands: the selected envelope, plus the cross-domain block that
- *  belongs with it. crossDomain is delivered attached to the ops leg of the
- *  MoM pair only -- mirrors the pre-composite response shape below, where
- *  crossDomain rides the ops response and the ads companion never carries
- *  one -- so it accompanies `mom.ops` alone, never `mom.ads` or `yoy.ops`. */
+ *  belongs with it. crossDomain rides the OPS leg of its period -- mirrors
+ *  the pre-composite response shape below, where crossDomain rides the ops
+ *  response and the ads companion never carries one. Engine 0.4.0 populates
+ *  yoy.crossDomain (earlier engines served null), so it accompanies
+ *  `yoy.ops` the same way it always accompanied `mom.ops`. */
 function selectFromComposite(doc: Rec, selection: CompositeSelection): Rec {
   const [periodKey, domainKey] = selection.split('.') as ['mom' | 'yoy', 'ops' | 'ads'];
   const period = asRecord(doc[periodKey]);
@@ -1042,7 +1043,7 @@ function selectFromComposite(doc: Rec, selection: CompositeSelection): Rec {
     );
   }
   const out: Rec = { envelope };
-  const crossDomain = periodKey === 'mom' && domainKey === 'ops' ? asRecord(period.crossDomain) : undefined;
+  const crossDomain = domainKey === 'ops' ? asRecord(period.crossDomain) : undefined;
   if (crossDomain) out.crossDomain = crossDomain;
   return out;
 }
@@ -1578,11 +1579,54 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
       legs.set(stem, arr);
     }
   }
+  const figById = new Map(out.figures.map((fig) => [fig.id, fig]));
+  // The SKU-source split (engine 0.4.0+) is emitted as a leg set under EACH
+  // component's bridge, so its group net_change is the HOST component's net and
+  // sum-vs-net is the wrong identity: the true one is per-leg, each source leg
+  // equals its own component's served delta. Anchoring per-leg here removed six
+  // spurious failures per bundle on every account with a populated split.
+  const SOURCE_LEG = /\.ads_source_(same|other|view_through)$/;
+  const SOURCE_COMPONENT: Record<string, string> = {
+    same: 'same_sku',
+    other: 'other_sku',
+    view_through: 'view_through',
+  };
   for (const [stem, group] of legs) {
+    if (group.some((g) => invalidIds.has(g.id))) continue;
+    if (group.every((g) => SOURCE_LEG.test(g.id))) {
+      const bridgeAt = stem.indexOf('.bridge.');
+      const prefix = bridgeAt >= 0 ? stem.slice(0, bridgeAt) : '';
+      const entity = bridgeAt >= 0 ? stem.slice(bridgeAt + '.bridge.'.length).split('.')[0] : '';
+      const parent = entity.replace(/_(same_sku|other_sku|view_through)$/, '');
+      let anchored = parent !== '' && parent !== entity;
+      const legFindings: typeof findings = [];
+      if (anchored) {
+        for (const g of group) {
+          const kind = SOURCE_LEG.exec(g.id)![1];
+          const target = figById.get(`${prefix}.${parent}_${SOURCE_COMPONENT[kind]}.delta`);
+          if (typeof target?.value !== 'number' || typeof g.value !== 'number') {
+            anchored = false;
+            break;
+          }
+          if (Math.abs(g.value - target.value) > Math.max(Math.abs(target.value) * 0.001, TOL)) {
+            legFindings.push({
+              rule: 'BRIDGE-FOOTING',
+              subject: g.id,
+              detail: `source-split leg ${g.value.toFixed(4)} != component delta ${target.value.toFixed(4)}`,
+            });
+          }
+        }
+      }
+      if (anchored) {
+        findings.push(...legFindings);
+        continue; // per-leg identity checked; the group-net comparison does not apply
+      }
+      // No component-delta anchor resolvable: fall through to the net comparison,
+      // which fails closed exactly as before rather than passing silently.
+    }
     const net = group[0].net_change;
     if (net === undefined || net === null) continue;
     if (typeof net !== 'number' || !Number.isFinite(net)) continue; // malformed metadata; nothing safe to compare
-    if (group.some((g) => invalidIds.has(g.id))) continue;
     const s = group.reduce((acc, g) => acc + g.value, 0);
     if (Math.abs(s - net) > Math.max(Math.abs(net) * 0.001, TOL)) {
       findings.push({

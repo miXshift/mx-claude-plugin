@@ -92545,7 +92545,7 @@ function extractEvidence(whole, selection) {
   }
   return out;
 }
-var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops"];
+var COMPOSITE_SELECTIONS = ["mom.ops", "mom.ads", "yoy.ops", "yoy.ads"];
 function isCompositeResponse(response) {
   const doc = asRecord(response) ?? {};
   if (Object.prototype.hasOwnProperty.call(doc, "envelope")) return false;
@@ -92573,7 +92573,7 @@ function selectFromComposite(doc, selection) {
     );
   }
   const out = { envelope };
-  const crossDomain = periodKey === "mom" && domainKey === "ops" ? asRecord(period.crossDomain) : void 0;
+  const crossDomain = domainKey === "ops" ? asRecord(period.crossDomain) : void 0;
   if (crossDomain) out.crossDomain = crossDomain;
   return out;
 }
@@ -92913,11 +92913,47 @@ function checkFigures(out) {
       legs.set(stem, arr);
     }
   }
+  const figById = new Map(out.figures.map((fig2) => [fig2.id, fig2]));
+  const SOURCE_LEG = /\.ads_source_(same|other|view_through)$/;
+  const SOURCE_COMPONENT = {
+    same: "same_sku",
+    other: "other_sku",
+    view_through: "view_through"
+  };
   for (const [stem, group] of legs) {
+    if (group.some((g) => invalidIds.has(g.id))) continue;
+    if (group.every((g) => SOURCE_LEG.test(g.id))) {
+      const bridgeAt = stem.indexOf(".bridge.");
+      const prefix = bridgeAt >= 0 ? stem.slice(0, bridgeAt) : "";
+      const entity = bridgeAt >= 0 ? stem.slice(bridgeAt + ".bridge.".length).split(".")[0] : "";
+      const parent = entity.replace(/_(same_sku|other_sku|view_through)$/, "");
+      let anchored = parent !== "" && parent !== entity;
+      const legFindings = [];
+      if (anchored) {
+        for (const g of group) {
+          const kind = SOURCE_LEG.exec(g.id)[1];
+          const target = figById.get(`${prefix}.${parent}_${SOURCE_COMPONENT[kind]}.delta`);
+          if (typeof target?.value !== "number" || typeof g.value !== "number") {
+            anchored = false;
+            break;
+          }
+          if (Math.abs(g.value - target.value) > Math.max(Math.abs(target.value) * 1e-3, TOL)) {
+            legFindings.push({
+              rule: "BRIDGE-FOOTING",
+              subject: g.id,
+              detail: `source-split leg ${g.value.toFixed(4)} != component delta ${target.value.toFixed(4)}`
+            });
+          }
+        }
+      }
+      if (anchored) {
+        findings.push(...legFindings);
+        continue;
+      }
+    }
     const net = group[0].net_change;
     if (net === void 0 || net === null) continue;
     if (typeof net !== "number" || !Number.isFinite(net)) continue;
-    if (group.some((g) => invalidIds.has(g.id))) continue;
     const s = group.reduce((acc, g) => acc + g.value, 0);
     if (Math.abs(s - net) > Math.max(Math.abs(net) * 1e-3, TOL)) {
       findings.push({

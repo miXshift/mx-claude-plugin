@@ -465,6 +465,23 @@ GROUP BY m ORDER BY m
 neighbours: if it is an obvious trough, the year-over-year comp is flattered by the base and the
 brief should say so.
 
+## The per-ASIN roll-up has no zero-sale rows (SC traffic basis)
+
+`business_reports_dpst_sku` emits a row only on ASIN-days that sold at least one unit:
+confirmed on three separate accounts, twelve months each, zero rows with
+`UnitsOrdered = 0`. Summing its sessions therefore drops exactly the non-converting
+traffic. Account traffic and conversion come from `business_reports_dpst_date`, always;
+per-ASIN and per-group session figures are "sessions on selling days" and must be labeled
+so. Confirm the property on a new account with:
+
+```sql
+SELECT COUNT(*) total_rows,
+       SUM(CASE WHEN UnitsOrdered = 0 THEN 1 ELSE 0 END) zero_unit_rows
+FROM business_reports_dpst_sku
+WHERE SellerID = <ID>
+  AND DateTime >= '<12 months ago>' AND DateTime < '<month start>'
+```
+
 ## Probe catalog
 
 Before any question ships in Things-to-check, check this table: a question with a probe is
@@ -475,7 +492,8 @@ metered probes first).
 |---|---|---|
 | Who holds the Buy Box now? | `pricing.get_item_offers_batch` on the flagged ASINs | Competitor vs suppression vs recovered (Step 6 fork) |
 | Is this near-zero item suppressed or stocked out? | Inventory history per ASIN (query 8, single-ASIN) + live offers | Stockout shows zero fulfillable; suppression shows inventory with no featured offer |
-| Did spend fall by bids or budgets? | Daily spend series per campaign (query 5 grain, `Cost` only) | A step change on a date is a budget cut; a proportional glide is bids |
+| Did spend fall by bids, budgets, or delivery? | Daily spend + impressions + CPC + CPM around the break date | Bid cuts cheapen the impression (CPC and CPM fall together); impressions down with CPC flat and CPM UP is less delivery, not cheaper clicks; a step change on a date points at a budget or state change. Say "bid pullback" only when bids are observed or the account's change log says so |
+| Did the ad change cause the retail move? | Daily ad impressions + paid clicks vs account sessions around the candidate date | Both series breaking on the same date turns a correlation into something defensible; different dates kill the attribution |
 | Is the decline seasonal? | Same item, same window, prior year (query 7 with `prior_year`) | A matching prior-year dip is season; a flat prior year is not |
 | Is the traffic loss account-wide or item-local? | Page views for the flagged ASINs vs the account daily series | Local loss points at placement or listing; global points at demand or spend |
 | Did the last call's budget commitment land? | Like-day spend windows (query 1, spend only) | Landed / not landed in this channel; other channels stay "not visible here" |
