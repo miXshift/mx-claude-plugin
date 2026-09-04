@@ -90907,7 +90907,7 @@ function exitCodeForKind2(kind) {
     // sign in — `mixshift auth login`
     case "not_enrolled":
       return 3;
-    // account not enrolled in the closed beta
+    // Intelligence switched off for this account
     case "bad_params":
       return 4;
     // caller-side: fix --params / --params-file and retry
@@ -91171,7 +91171,7 @@ function sessionFailureFromError2(err) {
 function defaultFriendly2(kind) {
   switch (kind) {
     case "not_enrolled":
-      return "This MixShift account isn't enrolled in MixShift Intelligence yet (closed beta). Contact MixShift ops to get enrolled.";
+      return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
     case "unknown_insight":
       return "That insight id is not in the current catalog. Run `mixshift intelligence catalog` to see the available ids.";
     case "bad_params":
@@ -91425,7 +91425,7 @@ init_local();
 init_telemetry();
 function registerIntelligenceCommands(program3) {
   const intelligence = program3.command("intelligence").description(
-    "MixShift Intelligence: read finished insight envelopes (Ops Bridge and friends) from the MixShift Intelligence service. Closed beta."
+    "MixShift Intelligence: read finished insight envelopes (Ops Bridge and friends) from the MixShift Intelligence service."
   );
   registerCatalogCommand(intelligence);
   registerRunCommand(intelligence);
@@ -91730,7 +91730,7 @@ function fsSafeTimestamp() {
 function hintForKind(kind) {
   switch (kind) {
     case "not_enrolled":
-      return "MixShift Intelligence is in closed beta. Contact MixShift ops to get this account enrolled.";
+      return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
     case "account_too_large_use_async":
       return "Retry the same command with --async, then poll the returned runId (mixshift intelligence poll <runId>).";
     case "busy":

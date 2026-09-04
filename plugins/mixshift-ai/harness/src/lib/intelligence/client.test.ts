@@ -104,13 +104,13 @@ describe('catalog', () => {
 
   it('propagates a typed failure (not_enrolled)', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(403, { ok: false, kind: 'not_enrolled', friendly: 'Closed beta.' }),
+      jsonResponse(403, { ok: false, kind: 'not_enrolled', friendly: 'Switched off.' }),
     );
     const r = await catalog(injected(fetchImpl));
     expect(isIntelligenceFailure(r)).toBe(true);
     if (isIntelligenceFailure(r)) {
       expect(r.kind).toBe('not_enrolled');
-      expect(r.friendly).toBe('Closed beta.');
+      expect(r.friendly).toBe('Switched off.');
       expect(r.httpStatus).toBe(403);
     }
   });

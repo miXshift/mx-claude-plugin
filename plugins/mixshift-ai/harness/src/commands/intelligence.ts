@@ -6,7 +6,8 @@
  * structured JSON envelope: narrative-ready numbers, deltas, and named
  * limitations. This command family is a thin, read-only client over that
  * catalog — it never computes anything itself, and it never touches the
- * warehouse directly (that's `mixshift data`). Closed beta.
+ * warehouse directly (that's `mixshift data`). Open to every account by
+ * default; `not_enrolled` means MixShift switched it off for this one.
  *
  * Command shape:
  *   intelligence catalog                          browse the insight catalog
@@ -66,7 +67,7 @@ export function registerIntelligenceCommands(program: Command): void {
     .command('intelligence')
     .description(
       'MixShift Intelligence: read finished insight envelopes (Ops Bridge and ' +
-        'friends) from the MixShift Intelligence service. Closed beta.',
+        'friends) from the MixShift Intelligence service.',
     );
 
   registerCatalogCommand(intelligence);
@@ -486,7 +487,7 @@ function fsSafeTimestamp(): string {
 function hintForKind(kind: IntelligenceFailureKind): string | undefined {
   switch (kind) {
     case 'not_enrolled':
-      return 'MixShift Intelligence is in closed beta. Contact MixShift ops to get this account enrolled.';
+      return 'MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.';
     case 'account_too_large_use_async':
       return 'Retry the same command with --async, then poll the returned runId (mixshift intelligence poll <runId>).';
     case 'busy':

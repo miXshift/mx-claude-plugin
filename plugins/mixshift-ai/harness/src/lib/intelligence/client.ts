@@ -159,7 +159,7 @@ export interface PollRunResult {
 
 export type IntelligenceFailureKind =
   // --- service-emitted ---
-  | 'not_enrolled' // account isn't enrolled in the Intelligence closed beta
+  | 'not_enrolled' // MixShift switched Intelligence off for this account (opt-out list)
   | 'unknown_insight' // `id` is not in the catalog
   | 'bad_params' // params failed the server's zod validation
   | 'merchant_not_resolved' // params.merchant matched no merchant
@@ -210,7 +210,7 @@ export function exitCodeForKind(kind: IntelligenceFailureKind): number {
     case 'session_expired':
       return 2; // sign in — `mixshift auth login`
     case 'not_enrolled':
-      return 3; // account not enrolled in the closed beta
+      return 3; // Intelligence switched off for this account
     case 'bad_params':
       return 4; // caller-side: fix --params / --params-file and retry
     case 'merchant_not_resolved':
@@ -629,8 +629,8 @@ function defaultFriendly(kind: IntelligenceFailureKind): string {
   switch (kind) {
     case 'not_enrolled':
       return (
-        "This MixShift account isn't enrolled in MixShift Intelligence yet " +
-        '(closed beta). Contact MixShift ops to get enrolled.'
+        'MixShift Intelligence is switched off for this account. ' +
+        'Contact MixShift support (support@mixshift.io) to turn it on.'
       );
     case 'unknown_insight':
       return (
