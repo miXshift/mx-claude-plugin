@@ -5,19 +5,7 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.12
 
-<!-- unreleased: version bump happens at release cut, not in feature PRs -->
-
 ### Changed
-
-- **Engine-written report evidence now keeps its identity when the wording
-  improves.** The analytics engine behind Report Max periodically rewords its
-  "What we know" statements to read better. Each statement card now carries a
-  stable id straight from the engine, and MixShift keys on that id rather than
-  on the sentence, so a wording improvement upstream never changes how your
-  reports cite their evidence. Reports also record which wording build phrased
-  the statements next to the engine version that computed the numbers, so
-  "why does this sentence read differently than last month" has a one-line
-  answer.
 
 - **Monthly Performance Report Max now prepares your client call, not just your
   report.** Version 2.0 of the max tier produces two documents instead of one: a
@@ -40,6 +28,57 @@ starts at 0.5.39; earlier versions predate the changelog.
   asserting trends, and each run records what it learned so the next one starts
   smarter. Monthly is the default; bi-weekly and QBR windows are a word in the
   ask. The standard-tier monthly report is unchanged.
+
+- **The Report Max client brief now reads the way an account manager presents
+  to a client's executives, and the machinery moves to your private companion.**
+  Method notes, thresholds, table names and seller identifiers leave the client
+  document, so it carries the findings and nothing about how they were
+  produced; the internal companion keeps all of that, and opens with a receipt
+  of what each layer contributed to the run: what the analysis engine found on
+  its own, which brand-context facts shaped the read, which past commitments got
+  a verdict, and what the run proposes to remember. Two charts are back in both
+  documents, a monthly trend with the current and year-ago months emphasized and
+  a bridge showing what pushed the number up and what pulled it down, both drawn
+  from the same figures as the tables so a chart never introduces a number the
+  tables do not show. Top-mover and item-group tables now use typed per-line
+  figures, capped at the five that matter. Before anything is published you walk
+  a plain-language review packet, one section per message: the settings used,
+  what the report says, questions for you, and what it will remember; a question
+  you answer can become a dated event on the brand's timeline, so next month's
+  report already knows about the stockout or the Buy Box break. Each account
+  manager, and each brand, can keep a voice profile seeded from writing samples
+  and refined by the edits you make at review, so the next brief sounds like you
+  from the first draft, and a brand can carry its own custom sections that pass
+  the same checks as the standard ones. Say "show report settings" to see every
+  option, its current value, and how to change it.
+
+- **Engine-written report evidence now keeps its identity when the wording
+  improves.** The analytics engine behind Report Max periodically rewords its
+  "What we know" statements to read better. Each statement card now carries a
+  stable id straight from the engine, and MixShift keys on that id rather than
+  on the sentence, so a wording improvement upstream never changes how your
+  reports cite their evidence. Reports also record which wording build phrased
+  the statements next to the engine version that computed the numbers, so
+  "why does this sentence read differently than last month" has a one-line
+  answer.
+
+### Fixed
+
+- **Running several MixShift commands at once no longer signs you out.** When an
+  assistant or a script ran multiple commands in parallel, they could race each
+  other to refresh the sign-in, and the loser would wipe the credentials the
+  winner had just saved, so every command after that failed and asked you to
+  sign in again. Commands now take turns refreshing, a command that loses the
+  race reuses the fresh sign-in instead of deleting it, and a session that has
+  really expired produces one clear message naming the fix (`mixshift auth
+  login`) rather than a string of silent retries. The MixShift service was fixed
+  on its side at the same time, so a lost race now converges on one sign-in for
+  that device instead of ending every session on the account.
+
+- **Intelligence commands no longer call the service a closed beta.** MixShift
+  Intelligence is open to every account, and the command help and the message
+  shown when it is switched off for an account now say so, pointing to
+  support@mixshift.io to turn it on.
 
 ## 0.8.11
 

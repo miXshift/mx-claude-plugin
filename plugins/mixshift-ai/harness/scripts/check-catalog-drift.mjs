@@ -46,6 +46,12 @@ const NOT_OPERATIONS = new Map([
   ['catalog.top_asins', 'brand-context taxonomy field, not an API operation'],
   ['reporting.audience', 'context.yaml config key read by mx-monthly-report'],
   ['reporting.voice_lint', 'context.yaml config key read by mx-monthly-report'],
+  ['reporting.brief_documents', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.call_cadence', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.group_merges', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.max_live_probes', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.review', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.sections', 'context.yaml config key read by mx-monthly-report-max'],
 ]);
 
 function resolveCatalogDir() {
