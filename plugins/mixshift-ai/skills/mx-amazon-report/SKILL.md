@@ -772,7 +772,8 @@ availability kinds share exit code 1 for now; branch on `failure_kind` in `--jso
 them apart, not on the exit code. If the service ever sends a `failure_kind` this version of the
 plugin does not recognise, `--json` also carries `unrecognized_kind` with the raw value the
 service sent; relay it in any bug report, since it names a gap on our side rather than a
-problem with the request.
+problem with the request. The pricing surface spells it `unrecognizedKind`, matching the rest
+of its `--json` fields.
 
 A separate, non-error case: `report get` (and `report run`) use **exit code
 10** for "not ready yet" / "timed out waiting." That is NOT a failure: the run

@@ -381,6 +381,10 @@ function registerPollRunCommand(pricing: Command): void {
                 // status so a pricing.failed is diagnosable without the log.
                 failure_kind: result.kind,
                 ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+                // Contract drift marker, same as the other surfaces (mx-ops#43).
+                ...(result.unrecognizedKind
+                  ? { unrecognized_kind: result.unrecognizedKind }
+                  : {}),
               },
             },
             root.dataDir,
@@ -439,6 +443,10 @@ function registerGetRunResultCommand(pricing: Command): void {
                 // status so a pricing.failed is diagnosable without the log.
                 failure_kind: result.kind,
                 ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+                // Contract drift marker, same as the other surfaces (mx-ops#43).
+                ...(result.unrecognizedKind
+                  ? { unrecognized_kind: result.unrecognizedKind }
+                  : {}),
               },
             },
             root.dataDir,

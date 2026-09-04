@@ -395,9 +395,8 @@ does not exist.
   lead with that one: telling a user re-authorizing is pointless when their
   grant has simply expired closes the door on the fix.
 - **A failure on `dsp.get_ad_creative_validation` is often advertiser-wide, not
-  creative-specific.** It reaches you as `failure_kind: unknown` (the service's
-  own upstream_unavailable is not one of the kinds this CLI carries, so do not
-  wait for that string). The tell is the SECOND creative failing the same way:
+  creative-specific.** It reaches you as `failure_kind: upstream_unavailable`
+  (plugin versions before 0.8.13 reported it as `unknown`; accept either). The tell is the SECOND creative failing the same way:
   stop there and report that validation is unavailable for that advertiser. Do
   NOT walk the advertiser's whole creative set. Each attempt is retried upstream
   before it returns, so a sweep costs minutes of wall clock and tells you nothing

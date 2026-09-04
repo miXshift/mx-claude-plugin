@@ -1496,9 +1496,7 @@ function toReportFailure(
     candidates: parseCandidates(json.candidates),
     httpStatus,
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
-    ...(strOrUndef(json.amazon_error_code) !== undefined
-      ? { amazonErrorCode: strOrUndef(json.amazon_error_code) }
-      : {}),
+    ...(amazonErrorCode !== undefined ? { amazonErrorCode } : {}),
     ...(numOrUndef(json.status) !== undefined ? { amazonStatus: numOrUndef(json.status) } : {}),
     ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
     ...(strOrUndef(json.responseText) !== undefined

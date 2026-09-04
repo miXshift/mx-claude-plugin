@@ -26,6 +26,15 @@ starts at 0.5.39; earlier versions predate the changelog.
   and backed off rather than aborted; a 400 is `bad_request` only when Amazon's
   own error code is present) instead of always being 1.
 
+- **MixShift Intelligence failures are reported more accurately too.** Two more
+  service kinds are recognised, and a credential that lacks the Intelligence
+  scope now reports exactly that (`insufficient_scope`, exit code 12) instead
+  of being mistaken for an account with Intelligence switched off. A gateway
+  rate limit reports as `throttled` (exit code 8). On the rare path where the
+  service sends a kind this version does not recognise, the exit code follows
+  the HTTP status where it is unambiguous (202 not ready, 400 bad params, 429
+  busy) instead of always being 1.
+
 ### Fixed
 
 - **The help map now lists Monthly Performance Report Max.** Asking for help in

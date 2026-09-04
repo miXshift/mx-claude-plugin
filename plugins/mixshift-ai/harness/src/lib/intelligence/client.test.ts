@@ -115,15 +115,40 @@ describe('catalog', () => {
     }
   });
 
-  it('falls back to not_enrolled on a 403 with an unknown kind, and records the drift (mx-ops#43)', async () => {
-    // 403 maps to exactly one Intelligence kind on the service, so the reverse is sound.
+  it('recognizes the /api scope gate: insufficient_scope at 403 is itself, not not_enrolled', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(403, { ok: false, kind: 'insufficient_scope', friendly: 'Lacks intelligence:read.' }),
+    );
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('insufficient_scope');
+      expect(r.unrecognizedKind).toBeUndefined();
+      expect(exitCodeForKind(r.kind)).toBe(12);
+    }
+  });
+
+  it('recognizes the gateway rate limiter: throttled at 429 is itself, not busy', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(429, { ok: false, kind: 'throttled', friendly: 'Slow down.' }),
+    );
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('throttled');
+      expect(r.unrecognizedKind).toBeUndefined();
+    }
+  });
+
+  it('does NOT guess not_enrolled from a 403: the /api scope gate emits insufficient_scope there (mx-ops#43)', async () => {
+    // A real not_enrolled always carries its explicit kind, so a 403 fallback could only mislabel.
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(403, { ok: false, kind: 'a_future_403_kind', friendly: 'No.' }),
     );
     const r = await catalog(injected(fetchImpl));
     expect(isIntelligenceFailure(r)).toBe(true);
     if (isIntelligenceFailure(r)) {
-      expect(r.kind).toBe('not_enrolled');
+      expect(r.kind).toBe('unknown');
       expect(r.unrecognizedKind).toBe('a_future_403_kind');
     }
   });
@@ -569,6 +594,9 @@ describe('exitCodeForKind', () => {
       // them changes no caller's behaviour.
       decomposition_budget_exceeded: 1,
       not_implemented: 1,
+      // Cross-cutting /api gate kinds (independent review on PR #161).
+      insufficient_scope: 12,
+      throttled: 8,
       unknown: 1,
     };
     for (const [kind, code] of Object.entries(table)) {
