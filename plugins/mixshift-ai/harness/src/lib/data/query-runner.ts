@@ -1476,6 +1476,13 @@ export interface NamedQueryOptions {
    *  entry's strict schema. */
   params?: Record<string, unknown>;
   queryTimeoutMs?: number;
+  /**
+   * HTTP budget for the whole call. Default = queryTimeoutMs + 5s, right for
+   * a single statement. A pack BATTERY (e.g. MPRX-FIGURES-01) runs many
+   * statements under one request, each under queryTimeoutMs, so its caller
+   * sets this to the service's battery budget instead.
+   */
+  httpTimeoutMs?: number;
   dataDirOverride?: string;
   /** Tests inject creds; production resolves from disk. */
   creds?: MysqlCreds | DatahubCreds;
@@ -1539,7 +1546,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
       creds,
       '/api/named-query',
       { id, sellerIds, params: options.params, queryTimeoutMs },
-      queryTimeoutMs + 5_000,
+      options.httpTimeoutMs ?? queryTimeoutMs + 5_000,
       options.dataDirOverride,
     );
     const json = (await res.json()) as NamedQueryWire;

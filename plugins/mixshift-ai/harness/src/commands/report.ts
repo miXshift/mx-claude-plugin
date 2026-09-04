@@ -21,6 +21,7 @@ import {
   type RenderReportDataDocument,
 } from '../lib/report-contract/render-report.js';
 import { UserFacingError } from '../lib/errors.js';
+import { runDispatched } from '../lib/data/dispatch.js';
 
 async function readJson<T>(file: string): Promise<T> {
   try {
@@ -590,4 +591,172 @@ export function registerReportCommands(program: Command): void {
         }
       });
     });
+
+  report
+    .command('battery')
+    .description(
+      'Pull the Monthly Performance Report Max figure battery for one Seller Central account. ' +
+        `The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one ` +
+        'JSON document: data-aligned windows, account ads + retail per period with derived ratios, ' +
+        'dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ' +
+        'ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and ' +
+        '15-month history. A section that fails server-side is named under sections_failed and the ' +
+        'rest still serves. Exit 0 = document written (even with failed sections), 1 = no document.',
+    )
+    .requiredOption('--seller-id <id>', 'MixShift SellerID of the Seller Central account row')
+    .option('--as-of <date>', 'YYYY-MM-DD; windows still clamp to the data load date (default: today)')
+    .option(
+      '--brands <list>',
+      'comma-separated sub-brand names as they appear in campaign names; enables the paid split',
+    )
+    .option(
+      '--min-item-sales <n>',
+      "sales floor for the Buy Box table (default: the account's median item revenue in the current window)",
+    )
+    .option('--buybox-floor <pct>', 'page-view-weighted Buy Box attention floor, percent', '92')
+    .option(
+      '--buybox-drop <pts>',
+      'month-over-month drop in weighted Buy Box points that flags an item even above the floor',
+      '5',
+    )
+    .option('--out <path>', 'write the figures document here (default: stdout)')
+    .option('--timeout <seconds>', 'per-statement query timeout on the service, seconds (max 120)', '60')
+    .action(async (opts: BatteryOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      await withReportErrorHandling(!!root.json, async () => {
+        const params = batteryParams(opts);
+        const result = await runDispatched<Record<string, unknown>>(BATTERY_QUERY_ID, {
+          params,
+          queryTimeoutMs: batteryInt(opts.timeout, '--timeout', 1, 120) * 1_000,
+          httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS,
+        });
+        if (!result.ok) {
+          // The envelope's own `friendly` is the user-facing line (it already
+          // names the wrong-twin case, a timeout, or a not-yet-deployed pack).
+          // The kind is a bounded set, so it doubles as the error class.
+          throw new UserFacingError(
+            `${result.failure.friendly} (${BATTERY_QUERY_ID}: ${result.failure.kind})`,
+            `report_battery_${result.failure.kind}`,
+          );
+        }
+        const doc = result.rows[0];
+        if (!doc || typeof doc !== 'object') {
+          throw new UserFacingError(
+            `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
+            'report_battery_empty',
+          );
+        }
+        const body = JSON.stringify(doc, null, 2);
+        if (opts.out) await writeReportOutput(opts.out, body + '\n');
+        if (root.json) {
+          console.log(
+            JSON.stringify(
+              {
+                ok: true,
+                out: opts.out ?? null,
+                revision: result.revision ?? null,
+                sections_failed: doc.sections_failed ?? {},
+                reconciliation: doc.reconciliation ?? null,
+                ...(opts.out ? {} : { figures: doc }),
+              },
+              null,
+              2,
+            ),
+          );
+        } else if (!opts.out) {
+          console.log(body);
+        } else {
+          for (const line of batterySummary(opts.out, doc)) console.log(line);
+        }
+      });
+    });
+}
+
+/** The pack battery id behind `report battery`. Append-only wire contract:
+ *  a breaking change to its params or document ships as a new id. */
+export const BATTERY_QUERY_ID = 'MPRX-FIGURES-01';
+
+/** HTTP budget for one battery call: the service caps a battery at 240s of
+ *  wall clock (sections not started by then are labelled skipped), so the
+ *  client waits a little longer than that rather than the single-statement
+ *  default of queryTimeoutMs + 5s. */
+export const BATTERY_HTTP_TIMEOUT_MS = 290_000;
+
+interface BatteryOptions {
+  sellerId: string;
+  asOf?: string;
+  brands?: string;
+  minItemSales?: string;
+  buyboxFloor: string;
+  buyboxDrop: string;
+  out?: string;
+  timeout: string;
+}
+
+function batteryInt(raw: string, flag: string, min: number, max?: number): number {
+  const n = Number(raw);
+  if (!/^-?\d+$/.test(raw.trim()) || !Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+    throw new UserFacingError(
+      `${flag} must be an integer${max !== undefined ? ` between ${min} and ${max}` : ` >= ${min}`}, got "${raw}".`,
+      'report_battery_bad_flag',
+    );
+  }
+  return n;
+}
+
+function batteryNumber(raw: string, flag: string): number {
+  const n = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(n) || n < 0 || n > 100) {
+    throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, 'report_battery_bad_flag');
+  }
+  return n;
+}
+
+/** Translate the flags into the battery's params. Validation here is only
+ *  what makes a clean local error; the service validates the same values
+ *  again (a calendar-real as_of, the brand cap) and answers bad_params. */
+export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    seller_id: batteryInt(opts.sellerId, '--seller-id', 1),
+    brands: (opts.brands ?? '')
+      .split(',')
+      .map((b) => b.trim())
+      .filter((b) => b.length > 0),
+    buybox_floor: batteryNumber(opts.buyboxFloor, '--buybox-floor'),
+    buybox_drop: batteryNumber(opts.buyboxDrop, '--buybox-drop'),
+  };
+  if (opts.asOf !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)) {
+      throw new UserFacingError(`--as-of must be YYYY-MM-DD, got "${opts.asOf}".`, 'report_battery_bad_flag');
+    }
+    params.as_of = opts.asOf;
+  }
+  if (opts.minItemSales !== undefined) {
+    params.min_item_sales = batteryInt(opts.minItemSales, '--min-item-sales', 0);
+  }
+  return params;
+}
+
+/** The same closing lines the shipped script printed after `--out`, so a
+ *  reader of the terminal still sees the reconciliation, every failed
+ *  section, and every dark ad day without opening the file. */
+export function batterySummary(out: string, doc: Record<string, unknown>): string[] {
+  const money = (v: unknown): string =>
+    typeof v === 'number' ? `$${Math.round(v).toLocaleString('en-US')}` : 'n/a';
+  const lines = [`wrote ${out}`];
+  const rec = (doc.reconciliation ?? {}) as Record<string, unknown>;
+  lines.push(
+    `reconciliation: account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`,
+  );
+  const failed = (doc.sections_failed ?? {}) as Record<string, string>;
+  for (const [name, why] of Object.entries(failed)) {
+    lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
+  }
+  const dark = (doc.dark_days ?? {}) as Record<string, { zero_spend_days?: string[]; normalization_factor?: number | null }>;
+  for (const [k, v] of Object.entries(dark)) {
+    if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
+      lines.push(`dark ad days in ${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor})`);
+    }
+  }
+  return lines;
 }

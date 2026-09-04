@@ -10,6 +10,13 @@ last-7-days column, availability breadth, and the mover reconciliation. Where bo
 serve the same figure, the envelope wins and the battery's total is the cross-check; a gap
 beyond about half a percent is a finding (usually restatement), not a choice.
 
+**Executable form.** The battery itself runs inside the MixShift service as the named query
+`MPRX-FIGURES-01`, called by `mixshift report battery` (SKILL.md step 3b). This file is the
+annotated, human-readable source of record for what that battery does and why each query is
+shaped the way it is. Run the queries below by hand only when you go beyond the battery: the
+Vendor Central fork, a cadence other than monthly, or a section the service reported under
+`sections_failed`.
+
 ## Contents
 
 - [Which tables](#which-tables)

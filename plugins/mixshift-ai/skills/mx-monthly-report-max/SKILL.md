@@ -300,15 +300,17 @@ override as a run-scoped defect.
 
 ### 3b. The brief's battery: the warehouse
 
-`scripts/pull_figures.py` runs the standard battery and emits one JSON with every figure
+`mixshift report battery` runs the standard battery and writes one JSON with every figure
 the envelope does not serve, already delta'd: resolved windows, dark ad days, the
 settled-window efficiency check, daily series and exit rate, segment splits, ASIN movers
 with the reconciliation result, out-of-stock days, and Buy Box by ASIN (page-view weighted,
 month and last 7 days). It exists because each of these queries has a trap in it, and
-re-deriving them by hand each period is how a wrong number reaches a client.
+re-deriving them by hand each period is how a wrong number reaches a client. The battery
+executes inside the MixShift service as the named query `MPRX-FIGURES-01`; this skill
+carries the call, not the SQL.
 
 ```bash
-python3 scripts/pull_figures.py --seller-id <SellerID> --as-of <data end> --out figures.json
+mixshift report battery --seller-id <SellerID> --as-of <data end> --out figures.json
 ```
 
 **Account traffic and conversion come from the account daily table, never from summing
@@ -327,13 +329,15 @@ The per-account confirmation probe is in `references/queries.md`.
 Flags worth knowing: `--brands "A,B"` enables the paid sub-brand split (without it the
 retail split still runs); `--min-item-sales`, `--buybox-floor`, `--buybox-drop` override
 the thresholds (defaults per the knobs table; the JSON records what was applied under
-`thresholds_applied`, quote it in the method notes). The script resolves MONTHLY windows
-only: for a bi-weekly or QBR run, take the queries from `references/queries.md` and run
-them by hand with the cadence windows from the knobs table.
+`thresholds_applied`, quote it in the method notes). A section that fails on the service
+is named under `sections_failed` in the JSON and echoed by the command; the brief runs on
+what landed and labels the gap. The battery resolves MONTHLY windows only: for a bi-weekly
+or QBR run, take the queries from `references/queries.md` and run them by hand with the
+cadence windows from the knobs table.
 
 Read `references/queries.md` when you need to go beyond the battery, when the account is
-Vendor Central (the script is Seller Central only; the reference carries the VC fork), or
-when a query errors. The six traps the battery encodes, so you can spot them anywhere else:
+Vendor Central (the battery is Seller Central only; the reference carries the VC fork), or
+when a section fails. The six traps the battery encodes, so you can spot them anywhere else:
 
 1. **Align the window to the data, not the calendar.** Business reports load behind ad
    data; trim both to the earlier `MAX(DateTime)` or the TACOS compares 26 days of spend

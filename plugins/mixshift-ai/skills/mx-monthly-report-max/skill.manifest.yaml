@@ -24,7 +24,9 @@ side_effect_policy: artifact_write
 review_required: always
 sql_ids: []
   # Deliberately empty: account-level core figures come from the envelope, and the
-  # brief-specific battery ships as scripts/pull_figures.py with its SQL inline
+  # brief-specific battery runs server-side as the named query MPRX-FIGURES-01 behind
+  # `mixshift report battery`. It takes its own params (seller id, as-of, brands,
+  # thresholds), so it is NOT a prefetch query and must not be listed here
   # (references/queries.md is the annotated source of record for every query in it).
 required_context_fields:
   - accounts[*].seller_id

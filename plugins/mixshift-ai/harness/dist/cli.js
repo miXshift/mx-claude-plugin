@@ -66163,7 +66163,7 @@ async function runNamedQuery(id, options = {}) {
       creds,
       "/api/named-query",
       { id, sellerIds, params: options.params, queryTimeoutMs },
-      queryTimeoutMs + 5e3,
+      options.httpTimeoutMs ?? queryTimeoutMs + 5e3,
       options.dataDirOverride
     );
     const json2 = await res.json();
@@ -71610,7 +71610,8 @@ async function runNamed(id, opts) {
     sellerIds,
     params: restParams,
     dataDirOverride: opts.dataDirOverride,
-    queryTimeoutMs: opts.queryTimeoutMs
+    queryTimeoutMs: opts.queryTimeoutMs,
+    httpTimeoutMs: opts.httpTimeoutMs
   });
   if (!result.ok) {
     return { ok: false, id, usedDispatch: "named", failure: result };
@@ -93865,6 +93866,120 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
       });
     }
   );
+  report.command("battery").description(
+    `Pull the Monthly Performance Report Max figure battery for one Seller Central account. The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one JSON document: data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and 15-month history. A section that fails server-side is named under sections_failed and the rest still serves. Exit 0 = document written (even with failed sections), 1 = no document.`
+  ).requiredOption("--seller-id <id>", "MixShift SellerID of the Seller Central account row").option("--as-of <date>", "YYYY-MM-DD; windows still clamp to the data load date (default: today)").option(
+    "--brands <list>",
+    "comma-separated sub-brand names as they appear in campaign names; enables the paid split"
+  ).option(
+    "--min-item-sales <n>",
+    "sales floor for the Buy Box table (default: the account's median item revenue in the current window)"
+  ).option("--buybox-floor <pct>", "page-view-weighted Buy Box attention floor, percent", "92").option(
+    "--buybox-drop <pts>",
+    "month-over-month drop in weighted Buy Box points that flags an item even above the floor",
+    "5"
+  ).option("--out <path>", "write the figures document here (default: stdout)").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    await withReportErrorHandling(!!root.json, async () => {
+      const params = batteryParams(opts);
+      const result = await runDispatched(BATTERY_QUERY_ID, {
+        params,
+        queryTimeoutMs: batteryInt(opts.timeout, "--timeout", 1, 120) * 1e3,
+        httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS
+      });
+      if (!result.ok) {
+        throw new UserFacingError(
+          `${result.failure.friendly} (${BATTERY_QUERY_ID}: ${result.failure.kind})`,
+          `report_battery_${result.failure.kind}`
+        );
+      }
+      const doc = result.rows[0];
+      if (!doc || typeof doc !== "object") {
+        throw new UserFacingError(
+          `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
+          "report_battery_empty"
+        );
+      }
+      const body = JSON.stringify(doc, null, 2);
+      if (opts.out) await writeReportOutput(opts.out, body + "\n");
+      if (root.json) {
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              out: opts.out ?? null,
+              revision: result.revision ?? null,
+              sections_failed: doc.sections_failed ?? {},
+              reconciliation: doc.reconciliation ?? null,
+              ...opts.out ? {} : { figures: doc }
+            },
+            null,
+            2
+          )
+        );
+      } else if (!opts.out) {
+        console.log(body);
+      } else {
+        for (const line of batterySummary(opts.out, doc)) console.log(line);
+      }
+    });
+  });
+}
+var BATTERY_QUERY_ID = "MPRX-FIGURES-01";
+var BATTERY_HTTP_TIMEOUT_MS = 29e4;
+function batteryInt(raw, flag, min, max) {
+  const n = Number(raw);
+  if (!/^-?\d+$/.test(raw.trim()) || !Number.isInteger(n) || n < min || max !== void 0 && n > max) {
+    throw new UserFacingError(
+      `${flag} must be an integer${max !== void 0 ? ` between ${min} and ${max}` : ` >= ${min}`}, got "${raw}".`,
+      "report_battery_bad_flag"
+    );
+  }
+  return n;
+}
+function batteryNumber(raw, flag) {
+  const n = Number(raw);
+  if (raw.trim() === "" || !Number.isFinite(n) || n < 0 || n > 100) {
+    throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, "report_battery_bad_flag");
+  }
+  return n;
+}
+function batteryParams(opts) {
+  const params = {
+    seller_id: batteryInt(opts.sellerId, "--seller-id", 1),
+    brands: (opts.brands ?? "").split(",").map((b) => b.trim()).filter((b) => b.length > 0),
+    buybox_floor: batteryNumber(opts.buyboxFloor, "--buybox-floor"),
+    buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop")
+  };
+  if (opts.asOf !== void 0) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)) {
+      throw new UserFacingError(`--as-of must be YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
+    }
+    params.as_of = opts.asOf;
+  }
+  if (opts.minItemSales !== void 0) {
+    params.min_item_sales = batteryInt(opts.minItemSales, "--min-item-sales", 0);
+  }
+  return params;
+}
+function batterySummary(out, doc) {
+  const money = (v) => typeof v === "number" ? `$${Math.round(v).toLocaleString("en-US")}` : "n/a";
+  const lines = [`wrote ${out}`];
+  const rec = doc.reconciliation ?? {};
+  lines.push(
+    `reconciliation: account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`
+  );
+  const failed = doc.sections_failed ?? {};
+  for (const [name, why] of Object.entries(failed)) {
+    lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
+  }
+  const dark = doc.dark_days ?? {};
+  for (const [k, v] of Object.entries(dark)) {
+    if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
+      lines.push(`dark ad days in ${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor})`);
+    }
+  }
+  return lines;
 }
 
 // src/lib/net/doctor.ts

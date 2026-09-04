@@ -29,12 +29,12 @@ components:
       load, like-day-count comparison, dark-day normalization, settled-window efficiency
       verification, SKU-to-account reconciliation, and page-view-weighted Buy Box with a
       last-7-days column.
-    home: scripts/pull_figures.py (executable) + references/queries.md (annotated source of record)
-    depends_on: [mixshift data query (gateway), Seller Central tables; VC fork documented in the reference]
+    home: MixShift service named query MPRX-FIGURES-01, called by `mixshift report battery` (executable, server-side) + references/queries.md (annotated source of record)
+    depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-01), Seller Central tables; VC fork documented in the reference]
     how_to_lift: >
       Lift individual queries from references/queries.md with their trap notes attached;
-      or run the script whole and consume its JSON. Never lift a query without its trap
-      note: the note is the component.
+      or run the battery whole (`mixshift report battery`) and consume its JSON. Never lift
+      a query without its trap note: the note is the component.
     provenance: mx-call-brief (field-proven); each trap traces to a caught real-account error.
 
   - id: account-modes
