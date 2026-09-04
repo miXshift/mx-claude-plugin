@@ -138,6 +138,24 @@ export type ReportFailureKind =
   | 'throttled' // 429 — Amazon rate limit; +retryAfterMs
   | 'report_fatal' // 502 — Amazon returned FATAL/CANCELLED; +reportId,status
   | 'host_unreachable' // 502 — service couldn't reach Amazon
+  // --- service-emitted, added 2026-09-04 (mx-ops#43) ---
+  // All kinds the GATEWAY already emits (ALL_SPAPI_ERROR_KINDS in
+  // mx-legacy-auth token-source.ts). Until now the plugin did not list them,
+  // so every one arrived and was stamped `unknown` — undoing at the client
+  // exactly the split the service made on purpose. User-facing copy is
+  // unaffected: the envelope's own `friendly` is preferred over ours.
+  | 'report_retired' // 400 — report type Amazon has retired. Terminal
+  | 'upstream_unavailable' // 502 — service reached Amazon, Amazon was down
+  | 'listings_write_disabled' // 503 — listings writes off service-wide
+  | 'listings_media_write_disabled' // 503 — media writes off service-wide
+  | 'listings_write_not_enabled' // 403 — not enabled for this tenant
+  | 'patch_not_allowed' // 422 — the requested patch is not permitted
+  | 'change_set_not_found' // 404 — no such change set
+  | 'change_set_expired' // 409 — change set aged out before commit
+  | 'change_set_already_committed' // 409 — already committed
+  | 'approval_mismatch' // 409 — approval does not match the change set
+  | 'stale_approval' // 409 — approval superseded
+  | 'schema_drift' // 409 — listing schema moved under the change set
   // --- local-only (this module) ---
   | 'not_authenticated' // no datahub creds on disk; run `mixshift auth login`
   | 'session_expired' // 401 even after a forced refresh
@@ -163,6 +181,11 @@ export interface ReportFailure {
   candidates?: MerchantCandidate[];
   /** HTTP status of the failing call — diagnostics only; do not branch on it. */
   httpStatus?: number;
+  /** Set ONLY when the service sent a `kind` this build does not recognize
+   *  (or sent none at all, recorded as `(absent)`). Carries the raw wire
+   *  value so gateway/client contract drift stays visible instead of being
+   *  normalized away into `unknown`. Empty on every healthy response. */
+  unrecognizedKind?: string;
   /** AMAZON's own error code on `bad_request` (`InvalidInput`,
    *  `InvalidParameterValue`, ...). Low-cardinality and identifier-free, which
    *  is why this is the field worth recording and quoting in a bug report. */
@@ -1416,6 +1439,20 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'host_unreachable',
   'not_authenticated',
   'session_expired',
+  // Gateway kinds added 2026-09-04 (mx-ops#43) — keep in step with
+  // ALL_SPAPI_ERROR_KINDS in mx-legacy-auth.
+  'report_retired',
+  'upstream_unavailable',
+  'listings_write_disabled',
+  'listings_media_write_disabled',
+  'listings_write_not_enabled',
+  'patch_not_allowed',
+  'change_set_not_found',
+  'change_set_expired',
+  'change_set_already_committed',
+  'approval_mismatch',
+  'stale_approval',
+  'schema_drift',
   'unknown',
 ]);
 
@@ -1438,9 +1475,10 @@ function toReportFailure(
   surface?: AmazonSurface,
 ): ReportFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
-  const kind: ReportFailureKind = KNOWN_KINDS.has(rawKind)
+  const recognized = KNOWN_KINDS.has(rawKind);
+  const kind: ReportFailureKind = recognized
     ? (rawKind as ReportFailureKind)
-    : 'unknown';
+    : safeKindForStatus(httpStatus);
   const serverFriendly =
     typeof json.friendly === 'string' ? json.friendly : undefined;
   const message = typeof json.message === 'string' ? json.message : undefined;
@@ -1456,6 +1494,7 @@ function toReportFailure(
     status: strOrUndef(json.status),
     candidates: parseCandidates(json.candidates),
     httpStatus,
+    ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     ...(strOrUndef(json.amazon_error_code) !== undefined
       ? { amazonErrorCode: strOrUndef(json.amazon_error_code) }
       : {}),
@@ -1507,6 +1546,31 @@ function statusOnlyFailure(
       `envelope${detail ? `: ${detail}` : '.'}`,
     httpStatus,
   };
+}
+
+/** Reverse-map a status to a kind, but ONLY where doing so is sound.
+ *
+ * The service's own kind->status map is NOT injective, so a general reverse
+ * mapping invents facts. Measured against mx-legacy-auth `STATUS_BY_KIND`:
+ * 404 is BOTH `merchant_not_found` and `change_set_not_found`; 409 covers six
+ * kinds (`reauth_required`, `change_set_expired`, `change_set_already_
+ * committed`, `approval_mismatch`, `stale_approval`, `schema_drift`); 403,
+ * 502 and 503 are each ambiguous too. Labelling a 404 `merchant_not_found`
+ * would tell a user with an expired change set to go fix their merchant
+ * selection — worse than saying nothing, because it points at the wrong fix.
+ *
+ * So this narrows to the cases where the answer cannot be wrong:
+ *   400 -> bad_request  (both candidates, `bad_request` and `report_retired`,
+ *                        are terminal client errors: do not retry either way)
+ *   429 -> throttled    (sole occupant of that status)
+ * Everything else stays `unknown`, which is honest rather than confident.
+ *
+ * Used only when the service sends a kind we do not recognize. See mx-ops#43.
+ */
+function safeKindForStatus(httpStatus: number): ReportFailureKind {
+  if (httpStatus === 400) return 'bad_request';
+  if (httpStatus === 429) return 'throttled';
+  return 'unknown';
 }
 
 function statusToKind(httpStatus: number): ReportFailureKind {

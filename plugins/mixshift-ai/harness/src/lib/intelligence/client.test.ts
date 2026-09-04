@@ -516,6 +516,11 @@ describe('exitCodeForKind', () => {
       run_not_found: 11,
       engine_error: 1,
       host_unreachable: 1,
+      // Recognized as of mx-ops#43. Both keep exit code 1, which is exactly
+      // what they returned before (they landed in `unknown`), so recognizing
+      // them changes no caller's behaviour.
+      decomposition_budget_exceeded: 1,
+      not_implemented: 1,
       unknown: 1,
     };
     for (const [kind, code] of Object.entries(table)) {

@@ -7,6 +7,19 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 <!-- unreleased: version bump happens at release cut, not in feature PRs -->
 
+### Changed
+
+- **Amazon failures now report what actually went wrong instead of "unknown".**
+  When a call to Amazon failed, some failures arrived labelled `unknown` even
+  though MixShift knew exactly what had happened: a retired report type, an
+  expired listings change set, a schema that moved, writes not enabled for your
+  account. The message you read was already correct; the machine-readable
+  `kind` in `--json` was not, so scripts and agents branching on it could not
+  tell a permanent problem from a temporary one and would retry things that
+  were never going to succeed. Fourteen failure kinds are now reported
+  accurately. Exit codes are unchanged, so nothing you have scripted will
+  behave differently.
+
 ### Fixed
 
 - **The help map now lists Monthly Performance Report Max.** Asking for help in
