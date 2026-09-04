@@ -17,8 +17,14 @@ starts at 0.5.39; earlier versions predate the changelog.
   `kind` in `--json` was not, so scripts and agents branching on it could not
   tell a permanent problem from a temporary one and would retry things that
   were never going to succeed. Fourteen failure kinds are now reported
-  accurately. Exit codes are unchanged, so nothing you have scripted will
-  behave differently.
+  accurately, and their exit codes are unchanged (they keep exit code 1, exactly
+  as before), so nothing you have scripted around them behaves differently.
+  Two small things alongside. If the service ever sends a kind this version does
+  not recognise, `--json` now carries the raw value as `unrecognized_kind` so it
+  can be reported. And on that same rare path, the exit code now follows the
+  HTTP status where the status is unambiguous (a 429 is treated as `throttled`
+  and backed off rather than aborted; a 400 is `bad_request` only when Amazon's
+  own error code is present) instead of always being 1.
 
 ### Fixed
 

@@ -102,6 +102,54 @@ describe('catalog', () => {
     if (!isIntelligenceFailure(r)) expect(r.entries).toEqual([]);
   });
 
+  it('recognizes a gateway kind that used to be stamped unknown (mx-ops#43)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(422, { ok: false, kind: 'decomposition_budget_exceeded', friendly: 'Over budget.' }),
+    );
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('decomposition_budget_exceeded');
+      expect(r.unrecognizedKind).toBeUndefined();
+      expect(r.friendly).toBe('Over budget.');
+    }
+  });
+
+  it('falls back to not_enrolled on a 403 with an unknown kind, and records the drift (mx-ops#43)', async () => {
+    // 403 maps to exactly one Intelligence kind on the service, so the reverse is sound.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(403, { ok: false, kind: 'a_future_403_kind', friendly: 'No.' }),
+    );
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('not_enrolled');
+      expect(r.unrecognizedKind).toBe('a_future_403_kind');
+    }
+  });
+
+  it('does NOT guess from a 404, which is three Intelligence kinds on the service (mx-ops#43)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(404, { ok: false, kind: 'a_future_404_kind', friendly: 'Gone.' }),
+    );
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('unknown');
+      expect(r.unrecognizedKind).toBe('a_future_404_kind');
+    }
+  });
+
+  it('records (absent) when the envelope carries no kind, and maps a 429 to busy (mx-ops#43)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(429, { ok: false, friendly: 'Busy.' }));
+    const r = await catalog(injected(fetchImpl));
+    expect(isIntelligenceFailure(r)).toBe(true);
+    if (isIntelligenceFailure(r)) {
+      expect(r.kind).toBe('busy');
+      expect(r.unrecognizedKind).toBe('(absent)');
+    }
+  });
+
   it('propagates a typed failure (not_enrolled)', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(403, { ok: false, kind: 'not_enrolled', friendly: 'Switched off.' }),

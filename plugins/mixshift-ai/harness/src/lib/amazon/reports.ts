@@ -1476,9 +1476,10 @@ function toReportFailure(
 ): ReportFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const recognized = KNOWN_KINDS.has(rawKind);
+  const amazonErrorCode = strOrUndef(json.amazon_error_code);
   const kind: ReportFailureKind = recognized
     ? (rawKind as ReportFailureKind)
-    : safeKindForStatus(httpStatus);
+    : safeKindForStatus(httpStatus, amazonErrorCode);
   const serverFriendly =
     typeof json.friendly === 'string' ? json.friendly : undefined;
   const message = typeof json.message === 'string' ? json.message : undefined;
@@ -1560,15 +1561,22 @@ function statusOnlyFailure(
  * selection — worse than saying nothing, because it points at the wrong fix.
  *
  * So this narrows to the cases where the answer cannot be wrong:
- *   400 -> bad_request  (both candidates, `bad_request` and `report_retired`,
- *                        are terminal client errors: do not retry either way)
+ *   400 + amazon_error_code -> bad_request. 400 ALONE is not enough: the
+ *       service emits both `bad_request` and `report_retired` at 400, and its
+ *       own validation failures ship at 400 as `unknown` today. `bad_request`
+ *       is documented to users as "AMAZON rejected the request" with the code
+ *       attached, so it is only honest when Amazon's code is actually present;
+ *       that code is the evidence Amazon, not the service, did the rejecting.
  *   429 -> throttled    (sole occupant of that status)
  * Everything else stays `unknown`, which is honest rather than confident.
  *
  * Used only when the service sends a kind we do not recognize. See mx-ops#43.
  */
-function safeKindForStatus(httpStatus: number): ReportFailureKind {
-  if (httpStatus === 400) return 'bad_request';
+function safeKindForStatus(
+  httpStatus: number,
+  amazonErrorCode?: string,
+): ReportFailureKind {
+  if (httpStatus === 400 && amazonErrorCode) return 'bad_request';
   if (httpStatus === 429) return 'throttled';
   return 'unknown';
 }

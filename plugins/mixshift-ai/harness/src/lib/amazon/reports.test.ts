@@ -843,11 +843,14 @@ describe('unrecognized wire kinds (mx-ops#43)', () => {
     }
   });
 
-  it('falls back to bad_request on a 400 with an unknown kind, and records the drift', async () => {
+  it('falls back to bad_request on a 400 with an unknown kind ONLY when the Amazon error code is present', async () => {
+    // The code is the evidence Amazon did the rejecting. Without it a 400 could
+    // just as well be the service's own validation, which is not `bad_request`.
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(400, {
         ok: false,
         kind: 'some_kind_shipped_after_this_build',
+        amazon_error_code: 'InvalidInput',
         friendly: 'Amazon rejected the request.',
       }),
     );
@@ -859,6 +862,28 @@ describe('unrecognized wire kinds (mx-ops#43)', () => {
     if (!r.ok) {
       expect(r.kind).toBe('bad_request');
       expect(r.unrecognizedKind).toBe('some_kind_shipped_after_this_build');
+    }
+  });
+
+  it('leaves a 400 with an unknown kind and NO amazon_error_code as unknown', async () => {
+    // 400 is not injective (bad_request AND report_retired) and the service's
+    // own validation 400s carry no Amazon code. Labelling that `bad_request`
+    // would tell the user Amazon rejected a request Amazon never saw.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, {
+        ok: false,
+        kind: 'a_future_400_kind',
+        friendly: 'Bad request.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('unknown');
+      expect(r.unrecognizedKind).toBe('a_future_400_kind');
     }
   });
 

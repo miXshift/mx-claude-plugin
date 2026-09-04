@@ -1074,6 +1074,11 @@ async function trackFailure(
       duration_ms: Date.now() - startedAt,
       payload: {
         kind: failure.kind,
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...(failure.unrecognizedKind
+          ? { unrecognized_kind: failure.unrecognizedKind }
+          : {}),
         ...(reportType ? { report_type: reportType } : {}),
         // run_id ties this report.failed back to its report.started (same
         // run handle), even when the failure surfaces in a separate `report
@@ -1112,6 +1117,7 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
@@ -1146,6 +1152,7 @@ function emitChunkFailure(
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
