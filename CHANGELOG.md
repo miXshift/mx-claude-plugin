@@ -3,6 +3,18 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.13
+
+<!-- unreleased: version bump happens at release cut, not in feature PRs -->
+
+### Fixed
+
+- **The help map now lists Monthly Performance Report Max.** Asking for help in
+  chat renders the plugin's capability map, and the max tier of the monthly
+  report was missing from its reporting group even though it has been available
+  since 0.8.9. It now appears next to the standard monthly report, with the
+  phrase to say to start it.
+
 ## 0.8.12
 
 ### Changed
