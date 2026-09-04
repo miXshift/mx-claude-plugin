@@ -397,13 +397,15 @@ function assertLayout(entries, { mustContain, cliEntryName, label }) {
   // (3) required manifest present
   if (!names.includes(mustContain)) fail(`[${label}] zip is missing ${mustContain}.`);
 
-  // (4) no excluded path leaked
+  // (4) no excluded path leaked. The directory patterns are anchored to the
+  // HARNESS root on purpose: they guard the maintainer dirs (harness/src,
+  // harness/test, harness/testdata, harness/scripts), which never ship. A
+  // skill may legitimately ship its own scripts/ (mx-monthly-report-max does,
+  // and its SKILL.md tells the user to run it); an unanchored pattern
+  // rejected the 0.8.12 tag over exactly that file.
   const leak = names.find(
     (n) =>
-      /(^|\/)src\//.test(n) ||
-      /(^|\/)test\//.test(n) ||
-      /(^|\/)testdata\//.test(n) ||
-      /(^|\/)scripts\//.test(n) ||
+      /(^|\/)harness\/(src|test|testdata|scripts)\//.test(n) ||
       n.endsWith('.map') ||
       n.endsWith('package-lock.json') ||
       n.endsWith('tsconfig.json') ||
