@@ -94474,7 +94474,8 @@ var CATALOG = [
   {
     title: "Reporting & analysis",
     skills: [
-      { id: "mx-monthly-report", say: "write the monthly report for <brand>", what: "MoM and YoY performance narrative" }
+      { id: "mx-monthly-report", say: "write the monthly report for <brand>", what: "MoM and YoY performance narrative" },
+      { id: "mx-monthly-report-max", say: "prep my call with <brand>", what: "client brief plus private call notes, any cadence" }
     ]
   },
   {
