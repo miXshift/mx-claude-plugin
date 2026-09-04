@@ -751,7 +751,26 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry (a `retry_after_ms` may be present). |
 | `report_fatal` | 9 | Amazon returned a fatal result for the operation (often: the operation does not apply to this merchant, e.g. a vendor operation on a 3P seller, or a bad parameter). Re-check the operation `notes` and the merchant type. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
+| `insufficient_scope` | 11 | The credential lacks a scope this operation needs. Not retryable as-is: the credential has to be re-issued with that scope. |
+| `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service for this account. Contact MixShift ops. |
+| `report_retired` | 1 | Amazon has retired this report type. Nothing was sent to Amazon. **Terminal**: pick a current type; never retry unchanged. |
+| `upstream_unavailable` | 1 | The service reached Amazon but Amazon was unavailable. Transient: retry with backoff. |
+| `listings_write_disabled` | 1 | Listings writes are switched off service-wide. Do not retry; tell the user and stop. |
+| `listings_media_write_disabled` | 1 | Listings media writes are switched off service-wide. Do not retry. |
+| `listings_write_not_enabled` | 1 | Listings writes are not enabled for this MixShift account. Contact MixShift ops. |
+| `patch_not_allowed` | 1 | The requested listing patch is not permitted for that attribute or product type. Terminal for that patch: change the request. |
+| `change_set_not_found` | 1 | No such change set. Run the dry run again to create a fresh one. |
+| `change_set_expired` | 1 | The change set aged out before commit. Run the dry run again and commit promptly. |
+| `change_set_already_committed` | 1 | This change set was already committed. Do not commit again; verify the listing instead. |
+| `approval_mismatch` | 1 | The approval does not match the change set it was given for. Run the dry run again and approve the new set. |
+| `stale_approval` | 1 | The approval was superseded by a newer change set. Approve the current one. |
+| `schema_drift` | 1 | Amazon's listing schema changed underneath the change set. Run the dry run again against the current schema. |
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
+
+The write-flow kinds (`patch_not_allowed` through `schema_drift`) and the service availability
+kinds share exit code 1 for now; branch on `failure_kind`, not the exit code, to tell them apart.
+If the service sends a `failure_kind` this plugin version does not recognise, `--json` also carries
+`unrecognized_kind` with the raw value; relay it in any bug report, since it names a gap on our side.
 
 A 403 from Amazon for an operation under a role the app does not hold maps to
 `restricted_report` with the operation id in the message. That is the reactive

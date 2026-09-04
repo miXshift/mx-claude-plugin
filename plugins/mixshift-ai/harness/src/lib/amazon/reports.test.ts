@@ -818,6 +818,129 @@ describe('failure envelope mapping', () => {
 // 401 → force-refresh → retry (token-provider injection)
 // ---------------------------------------------------------------------------
 
+describe('unrecognized wire kinds (mx-ops#43)', () => {
+  it('recognizes a gateway kind that used to be stamped unknown', async () => {
+    // `report_retired` is in the service's ALL_SPAPI_ERROR_KINDS but was absent
+    // from this client's KNOWN_KINDS, so it arrived and was classed `unknown` --
+    // undoing at the client exactly the split the service made on purpose.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, {
+        ok: false,
+        kind: 'report_retired',
+        friendly: 'Amazon has retired that report type.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'GET_RETIRED_THING' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('report_retired');
+      expect(r.unrecognizedKind).toBeUndefined();
+      // The service's own wording still wins over our default.
+      expect(r.friendly).toBe('Amazon has retired that report type.');
+    }
+  });
+
+  it('falls back to bad_request on a 400 with an unknown kind ONLY when the Amazon error code is present', async () => {
+    // The code is the evidence Amazon did the rejecting. Without it a 400 could
+    // just as well be the service's own validation, which is not `bad_request`.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, {
+        ok: false,
+        kind: 'some_kind_shipped_after_this_build',
+        amazon_error_code: 'InvalidInput',
+        friendly: 'Amazon rejected the request.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('bad_request');
+      expect(r.unrecognizedKind).toBe('some_kind_shipped_after_this_build');
+    }
+  });
+
+  it('leaves a 400 with an unknown kind and NO amazon_error_code as unknown', async () => {
+    // 400 is not injective (bad_request AND report_retired) and the service's
+    // own validation 400s carry no Amazon code. Labelling that `bad_request`
+    // would tell the user Amazon rejected a request Amazon never saw.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, {
+        ok: false,
+        kind: 'a_future_400_kind',
+        friendly: 'Bad request.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('unknown');
+      expect(r.unrecognizedKind).toBe('a_future_400_kind');
+    }
+  });
+
+  it('does NOT guess merchant_not_found from a 404, because 404 is ambiguous', async () => {
+    // The service maps BOTH `merchant_not_found` AND `change_set_not_found` to
+    // 404. Reverse-mapping would tell a user whose change set is missing to go
+    // fix their merchant selector -- worse than saying nothing.
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(404, {
+        ok: false,
+        kind: 'a_future_404_kind',
+        friendly: 'Not found.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('unknown');
+      expect(r.kind).not.toBe('merchant_not_found');
+      expect(r.unrecognizedKind).toBe('a_future_404_kind');
+    }
+  });
+
+  it('records (absent) when the envelope carries no kind at all', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(429, { ok: false, friendly: 'Slow down.' }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('throttled');
+      expect(r.unrecognizedKind).toBe('(absent)');
+    }
+  });
+
+  it('leaves a recognized kind untouched and sets no drift marker', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(429, { ok: false, kind: 'throttled', friendly: 'Rate limited.' }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('throttled');
+      expect(r.unrecognizedKind).toBeUndefined();
+    }
+  });
+});
+
 describe('401 retry', () => {
   it('force-refreshes the token and retries once', async () => {
     const tokenProvider = async (force?: boolean) => (force ? 'fresh' : 'stale');
@@ -899,6 +1022,24 @@ describe('exitCodeForKind', () => {
       bad_request: 12,
       host_unreachable: 1,
       download_failed: 1,
+      // Gateway kinds recognized as of mx-ops#43. They keep exit code 1,
+      // which is EXACTLY what they returned before this change (they landed
+      // in `unknown`), so recognizing them alters no script's behaviour.
+      // Giving the write-flow kinds their own codes is a real improvement but
+      // it is a documented-compat-surface change (skill failure table + docs)
+      // and is deliberately left to its own pass.
+      report_retired: 1,
+      upstream_unavailable: 1,
+      listings_write_disabled: 1,
+      listings_media_write_disabled: 1,
+      listings_write_not_enabled: 1,
+      patch_not_allowed: 1,
+      change_set_not_found: 1,
+      change_set_expired: 1,
+      change_set_already_committed: 1,
+      approval_mismatch: 1,
+      stale_approval: 1,
+      schema_drift: 1,
       unknown: 1,
     };
     for (const [kind, code] of Object.entries(documented)) {

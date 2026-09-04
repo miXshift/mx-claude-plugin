@@ -163,6 +163,12 @@ function registerCall(amazon: Command): void {
             // low-cardinality and carries no seller/order/ASIN identifiers.
             ...(result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {}),
             ...(result.amazonStatus ? { amazon_status: result.amazonStatus } : {}),
+            // Contract drift: the service sent a `kind` this build does not
+            // know, so the class above came from the status, not the wire.
+            // Recording the raw value keeps the drift visible (mx-ops#43).
+            ...(result.unrecognizedKind
+              ? { unrecognized_kind: result.unrecognizedKind }
+              : {}),
           });
           return emitFailure(result, !!root.json);
         }
@@ -250,6 +256,7 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       // send and left us unable to tell a catalog gap from an outage.
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
     });
