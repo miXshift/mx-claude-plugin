@@ -168,7 +168,7 @@ describe('intelligence catalog', () => {
     await runCli({ dataDir }, 'catalog');
     expect(process.exitCode).toBe(3);
     expect(stderrText()).toContain("isn't enrolled");
-    expect(stderrText()).toContain('closed beta');
+    expect(stderrText()).toContain('switched off for this account');
   });
 });
 
@@ -452,12 +452,12 @@ describe('intelligence run — failure kinds', () => {
   });
 
   it('a JSON failure envelope carries kind + hint and no artifact is written', async () => {
-    vi.mocked(run).mockResolvedValue({ ok: false, kind: 'not_enrolled', friendly: 'Closed beta.' });
+    vi.mocked(run).mockResolvedValue({ ok: false, kind: 'not_enrolled', friendly: 'Switched off.' });
     await runCli({ dataDir, json: true }, 'run', 'INS-OPS-BRIDGE-01', '--params', '{}');
     const parsed = JSON.parse(stdoutText());
     expect(parsed.ok).toBe(false);
     expect(parsed.kind).toBe('not_enrolled');
-    expect(parsed.hint).toContain('closed beta');
+    expect(parsed.hint).toContain('switched off for this account');
     expect(process.exitCode).toBe(3);
   });
 });
