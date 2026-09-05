@@ -88224,6 +88224,20 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "host_unreachable",
   "not_authenticated",
   "session_expired",
+  // Gateway kinds added 2026-09-04 (mx-ops#43) — keep in step with
+  // ALL_SPAPI_ERROR_KINDS in mx-legacy-auth.
+  "report_retired",
+  "upstream_unavailable",
+  "listings_write_disabled",
+  "listings_media_write_disabled",
+  "listings_write_not_enabled",
+  "patch_not_allowed",
+  "change_set_not_found",
+  "change_set_expired",
+  "change_set_already_committed",
+  "approval_mismatch",
+  "stale_approval",
+  "schema_drift",
   "unknown"
 ]);
 function isServerFailureEnvelope(json2) {
@@ -88231,7 +88245,9 @@ function isServerFailureEnvelope(json2) {
 }
 function toReportFailure(json2, httpStatus, surface) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const kind = KNOWN_KINDS.has(rawKind) ? rawKind : "unknown";
+  const recognized = KNOWN_KINDS.has(rawKind);
+  const amazonErrorCode = strOrUndef(json2.amazon_error_code);
+  const kind = recognized ? rawKind : safeKindForStatus(httpStatus, amazonErrorCode);
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
@@ -88246,7 +88262,8 @@ function toReportFailure(json2, httpStatus, surface) {
     status: strOrUndef(json2.status),
     candidates: parseCandidates(json2.candidates),
     httpStatus,
-    ...strOrUndef(json2.amazon_error_code) !== void 0 ? { amazonErrorCode: strOrUndef(json2.amazon_error_code) } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...amazonErrorCode !== void 0 ? { amazonErrorCode } : {},
     ...numOrUndef(json2.status) !== void 0 ? { amazonStatus: numOrUndef(json2.status) } : {},
     ...json2.responsePayload !== void 0 ? { responsePayload: json2.responsePayload } : {},
     ...strOrUndef(json2.responseText) !== void 0 ? { responseText: strOrUndef(json2.responseText) } : {}
@@ -88279,6 +88296,11 @@ function statusOnlyFailure(httpStatus, detail, surface) {
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
+}
+function safeKindForStatus(httpStatus, amazonErrorCode) {
+  if (httpStatus === 400 && amazonErrorCode) return "bad_request";
+  if (httpStatus === 429) return "throttled";
+  return "unknown";
 }
 function statusToKind(httpStatus) {
   switch (httpStatus) {
@@ -88859,7 +88881,9 @@ function registerPollRunCommand(pricing) {
               // Beta richness (feedback #10): typed failure kind + HTTP
               // status so a pricing.failed is diagnosable without the log.
               failure_kind: result.kind,
-              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+              ...result.httpStatus ? { http_status: result.httpStatus } : {},
+              // Contract drift marker, same as the other surfaces (mx-ops#43).
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
             }
           },
           root.dataDir
@@ -88913,7 +88937,9 @@ function registerGetRunResultCommand(pricing) {
               // Beta richness (feedback #10): typed failure kind + HTTP
               // status so a pricing.failed is diagnosable without the log.
               failure_kind: result.kind,
-              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+              ...result.httpStatus ? { http_status: result.httpStatus } : {},
+              // Contract drift marker, same as the other surfaces (mx-ops#43).
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
             }
           },
           root.dataDir
@@ -89030,7 +89056,10 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
         failure_kind: result.kind,
         // Beta richness (feedback #10): HTTP status alongside the typed kind so
         // a pricing.failed is diagnosable without the log.
-        ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        ...result.httpStatus ? { http_status: result.httpStatus } : {},
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
       }
     },
     dataDir
@@ -89221,7 +89250,11 @@ function registerCall(amazon) {
           // signature. The CODE and not the message, because it is
           // low-cardinality and carries no seller/order/ASIN identifiers.
           ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
-          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {},
+          // Contract drift: the service sent a `kind` this build does not
+          // know, so the class above came from the status, not the wire.
+          // Recording the raw value keeps the drift visible (mx-ops#43).
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
         });
         return emitFailure2(result, !!root.json);
       }
@@ -89291,6 +89324,7 @@ function emitFailure2(failure, json2) {
       // send and left us unable to tell a catalog gap from an outage.
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
@@ -90064,6 +90098,9 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType,
       duration_ms: Date.now() - startedAt,
       payload: {
         kind: failure.kind,
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {},
         ...reportType ? { report_type: reportType } : {},
         // run_id ties this report.failed back to its report.started (same
         // run handle), even when the failure surfaces in a separate `report
@@ -90095,6 +90132,7 @@ function emitFailure3(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
@@ -90119,6 +90157,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
@@ -90703,7 +90742,11 @@ function registerCall2(ads) {
           // not the message, because it is low-cardinality and carries no
           // seller/order/ASIN identifiers.
           ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
-          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {},
+          // Contract drift: the service sent a `kind` this build does not
+          // know, so the class above came from the status, not the wire.
+          // Recording the raw value keeps the drift visible (mx-ops#43).
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
         });
         return emitFailure4(result, !!root.json);
       }
@@ -90816,6 +90859,7 @@ function emitFailure4(failure, json2) {
       // send and left us unable to tell a catalog gap from an outage.
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
@@ -90933,6 +90977,12 @@ function exitCodeForKind2(kind) {
     case "run_not_found":
       return 11;
     // runId unknown / expired
+    case "throttled":
+      return 8;
+    // gateway rate limit — back off; same advice as `busy`
+    case "insufficient_scope":
+      return 12;
+    // credential lacks intelligence:read — re-issue it with the scope
     case "engine_error":
     case "host_unreachable":
     case "unknown":
@@ -91095,6 +91145,11 @@ var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
   "engine_error",
   "not_ready",
   "run_not_found",
+  // Keep in step with IntelligenceFailureKind in mx-legacy-auth types.ts.
+  "decomposition_budget_exceeded",
+  "not_implemented",
+  "insufficient_scope",
+  "throttled",
   "not_authenticated",
   "session_expired",
   "host_unreachable",
@@ -91105,13 +91160,15 @@ function isServerFailureEnvelope2(json2) {
 }
 function toIntelligenceFailure(json2, httpStatus) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const kind = KNOWN_KINDS2.has(rawKind) ? rawKind : "unknown";
+  const recognized = KNOWN_KINDS2.has(rawKind);
+  const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
     ok: false,
     kind,
     friendly: serverFriendly ?? defaultFriendly2(kind),
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
     runId: strOrUndef2(json2.runId),
@@ -91127,6 +91184,12 @@ function statusOnlyFailure2(httpStatus, detail) {
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
+}
+function safeKindForStatus2(httpStatus) {
+  if (httpStatus === 202) return "not_ready";
+  if (httpStatus === 400) return "bad_params";
+  if (httpStatus === 429) return "busy";
+  return "unknown";
 }
 function statusToKind2(httpStatus) {
   switch (httpStatus) {
@@ -91756,7 +91819,10 @@ async function trackFailure3(op, insightId, failure, startedAt, dataDir, runId) 
         ...insightId ? { insight_id: insightId } : {},
         ...runId ? { run_id: runId } : {},
         failure_kind: failure.kind,
-        ...failure.httpStatus ? { http_status: failure.httpStatus } : {}
+        ...failure.httpStatus ? { http_status: failure.httpStatus } : {},
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {}
       }
     },
     dataDir
@@ -91771,6 +91837,7 @@ function emitFailure5(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       ...hint ? { hint } : {}
     });
   } else {
