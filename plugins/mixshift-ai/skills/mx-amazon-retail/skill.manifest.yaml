@@ -107,7 +107,10 @@ notes: >
 
   Failures are typed: branch on `failure_kind` (not_authenticated,
   session_expired, restricted_report, reauth_required, spapi_not_configured,
-  merchant_not_found, throttled, report_fatal, host_unreachable, unknown),
+  merchant_not_found, throttled, report_fatal, host_unreachable, unknown, and
+  from 0.8.13 the service's full set: insufficient_scope, ads_not_configured,
+  report_retired, upstream_unavailable and the listings write-flow kinds in
+  SKILL.md; unrecognized_kind carries a kind newer than this plugin),
   never on HTTP status. Orders default to non-PII (the app holds no PII/RDT
   role; a PII element 403s as restricted_report). Vendor Orders are 1P-only;
   3P sellers 4xx (surfaces as report_fatal).

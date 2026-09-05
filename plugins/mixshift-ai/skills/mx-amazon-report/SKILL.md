@@ -751,7 +751,29 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
 | `download_failed` | 1 | The report document download stalled or dropped and did not finish after the built-in retries. The report itself is still ready, so just run the same `report get <runId> --out <file>` again in a moment. Not a report or auth problem. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: not an outage, not a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` carries its message. **Terminal: never retry it unchanged**, it will fail identically. Fix the parameters and resend. If the operation catalog's own notes led to this request, say so to the user and encourage `mixshift feedback` — a documented convention that is wrong affects every caller, and a repeat of the same code on the same operation is how we find it. |
+| `insufficient_scope` | 11 | The credential lacks a scope this operation needs (for example `ads:write`). Not retryable as-is: the credential has to be re-issued with that scope. |
+| `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service for this account. Contact MixShift ops. |
+| `report_retired` | 1 | Amazon has retired this report type. Nothing was sent to Amazon. **Terminal**: pick a current report type from `list-reports`; never retry unchanged. |
+| `upstream_unavailable` | 1 | The service reached Amazon but Amazon was unavailable. Transient: retry with backoff. |
+| `listings_write_disabled` | 1 | Listings writes are switched off service-wide. Do not retry; tell the user and stop. |
+| `listings_media_write_disabled` | 1 | Listings media writes are switched off service-wide. Do not retry. |
+| `listings_write_not_enabled` | 1 | Listings writes are not enabled for this MixShift account. Contact MixShift ops. |
+| `patch_not_allowed` | 1 | The requested listing patch is not permitted for that attribute or product type. Terminal for that patch: change the request. |
+| `change_set_not_found` | 1 | No such change set. Run the dry run again to create a fresh one. |
+| `change_set_expired` | 1 | The change set aged out before commit. Run the dry run again and commit promptly. |
+| `change_set_already_committed` | 1 | This change set was already committed. Do not commit again; verify the listing instead. |
+| `approval_mismatch` | 1 | The approval does not match the change set it was given for. Run the dry run again and approve the new set. |
+| `stale_approval` | 1 | The approval was superseded by a newer change set. Approve the current one. |
+| `schema_drift` | 1 | Amazon's listing schema changed underneath the change set. Run the dry run again against the current schema. |
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
+
+The write-flow kinds (`patch_not_allowed` through `schema_drift`) and the four service
+availability kinds share exit code 1 for now; branch on `failure_kind` in `--json` to tell
+them apart, not on the exit code. If the service ever sends a `failure_kind` this version of the
+plugin does not recognise, `--json` also carries `unrecognized_kind` with the raw value the
+service sent; relay it in any bug report, since it names a gap on our side rather than a
+problem with the request. The pricing surface spells it `unrecognizedKind`, matching the rest
+of its `--json` fields.
 
 A separate, non-error case: `report get` (and `report run`) use **exit code
 10** for "not ready yet" / "timed out waiting." That is NOT a failure: the run

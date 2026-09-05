@@ -521,6 +521,11 @@ async function trackFailure(
         ...(runId ? { run_id: runId } : {}),
         failure_kind: failure.kind,
         ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...(failure.unrecognizedKind
+          ? { unrecognized_kind: failure.unrecognizedKind }
+          : {}),
       },
     },
     dataDir,
@@ -536,6 +541,7 @@ function emitFailure(failure: IntelligenceFailure, json: boolean): void {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       ...(hint ? { hint } : {}),
     });
   } else {

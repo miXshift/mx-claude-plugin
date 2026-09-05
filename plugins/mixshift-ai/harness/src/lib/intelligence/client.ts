@@ -169,6 +169,17 @@ export type IntelligenceFailureKind =
   | 'engine_error' // the insight computation itself failed
   | 'not_ready' // async run has not finished yet (GET .../runs/:runId)
   | 'run_not_found' // runId unknown / expired
+  // Added 2026-09-04 (mx-ops#43): both are in the service's
+  // IntelligenceFailureKind union and were missing here, so they arrived and
+  // were stamped `unknown`.
+  | 'decomposition_budget_exceeded' // 422 — query decomposition hit its budget
+  | 'not_implemented' // 501 — the service does not implement this yet
+  // Cross-cutting kinds from the /api gate in mx-legacy-auth main.ts (the
+  // scope check and the rate limiter), which ride EVERY /api/* path including
+  // Intelligence. They are not in routes/intelligence.ts's own map, which is
+  // how the first pass missed them (independent review on PR #161).
+  | 'insufficient_scope' // 403 — credential lacks intelligence:read
+  | 'throttled' // 429 — gateway rate limit, distinct from engine `busy`
   // --- local-only (this module) ---
   | 'not_authenticated' // no datahub/service creds on disk
   | 'session_expired' // 401 even after a forced refresh
@@ -184,6 +195,10 @@ export interface IntelligenceFailure {
   message?: string;
   /** HTTP status of the failing call — diagnostics only; never branch on it. */
   httpStatus?: number;
+  /** Set ONLY when the service sent a `kind` this build does not recognize
+   *  (or none, recorded as `(absent)`). Keeps contract drift visible instead
+   *  of normalizing it into `unknown`. See mx-ops#43. */
+  unrecognizedKind?: string;
   /** Echoed by the server on some kinds (not_ready mid-run, run_not_found). */
   runId?: string;
   /** Echoed by the server on unknown_insight / bad_params. */
@@ -227,6 +242,10 @@ export function exitCodeForKind(kind: IntelligenceFailureKind): number {
       return 10; // async run hasn't finished — poll again
     case 'run_not_found':
       return 11; // runId unknown / expired
+    case 'throttled':
+      return 8; // gateway rate limit — back off; same advice as `busy`
+    case 'insufficient_scope':
+      return 12; // credential lacks intelligence:read — re-issue it with the scope
     case 'engine_error':
     case 'host_unreachable':
     case 'unknown':
@@ -518,6 +537,11 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<IntelligenceFailureKind>([
   'engine_error',
   'not_ready',
   'run_not_found',
+  // Keep in step with IntelligenceFailureKind in mx-legacy-auth types.ts.
+  'decomposition_budget_exceeded',
+  'not_implemented',
+  'insufficient_scope',
+  'throttled',
   'not_authenticated',
   'session_expired',
   'host_unreachable',
@@ -542,15 +566,17 @@ function toIntelligenceFailure(
   httpStatus: number,
 ): IntelligenceFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
-  const kind: IntelligenceFailureKind = KNOWN_KINDS.has(rawKind)
+  const recognized = KNOWN_KINDS.has(rawKind);
+  const kind: IntelligenceFailureKind = recognized
     ? (rawKind as IntelligenceFailureKind)
-    : 'unknown';
+    : safeKindForStatus(httpStatus);
   const serverFriendly = typeof json.friendly === 'string' ? json.friendly : undefined;
   const message = typeof json.message === 'string' ? json.message : undefined;
   return {
     ok: false,
     kind,
     friendly: serverFriendly ?? defaultFriendly(kind),
+    ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     message,
     httpStatus,
     runId: strOrUndef(json.runId),
@@ -572,6 +598,26 @@ function statusOnlyFailure(httpStatus: number, detail?: string): IntelligenceFai
       `envelope${detail ? `: ${detail}` : '.'}`,
     httpStatus,
   };
+}
+
+/** Reverse-map a status to a kind ONLY where the service's kind->status map is
+ * injective. Measured against mx-legacy-auth routes/intelligence.ts: 404 is
+ * THREE kinds (`unknown_insight`, `no_data_for_period`, `run_not_found`) and
+ * 422 is three more (`merchant_not_resolved`, `account_too_large_use_async`,
+ * `decomposition_budget_exceeded`), so guessing either would name the wrong
+ * cause. 403 is NOT safe either, even though routes/intelligence.ts maps only
+ * `not_enrolled` to it: the /api scope gate in main.ts emits
+ * `insufficient_scope` at 403 on this same path, and a real `not_enrolled`
+ * always arrives with its explicit kind, so a 403 fallback could only ever
+ * mislabel. These three are unambiguous at the wire; everything else stays
+ * `unknown`.
+ * Used only when the service sends a kind we do not recognize. See mx-ops#43.
+ */
+function safeKindForStatus(httpStatus: number): IntelligenceFailureKind {
+  if (httpStatus === 202) return 'not_ready';
+  if (httpStatus === 400) return 'bad_params';
+  if (httpStatus === 429) return 'busy';
+  return 'unknown';
 }
 
 function statusToKind(httpStatus: number): IntelligenceFailureKind {
