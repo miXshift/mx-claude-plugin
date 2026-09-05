@@ -402,9 +402,9 @@ function assertLayout(entries, { mustContain, cliEntryName, label }) {
   // harness/test, harness/testdata, harness/scripts), which never ship. A
   // skill may legitimately ship its own scripts/ (mx-monthly-report-max did
   // in 0.8.12, and its SKILL.md told the user to run it; the battery moved
-  // server-side in 0.8.13 so no skill ships one today, but the anchoring
-  // stays); an unanchored pattern rejected the 0.8.12 tag over exactly that
-  // file.
+  // server-side in 0.8.13 so no skill ships a scripts/ dir today, though
+  // helpers/ dirs still do and are unaffected; the anchoring stays); an
+  // unanchored pattern rejected the 0.8.12 tag over exactly that file.
   const leak = names.find(
     (n) =>
       /(^|\/)harness\/(src|test|testdata|scripts)\//.test(n) ||

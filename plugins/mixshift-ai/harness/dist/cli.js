@@ -93665,7 +93665,9 @@ async function withReportErrorHandling(json2, fn) {
   }
 }
 function registerReportCommands(program3) {
-  const report = program3.command("report").description("Report-contract tools: validate typed report-data documents at the render seam.");
+  const report = program3.command("report").description(
+    "Report tools: validate, extract and render typed report-data documents at the render seam, and pull the Report Max figure battery from the MixShift service."
+  );
   report.command("validate <files...>").description(
     "Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json documents. Exit 0 = no error-severity findings (warnings may still be reported), 1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still continues through the remaining documents; 2 wins over 1 when both occur). A corrupt sidecar is different, because it silently voids the served-unit check: an unreadable --figures path fails the whole command up front, and a corrupt auto-discovered figures*.json fails the run when its own document is reached."
   ).option(
@@ -93867,8 +93869,11 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     }
   );
   report.command("battery").description(
-    `Pull the Monthly Performance Report Max figure battery for one Seller Central account. The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one JSON document: data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and 15-month history. A section that fails server-side is named under sections_failed and the rest still serves. Exit 0 = document written (even with failed sections), 1 = no document.`
-  ).requiredOption("--seller-id <id>", "MixShift SellerID of the Seller Central account row").option("--as-of <date>", "YYYY-MM-DD; windows still clamp to the data load date (default: today)").option(
+    `Pull the Monthly Performance Report Max figure battery for one Seller Central account. The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one JSON document: data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and 15-month history. A section that fails server-side is named under sections_failed and the rest still serves; only a call that yields no document at all (service not deployed yet, a timeout, a network drop) fails. Large accounts can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
+  ).requiredOption("--seller-id <id>", "MixShift SellerID of the Seller Central account row").option(
+    "--as-of <date>",
+    "YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)"
+  ).option(
     "--brands <list>",
     "comma-separated sub-brand names as they appear in campaign names; enables the paid split"
   ).option(
@@ -93878,58 +93883,71 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     "--buybox-drop <pts>",
     "month-over-month drop in weighted Buy Box points that flags an item even above the floor",
     "5"
-  ).option("--out <path>", "write the figures document here (default: stdout)").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
+  ).option("--out <path>", 'write the figures document here; "-" prints it to stdout instead', "figures.json").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
       const params = batteryParams(opts);
+      const outPath = resolveBatteryOut(opts.out);
       const result = await runDispatched(BATTERY_QUERY_ID, {
         params,
+        // Seller scope rides inside params for the battery; echoing it as the
+        // request's top-level scope keeps the call shaped like every other
+        // named query for gateway-side attribution. The service ignores it.
+        sellerIds: [params.seller_id],
         queryTimeoutMs: batteryInt(opts.timeout, "--timeout", 1, 120) * 1e3,
         httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS
       });
-      if (!result.ok) {
-        throw new UserFacingError(
-          `${result.failure.friendly} (${BATTERY_QUERY_ID}: ${result.failure.kind})`,
-          `report_battery_${result.failure.kind}`
-        );
-      }
-      const doc = result.rows[0];
-      if (!doc || typeof doc !== "object") {
-        throw new UserFacingError(
-          `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
-          "report_battery_empty"
-        );
-      }
+      if (!result.ok) throw batteryFailure(result.failure);
+      const doc = assertBatteryDocument(result.rows[0]);
       const body = JSON.stringify(doc, null, 2);
-      if (opts.out) await writeReportOutput(opts.out, body + "\n");
+      if (outPath) await writeReportOutput(outPath, body + "\n");
       if (root.json) {
         console.log(
           JSON.stringify(
             {
               ok: true,
-              out: opts.out ?? null,
+              out: outPath ?? null,
               revision: result.revision ?? null,
               sections_failed: doc.sections_failed ?? {},
               reconciliation: doc.reconciliation ?? null,
-              ...opts.out ? {} : { figures: doc }
+              ...outPath ? {} : { figures: doc }
             },
             null,
             2
           )
         );
-      } else if (!opts.out) {
+      } else if (!outPath) {
         console.log(body);
       } else {
-        for (const line of batterySummary(opts.out, doc)) console.log(line);
+        for (const line of batterySummary(outPath, doc)) console.log(line);
       }
     });
   });
 }
 var BATTERY_QUERY_ID = "MPRX-FIGURES-01";
 var BATTERY_HTTP_TIMEOUT_MS = 29e4;
+var BATTERY_DOCUMENT_KEYS = ["windows", "thresholds_applied", "sections_failed", "reconciliation"];
+var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
+  "access_denied_table",
+  "access_denied_db",
+  "unknown_table",
+  "syntax_error",
+  "timeout",
+  "host_unreachable",
+  "too_many_rows",
+  "response_too_large",
+  "busy",
+  "unknown_query",
+  "bad_params",
+  "missing_params",
+  "unknown"
+]);
+function resolveBatteryOut(out) {
+  return out === "-" ? void 0 : out;
+}
 function batteryInt(raw, flag, min, max) {
   const n = Number(raw);
-  if (!/^-?\d+$/.test(raw.trim()) || !Number.isInteger(n) || n < min || max !== void 0 && n > max) {
+  if (!/^-?\d+$/.test(raw.trim()) || !Number.isSafeInteger(n) || n < min || max !== void 0 && n > max) {
     throw new UserFacingError(
       `${flag} must be an integer${max !== void 0 ? ` between ${min} and ${max}` : ` >= ${min}`}, got "${raw}".`,
       "report_battery_bad_flag"
@@ -93939,31 +93957,70 @@ function batteryInt(raw, flag, min, max) {
 }
 function batteryNumber(raw, flag) {
   const n = Number(raw);
-  if (raw.trim() === "" || !Number.isFinite(n) || n < 0 || n > 100) {
+  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > 100) {
     throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, "report_battery_bad_flag");
   }
   return n;
 }
+function isCalendarDate(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+function localToday() {
+  const t = /* @__PURE__ */ new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
 function batteryParams(opts) {
   const params = {
     seller_id: batteryInt(opts.sellerId, "--seller-id", 1),
+    as_of: opts.asOf ?? localToday(),
     brands: (opts.brands ?? "").split(",").map((b) => b.trim()).filter((b) => b.length > 0),
     buybox_floor: batteryNumber(opts.buyboxFloor, "--buybox-floor"),
     buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop")
   };
-  if (opts.asOf !== void 0) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)) {
-      throw new UserFacingError(`--as-of must be YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
-    }
-    params.as_of = opts.asOf;
+  if (!isCalendarDate(params.as_of)) {
+    throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
   }
   if (opts.minItemSales !== void 0) {
     params.min_item_sales = batteryInt(opts.minItemSales, "--min-item-sales", 0);
   }
   return params;
 }
+function batteryFailure(failure) {
+  if (failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3) {
+    return new UserFacingError(
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once; if it repeats, run the sections by hand from references/queries.md and label the gap. (${BATTERY_QUERY_ID}: client_timeout)`,
+      "report_battery_timeout"
+    );
+  }
+  const kind = KNOWN_FAILURE_KINDS3.has(failure.kind) ? failure.kind : "unknown";
+  return new UserFacingError(`${failure.friendly} (${BATTERY_QUERY_ID}: ${failure.kind})`, `report_battery_${kind}`);
+}
+function assertBatteryDocument(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new UserFacingError(
+      `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
+      "report_battery_empty"
+    );
+  }
+  const doc = row;
+  const missing = BATTERY_DOCUMENT_KEYS.filter((k) => !(k in doc));
+  if (missing.length > 0) {
+    throw new UserFacingError(
+      `The ${BATTERY_QUERY_ID} document is missing ${missing.join(", ")}: this plugin build and the service disagree on the battery shape. Update the plugin or wait for the service deploy; do not compose from this call.`,
+      "report_battery_bad_document"
+    );
+  }
+  return doc;
+}
 function batterySummary(out, doc) {
-  const money = (v) => typeof v === "number" ? `$${Math.round(v).toLocaleString("en-US")}` : "n/a";
+  const money = (v) => {
+    if (v === null || v === void 0 || v === "") return "n/a";
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "n/a";
+  };
   const lines = [`wrote ${out}`];
   const rec = doc.reconciliation ?? {};
   lines.push(

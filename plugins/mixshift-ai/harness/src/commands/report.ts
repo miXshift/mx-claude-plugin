@@ -22,6 +22,7 @@ import {
 } from '../lib/report-contract/render-report.js';
 import { UserFacingError } from '../lib/errors.js';
 import { runDispatched } from '../lib/data/dispatch.js';
+import type { DataQueryFailure } from '../lib/data/query-runner.js';
 
 async function readJson<T>(file: string): Promise<T> {
   try {
@@ -298,7 +299,10 @@ async function withReportErrorHandling(json: boolean, fn: () => Promise<void>): 
 export function registerReportCommands(program: Command): void {
   const report = program
     .command('report')
-    .description('Report-contract tools: validate typed report-data documents at the render seam.');
+    .description(
+      'Report tools: validate, extract and render typed report-data documents at the render seam, ' +
+        'and pull the Report Max figure battery from the MixShift service.',
+    );
 
   report
     .command('validate <files...>')
@@ -601,10 +605,15 @@ export function registerReportCommands(program: Command): void {
         'dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ' +
         'ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and ' +
         '15-month history. A section that fails server-side is named under sections_failed and the ' +
-        'rest still serves. Exit 0 = document written (even with failed sections), 1 = no document.',
+        'rest still serves; only a call that yields no document at all (service not deployed yet, a ' +
+        'timeout, a network drop) fails. Large accounts can take a few minutes. Exit 0 = document ' +
+        'written (or printed with --out -), 1 = no document.',
     )
     .requiredOption('--seller-id <id>', 'MixShift SellerID of the Seller Central account row')
-    .option('--as-of <date>', 'YYYY-MM-DD; windows still clamp to the data load date (default: today)')
+    .option(
+      '--as-of <date>',
+      'YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)',
+    )
     .option(
       '--brands <list>',
       'comma-separated sub-brand names as they appear in campaign names; enables the paid split',
@@ -619,54 +628,45 @@ export function registerReportCommands(program: Command): void {
       'month-over-month drop in weighted Buy Box points that flags an item even above the floor',
       '5',
     )
-    .option('--out <path>', 'write the figures document here (default: stdout)')
+    .option('--out <path>', 'write the figures document here; "-" prints it to stdout instead', 'figures.json')
     .option('--timeout <seconds>', 'per-statement query timeout on the service, seconds (max 120)', '60')
     .action(async (opts: BatteryOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const params = batteryParams(opts);
+        const outPath = resolveBatteryOut(opts.out);
         const result = await runDispatched<Record<string, unknown>>(BATTERY_QUERY_ID, {
           params,
+          // Seller scope rides inside params for the battery; echoing it as the
+          // request's top-level scope keeps the call shaped like every other
+          // named query for gateway-side attribution. The service ignores it.
+          sellerIds: [params.seller_id as number],
           queryTimeoutMs: batteryInt(opts.timeout, '--timeout', 1, 120) * 1_000,
           httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS,
         });
-        if (!result.ok) {
-          // The envelope's own `friendly` is the user-facing line (it already
-          // names the wrong-twin case, a timeout, or a not-yet-deployed pack).
-          // The kind is a bounded set, so it doubles as the error class.
-          throw new UserFacingError(
-            `${result.failure.friendly} (${BATTERY_QUERY_ID}: ${result.failure.kind})`,
-            `report_battery_${result.failure.kind}`,
-          );
-        }
-        const doc = result.rows[0];
-        if (!doc || typeof doc !== 'object') {
-          throw new UserFacingError(
-            `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
-            'report_battery_empty',
-          );
-        }
+        if (!result.ok) throw batteryFailure(result.failure);
+        const doc = assertBatteryDocument(result.rows[0]);
         const body = JSON.stringify(doc, null, 2);
-        if (opts.out) await writeReportOutput(opts.out, body + '\n');
+        if (outPath) await writeReportOutput(outPath, body + '\n');
         if (root.json) {
           console.log(
             JSON.stringify(
               {
                 ok: true,
-                out: opts.out ?? null,
+                out: outPath ?? null,
                 revision: result.revision ?? null,
                 sections_failed: doc.sections_failed ?? {},
                 reconciliation: doc.reconciliation ?? null,
-                ...(opts.out ? {} : { figures: doc }),
+                ...(outPath ? {} : { figures: doc }),
               },
               null,
               2,
             ),
           );
-        } else if (!opts.out) {
+        } else if (!outPath) {
           console.log(body);
         } else {
-          for (const line of batterySummary(opts.out, doc)) console.log(line);
+          for (const line of batterySummary(outPath, doc)) console.log(line);
         }
       });
     });
@@ -676,11 +676,36 @@ export function registerReportCommands(program: Command): void {
  *  a breaking change to its params or document ships as a new id. */
 export const BATTERY_QUERY_ID = 'MPRX-FIGURES-01';
 
-/** HTTP budget for one battery call: the service caps a battery at 240s of
- *  wall clock (sections not started by then are labelled skipped), so the
- *  client waits a little longer than that rather than the single-statement
- *  default of queryTimeoutMs + 5s. */
+/** HTTP budget for one battery call: the service bounds a battery at 280s of
+ *  response time (its wall-clock budget is sized from the statement timeout
+ *  and the pool acquire, and checked before every statement), so the client
+ *  waits a little longer than that rather than the single-statement default
+ *  of queryTimeoutMs + 5s. */
 export const BATTERY_HTTP_TIMEOUT_MS = 290_000;
+
+/** Keys every battery document carries; their absence means this plugin build
+ *  and the service disagree on the battery's shape, and the file must not be
+ *  composed from. */
+export const BATTERY_DOCUMENT_KEYS = ['windows', 'thresholds_applied', 'sections_failed', 'reconciliation'] as const;
+
+/** Failure kinds the service is known to answer with. The kind becomes the
+ *  telemetry error class, so anything outside this set folds to `unknown`
+ *  to keep the class bounded. */
+const KNOWN_FAILURE_KINDS: ReadonlySet<string> = new Set([
+  'access_denied_table',
+  'access_denied_db',
+  'unknown_table',
+  'syntax_error',
+  'timeout',
+  'host_unreachable',
+  'too_many_rows',
+  'response_too_large',
+  'busy',
+  'unknown_query',
+  'bad_params',
+  'missing_params',
+  'unknown',
+]);
 
 interface BatteryOptions {
   sellerId: string;
@@ -689,13 +714,23 @@ interface BatteryOptions {
   minItemSales?: string;
   buyboxFloor: string;
   buyboxDrop: string;
-  out?: string;
+  out: string;
   timeout: string;
+}
+
+/** `-` means stdout (the script's `--out -`); anything else is a path. */
+export function resolveBatteryOut(out: string): string | undefined {
+  return out === '-' ? undefined : out;
 }
 
 function batteryInt(raw: string, flag: string, min: number, max?: number): number {
   const n = Number(raw);
-  if (!/^-?\d+$/.test(raw.trim()) || !Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+  if (
+    !/^-?\d+$/.test(raw.trim()) ||
+    !Number.isSafeInteger(n) ||
+    n < min ||
+    (max !== undefined && n > max)
+  ) {
     throw new UserFacingError(
       `${flag} must be an integer${max !== undefined ? ` between ${min} and ${max}` : ` >= ${min}`}, got "${raw}".`,
       'report_battery_bad_flag',
@@ -706,18 +741,35 @@ function batteryInt(raw: string, flag: string, min: number, max?: number): numbe
 
 function batteryNumber(raw: string, flag: string): number {
   const n = Number(raw);
-  if (raw.trim() === '' || !Number.isFinite(n) || n < 0 || n > 100) {
+  // Decimal digits only: Number() would also accept hex, exponents and
+  // whitespace-padded input, none of which is a percentage anyone typed.
+  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > 100) {
     throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, 'report_battery_bad_flag');
   }
   return n;
 }
 
-/** Translate the flags into the battery's params. Validation here is only
- *  what makes a clean local error; the service validates the same values
- *  again (a calendar-real as_of, the brand cap) and answers bad_params. */
+function isCalendarDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+  if (m < 1 || m > 12 || d < 1) return false;
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/** Today on the operator's clock, as the script defaulted it: the month-end
+ *  run must not roll into next month because the service lives in UTC. */
+function localToday(): string {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+/** Translate the flags into the battery's params. The service validates the
+ *  same values again and answers bad_params; this pass exists so a typo is a
+ *  clean local error before any call is made. */
 export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
   const params: Record<string, unknown> = {
     seller_id: batteryInt(opts.sellerId, '--seller-id', 1),
+    as_of: opts.asOf ?? localToday(),
     brands: (opts.brands ?? '')
       .split(',')
       .map((b) => b.trim())
@@ -725,11 +777,8 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
     buybox_floor: batteryNumber(opts.buyboxFloor, '--buybox-floor'),
     buybox_drop: batteryNumber(opts.buyboxDrop, '--buybox-drop'),
   };
-  if (opts.asOf !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)) {
-      throw new UserFacingError(`--as-of must be YYYY-MM-DD, got "${opts.asOf}".`, 'report_battery_bad_flag');
-    }
-    params.as_of = opts.asOf;
+  if (!isCalendarDate(params.as_of as string)) {
+    throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, 'report_battery_bad_flag');
   }
   if (opts.minItemSales !== undefined) {
     params.min_item_sales = batteryInt(opts.minItemSales, '--min-item-sales', 0);
@@ -737,12 +786,57 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
   return params;
 }
 
+/** Map a dispatcher failure to the user-facing error. The client's own HTTP
+ *  budget expiring is classified host_unreachable by the transport (an abort
+ *  looks like a dead host); for the battery, which legitimately runs for
+ *  minutes, that is a timeout and must not read as a connectivity problem or
+ *  land in the connectivity telemetry bucket. */
+export function batteryFailure(failure: DataQueryFailure): UserFacingError {
+  if (failure.kind === 'host_unreachable' && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5_000) {
+    return new UserFacingError(
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1000)}s. Retry once; ` +
+        'if it repeats, run the sections by hand from references/queries.md and label the gap. ' +
+        `(${BATTERY_QUERY_ID}: client_timeout)`,
+      'report_battery_timeout',
+    );
+  }
+  const kind = KNOWN_FAILURE_KINDS.has(failure.kind) ? failure.kind : 'unknown';
+  return new UserFacingError(`${failure.friendly} (${BATTERY_QUERY_ID}: ${failure.kind})`, `report_battery_${kind}`);
+}
+
+/** The battery answers as ONE row that IS the document. Anything else (an
+ *  empty envelope, a wrapped or stringified document, an array row) must not
+ *  be written to figures.json, where it would look like a complete pull with
+ *  nothing in it. */
+export function assertBatteryDocument(row: unknown): Record<string, unknown> {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw new UserFacingError(
+      `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
+      'report_battery_empty',
+    );
+  }
+  const doc = row as Record<string, unknown>;
+  const missing = BATTERY_DOCUMENT_KEYS.filter((k) => !(k in doc));
+  if (missing.length > 0) {
+    throw new UserFacingError(
+      `The ${BATTERY_QUERY_ID} document is missing ${missing.join(', ')}: this plugin build and the service ` +
+        'disagree on the battery shape. Update the plugin or wait for the service deploy; do not compose from this call.',
+      'report_battery_bad_document',
+    );
+  }
+  return doc;
+}
+
 /** The same closing lines the shipped script printed after `--out`, so a
  *  reader of the terminal still sees the reconciliation, every failed
- *  section, and every dark ad day without opening the file. */
+ *  section, and every dark ad day without opening the file. Numbers may
+ *  arrive as DECIMAL strings; coerce before formatting. */
 export function batterySummary(out: string, doc: Record<string, unknown>): string[] {
-  const money = (v: unknown): string =>
-    typeof v === 'number' ? `$${Math.round(v).toLocaleString('en-US')}` : 'n/a';
+  const money = (v: unknown): string => {
+    if (v === null || v === undefined || v === '') return 'n/a';
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? `$${Math.round(n).toLocaleString('en-US')}` : 'n/a';
+  };
   const lines = [`wrote ${out}`];
   const rec = (doc.reconciliation ?? {}) as Record<string, unknown>;
   lines.push(

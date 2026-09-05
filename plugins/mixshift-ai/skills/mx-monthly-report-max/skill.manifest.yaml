@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-monthly-report-max   # smart-tier convention: <existing-skill-slug>-max, so both tiers sort and search together
 display_name: Monthly Performance Report Max
-version: "2.0.0"
+version: "2.0.1"
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).

@@ -35,6 +35,13 @@ export type DataQueryFailureKind =
   | 'syntax_error'
   | 'timeout'
   | 'host_unreachable'
+  // Cap and contention kinds the service classifies for any query (see
+  // mx-legacy-auth src/db/run-query.ts): the row cap, the byte cap, and a
+  // pool that could not hand out a connection in time. Listed so a caller
+  // can branch on them by name instead of treating them as `unknown`.
+  | 'too_many_rows'
+  | 'response_too_large'
+  | 'busy'
   // Named-query surface (POST /api/named-query) only: the pack has no
   // entry for the requested id (plugin release ahead of service deploy) /
   // the request was malformed against the entry's spec / a required param
