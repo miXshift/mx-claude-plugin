@@ -93599,6 +93599,7 @@ ${html}</section>`);
 
 // src/commands/report.ts
 init_errors3();
+init_load2();
 async function readJson(file2) {
   try {
     return JSON.parse(await readFile45(file2, "utf8"));
@@ -93936,31 +93937,43 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     }
   );
   report.command("battery").description(
-    `Pull the Monthly Performance Report Max figure battery for one Seller Central account. The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one JSON document: data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and 15-month history. A section that fails server-side is named under sections_failed and the rest still serves; only a call that yields no document at all (service not deployed yet, a timeout, a network drop) fails. Large accounts can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
-  ).requiredOption("--seller-id <id>", "MixShift SellerID of the Seller Central account row").option(
+    `Pull the Monthly Performance Report Max figure battery for one brand: one account row or several (vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins). The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}): each seller id is routed to its channel from the seller row (Seller Central or Vendor Central), every account is aligned to one day count, and the summable figures (ordered revenue, units, ad spend and sales) are rolled up within one marketplace currency. Traffic and conversion stay per channel (sessions vs glance views), movers merge by ASIN per channel, sub-brand splits sum by label. The per-account documents ride along in full. A section that fails server-side is named under sections_failed and the rest still serves; only a call that yields no document at all (service not deployed yet, a timeout, a network drop) fails. Large brands can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
+  ).option(
+    "--seller-id <id>",
+    "MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max 8)",
+    collectIds,
+    []
+  ).option(
+    "--brand <slug>",
+    "brand context slug: runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)"
+  ).option(
     "--as-of <date>",
     "YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)"
   ).option(
     "--brands <list>",
-    "comma-separated sub-brand names as they appear in campaign names; enables the paid split"
+    "comma-separated sub-brand names as they appear in campaign names (ads split) and CustomBrand / Brand (retail split); enables the paid split"
   ).option(
     "--min-item-sales <n>",
-    "sales floor for the Buy Box table (default: the account's median item revenue in the current window)"
-  ).option("--buybox-floor <pct>", "page-view-weighted Buy Box attention floor, percent", "92").option(
+    "sales floor for the per-item tables (default: each account's median item revenue in the current window)"
+  ).option("--buybox-floor <pct>", "Seller Central: page-view-weighted Buy Box attention floor, percent", "92").option(
     "--buybox-drop <pts>",
-    "month-over-month drop in weighted Buy Box points that flags an item even above the floor",
+    "Seller Central: month-over-month drop in weighted Buy Box points that flags an item even above the floor",
     "5"
+  ).option("--revenue-basis <basis>", "Vendor Central: ordered (default) or shipped revenue and units", "ordered").option(
+    "--attribution <rule>",
+    "ads attribution columns: all_14 or sc_default (default: each channel\u2019s own rule; VC = 14 day for every type)"
   ).option("--out <path>", 'write the figures document here; "-" prints it to stdout instead', "figures.json").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
-      const params = batteryParams(opts);
+      const resolved = await resolveBatterySellerIds(opts, root.dataDir);
+      const params = batteryParams({ ...opts, sellerId: resolved.ids.map(String) });
       const outPath = resolveBatteryOut(opts.out);
       const result = await runDispatched(BATTERY_QUERY_ID, {
         params,
         // Seller scope rides inside params for the battery; echoing it as the
         // request's top-level scope keeps the call shaped like every other
         // named query for gateway-side attribution. The service ignores it.
-        sellerIds: [params.seller_id],
+        sellerIds: params.seller_ids,
         queryTimeoutMs: batteryInt(opts.timeout, "--timeout", 1, 120) * 1e3,
         httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS
       });
@@ -93975,8 +93988,21 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
               ok: true,
               out: outPath ?? null,
               revision: result.revision ?? null,
+              brand: resolved.brand ?? null,
+              alignment: doc.alignment ?? null,
+              accounts: batteryAccounts(doc).map((a) => ({
+                seller_id: a.seller_id,
+                name: a.name ?? null,
+                channel: a.channel ?? null,
+                failure: a.failure ?? null,
+                sections_failed: a.document?.sections_failed ?? {},
+                reconciliation: a.document?.reconciliation ?? null
+              })),
+              rollup: {
+                mixed_currency: doc.rollup?.mixed_currency ?? null,
+                mixed_channel: doc.rollup?.mixed_channel ?? null
+              },
               sections_failed: doc.sections_failed ?? {},
-              reconciliation: doc.reconciliation ?? null,
               ...outPath ? {} : { figures: doc }
             },
             null,
@@ -93991,9 +94017,10 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     });
   });
 }
-var BATTERY_QUERY_ID = "MPRX-FIGURES-01";
+var BATTERY_QUERY_ID = "MPRX-FIGURES-BRAND-01";
+var BATTERY_MAX_ACCOUNTS = 8;
 var BATTERY_HTTP_TIMEOUT_MS = 29e4;
-var BATTERY_DOCUMENT_KEYS = ["windows", "thresholds_applied", "sections_failed", "reconciliation"];
+var BATTERY_DOCUMENT_KEYS = ["accounts", "rollup", "alignment", "sections_failed"];
 var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
   "access_denied_table",
   "access_denied_db",
@@ -94009,6 +94036,11 @@ var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
   "missing_params",
   "unknown"
 ]);
+var REVENUE_BASES = ["ordered", "shipped"];
+var ATTRIBUTIONS = ["all_14", "sc_default"];
+function collectIds(value, prev) {
+  return [...prev, ...value.split(",").map((s) => s.trim()).filter((s) => s.length > 0)];
+}
 function resolveBatteryOut(out) {
   return out === "-" ? void 0 : out;
 }
@@ -94039,13 +94071,57 @@ function localToday() {
   const t = /* @__PURE__ */ new Date();
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
+async function resolveBatterySellerIds(opts, dataDir) {
+  const explicit = opts.sellerId ?? [];
+  if (opts.brand && explicit.length > 0) {
+    throw new UserFacingError("Pass either --seller-id or --brand, not both.", "report_battery_bad_flag");
+  }
+  if (!opts.brand) {
+    if (explicit.length === 0) {
+      throw new UserFacingError("Pass --seller-id <id> (repeatable) or --brand <slug>.", "report_battery_bad_flag");
+    }
+    return { ids: explicit.map((s) => batteryInt(s, "--seller-id", 1)) };
+  }
+  const result = await validateBrandContext(opts.brand, dataDir);
+  if (!result.ok) {
+    throw new UserFacingError(
+      `Brand context "${opts.brand}" could not be read (${result.kind}): ${result.errors[0] ?? "unknown error"}`,
+      "report_battery_bad_brand"
+    );
+  }
+  const ids = result.context.accounts.filter((a) => a.status !== "inactive").map((a) => a.seller_id);
+  if (ids.length === 0) {
+    throw new UserFacingError(
+      `Brand context "${opts.brand}" has no active or wind-down accounts; pass --seller-id explicitly.`,
+      "report_battery_bad_brand"
+    );
+  }
+  return { ids, brand: opts.brand };
+}
 function batteryParams(opts) {
+  const ids = (opts.sellerId ?? []).map((s) => batteryInt(s, "--seller-id", 1));
+  if (ids.length === 0) {
+    throw new UserFacingError("Pass --seller-id <id> (repeatable) or --brand <slug>.", "report_battery_bad_flag");
+  }
+  if (ids.length > BATTERY_MAX_ACCOUNTS) {
+    throw new UserFacingError(`At most ${BATTERY_MAX_ACCOUNTS} accounts per call, got ${ids.length}.`, "report_battery_bad_flag");
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new UserFacingError("--seller-id values must be unique.", "report_battery_bad_flag");
+  }
+  if (!REVENUE_BASES.includes(opts.revenueBasis)) {
+    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(", ")}, got "${opts.revenueBasis}".`, "report_battery_bad_flag");
+  }
+  if (opts.attribution !== void 0 && !ATTRIBUTIONS.includes(opts.attribution)) {
+    throw new UserFacingError(`--attribution must be one of ${ATTRIBUTIONS.join(", ")}, got "${opts.attribution}".`, "report_battery_bad_flag");
+  }
   const params = {
-    seller_id: batteryInt(opts.sellerId, "--seller-id", 1),
+    seller_ids: ids,
     as_of: opts.asOf ?? localToday(),
     brands: (opts.brands ?? "").split(",").map((b) => b.trim()).filter((b) => b.length > 0),
     buybox_floor: batteryNumber(opts.buyboxFloor, "--buybox-floor"),
-    buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop")
+    buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop"),
+    revenue_basis: opts.revenueBasis
   };
   if (!isCalendarDate(params.as_of)) {
     throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
@@ -94053,12 +94129,13 @@ function batteryParams(opts) {
   if (opts.minItemSales !== void 0) {
     params.min_item_sales = batteryInt(opts.minItemSales, "--min-item-sales", 0);
   }
+  if (opts.attribution !== void 0) params.attribution = opts.attribution;
   return params;
 }
 function batteryFailure(failure) {
   if (failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3) {
     return new UserFacingError(
-      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once; if it repeats, run the sections by hand from references/queries.md and label the gap. (${BATTERY_QUERY_ID}: client_timeout)`,
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once, or with fewer accounts; if it repeats, run the sections by hand from references/queries.md and label the gap. (${BATTERY_QUERY_ID}: client_timeout)`,
       "report_battery_timeout"
     );
   }
@@ -94080,7 +94157,16 @@ function assertBatteryDocument(row) {
       "report_battery_bad_document"
     );
   }
+  if (!Array.isArray(doc.accounts)) {
+    throw new UserFacingError(
+      `The ${BATTERY_QUERY_ID} document carries no accounts[] list; do not compose from this call.`,
+      "report_battery_bad_document"
+    );
+  }
   return doc;
+}
+function batteryAccounts(doc) {
+  return Array.isArray(doc.accounts) ? doc.accounts : [];
 }
 function batterySummary(out, doc) {
   const money = (v) => {
@@ -94089,19 +94175,39 @@ function batterySummary(out, doc) {
     return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "n/a";
   };
   const lines = [`wrote ${out}`];
-  const rec = doc.reconciliation ?? {};
+  const accounts = batteryAccounts(doc);
+  const alignment = doc.alignment ?? {};
+  const served = accounts.filter((a) => a.document);
+  const dayCount = served.length > 0 ? served[0].document.windows?.day_count ?? null : null;
   lines.push(
-    `reconciliation: account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`
+    `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? "?"}${a.failure ? `, FAILED ${a.failure}` : ""})`).join(", ")}` + (alignment.aligned_end ? `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ""}` : "") + (alignment.aligned === false ? "; NOT ALIGNED, compare day counts before summing" : "")
   );
-  const failed = doc.sections_failed ?? {};
-  for (const [name, why] of Object.entries(failed)) {
+  for (const a of accounts) {
+    if (!a.document) continue;
+    const rec = a.document.reconciliation ?? {};
+    lines.push(
+      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`
+    );
+    const failed = a.document.sections_failed ?? {};
+    for (const [name, why] of Object.entries(failed)) {
+      lines.push(`SECTION FAILED (brief runs without it, label the gap): ${a.seller_id}/${name}: ${String(why).slice(0, 140)}`);
+    }
+    const dark = a.document.dark_days ?? {};
+    for (const [k, v] of Object.entries(dark)) {
+      if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
+        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor})`);
+      }
+    }
+  }
+  const brandFailed = doc.sections_failed ?? {};
+  for (const [name, why] of Object.entries(brandFailed)) {
     lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
   }
-  const dark = doc.dark_days ?? {};
-  for (const [k, v] of Object.entries(dark)) {
-    if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-      lines.push(`dark ad days in ${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor})`);
-    }
+  const rollup = doc.rollup ?? {};
+  if (rollup.mixed_currency) {
+    lines.push(`rollup: ${rollup.by_marketplace?.length ?? 0} marketplaces in different currencies, so NO brand total; quote each marketplace on its own`);
+  } else if (rollup.mixed_channel) {
+    lines.push("rollup: Seller Central + Vendor Central in one marketplace; revenue, units and ad figures are summed, traffic and conversion stay per channel");
   }
   return lines;
 }

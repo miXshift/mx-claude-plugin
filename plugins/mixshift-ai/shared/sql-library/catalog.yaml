@@ -576,7 +576,40 @@ queries:
       the private service and this repo carries only the call. Takes its
       OWN params (seller_id, as_of, brands[], min_item_sales, buybox_floor,
       buybox_drop) and returns rows: [document]; called by
-      `mixshift report battery`, NOT by the prefetch runner (deliberately
-      absent from the skill manifest's sql_ids). The skill's
-      references/queries.md carries the by-hand forks (Vendor Central,
-      non-monthly cadence) the battery does not serve.
+      `mixshift report battery` up to plugin 0.8.12 (from 0.8.13 the command
+      calls MPRX-FIGURES-BRAND-01, which routes a Seller Central row here
+      server-side); NOT called by the prefetch runner (deliberately absent
+      from the skill manifest's sql_ids). Kept deployed, append-only, for
+      older plugin builds. The skill's references/queries.md carries the
+      by-hand forks (non-monthly cadence) the batteries do not serve.
+
+  - id: MPRX-FIGURES-VC-01
+    dispatch: named
+    purpose: Monthly Performance Report Max figure battery for one Vendor Central account, served as ONE JSON document row - windows aligned across vendor sales, vendor traffic and ads, account ads (campaignmetric, 14-day default) + retail (ordered or shipped basis, glance views, glance-view conversion) with derived ratios, dark-day normalization, settled-window efficiency check, daily series, sub-brand splits (campaign name / CustomBrand), ASIN movers + reconciliation, procurable out-of-stock days and availability interruptions, inventory snapshot, 15-month history, and a sections_failed map.
+    consumers: [mx-monthly-report-max]
+    tier: 1
+    notes: |
+      The Vendor Central sibling of MPRX-FIGURES-01 (D-045, 2026-09-06). Same
+      kernel, vendor tables; where the Seller Central concept does not exist
+      the section is renamed honestly (glance_views not sessions, no Buy Box,
+      availability_interruptions = procurable out-of-stock while sellable
+      units are on hand). Ad metrics from campaignmetric ONLY, never
+      sellermonthmetric. Weeks of cover and lost sales are NOT computed here:
+      they are engine metrics served by INS-LOSTSALES-01 / INS-OPS-BRIDGE-01.
+      Own params (seller_id, as_of, brands[], min_item_sales, revenue_basis,
+      attribution, oos_rate_threshold); reached through
+      MPRX-FIGURES-BRAND-01 by `mixshift report battery`.
+
+  - id: MPRX-FIGURES-BRAND-01
+    dispatch: named
+    purpose: Monthly Performance Report Max figure battery for one BRAND across its account rows (several vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins) - each seller id routed to its channel battery from the seller row, every account aligned to one day count, the summable figures (ordered revenue, units, campaignmetric ad figures) rolled up within one marketplace currency with traffic and conversion per channel and movers merged by ASIN per channel; per-account documents ride along in full.
+    consumers: [mx-monthly-report-max]
+    tier: 1
+    notes: |
+      The id `mixshift report battery` calls from plugin 0.8.13 (D-045).
+      Takes seller_ids[] (1..8) plus the shared knobs (as_of, brands[],
+      min_item_sales, buybox_floor, buybox_drop, revenue_basis,
+      oos_rate_threshold, attribution) and returns rows: [document] with
+      accounts[], rollup (by_marketplace + brand when one currency), alignment
+      and sections_failed. Several currencies = several roll-ups and NO brand
+      total, on purpose. NOT a prefetch query (absent from sql_ids).

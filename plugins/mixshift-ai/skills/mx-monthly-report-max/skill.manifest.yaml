@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-monthly-report-max   # smart-tier convention: <existing-skill-slug>-max, so both tiers sort and search together
 display_name: Monthly Performance Report Max
-version: "2.0.1"
+version: "2.1.0"
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -24,9 +24,11 @@ side_effect_policy: artifact_write
 review_required: always
 sql_ids: []
   # Deliberately empty: account-level core figures come from the envelope, and the
-  # brief-specific battery runs server-side as the named query MPRX-FIGURES-01 behind
-  # `mixshift report battery`. It takes its own params (seller id, as-of, brands,
-  # thresholds), so it is NOT a prefetch query and must not be listed here
+  # brief-specific battery runs server-side behind `mixshift report battery` as the
+  # named query MPRX-FIGURES-BRAND-01, which routes each account to MPRX-FIGURES-01
+  # (Seller Central) or MPRX-FIGURES-VC-01 (Vendor Central) and rolls a brand up. It
+  # takes its own params (seller ids, as-of, brands, thresholds), so it is NOT a
+  # prefetch query and must not be listed here
   # (references/queries.md is the annotated source of record for every query in it).
 required_context_fields:
   - accounts[*].seller_id

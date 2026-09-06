@@ -23,6 +23,7 @@ import {
 import { UserFacingError } from '../lib/errors.js';
 import { runDispatched } from '../lib/data/dispatch.js';
 import type { DataQueryFailure } from '../lib/data/query-runner.js';
+import { validateBrandContext } from '../lib/context/load.js';
 
 async function readJson<T>(file: string): Promise<T> {
   try {
@@ -249,6 +250,7 @@ async function writeReportOutput(out: string, body: string): Promise<void> {
 
 interface RootOptions {
   json?: boolean;
+  dataDir?: string;
 }
 
 interface FileResult {
@@ -599,48 +601,65 @@ export function registerReportCommands(program: Command): void {
   report
     .command('battery')
     .description(
-      'Pull the Monthly Performance Report Max figure battery for one Seller Central account. ' +
-        `The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one ` +
-        'JSON document: data-aligned windows, account ads + retail per period with derived ratios, ' +
-        'dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ' +
-        'ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and ' +
-        '15-month history. A section that fails server-side is named under sections_failed and the ' +
-        'rest still serves; only a call that yields no document at all (service not deployed yet, a ' +
-        'timeout, a network drop) fails. Large accounts can take a few minutes. Exit 0 = document ' +
-        'written (or printed with --out -), 1 = no document.',
+      'Pull the Monthly Performance Report Max figure battery for one brand: one account row or several ' +
+        '(vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins). The battery ' +
+        `runs inside the MixShift service (named query ${BATTERY_QUERY_ID}): each seller id is routed to its ` +
+        "channel from the seller row (Seller Central or Vendor Central), every account is aligned to one " +
+        'day count, and the summable figures (ordered revenue, units, ad spend and sales) are rolled up ' +
+        'within one marketplace currency. Traffic and conversion stay per channel (sessions vs glance ' +
+        'views), movers merge by ASIN per channel, sub-brand splits sum by label. The per-account ' +
+        'documents ride along in full. A section that fails server-side is named under sections_failed ' +
+        'and the rest still serves; only a call that yields no document at all (service not deployed yet, ' +
+        'a timeout, a network drop) fails. Large brands can take a few minutes. Exit 0 = document written ' +
+        '(or printed with --out -), 1 = no document.',
     )
-    .requiredOption('--seller-id <id>', 'MixShift SellerID of the Seller Central account row')
+    .option(
+      '--seller-id <id>',
+      'MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max 8)',
+      collectIds,
+      [] as string[],
+    )
+    .option(
+      '--brand <slug>',
+      "brand context slug: runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)",
+    )
     .option(
       '--as-of <date>',
       'YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)',
     )
     .option(
       '--brands <list>',
-      'comma-separated sub-brand names as they appear in campaign names; enables the paid split',
+      'comma-separated sub-brand names as they appear in campaign names (ads split) and CustomBrand / Brand (retail split); enables the paid split',
     )
     .option(
       '--min-item-sales <n>',
-      "sales floor for the Buy Box table (default: the account's median item revenue in the current window)",
+      "sales floor for the per-item tables (default: each account's median item revenue in the current window)",
     )
-    .option('--buybox-floor <pct>', 'page-view-weighted Buy Box attention floor, percent', '92')
+    .option('--buybox-floor <pct>', 'Seller Central: page-view-weighted Buy Box attention floor, percent', '92')
     .option(
       '--buybox-drop <pts>',
-      'month-over-month drop in weighted Buy Box points that flags an item even above the floor',
+      'Seller Central: month-over-month drop in weighted Buy Box points that flags an item even above the floor',
       '5',
+    )
+    .option('--revenue-basis <basis>', 'Vendor Central: ordered (default) or shipped revenue and units', 'ordered')
+    .option(
+      '--attribution <rule>',
+      'ads attribution columns: all_14 or sc_default (default: each channel’s own rule; VC = 14 day for every type)',
     )
     .option('--out <path>', 'write the figures document here; "-" prints it to stdout instead', 'figures.json')
     .option('--timeout <seconds>', 'per-statement query timeout on the service, seconds (max 120)', '60')
     .action(async (opts: BatteryOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
-        const params = batteryParams(opts);
+        const resolved = await resolveBatterySellerIds(opts, root.dataDir);
+        const params = batteryParams({ ...opts, sellerId: resolved.ids.map(String) });
         const outPath = resolveBatteryOut(opts.out);
         const result = await runDispatched<Record<string, unknown>>(BATTERY_QUERY_ID, {
           params,
           // Seller scope rides inside params for the battery; echoing it as the
           // request's top-level scope keeps the call shaped like every other
           // named query for gateway-side attribution. The service ignores it.
-          sellerIds: [params.seller_id as number],
+          sellerIds: params.seller_ids as number[],
           queryTimeoutMs: batteryInt(opts.timeout, '--timeout', 1, 120) * 1_000,
           httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS,
         });
@@ -655,8 +674,21 @@ export function registerReportCommands(program: Command): void {
                 ok: true,
                 out: outPath ?? null,
                 revision: result.revision ?? null,
+                brand: resolved.brand ?? null,
+                alignment: doc.alignment ?? null,
+                accounts: batteryAccounts(doc).map((a) => ({
+                  seller_id: a.seller_id,
+                  name: a.name ?? null,
+                  channel: a.channel ?? null,
+                  failure: a.failure ?? null,
+                  sections_failed: (a.document?.sections_failed as Record<string, string> | undefined) ?? {},
+                  reconciliation: a.document?.reconciliation ?? null,
+                })),
+                rollup: {
+                  mixed_currency: (doc.rollup as Record<string, unknown> | undefined)?.mixed_currency ?? null,
+                  mixed_channel: (doc.rollup as Record<string, unknown> | undefined)?.mixed_channel ?? null,
+                },
                 sections_failed: doc.sections_failed ?? {},
-                reconciliation: doc.reconciliation ?? null,
                 ...(outPath ? {} : { figures: doc }),
               },
               null,
@@ -673,8 +705,14 @@ export function registerReportCommands(program: Command): void {
 }
 
 /** The pack battery id behind `report battery`. Append-only wire contract:
- *  a breaking change to its params or document ships as a new id. */
-export const BATTERY_QUERY_ID = 'MPRX-FIGURES-01';
+ *  a breaking change to its params or document ships as a new id. The
+ *  single-account Seller Central id (MPRX-FIGURES-01) stays deployed for
+ *  older plugin builds; this build always calls the brand battery, which
+ *  routes each account to its channel battery server-side. */
+export const BATTERY_QUERY_ID = 'MPRX-FIGURES-BRAND-01';
+
+/** Most account rows one call may carry (the service's own cap). */
+export const BATTERY_MAX_ACCOUNTS = 8;
 
 /** HTTP budget for one battery call: the service bounds a battery at 280s of
  *  response time (its wall-clock budget is sized from the statement timeout
@@ -683,10 +721,10 @@ export const BATTERY_QUERY_ID = 'MPRX-FIGURES-01';
  *  of queryTimeoutMs + 5s. */
 export const BATTERY_HTTP_TIMEOUT_MS = 290_000;
 
-/** Keys every battery document carries; their absence means this plugin build
- *  and the service disagree on the battery's shape, and the file must not be
- *  composed from. */
-export const BATTERY_DOCUMENT_KEYS = ['windows', 'thresholds_applied', 'sections_failed', 'reconciliation'] as const;
+/** Keys every brand battery document carries; their absence means this plugin
+ *  build and the service disagree on the battery's shape, and the file must
+ *  not be composed from. */
+export const BATTERY_DOCUMENT_KEYS = ['accounts', 'rollup', 'alignment', 'sections_failed'] as const;
 
 /** Failure kinds the service is known to answer with. The kind becomes the
  *  telemetry error class, so anything outside this set folds to `unknown`
@@ -707,15 +745,28 @@ const KNOWN_FAILURE_KINDS: ReadonlySet<string> = new Set([
   'unknown',
 ]);
 
+const REVENUE_BASES = ['ordered', 'shipped'] as const;
+const ATTRIBUTIONS = ['all_14', 'sc_default'] as const;
+
 interface BatteryOptions {
-  sellerId: string;
+  sellerId: string[];
+  brand?: string;
   asOf?: string;
   brands?: string;
   minItemSales?: string;
   buyboxFloor: string;
   buyboxDrop: string;
+  revenueBasis: string;
+  attribution?: string;
   out: string;
   timeout: string;
+}
+
+/** commander accumulator for a repeatable `--seller-id`; a comma list in one
+ *  flag is split so `--seller-id 113,114` and `--seller-id 113 --seller-id 114`
+ *  mean the same thing. */
+export function collectIds(value: string, prev: string[]): string[] {
+  return [...prev, ...value.split(',').map((s) => s.trim()).filter((s) => s.length > 0)];
 }
 
 /** `-` means stdout (the script's `--out -`); anything else is a path. */
@@ -763,12 +814,65 @@ function localToday(): string {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Which account rows the call covers: the explicit `--seller-id` list, or
+ * every account in a brand context that is not `inactive` (`wind_down` rows
+ * stay in: a code running down still sold this month and the brief must
+ * account for it). Exactly one of the two must be given.
+ */
+export async function resolveBatterySellerIds(
+  opts: Pick<BatteryOptions, 'sellerId' | 'brand'>,
+  dataDir?: string,
+): Promise<{ ids: number[]; brand?: string }> {
+  const explicit = opts.sellerId ?? [];
+  if (opts.brand && explicit.length > 0) {
+    throw new UserFacingError('Pass either --seller-id or --brand, not both.', 'report_battery_bad_flag');
+  }
+  if (!opts.brand) {
+    if (explicit.length === 0) {
+      throw new UserFacingError('Pass --seller-id <id> (repeatable) or --brand <slug>.', 'report_battery_bad_flag');
+    }
+    return { ids: explicit.map((s) => batteryInt(s, '--seller-id', 1)) };
+  }
+  const result = await validateBrandContext(opts.brand, dataDir);
+  if (!result.ok) {
+    throw new UserFacingError(
+      `Brand context "${opts.brand}" could not be read (${result.kind}): ${result.errors[0] ?? 'unknown error'}`,
+      'report_battery_bad_brand',
+    );
+  }
+  const ids = result.context.accounts.filter((a) => a.status !== 'inactive').map((a) => a.seller_id);
+  if (ids.length === 0) {
+    throw new UserFacingError(
+      `Brand context "${opts.brand}" has no active or wind-down accounts; pass --seller-id explicitly.`,
+      'report_battery_bad_brand',
+    );
+  }
+  return { ids, brand: opts.brand };
+}
+
 /** Translate the flags into the battery's params. The service validates the
  *  same values again and answers bad_params; this pass exists so a typo is a
  *  clean local error before any call is made. */
 export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
+  const ids = (opts.sellerId ?? []).map((s) => batteryInt(s, '--seller-id', 1));
+  if (ids.length === 0) {
+    throw new UserFacingError('Pass --seller-id <id> (repeatable) or --brand <slug>.', 'report_battery_bad_flag');
+  }
+  if (ids.length > BATTERY_MAX_ACCOUNTS) {
+    throw new UserFacingError(`At most ${BATTERY_MAX_ACCOUNTS} accounts per call, got ${ids.length}.`, 'report_battery_bad_flag');
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new UserFacingError('--seller-id values must be unique.', 'report_battery_bad_flag');
+  }
+  if (!(REVENUE_BASES as readonly string[]).includes(opts.revenueBasis)) {
+    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(', ')}, got "${opts.revenueBasis}".`, 'report_battery_bad_flag');
+  }
+  if (opts.attribution !== undefined && !(ATTRIBUTIONS as readonly string[]).includes(opts.attribution)) {
+    throw new UserFacingError(`--attribution must be one of ${ATTRIBUTIONS.join(', ')}, got "${opts.attribution}".`, 'report_battery_bad_flag');
+  }
   const params: Record<string, unknown> = {
-    seller_id: batteryInt(opts.sellerId, '--seller-id', 1),
+    seller_ids: ids,
     as_of: opts.asOf ?? localToday(),
     brands: (opts.brands ?? '')
       .split(',')
@@ -776,6 +880,7 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
       .filter((b) => b.length > 0),
     buybox_floor: batteryNumber(opts.buyboxFloor, '--buybox-floor'),
     buybox_drop: batteryNumber(opts.buyboxDrop, '--buybox-drop'),
+    revenue_basis: opts.revenueBasis,
   };
   if (!isCalendarDate(params.as_of as string)) {
     throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, 'report_battery_bad_flag');
@@ -783,6 +888,7 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
   if (opts.minItemSales !== undefined) {
     params.min_item_sales = batteryInt(opts.minItemSales, '--min-item-sales', 0);
   }
+  if (opts.attribution !== undefined) params.attribution = opts.attribution;
   return params;
 }
 
@@ -794,7 +900,7 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
 export function batteryFailure(failure: DataQueryFailure): UserFacingError {
   if (failure.kind === 'host_unreachable' && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5_000) {
     return new UserFacingError(
-      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1000)}s. Retry once; ` +
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1000)}s. Retry once, or with fewer accounts; ` +
         'if it repeats, run the sections by hand from references/queries.md and label the gap. ' +
         `(${BATTERY_QUERY_ID}: client_timeout)`,
       'report_battery_timeout',
@@ -824,13 +930,33 @@ export function assertBatteryDocument(row: unknown): Record<string, unknown> {
       'report_battery_bad_document',
     );
   }
+  if (!Array.isArray(doc.accounts)) {
+    throw new UserFacingError(
+      `The ${BATTERY_QUERY_ID} document carries no accounts[] list; do not compose from this call.`,
+      'report_battery_bad_document',
+    );
+  }
   return doc;
 }
 
-/** The same closing lines the shipped script printed after `--out`, so a
- *  reader of the terminal still sees the reconciliation, every failed
- *  section, and every dark ad day without opening the file. Numbers may
- *  arrive as DECIMAL strings; coerce before formatting. */
+interface BatteryAccount {
+  seller_id: number;
+  name?: string | null;
+  channel?: string | null;
+  currency?: string | null;
+  failure?: string | null;
+  document?: Record<string, unknown> | null;
+}
+
+export function batteryAccounts(doc: Record<string, unknown>): BatteryAccount[] {
+  return Array.isArray(doc.accounts) ? (doc.accounts as BatteryAccount[]) : [];
+}
+
+/** The closing lines after `--out`: which accounts ran on which channel and
+ *  day count, each account's reconciliation and failed sections, the brand
+ *  roll-up's shape, and dark ad days only where a window had them (an
+ *  exception, not a headline). Numbers may arrive as DECIMAL strings; coerce
+ *  before formatting. */
 export function batterySummary(out: string, doc: Record<string, unknown>): string[] {
   const money = (v: unknown): string => {
     if (v === null || v === undefined || v === '') return 'n/a';
@@ -838,19 +964,41 @@ export function batterySummary(out: string, doc: Record<string, unknown>): strin
     return Number.isFinite(n) ? `$${Math.round(n).toLocaleString('en-US')}` : 'n/a';
   };
   const lines = [`wrote ${out}`];
-  const rec = (doc.reconciliation ?? {}) as Record<string, unknown>;
+  const accounts = batteryAccounts(doc);
+  const alignment = (doc.alignment ?? {}) as { aligned_end?: string | null; aligned?: boolean };
+  const served = accounts.filter((a) => a.document);
+  const dayCount = served.length > 0 ? ((served[0]!.document!.windows as { day_count?: number } | undefined)?.day_count ?? null) : null;
   lines.push(
-    `reconciliation: account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`,
+    `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? '?'}${a.failure ? `, FAILED ${a.failure}` : ''})`).join(', ')}` +
+      (alignment.aligned_end ? `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ''}` : '') +
+      (alignment.aligned === false ? '; NOT ALIGNED, compare day counts before summing' : ''),
   );
-  const failed = (doc.sections_failed ?? {}) as Record<string, string>;
-  for (const [name, why] of Object.entries(failed)) {
+  for (const a of accounts) {
+    if (!a.document) continue;
+    const rec = (a.document.reconciliation ?? {}) as Record<string, unknown>;
+    lines.push(
+      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`,
+    );
+    const failed = (a.document.sections_failed ?? {}) as Record<string, string>;
+    for (const [name, why] of Object.entries(failed)) {
+      lines.push(`SECTION FAILED (brief runs without it, label the gap): ${a.seller_id}/${name}: ${String(why).slice(0, 140)}`);
+    }
+    const dark = (a.document.dark_days ?? {}) as Record<string, { zero_spend_days?: string[]; normalization_factor?: number | null }>;
+    for (const [k, v] of Object.entries(dark)) {
+      if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
+        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor})`);
+      }
+    }
+  }
+  const brandFailed = (doc.sections_failed ?? {}) as Record<string, string>;
+  for (const [name, why] of Object.entries(brandFailed)) {
     lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
   }
-  const dark = (doc.dark_days ?? {}) as Record<string, { zero_spend_days?: string[]; normalization_factor?: number | null }>;
-  for (const [k, v] of Object.entries(dark)) {
-    if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-      lines.push(`dark ad days in ${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor})`);
-    }
+  const rollup = (doc.rollup ?? {}) as { mixed_currency?: boolean; mixed_channel?: boolean; by_marketplace?: unknown[] };
+  if (rollup.mixed_currency) {
+    lines.push(`rollup: ${rollup.by_marketplace?.length ?? 0} marketplaces in different currencies, so NO brand total; quote each marketplace on its own`);
+  } else if (rollup.mixed_channel) {
+    lines.push('rollup: Seller Central + Vendor Central in one marketplace; revenue, units and ad figures are summed, traffic and conversion stay per channel');
   }
   return lines;
 }

@@ -1,6 +1,6 @@
 {
-  "built_at": "2026-09-05T00:11:22.666Z",
+  "built_at": "2026-09-06T19:53:50.712Z",
   "node_version": "v22.17.1",
   "entry": "src/cli.ts",
-  "output_bytes": 4333913
+  "output_bytes": 4339589
 }

@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.0.1
+version: 2.1.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -303,24 +303,78 @@ override as a run-scoped defect.
 
 ### 3b. The brief's battery: the warehouse
 
-`mixshift report battery` runs the standard battery and writes one JSON with every figure
-the envelope does not serve, already delta'd: resolved windows, dark ad days, the
-settled-window efficiency check, daily series and exit rate, segment splits, ASIN movers
-with the reconciliation result, out-of-stock days, and Buy Box by ASIN (page-view weighted,
-month and last 7 days). It exists because each of these queries has a trap in it, and
-re-deriving them by hand each period is how a wrong number reaches a client. The battery
-executes inside the MixShift service as the named query `MPRX-FIGURES-01`; the skill runs
-the call, and `references/queries.md` remains the annotated reference for the by-hand forks.
+`mixshift report battery` runs the standard battery for the whole brand and writes one JSON
+with every figure the envelope does not serve, already delta'd, per account and rolled up:
+resolved windows, dark ad days, the settled-window efficiency check, daily series and exit
+rate, segment splits, ASIN movers with the reconciliation result, out-of-stock days, and
+(Seller Central) Buy Box by ASIN, page-view weighted, month and last 7 days, or (Vendor
+Central) procurable out-of-stock days, availability interruptions and the inventory
+snapshot. It exists because each of these queries has a trap in it, and re-deriving them by
+hand each period is how a wrong number reaches a client. The battery executes inside the
+MixShift service as the named query `MPRX-FIGURES-BRAND-01`: the service reads each
+account's channel from its seller row and runs the Seller Central battery
+(`MPRX-FIGURES-01`) or the Vendor Central battery (`MPRX-FIGURES-VC-01`) for it, aligns
+every account to one day count, and rolls up within one marketplace currency. The skill
+runs the call; `references/queries.md` remains the annotated reference for what each
+statement does and why.
 
 ```bash
-mixshift report battery --seller-id <SellerID> --as-of <data end> --out figures.json
+mixshift report battery --brand <slug> --as-of <data end> --out figures.json
+# or name the account rows yourself (repeat the flag, or a comma list; max 8):
+mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <data end> --out figures.json
 ```
 
-The call can run for a few minutes on a large account (the service allows up to four), so
+`--brand` takes every account in the brand context whose status is not `inactive` (a
+`wind_down` code still sold this month and the brief must account for it). Vendor Central
+knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
+in context.yaml records a client whose convention is shipped) and `--attribution
+all_14|sc_default` (each channel's own rule by default: 14 day for every campaign type on
+Vendor Central, Sponsored Products 7 day on Seller Central).
+
+**Reading `figures.json`.** The document is brand-shaped. `accounts[]` carries one entry per
+account row with its `channel` (`SC` or `VC`), the full per-account document, or a `failure`
+kind when that row could not run. `rollup.by_marketplace[]` is always present;
+`rollup.brand` is the brand-level figure set when every account shares one currency. The
+roll-up sums only what is summable (ordered revenue, units, ad spend, ad sales, orders,
+clicks, impressions, with the ratios recomputed from the sums), keeps traffic and
+conversion PER CHANNEL (`traffic.SC` is sessions, `traffic.VC` is glance views; never add
+them), merges movers by ASIN per channel, and sums sub-brand splits by label.
+`rollup.mixed_currency: true` means two or more marketplaces in different currencies:
+there is no brand total, on purpose, and the brief quotes each marketplace on its own.
+`alignment.aligned_end` is the day every account was cut to; quote that day count once. A
+single account is `accounts[0].document` with `rollup.brand` mirroring it.
+
+Sub-brand splits follow the LABELS the brand context designates (`sub_brands[]`: campaign
+names for ads, `CustomBrand` or `Brand` for retail), never the vendor codes: pass them with
+`--brands`, and a label that spans two codes is one sub-brand in the roll-up.
+
+The call can run for a few minutes on a large brand (the service allows up to four), so
 give the shell at least five. It writes `figures.json` in the current directory by default.
-If the whole call fails with no document (the service not deployed yet, a timeout, a network
-drop), retry once; if it fails again, run the sections from `references/queries.md` by hand
-and label the gap in the method notes.
+If the whole call fails with no document (the service not deployed yet, a timeout, a
+network drop), retry once, then with fewer accounts; if it fails again, run the sections
+from `references/queries.md` by hand and label the gap in the method notes. An account that
+failed inside an otherwise good call is listed under `accounts[].failure` and in
+`sections_failed` as `account_<id>`; the brief runs on the accounts that served and names
+the gap.
+
+**Vendor Central figures are named for what they are.** `glance_views` and
+`gv_conversion_pct` are the traffic and conversion basis (a vendor account has no sessions
+and no Buy Box); `oos_days` counts ASIN-days at or above the procurable out-of-stock
+threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE
+sellable units were on hand, a listing or procurability problem rather than a stockout, and
+usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
+snapshot on the last loaded day plus net received units over the window. Ad figures come
+from `campaignmetric` on every channel, never from a monthly rollup table.
+
+**Dark days are an exception check, not a section of the brief.** The battery serves the
+zero-spend days and the normalization factor per window so you can normalize WHEN a window
+has them; a window with none gets no dark-day sentence.
+
+**Weeks of cover and lost sales are never computed by hand.** Both are engine metrics with
+a channel-aware definition (Vendor Central cover is a forward forecast horizon from the
+demand forecast; Seller Central is a trailing window) and the Intelligence run serves them
+(`weeks_of_cover`, `lost_sales`). Quote the served figure and its basis; a trailing-window
+cover computed by hand on a vendor account inverted a real finding in the field.
 
 **Account traffic and conversion come from the account daily table, never from summing
 the per-ASIN roll-up.** On Seller Central, `business_reports_dpst_sku` emits a row only on
@@ -344,9 +398,9 @@ what landed and labels the gap. The battery resolves MONTHLY windows only: for a
 or QBR run, take the queries from `references/queries.md` and run them by hand with the
 cadence windows from the knobs table.
 
-Read `references/queries.md` when you need to go beyond the battery, when the account is
-Vendor Central (the battery is Seller Central only; the reference carries the VC fork), or
-when a section fails. The six traps the battery encodes, so you can spot them anywhere else:
+Read `references/queries.md` when you need to go beyond the battery (a cadence other than
+monthly, a probe it does not carry) or when a section fails. The six traps the battery
+encodes on both channels, so you can spot them anywhere else:
 
 1. **Align the window to the data, not the calendar.** Business reports load behind ad
    data; trim both to the earlier `MAX(DateTime)` or the TACOS compares 26 days of spend
