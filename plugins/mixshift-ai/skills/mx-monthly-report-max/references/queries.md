@@ -10,12 +10,14 @@ last-7-days column, availability breadth, and the mover reconciliation. Where bo
 serve the same figure, the envelope wins and the battery's total is the cross-check; a gap
 beyond about half a percent is a finding (usually restatement), not a choice.
 
-**Executable form.** The battery itself runs inside the MixShift service as the named query
-`MPRX-FIGURES-01`, called by `mixshift report battery` (SKILL.md step 3b). This file is the
-annotated, human-readable source of record for what that battery does and why each query is
-shaped the way it is. Run the queries below by hand only when you go beyond the battery: the
-Vendor Central fork, a cadence other than monthly, or a section the service reported under
-`sections_failed`.
+**Executable form.** The battery itself runs inside the MixShift service, called by
+`mixshift report battery` (SKILL.md step 3b) as the brand battery `MPRX-FIGURES-BRAND-01`,
+which routes each account row to the Seller Central battery `MPRX-FIGURES-01` or the Vendor
+Central battery `MPRX-FIGURES-VC-01` from the seller row's channel, aligns the accounts to one
+day count and rolls a brand up (section 11). This file is the annotated, human-readable source
+of record for what those batteries do and why each query is shaped the way it is. Run the
+queries below by hand only when you go beyond the battery: a cadence other than monthly, a
+probe it does not carry, or a section the service reported under `sections_failed`.
 
 ## Contents
 
@@ -35,6 +37,7 @@ Vendor Central fork, a cadence other than monthly, or a section the service repo
 - [9c. Daily series for one item](#9c-daily-series-for-one-item)
 - [9d. Live featured offer state](#9d-live-featured-offer-state)
 - [10. Full-month history](#10-full-month-history)
+- [11. Vendor Central battery and the brand roll-up](#11-vendor-central-battery-and-the-brand-roll-up)
 - [Known traps](#known-traps)
 
 ## Which tables
@@ -47,7 +50,7 @@ Vendor Central fork, a cadence other than monthly, or a section the service repo
 | Retail sales and sessions per ASIN | `business_reports_dpst_sku` (SC) |
 | Retail revenue and units per ASIN | `vendor_sales_manufacturing_asin` (VC) |
 | Glance views, the VC traffic proxy | `vendor_traffic_asin_daily` (VC) |
-| Monthly settled ad rollup | `sellermonthmetric` |
+| Inventory snapshot, procurable out-of-stock rate, net received | `vendor_inventory_manufacturing_asin_daily` (VC) |
 | Inventory snapshots, fulfillable and inbound | `mws_inventory_history` (SC) |
 | Catalog: nickname, brand, item group, tier labels | `mws_items` (SC), `vendor_items` (VC) |
 
@@ -62,20 +65,25 @@ differs and mixing them produces figures that cannot be reconciled.
 - **SC (Seller Central).** Ad metrics from `campaignmetric` with the attribution CASE block
   below. Retail from `business_reports_dpst_date` and `_sku`. Buy Box, offer count, sessions and
   inventory all exist.
-- **VC (Vendor Central).** Ad metrics from `sellermonthmetric`, which is settled. Do not
-  aggregate raw `campaignmetric` for VC account-level ACOS (like-day SPEND from it is fine,
-  labeled; it is attributed sales that unsettle). Retail from `vendor_sales_manufacturing_asin`,
-  on the ORDERED basis unless the client's convention says shipped; never mix bases in one
-  comparison. There is no Buy Box and no session count; use glance views from
-  `vendor_traffic_asin_daily` as the traffic proxy and say so. Two field-proven traps:
-  resolve VC windows from the VENDOR table's own `MAX(DateTime)`, not the ads table's
-  (vendor retail loads later, and a one-day misalignment flipped a real month's MoM sign
-  from -0.5% to the true +4.6%); and never read `sellermonthmetric`'s own ACoS columns,
-  which store a fraction rounded to one decimal (every month reads 0.2): compute ACOS from
-  spend over sales.
+- **VC (Vendor Central).** Ad metrics from `campaignmetric`, exactly as on Seller Central:
+  Report Max reads campaignmetric on both channels and never `sellermonthmetric` (a monthly
+  rollup whose ACoS columns store a one-decimal fraction). Use the 14-day columns for every campaign type: on a vendor row the 7-day
+  columns are empty for Sponsored Brands and Display, so the SC CASE would drop their sales.
+  Retail from `vendor_sales_manufacturing_asin` (the manufacturing view, not sourcing), on
+  the ORDERED basis unless the client's convention says shipped; never mix bases in one
+  comparison. There is no Buy Box and no session count; glance views from
+  `vendor_traffic_asin_daily` are the traffic basis, named as such. Out of stock is a RATE
+  (`ProcurableProductOutOfStockRate`, 0 to 1) in `vendor_inventory_manufacturing_asin_daily`;
+  an ASIN-day at or above the threshold while `SellableOnHandInventoryUnits > 0` is an
+  availability interruption, not a stockout. Field-proven trap: resolve VC windows from the
+  EARLIEST of the vendor sales, vendor traffic and ads load dates, never from the ads table
+  alone (vendor retail loads later, and a one-day misalignment flipped a real month's MoM
+  sign from -0.5% to the true +4.6%).
 
 **Attribution windows.** SC: Sponsored Products 7 day, Sponsored Brands 14 day, Sponsored
-Display 14 day. VC: all 14 day. The SC rule as SQL, which is the canonical form:
+Display 14 day. VC: 14 day for every type (the battery's `attribution: all_14` default; the
+brand's `management.attribution_window_days` records the convention). The SC rule as SQL,
+which is the canonical form:
 
 ```sql
 SUM(CASE WHEN CampaignType='sponsoredProducts'
@@ -472,6 +480,57 @@ GROUP BY m ORDER BY m
 neighbours: if it is an obvious trough, the year-over-year comp is flattered by the base and the
 brief should say so.
 
+## 11. Vendor Central battery and the brand roll-up
+
+`MPRX-FIGURES-VC-01` is the vendor sibling of sections 1 to 10, run by the service for any
+account row whose `seller.MerchantType` is `Vendor`. Statement by statement (all bound by
+`SellerID`, dates as `DateTime`, one row per ASIN-day in every vendor table):
+
+| Section | Table(s) | What it serves | Trap it encodes |
+|---|---|---|---|
+| `windows` | `vendor_sales_manufacturing_asin`, `vendor_traffic_asin_daily`, `campaignmetric` | `MAX(DateTime)` of each; the window ends at the EARLIEST | Vendor traffic loads separately from vendor sales; a final day with units but no glance views is trimmed |
+| `account_ads` | `campaignmetric` | spend, 14-day sales and orders, clicks, impressions per period; ACOS, TACOS, ad share, AOV derived | Never `sellermonthmetric`; the 7-day columns are empty for SB/SD on a vendor row |
+| `account_retail` + `account_traffic` | vendor sales, vendor traffic | `OrderedRevenueAmount` / `OrderedUnits` (or shipped), `GlanceViews`, ASP, `gv_conversion_pct` = units / glance views | Two tables, one section: a null glance-view side leaves conversion null, never a sessions alias |
+| `dark_days` | `campaignmetric` | active ad days, zero-spend days, normalization factor per window | An exception check; report it only when a window has dark days |
+| `settled_check` | `campaignmetric` | settled current vs prior window by segment | The exclusion follows the attribution rule: 14 days on the 14-day columns (the VC default), 7 on the SC rule; `thresholds_applied.settled_exclusion_days` says which |
+| `daily` + `daily_traffic` | vendor sales, vendor traffic | daily revenue, units, glance views; 7-day pace arithmetic | Arithmetic, not a forecast |
+| `segment_ads` | `campaignmetric` | paid split by campaign name LIKE | Labels, never vendor codes |
+| `segment_retail` + `segment_traffic` | vendor sales, vendor traffic, `vendor_items.CustomBrand` | retail split by the operator's own label, with glance views and conversion per label | Correlated subquery with LIMIT 1 even though `vendor_items` is one row per ASIN (verified: 950 rows, 0 duplicates) |
+| `movers` | vendor sales, `vendor_items.ItemNickname` | per-ASIN revenue and units, both windows, delta, gross gains and declines, sum for the reconciliation | Reconciliation gap should be zero: same table both sides |
+| `oos_days` | `vendor_inventory_manufacturing_asin_daily` | per ASIN: days at or above the OOS rate threshold, and days out of stock WHILE sellable units were on hand | `MAX()` per ASIN-day; the rate is a fraction 0 to 1, default threshold 0.99 |
+| `availability_interruptions` | derived from `oos_days` | account totals of the interruption pattern (ASIN-days, ASINs) and the top items | The finding a vendor manager acts on; 16 ASIN-days vs 1 on a real account |
+| `inventory` | `vendor_inventory_manufacturing_asin_daily` | sellable, unsellable, aged 90+, open PO units on the last loaded day; net received over the window | Snapshot vs flow: do not sum the snapshot columns across days |
+| `monthly_history` + `monthly_traffic` | vendor sales, vendor traffic | 15 months of revenue, units, glance views, days loaded | Same as SC |
+
+Not in the battery, by design: weeks of cover and lost sales. Both are engine metrics with a
+channel-aware definition (VC cover = the latest `vendor_demandforecast` snapshot at or before
+period end over the next 6, 9 and 12 weeks; SC = trailing 7, 14, 30 days), served by
+INS-LOSTSALES-01 and INS-OPS-BRIDGE-01. Quote the served figure and its basis.
+
+**The brand roll-up (`MPRX-FIGURES-BRAND-01`).** One statement of its own, the seller rows
+(`seller` joined to `marketplace` for the currency), then each account through its channel
+battery with `as_of` set to the EARLIEST of the accounts' own data-aligned window ends, so the
+brand runs on one day count. Roll-up rules, in order of what can go wrong:
+
+1. Sum only summable figures, and only within one marketplace (= one currency): ordered
+   revenue, units, ad spend, ad sales, orders, clicks, impressions, per period; recompute
+   ACOS, TACOS, ad share, AOV and ASP from the sums, never average the ratios.
+2. Traffic and conversion per CHANNEL: `traffic.SC` (sessions, units per session) and
+   `traffic.VC` (glance views, glance-view conversion) are never added together.
+3. Movers merge by ASIN per channel; the same ASIN sold 1P and 3P is two businesses.
+4. Sub-brand splits sum by LABEL across codes (campaign name for ads, `CustomBrand` for
+   retail); vendor codes never create the split.
+5. Dark-day normalization stays per account (a lapse on one code is not a lapse on the
+   brand); the roll-up names which accounts had dark days.
+6. The brand total exists when every current account shares one currency (two EUR marketplaces
+   add); otherwise `by_marketplace` only and no brand total, labelled `mixed_currency`.
+7. An account whose feed ends more than 14 days behind the freshest one is stale: it runs on its
+   own window, is served under `accounts[]` with a label, and is excluded from the roll-up rather
+   than dragging the brand back to its month. An aligned end in an earlier month than the request
+   is labelled `month_shifted`.
+8. A period where an account contributed ads but its retail section failed is `partial`: its
+   brand TACOS and ad share are null, because a ratio of two account sets is not a brand figure.
+
 ## The per-ASIN roll-up has no zero-sale rows (SC traffic basis)
 
 `business_reports_dpst_sku` emits a row only on ASIN-days that sold at least one unit:
@@ -534,4 +593,7 @@ a degrade-and-label, battery-carries-the-brief month, and an engine-team routing
 | Zero rows for a SellerID you expected | Wrong account row, often the VC twin of an SC account | Confirm against the row-count query in Step 2 |
 | `mixshift data query` returns `status: error` and no `rows` key | Query failed | Read `message`; never index `rows` without checking `status` |
 | Tier or segment sums far exceed the account total | Grouping on a joined `mws_items` label | Correlated subquery, or group in a subselect first |
+| VC window a day ahead of the traffic feed, conversion inflated | Vendor traffic loads after vendor sales | Resolve from the earliest of the three load dates; trim a units-without-glance-views day |
+| VC out-of-stock days read 0 everywhere | `ProcurableProductOutOfStockRate` is a fraction 0 to 1, not a percent | Compare against 0.99, not 99 |
+| VC account ACOS reads 0.2 every month | `sellermonthmetric` stores a one-decimal fraction | Report Max computes from `campaignmetric` spend over 14-day sales and does not read that table |
 | SB or SD `ad_sales_14d < ad_sales_7d` for the same rows | Impossible with complete data; the 14-day columns lag the 7-day ones on recent loads | Flag it, do not quote SB/SD efficiency from the affected days; offer to proceed with a note or wait for the load |
