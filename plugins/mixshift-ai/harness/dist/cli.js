@@ -66163,7 +66163,7 @@ async function runNamedQuery(id, options = {}) {
       creds,
       "/api/named-query",
       { id, sellerIds, params: options.params, queryTimeoutMs },
-      queryTimeoutMs + 5e3,
+      options.httpTimeoutMs ?? queryTimeoutMs + 5e3,
       options.dataDirOverride
     );
     const json2 = await res.json();
@@ -71610,7 +71610,8 @@ async function runNamed(id, opts) {
     sellerIds,
     params: restParams,
     dataDirOverride: opts.dataDirOverride,
-    queryTimeoutMs: opts.queryTimeoutMs
+    queryTimeoutMs: opts.queryTimeoutMs,
+    httpTimeoutMs: opts.httpTimeoutMs
   });
   if (!result.ok) {
     return { ok: false, id, usedDispatch: "named", failure: result };
@@ -88223,6 +88224,20 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "host_unreachable",
   "not_authenticated",
   "session_expired",
+  // Gateway kinds added 2026-09-04 (mx-ops#43) — keep in step with
+  // ALL_SPAPI_ERROR_KINDS in mx-legacy-auth.
+  "report_retired",
+  "upstream_unavailable",
+  "listings_write_disabled",
+  "listings_media_write_disabled",
+  "listings_write_not_enabled",
+  "patch_not_allowed",
+  "change_set_not_found",
+  "change_set_expired",
+  "change_set_already_committed",
+  "approval_mismatch",
+  "stale_approval",
+  "schema_drift",
   "unknown"
 ]);
 function isServerFailureEnvelope(json2) {
@@ -88230,7 +88245,9 @@ function isServerFailureEnvelope(json2) {
 }
 function toReportFailure(json2, httpStatus, surface) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const kind = KNOWN_KINDS.has(rawKind) ? rawKind : "unknown";
+  const recognized = KNOWN_KINDS.has(rawKind);
+  const amazonErrorCode = strOrUndef(json2.amazon_error_code);
+  const kind = recognized ? rawKind : safeKindForStatus(httpStatus, amazonErrorCode);
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
@@ -88245,7 +88262,8 @@ function toReportFailure(json2, httpStatus, surface) {
     status: strOrUndef(json2.status),
     candidates: parseCandidates(json2.candidates),
     httpStatus,
-    ...strOrUndef(json2.amazon_error_code) !== void 0 ? { amazonErrorCode: strOrUndef(json2.amazon_error_code) } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...amazonErrorCode !== void 0 ? { amazonErrorCode } : {},
     ...numOrUndef(json2.status) !== void 0 ? { amazonStatus: numOrUndef(json2.status) } : {},
     ...json2.responsePayload !== void 0 ? { responsePayload: json2.responsePayload } : {},
     ...strOrUndef(json2.responseText) !== void 0 ? { responseText: strOrUndef(json2.responseText) } : {}
@@ -88278,6 +88296,11 @@ function statusOnlyFailure(httpStatus, detail, surface) {
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
+}
+function safeKindForStatus(httpStatus, amazonErrorCode) {
+  if (httpStatus === 400 && amazonErrorCode) return "bad_request";
+  if (httpStatus === 429) return "throttled";
+  return "unknown";
 }
 function statusToKind(httpStatus) {
   switch (httpStatus) {
@@ -88858,7 +88881,9 @@ function registerPollRunCommand(pricing) {
               // Beta richness (feedback #10): typed failure kind + HTTP
               // status so a pricing.failed is diagnosable without the log.
               failure_kind: result.kind,
-              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+              ...result.httpStatus ? { http_status: result.httpStatus } : {},
+              // Contract drift marker, same as the other surfaces (mx-ops#43).
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
             }
           },
           root.dataDir
@@ -88912,7 +88937,9 @@ function registerGetRunResultCommand(pricing) {
               // Beta richness (feedback #10): typed failure kind + HTTP
               // status so a pricing.failed is diagnosable without the log.
               failure_kind: result.kind,
-              ...result.httpStatus ? { http_status: result.httpStatus } : {}
+              ...result.httpStatus ? { http_status: result.httpStatus } : {},
+              // Contract drift marker, same as the other surfaces (mx-ops#43).
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
             }
           },
           root.dataDir
@@ -89029,7 +89056,10 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
         failure_kind: result.kind,
         // Beta richness (feedback #10): HTTP status alongside the typed kind so
         // a pricing.failed is diagnosable without the log.
-        ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        ...result.httpStatus ? { http_status: result.httpStatus } : {},
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
       }
     },
     dataDir
@@ -89220,7 +89250,11 @@ function registerCall(amazon) {
           // signature. The CODE and not the message, because it is
           // low-cardinality and carries no seller/order/ASIN identifiers.
           ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
-          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {},
+          // Contract drift: the service sent a `kind` this build does not
+          // know, so the class above came from the status, not the wire.
+          // Recording the raw value keeps the drift visible (mx-ops#43).
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
         });
         return emitFailure2(result, !!root.json);
       }
@@ -89290,6 +89324,7 @@ function emitFailure2(failure, json2) {
       // send and left us unable to tell a catalog gap from an outage.
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
@@ -90063,6 +90098,9 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType,
       duration_ms: Date.now() - startedAt,
       payload: {
         kind: failure.kind,
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {},
         ...reportType ? { report_type: reportType } : {},
         // run_id ties this report.failed back to its report.started (same
         // run handle), even when the failure surfaces in a separate `report
@@ -90094,6 +90132,7 @@ function emitFailure3(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
@@ -90118,6 +90157,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
@@ -90702,7 +90742,11 @@ function registerCall2(ads) {
           // not the message, because it is low-cardinality and carries no
           // seller/order/ASIN identifiers.
           ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
-          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {}
+          ...result.amazonStatus ? { amazon_status: result.amazonStatus } : {},
+          // Contract drift: the service sent a `kind` this build does not
+          // know, so the class above came from the status, not the wire.
+          // Recording the raw value keeps the drift visible (mx-ops#43).
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
         });
         return emitFailure4(result, !!root.json);
       }
@@ -90815,6 +90859,7 @@ function emitFailure4(failure, json2) {
       // send and left us unable to tell a catalog gap from an outage.
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates
     });
@@ -90932,6 +90977,12 @@ function exitCodeForKind2(kind) {
     case "run_not_found":
       return 11;
     // runId unknown / expired
+    case "throttled":
+      return 8;
+    // gateway rate limit — back off; same advice as `busy`
+    case "insufficient_scope":
+      return 12;
+    // credential lacks intelligence:read — re-issue it with the scope
     case "engine_error":
     case "host_unreachable":
     case "unknown":
@@ -91094,6 +91145,11 @@ var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
   "engine_error",
   "not_ready",
   "run_not_found",
+  // Keep in step with IntelligenceFailureKind in mx-legacy-auth types.ts.
+  "decomposition_budget_exceeded",
+  "not_implemented",
+  "insufficient_scope",
+  "throttled",
   "not_authenticated",
   "session_expired",
   "host_unreachable",
@@ -91104,13 +91160,15 @@ function isServerFailureEnvelope2(json2) {
 }
 function toIntelligenceFailure(json2, httpStatus) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const kind = KNOWN_KINDS2.has(rawKind) ? rawKind : "unknown";
+  const recognized = KNOWN_KINDS2.has(rawKind);
+  const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
     ok: false,
     kind,
     friendly: serverFriendly ?? defaultFriendly2(kind),
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
     runId: strOrUndef2(json2.runId),
@@ -91126,6 +91184,12 @@ function statusOnlyFailure2(httpStatus, detail) {
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
+}
+function safeKindForStatus2(httpStatus) {
+  if (httpStatus === 202) return "not_ready";
+  if (httpStatus === 400) return "bad_params";
+  if (httpStatus === 429) return "busy";
+  return "unknown";
 }
 function statusToKind2(httpStatus) {
   switch (httpStatus) {
@@ -91755,7 +91819,10 @@ async function trackFailure3(op, insightId, failure, startedAt, dataDir, runId) 
         ...insightId ? { insight_id: insightId } : {},
         ...runId ? { run_id: runId } : {},
         failure_kind: failure.kind,
-        ...failure.httpStatus ? { http_status: failure.httpStatus } : {}
+        ...failure.httpStatus ? { http_status: failure.httpStatus } : {},
+        // Contract drift: the service sent a `kind` this build does not know,
+        // so the class came from the status, not the wire (mx-ops#43).
+        ...failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {}
       }
     },
     dataDir
@@ -91770,6 +91837,7 @@ function emitFailure5(failure, json2) {
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
+      unrecognized_kind: failure.unrecognizedKind,
       ...hint ? { hint } : {}
     });
   } else {
@@ -93664,7 +93732,9 @@ async function withReportErrorHandling(json2, fn) {
   }
 }
 function registerReportCommands(program3) {
-  const report = program3.command("report").description("Report-contract tools: validate typed report-data documents at the render seam.");
+  const report = program3.command("report").description(
+    "Report tools: validate, extract and render typed report-data documents at the render seam, and pull the Report Max figure battery from the MixShift service."
+  );
   report.command("validate <files...>").description(
     "Run the report-contract validators (BASIS-1..UNIT-2) over one or more report-data.json documents. Exit 0 = no error-severity findings (warnings may still be reported), 1 = at least one error, 2 = at least one DOCUMENT was unreadable (processing still continues through the remaining documents; 2 wins over 1 when both occur). A corrupt sidecar is different, because it silently voids the served-unit check: an unreadable --figures path fails the whole command up front, and a corrupt auto-discovered figures*.json fails the run when its own document is reached."
   ).option(
@@ -93865,6 +93935,175 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
       });
     }
   );
+  report.command("battery").description(
+    `Pull the Monthly Performance Report Max figure battery for one Seller Central account. The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}) and returns one JSON document: data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, the settled-window efficiency check, daily series, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, and 15-month history. A section that fails server-side is named under sections_failed and the rest still serves; only a call that yields no document at all (service not deployed yet, a timeout, a network drop) fails. Large accounts can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
+  ).requiredOption("--seller-id <id>", "MixShift SellerID of the Seller Central account row").option(
+    "--as-of <date>",
+    "YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)"
+  ).option(
+    "--brands <list>",
+    "comma-separated sub-brand names as they appear in campaign names; enables the paid split"
+  ).option(
+    "--min-item-sales <n>",
+    "sales floor for the Buy Box table (default: the account's median item revenue in the current window)"
+  ).option("--buybox-floor <pct>", "page-view-weighted Buy Box attention floor, percent", "92").option(
+    "--buybox-drop <pts>",
+    "month-over-month drop in weighted Buy Box points that flags an item even above the floor",
+    "5"
+  ).option("--out <path>", 'write the figures document here; "-" prints it to stdout instead', "figures.json").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    await withReportErrorHandling(!!root.json, async () => {
+      const params = batteryParams(opts);
+      const outPath = resolveBatteryOut(opts.out);
+      const result = await runDispatched(BATTERY_QUERY_ID, {
+        params,
+        // Seller scope rides inside params for the battery; echoing it as the
+        // request's top-level scope keeps the call shaped like every other
+        // named query for gateway-side attribution. The service ignores it.
+        sellerIds: [params.seller_id],
+        queryTimeoutMs: batteryInt(opts.timeout, "--timeout", 1, 120) * 1e3,
+        httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS
+      });
+      if (!result.ok) throw batteryFailure(result.failure);
+      const doc = assertBatteryDocument(result.rows[0]);
+      const body = JSON.stringify(doc, null, 2);
+      if (outPath) await writeReportOutput(outPath, body + "\n");
+      if (root.json) {
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              out: outPath ?? null,
+              revision: result.revision ?? null,
+              sections_failed: doc.sections_failed ?? {},
+              reconciliation: doc.reconciliation ?? null,
+              ...outPath ? {} : { figures: doc }
+            },
+            null,
+            2
+          )
+        );
+      } else if (!outPath) {
+        console.log(body);
+      } else {
+        for (const line of batterySummary(outPath, doc)) console.log(line);
+      }
+    });
+  });
+}
+var BATTERY_QUERY_ID = "MPRX-FIGURES-01";
+var BATTERY_HTTP_TIMEOUT_MS = 29e4;
+var BATTERY_DOCUMENT_KEYS = ["windows", "thresholds_applied", "sections_failed", "reconciliation"];
+var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
+  "access_denied_table",
+  "access_denied_db",
+  "unknown_table",
+  "syntax_error",
+  "timeout",
+  "host_unreachable",
+  "too_many_rows",
+  "response_too_large",
+  "busy",
+  "unknown_query",
+  "bad_params",
+  "missing_params",
+  "unknown"
+]);
+function resolveBatteryOut(out) {
+  return out === "-" ? void 0 : out;
+}
+function batteryInt(raw, flag, min, max) {
+  const n = Number(raw);
+  if (!/^-?\d+$/.test(raw.trim()) || !Number.isSafeInteger(n) || n < min || max !== void 0 && n > max) {
+    throw new UserFacingError(
+      `${flag} must be an integer${max !== void 0 ? ` between ${min} and ${max}` : ` >= ${min}`}, got "${raw}".`,
+      "report_battery_bad_flag"
+    );
+  }
+  return n;
+}
+function batteryNumber(raw, flag) {
+  const n = Number(raw);
+  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > 100) {
+    throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, "report_battery_bad_flag");
+  }
+  return n;
+}
+function isCalendarDate(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+function localToday() {
+  const t = /* @__PURE__ */ new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+function batteryParams(opts) {
+  const params = {
+    seller_id: batteryInt(opts.sellerId, "--seller-id", 1),
+    as_of: opts.asOf ?? localToday(),
+    brands: (opts.brands ?? "").split(",").map((b) => b.trim()).filter((b) => b.length > 0),
+    buybox_floor: batteryNumber(opts.buyboxFloor, "--buybox-floor"),
+    buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop")
+  };
+  if (!isCalendarDate(params.as_of)) {
+    throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
+  }
+  if (opts.minItemSales !== void 0) {
+    params.min_item_sales = batteryInt(opts.minItemSales, "--min-item-sales", 0);
+  }
+  return params;
+}
+function batteryFailure(failure) {
+  if (failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3) {
+    return new UserFacingError(
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once; if it repeats, run the sections by hand from references/queries.md and label the gap. (${BATTERY_QUERY_ID}: client_timeout)`,
+      "report_battery_timeout"
+    );
+  }
+  const kind = KNOWN_FAILURE_KINDS3.has(failure.kind) ? failure.kind : "unknown";
+  return new UserFacingError(`${failure.friendly} (${BATTERY_QUERY_ID}: ${failure.kind})`, `report_battery_${kind}`);
+}
+function assertBatteryDocument(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new UserFacingError(
+      `The service returned no figures document for ${BATTERY_QUERY_ID}. Retry; if it persists, report it.`,
+      "report_battery_empty"
+    );
+  }
+  const doc = row;
+  const missing = BATTERY_DOCUMENT_KEYS.filter((k) => !(k in doc));
+  if (missing.length > 0) {
+    throw new UserFacingError(
+      `The ${BATTERY_QUERY_ID} document is missing ${missing.join(", ")}: this plugin build and the service disagree on the battery shape. Update the plugin or wait for the service deploy; do not compose from this call.`,
+      "report_battery_bad_document"
+    );
+  }
+  return doc;
+}
+function batterySummary(out, doc) {
+  const money = (v) => {
+    if (v === null || v === void 0 || v === "") return "n/a";
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "n/a";
+  };
+  const lines = [`wrote ${out}`];
+  const rec = doc.reconciliation ?? {};
+  lines.push(
+    `reconciliation: account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`
+  );
+  const failed = doc.sections_failed ?? {};
+  for (const [name, why] of Object.entries(failed)) {
+    lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
+  }
+  const dark = doc.dark_days ?? {};
+  for (const [k, v] of Object.entries(dark)) {
+    if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
+      lines.push(`dark ad days in ${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor})`);
+    }
+  }
+  return lines;
 }
 
 // src/lib/net/doctor.ts

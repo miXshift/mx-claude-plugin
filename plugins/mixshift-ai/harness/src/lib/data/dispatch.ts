@@ -73,6 +73,10 @@ export interface DispatchOptions {
   sellerIds?: Array<number | string>;
   dataDirOverride?: string;
   queryTimeoutMs?: number;
+  /** Named dispatch only: HTTP budget for the whole call when the entry is a
+   *  pack battery that runs many statements under one request. See
+   *  NamedQueryOptions.httpTimeoutMs. */
+  httpTimeoutMs?: number;
   /**
    * Execute THIS SQL instead of whatever the catalog entry would have run.
    *
@@ -281,6 +285,7 @@ async function runNamed<Row>(
     params: restParams,
     dataDirOverride: opts.dataDirOverride,
     queryTimeoutMs: opts.queryTimeoutMs,
+    httpTimeoutMs: opts.httpTimeoutMs,
   });
 
   if (!result.ok) {

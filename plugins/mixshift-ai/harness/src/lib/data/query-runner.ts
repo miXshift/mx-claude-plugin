@@ -35,6 +35,13 @@ export type DataQueryFailureKind =
   | 'syntax_error'
   | 'timeout'
   | 'host_unreachable'
+  // Cap and contention kinds the service classifies for any query (see
+  // mx-legacy-auth src/db/run-query.ts): the row cap, the byte cap, and a
+  // pool that could not hand out a connection in time. Listed so a caller
+  // can branch on them by name instead of treating them as `unknown`.
+  | 'too_many_rows'
+  | 'response_too_large'
+  | 'busy'
   // Named-query surface (POST /api/named-query) only: the pack has no
   // entry for the requested id (plugin release ahead of service deploy) /
   // the request was malformed against the entry's spec / a required param
@@ -1476,6 +1483,13 @@ export interface NamedQueryOptions {
    *  entry's strict schema. */
   params?: Record<string, unknown>;
   queryTimeoutMs?: number;
+  /**
+   * HTTP budget for the whole call. Default = queryTimeoutMs + 5s, right for
+   * a single statement. A pack BATTERY (e.g. MPRX-FIGURES-01) runs many
+   * statements under one request, each under queryTimeoutMs, so its caller
+   * sets this to the service's battery budget instead.
+   */
+  httpTimeoutMs?: number;
   dataDirOverride?: string;
   /** Tests inject creds; production resolves from disk. */
   creds?: MysqlCreds | DatahubCreds;
@@ -1539,7 +1553,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
       creds,
       '/api/named-query',
       { id, sellerIds, params: options.params, queryTimeoutMs },
-      queryTimeoutMs + 5_000,
+      options.httpTimeoutMs ?? queryTimeoutMs + 5_000,
       options.dataDirOverride,
     );
     const json = (await res.json()) as NamedQueryWire;

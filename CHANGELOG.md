@@ -9,6 +9,16 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
+- **Monthly Performance Report Max pulls its warehouse figures through the
+  MixShift service.** The figure battery behind the brief (data-aligned windows,
+  dark-day normalization, the settled-window check, movers and reconciliation,
+  out-of-stock days, page-view-weighted Buy Box by item) now runs inside the
+  service and is fetched with one command, `mixshift report battery`, instead of a
+  script bundled with the skill. Same figures, same JSON, same per-section
+  degrade-and-label behavior; nothing changes in the brief. The call needs the
+  token-based sign-in (`mixshift auth login`, or a service credential for
+  unattended runs).
+
 - **Amazon failures now report what actually went wrong instead of "unknown".**
   When a call to Amazon failed, some failures arrived labelled `unknown` even
   though MixShift knew exactly what had happened: a retired report type, an
