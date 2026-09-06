@@ -27,7 +27,7 @@ sql_ids: []
   # brief-specific battery runs server-side as the named query MPRX-FIGURES-01 behind
   # `mixshift report battery`. It takes its own params (seller id, as-of, brands,
   # thresholds), so it is NOT a prefetch query and must not be listed here
-  # (references/queries.md is the annotated source of record for every query in it).
+  # (the annotated source of record is maintained by MixShift beside the battery).
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type

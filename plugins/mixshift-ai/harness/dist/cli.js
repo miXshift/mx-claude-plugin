@@ -94058,7 +94058,7 @@ function batteryParams(opts) {
 function batteryFailure(failure) {
   if (failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3) {
     return new UserFacingError(
-      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once; if it repeats, run the sections by hand from references/queries.md and label the gap. (${BATTERY_QUERY_ID}: client_timeout)`,
+      `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once; if it repeats, report it with \`mixshift feedback\` and label the gap in the method notes. (${BATTERY_QUERY_ID}: client_timeout)`,
       "report_battery_timeout"
     );
   }
