@@ -29,12 +29,12 @@ components:
       load, like-day-count comparison, dark-day normalization, settled-window efficiency
       verification, SKU-to-account reconciliation, and page-view-weighted Buy Box with a
       last-7-days column.
-    home: MixShift service named query MPRX-FIGURES-01, called by `mixshift report battery` (executable, server-side) + references/queries.md (annotated source of record)
-    depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-01), Seller Central tables; VC fork documented in the reference]
+    home: MixShift service named query MPRX-FIGURES-01, called by `mixshift report battery` (executable, server-side); the annotated source of record is maintained by MixShift beside the battery
+    depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-01), Seller Central tables; the Vendor Central fork is not served yet]
     how_to_lift: >
-      Lift individual queries from references/queries.md with their trap notes attached;
-      or run the battery whole (`mixshift report battery`) and consume its JSON. Never lift
-      a query without its trap note: the note is the component.
+      Run the battery whole (`mixshift report battery`) and consume its JSON. The six traps
+      above are the component; any query written beyond the battery carries its trap note in
+      the run record. Never lift a query without its trap note: the note is the component.
     provenance: mx-call-brief (field-proven); each trap traces to a caught real-account error.
 
   - id: account-modes
@@ -205,7 +205,7 @@ components:
       bounded read-only call answers it now, budgeted by reporting.max_live_probes with
       metered-probe disclosure. Founding case: three Buy Box flags plus one live offers
       batch turned "why did Buy Box fall" into "a named second seller at price parity".
-    home: references/queries.md "Probe catalog" + SKILL.md Step 6 probe rule
+    home: SKILL.md Step 6 probe rule; the probe catalog itself is maintained by MixShift beside the battery
     depends_on: [the curated Amazon call catalog and the read-only gateway]
     how_to_lift: >
       The table transfers to any diagnostic skill; keep the budget knob and the

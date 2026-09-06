@@ -17,7 +17,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   script bundled with the skill. Same figures, same JSON, same per-section
   degrade-and-label behavior; nothing changes in the brief. The call needs the
   token-based sign-in (`mixshift auth login`, or a service credential for
-  unattended runs).
+  unattended runs). The annotated query reference that shipped with the skill has
+  moved alongside the battery; the skill keeps its six traps in plain language.
 
 - **Amazon failures now report what actually went wrong instead of "unknown".**
   When a call to Amazon failed, some failures arrived labelled `unknown` even

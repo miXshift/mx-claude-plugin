@@ -226,7 +226,7 @@ describe('report battery: failure mapping', () => {
     const err = batteryFailure({ ok: false, kind: 'host_unreachable', message: 'aborted', friendly: 'Timed out connecting to host. Run mixshift doctor.', durationMs: BATTERY_HTTP_TIMEOUT_MS + 12 });
     expect(err.errorClass).toBe('report_battery_timeout');
     expect(err.message).toContain('did not answer within 290s');
-    expect(err.message).toContain('references/queries.md');
+    expect(err.message).toContain('mixshift feedback');
     // A fast host_unreachable IS a connectivity problem.
     const fast = batteryFailure({ ok: false, kind: 'host_unreachable', message: 'ECONNREFUSED', friendly: 'Could not reach the host.', durationMs: 40 });
     expect(fast.errorClass).toBe('report_battery_host_unreachable');
