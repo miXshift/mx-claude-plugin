@@ -24,6 +24,9 @@ import { UserFacingError } from '../lib/errors.js';
 import { runDispatched } from '../lib/data/dispatch.js';
 import type { DataQueryFailure } from '../lib/data/query-runner.js';
 import { validateBrandContext } from '../lib/context/load.js';
+import { isSafeBrandSlug } from '../lib/context-sync/local.js';
+import { readIndex } from '../lib/clients/index.js';
+import { resolveBrandName } from '../lib/clients/resolve-brand.js';
 
 async function readJson<T>(file: string): Promise<T> {
   try {
@@ -604,24 +607,24 @@ export function registerReportCommands(program: Command): void {
       'Pull the Monthly Performance Report Max figure battery for one brand: one account row or several ' +
         '(vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins). The battery ' +
         `runs inside the MixShift service (named query ${BATTERY_QUERY_ID}): each seller id is routed to its ` +
-        "channel from the seller row (Seller Central or Vendor Central), every account is aligned to one " +
-        'day count, and the summable figures (ordered revenue, units, ad spend and sales) are rolled up ' +
-        'within one marketplace currency. Traffic and conversion stay per channel (sessions vs glance ' +
-        'views), movers merge by ASIN per channel, sub-brand splits sum by label. The per-account ' +
-        'documents ride along in full. A section that fails server-side is named under sections_failed ' +
-        'and the rest still serves; only a call that yields no document at all (service not deployed yet, ' +
-        'a timeout, a network drop) fails. Large brands can take a few minutes. Exit 0 = document written ' +
-        '(or printed with --out -), 1 = no document.',
+        'channel from the seller row (Seller Central or Vendor Central), every account is aligned to one ' +
+        'day count, and the summable figures (revenue, units, ad spend and sales) are rolled up within one ' +
+        'currency. Traffic and conversion stay per channel (sessions vs glance views), movers merge by ASIN ' +
+        'per channel, sub-brand splits sum by label. The per-account documents ride along in full. A section ' +
+        'that fails server-side is named under sections_failed and the rest still serves; an account that ' +
+        'fails is named under accounts[].failure. Only a call that yields no usable document at all (service ' +
+        'not deployed yet, a timeout, a network drop, every account failed) fails. Large brands can take a few ' +
+        'minutes. Exit 0 = document written (or printed with --out -), 1 = no document.',
     )
     .option(
       '--seller-id <id>',
-      'MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max 8)',
+      `MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max ${BATTERY_MAX_ACCOUNTS})`,
       collectIds,
       [] as string[],
     )
     .option(
       '--brand <slug>',
-      "brand context slug: runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)",
+      "brand context slug (or its display name, acronym or prefix as `brand list` shows it): runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)",
     )
     .option(
       '--as-of <date>',
@@ -629,11 +632,11 @@ export function registerReportCommands(program: Command): void {
     )
     .option(
       '--brands <list>',
-      'comma-separated sub-brand names as they appear in campaign names (ads split) and CustomBrand / Brand (retail split); enables the paid split',
+      'comma-separated sub-brand labels: matched against campaign names for the ads split and against CustomBrand / Brand for the retail split; without it the retail split still runs on the catalog labels and the ads split is skipped',
     )
     .option(
       '--min-item-sales <n>',
-      "sales floor for the per-item tables (default: each account's median item revenue in the current window)",
+      "Seller Central: sales floor for the Buy Box table (default: the account's median item revenue in the current window)",
     )
     .option('--buybox-floor <pct>', 'Seller Central: page-view-weighted Buy Box attention floor, percent', '92')
     .option(
@@ -641,10 +644,17 @@ export function registerReportCommands(program: Command): void {
       'Seller Central: month-over-month drop in weighted Buy Box points that flags an item even above the floor',
       '5',
     )
-    .option('--revenue-basis <basis>', 'Vendor Central: ordered (default) or shipped revenue and units', 'ordered')
+    .option(
+      '--revenue-basis <basis>',
+      'Vendor Central: ordered or shipped revenue and units (default: reporting.vc_revenue_basis from the brand context when --brand is given, else ordered)',
+    )
+    .option(
+      '--oos-rate-threshold <rate>',
+      'Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)',
+    )
     .option(
       '--attribution <rule>',
-      'ads attribution columns: all_14 or sc_default (default: each channel’s own rule; VC = 14 day for every type)',
+      "ads attribution columns on every channel: all_14 or sc_default (default: each channel's own rule; Vendor Central = 14 day for every type, Seller Central = Sponsored Products 7 day)",
     )
     .option('--out <path>', 'write the figures document here; "-" prints it to stdout instead', 'figures.json')
     .option('--timeout <seconds>', 'per-statement query timeout on the service, seconds (max 120)', '60')
@@ -652,7 +662,7 @@ export function registerReportCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const resolved = await resolveBatterySellerIds(opts, root.dataDir);
-        const params = batteryParams({ ...opts, sellerId: resolved.ids.map(String) });
+        const params = batteryParams(opts, resolved.ids, resolved.contextRevenueBasis);
         const outPath = resolveBatteryOut(opts.out);
         const result = await runDispatched<Record<string, unknown>>(BATTERY_QUERY_ID, {
           params,
@@ -665,9 +675,11 @@ export function registerReportCommands(program: Command): void {
         });
         if (!result.ok) throw batteryFailure(result.failure);
         const doc = assertBatteryDocument(result.rows[0]);
+        const missing = missingAccounts(resolved.ids, doc);
         const body = JSON.stringify(doc, null, 2);
         if (outPath) await writeReportOutput(outPath, body + '\n');
         if (root.json) {
+          const rollup = (doc.rollup ?? {}) as Record<string, unknown>;
           console.log(
             JSON.stringify(
               {
@@ -675,18 +687,24 @@ export function registerReportCommands(program: Command): void {
                 out: outPath ?? null,
                 revision: result.revision ?? null,
                 brand: resolved.brand ?? null,
+                requested_seller_ids: resolved.ids,
+                missing_accounts: missing,
                 alignment: doc.alignment ?? null,
                 accounts: batteryAccounts(doc).map((a) => ({
                   seller_id: a.seller_id,
                   name: a.name ?? null,
                   channel: a.channel ?? null,
+                  marketplace_id: a.marketplace_id ?? null,
+                  currency: a.currency ?? null,
                   failure: a.failure ?? null,
                   sections_failed: (a.document?.sections_failed as Record<string, string> | undefined) ?? {},
                   reconciliation: a.document?.reconciliation ?? null,
                 })),
                 rollup: {
-                  mixed_currency: (doc.rollup as Record<string, unknown> | undefined)?.mixed_currency ?? null,
-                  mixed_channel: (doc.rollup as Record<string, unknown> | undefined)?.mixed_channel ?? null,
+                  mixed_currency: rollup.mixed_currency ?? null,
+                  mixed_channel: rollup.mixed_channel ?? null,
+                  brand_present: rollup.brand !== null && rollup.brand !== undefined,
+                  marketplaces: Array.isArray(rollup.by_marketplace) ? rollup.by_marketplace.length : null,
                 },
                 sections_failed: doc.sections_failed ?? {},
                 ...(outPath ? {} : { figures: doc }),
@@ -698,7 +716,7 @@ export function registerReportCommands(program: Command): void {
         } else if (!outPath) {
           console.log(body);
         } else {
-          for (const line of batterySummary(outPath, doc)) console.log(line);
+          for (const line of batterySummary(outPath, doc, resolved.ids)) console.log(line);
         }
       });
     });
@@ -724,7 +742,10 @@ export const BATTERY_HTTP_TIMEOUT_MS = 290_000;
 /** Keys every brand battery document carries; their absence means this plugin
  *  build and the service disagree on the battery's shape, and the file must
  *  not be composed from. */
-export const BATTERY_DOCUMENT_KEYS = ['accounts', 'rollup', 'alignment', 'sections_failed'] as const;
+export const BATTERY_DOCUMENT_KEYS = ['accounts', 'rollup', 'alignment', 'thresholds_applied', 'sections_failed'] as const;
+
+/** Keys every SERVED per-account document carries (both channel batteries). */
+export const BATTERY_ACCOUNT_DOCUMENT_KEYS = ['windows', 'sections_failed', 'reconciliation'] as const;
 
 /** Failure kinds the service is known to answer with. The kind becomes the
  *  telemetry error class, so anything outside this set folds to `unknown`
@@ -756,7 +777,8 @@ interface BatteryOptions {
   minItemSales?: string;
   buyboxFloor: string;
   buyboxDrop: string;
-  revenueBasis: string;
+  revenueBasis?: string;
+  oosRateThreshold?: string;
   attribution?: string;
   out: string;
   timeout: string;
@@ -790,12 +812,12 @@ function batteryInt(raw: string, flag: string, min: number, max?: number): numbe
   return n;
 }
 
-function batteryNumber(raw: string, flag: string): number {
+function batteryNumber(raw: string, flag: string, max = 100): number {
   const n = Number(raw);
   // Decimal digits only: Number() would also accept hex, exponents and
   // whitespace-padded input, none of which is a percentage anyone typed.
-  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > 100) {
-    throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, 'report_battery_bad_flag');
+  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > max) {
+    throw new UserFacingError(`${flag} must be a number between 0 and ${max}, got "${raw}".`, 'report_battery_bad_flag');
   }
   return n;
 }
@@ -814,59 +836,123 @@ function localToday(): string {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
 }
 
+/** The one place the account list is checked, whichever selector produced it. */
+function checkIds(ids: number[], source: string): void {
+  if (ids.length === 0) {
+    throw new UserFacingError(`${source} yielded no account.`, 'report_battery_bad_flag');
+  }
+  if (ids.length > BATTERY_MAX_ACCOUNTS) {
+    throw new UserFacingError(
+      `${source} yielded ${ids.length} accounts (${ids.join(', ')}); at most ${BATTERY_MAX_ACCOUNTS} per call. ` +
+        `Split the run with explicit --seller-id lists of up to ${BATTERY_MAX_ACCOUNTS}.`,
+      'report_battery_bad_flag',
+    );
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new UserFacingError(`${source} yielded duplicate seller ids (${ids.join(', ')}).`, 'report_battery_bad_flag');
+  }
+}
+
+export interface ResolvedBatteryAccounts {
+  ids: number[];
+  /** Canonical brand slug when `--brand` was used. */
+  brand?: string;
+  /** `reporting.vc_revenue_basis` from that brand's context, when set and valid. */
+  contextRevenueBasis?: (typeof REVENUE_BASES)[number];
+}
+
 /**
  * Which account rows the call covers: the explicit `--seller-id` list, or
  * every account in a brand context that is not `inactive` (`wind_down` rows
  * stay in: a code running down still sold this month and the brief must
- * account for it). Exactly one of the two must be given.
+ * account for it). Exactly one of the two must be given. `--brand` accepts
+ * the same fuzzy input as `brand view` (slug, display name, acronym, prefix)
+ * and only ever hands a registry-canonical slug to path resolution.
  */
 export async function resolveBatterySellerIds(
   opts: Pick<BatteryOptions, 'sellerId' | 'brand'>,
   dataDir?: string,
-): Promise<{ ids: number[]; brand?: string }> {
+): Promise<ResolvedBatteryAccounts> {
   const explicit = opts.sellerId ?? [];
-  if (opts.brand && explicit.length > 0) {
+  if (opts.brand !== undefined && explicit.length > 0) {
     throw new UserFacingError('Pass either --seller-id or --brand, not both.', 'report_battery_bad_flag');
   }
-  if (!opts.brand) {
+  if (opts.brand === undefined) {
     if (explicit.length === 0) {
       throw new UserFacingError('Pass --seller-id <id> (repeatable) or --brand <slug>.', 'report_battery_bad_flag');
     }
-    return { ids: explicit.map((s) => batteryInt(s, '--seller-id', 1)) };
+    const ids = explicit.map((s) => batteryInt(s, '--seller-id', 1));
+    checkIds(ids, '--seller-id');
+    return { ids };
   }
-  const result = await validateBrandContext(opts.brand, dataDir);
+  const input = opts.brand.trim();
+  if (input.length === 0) {
+    throw new UserFacingError('--brand needs a brand slug or name.', 'report_battery_bad_flag');
+  }
+  const slug = await resolveBrandSlugInput(input, dataDir);
+  const result = await validateBrandContext(slug, dataDir);
   if (!result.ok) {
     throw new UserFacingError(
-      `Brand context "${opts.brand}" could not be read (${result.kind}): ${result.errors[0] ?? 'unknown error'}`,
+      `Brand context "${slug}" could not be read (${result.kind}):\n${result.errors.map((e) => `  - ${e}`).join('\n')}`,
       'report_battery_bad_brand',
     );
   }
   const ids = result.context.accounts.filter((a) => a.status !== 'inactive').map((a) => a.seller_id);
   if (ids.length === 0) {
     throw new UserFacingError(
-      `Brand context "${opts.brand}" has no active or wind-down accounts; pass --seller-id explicitly.`,
+      `Brand context "${slug}" has no active or wind-down accounts; pass --seller-id explicitly.`,
       'report_battery_bad_brand',
     );
   }
-  return { ids, brand: opts.brand };
+  checkIds(ids, `--brand ${slug}`);
+  const reporting = (result.context as { reporting?: unknown }).reporting;
+  const basis =
+    reporting && typeof reporting === 'object' ? (reporting as Record<string, unknown>).vc_revenue_basis : undefined;
+  return {
+    ids,
+    brand: slug,
+    ...(typeof basis === 'string' && (REVENUE_BASES as readonly string[]).includes(basis)
+      ? { contextRevenueBasis: basis as (typeof REVENUE_BASES)[number] }
+      : {}),
+  };
+}
+
+/** A safe slug is used as is; anything else goes through the registry's
+ *  fuzzy resolver so a display name or acronym works and an unsafe string
+ *  never reaches path resolution. */
+async function resolveBrandSlugInput(input: string, dataDir?: string): Promise<string> {
+  if (isSafeBrandSlug(input)) return input;
+  let index;
+  try {
+    ({ index } = await readIndex(dataDir));
+  } catch {
+    index = undefined;
+  }
+  const resolved = index ? resolveBrandName(input, index) : undefined;
+  if (resolved?.status === 'found') return resolved.brand.slug;
+  if (resolved?.status === 'ambiguous') {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join('\n');
+    throw new UserFacingError(`--brand "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:\n${candidates}`, 'report_battery_bad_brand');
+  }
+  throw new UserFacingError(
+    `--brand "${input}" is not a brand slug and matches nothing in the registry. Run \`mixshift brand list\` and pass the slug.`,
+    'report_battery_bad_brand',
+  );
 }
 
 /** Translate the flags into the battery's params. The service validates the
  *  same values again and answers bad_params; this pass exists so a typo is a
- *  clean local error before any call is made. */
-export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
-  const ids = (opts.sellerId ?? []).map((s) => batteryInt(s, '--seller-id', 1));
-  if (ids.length === 0) {
-    throw new UserFacingError('Pass --seller-id <id> (repeatable) or --brand <slug>.', 'report_battery_bad_flag');
-  }
-  if (ids.length > BATTERY_MAX_ACCOUNTS) {
-    throw new UserFacingError(`At most ${BATTERY_MAX_ACCOUNTS} accounts per call, got ${ids.length}.`, 'report_battery_bad_flag');
-  }
-  if (new Set(ids).size !== ids.length) {
-    throw new UserFacingError('--seller-id values must be unique.', 'report_battery_bad_flag');
-  }
-  if (!(REVENUE_BASES as readonly string[]).includes(opts.revenueBasis)) {
-    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(', ')}, got "${opts.revenueBasis}".`, 'report_battery_bad_flag');
+ *  clean local error before any call is made. `ids` come from
+ *  resolveBatterySellerIds, already checked. */
+export function batteryParams(
+  opts: Omit<BatteryOptions, 'sellerId' | 'brand'>,
+  ids: number[],
+  contextRevenueBasis?: (typeof REVENUE_BASES)[number],
+): Record<string, unknown> {
+  checkIds(ids, 'the account list');
+  const revenueBasis = opts.revenueBasis ?? contextRevenueBasis ?? 'ordered';
+  if (!(REVENUE_BASES as readonly string[]).includes(revenueBasis)) {
+    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(', ')}, got "${revenueBasis}".`, 'report_battery_bad_flag');
   }
   if (opts.attribution !== undefined && !(ATTRIBUTIONS as readonly string[]).includes(opts.attribution)) {
     throw new UserFacingError(`--attribution must be one of ${ATTRIBUTIONS.join(', ')}, got "${opts.attribution}".`, 'report_battery_bad_flag');
@@ -880,13 +966,16 @@ export function batteryParams(opts: BatteryOptions): Record<string, unknown> {
       .filter((b) => b.length > 0),
     buybox_floor: batteryNumber(opts.buyboxFloor, '--buybox-floor'),
     buybox_drop: batteryNumber(opts.buyboxDrop, '--buybox-drop'),
-    revenue_basis: opts.revenueBasis,
+    revenue_basis: revenueBasis,
   };
   if (!isCalendarDate(params.as_of as string)) {
     throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, 'report_battery_bad_flag');
   }
   if (opts.minItemSales !== undefined) {
     params.min_item_sales = batteryInt(opts.minItemSales, '--min-item-sales', 0);
+  }
+  if (opts.oosRateThreshold !== undefined) {
+    params.oos_rate_threshold = batteryNumber(opts.oosRateThreshold, '--oos-rate-threshold', 1);
   }
   if (opts.attribution !== undefined) params.attribution = opts.attribution;
   return params;
@@ -910,10 +999,19 @@ export function batteryFailure(failure: DataQueryFailure): UserFacingError {
   return new UserFacingError(`${failure.friendly} (${BATTERY_QUERY_ID}: ${failure.kind})`, `report_battery_${kind}`);
 }
 
+function badDocument(why: string): UserFacingError {
+  return new UserFacingError(
+    `The ${BATTERY_QUERY_ID} document ${why}: this plugin build and the service disagree on the battery shape, ` +
+      'or the service served a partial document. Update the plugin or wait for the service deploy; do not compose from this call.',
+    'report_battery_bad_document',
+  );
+}
+
 /** The battery answers as ONE row that IS the document. Anything else (an
- *  empty envelope, a wrapped or stringified document, an array row) must not
- *  be written to figures.json, where it would look like a complete pull with
- *  nothing in it. */
+ *  empty envelope, a wrapped or stringified document, an array row, an
+ *  account list with nothing served, a per-account document that is text)
+ *  must not be written to figures.json, where it would look like a complete
+ *  pull with nothing in it. */
 export function assertBatteryDocument(row: unknown): Record<string, unknown> {
   if (!row || typeof row !== 'object' || Array.isArray(row)) {
     throw new UserFacingError(
@@ -923,17 +1021,31 @@ export function assertBatteryDocument(row: unknown): Record<string, unknown> {
   }
   const doc = row as Record<string, unknown>;
   const missing = BATTERY_DOCUMENT_KEYS.filter((k) => !(k in doc));
-  if (missing.length > 0) {
-    throw new UserFacingError(
-      `The ${BATTERY_QUERY_ID} document is missing ${missing.join(', ')}: this plugin build and the service ` +
-        'disagree on the battery shape. Update the plugin or wait for the service deploy; do not compose from this call.',
-      'report_battery_bad_document',
-    );
+  if (missing.length > 0) throw badDocument(`is missing ${missing.join(', ')}`);
+  if (!Array.isArray(doc.accounts)) throw badDocument('carries no accounts[] list');
+  if (doc.accounts.length === 0) throw badDocument('carries an empty accounts[] list');
+  const accounts = doc.accounts as unknown[];
+  let served = 0;
+  const failures: string[] = [];
+  for (const entry of accounts) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw badDocument('carries a malformed accounts[] entry');
+    const a = entry as Record<string, unknown>;
+    if (typeof a.seller_id !== 'number' || !Number.isInteger(a.seller_id)) throw badDocument('carries an accounts[] entry without an integer seller_id');
+    const d = a.document;
+    if (d === null || d === undefined) {
+      failures.push(`${a.seller_id}: ${typeof a.failure === 'string' ? a.failure : 'unknown'}`);
+      continue;
+    }
+    if (typeof d !== 'object' || Array.isArray(d)) throw badDocument(`carries a per-account document for SellerID ${a.seller_id} that is not an object`);
+    const missingKeys = BATTERY_ACCOUNT_DOCUMENT_KEYS.filter((k) => !(k in (d as Record<string, unknown>)));
+    if (missingKeys.length > 0) throw badDocument(`per-account document for SellerID ${a.seller_id} is missing ${missingKeys.join(', ')}`);
+    served++;
   }
-  if (!Array.isArray(doc.accounts)) {
+  if (served === 0) {
     throw new UserFacingError(
-      `The ${BATTERY_QUERY_ID} document carries no accounts[] list; do not compose from this call.`,
-      'report_battery_bad_document',
+      `No account served a document (${failures.join('; ')}). Nothing was written; fix the account list ` +
+        '(a SellerID with no data is usually the wrong twin, SC vs VC) or run the accounts one at a time.',
+      'report_battery_no_account_served',
     );
   }
   return doc;
@@ -943,6 +1055,7 @@ interface BatteryAccount {
   seller_id: number;
   name?: string | null;
   channel?: string | null;
+  marketplace_id?: number | null;
   currency?: string | null;
   failure?: string | null;
   document?: Record<string, unknown> | null;
@@ -952,12 +1065,20 @@ export function batteryAccounts(doc: Record<string, unknown>): BatteryAccount[] 
   return Array.isArray(doc.accounts) ? (doc.accounts as BatteryAccount[]) : [];
 }
 
+/** Requested ids the service returned no entry for at all (not even a
+ *  failure). The service names every id it cannot serve, so a silent gap is
+ *  a contract break worth a loud line. */
+export function missingAccounts(requested: number[], doc: Record<string, unknown>): number[] {
+  const returned = new Set(batteryAccounts(doc).map((a) => a.seller_id));
+  return requested.filter((id) => !returned.has(id));
+}
+
 /** The closing lines after `--out`: which accounts ran on which channel and
  *  day count, each account's reconciliation and failed sections, the brand
  *  roll-up's shape, and dark ad days only where a window had them (an
  *  exception, not a headline). Numbers may arrive as DECIMAL strings; coerce
  *  before formatting. */
-export function batterySummary(out: string, doc: Record<string, unknown>): string[] {
+export function batterySummary(out: string, doc: Record<string, unknown>, requested: number[] = []): string[] {
   const money = (v: unknown): string => {
     if (v === null || v === undefined || v === '') return 'n/a';
     const n = typeof v === 'number' ? v : Number(v);
@@ -966,18 +1087,29 @@ export function batterySummary(out: string, doc: Record<string, unknown>): strin
   const lines = [`wrote ${out}`];
   const accounts = batteryAccounts(doc);
   const alignment = (doc.alignment ?? {}) as { aligned_end?: string | null; aligned?: boolean };
+  const dayCountOf = (a: BatteryAccount): number | null =>
+    ((a.document?.windows as { day_count?: number } | undefined)?.day_count ?? null);
   const served = accounts.filter((a) => a.document);
-  const dayCount = served.length > 0 ? ((served[0]!.document!.windows as { day_count?: number } | undefined)?.day_count ?? null) : null;
-  lines.push(
-    `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? '?'}${a.failure ? `, FAILED ${a.failure}` : ''})`).join(', ')}` +
-      (alignment.aligned_end ? `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ''}` : '') +
-      (alignment.aligned === false ? '; NOT ALIGNED, compare day counts before summing' : ''),
-  );
+  const aligned = alignment.aligned !== false;
+  let head = `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? '?'}${a.failure ? `, FAILED ${a.failure}` : ''})`).join(', ')}`;
+  if (alignment.aligned_end) {
+    if (aligned) {
+      const dayCount = served.length > 0 ? dayCountOf(served[0]!) : null;
+      head += `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ''}`;
+    } else {
+      head += `; NOT ALIGNED: day counts ${served.map((a) => `${a.seller_id}=${dayCountOf(a) ?? '?'}`).join(', ')}; compare day counts before summing`;
+    }
+  }
+  lines.push(head);
+  const missing = missingAccounts(requested, doc);
+  if (missing.length > 0) {
+    lines.push(`REQUESTED BUT NOT RETURNED (the document does not cover them): ${missing.join(', ')}`);
+  }
   for (const a of accounts) {
     if (!a.document) continue;
     const rec = (a.document.reconciliation ?? {}) as Record<string, unknown>;
     lines.push(
-      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`,
+      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? 'n/a'}%)`,
     );
     const failed = (a.document.sections_failed ?? {}) as Record<string, string>;
     for (const [name, why] of Object.entries(failed)) {
@@ -986,19 +1118,26 @@ export function batterySummary(out: string, doc: Record<string, unknown>): strin
     const dark = (a.document.dark_days ?? {}) as Record<string, { zero_spend_days?: string[]; normalization_factor?: number | null }>;
     for (const [k, v] of Object.entries(dark)) {
       if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor})`);
+        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor ?? 'n/a'})`);
       }
     }
   }
   const brandFailed = (doc.sections_failed ?? {}) as Record<string, string>;
   for (const [name, why] of Object.entries(brandFailed)) {
+    // `account_<id>.sections` is the service's roll-up of the per-account
+    // lines already printed above; do not print it twice.
+    if (/^account_\d+\.sections$/.test(name)) continue;
     lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
   }
   const rollup = (doc.rollup ?? {}) as { mixed_currency?: boolean; mixed_channel?: boolean; by_marketplace?: unknown[] };
   if (rollup.mixed_currency) {
-    lines.push(`rollup: ${rollup.by_marketplace?.length ?? 0} marketplaces in different currencies, so NO brand total; quote each marketplace on its own`);
+    const currencies = [...new Set(served.map((a) => a.currency).filter((c): c is string => typeof c === 'string' && c.length > 0))];
+    const n = Array.isArray(rollup.by_marketplace) && rollup.by_marketplace.length > 0 ? rollup.by_marketplace.length : served.length;
+    lines.push(
+      `rollup: ${n} marketplaces in different currencies${currencies.length > 0 ? ` (${currencies.join(', ')})` : ''}, so NO brand total; quote each marketplace on its own`,
+    );
   } else if (rollup.mixed_channel) {
-    lines.push('rollup: Seller Central + Vendor Central in one marketplace; revenue, units and ad figures are summed, traffic and conversion stay per channel');
+    lines.push('rollup: Seller Central + Vendor Central in one currency; revenue, units and ad figures are summed, traffic and conversion stay per channel');
   }
   return lines;
 }

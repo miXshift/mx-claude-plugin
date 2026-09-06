@@ -65,9 +65,9 @@ differs and mixing them produces figures that cannot be reconciled.
 - **SC (Seller Central).** Ad metrics from `campaignmetric` with the attribution CASE block
   below. Retail from `business_reports_dpst_date` and `_sku`. Buy Box, offer count, sessions and
   inventory all exist.
-- **VC (Vendor Central).** Ad metrics from `campaignmetric`, exactly as on Seller Central
-  (house rule, 2026-09-06: campaignmetric always; `sellermonthmetric` is never read, on any
-  channel). Use the 14-day columns for every campaign type: on a vendor row the 7-day
+- **VC (Vendor Central).** Ad metrics from `campaignmetric`, exactly as on Seller Central:
+  Report Max reads campaignmetric on both channels and never `sellermonthmetric` (a monthly
+  rollup whose ACoS columns store a one-decimal fraction). Use the 14-day columns for every campaign type: on a vendor row the 7-day
   columns are empty for Sponsored Brands and Display, so the SC CASE would drop their sales.
   Retail from `vendor_sales_manufacturing_asin` (the manufacturing view, not sourcing), on
   the ORDERED basis unless the client's convention says shipped; never mix bases in one
@@ -492,7 +492,7 @@ account row whose `seller.MerchantType` is `Vendor`. Statement by statement (all
 | `account_ads` | `campaignmetric` | spend, 14-day sales and orders, clicks, impressions per period; ACOS, TACOS, ad share, AOV derived | Never `sellermonthmetric`; the 7-day columns are empty for SB/SD on a vendor row |
 | `account_retail` + `account_traffic` | vendor sales, vendor traffic | `OrderedRevenueAmount` / `OrderedUnits` (or shipped), `GlanceViews`, ASP, `gv_conversion_pct` = units / glance views | Two tables, one section: a null glance-view side leaves conversion null, never a sessions alias |
 | `dark_days` | `campaignmetric` | active ad days, zero-spend days, normalization factor per window | An exception check; report it only when a window has dark days |
-| `settled_check` | `campaignmetric` | settled current vs prior window by segment | Same 7-day settled exclusion as SC |
+| `settled_check` | `campaignmetric` | settled current vs prior window by segment | The exclusion follows the attribution rule: 14 days on the 14-day columns (the VC default), 7 on the SC rule; `thresholds_applied.settled_exclusion_days` says which |
 | `daily` + `daily_traffic` | vendor sales, vendor traffic | daily revenue, units, glance views; 7-day pace arithmetic | Arithmetic, not a forecast |
 | `segment_ads` | `campaignmetric` | paid split by campaign name LIKE | Labels, never vendor codes |
 | `segment_retail` + `segment_traffic` | vendor sales, vendor traffic, `vendor_items.CustomBrand` | retail split by the operator's own label, with glance views and conversion per label | Correlated subquery with LIMIT 1 even though `vendor_items` is one row per ASIN (verified: 950 rows, 0 duplicates) |
@@ -522,7 +522,14 @@ brand runs on one day count. Roll-up rules, in order of what can go wrong:
    retail); vendor codes never create the split.
 5. Dark-day normalization stays per account (a lapse on one code is not a lapse on the
    brand); the roll-up names which accounts had dark days.
-6. Several currencies = several roll-ups and no brand total, labelled `mixed_currency`.
+6. The brand total exists when every current account shares one currency (two EUR marketplaces
+   add); otherwise `by_marketplace` only and no brand total, labelled `mixed_currency`.
+7. An account whose feed ends more than 14 days behind the freshest one is stale: it runs on its
+   own window, is served under `accounts[]` with a label, and is excluded from the roll-up rather
+   than dragging the brand back to its month. An aligned end in an earlier month than the request
+   is labelled `month_shifted`.
+8. A period where an account contributed ads but its retail section failed is `partial`: its
+   brand TACOS and ad share are null, because a ratio of two account sets is not a brand figure.
 
 ## The per-ASIN roll-up has no zero-sale rows (SC traffic basis)
 
@@ -588,5 +595,5 @@ a degrade-and-label, battery-carries-the-brief month, and an engine-team routing
 | Tier or segment sums far exceed the account total | Grouping on a joined `mws_items` label | Correlated subquery, or group in a subselect first |
 | VC window a day ahead of the traffic feed, conversion inflated | Vendor traffic loads after vendor sales | Resolve from the earliest of the three load dates; trim a units-without-glance-views day |
 | VC out-of-stock days read 0 everywhere | `ProcurableProductOutOfStockRate` is a fraction 0 to 1, not a percent | Compare against 0.99, not 99 |
-| VC account ACOS reads 0.2 every month | `sellermonthmetric` stores a one-decimal fraction, and it is not a sanctioned source | Never read `sellermonthmetric`; compute from `campaignmetric` spend over 14-day sales |
+| VC account ACOS reads 0.2 every month | `sellermonthmetric` stores a one-decimal fraction | Report Max computes from `campaignmetric` spend over 14-day sales and does not read that table |
 | SB or SD `ad_sales_14d < ad_sales_7d` for the same rows | Impossible with complete data; the 14-day columns lag the 7-day ones on recent loads | Flag it, do not quote SB/SD efficiency from the affected days; offer to proceed with a note or wait for the load |

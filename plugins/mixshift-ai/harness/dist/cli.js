@@ -93600,6 +93600,8 @@ ${html}</section>`);
 // src/commands/report.ts
 init_errors3();
 init_load2();
+init_local();
+init_clients();
 async function readJson(file2) {
   try {
     return JSON.parse(await readFile45(file2, "utf8"));
@@ -93937,36 +93939,42 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     }
   );
   report.command("battery").description(
-    `Pull the Monthly Performance Report Max figure battery for one brand: one account row or several (vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins). The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}): each seller id is routed to its channel from the seller row (Seller Central or Vendor Central), every account is aligned to one day count, and the summable figures (ordered revenue, units, ad spend and sales) are rolled up within one marketplace currency. Traffic and conversion stay per channel (sessions vs glance views), movers merge by ASIN per channel, sub-brand splits sum by label. The per-account documents ride along in full. A section that fails server-side is named under sections_failed and the rest still serves; only a call that yields no document at all (service not deployed yet, a timeout, a network drop) fails. Large brands can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
+    `Pull the Monthly Performance Report Max figure battery for one brand: one account row or several (vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins). The battery runs inside the MixShift service (named query ${BATTERY_QUERY_ID}): each seller id is routed to its channel from the seller row (Seller Central or Vendor Central), every account is aligned to one day count, and the summable figures (revenue, units, ad spend and sales) are rolled up within one currency. Traffic and conversion stay per channel (sessions vs glance views), movers merge by ASIN per channel, sub-brand splits sum by label. The per-account documents ride along in full. A section that fails server-side is named under sections_failed and the rest still serves; an account that fails is named under accounts[].failure. Only a call that yields no usable document at all (service not deployed yet, a timeout, a network drop, every account failed) fails. Large brands can take a few minutes. Exit 0 = document written (or printed with --out -), 1 = no document.`
   ).option(
     "--seller-id <id>",
-    "MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max 8)",
+    `MixShift SellerID of an account row; repeat the flag or pass a comma list for several (max ${BATTERY_MAX_ACCOUNTS})`,
     collectIds,
     []
   ).option(
     "--brand <slug>",
-    "brand context slug: runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)"
+    "brand context slug (or its display name, acronym or prefix as `brand list` shows it): runs every account in the brand's accounts[] that is not inactive (instead of --seller-id)"
   ).option(
     "--as-of <date>",
     "YYYY-MM-DD; windows still clamp to the data load date (default: today, local time)"
   ).option(
     "--brands <list>",
-    "comma-separated sub-brand names as they appear in campaign names (ads split) and CustomBrand / Brand (retail split); enables the paid split"
+    "comma-separated sub-brand labels: matched against campaign names for the ads split and against CustomBrand / Brand for the retail split; without it the retail split still runs on the catalog labels and the ads split is skipped"
   ).option(
     "--min-item-sales <n>",
-    "sales floor for the per-item tables (default: each account's median item revenue in the current window)"
+    "Seller Central: sales floor for the Buy Box table (default: the account's median item revenue in the current window)"
   ).option("--buybox-floor <pct>", "Seller Central: page-view-weighted Buy Box attention floor, percent", "92").option(
     "--buybox-drop <pts>",
     "Seller Central: month-over-month drop in weighted Buy Box points that flags an item even above the floor",
     "5"
-  ).option("--revenue-basis <basis>", "Vendor Central: ordered (default) or shipped revenue and units", "ordered").option(
+  ).option(
+    "--revenue-basis <basis>",
+    "Vendor Central: ordered or shipped revenue and units (default: reporting.vc_revenue_basis from the brand context when --brand is given, else ordered)"
+  ).option(
+    "--oos-rate-threshold <rate>",
+    "Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)"
+  ).option(
     "--attribution <rule>",
-    "ads attribution columns: all_14 or sc_default (default: each channel\u2019s own rule; VC = 14 day for every type)"
+    "ads attribution columns on every channel: all_14 or sc_default (default: each channel's own rule; Vendor Central = 14 day for every type, Seller Central = Sponsored Products 7 day)"
   ).option("--out <path>", 'write the figures document here; "-" prints it to stdout instead', "figures.json").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
       const resolved = await resolveBatterySellerIds(opts, root.dataDir);
-      const params = batteryParams({ ...opts, sellerId: resolved.ids.map(String) });
+      const params = batteryParams(opts, resolved.ids, resolved.contextRevenueBasis);
       const outPath = resolveBatteryOut(opts.out);
       const result = await runDispatched(BATTERY_QUERY_ID, {
         params,
@@ -93979,9 +93987,11 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
       });
       if (!result.ok) throw batteryFailure(result.failure);
       const doc = assertBatteryDocument(result.rows[0]);
+      const missing = missingAccounts(resolved.ids, doc);
       const body = JSON.stringify(doc, null, 2);
       if (outPath) await writeReportOutput(outPath, body + "\n");
       if (root.json) {
+        const rollup = doc.rollup ?? {};
         console.log(
           JSON.stringify(
             {
@@ -93989,18 +93999,24 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
               out: outPath ?? null,
               revision: result.revision ?? null,
               brand: resolved.brand ?? null,
+              requested_seller_ids: resolved.ids,
+              missing_accounts: missing,
               alignment: doc.alignment ?? null,
               accounts: batteryAccounts(doc).map((a) => ({
                 seller_id: a.seller_id,
                 name: a.name ?? null,
                 channel: a.channel ?? null,
+                marketplace_id: a.marketplace_id ?? null,
+                currency: a.currency ?? null,
                 failure: a.failure ?? null,
                 sections_failed: a.document?.sections_failed ?? {},
                 reconciliation: a.document?.reconciliation ?? null
               })),
               rollup: {
-                mixed_currency: doc.rollup?.mixed_currency ?? null,
-                mixed_channel: doc.rollup?.mixed_channel ?? null
+                mixed_currency: rollup.mixed_currency ?? null,
+                mixed_channel: rollup.mixed_channel ?? null,
+                brand_present: rollup.brand !== null && rollup.brand !== void 0,
+                marketplaces: Array.isArray(rollup.by_marketplace) ? rollup.by_marketplace.length : null
               },
               sections_failed: doc.sections_failed ?? {},
               ...outPath ? {} : { figures: doc }
@@ -94012,7 +94028,7 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
       } else if (!outPath) {
         console.log(body);
       } else {
-        for (const line of batterySummary(outPath, doc)) console.log(line);
+        for (const line of batterySummary(outPath, doc, resolved.ids)) console.log(line);
       }
     });
   });
@@ -94020,7 +94036,8 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
 var BATTERY_QUERY_ID = "MPRX-FIGURES-BRAND-01";
 var BATTERY_MAX_ACCOUNTS = 8;
 var BATTERY_HTTP_TIMEOUT_MS = 29e4;
-var BATTERY_DOCUMENT_KEYS = ["accounts", "rollup", "alignment", "sections_failed"];
+var BATTERY_DOCUMENT_KEYS = ["accounts", "rollup", "alignment", "thresholds_applied", "sections_failed"];
+var BATTERY_ACCOUNT_DOCUMENT_KEYS = ["windows", "sections_failed", "reconciliation"];
 var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
   "access_denied_table",
   "access_denied_db",
@@ -94054,10 +94071,10 @@ function batteryInt(raw, flag, min, max) {
   }
   return n;
 }
-function batteryNumber(raw, flag) {
+function batteryNumber(raw, flag, max = 100) {
   const n = Number(raw);
-  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > 100) {
-    throw new UserFacingError(`${flag} must be a number between 0 and 100, got "${raw}".`, "report_battery_bad_flag");
+  if (!/^\d+(\.\d+)?$/.test(raw.trim()) || !Number.isFinite(n) || n < 0 || n > max) {
+    throw new UserFacingError(`${flag} must be a number between 0 and ${max}, got "${raw}".`, "report_battery_bad_flag");
   }
   return n;
 }
@@ -94071,46 +94088,87 @@ function localToday() {
   const t = /* @__PURE__ */ new Date();
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
+function checkIds(ids, source) {
+  if (ids.length === 0) {
+    throw new UserFacingError(`${source} yielded no account.`, "report_battery_bad_flag");
+  }
+  if (ids.length > BATTERY_MAX_ACCOUNTS) {
+    throw new UserFacingError(
+      `${source} yielded ${ids.length} accounts (${ids.join(", ")}); at most ${BATTERY_MAX_ACCOUNTS} per call. Split the run with explicit --seller-id lists of up to ${BATTERY_MAX_ACCOUNTS}.`,
+      "report_battery_bad_flag"
+    );
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new UserFacingError(`${source} yielded duplicate seller ids (${ids.join(", ")}).`, "report_battery_bad_flag");
+  }
+}
 async function resolveBatterySellerIds(opts, dataDir) {
   const explicit = opts.sellerId ?? [];
-  if (opts.brand && explicit.length > 0) {
+  if (opts.brand !== void 0 && explicit.length > 0) {
     throw new UserFacingError("Pass either --seller-id or --brand, not both.", "report_battery_bad_flag");
   }
-  if (!opts.brand) {
+  if (opts.brand === void 0) {
     if (explicit.length === 0) {
       throw new UserFacingError("Pass --seller-id <id> (repeatable) or --brand <slug>.", "report_battery_bad_flag");
     }
-    return { ids: explicit.map((s) => batteryInt(s, "--seller-id", 1)) };
+    const ids2 = explicit.map((s) => batteryInt(s, "--seller-id", 1));
+    checkIds(ids2, "--seller-id");
+    return { ids: ids2 };
   }
-  const result = await validateBrandContext(opts.brand, dataDir);
+  const input = opts.brand.trim();
+  if (input.length === 0) {
+    throw new UserFacingError("--brand needs a brand slug or name.", "report_battery_bad_flag");
+  }
+  const slug = await resolveBrandSlugInput(input, dataDir);
+  const result = await validateBrandContext(slug, dataDir);
   if (!result.ok) {
     throw new UserFacingError(
-      `Brand context "${opts.brand}" could not be read (${result.kind}): ${result.errors[0] ?? "unknown error"}`,
+      `Brand context "${slug}" could not be read (${result.kind}):
+${result.errors.map((e) => `  - ${e}`).join("\n")}`,
       "report_battery_bad_brand"
     );
   }
   const ids = result.context.accounts.filter((a) => a.status !== "inactive").map((a) => a.seller_id);
   if (ids.length === 0) {
     throw new UserFacingError(
-      `Brand context "${opts.brand}" has no active or wind-down accounts; pass --seller-id explicitly.`,
+      `Brand context "${slug}" has no active or wind-down accounts; pass --seller-id explicitly.`,
       "report_battery_bad_brand"
     );
   }
-  return { ids, brand: opts.brand };
+  checkIds(ids, `--brand ${slug}`);
+  const reporting = result.context.reporting;
+  const basis = reporting && typeof reporting === "object" ? reporting.vc_revenue_basis : void 0;
+  return {
+    ids,
+    brand: slug,
+    ...typeof basis === "string" && REVENUE_BASES.includes(basis) ? { contextRevenueBasis: basis } : {}
+  };
 }
-function batteryParams(opts) {
-  const ids = (opts.sellerId ?? []).map((s) => batteryInt(s, "--seller-id", 1));
-  if (ids.length === 0) {
-    throw new UserFacingError("Pass --seller-id <id> (repeatable) or --brand <slug>.", "report_battery_bad_flag");
+async function resolveBrandSlugInput(input, dataDir) {
+  if (isSafeBrandSlug(input)) return input;
+  let index;
+  try {
+    ({ index } = await readIndex(dataDir));
+  } catch {
+    index = void 0;
   }
-  if (ids.length > BATTERY_MAX_ACCOUNTS) {
-    throw new UserFacingError(`At most ${BATTERY_MAX_ACCOUNTS} accounts per call, got ${ids.length}.`, "report_battery_bad_flag");
+  const resolved = index ? resolveBrandName(input, index) : void 0;
+  if (resolved?.status === "found") return resolved.brand.slug;
+  if (resolved?.status === "ambiguous") {
+    const candidates = resolved.candidates.slice(0, 5).map((c) => `  - ${c.display_name} (slug: ${c.slug})`).join("\n");
+    throw new UserFacingError(`--brand "${input}" matches ${resolved.candidates.length} brands. Disambiguate by slug:
+${candidates}`, "report_battery_bad_brand");
   }
-  if (new Set(ids).size !== ids.length) {
-    throw new UserFacingError("--seller-id values must be unique.", "report_battery_bad_flag");
-  }
-  if (!REVENUE_BASES.includes(opts.revenueBasis)) {
-    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(", ")}, got "${opts.revenueBasis}".`, "report_battery_bad_flag");
+  throw new UserFacingError(
+    `--brand "${input}" is not a brand slug and matches nothing in the registry. Run \`mixshift brand list\` and pass the slug.`,
+    "report_battery_bad_brand"
+  );
+}
+function batteryParams(opts, ids, contextRevenueBasis) {
+  checkIds(ids, "the account list");
+  const revenueBasis = opts.revenueBasis ?? contextRevenueBasis ?? "ordered";
+  if (!REVENUE_BASES.includes(revenueBasis)) {
+    throw new UserFacingError(`--revenue-basis must be one of ${REVENUE_BASES.join(", ")}, got "${revenueBasis}".`, "report_battery_bad_flag");
   }
   if (opts.attribution !== void 0 && !ATTRIBUTIONS.includes(opts.attribution)) {
     throw new UserFacingError(`--attribution must be one of ${ATTRIBUTIONS.join(", ")}, got "${opts.attribution}".`, "report_battery_bad_flag");
@@ -94121,13 +94179,16 @@ function batteryParams(opts) {
     brands: (opts.brands ?? "").split(",").map((b) => b.trim()).filter((b) => b.length > 0),
     buybox_floor: batteryNumber(opts.buyboxFloor, "--buybox-floor"),
     buybox_drop: batteryNumber(opts.buyboxDrop, "--buybox-drop"),
-    revenue_basis: opts.revenueBasis
+    revenue_basis: revenueBasis
   };
   if (!isCalendarDate(params.as_of)) {
     throw new UserFacingError(`--as-of must be a calendar date as YYYY-MM-DD, got "${opts.asOf}".`, "report_battery_bad_flag");
   }
   if (opts.minItemSales !== void 0) {
     params.min_item_sales = batteryInt(opts.minItemSales, "--min-item-sales", 0);
+  }
+  if (opts.oosRateThreshold !== void 0) {
+    params.oos_rate_threshold = batteryNumber(opts.oosRateThreshold, "--oos-rate-threshold", 1);
   }
   if (opts.attribution !== void 0) params.attribution = opts.attribution;
   return params;
@@ -94142,6 +94203,12 @@ function batteryFailure(failure) {
   const kind = KNOWN_FAILURE_KINDS3.has(failure.kind) ? failure.kind : "unknown";
   return new UserFacingError(`${failure.friendly} (${BATTERY_QUERY_ID}: ${failure.kind})`, `report_battery_${kind}`);
 }
+function badDocument(why) {
+  return new UserFacingError(
+    `The ${BATTERY_QUERY_ID} document ${why}: this plugin build and the service disagree on the battery shape, or the service served a partial document. Update the plugin or wait for the service deploy; do not compose from this call.`,
+    "report_battery_bad_document"
+  );
+}
 function assertBatteryDocument(row) {
   if (!row || typeof row !== "object" || Array.isArray(row)) {
     throw new UserFacingError(
@@ -94151,16 +94218,30 @@ function assertBatteryDocument(row) {
   }
   const doc = row;
   const missing = BATTERY_DOCUMENT_KEYS.filter((k) => !(k in doc));
-  if (missing.length > 0) {
-    throw new UserFacingError(
-      `The ${BATTERY_QUERY_ID} document is missing ${missing.join(", ")}: this plugin build and the service disagree on the battery shape. Update the plugin or wait for the service deploy; do not compose from this call.`,
-      "report_battery_bad_document"
-    );
+  if (missing.length > 0) throw badDocument(`is missing ${missing.join(", ")}`);
+  if (!Array.isArray(doc.accounts)) throw badDocument("carries no accounts[] list");
+  if (doc.accounts.length === 0) throw badDocument("carries an empty accounts[] list");
+  const accounts = doc.accounts;
+  let served = 0;
+  const failures = [];
+  for (const entry of accounts) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw badDocument("carries a malformed accounts[] entry");
+    const a = entry;
+    if (typeof a.seller_id !== "number" || !Number.isInteger(a.seller_id)) throw badDocument("carries an accounts[] entry without an integer seller_id");
+    const d = a.document;
+    if (d === null || d === void 0) {
+      failures.push(`${a.seller_id}: ${typeof a.failure === "string" ? a.failure : "unknown"}`);
+      continue;
+    }
+    if (typeof d !== "object" || Array.isArray(d)) throw badDocument(`carries a per-account document for SellerID ${a.seller_id} that is not an object`);
+    const missingKeys = BATTERY_ACCOUNT_DOCUMENT_KEYS.filter((k) => !(k in d));
+    if (missingKeys.length > 0) throw badDocument(`per-account document for SellerID ${a.seller_id} is missing ${missingKeys.join(", ")}`);
+    served++;
   }
-  if (!Array.isArray(doc.accounts)) {
+  if (served === 0) {
     throw new UserFacingError(
-      `The ${BATTERY_QUERY_ID} document carries no accounts[] list; do not compose from this call.`,
-      "report_battery_bad_document"
+      `No account served a document (${failures.join("; ")}). Nothing was written; fix the account list (a SellerID with no data is usually the wrong twin, SC vs VC) or run the accounts one at a time.`,
+      "report_battery_no_account_served"
     );
   }
   return doc;
@@ -94168,7 +94249,11 @@ function assertBatteryDocument(row) {
 function batteryAccounts(doc) {
   return Array.isArray(doc.accounts) ? doc.accounts : [];
 }
-function batterySummary(out, doc) {
+function missingAccounts(requested, doc) {
+  const returned = new Set(batteryAccounts(doc).map((a) => a.seller_id));
+  return requested.filter((id) => !returned.has(id));
+}
+function batterySummary(out, doc, requested = []) {
   const money = (v) => {
     if (v === null || v === void 0 || v === "") return "n/a";
     const n = typeof v === "number" ? v : Number(v);
@@ -94177,16 +94262,28 @@ function batterySummary(out, doc) {
   const lines = [`wrote ${out}`];
   const accounts = batteryAccounts(doc);
   const alignment = doc.alignment ?? {};
+  const dayCountOf = (a) => a.document?.windows?.day_count ?? null;
   const served = accounts.filter((a) => a.document);
-  const dayCount = served.length > 0 ? served[0].document.windows?.day_count ?? null : null;
-  lines.push(
-    `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? "?"}${a.failure ? `, FAILED ${a.failure}` : ""})`).join(", ")}` + (alignment.aligned_end ? `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ""}` : "") + (alignment.aligned === false ? "; NOT ALIGNED, compare day counts before summing" : "")
-  );
+  const aligned = alignment.aligned !== false;
+  let head = `accounts: ${accounts.map((a) => `${a.seller_id} (${a.channel ?? "?"}${a.failure ? `, FAILED ${a.failure}` : ""})`).join(", ")}`;
+  if (alignment.aligned_end) {
+    if (aligned) {
+      const dayCount = served.length > 0 ? dayCountOf(served[0]) : null;
+      head += `; aligned to ${alignment.aligned_end}${dayCount !== null ? ` (${dayCount} days)` : ""}`;
+    } else {
+      head += `; NOT ALIGNED: day counts ${served.map((a) => `${a.seller_id}=${dayCountOf(a) ?? "?"}`).join(", ")}; compare day counts before summing`;
+    }
+  }
+  lines.push(head);
+  const missing = missingAccounts(requested, doc);
+  if (missing.length > 0) {
+    lines.push(`REQUESTED BUT NOT RETURNED (the document does not cover them): ${missing.join(", ")}`);
+  }
   for (const a of accounts) {
     if (!a.document) continue;
     const rec = a.document.reconciliation ?? {};
     lines.push(
-      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? null}%)`
+      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? "n/a"}%)`
     );
     const failed = a.document.sections_failed ?? {};
     for (const [name, why] of Object.entries(failed)) {
@@ -94195,19 +94292,24 @@ function batterySummary(out, doc) {
     const dark = a.document.dark_days ?? {};
     for (const [k, v] of Object.entries(dark)) {
       if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor})`);
+        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor ?? "n/a"})`);
       }
     }
   }
   const brandFailed = doc.sections_failed ?? {};
   for (const [name, why] of Object.entries(brandFailed)) {
+    if (/^account_\d+\.sections$/.test(name)) continue;
     lines.push(`SECTION FAILED (brief runs without it, label the gap): ${name}: ${String(why).slice(0, 140)}`);
   }
   const rollup = doc.rollup ?? {};
   if (rollup.mixed_currency) {
-    lines.push(`rollup: ${rollup.by_marketplace?.length ?? 0} marketplaces in different currencies, so NO brand total; quote each marketplace on its own`);
+    const currencies = [...new Set(served.map((a) => a.currency).filter((c) => typeof c === "string" && c.length > 0))];
+    const n = Array.isArray(rollup.by_marketplace) && rollup.by_marketplace.length > 0 ? rollup.by_marketplace.length : served.length;
+    lines.push(
+      `rollup: ${n} marketplaces in different currencies${currencies.length > 0 ? ` (${currencies.join(", ")})` : ""}, so NO brand total; quote each marketplace on its own`
+    );
   } else if (rollup.mixed_channel) {
-    lines.push("rollup: Seller Central + Vendor Central in one marketplace; revenue, units and ad figures are summed, traffic and conversion stay per channel");
+    lines.push("rollup: Seller Central + Vendor Central in one currency; revenue, units and ad figures are summed, traffic and conversion stay per channel");
   }
   return lines;
 }

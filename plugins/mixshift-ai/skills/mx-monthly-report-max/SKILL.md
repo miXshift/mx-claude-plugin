@@ -108,13 +108,17 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Review | `full`: nothing publishes before the review packet is approved. After three zero-edit approvals on a brand the skill may OFFER `claims_only`; `auto` only by explicit choice | `reporting.review`: `full`, `claims_only`, `auto` |
 | Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
+| Vendor revenue basis | ordered revenue and units | `reporting.vc_revenue_basis: shipped` in context.yaml; `mixshift report battery --brand` reads it, an explicit `--seller-id` run needs `--revenue-basis shipped` passed by hand |
+| Attribution | each channel's own rule (Seller Central: Sponsored Products 7 day, else 14; Vendor Central: 14 day for every type) | `--attribution all_14\|sc_default` on the battery call; `management.attribution_window_days` records the convention, the command does not read it |
 | Style | document density `full`; `one_pager` collapses to masthead, bottom line, tiles, mechanisms, checks | `reporting.style.density`; manager defaults in `~/.mixshift/profile.yaml`, brand context wins on conflict |
 | Voice | house voice (the Voice section + `references/brief-structure.md`) | voice profiles: `~/.mixshift/voice.md` (the manager's voice, all their brands) and `clients/<brand>/voice.md` (this client's register); brand wins on conflict. Seed and update them per "Voice profiles" below |
 
 **Threshold defaults** (quote the active values in the method notes; override via
 `reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
 worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
-SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days; sales floor for per-item
+SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
+Central (the attribution tail of each channel's rule); Vendor Central out-of-stock rate threshold 0.99
+(an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); sales floor for per-item
 Buy Box flags: the account's median item revenue in the current window (so thin accounts
 still flag something and large accounts do not flag noise).
 
@@ -207,6 +211,11 @@ done.
 ```bash
 mixshift brand list --json
 ```
+
+**With `--brand`, this test runs on every account the context lists.** The service answers a row
+with no data in the window as a per-account failure ("wrong twin"), never as zeros summed into the
+brand, and names it under `accounts[].failure`; a context that still lists such a row should be
+corrected (`status: inactive`) rather than worked around.
 
 One client often maps to several brand slugs and several SellerIDs (a Vendor Central row
 and a Seller Central row, plus other marketplaces). Do not assume. Confirm which SellerID
@@ -301,6 +310,13 @@ prior-year baselines). The reviewer paid for the run; use all of it.
 did not create: request the grain, read the manifest entry and reason code, and report an
 override as a run-scoped defect.
 
+**A brand of several accounts runs the envelope once per account.** `INS-MONTHLY-01` takes one
+merchant; run it for each account in the brand (the primary account first) and keep each
+result per account. Brand-level deltas come from the battery's roll-up (step 3b), which is the
+only source that sums honestly across accounts; the envelope is the per-account cross-check
+and the evidence source, never added across accounts. Where the envelope and the battery both
+serve a figure for ONE account, the envelope wins for that account.
+
 ### 3b. The brief's battery: the warehouse
 
 `mixshift report battery` runs the standard battery for the whole brand and writes one JSON
@@ -341,8 +357,27 @@ conversion PER CHANNEL (`traffic.SC` is sessions, `traffic.VC` is glance views; 
 them), merges movers by ASIN per channel, and sums sub-brand splits by label.
 `rollup.mixed_currency: true` means two or more marketplaces in different currencies:
 there is no brand total, on purpose, and the brief quotes each marketplace on its own.
-`alignment.aligned_end` is the day every account was cut to; quote that day count once. A
-single account is `accounts[0].document` with `rollup.brand` mirroring it.
+`alignment.aligned_end` is the day every account was cut to; quote that day count once. If
+`alignment.aligned` is false, one account trimmed a further day: quote each account's own
+`windows.day_count`. If `alignment.month_shifted` is true, the aligned window fell in an earlier
+month than the one you asked for; say so before any figure. `alignment.stale_accounts` lists
+accounts whose feed is more than two weeks behind the brand's freshest: they are served under
+`accounts[]` but excluded from every roll-up. A single account is `accounts[0].document` with
+`rollup.brand` mirroring it.
+
+**Where each figure lives.** `rollup.brand` (present only when `rollup.mixed_currency` is false;
+otherwise it is null and you read `rollup.by_marketplace[]` and quote each marketplace on its
+own): `totals` per period (revenue, units, ASP, ad spend, ad sales, orders, clicks, impressions,
+ACOS, TACOS, ad share, AOV; a period marked `partial` has TACOS and ad share null because an
+account served ads without retail), `traffic` per channel, `movers` per channel, `segment_ads`,
+`segment_retail`, `dark_day_accounts` (which accounts had dark days; the days themselves are on
+the account). Per account only, under `accounts[i].document`: `windows`, `account_ads`,
+`account_retail`, `dark_days`, `settled_efficiency_check`, `daily`, `monthly_history`,
+`oos_days`, `buybox_by_item` or `availability_interruptions` and `inventory`, `reconciliation`,
+`sections_failed`. `thresholds_applied` is at the top level for the call (brands, floors,
+revenue basis, attribution per channel, OOS threshold) and repeated per account with what that
+account actually applied; quote the top-level one in the method notes. Charts that need
+`monthly_history` read it per account.
 
 Sub-brand splits follow the LABELS the brand context designates (`sub_brands[]`: campaign
 names for ads, `CustomBrand` or `Brand` for retail), never the vendor codes: pass them with
@@ -389,8 +424,9 @@ the ENGINE's traffic and conversion bridge legs as decomposition shape rather th
 quotable account rates until the engine foots them on the account table (routed).
 The per-account confirmation probe is in `references/queries.md`.
 
-Flags worth knowing: `--brands "A,B"` enables the paid sub-brand split (without it the
-retail split still runs); `--min-item-sales`, `--buybox-floor`, `--buybox-drop` override
+Flags worth knowing: `--brands "A,B"` names the sub-brand labels for both splits (without it the
+retail split still runs on the catalog labels and the paid split is skipped); the Seller Central
+knobs `--min-item-sales`, `--buybox-floor`, `--buybox-drop` override
 the thresholds (defaults per the knobs table; the JSON records what was applied under
 `thresholds_applied`, quote it in the method notes). A section that fails on the service
 is named under `sections_failed` in the JSON and echoed by the command; the brief runs on
@@ -410,7 +446,7 @@ encodes on both channels, so you can spot them anywhere else:
 3. **Check for dark ad days in either window.** Count days with non-zero spend; normalize
    short windows and show raw and normalized side by side. Scaling touches spend, ad sales
    and TACOS; ACOS is a ratio and is left alone.
-4. **Verify every efficiency claim on a settled window.** Sponsored Products attributes on
+4. **Verify every efficiency claim on a settled window.** On Seller Central, Sponsored Products attributes on
    a 7-day window, so the last week of a pull is still filling in. Re-run the comparison
    excluding the last 7 days from both periods; if the move collapses, it was an
    attribution artifact, not a finding.
@@ -1015,7 +1051,7 @@ carried the least signal this month if you want one out").
 The errors that survive casual proofreading:
 
 - Every figure traces to a source per the composition rules; the internal method notes
-  (i06) name the SellerID, marketplace, both window boundaries, the account mode, and the
+  (i06) name the SellerIDs and marketplaces covered (and any excluded as stale), both window boundaries, the account mode, and the
   threshold values applied.
 - The client doc passes the read-aloud test: no tooling nouns, no process narration, no
   scope or method section (`prose-lint --role client` enforces the fixed phrases).

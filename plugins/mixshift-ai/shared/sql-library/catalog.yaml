@@ -589,15 +589,15 @@ queries:
     consumers: [mx-monthly-report-max]
     tier: 1
     notes: |
-      The Vendor Central sibling of MPRX-FIGURES-01 (D-045, 2026-09-06). Same
+      The Vendor Central sibling of MPRX-FIGURES-01 (2026-09-06). Same
       kernel, vendor tables; where the Seller Central concept does not exist
       the section is renamed honestly (glance_views not sessions, no Buy Box,
       availability_interruptions = procurable out-of-stock while sellable
       units are on hand). Ad metrics from campaignmetric ONLY, never
       sellermonthmetric. Weeks of cover and lost sales are NOT computed here:
       they are engine metrics served by INS-LOSTSALES-01 / INS-OPS-BRIDGE-01.
-      Own params (seller_id, as_of, brands[], min_item_sales, revenue_basis,
-      attribution, oos_rate_threshold); reached through
+      Own params (seller_id, as_of, brands[], revenue_basis, attribution,
+      oos_rate_threshold); reached through
       MPRX-FIGURES-BRAND-01 by `mixshift report battery`.
 
   - id: MPRX-FIGURES-BRAND-01
@@ -606,10 +606,12 @@ queries:
     consumers: [mx-monthly-report-max]
     tier: 1
     notes: |
-      The id `mixshift report battery` calls from plugin 0.8.13 (D-045).
+      The id `mixshift report battery` calls from plugin 0.8.13.
       Takes seller_ids[] (1..8) plus the shared knobs (as_of, brands[],
       min_item_sales, buybox_floor, buybox_drop, revenue_basis,
       oos_rate_threshold, attribution) and returns rows: [document] with
-      accounts[], rollup (by_marketplace + brand when one currency), alignment
-      and sections_failed. Several currencies = several roll-ups and NO brand
-      total, on purpose. NOT a prefetch query (absent from sql_ids).
+      accounts[], rollup (by_marketplace always; brand when every current
+      account shares one currency), alignment (stale accounts excluded from
+      the roll-up, month shift labelled) and sections_failed. Several
+      currencies = NO brand total, on purpose. NOT a prefetch query (absent
+      from sql_ids).
