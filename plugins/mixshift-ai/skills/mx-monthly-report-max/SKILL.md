@@ -430,7 +430,8 @@ different problems with different fixes. Then connect paid clicks to account ses
 matched days, which is the step that says whether an advertising decision caused a retail
 outcome. And before attributing a retail move to an advertising change, run the
 shared-inflection check: do both series break on the same date? Cheap, and it turns a
-correlation into something defensible (probe catalog has the query shape).
+correlation into something defensible (the shared-inflection probe, documented beside the
+battery; write it as a read-only query and record it in the run record).
 
 **Reconcile the institutional record against what the data found.** Walk the Step 1
 institutional items: every in-window structural event, declared stockout, lifecycle state
