@@ -63,6 +63,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   the HTTP status where it is unambiguous (202 not ready, 400 bad params, 429
   busy) instead of always being 1.
 
+- **The data catalog now warns that DSP conversions can sit on a creative-less
+  row.** Amazon reports some DSP conversions against an "Unallocated" creative
+  that has no cost and no impressions, and the `dsp_campaigns_metric` entry did
+  not say so. Anyone breaking DSP performance out by creative type, or filtering
+  away rows with no spend, was silently dropping those conversions: on the
+  accounts we checked they carried 4 to 12 percent of attributed sales. The
+  catalog entry now states that these rows are additive rather than duplicates,
+  that Amazon's own line-item totals already include them, and that they have to
+  be kept when you group by creative type. Doc-only: nothing about the data
+  itself changed.
+
 ### Fixed
 
 - **The help map now lists Monthly Performance Report Max.** Asking for help in
