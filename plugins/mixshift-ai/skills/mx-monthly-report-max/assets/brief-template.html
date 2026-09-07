@@ -444,7 +444,7 @@ footer{
 
   <div class="tscroll">
     <table>
-      <caption><b>{{Account, matched windows.}}</b> {{Anything a reader needs before the first number.}}</caption>
+      <caption><b>{{Account, matched windows.}}</b> {{Anything a reader needs before the first number. If this table shows an ad figure, end with thresholds_applied.attribution_note verbatim: the one basis sentence the client brief carries, quoted once in the whole document.}}</caption>
       <thead>
         <tr><th>Metric</th><th>{{Current}}</th><th>{{Prior month}}</th><th>MoM</th><th>{{Prior year}}</th><th>YoY</th></tr>
       </thead>
@@ -748,7 +748,7 @@ footer{
     <ul>
       <li><b>Source.</b> {{In the reader's language: which Amazon reports (business, advertising, inventory), the intelligence run, live checks with dates. Query-level provenance lives in the run record; say that any figure can be traced on request.}}</li>
       <li><b>Account.</b> {{SellerID, Seller|Vendor Central, marketplace, account mode, and what is deliberately excluded.}}</li>
-      <li><b>Attribution.</b> {{Rule applied per campaign type.}}</li>
+      <li><b>Attribution.</b> {{thresholds_applied.attribution_detail verbatim (which window each campaign type is attributed on under the basis that ran, and whether view-attributed Sponsored Display sales are in), then the basis code (legacy_sales, all_14 or sc_default) so a later reader can re-run it.}}</li>
       <li><b>Unsettled attribution.</b> {{Which days are still filling in, and which claim was verified on a settled window instead.}}</li>
       <li><b>Normalization.</b> {{What was scaled, by what factor, which figures it touched and which it did not.}}</li>
       <li><b>Out of stock definition.</b> {{State it, since it counts something in a non-obvious way.}}</li>

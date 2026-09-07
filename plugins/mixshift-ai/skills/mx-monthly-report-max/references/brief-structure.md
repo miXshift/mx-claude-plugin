@@ -344,7 +344,10 @@ from now. None of it appears in the client document.
   (exact tables, run ids, versions) lives in the run record; say so here once
 - Account, SellerID, marketplace, account mode, and what is deliberately excluded
 - The threshold values applied, quoted so a later reader can re-derive every flag
-- Attribution rule applied, per campaign type
+- Attribution basis applied: the battery's `attribution_detail` sentence verbatim (which window
+  each campaign type is attributed on, and whether view-attributed Sponsored Display sales are
+  in) plus the basis code; the client brief carries only the one-line `attribution_note`
+  footnote under the first ad figure
 - Any unsettled-attribution caveat and which claim was verified on a settled window instead
 - Any normalization: what was scaled, by what factor, which figures it touched, which it did not
 - Definitions that count something in a non-obvious way, especially the out-of-stock definition

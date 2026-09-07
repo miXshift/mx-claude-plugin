@@ -28,7 +28,10 @@ components:
       The warehouse query battery with its six traps encoded: window alignment to data
       load, like-day-count comparison, dark-day normalization, settled-window efficiency
       verification, SKU-to-account reconciliation, and page-view-weighted Buy Box with a
-      last-7-days column.
+      last-7-days column. The battery also serves the attribution basis it applied
+      (thresholds_applied.attribution, attribution_note, attribution_detail): both
+      documents quote those sentences instead of restating the rule, so what a client
+      reads under an ad figure is written once, beside the SQL that produced it.
     home: MixShift service named queries MPRX-FIGURES-BRAND-01 (brand, channel-routed) -> MPRX-FIGURES-01 (Seller Central) / MPRX-FIGURES-VC-01 (Vendor Central), called by `mixshift report battery` (executable, server-side); the annotated source of record is maintained by MixShift beside the batteries
     depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-BRAND-01), Seller Central or Vendor Central tables per account row, campaignmetric on both]
     how_to_lift: >

@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.2.0
+version: 2.3.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -109,7 +109,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
 | Vendor revenue basis | ordered revenue and units | `reporting.vc_revenue_basis: shipped` in context.yaml; `mixshift report battery --brand` reads it, an explicit `--seller-id` run needs `--revenue-basis shipped` passed by hand |
-| Attribution | each channel's own rule (Seller Central: Sponsored Products 7 day, else 14; Vendor Central: 14 day for every type) | `--attribution all_14\|sc_default` on the battery call; `management.attribution_window_days` records the convention, the command does not read it |
+| Attribution basis | `legacy_sales`: Amazon's reported Sales and Orders per campaign, the figures Report Center prints (Sponsored Display includes view-attributed sales; Sponsored Products is click-attributed 7 day on Seller Central and 14 day on Vendor Central) | `--attribution legacy_sales\|all_14\|sc_default` on the battery call (`all_14` = 14 day click for every type, Vendor Central rows only; `sc_default` = the Seller Central house rule, Sponsored Products 7 day else 14). The document records the basis applied under `thresholds_applied.attribution` with an `attribution_note` and an `attribution_detail` sentence, which the brief quotes verbatim; `management.attribution_window_days` records the convention, the command does not read it |
 | Style | document density `full`; `one_pager` collapses to masthead, bottom line, tiles, mechanisms, checks | `reporting.style.density`; manager defaults in `~/.mixshift/profile.yaml`, brand context wins on conflict |
 | Voice | house voice (the Voice section + `references/brief-structure.md`) | voice profiles: `~/.mixshift/voice.md` (the manager's voice, all their brands) and `clients/<brand>/voice.md` (this client's register); brand wins on conflict. Seed and update them per "Voice profiles" below |
 
@@ -117,7 +117,9 @@ settings' for everything else."; that line is how a hidden config system stays f
 `reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
 worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
 SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
-Central (the attribution tail of each channel's rule); Vendor Central out-of-stock rate threshold 0.99
+Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
+14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
+Vendor Central out-of-stock rate threshold 0.99
 (an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); sales floor for per-item
 Buy Box flags: the account's median item revenue in the current window (so thin accounts
 still flag something and large accounts do not flag noise).
@@ -363,9 +365,21 @@ mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <d
 `--brand` takes every account in the brand context whose status is not `inactive` (a
 `wind_down` code still sold this month and the brief must account for it). Vendor Central
 knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
-in context.yaml records a client whose convention is shipped) and `--attribution
-all_14|sc_default` (each channel's own rule by default: 14 day for every campaign type on
-Vendor Central, Sponsored Products 7 day on Seller Central).
+in context.yaml records a client whose convention is shipped).
+
+**The attribution basis applies on every channel: `--attribution legacy_sales|all_14|sc_default`.**
+Leave it off unless the client asks for a click-only reading. The service default `legacy_sales`
+sums Amazon's reported Sales and Orders per campaign, which is what Report Center prints, so the
+brief and the customer's own report agree by construction (Sponsored Display counts
+view-attributed sales; Sponsored Products is click-attributed 7 day on Seller Central and 14 day
+on Vendor Central). `all_14` is 14 day click for every campaign type (Vendor Central rows only; a
+Seller Central row keeps its house rule under it) and `sc_default` is the Seller Central house
+rule (Sponsored Products 7 day, everything else 14 day click); both leave view-attributed sales
+out, so they read about 2% below Report Center on an account that runs view-based Sponsored
+Display. Whatever ran, the document says so: `thresholds_applied.attribution` (per channel on
+the brand document), `thresholds_applied.attribution_note` (one plain sentence, the client
+footnote) and `thresholds_applied.attribution_detail` (the per-campaign-type windows, for the
+method notes). Quote them verbatim; never restate the rule from memory.
 
 **Reading `figures.json`.** The document is brand-shaped. `accounts[]` carries one entry per
 account row with its `channel` (`SC` or `VC`), the full per-account document, or a `failure`
@@ -397,8 +411,11 @@ the account). Per account only, under `accounts[i].document`: `windows`, `accoun
 (with `last_5_days` on Seller Central), `daily_ads_by_type` (daily spend, ad sales and orders
 by campaign type for the current window), `sections_failed`. `account_retail` and the brand
 `traffic` block carry `traffic_quality` per comparison (see Step 4). `thresholds_applied` is at the top level for the call (brands, floors,
-revenue basis, attribution per channel, OOS threshold) and repeated per account with what that
-account actually applied; quote the top-level one in the method notes. Charts that need
+revenue basis, attribution per channel with its `attribution_note` and `attribution_detail`
+sentences, OOS threshold) and repeated per account with what that
+account actually applied; quote the top-level one in the method notes, the `attribution_note`
+once in the client brief under the first ad figure, and `attribution_detail` as the Attribution
+line of i06 (see the composition rules). Charts that need
 `monthly_history` read it per account.
 
 Sub-brand splits follow the LABELS the brand context designates (`sub_brands[]`: campaign
@@ -786,6 +803,18 @@ Composition rules that survive every mode:
   method genuinely needs client words (Buy Box weighting), one plain sentence ("Buy Box
   here weights busy days more than quiet ones") at the first table that uses it, not the
   arithmetic. `helpers/prose-lint.py --role client` enforces the fixed phrases.
+- **The ad-figure footnote is the one basis sentence the client brief carries.** Ad sales
+  and ad orders come on the attribution basis the battery applied
+  (`thresholds_applied.attribution`, `legacy_sales` unless the call said otherwise), and the
+  client document says so once, in the battery's own words: quote
+  `thresholds_applied.attribution_note` verbatim as one plain sentence in the caption of the
+  first table (or under the first tile) that shows an ad figure, the Buy Box weighting
+  precedent. Never the rule from memory, never the basis code. The internal method notes
+  (i06) quote `attribution_detail` as the Attribution line and name the basis code beside
+  it. A reader who compares the brief with Report Center then knows whether the two agree by
+  construction (`legacy_sales`) or differ by view-attributed Sponsored Display sales
+  (`all_14`, `sc_default`). An account that ran no ads in the window has no ad figure and no
+  footnote.
 - **Client prose labels deltas with words**: "up 5.3% on July", "down 16.5% vs last
   August". MoM/YoY abbreviations are furniture for tables, tiles and chips only; a list of
   sibling deltas may share one label. The internal companion may use MoM/YoY anywhere.
@@ -1161,6 +1190,9 @@ The errors that survive casual proofreading:
 - Any efficiency claim is verified on a settled window; the client copy asserts the
   result and the internal method notes (i06) say how, alongside the SKU reconciliation
   figure; the envelope was re-pulled on publish day.
+- The ad-figure footnote appears once in the client brief and is the battery's
+  `attribution_note` verbatim; the internal method notes carry `attribution_detail`, the
+  basis code, and the settled exclusion in days (`thresholds_applied.settled_exclusion_days`).
 - Every claimed cause has evidence; everything else is a question in Things-to-check.
 - Any custom section passed the same gates as standard ones (figures traced, claims
   registered, register rules, charts contract), and a NEW standing section was proposed
