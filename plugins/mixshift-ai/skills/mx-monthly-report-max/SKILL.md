@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.1.0
+version: 2.2.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -14,7 +14,7 @@ description: >
   [client]', 'get me ready for the [client] monthly', 'QBR prep', 'what moved this month
   for [brand]', 'anything I should flag before this call'.
 author: Claude
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 dependencies:
   - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`)
   - Warehouse read access via the gateway (`mixshift report battery` for the figure battery,
@@ -269,6 +269,22 @@ extraction carries the engine's own `evidence[]` statements; causal claims in th
 quote those as their mechanism rather than inventing one. Record `source.engineVersion`
 from the `mom.ops` document for the run record.
 
+**Read the run's context block before writing a word.** `mom.context` on the bundle carries
+what the figures alone do not: `session_footing` (which sessions basis the run footed on;
+the item roll-up and the account total differ materially on some accounts, and the
+conversion denominator changes with it), `promo_windows` and `comparison_promo_windows`
+(the discount windows the engine detected in each period; a promotion that ran in the
+comparison period and not in this one is a headwind the one-sided read omits, and on one
+account those windows were the whole of the price leg), `comparability` (dark, surge and
+matched windows) and `restatement` (how far the same compare window moved since the prior
+run). Quote the session footing and the restatement in the method notes (i06) and in the
+run summary; promotion windows go into the exceptions block when they differ between the
+periods and into the mechanism read either way. The bundle's default grouping is the
+item group, so its `limitations` carry the grain line: a mix-versus-rate claim ("the
+conversion decline is composition, not performance") needs an ASIN-grain run
+(`"grouping": "asin"`), because a coarser grain moves genuine rate movement into the mix
+leg. Never publish that sentence from an item-group run.
+
 **The envelope compares calendar months.** On an in-progress month its MoM pair is the
 full prior month against the month to date, and its YoY pair has the same shape, so
 neither is quotable as a like-day delta: on a real account the calendar pair read down
@@ -373,8 +389,10 @@ account served ads without retail), `traffic` per channel, `movers` per channel,
 `segment_retail`, `dark_day_accounts` (which accounts had dark days; the days themselves are on
 the account). Per account only, under `accounts[i].document`: `windows`, `account_ads`,
 `account_retail`, `dark_days`, `settled_efficiency_check`, `daily`, `monthly_history`,
-`oos_days`, `buybox_by_item` or `availability_interruptions` and `inventory`, `reconciliation`,
-`sections_failed`. `thresholds_applied` is at the top level for the call (brands, floors,
+`oos_days`, `buybox_by_item` or `availability_interruptions` and `inventory`, `reconciliation`
+(with `last_5_days` on Seller Central), `daily_ads_by_type` (daily spend, ad sales and orders
+by campaign type for the current window), `sections_failed`. `account_retail` and the brand
+`traffic` block carry `traffic_quality` per comparison (see Step 4). `thresholds_applied` is at the top level for the call (brands, floors,
 revenue basis, attribution per channel, OOS threshold) and repeated per account with what that
 account actually applied; quote the top-level one in the method notes. Charts that need
 `monthly_history` read it per account.
@@ -453,7 +471,11 @@ encodes on both channels, so you can spot them anywhere else:
    excluding the last 7 days from both periods; if the move collapses, it was an
    attribution artifact, not a finding.
 5. **Reconcile before quoting item movers.** The SKU sum must agree with the account total
-   within about half a percent; a doubled sum is almost always a join multiplying rows.
+   within about half a percent; a doubled sum is almost always a join multiplying rows. A
+   gap that sits mostly in the last five days (`reconciliation.last_5_days.share_of_gap_pct`)
+   is a finalisation lag between the two source tables, not catalog coverage: say which,
+   quote the share, and expect the prior month's figure to have moved by a similar amount
+   since the last brief (the restatement line in i06 carries the number).
 6. **Never diagnose a Buy Box problem from a monthly average.** Weight by page views and
    always read the daily series plus a last-7-days column; classify each flagged item as
    still open, recovered, or no traffic (no traffic is usually stock or suppression, not
@@ -485,6 +507,17 @@ maximum fulfillable quantity across every warehouse row is zero: "could not be b
 "not owned"). Attribute decline to stockout only where the current window is materially
 worse than the prior one; many ASINs sit at zero permanently and are not news. Total the
 decline across just those ASINs so you can say what share of the gap availability explains.
+
+**Traffic quality.** When traffic rose and conversion fell, the question is whether the
+added visitors converted and whether they were bought, and the battery answers both:
+`traffic_quality.incremental_conversion_pct` is the units gained per visitor gained against
+the base rate, and `paid_share_of_traffic_gain_pct` is the share of the visitor gain that
+came from ad clicks (sessions on Seller Central, glance views on Vendor Central). Sessions
+up 40.5% with incremental conversion at 1.8% against a 20% base, 81% of the gain paid and
+no additional ad orders is "paid traffic that did not convert", and that is the headline;
+"conversion fell" is the symptom. Quote both figures with their basis, and never call a
+conversion decline "mix" or "rate" from this block alone (that split needs the ASIN-grain
+run, per Step 3a).
 
 **Pricing and Buy Box.** **Weight Buy Box by page views everywhere**, at account, segment
 and item level. Losing the featured offer collapses traffic as well as conversion, so an
@@ -585,6 +618,13 @@ from data** (say that). Check the daily series before writing any verdict: a mon
 can say "not landed" about a fix that landed mid-month, and telling a client their team's
 work failed when it worked is the worst error this skill can make.
 
+**This section is required whenever a prior run exists**, and it grades the prior brief's
+CLAIMS as well as its action items: "traffic is the only lever and restoring visitors is
+the whole of the recovery" is a claim the next month can score, and scoring it produced the
+most valuable sentence of one run (the visitors came back, +40.5% sessions, and converted
+at 1.8%, so revenue rose 6.4% and the claim was wrong in the way that matters). The lint
+refuses an internal companion without the section unless `--first-run` is passed.
+
 **Where each verdict goes.** The commitments table lives in the **internal companion**,
 with owners named, because that is a management artifact. What reaches the client brief is
 the substance without the scoreboard: a landed fix becomes a credited win in the narrative;
@@ -645,6 +685,24 @@ vocabulary is fixed: "the MixShift revenue forecasting model" on first mention, 
 forecasting model" for the model, "the forecast" for the number. "Plan" is banned. Never
 reference a seasonal driver without the forecasting model's seasonal index behind it.
 
+**A beat or miss carries what the forecast assumed.** "Beat the forecast by 3.1%" is never
+printed without the forecast's own year-over-year assumption beside it: an account that
+beat a forecast which assumed -13.3% YoY and one that missed a forecast which assumed flat
+are different events, and the reader cannot tell them apart from the beat alone. The
+assertions row for the forecast basis carries the assumption, and the sentence carries it
+in words ("ahead of a forecast that already assumed a 13% decline").
+
+**Every open-window ACOS projects to settled, the same way every month.** An in-progress
+or recently closed month's ACOS is read on an open attribution window, so it will improve
+as orders settle. When brand context carries `capture_rate_calibration` (enabled, with a
+capture rate or a daily settlement curve), apply it to the battery's `daily_ads_by_type`
+series and print the projection with its basis: "August ACOS is 18.0% on an open window
+and projects to about 18.5% settled". Grade last month's projection against this month's
+settled figure in the commitments section (a projection of 18.5% against 18.48% settled is
+the calibration working; a miss of more than a point is a calibration write-back). Without
+a calibration, print the open-window figure labelled "open window" and no projection;
+never project from a rule of thumb.
+
 **Weak comparison bases.** A spectacular year-over-year number often means last year was
 broken. Pull the surrounding months of the prior year; if the base month is a trough
 against its own neighbours, the comp flatters the account rather than describing it. Use
@@ -665,8 +723,10 @@ Structure, section-by-section purpose, and design rules are in
 `references/brief-structure.md`. Read it before writing. The order in brief:
 
 **Client brief:** masthead (a conclusion, not a topic; the stamp block carries account,
-window and prepared date), bottom line (conclusion, mechanism, counterweight), headline
-metrics (tile strip + matched-window table + the monthly trend chart), what actually moved
+window and prepared date), bottom line (conclusion, mechanism, counterweight; never thinner
+than the executive read when a one-pager exists for the run), headline metrics (tile strip
+with each delta coloured on its own merit, the matched-window table, the eight-column
+campaign-type table when the account ran ads, and the monthly trend chart), what actually moved
 (gross-split lede + bridge chart + mechanism severity cards + mover tables), segment reads
 (only where the account genuinely splits), featured offer status, Things-to-check (after
 the analysis, no owner names, 5 to 7 rows with state chips), a clean one-line footer. No scope bar, no method section: the client document
@@ -760,8 +820,20 @@ Composition rules that survive every mode:
   shows exists in a table or tile, except a bridge residual that must foot to the printed
   gross split and gets a method-notes line. Full spec in the template's chart comment and
   `references/brief-structure.md`.
-- A superlative or "every/all/most" claim needs a complete population behind it; without
-  one it degrades to an observation (correct behavior, not a gap).
+- A superlative or "every/all/most/only/first" claim needs a complete population behind it
+  and carries, in the same sentence, the figure that backs it, so the reader can check it
+  against the table ("Sponsored Display was the most efficient type at 20.7% ACOS", never
+  "Sponsored Brands is the most efficient type"). Without the population it degrades to
+  an observation (correct behavior, not a gap). Six such claims survived figure-level QA in
+  one month; the lint now flags a superlative sentence with no figure in it.
+- Every change figure carries its sign and its basis: "on spend -9.1% MoM" in tables and
+  tiles, "spend down 9.1% on July" in client prose; never "9.1% less spend", "about 12%
+  off", or a `pts` value without MoM | YoY | vs forecast beside it. The lint flags a
+  percentage followed by a comparative and a signed or points figure in a sentence with no
+  basis.
+- An unknown reads as a question to the brand, never as an instruction addressed to nobody:
+  "Confirm whether UMF 5+ has been discontinued", not "Ask where the traffic is coming
+  from". The client lint flags sentences that open with "Ask", "Find out", "Investigate".
 - Causal claims quote served evidence as their mechanism where it exists; otherwise
   "consistent with", never "caused by". Decomposition legs are tracking, and tracking text
   does not use causal verbs.
@@ -834,9 +906,18 @@ whenever a new reviewer joins the loop; never assume a second reader was taught.
 Then run the mechanical pass:
 
 ```bash
-python3 helpers/prose-lint.py --role client <client-brief html>
-python3 helpers/prose-lint.py --role internal <internal-companion html>
+python3 helpers/prose-lint.py --role client --marketplace <code> --voice-lint voice-lint.json [--exec <one-pager html>] <client-brief html>
+python3 helpers/prose-lint.py --role internal --marketplace <code> --voice-lint voice-lint.json [--first-run] <internal-companion html>
 ```
+
+`voice-lint.json` is the brand's `reporting.voice_lint` from context written as JSON in the
+shape of `references/voice-lint-seed.json` (a list of banned phrases, or `cut`/`use` pairs);
+the seed ships the standing rulings and applies to every brand, so start from it and append
+the brand's own. `--marketplace` is the run's marketplace code, so a title or footer carrying
+another marketplace's label is a finding. `--exec` names the one-pager when one was built,
+so the full document's bottom line is checked against the executive read. `--first-run`
+is passed only when no prior run exists: otherwise the internal companion must carry the
+graded commitments section.
 
 The `--role client` run mechanically refuses a client file that still contains any
 internal section, and both runs enforce the dash ban on literal characters as well as
@@ -1006,8 +1087,13 @@ section (propose-only, like every durable write). Say yes once and the correctio
 needs making again; that is the difference between a tool that gets trained and one that
 gets re-edited monthly.
 
-Brand-context `reporting.voice_lint` additions apply on top of these. If the organization
-ships its own writing-style skill, it wins where the two conflict.
+Brand-context `reporting.voice_lint` additions apply on top of these and are executable:
+write them as JSON in the shape of `references/voice-lint-seed.json` and pass the file to
+`prose-lint.py --voice-lint`, so a banned phrase is a lint finding rather than a reviewer's
+memory. The seed carries the standing rulings ("did all of it and then some" becomes "was
+the sole driver of revenue growth"; "the line to hold" and "is the test" become the measure
+and the threshold). If the organization ships its own writing-style skill, it wins where
+the two conflict.
 
 ## Custom sections: shaping the report to a client over time
 
@@ -1076,7 +1162,21 @@ The errors that survive casual proofreading:
   registered, register rules, charts contract), and a NEW standing section was proposed
   through the review packet, never silently persisted.
 - No em or en dashes, no unsigned deltas, no unlabelled deltas; any run-rate close is
-  called arithmetic.
+  called arithmetic. Every superlative sentence carries its figure; no percentage is
+  followed by "less / more / off"; no `pts` value stands without its basis; unknowns are
+  questions to the brand.
+- No literal `%%` anywhere; every currency figure carries its thousands separators; the
+  marketplace in the title and footer is this run's (the lint checks all three with
+  `--marketplace`).
+- The bottom line is at least as complete as the executive read; each tile delta is
+  coloured on its own merit; the campaign-type table is eight columns; the internal
+  companion grades last month's commitments and claims (required after the first run).
+- Every open-window ACOS prints its settled projection with its basis when the brand has a
+  calibration, and "open window" when it does not; every forecast beat or miss carries the
+  forecast's own year-over-year assumption.
+- The session footing, the restatement and any promotion windows from the run's context
+  block are in i06 and the run summary; no mix-versus-rate sentence came from an
+  item-group run.
 - The agency's own unmet commitments are in the internal companion, not only the client's.
 - Both documents have distinct names and favicons, the internal one says "(Internal)" and
   kept its banner, the handover said which is shareable, and a first handover (or a new

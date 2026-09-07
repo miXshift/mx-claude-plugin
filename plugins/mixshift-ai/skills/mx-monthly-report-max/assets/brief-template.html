@@ -1,463 +1,486 @@
-<title>Client Brief Template</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<title>Client Brief Template</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-sunk:#EDF0F4;
+  --ink:#151A21;
+  --ink-soft:#3F4854;
+  --ink-mute:#6A7481;
+  --rule:#D8DEE6;
+  --rule-soft:#E6EAF0;
+  --accent:#1F5C7A;
+  --accent-soft:#E4EEF3;
+  --good:#2E7D5B;
+  --good-soft:#E3F0E9;
+  --warn:#B4571C;
+  --warn-soft:#F8EBE0;
+  --crit:#96272B;
+  --crit-soft:#F7E5E5;
+  --shadow:0 1px 2px rgba(21,26,33,.05),0 8px 24px -16px rgba(21,26,33,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#10151C;
+    --surface:#171E27;
+    --surface-sunk:#1E262F;
+    --ink:#E9EEF4;
+    --ink-soft:#BAC5D2;
+    --ink-mute:#8B98A7;
+    --rule:#2A3441;
+    --rule-soft:#222B36;
+    --accent:#6FB2D2;
+    --accent-soft:#1B2C36;
+    --good:#6DC49B;
+    --good-soft:#17281F;
+    --warn:#E08B4C;
+    --warn-soft:#2C1F14;
+    --crit:#E0797D;
+    --crit-soft:#2C1718;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10151C;
+  --surface:#171E27;
+  --surface-sunk:#1E262F;
+  --ink:#E9EEF4;
+  --ink-soft:#BAC5D2;
+  --ink-mute:#8B98A7;
+  --rule:#2A3441;
+  --rule-soft:#222B36;
+  --accent:#6FB2D2;
+  --accent-soft:#1B2C36;
+  --good:#6DC49B;
+  --good-soft:#17281F;
+  --warn:#E08B4C;
+  --warn-soft:#2C1F14;
+  --crit:#E0797D;
+  --crit-soft:#2C1718;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.6;
+  margin:0;
+  padding:0 20px 96px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:940px;margin:0 auto;}
+.prose{max-width:66ch;}
+
+/* masthead */
+header.top{
+  padding:52px 0 30px;
+  border-bottom:2px solid var(--ink);
+  display:flex;
+  flex-wrap:wrap;
+  gap:24px 40px;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;
+  font-weight:500;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 10px;
+}
+h1{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-weight:600;
+  font-size:clamp(2rem,4.4vw,2.85rem);
+  line-height:1.1;
+  letter-spacing:-.015em;
+  margin:0;
+  text-wrap:balance;
+}
+.standfirst{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:1.05rem;
+  color:var(--ink-soft);
+  margin:14px 0 0;
+  max-width:52ch;
+}
+.stamp{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;
+  line-height:1.85;
+  color:var(--ink-mute);
+  text-align:right;
+  white-space:nowrap;
+}
+.stamp b{color:var(--ink-soft);font-weight:500;}
+
+/* scope bar */
+.scope{
+  margin-top:22px;
+  padding:16px 18px;
+  background:var(--surface-sunk);
+  border-left:3px solid var(--accent);
+  font-size:.875rem;
+  color:var(--ink-soft);
+}
+.scope p{margin:0;}
+.scope p+p{margin-top:8px;}
+
+/* sections */
+section{margin-top:52px;}
+h2{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:1.5rem;
+  font-weight:600;
+  letter-spacing:-.01em;
+  margin:0 0 6px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--rule);
+  text-wrap:balance;
+}
+h2 .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;
+  font-weight:500;
+  color:var(--accent);
+  vertical-align:.35em;
+  margin-right:12px;
+}
+h3{
+  font-size:1rem;
+  font-weight:600;
+  margin:30px 0 8px;
+  letter-spacing:-.005em;
+}
+p{margin:0 0 14px;}
+.lede{font-size:1.06rem;color:var(--ink);}
+
+/* bottom line */
+.bottomline{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-top:3px solid var(--accent);
+  box-shadow:var(--shadow);
+  padding:26px 28px;
+  margin-top:34px;
+}
+.bottomline p{margin:0 0 12px;font-size:1.06rem;}
+.bottomline p:last-child{margin-bottom:0;}
+.bottomline strong{font-weight:600;}
+
+/* things to check */
+.checkblock{
+  margin-top:22px;
+  background:var(--surface);
+  border:1px solid var(--rule);
+  padding:22px 26px 24px;
+}
+h2.checkhead{
+  font-size:1.2rem;
+  margin:0 0 4px;
+  padding-bottom:12px;
+}
+ul.checks{
+  list-style:none;padding:0;margin:0;
+  display:flex;flex-direction:column;
+}
+ul.checks li{
+  display:grid;
+  grid-template-columns:96px 1fr;
+  gap:16px;
+  padding:15px 0;
+  border-bottom:1px solid var(--rule-soft);
+  align-items:start;
+}
+ul.checks li:last-child{border-bottom:none;padding-bottom:0;}
+ul.checks p{margin:0;font-size:.93rem;color:var(--ink-soft);}
+ul.checks b{color:var(--ink);font-weight:600;}
+.cstate{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+  font-weight:600;padding:4px 0 0;display:block;
+}
+.cstate.crit{color:var(--crit);}
+.cstate.warn{color:var(--warn);}
+.cstate.neutral{color:var(--ink-mute);}
+.owner{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;color:var(--accent);font-weight:500;
+  display:block;margin-top:6px;letter-spacing:.03em;
+}
+@media (max-width:560px){
+  ul.checks li{grid-template-columns:1fr;gap:6px;}
+  .cstate{padding-top:0;}
+}
+
+/* metric strip */
+.strip{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;
+  background:var(--rule);
+  border:1px solid var(--rule);
+  margin-top:26px;
+}
+.tile{background:var(--surface);padding:16px 18px 18px;}
+.tile .k{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-mute);margin:0 0 8px;
+}
+.tile .v{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:1.34rem;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin:0;line-height:1.15;
+}
+.tile .d{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.74rem;margin:6px 0 0;font-variant-numeric:tabular-nums;
+}
+.up{color:var(--good);}
+.down{color:var(--crit);}
+.flat{color:var(--ink-mute);}
+.caution{color:var(--warn);}
+
+/* charts */
+.chartfig{margin:26px 0 0;padding:18px 18px 12px;background:var(--surface);border:1px solid var(--rule);}
+.chartfig svg{display:block;width:100%;height:auto;}
+.chartfig text{font-family:"IBM Plex Mono",ui-monospace,monospace;fill:var(--ink-mute);}
+.chartfig .cv{fill:var(--ink);font-weight:600;}
+.chartfig figcaption{font-size:.82rem;color:var(--ink-soft);margin-top:10px;}
+.chartfig figcaption b{color:var(--ink);}
+
+/* tables */
+.tscroll{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);background:var(--surface);}
+table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:600px;}
+caption{
+  caption-side:top;text-align:left;padding:14px 16px 12px;
+  font-size:.82rem;color:var(--ink-soft);border-bottom:1px solid var(--rule-soft);
+}
+caption b{color:var(--ink);font-weight:600;}
+th,td{padding:9px 16px;text-align:right;border-bottom:1px solid var(--rule-soft);}
+th:first-child,td:first-child{text-align:left;}
+thead th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.68rem;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-mute);font-weight:500;background:var(--surface-sunk);
+  border-bottom:1px solid var(--rule);
+}
+tbody td:not(:first-child){
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;
+}
+tbody tr:last-child td{border-bottom:none;}
+tbody th{font-weight:500;font-size:.86rem;}
+tr.rule-top td,tr.rule-top th{border-top:1px solid var(--rule);}
+
+/* severity cards */
+.mech{display:flex;flex-direction:column;gap:16px;margin-top:26px;}
+.card{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-left:4px solid var(--ink-mute);
+  padding:18px 20px;
+}
+.card.crit{border-left-color:var(--crit);}
+.card.warn{border-left-color:var(--warn);}
+.card.good{border-left-color:var(--good);}
+.card h4{
+  font-size:.95rem;font-weight:600;margin:0 0 6px;
+  display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;
+}
+.card p{margin:0;font-size:.92rem;color:var(--ink-soft);}
+.card p+p{margin-top:9px;}
+.chip{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;font-weight:600;white-space:nowrap;
+}
+.chip.crit{background:var(--crit-soft);color:var(--crit);}
+.chip.warn{background:var(--warn-soft);color:var(--warn);}
+.chip.good{background:var(--good-soft);color:var(--good);}
+.chip.neutral{background:var(--surface-sunk);color:var(--ink-mute);}
+
+/* talking points */
+ol.points{
+  list-style:none;counter-reset:pt;padding:0;margin:26px 0 0;
+  display:flex;flex-direction:column;gap:18px;
+}
+ol.points li{counter-increment:pt;padding-left:44px;position:relative;}
+ol.points li::before{
+  content:counter(pt);
+  position:absolute;left:0;top:1px;
+  width:28px;height:28px;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+ol.points b{font-weight:600;}
+ol.points .say{
+  display:block;margin-top:7px;font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:.95rem;color:var(--ink-soft);border-left:2px solid var(--rule);
+  padding-left:14px;
+}
+ul.plain{padding-left:20px;margin:14px 0 0;}
+ul.plain li{margin-bottom:10px;}
+ul.plain li:last-child{margin-bottom:0;}
+
+/* notes */
+.notes{
+  margin-top:26px;padding:22px 24px;
+  background:var(--surface-sunk);border:1px solid var(--rule-soft);
+  font-size:.86rem;color:var(--ink-soft);
+}
+.notes h3{margin-top:0;color:var(--ink);font-size:.95rem;}
+.notes ul{padding-left:20px;margin:0;}
+.notes li{margin-bottom:9px;}
+.notes li:last-child{margin-bottom:0;}
+.notes code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.85em;background:var(--surface);padding:1px 5px;
+  border:1px solid var(--rule-soft);
+}
+
+footer{
+  margin-top:60px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;color:var(--ink-mute);line-height:1.8;
+}
+
+@media (max-width:640px){
+  header.top{padding-top:36px;}
+  .stamp{text-align:left;}
+  .ask{grid-template-columns:1fr;gap:6px;}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+<!--
+  MixShift call brief template. Replace all {{...}} placeholders and the example content.
+
+  THE REGISTER RULE, before anything else: the client brief is the account manager
+  presenting to the client's executive team. Every sentence must survive being read
+  aloud in that meeting. The findings stay; the apparatus moves to the internal
+  companion. Never in the client document: tooling nouns (engine, envelope, battery,
+  warehouse table names, SQL, SellerID), process narration ("cross-checked against",
+  "verified on settled windows", "the engine attributes", "our read matches"), basis
+  and threshold talk, or a scope/method section. The client doc asserts; the internal
+  companion (scope block + i06 method notes + i05 claims register) audits.
+
+  This one file carries BOTH documents. Sections 01 to 05 plus method are the CLIENT brief.
+  Everything after the "INTERNAL COMPANION ONLY" marker belongs in a second artifact at its own
+  URL: talking points, numbers to keep off the call, owner-attributed open items, next lever.
+  Split them into two files before publishing. Never leave an internal section in the client doc.
+
+  No owner names anywhere in the client brief, including Things to check.
+  Keep the token block, the two-theme structure, the IBM Plex pairing and the component classes.
+
+  Component classes available:
+    .scope                     scope bar, before the first number
+    .bottomline                conclusion block
+    .checkblock / ul.checks    Things to check; .cstate crit|warn|neutral, .owner
+    .strip / .tile             metric tiles; .up .down .flat .caution for deltas
+    .tscroll > table           any table, scrolls inside its own container
+    .mech / .card crit|warn|good   severity cards; .chip crit|warn|good|neutral
+    ol.points + span.say       numbered talking points with suggested spoken lines
+    .notes                     method and caveats
+    .prose                     constrains a paragraph to a readable measure
+
+  Delta colours are semantic, not decorative:
+    .up      good direction
+    .down    bad direction
+    .caution worth watching
+    .flat    neutral or immaterial
+  A falling ACOS is .up. A falling sales figure is .down. Direction of the metric, not the sign.
+
+  No em dashes and no en dashes, as characters or as HTML entities. Use "to" for ranges and "n/a" for
+  a comparison that does not exist.
+-->
+
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <p class="eyebrow">{{Client name}} &middot; {{Cadence}} call prep</p>
+    <h1>{{The month's conclusion, not its topic}}</h1>
+    <p class="standfirst">{{One line on what this brief contains.}}</p>
+  </div>
+  <div class="stamp">
+    <b>Call</b> {{day, date, time}}<br>
+    <b>Attendees</b> {{names}}<br>
+    <b>Window</b> {{current window, closed|MTD}}<br>
+    <b>Prepared</b> {{date}}<br>
+    <b>Prior monthly</b> {{date}}
+  </div>
+</header>
+
+<!-- No scope bar here: the masthead stamp carries account + window for the client;
+     the full technical scope block lives in the internal companion. -->
+<div class="bottomline">
+  <p><strong>{{The conclusion as one full bold clause, verb included; a bare label like "Bottom line." is a fragment and fails the lint.}}</strong> {{Then the mechanism. Then the counterweight.}}</p>
+</div>
+
+<section>
+  <h2><span class="n">01</span>Account headlines</h2>
+
+  <div class="strip">
+    <div class="tile">
+      <p class="k">{{Metric}}</p>
+      <p class="v">{{Level}}</p>
+      <p class="d down">{{signed delta}} MoM ({{pct}})</p>
+      <p class="d up">{{signed delta}} YoY ({{pct}})</p>
+    </div>
+    <!-- five or so more tiles; pick what matters to this client. Each delta line takes
+         its OWN class (.up .down .flat .caution): a favourable MoM and an unfavourable
+         YoY on one tile are two colours, never one class for the line. -->
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <caption><b>{{Account, matched windows.}}</b> {{Anything a reader needs before the first number.}}</caption>
+      <thead>
+        <tr><th>Metric</th><th>{{Current}}</th><th>{{Prior month}}</th><th>MoM</th><th>{{Prior year}}</th><th>YoY</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>Ordered product sales</th><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td>{{}}</td><td class="up">{{}}</td></tr>
+        <tr><th>Units</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sessions</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Units per session</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Average selling price</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Ad spend, raw</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Ad spend, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="flat">n/a</td><td class="flat">n/a</td></tr>
+        <tr><th>Total ACOS</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>TACOS, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+      </tbody>
+    </table>
+  </div>
 
-<style>
-:root{
-  --ground:#F6F7F9;
-  --surface:#FFFFFF;
-  --surface-sunk:#EDF0F4;
-  --ink:#151A21;
-  --ink-soft:#3F4854;
-  --ink-mute:#6A7481;
-  --rule:#D8DEE6;
-  --rule-soft:#E6EAF0;
-  --accent:#1F5C7A;
-  --accent-soft:#E4EEF3;
-  --good:#2E7D5B;
-  --good-soft:#E3F0E9;
-  --warn:#B4571C;
-  --warn-soft:#F8EBE0;
-  --crit:#96272B;
-  --crit-soft:#F7E5E5;
-  --shadow:0 1px 2px rgba(21,26,33,.05),0 8px 24px -16px rgba(21,26,33,.18);
-}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --ground:#10151C;
-    --surface:#171E27;
-    --surface-sunk:#1E262F;
-    --ink:#E9EEF4;
-    --ink-soft:#BAC5D2;
-    --ink-mute:#8B98A7;
-    --rule:#2A3441;
-    --rule-soft:#222B36;
-    --accent:#6FB2D2;
-    --accent-soft:#1B2C36;
-    --good:#6DC49B;
-    --good-soft:#17281F;
-    --warn:#E08B4C;
-    --warn-soft:#2C1F14;
-    --crit:#E0797D;
-    --crit-soft:#2C1718;
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
-  }
-}
-:root[data-theme="dark"]{
-  --ground:#10151C;
-  --surface:#171E27;
-  --surface-sunk:#1E262F;
-  --ink:#E9EEF4;
-  --ink-soft:#BAC5D2;
-  --ink-mute:#8B98A7;
-  --rule:#2A3441;
-  --rule-soft:#222B36;
-  --accent:#6FB2D2;
-  --accent-soft:#1B2C36;
-  --good:#6DC49B;
-  --good-soft:#17281F;
-  --warn:#E08B4C;
-  --warn-soft:#2C1F14;
-  --crit:#E0797D;
-  --crit-soft:#2C1718;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -16px rgba(0,0,0,.6);
-}
-
-*{box-sizing:border-box;}
-body{
-  background:var(--ground);
-  color:var(--ink);
-  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  font-size:16px;
-  line-height:1.6;
-  margin:0;
-  padding:0 20px 96px;
-  -webkit-font-smoothing:antialiased;
-}
-.wrap{max-width:940px;margin:0 auto;}
-.prose{max-width:66ch;}
-
-/* masthead */
-header.top{
-  padding:52px 0 30px;
-  border-bottom:2px solid var(--ink);
-  display:flex;
-  flex-wrap:wrap;
-  gap:24px 40px;
-  align-items:flex-end;
-  justify-content:space-between;
-}
-.eyebrow{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.7rem;
-  font-weight:500;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-  color:var(--accent);
-  margin:0 0 10px;
-}
-h1{
-  font-family:"IBM Plex Serif",Georgia,serif;
-  font-weight:600;
-  font-size:clamp(2rem,4.4vw,2.85rem);
-  line-height:1.1;
-  letter-spacing:-.015em;
-  margin:0;
-  text-wrap:balance;
-}
-.standfirst{
-  font-family:"IBM Plex Serif",Georgia,serif;
-  font-size:1.05rem;
-  color:var(--ink-soft);
-  margin:14px 0 0;
-  max-width:52ch;
-}
-.stamp{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.72rem;
-  line-height:1.85;
-  color:var(--ink-mute);
-  text-align:right;
-  white-space:nowrap;
-}
-.stamp b{color:var(--ink-soft);font-weight:500;}
-
-/* scope bar */
-.scope{
-  margin-top:22px;
-  padding:16px 18px;
-  background:var(--surface-sunk);
-  border-left:3px solid var(--accent);
-  font-size:.875rem;
-  color:var(--ink-soft);
-}
-.scope p{margin:0;}
-.scope p+p{margin-top:8px;}
-
-/* sections */
-section{margin-top:52px;}
-h2{
-  font-family:"IBM Plex Serif",Georgia,serif;
-  font-size:1.5rem;
-  font-weight:600;
-  letter-spacing:-.01em;
-  margin:0 0 6px;
-  padding-bottom:10px;
-  border-bottom:1px solid var(--rule);
-  text-wrap:balance;
-}
-h2 .n{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.78rem;
-  font-weight:500;
-  color:var(--accent);
-  vertical-align:.35em;
-  margin-right:12px;
-}
-h3{
-  font-size:1rem;
-  font-weight:600;
-  margin:30px 0 8px;
-  letter-spacing:-.005em;
-}
-p{margin:0 0 14px;}
-.lede{font-size:1.06rem;color:var(--ink);}
-
-/* bottom line */
-.bottomline{
-  background:var(--surface);
-  border:1px solid var(--rule);
-  border-top:3px solid var(--accent);
-  box-shadow:var(--shadow);
-  padding:26px 28px;
-  margin-top:34px;
-}
-.bottomline p{margin:0 0 12px;font-size:1.06rem;}
-.bottomline p:last-child{margin-bottom:0;}
-.bottomline strong{font-weight:600;}
-
-/* things to check */
-.checkblock{
-  margin-top:22px;
-  background:var(--surface);
-  border:1px solid var(--rule);
-  padding:22px 26px 24px;
-}
-h2.checkhead{
-  font-size:1.2rem;
-  margin:0 0 4px;
-  padding-bottom:12px;
-}
-ul.checks{
-  list-style:none;padding:0;margin:0;
-  display:flex;flex-direction:column;
-}
-ul.checks li{
-  display:grid;
-  grid-template-columns:96px 1fr;
-  gap:16px;
-  padding:15px 0;
-  border-bottom:1px solid var(--rule-soft);
-  align-items:start;
-}
-ul.checks li:last-child{border-bottom:none;padding-bottom:0;}
-ul.checks p{margin:0;font-size:.93rem;color:var(--ink-soft);}
-ul.checks b{color:var(--ink);font-weight:600;}
-.cstate{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
-  font-weight:600;padding:4px 0 0;display:block;
-}
-.cstate.crit{color:var(--crit);}
-.cstate.warn{color:var(--warn);}
-.cstate.neutral{color:var(--ink-mute);}
-.owner{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.7rem;color:var(--accent);font-weight:500;
-  display:block;margin-top:6px;letter-spacing:.03em;
-}
-@media (max-width:560px){
-  ul.checks li{grid-template-columns:1fr;gap:6px;}
-  .cstate{padding-top:0;}
-}
-
-/* metric strip */
-.strip{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:1px;
-  background:var(--rule);
-  border:1px solid var(--rule);
-  margin-top:26px;
-}
-.tile{background:var(--surface);padding:16px 18px 18px;}
-.tile .k{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-mute);margin:0 0 8px;
-}
-.tile .v{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:1.34rem;font-weight:600;letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums;margin:0;line-height:1.15;
-}
-.tile .d{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.74rem;margin:6px 0 0;font-variant-numeric:tabular-nums;
-}
-.up{color:var(--good);}
-.down{color:var(--crit);}
-.flat{color:var(--ink-mute);}
-.caution{color:var(--warn);}
-
-/* charts */
-.chartfig{margin:26px 0 0;padding:18px 18px 12px;background:var(--surface);border:1px solid var(--rule);}
-.chartfig svg{display:block;width:100%;height:auto;}
-.chartfig text{font-family:"IBM Plex Mono",ui-monospace,monospace;fill:var(--ink-mute);}
-.chartfig .cv{fill:var(--ink);font-weight:600;}
-.chartfig figcaption{font-size:.82rem;color:var(--ink-soft);margin-top:10px;}
-.chartfig figcaption b{color:var(--ink);}
-
-/* tables */
-.tscroll{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);background:var(--surface);}
-table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:600px;}
-caption{
-  caption-side:top;text-align:left;padding:14px 16px 12px;
-  font-size:.82rem;color:var(--ink-soft);border-bottom:1px solid var(--rule-soft);
-}
-caption b{color:var(--ink);font-weight:600;}
-th,td{padding:9px 16px;text-align:right;border-bottom:1px solid var(--rule-soft);}
-th:first-child,td:first-child{text-align:left;}
-thead th{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.68rem;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--ink-mute);font-weight:500;background:var(--surface-sunk);
-  border-bottom:1px solid var(--rule);
-}
-tbody td:not(:first-child){
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;
-}
-tbody tr:last-child td{border-bottom:none;}
-tbody th{font-weight:500;font-size:.86rem;}
-tr.rule-top td,tr.rule-top th{border-top:1px solid var(--rule);}
-
-/* severity cards */
-.mech{display:flex;flex-direction:column;gap:16px;margin-top:26px;}
-.card{
-  background:var(--surface);
-  border:1px solid var(--rule);
-  border-left:4px solid var(--ink-mute);
-  padding:18px 20px;
-}
-.card.crit{border-left-color:var(--crit);}
-.card.warn{border-left-color:var(--warn);}
-.card.good{border-left-color:var(--good);}
-.card h4{
-  font-size:.95rem;font-weight:600;margin:0 0 6px;
-  display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;
-}
-.card p{margin:0;font-size:.92rem;color:var(--ink-soft);}
-.card p+p{margin-top:9px;}
-.chip{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
-  padding:3px 8px;border-radius:2px;font-weight:600;white-space:nowrap;
-}
-.chip.crit{background:var(--crit-soft);color:var(--crit);}
-.chip.warn{background:var(--warn-soft);color:var(--warn);}
-.chip.good{background:var(--good-soft);color:var(--good);}
-.chip.neutral{background:var(--surface-sunk);color:var(--ink-mute);}
-
-/* talking points */
-ol.points{
-  list-style:none;counter-reset:pt;padding:0;margin:26px 0 0;
-  display:flex;flex-direction:column;gap:18px;
-}
-ol.points li{counter-increment:pt;padding-left:44px;position:relative;}
-ol.points li::before{
-  content:counter(pt);
-  position:absolute;left:0;top:1px;
-  width:28px;height:28px;border-radius:50%;
-  background:var(--accent-soft);color:var(--accent);
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.78rem;font-weight:600;
-  display:flex;align-items:center;justify-content:center;
-}
-ol.points b{font-weight:600;}
-ol.points .say{
-  display:block;margin-top:7px;font-family:"IBM Plex Serif",Georgia,serif;
-  font-size:.95rem;color:var(--ink-soft);border-left:2px solid var(--rule);
-  padding-left:14px;
-}
-ul.plain{padding-left:20px;margin:14px 0 0;}
-ul.plain li{margin-bottom:10px;}
-ul.plain li:last-child{margin-bottom:0;}
-
-/* notes */
-.notes{
-  margin-top:26px;padding:22px 24px;
-  background:var(--surface-sunk);border:1px solid var(--rule-soft);
-  font-size:.86rem;color:var(--ink-soft);
-}
-.notes h3{margin-top:0;color:var(--ink);font-size:.95rem;}
-.notes ul{padding-left:20px;margin:0;}
-.notes li{margin-bottom:9px;}
-.notes li:last-child{margin-bottom:0;}
-.notes code{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.85em;background:var(--surface);padding:1px 5px;
-  border:1px solid var(--rule-soft);
-}
-
-footer{
-  margin-top:60px;padding-top:22px;border-top:1px solid var(--rule);
-  font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:.72rem;color:var(--ink-mute);line-height:1.8;
-}
-
-@media (max-width:640px){
-  header.top{padding-top:36px;}
-  .stamp{text-align:left;}
-  .ask{grid-template-columns:1fr;gap:6px;}
-}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
-</style>
-<!--
-  MixShift call brief template. Replace all {{...}} placeholders and the example content.
-
-  THE REGISTER RULE, before anything else: the client brief is the account manager
-  presenting to the client's executive team. Every sentence must survive being read
-  aloud in that meeting. The findings stay; the apparatus moves to the internal
-  companion. Never in the client document: tooling nouns (engine, envelope, battery,
-  warehouse table names, SQL, SellerID), process narration ("cross-checked against",
-  "verified on settled windows", "the engine attributes", "our read matches"), basis
-  and threshold talk, or a scope/method section. The client doc asserts; the internal
-  companion (scope block + i06 method notes + i05 claims register) audits.
-
-  This one file carries BOTH documents. Sections 01 to 05 plus method are the CLIENT brief.
-  Everything after the "INTERNAL COMPANION ONLY" marker belongs in a second artifact at its own
-  URL: talking points, numbers to keep off the call, owner-attributed open items, next lever.
-  Split them into two files before publishing. Never leave an internal section in the client doc.
-
-  No owner names anywhere in the client brief, including Things to check.
-  Keep the token block, the two-theme structure, the IBM Plex pairing and the component classes.
-
-  Component classes available:
-    .scope                     scope bar, before the first number
-    .bottomline                conclusion block
-    .checkblock / ul.checks    Things to check; .cstate crit|warn|neutral, .owner
-    .strip / .tile             metric tiles; .up .down .flat .caution for deltas
-    .tscroll > table           any table, scrolls inside its own container
-    .mech / .card crit|warn|good   severity cards; .chip crit|warn|good|neutral
-    ol.points + span.say       numbered talking points with suggested spoken lines
-    .notes                     method and caveats
-    .prose                     constrains a paragraph to a readable measure
-
-  Delta colours are semantic, not decorative:
-    .up      good direction
-    .down    bad direction
-    .caution worth watching
-    .flat    neutral or immaterial
-  A falling ACOS is .up. A falling sales figure is .down. Direction of the metric, not the sign.
-
-  No em dashes and no en dashes, as characters or as HTML entities. Use "to" for ranges and "n/a" for
-  a comparison that does not exist.
--->
-
-<div class="wrap">
-
-<header class="top">
-  <div>
-    <p class="eyebrow">{{Client name}} &middot; {{Cadence}} call prep</p>
-    <h1>{{The month's conclusion, not its topic}}</h1>
-    <p class="standfirst">{{One line on what this brief contains.}}</p>
-  </div>
-  <div class="stamp">
-    <b>Call</b> {{day, date, time}}<br>
-    <b>Attendees</b> {{names}}<br>
-    <b>Window</b> {{current window, closed|MTD}}<br>
-    <b>Prepared</b> {{date}}<br>
-    <b>Prior monthly</b> {{date}}
-  </div>
-</header>
-
-<!-- No scope bar here: the masthead stamp carries account + window for the client;
-     the full technical scope block lives in the internal companion. -->
-<div class="bottomline">
-  <p><strong>{{The conclusion as one full bold clause, verb included; a bare label like "Bottom line." is a fragment and fails the lint.}}</strong> {{Then the mechanism. Then the counterweight.}}</p>
-</div>
-
-<section>
-  <h2><span class="n">01</span>Account headlines</h2>
-
-  <div class="strip">
-    <div class="tile">
-      <p class="k">{{Metric}}</p>
-      <p class="v">{{Level}}</p>
-      <p class="d down">{{signed delta}} MoM ({{pct}})</p>
-    </div>
-    <!-- five or so more tiles; pick what matters to this client -->
-  </div>
-
+  <!-- The campaign-type table is EIGHT columns: the type, then value and change for
+       three figures (spend, ad sales, ACOS), then CPC. A 10-column variant overflowed
+       the container; the lint counts the header cells. Renders only when the account
+       ran ads in the window. -->
   <div class="tscroll">
     <table>
-      <caption><b>{{Account, matched windows.}}</b> {{Anything a reader needs before the first number.}}</caption>
+      <caption>{{By campaign type, matched windows}}</caption>
       <thead>
-        <tr><th>Metric</th><th>{{Current}}</th><th>{{Prior month}}</th><th>MoM</th><th>{{Prior year}}</th><th>YoY</th></tr>
+        <tr><th>Campaign type</th><th>{{Spend}}</th><th>MoM</th><th>{{Ad sales}}</th><th>MoM</th><th>ACOS</th><th>MoM</th><th>CPC</th></tr>
       </thead>
       <tbody>
-        <tr><th>Ordered product sales</th><td>{{}}</td><td>{{}}</td><td class="down">{{}}</td><td>{{}}</td><td class="up">{{}}</td></tr>
-        <tr><th>Units</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr><th>Sessions</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr><th>Units per session</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr><th>Average selling price</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr class="rule-top"><th>Ad spend, raw</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr><th>Ad spend, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td class="flat">n/a</td><td class="flat">n/a</td></tr>
-        <tr><th>Total ACOS</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
-        <tr><th>TACOS, normalized</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sponsored Products</th><td>{{}}</td><td class="down">{{}}</td><td>{{}}</td><td class="up">{{}}</td><td>{{}}</td><td class="up">{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sponsored Brands</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr><th>Sponsored Display</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
+        <tr class="rule-top"><th>Total</th><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td><td>{{}}</td></tr>
       </tbody>
     </table>
   </div>
+
 
   <figure class="chartfig">
     <!-- CHARTS are baked-static inline SVG composed at WRITE TIME from battery data:

@@ -44327,7 +44327,7 @@ function normalizeLegacyTacosFields(raw) {
   delete normalizedMgmt.tacos_target_pct;
   return { ...obj, management: normalizedMgmt };
 }
-var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
+var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
 var init_schema2 = __esm({
   "src/lib/context/schema.ts"() {
     "use strict";
@@ -44396,6 +44396,10 @@ var init_schema2 = __esm({
     });
     RESERVED_EVENT_KINDS = ["content_change", "ads_change", "corroboration"];
     structuralEventTypeSchema = external_exports.string().regex(/^[a-z][a-z0-9_]*$/, "type must be a lowercase snake_case slug").max(64);
+    eventDateSchema = external_exports.string().regex(
+      /^\d{4}-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?$/,
+      "expected a date (2026-08-03), a month (2026-08), or an ISO timestamp (2026-08-03T14:00:00Z)"
+    );
     structuralEventSchema = external_exports.object({
       id: external_exports.string().min(1),
       type: structuralEventTypeSchema,
@@ -44415,9 +44419,12 @@ var init_schema2 = __esm({
       ).max(16).optional(),
       affects: external_exports.array(external_exports.unknown()).default([]),
       interpretation: external_exports.string().min(1),
-      start: external_exports.string().optional(),
-      end: external_exports.string().optional(),
-      active_through: external_exports.string().optional()
+      // A date (YYYY-MM-DD), a month (YYYY-MM, pinned to its first / last day
+      // when synced), or an ISO timestamp. Anything else fails here, at write
+      // time, instead of on every timeline sync with no reason shown.
+      start: eventDateSchema.optional(),
+      end: eventDateSchema.optional(),
+      active_through: eventDateSchema.optional()
     }).refine((e) => e.type !== "other" || e.kind !== void 0 && e.kind.length > 0, {
       message: "a structural event of type 'other' requires a kind (what the event is, as a lowercase snake_case slug)",
       path: ["kind"]
@@ -67800,12 +67807,23 @@ function stakeIdempotencyKey(brandSlug, eventId) {
 function hashStructuralEvents(events) {
   return createHash2("sha256").update(JSON.stringify(events), "utf8").digest("hex");
 }
+function isMonthPrecision(value) {
+  return MONTH_RE.test(value);
+}
+function lastDayOfMonth(y, m) {
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
 function normalizeStartTs(value) {
+  const month = MONTH_RE.exec(value);
+  if (month) return `${value}-01T00:00:00Z`;
   if (DATE_ONLY_RE.test(value)) return `${value}T00:00:00Z`;
   if (ZONELESS_RE.test(value)) return `${value}Z`;
   return value;
 }
 function normalizeEndTs(value) {
+  const month = MONTH_RE.exec(value);
+  if (month) return `${lastDayOfMonth(Number(month[1]), Number(month[2]))}T23:59:59Z`;
   if (DATE_ONLY_RE.test(value)) return `${value}T23:59:59Z`;
   if (ZONELESS_RE.test(value)) return `${value}Z`;
   return value;
@@ -67856,6 +67874,9 @@ function mapEventToStake(brandSlug, event) {
     evidence: {
       recorded_from: "context.yaml",
       event_date_known: dateKnown,
+      // A month-precision start is pinned to the first of the month above;
+      // say so, so a reader never takes the 1st as the day it happened.
+      ...dateKnown && isMonthPrecision(event.start) ? { date_precision: "month" } : {},
       ...category === "other" && event.type !== "other" ? { local_type: event.type } : {}
     },
     idempotency_key: stakeIdempotencyKey(brandSlug, event.id)
@@ -68059,7 +68080,7 @@ function debugLogLeg(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
 `);
 }
-var STAKE_POST_TIMEOUT_MS, MAX_INTERPRETATION_CHARS, MAX_AFFECTS, MAX_AFFECT_CHARS, PERMANENT_FAILURE_KINDS, DATE_ONLY_RE, ZONELESS_RE, STAKE_LEG_BUDGET_MS;
+var STAKE_POST_TIMEOUT_MS, MAX_INTERPRETATION_CHARS, MAX_AFFECTS, MAX_AFFECT_CHARS, PERMANENT_FAILURE_KINDS, DATE_ONLY_RE, MONTH_RE, ZONELESS_RE, STAKE_LEG_BUDGET_MS;
 var init_stake_sync = __esm({
   "src/lib/timeline/stake-sync.ts"() {
     "use strict";
@@ -68078,6 +68099,7 @@ var init_stake_sync = __esm({
       "too_large"
     ];
     DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    MONTH_RE = /^(\d{4})-(\d{2})$/;
     ZONELESS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
     STAKE_LEG_BUDGET_MS = 2e3;
   }
@@ -94290,10 +94312,16 @@ function batterySummary(out, doc, requested = []) {
       lines.push(`SECTION FAILED (brief runs without it, label the gap): ${a.seller_id}/${name}: ${String(why).slice(0, 140)}`);
     }
     const dark = a.document.dark_days ?? {};
+    const dayCount = dayCountOf(a);
     for (const [k, v] of Object.entries(dark)) {
-      if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(", ")} (normalize by ${v.normalization_factor ?? "n/a"})`);
+      if (!v || !Array.isArray(v.zero_spend_days) || v.zero_spend_days.length === 0) continue;
+      const days = v.zero_spend_days;
+      if (dayCount !== null && days.length >= dayCount) {
+        lines.push(`no ad spend in ${a.seller_id}/${k}: every day of the window is dark, so nothing to normalize; the brief treats this account as not advertising in the window`);
+        continue;
       }
+      const shown = days.length > 8 ? `${days.slice(0, 8).join(", ")} and ${days.length - 8} more` : days.join(", ");
+      lines.push(`dark ad days in ${a.seller_id}/${k}: ${shown} (normalize by ${v.normalization_factor ?? "n/a"})`);
     }
   }
   const brandFailed = doc.sections_failed ?? {};
@@ -95984,6 +96012,11 @@ function stakeLines(runs) {
     if (result.duplicates > 0) bits.push(`${result.duplicates} already on the timeline`);
     if (result.failed > 0) bits.push(`${result.failed} FAILED`);
     lines.push(`${brand.padEnd(20)}  structural events  ${bits.join(", ")}`);
+    for (const r of result.reports) {
+      if (r.outcome !== "failed") continue;
+      const why = (r.detail ?? "no detail from the server").replace(/\s+/g, " ").slice(0, 220);
+      lines.push(`${"".padEnd(20)}    FAILED ${r.id}: ${why}${r.permanent ? " (fix context.yaml; will not retry)" : ""}`);
+    }
   }
   return lines;
 }

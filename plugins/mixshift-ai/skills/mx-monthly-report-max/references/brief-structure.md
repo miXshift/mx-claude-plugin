@@ -95,6 +95,11 @@ The counterweight is the part people skip and it is what makes the brief trustwo
 fell but the catalog is wider than ever and new items offset half the loss, that belongs in the
 bottom line, not buried in section six.
 
+**The full document's bottom line is never thinner than the executive read's.** When a one-pager
+or executive summary exists for the same run, its read is a subset of this paragraph, not a
+different one; the lint compares the two (`--exec <one-pager html>`). This slipped two months
+running before it was caught.
+
 ## Things to check
 
 The triage list. It sits after the analysis so it reads as conclusions rather than assignments.
@@ -124,8 +129,9 @@ stops being triage.
 
 A tile strip of six or so figures for the glance, then the full table.
 
-Tiles carry the level and the labelled delta, colour-coded by direction with the semantic colours
-(not the accent). Pick the six that would matter to this client: usually retail sales, sessions,
+Tiles carry the level and the labelled deltas, colour-coded by direction with the semantic colours
+(not the accent). **Each delta is coloured on its own merit**: a favourable MoM and an unfavourable
+YoY on one tile are two lines with two classes, never one class for the tile. Pick the six that would matter to this client: usually retail sales, sessions,
 ACOS, TACOS, one catalog or availability measure, and one quality measure like Buy Box. When the
 account's data does not serve a metric (VC has no sessions or Buy Box; a young account has no
 MoM), drop the tile rather than substituting a lookalike. That rule holds for whole sections
@@ -136,6 +142,10 @@ The table gives current, prior month, MoM, prior year, YoY for every metric. Whe
 been normalized, show raw and normalized as separate rows rather than picking one, so the
 correction is visible instead of asserted. Use `n/a` where a comparison does not exist; do not
 reach for a dash.
+
+The campaign-type table, when the account ran ads, is eight columns: the type, then value and
+change for spend, ad sales and ACOS, then CPC. A ten-column variant overflowed the container; the
+lint counts the header cells.
 
 Follow the table with a short prose note on trajectory: what the daily series is doing, the exit
 rate against the opening rate, and the run-rate close. Say plainly that the run-rate close is
@@ -288,9 +298,13 @@ every other causal claim in the brief be taken at face value.
 
 ## Open commitments
 
-**Internal companion only.** The action items from the prior call as a table: item, owner, and
-what the data says. Three verdicts, chipped: landed, not landed, not checkable. Include
-MixShift's own items, and check the daily series before writing "not landed" about any of them.
+**Internal companion only, and REQUIRED whenever a prior run exists.** The action items from the
+prior call as a table: item, owner, and what the data says. Three verdicts, chipped: landed, not
+landed, not checkable. Include MixShift's own items, and check the daily series before writing
+"not landed" about any of them. The prior brief's CLAIMS are graded here too, not only its action
+items: "traffic is the only lever" is a claim the next month can score, and scoring it produced
+the most valuable sentence of one run (the visitors came back, +40.5%, and converted at 1.8%).
+The lint refuses an internal companion without this section unless `--first-run` is passed.
 
 ## The review packet is plain language; i05 is the audit trail
 

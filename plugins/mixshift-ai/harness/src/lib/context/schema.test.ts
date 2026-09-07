@@ -327,6 +327,21 @@ function contextWithEvent(event: Record<string, unknown>): Record<string, unknow
   };
 }
 
+describe('structural_events — dates are validated at write time', () => {
+  it('accepts a date, a month, or an ISO timestamp, and names the field on anything else', () => {
+    const base = { id: 'ev', type: 'pricing', interpretation: 'x' };
+    for (const start of ['2026-08-03', '2026-08', '2026-08-03T14:00:00Z', '2026-08-03T14:00:00+02:00', '2026-08-03T14:00']) {
+      const r = contextSchema.safeParse(baseContext({ structural_events: [{ ...base, start }] }));
+      expect(r.success, start).toBe(true);
+    }
+    for (const start of ['August 2026', '2026/08/03', '26-08-03', '2026-8-3']) {
+      const r = contextSchema.safeParse(baseContext({ structural_events: [{ ...base, start }] }));
+      expect(r.success, start).toBe(false);
+      if (!r.success) expect(JSON.stringify(r.error.issues)).toMatch(/structural_events.*start.*expected a date/);
+    }
+  });
+});
+
 describe('structural_events — #37499 taxonomy flexibility', () => {
   it.each(['off_amazon_media', 'assortment_change'])(
     'accepts the new type %s without a kind',

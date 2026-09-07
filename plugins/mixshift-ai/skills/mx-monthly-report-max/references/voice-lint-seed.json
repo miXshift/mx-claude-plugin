@@ -1,0 +1,12 @@
+{
+  "_about": "Seed for reporting.voice_lint (standing cut/use rulings from the September 2026 review round). Copy the brand's own reporting.voice_lint from context.yaml into this shape (a list of banned phrases, or {banned: [], cut: [{cut, use}]}) and pass it to prose-lint.py --voice-lint. A phrase under `cut` is a finding wherever it appears; `use` is the replacement the finding suggests.",
+  "cut": [
+    { "cut": "did all of it and then some", "use": "was the sole driver of revenue growth" },
+    { "cut": "did more with less", "use": "ad sales increased on falling spend" },
+    { "cut": "bought the month", "use": "drove the month" },
+    { "cut": "fell for the right reason", "use": "fell on higher demand, not lower stock" },
+    { "cut": "the line to hold", "use": "name the measure and the threshold" },
+    { "cut": "is the test", "use": "name the measure and the threshold" }
+  ],
+  "banned": []
+}

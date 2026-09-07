@@ -37,6 +37,19 @@ starts at 0.5.39; earlier versions predate the changelog.
   unattended runs). The annotated query reference that shipped with the skill has
   moved alongside the battery; the skill keeps its six traps in plain language.
 
+- **Monthly Performance Report Max checks more of what used to slip past review.** The
+  figure battery now says whether added traffic converted and whether it was bought
+  (incremental conversion and the paid share of the visitor gain), serves daily ad spend by
+  campaign type so an open-window ACOS prints its settled projection the same way every
+  month, and tells a data-lag gap apart from a coverage gap. The prose lint flags a
+  superlative with no figure behind it, a percentage followed by "less" or "off", a points
+  value with no basis, an instruction addressed to nobody, a literal `%%`, a currency
+  figure missing its thousands separators, a title or footer carrying another
+  marketplace's label, and a bottom line thinner than the executive read; the brand's own
+  `reporting.voice_lint` phrases are now enforced by the same lint. Grading last month's
+  commitments is a required section after the first run. A structural event dated to a
+  month (`2026-04`) now syncs to the timeline as the first (or last) day of that month
+  instead of failing silently, and `context sync` names each failed event and the reason.
 - **Amazon failures now report what actually went wrong instead of "unknown".**
   When a call to Amazon failed, some failures arrived labelled `unknown` even
   though MixShift knew exactly what had happened: a retired report type, an

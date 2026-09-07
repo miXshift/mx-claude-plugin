@@ -493,6 +493,20 @@ describe('report battery: summary lines', () => {
     ]);
   });
 
+  it('reads a fully dark window as "no ad spend", and truncates a long dark-day list', () => {
+    const all = Array.from({ length: 31 }, (_, i) => `2026-08-${String(i + 1).padStart(2, '0')}`);
+    const noAds = batterySummary('f.json', {
+      accounts: [{ seller_id: 7, channel: 'SC', document: { windows: { day_count: 31 }, reconciliation: {}, sections_failed: {}, dark_days: { current: { zero_spend_days: all, normalization_factor: null } } } }],
+      rollup: {}, sections_failed: {},
+    });
+    expect(noAds[3]).toBe('no ad spend in 7/current: every day of the window is dark, so nothing to normalize; the brief treats this account as not advertising in the window');
+    const partial = batterySummary('f.json', {
+      accounts: [{ seller_id: 7, channel: 'SC', document: { windows: { day_count: 31 }, reconciliation: {}, sections_failed: {}, dark_days: { current: { zero_spend_days: all.slice(0, 10), normalization_factor: 1.48 } } } }],
+      rollup: {}, sections_failed: {},
+    });
+    expect(partial[3]).toBe(`dark ad days in 7/current: ${all.slice(0, 8).join(', ')} and 2 more (normalize by 1.48)`);
+  });
+
   it('truncates a long failed-section message at 140 characters', () => {
     const why = 'x'.repeat(200);
     const lines = batterySummary('f.json', { accounts: [{ seller_id: 7, channel: 'SC', document: { reconciliation: {}, sections_failed: { oos_days: why }, dark_days: {} } }], rollup: {}, sections_failed: {} });
