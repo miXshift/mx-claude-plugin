@@ -269,7 +269,7 @@ extraction carries the engine's own `evidence[]` statements; causal claims in th
 quote those as their mechanism rather than inventing one. Record `source.engineVersion`
 from the `mom.ops` document for the run record.
 
-**Read the run's context block before writing a word.** `mom.context` on the bundle carries
+**Read the run context before writing a word.** `mom.run_context` on the bundle carries
 what the figures alone do not: `session_footing` (which sessions basis the run footed on;
 the item roll-up and the account total differ materially on some accounts, and the
 conversion denominator changes with it), `promo_windows` and `comparison_promo_windows`
@@ -277,7 +277,11 @@ conversion denominator changes with it), `promo_windows` and `comparison_promo_w
 comparison period and not in this one is a headwind the one-sided read omits, and on one
 account those windows were the whole of the price leg), `comparability` (dark, surge and
 matched windows) and `restatement` (how far the same compare window moved since the prior
-run). Quote the session footing and the restatement in the method notes (i06) and in the
+run). It is what the engine DETECTED in the data, and it is kept apart from brand context,
+which is what the user DECLARED: the two are never merged at the source, and where they
+disagree (a promotion the brand declared that left no mark, a discount window the engine
+found that nobody declared) the disagreement is a finding, not something to reconcile
+away. Quote the session footing and the restatement in the method notes (i06) and in the
 run summary; promotion windows go into the exceptions block when they differ between the
 periods and into the mechanism read either way. The bundle's default grouping is the
 item group, so its `limitations` carry the grain line: a mix-versus-rate claim ("the
