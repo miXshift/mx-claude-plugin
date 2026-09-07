@@ -577,6 +577,6 @@ queries:
       OWN params (seller_id, as_of, brands[], min_item_sales, buybox_floor,
       buybox_drop) and returns rows: [document]; called by
       `mixshift report battery`, NOT by the prefetch runner (deliberately
-      absent from the skill manifest's sql_ids). The skill's
-      references/queries.md carries the by-hand forks (Vendor Central,
-      non-monthly cadence) the battery does not serve.
+      absent from the skill manifest's sql_ids). The by-hand forks
+      (Vendor Central, non-monthly cadence) are not served yet and are
+      not in this repo.
