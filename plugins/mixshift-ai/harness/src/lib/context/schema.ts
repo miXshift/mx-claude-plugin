@@ -144,6 +144,13 @@ const structuralEventTypeSchema = z
   .regex(/^[a-z][a-z0-9_]*$/, 'type must be a lowercase snake_case slug')
   .max(64);
 
+const eventDateSchema = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?$/,
+    'expected a date (2026-08-03), a month (2026-08), or an ISO timestamp (2026-08-03T14:00:00Z)',
+  );
+
 const structuralEventSchema = z
   .object({
     id: z.string().min(1),
@@ -174,9 +181,12 @@ const structuralEventSchema = z
       .optional(),
     affects: z.array(z.unknown()).default([]),
     interpretation: z.string().min(1),
-    start: z.string().optional(),
-    end: z.string().optional(),
-    active_through: z.string().optional(),
+    // A date (YYYY-MM-DD), a month (YYYY-MM, pinned to its first / last day
+    // when synced), or an ISO timestamp. Anything else fails here, at write
+    // time, instead of on every timeline sync with no reason shown.
+    start: eventDateSchema.optional(),
+    end: eventDateSchema.optional(),
+    active_through: eventDateSchema.optional(),
   })
   // `other` must not lose the specificity the fixed enum could not hold —
   // that is the whole point of the escape (#37499).

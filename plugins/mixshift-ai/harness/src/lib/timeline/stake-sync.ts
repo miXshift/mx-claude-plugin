@@ -139,6 +139,21 @@ export function hashStructuralEvents(events: readonly unknown[]): string {
 }
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A month-precision date (`2026-04`). The server timeline takes a full ISO
+ *  timestamp or a YYYY-MM-DD date and 400s anything else, so an event written
+ *  at month precision failed on every sync with no visible reason for months
+ *  (NZHC, 2026-09-06). Coerced here: a START month is its first day, an END
+ *  month is its last day, and the evidence marker records the precision. */
+const MONTH_RE = /^(\d{4})-(\d{2})$/;
+
+export function isMonthPrecision(value: string): boolean {
+  return MONTH_RE.test(value);
+}
+
+function lastDayOfMonth(y: number, m: number): string {
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
 /** A full ISO local time with NO zone designator. The server requires an
  *  offset (strictTsSchema uses .datetime({offset:true})), so a zone-less form
  *  written by hand would 400; treat it as UTC, matching the date-only rule. */
@@ -148,6 +163,8 @@ const ZONELESS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
  *  zone-less timestamp as UTC. Offset-carrying ISO forms pass through
  *  untouched; anything else is left for the server to judge. */
 export function normalizeStartTs(value: string): string {
+  const month = MONTH_RE.exec(value);
+  if (month) return `${value}-01T00:00:00Z`;
   if (DATE_ONLY_RE.test(value)) return `${value}T00:00:00Z`;
   if (ZONELESS_RE.test(value)) return `${value}Z`;
   return value;
@@ -157,6 +174,8 @@ export function normalizeStartTs(value: string): string {
  *  "through that day", and T00:00:00Z would exclude the whole final day from
  *  interval-overlap reads. Zone-less timestamps are stamped UTC as above. */
 export function normalizeEndTs(value: string): string {
+  const month = MONTH_RE.exec(value);
+  if (month) return `${lastDayOfMonth(Number(month[1]), Number(month[2]))}T23:59:59Z`;
   if (DATE_ONLY_RE.test(value)) return `${value}T23:59:59Z`;
   if (ZONELESS_RE.test(value)) return `${value}Z`;
   return value;
@@ -241,6 +260,9 @@ export function mapEventToStake(
     evidence: {
       recorded_from: 'context.yaml',
       event_date_known: dateKnown,
+      // A month-precision start is pinned to the first of the month above;
+      // say so, so a reader never takes the 1st as the day it happened.
+      ...(dateKnown && isMonthPrecision(event.start as string) ? { date_precision: 'month' } : {}),
       ...(category === 'other' && event.type !== 'other'
         ? { local_type: event.type }
         : {}),

@@ -714,6 +714,13 @@ function stakeLines(runs: Array<{ brand: string; result: StakeSyncResult }>): st
     if (result.duplicates > 0) bits.push(`${result.duplicates} already on the timeline`);
     if (result.failed > 0) bits.push(`${result.failed} FAILED`);
     lines.push(`${brand.padEnd(20)}  structural events  ${bits.join(', ')}`);
+    // A failure with no id and no reason was undiagnosable for months (the
+    // detail lived only under --json). Name each one on its own line.
+    for (const r of result.reports) {
+      if (r.outcome !== 'failed') continue;
+      const why = (r.detail ?? 'no detail from the server').replace(/\s+/g, ' ').slice(0, 220);
+      lines.push(`${''.padEnd(20)}    FAILED ${r.id}: ${why}${r.permanent ? ' (fix context.yaml; will not retry)' : ''}`);
+    }
   }
   return lines;
 }

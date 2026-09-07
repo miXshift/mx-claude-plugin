@@ -88,6 +88,27 @@ describe('mapEventToStake', () => {
     ).toBe('2026-02-15T23:59:59Z');
   });
 
+  it('a month-precision date lands as the first (start) or last (end) day of the month, and the evidence says so', () => {
+    // NZHC (2026-09-06): every event written as "2026-04" failed on every sync
+    // for months because the server takes a date or an ISO timestamp only.
+    expect(normalizeStartTs('2026-04')).toBe('2026-04-01T00:00:00Z');
+    expect(normalizeEndTs('2026-02')).toBe('2026-02-28T23:59:59Z');
+    expect(normalizeEndTs('2028-02')).toBe('2028-02-29T23:59:59Z');
+    const stake = mapEventToStake('acme', {
+      id: 'ev-1',
+      type: 'pricing',
+      affects: [],
+      interpretation: 'x',
+      start: '2026-04',
+      active_through: '2026-06',
+    } as never);
+    expect(stake.ts).toBe('2026-04-01T00:00:00Z');
+    expect(stake.end_ts).toBe('2026-06-30T23:59:59Z');
+    expect(stake.evidence).toMatchObject({ event_date_known: true, date_precision: 'month' });
+    // A full date carries no precision marker.
+    expect(mapEventToStake('acme', { id: 'ev-2', type: 'pricing', affects: [], interpretation: 'x', start: '2026-04-03' } as never).evidence).not.toHaveProperty('date_precision');
+  });
+
   it('full ISO timestamps pass through both normalizers untouched', () => {
     expect(normalizeStartTs('2026-01-01T09:30:00Z')).toBe('2026-01-01T09:30:00Z');
     expect(normalizeEndTs('2026-01-02T10:00:00+02:00')).toBe('2026-01-02T10:00:00+02:00');

@@ -1116,10 +1116,19 @@ export function batterySummary(out: string, doc: Record<string, unknown>, reques
       lines.push(`SECTION FAILED (brief runs without it, label the gap): ${a.seller_id}/${name}: ${String(why).slice(0, 140)}`);
     }
     const dark = (a.document.dark_days ?? {}) as Record<string, { zero_spend_days?: string[]; normalization_factor?: number | null }>;
+    const dayCount = dayCountOf(a);
     for (const [k, v] of Object.entries(dark)) {
-      if (v && Array.isArray(v.zero_spend_days) && v.zero_spend_days.length > 0) {
-        lines.push(`dark ad days in ${a.seller_id}/${k}: ${v.zero_spend_days.join(', ')} (normalize by ${v.normalization_factor ?? 'n/a'})`);
+      if (!v || !Array.isArray(v.zero_spend_days) || v.zero_spend_days.length === 0) continue;
+      const days = v.zero_spend_days;
+      // An account that ran no ads at all is not "31 dark days to normalize": it is an
+      // account without advertising in this window, and the brief reads it that way
+      // (no ad section, no normalization). Listing every date hid that.
+      if (dayCount !== null && days.length >= dayCount) {
+        lines.push(`no ad spend in ${a.seller_id}/${k}: every day of the window is dark, so nothing to normalize; the brief treats this account as not advertising in the window`);
+        continue;
       }
+      const shown = days.length > 8 ? `${days.slice(0, 8).join(', ')} and ${days.length - 8} more` : days.join(', ');
+      lines.push(`dark ad days in ${a.seller_id}/${k}: ${shown} (normalize by ${v.normalization_factor ?? 'n/a'})`);
     }
   }
   const brandFailed = (doc.sections_failed ?? {}) as Record<string, string>;
