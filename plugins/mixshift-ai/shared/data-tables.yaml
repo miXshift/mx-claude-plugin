@@ -219,6 +219,24 @@ tables:
       advertiserName, entityId. A brand that exists on the seat can still have 0 rows
       here if its DSP data is not ingested, which is not the same as the table being
       empty: check the table-wide count before concluding nothing is syncing.
+      UNALLOCATED CREATIVE ROWS ARE ADDITIVE, NOT DUPLICATES. Amazon emits an
+      "Unallocated" pseudo-creative alongside the real ones (creativeID -1 or -20,
+      creativeName and creativeSize both "Unallocated", creativeType an EMPTY STRING
+      and never NULL), one row per line item per day, carrying conversions DSP
+      attributes to the line item but cannot tie to a specific creative. These rows
+      always have zero cost, zero impressions and zero clicks. Most carry conversions
+      (sales14d, purchases14d, newToBrandPurchases14d) or dpv14d, but roughly one in
+      eight is an empty placeholder, so the row's presence is not itself the signal:
+      read the metrics. Amazon's own line-item totals
+      INCLUDE them: verified 2026-09-07 against the DSP reporting API, where the
+      creative-grain report reconciles to the line-item-grain report only when they
+      are counted. Four of the eight advertisers that had such rows carried 4 to 12
+      percent of their attributed sales on them (Jun to Sep 2026); the rest carried
+      effectively none, so treat the share as account-specific. So never discard them with
+      totalCost > 0, impressions > 0, or a creativeType predicate, and keep the blank
+      bucket when you GROUP BY creativeType or the split will not sum to the account
+      total. Note that creativeType IS NULL matches nothing, because the value is an
+      empty string.
     category: ad_metrics
     time_series: true
     requires_seller_id: false
