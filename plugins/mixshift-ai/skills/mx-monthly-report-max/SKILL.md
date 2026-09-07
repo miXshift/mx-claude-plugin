@@ -331,8 +331,8 @@ MixShift service as the named query `MPRX-FIGURES-BRAND-01`: the service reads e
 account's channel from its seller row and runs the Seller Central battery
 (`MPRX-FIGURES-01`) or the Vendor Central battery (`MPRX-FIGURES-VC-01`) for it, aligns
 every account to one day count, and rolls up within one marketplace currency. The skill
-runs the call; `references/queries.md` remains the annotated reference for what each
-statement does and why.
+runs the call. The annotated statement reference is maintained by MixShift beside the
+batteries, not in this skill.
 
 ```bash
 mixshift report battery --brand <slug> --as-of <data end> --out figures.json
@@ -386,8 +386,9 @@ names for ads, `CustomBrand` or `Brand` for retail), never the vendor codes: pas
 The call can run for a few minutes on a large brand (the service allows up to four), so
 give the shell at least five. It writes `figures.json` in the current directory by default.
 If the whole call fails with no document (the service not deployed yet, a timeout, a
-network drop), retry once, then with fewer accounts; if it fails again, run the sections
-from `references/queries.md` by hand and label the gap in the method notes. An account that
+network drop), retry once, then with fewer accounts; if it fails again, run the brief on
+what the battery serves, label the gap in the method notes, and report the failure through
+`mixshift feedback` so MixShift can look at the service side. An account that
 failed inside an otherwise good call is listed under `accounts[].failure` and in
 `sections_failed` as `account_<id>`; the brief runs on the accounts that served and names
 the gap.
@@ -422,7 +423,8 @@ battery already foots account traffic on `business_reports_dpst_date`; keep it t
 label any per-ASIN or per-group session figure as "sessions on selling days", and treat
 the ENGINE's traffic and conversion bridge legs as decomposition shape rather than
 quotable account rates until the engine foots them on the account table (routed).
-The per-account confirmation probe is in `references/queries.md`.
+Confirm it per account with one read-only count of zero-unit rows on the per-item table, and
+record the query in the run record.
 
 Flags worth knowing: `--brands "A,B"` names the sub-brand labels for both splits (without it the
 retail split still runs on the catalog labels and the paid split is skipped); the Seller Central
@@ -431,11 +433,11 @@ the thresholds (defaults per the knobs table; the JSON records what was applied 
 `thresholds_applied`, quote it in the method notes). A section that fails on the service
 is named under `sections_failed` in the JSON and echoed by the command; the brief runs on
 what landed and labels the gap. The battery resolves MONTHLY windows only: for a bi-weekly
-or QBR run, take the queries from `references/queries.md` and run them by hand with the
-cadence windows from the knobs table.
+or QBR run the battery does not serve the cadence windows yet: run the brief on the monthly
+battery, label the cadence gap, and request the cadence through `mixshift feedback`.
 
-Read `references/queries.md` when you need to go beyond the battery (a cadence other than
-monthly, a probe it does not carry) or when a section fails. The six traps the battery
+Any query you write to go beyond the battery (a probe it does not carry, a section that
+failed) is documented in the run record with its trap note. The six traps the battery
 encodes on both channels, so you can spot them anywhere else:
 
 1. **Align the window to the data, not the calendar.** Business reports load behind ad
@@ -515,7 +517,8 @@ different problems with different fixes. Then connect paid clicks to account ses
 matched days, which is the step that says whether an advertising decision caused a retail
 outcome. And before attributing a retail move to an advertising change, run the
 shared-inflection check: do both series break on the same date? Cheap, and it turns a
-correlation into something defensible (probe catalog has the query shape).
+correlation into something defensible (the shared-inflection probe, documented beside the
+battery; write it as a read-only query and record it in the run record).
 
 **Reconcile the institutional record against what the data found.** Walk the Step 1
 institutional items: every in-window structural event, declared stockout, lifecycle state
@@ -620,9 +623,9 @@ For each flagged item, four questions in order:
 **The probe rule, generalized.** Before ANY question ships in Things-to-check, ask: can a
 read-only call answer it right now? If yes and the probe budget allows (`max_live_probes`,
 default 5; disclose metered ones first), run it and promote the question to a finding with
-the probe as its provenance. The catalog of question-to-probe mappings lives in
-`references/queries.md` ("Probe catalog"); the featured-offer diagnosis above is the
-founding example: three Buy Box flags plus one live offers batch turned "why did Buy Box
+the probe as its provenance. MixShift maintains the catalog of question-to-probe mappings
+beside the battery; write each probe as a documented read-only query and record it in the run
+record. The featured-offer diagnosis above is the founding example: three Buy Box flags plus one live offers batch turned "why did Buy Box
 fall" into "a named second seller shares the box at price parity".
 
 ## Step 7: Pressure-test the numbers you plan to quote
@@ -1154,8 +1157,8 @@ written every run, consumed mechanically by the next one:
 
 The probe catalog is SELF-EXTENDING: any gate question answered by a novel query gets
 proposed as a probe-catalog row (question, probe, what it proves, column gotchas) in the
-run record's write-backs, and promotion to `references/queries.md` rides the normal
-repo path. The catalog grows from real reviews, never from speculation.
+run record's write-backs, and promotion into the service-side catalog rides the normal
+feedback path. The catalog grows from real reviews, never from speculation.
 
 **Proposals** (`.discoveries.json`), typed, promoted by humans via the review packet:
 

@@ -443,7 +443,7 @@ describe('report battery: failure mapping', () => {
     expect(err.errorClass).toBe('report_battery_timeout');
     expect(err.message).toContain('did not answer within 290s');
     expect(err.message).toContain('fewer accounts');
-    expect(err.message).toContain('references/queries.md');
+    expect(err.message).toContain('mixshift feedback');
     const fast = batteryFailure({ ok: false, kind: 'host_unreachable', message: 'ECONNREFUSED', friendly: 'Could not reach the host.', durationMs: 40 });
     expect(fast.errorClass).toBe('report_battery_host_unreachable');
   });

@@ -580,8 +580,9 @@ queries:
       calls MPRX-FIGURES-BRAND-01, which routes a Seller Central row here
       server-side); NOT called by the prefetch runner (deliberately absent
       from the skill manifest's sql_ids). Kept deployed, append-only, for
-      older plugin builds. The skill's references/queries.md carries the
-      by-hand forks (non-monthly cadence) the batteries do not serve.
+      older plugin builds. The annotated source of record for every
+      statement is maintained by MixShift beside the batteries; the by-hand
+      forks (non-monthly cadence) are not served yet and are not in this repo.
 
   - id: MPRX-FIGURES-VC-01
     dispatch: named

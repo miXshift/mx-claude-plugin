@@ -29,7 +29,7 @@ sql_ids: []
   # (Seller Central) or MPRX-FIGURES-VC-01 (Vendor Central) and rolls a brand up. It
   # takes its own params (seller ids, as-of, brands, thresholds), so it is NOT a
   # prefetch query and must not be listed here
-  # (references/queries.md is the annotated source of record for every query in it).
+  # (the annotated source of record is maintained by MixShift beside the batteries).
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type
