@@ -29,8 +29,8 @@ components:
       load, like-day-count comparison, dark-day normalization, settled-window efficiency
       verification, SKU-to-account reconciliation, and page-view-weighted Buy Box with a
       last-7-days column.
-    home: MixShift service named query MPRX-FIGURES-01, called by `mixshift report battery` (executable, server-side); the annotated source of record is maintained by MixShift beside the battery
-    depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-01), Seller Central tables; the Vendor Central fork is not served yet]
+    home: MixShift service named queries MPRX-FIGURES-BRAND-01 (brand, channel-routed) -> MPRX-FIGURES-01 (Seller Central) / MPRX-FIGURES-VC-01 (Vendor Central), called by `mixshift report battery` (executable, server-side); the annotated source of record is maintained by MixShift beside the batteries
+    depends_on: [mixshift report battery (gateway named query MPRX-FIGURES-BRAND-01), Seller Central or Vendor Central tables per account row, campaignmetric on both]
     how_to_lift: >
       Run the battery whole (`mixshift report battery`) and consume its JSON. The six traps
       above are the component; any query written beyond the battery carries its trap note in

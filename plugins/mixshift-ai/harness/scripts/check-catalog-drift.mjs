@@ -52,6 +52,7 @@ const NOT_OPERATIONS = new Map([
   ['reporting.max_live_probes', 'context.yaml config key read by mx-monthly-report-max'],
   ['reporting.review', 'context.yaml config key read by mx-monthly-report-max'],
   ['reporting.sections', 'context.yaml config key read by mx-monthly-report-max'],
+  ['reporting.vc_revenue_basis', 'context.yaml config key read by mx-monthly-report-max (Vendor Central ordered/shipped basis)'],
 ]);
 
 function resolveCatalogDir() {

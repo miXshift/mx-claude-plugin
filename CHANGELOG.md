@@ -9,6 +9,23 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
+- **Monthly Performance Report Max now runs on Vendor Central accounts, and on a
+  whole brand at once.** Until now the figure battery behind the brief only knew
+  Seller Central tables, so a vendor account came back empty and the report had to
+  be built by hand. `mixshift report battery` now takes one seller id or several
+  (repeat `--seller-id`, or `--brand <slug>` to take every account in brand context that
+  is not marked inactive, since a winding-down account still sold this month), works out
+  each account's channel from your MixShift account row, runs
+  the right battery for it (vendor sales, glance views, vendor inventory and
+  procurable out-of-stock for Vendor Central), lines every account up on the same
+  day count, and rolls up what can honestly be added (ordered revenue, units, ad
+  spend and sales) within one marketplace currency. Traffic and conversion stay per
+  channel because sessions and glance views are not the same thing, and a brand
+  that sells in two currencies gets two roll-ups rather than a made-up total. Ad
+  figures come from the daily campaign table on every channel. New flags for Vendor
+  Central: `--revenue-basis ordered|shipped`, `--oos-rate-threshold`, and `--attribution`
+  to choose the ad attribution columns.
+
 - **Monthly Performance Report Max pulls its warehouse figures through the
   MixShift service.** The figure battery behind the brief (data-aligned windows,
   dark-day normalization, the settled-window check, movers and reconciliation,
