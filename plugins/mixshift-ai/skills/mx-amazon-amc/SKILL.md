@@ -8,12 +8,17 @@ description: >
   discover the AMC instances an advertising login can reach, inspect the
   available data sources (tables), help author dialect-correct AMC SQL, submit
   a workflow execution, poll it to completion across turns, and fetch the
-  results. Read-only: running a query mutates nothing advertiser-facing and
+  results. Also the surface for the paid Amazon Retail Purchases dataset
+  (`amazon_retail_purchases`), which covers every Amazon store purchase whether
+  or not an ad was involved and across a far longer history than the
+  ad-attributed tables: use this skill for customer lifetime value, revenue and
+  repeat rate by ASIN, acquisition cohorts, and repeat-purchase analysis.
+  Read-only: running a query mutates nothing advertiser-facing and
   needs no write scope. Routes through the bundled harness CLI. Does not
   require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -27,6 +32,13 @@ trigger_phrases:
   - amc data sources
   - submit an amc workflow
   - amc sql
+  - pull retail purchases
+  - amazon retail purchases
+  - retail purchases data set
+  - customer lifetime value
+  - ltv by asin
+  - purchase cohorts
+  - repeat purchase analysis
 ---
 
 # Amazon Marketing Cloud (AMC) Ad-hoc Analytics
@@ -143,16 +155,18 @@ mixshift ads call <operation> [--legacy-seller-id <id> | --seller-id <id> --mark
 ```
 
 `ads operations --family AMC` prints each AMC operation id with its notes (body
-vs path conventions); read the notes before calling. The six AMC operations,
+vs path conventions); read the notes before calling. The eight AMC operations,
 used in the order below:
 
 | Operation | Purpose |
 |---|---|
 | `amc.list_accounts` | Entity accounts (ENTITY ids + names + marketplaceIds) this login can reach. No params, no entity header. |
 | `amc.list_instances` | Instances visible to one `(entityId, marketplaceId)` pair. |
-| `amc.list_data_sources` | Data sources (tables) in an instance. Schema discovery for query building. |
+| `amc.get_instance` | One instance, including `optionalDatasets`: which PAID datasets are active on it. |
+| `amc.list_data_sources` | Every data source (table) in an instance, with columns. Pages, and the response is large. |
+| `amc.get_data_source` | Full column schema for ONE named table. Prefer it when you know the table. |
 | `amc.create_workflow_execution` | Submit an ad-hoc AMC SQL workflow execution. |
-| `amc.get_workflow_execution` | Poll an execution (PENDING, RUNNING, SUCCEEDED, FAILED). |
+| `amc.get_workflow_execution` | Poll an execution (PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED, REJECTED). |
 | `amc.get_download_urls` | Presigned CSV download urls for a SUCCEEDED execution. |
 
 `--path` values for AMC are either sent as HTTP headers (entityId,
@@ -243,21 +257,68 @@ Rules for this step (query advertiser accounts):
 - The `alternateIds` carry Sponsored Ads `entityId`s. Feed each one back into
   `amc.list_instances` (step 2, sequentially) to surface its instances.
 
-### 4. List data sources for schema discovery
+### 4. Check paid datasets before promising them
 
-Once you have an `instanceId` and its `entityId`, inspect the tables before
-writing SQL:
+Some AMC tables are free with every instance and some require a paid
+subscription the advertiser has to hold. A query against an unsubscribed table
+fails at compile time with a message that does **not** mention the subscription,
+so it reads as a broken query and sends you off fixing SQL that was never wrong.
+Do this before schema discovery, not after.
 
 ```bash
-mixshift ads call amc.list_data_sources --legacy-seller-id <id> \
-  --path instanceId=<instanceId> \
-  --path entityId=<entityId> --json
+mixshift ads call amc.get_instance --legacy-seller-id <id>   --path instanceId=<instanceId>   --path entityId=<entityId>   --path marketplaceId=<the marketplace that found this instance> --json
 ```
 
-This is the schema-discovery call for query building: it lists the data sources
-(tables) available in that instance. Read it before authoring SQL so column and
-table names are real, not guessed.
+`instance.optionalDatasets` is an array of `{ label, activationTime }`. A `label`
+of `PURCHASE_RETAIL_PROGRAM` means `amazon_retail_purchases` is queryable here.
+Read `activationTime` too: it is roughly where that dataset's history starts, so
+it bounds what a multi-year claim can honestly say.
 
+A missing label is a reliable no. A present label is necessary but not proven
+sufficient, since the entry carries no expiry and a lapsed subscription may
+still list. If a query is rejected at compile time with the label present,
+suspect the subscription before rewriting the SQL.
+
+### 5. Find the schema before writing SQL
+
+Never author SQL from guessed table or column names. Which call you make
+depends on whether you already know the table.
+
+**When you know the table** (the common case), ask for just that one. It is a
+single small response instead of every table with all of its columns:
+
+```bash
+mixshift ads call amc.get_data_source --legacy-seller-id <id>   --path instanceId=<instanceId>   --path entityId=<entityId>   --path marketplaceId=<same marketplace>   --path dataSourceName=amazon_retail_purchases --json
+```
+
+**When you are exploring**, list everything, and page until the response carries
+no `nextToken`. `limit` caps at 100 and an instance can hold more tables than
+one page, so a single unpaged call can show you a truncated catalog:
+
+```bash
+mixshift ads call amc.list_data_sources --legacy-seller-id <id>   --path instanceId=<instanceId>   --path entityId=<entityId>   --path marketplaceId=<same marketplace> --json
+```
+
+**Pass the same `marketplaceId` that found the instance.** Without it the header
+falls back to the seller row's marketplace, and an instance under a different
+one returns 404.
+
+A 404, or a table absent from the list, is **inconclusive**: it can be a
+mistyped name, the wrong marketplace, the wrong entity, or a table this instance
+cannot see. It is not proof that a subscription is off. Only step 4 answers
+that.
+
+Both calls return each column's name, type, and description. Neither returns the
+**aggregation threshold**, which decides whether a column may appear in your
+output. That rule is in the next section.
+
+**For `amazon_retail_purchases` specifically** - the long-window dataset behind
+lifetime value, repeat purchase and cohort analysis - read
+`references/amazon-retail-purchases.md` before writing the query. It carries the
+full column list with the output floors the API does not return, six traps that
+silently produce wrong answers, the execution-window default that otherwise
+turns a five-year question into one day, and three query recipes (one verified
+live, two not).
 ## AMC SQL dialect rules (these bite, follow them)
 
 AMC SQL is not standard SQL. These rules come straight from the operation
@@ -276,6 +337,34 @@ when authoring or reviewing a query:
 - **No computed expressions inside `COLLECT`.** Pre-compute the value in a CTE,
   then `COLLECT` the already-computed column. Do not put arithmetic or function
   calls directly inside `COLLECT(...)`.
+
+### The clean-room output rule (a rejection that is not a SQL error)
+
+This one is not about the SQL at all, and it is the most common reason a query
+that reads perfectly well comes back rejected or empty.
+
+- **Shopper-level identifiers may never reach the final `SELECT`, the final
+  `GROUP BY`, or the final `ORDER BY`.** All three clauses count. `user_id`,
+  `purchase_id`, `event_id`, and the session id columns can be grouped, joined,
+  and counted **inside** common table expressions, but what you return has to be
+  an aggregate: `COUNT`, `COUNT(DISTINCT ...)`, `APPROX_COUNT_DISTINCT`, sums,
+  averages. Every worked example below follows that shape.
+- **Some columns are never returnable at all.** In `amazon_retail_purchases`
+  that is `marketplace_id`; use `marketplace_name`.
+- **A returnable column can still carry a floor.** Most dimensions need two
+  distinct shoppers per row, and some (a full timestamp, for instance) need a
+  hundred. Fine grouping therefore drops rows.
+- **An empty result may be redaction, not an absence of data.** Before telling a
+  user a segment had no sales, coarsen the grouping or widen the window and
+  re-run. Better, set `distinctUserCountColumn`,
+  `filteredMetricsDiscriminatorColumn` and `filteredReasonColumn` on the
+  execution body: they report what was filtered and why, instead of leaving you
+  to guess.
+- **A `REJECTED` status is this rule firing**, not a transient error. Do not
+  retry the same query unchanged.
+- **Validate cheaply.** Submitting with `dryRun` set compiles the query and
+  comes back in seconds rather than minutes. Use it on anything freshly
+  authored, before the real submit.
 
 ### Worked example (exercises the dialect rules)
 
@@ -309,7 +398,9 @@ Notes on the example:
 - If any parameter were an array, its declaration would also carry
   `elementDataType` and `elementNullable`.
 - Table and column names here (`dsp_impressions`, `user_id`, `impressions`) are
-  illustrative. Confirm the real ones with `amc.list_data_sources` first.
+  illustrative. Confirm the real ones with `amc.get_data_source` first.
+- `user_id` is grouped on inside the CTEs and never returned, per the clean-room
+  output rule above.
 
 ## Lifecycle: submit, poll across turns, fetch immediately
 
