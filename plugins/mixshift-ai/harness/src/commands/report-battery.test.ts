@@ -175,6 +175,13 @@ describe('report battery: flags -> battery params', () => {
     expect(defaults.as_of).toBe(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`);
   });
 
+  it('accepts every attribution basis the service knows and forwards it verbatim; absent, the service default applies', () => {
+    for (const basis of ['legacy_sales', 'all_14', 'sc_default']) {
+      expect(batteryParams({ ...flags, attribution: basis }, [7]).attribution).toBe(basis);
+    }
+    expect(batteryParams(flags, [7])).not.toHaveProperty('attribution');
+  });
+
   it('the revenue basis comes from the flag, else the brand context, else ordered', () => {
     expect(batteryParams(flags, [9], 'shipped').revenue_basis).toBe('shipped');
     expect(batteryParams({ ...flags, revenueBasis: 'ordered' }, [9], 'shipped').revenue_basis).toBe('ordered');

@@ -26,6 +26,19 @@ starts at 0.5.39; earlier versions predate the changelog.
   Central: `--revenue-basis ordered|shipped`, `--oos-rate-threshold`, and `--attribution`
   to choose the ad attribution columns.
 
+- **Monthly Performance Report Max ad sales and ad orders now match Report Center by
+  default, and every brief says which attribution basis it used.** The figure battery
+  behind the brief summed click-attributed sales (14 day on Vendor Central, 7 day for
+  Sponsored Products on Seller Central), which reads about 2% below the Ad Sales and Ad
+  Orders figures in Report Center on an account that runs view-based Sponsored Display, and
+  the brief did not say why. The battery now offers a `legacy_sales` basis that sums
+  Amazon's reported Sales and Orders per campaign, the same figures Report Center prints,
+  and uses it unless `mixshift report battery --attribution all_14` or `sc_default` asks for
+  the click-only reading. The figures document records the basis applied with a
+  plain-language sentence, and the brief quotes it once as a footnote under the first ad
+  figure and again in its method notes, so a reader comparing the two reports knows
+  whether they agree by construction or differ by view-attributed sales.
+
 - **Monthly Performance Report Max pulls its warehouse figures through the
   MixShift service.** The figure battery behind the brief (data-aligned windows,
   dark-day normalization, the settled-window check, movers and reconciliation,

@@ -93990,8 +93990,8 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     "--oos-rate-threshold <rate>",
     "Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)"
   ).option(
-    "--attribution <rule>",
-    "ads attribution columns on every channel: all_14 or sc_default (default: each channel's own rule; Vendor Central = 14 day for every type, Seller Central = Sponsored Products 7 day)"
+    "--attribution <basis>",
+    "ads attribution basis on every account: legacy_sales (Amazon's reported Sales and Orders per campaign, the figures Report Center prints; Sponsored Display includes view-attributed sales), all_14 (14 day click for every campaign type, Vendor Central rows only; a Seller Central row keeps its own rule), or sc_default (Sponsored Products 7 day, everything else 14 day click). Omit it to take the service default (legacy_sales); the document records the basis applied under thresholds_applied.attribution with its plain-language attribution_note"
   ).option("--out <path>", 'write the figures document here; "-" prints it to stdout instead', "figures.json").option("--timeout <seconds>", "per-statement query timeout on the service, seconds (max 120)", "60").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
@@ -94076,7 +94076,7 @@ var KNOWN_FAILURE_KINDS3 = /* @__PURE__ */ new Set([
   "unknown"
 ]);
 var REVENUE_BASES = ["ordered", "shipped"];
-var ATTRIBUTIONS = ["all_14", "sc_default"];
+var ATTRIBUTIONS = ["legacy_sales", "all_14", "sc_default"];
 function collectIds(value, prev) {
   return [...prev, ...value.split(",").map((s) => s.trim()).filter((s) => s.length > 0)];
 }

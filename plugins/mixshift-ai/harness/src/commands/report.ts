@@ -653,8 +653,8 @@ export function registerReportCommands(program: Command): void {
       'Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)',
     )
     .option(
-      '--attribution <rule>',
-      "ads attribution columns on every channel: all_14 or sc_default (default: each channel's own rule; Vendor Central = 14 day for every type, Seller Central = Sponsored Products 7 day)",
+      '--attribution <basis>',
+      "ads attribution basis on every account: legacy_sales (Amazon's reported Sales and Orders per campaign, the figures Report Center prints; Sponsored Display includes view-attributed sales), all_14 (14 day click for every campaign type, Vendor Central rows only; a Seller Central row keeps its own rule), or sc_default (Sponsored Products 7 day, everything else 14 day click). Omit it to take the service default (legacy_sales); the document records the basis applied under thresholds_applied.attribution with its plain-language attribution_note",
     )
     .option('--out <path>', 'write the figures document here; "-" prints it to stdout instead', 'figures.json')
     .option('--timeout <seconds>', 'per-statement query timeout on the service, seconds (max 120)', '60')
@@ -767,7 +767,9 @@ const KNOWN_FAILURE_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 const REVENUE_BASES = ['ordered', 'shipped'] as const;
-const ATTRIBUTIONS = ['all_14', 'sc_default'] as const;
+/** The attribution bases the service knows (its kernel enum). Checked locally so a
+ *  typo is a clean error before any call; the service validates again. */
+const ATTRIBUTIONS = ['legacy_sales', 'all_14', 'sc_default'] as const;
 
 interface BatteryOptions {
   sellerId: string[];
