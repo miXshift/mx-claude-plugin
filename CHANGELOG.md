@@ -24,9 +24,11 @@ starts at 0.5.39; earlier versions predate the changelog.
   than a year-and-month, one order spans many rows so counting rows overcounts
   orders, and item titles drift over a long window), how the numbers line up against
   the Seller Central and Vendor Central reports a client already has, and three
-  query recipes: a customer-value segmentation that has been run against a live
-  instance, plus revenue per buyer by ASIN and acquisition cohorts, both marked as
-  not yet run live so nobody presents them as verified. Every column and its
+  query recipes, each labelled with how far it has actually been proven: a
+  customer-value segmentation that has been run to completion in production, plus
+  revenue per buyer by ASIN and acquisition cohorts, which have been checked
+  against a real account far enough to know the query is valid and every column
+  exists, but whose numbers nobody has confirmed yet. Every column and its
   privacy floor was checked against a real subscribed account rather than taken
   from documentation, and asking Amazon for a table's schema now returns those
   floors directly, so the guidance can be confirmed rather than trusted.
