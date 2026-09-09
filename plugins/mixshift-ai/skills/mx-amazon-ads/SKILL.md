@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
