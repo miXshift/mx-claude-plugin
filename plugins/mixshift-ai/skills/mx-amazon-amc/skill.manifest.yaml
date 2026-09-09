@@ -127,7 +127,8 @@ notes: >
   answers (purchase_date_utc not event_dt_utc; revenue is unit_price *
   purchase_units_sold with no total column; purchase_month_utc is 1-12 not
   YYYYMM; one purchase_id spans many event_id rows so orders are
-  COUNT(DISTINCT purchase_id); marketplace_id is blocked, use marketplace_name),
+  COUNT(DISTINCT purchase_id); unit_price is LOCAL currency and AMC cannot
+  convert, so filter or group on marketplace_name before summing money),
   and three query recipes of which ONE is verified live and two are not.
 
   Lifecycle: amc.create_workflow_execution (body: workflow.sqlQuery + optional

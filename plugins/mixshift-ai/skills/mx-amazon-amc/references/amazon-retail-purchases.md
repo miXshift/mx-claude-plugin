@@ -11,8 +11,9 @@ because Amazon could tie it to an ad the shopper saw or clicked, and the history
 runs about 13 months.
 
 This table is neither. It is **every Amazon store purchase of the advertiser's
-products, whether or not an ad was involved**, with a retention ceiling of **60
-months**. One row per retail event.
+products, whether or not an ad was involved**, and Amazon describes its
+retention as *"multi-year ... longer than the default AMC 12.5 months"*. One row
+per retail event.
 
 That is what makes long-window customer questions possible:
 
@@ -23,14 +24,15 @@ That is what makes long-window customer questions possible:
 
 Two limits to establish before promising any of that.
 
-**Sixty months is the retention ceiling, not what this instance holds.** History
-effectively starts when the advertiser's subscription was activated, so an
-account that switched it on last year has about a year. The subscription check
-below returns an `activationTime`, and `SELECT MIN(purchase_date_utc)` confirms
-the real floor.
+**Retention is a ceiling, not what this instance holds.** History effectively
+starts when the advertiser's subscription was activated. A real subscribed
+instance checked 2026-09-09 had an `activationTime` of 2025-08-05, so about 13
+months, not years. Never promise a five-year read without looking: the
+subscription check below returns that `activationTime`, and
+`SELECT MIN(purchase_date_utc)` confirms the real floor.
 
 **Windows do not line up with the ad tables.** Joining to advertising data gives
-you up to 60 months on one side and about 13 on the other. Clamp both sides to
+you multi-year history on one side and about 13 months on the other. Clamp both sides to
 the shorter window, or say plainly that the ad-side numbers cover only part of
 the period.
 
@@ -49,13 +51,21 @@ mixshift ads call amc.get_instance --legacy-seller-id <id> \
 
 `instance.optionalDatasets` is an array of `{ label, activationTime }`. Look for
 a `label` of `PURCHASE_RETAIL_PROGRAM`, and read its `activationTime` while you
-are there, because that is roughly where the data starts.
+are there, because that is where the data starts. `amc.list_instances` returns
+the same array for every instance it lists, so either call answers the question;
+prefer `amc.get_instance` once you hold an instance id, since the list pages at
+100 and a real entity had more than 100 instances.
 
-Two honest limits on this check. A missing label is a reliable no. A present
-label is **necessary but not proven sufficient**, since the entry carries an
-activation time and no expiry, so a lapsed subscription may still list. If a
-query is rejected at compile time despite the label being present, suspect a
-lapsed subscription rather than your SQL.
+There is a second, independent signal: the schema call below returns
+`isPremium: true` on this data source. A paid table you cannot reach usually
+will not resolve there at all, so a successful schema read is corroboration in
+its own right.
+
+Two honest limits. A missing label is a reliable no. A present label is
+**necessary but not proven sufficient**, since the entry carries an activation
+time and no expiry, so a lapsed subscription may still list. If a query is
+rejected at compile time despite the label being present, suspect a lapsed
+subscription rather than your SQL.
 
 To see the live column list rather than trusting this file:
 
@@ -72,25 +82,28 @@ header defaults to the seller row's marketplace, and an instance that lives
 under a different one returns 404. A 404 from this call is inconclusive on its
 own: it can mean a mistyped table name, the wrong marketplace, the wrong entity,
 or a table this instance genuinely cannot see. It is **not** proof that the
-subscription is off. Only `optionalDatasets` speaks to that.
+subscription is off. The `isPremium` flag on the response, or the
+`PURCHASE_RETAIL_PROGRAM` label on the instance, speaks to that.
 
-The schema response does not carry aggregation thresholds, which is why the
-column table below does.
+**This call also answers the threshold question**, which is the one that decides
+what your query may return. Every column comes back with a `sensitivity` of
+`NONE`, `LOW`, `MEDIUM` or `VERY_HIGH`, alongside its `dataType`. Read it from
+the response when it matters. The table below is a convenience copy, verified
+against a live subscribed instance on 2026-09-09; if it ever disagrees with the
+response, the response is right.
 
 ## Columns
 
-AMC assigns every column an aggregation threshold, and it governs the **result
-set**, not the SQL. `Returnable` below says what each threshold means in
-practice.
+The `sensitivity` AMC assigns each column governs the **result set**, not the
+SQL. `Returnable` below translates each value into what it means in practice.
 
-- **Always**: no floor. Safe in any output.
-- **2-user floor**: returnable, but AMC drops rows behind which fewer than two
-  distinct shoppers sit.
-- **100-user floor**: returnable, but needs 100 distinct shoppers per row, so
-  fine grouping usually collapses.
-- **Aggregate only**: never in the output. Group, join and count on it inside a
-  common table expression and return the aggregate.
-- **Never**: not returnable at all. On this table, do not reference it.
+- **Always** (`NONE`): no floor. Safe in any output.
+- **2-user floor** (`LOW`): returnable, but AMC drops rows behind which fewer
+  than two distinct shoppers sit.
+- **100-user floor** (`MEDIUM`): returnable, but needs 100 distinct shoppers per
+  row, so fine grouping usually collapses.
+- **Aggregate only** (`VERY_HIGH`): never in the output. Group, join and count on
+  it inside a common table expression and return the aggregate.
 
 | Column | Type | Returnable | Notes |
 |---|---|---|---|
@@ -100,10 +113,10 @@ practice.
 | `asin_parent` | STRING | 2-user floor | Parent ASIN. Rolls variations up. |
 | `currency_code` | STRING | 2-user floor | ISO currency code. Read trap 3 before summing money. |
 | `event_id` | STRING | aggregate only | One retail event. MANY per `purchase_id`. |
-| `is_business_flag` | BOOLEAN | 2-user floor | Amazon Business order. |
+| `is_business_flag` | BOOLEAN | always | Amazon Business order. |
 | `is_gift_flag` | BOOLEAN | 2-user floor | Gift order. |
-| `marketplace_id` | INTEGER | **never** | Blocked. Do not reference it at all. |
-| `marketplace_name` | STRING | 2-user floor | Use this instead, e.g. `AMAZON.COM`. |
+| `marketplace_id` | LONG | 2-user floor | Numeric marketplace id. Returnable, but `marketplace_name` reads better. |
+| `marketplace_name` | STRING | 2-user floor | The readable label, e.g. `AMAZON.COM`. Group or filter on this. |
 | `no_3p_trackers` | BOOLEAN | always | Third-party tracking flag. |
 | `origin_session_id` | STRING | aggregate only | Session the item entered the cart. |
 | `purchase_date_utc` | DATE | 2-user floor | **The date column. See trap 1.** |
@@ -117,7 +130,7 @@ practice.
 | `purchase_program_name` | STRING | 2-user floor | Purchase program. |
 | `purchase_session_id` | STRING | aggregate only | Session the purchase happened in. |
 | `purchase_units_sold` | LONG | always | Units on the event. |
-| `unit_price` | DECIMAL | always | Price per unit **in the marketplace's local currency**. See trap 3. |
+| `unit_price` | DECIMAL(12,2) | always | Price per unit **in the marketplace's local currency**. See trap 3. |
 | `user_id` | STRING | aggregate only | The shopper. |
 | `user_id_type` | STRING | 2-user floor | Always `adUserId` here. |
 
@@ -155,7 +168,7 @@ Each produces a wrong answer or a rejection, and none announce themselves.
 
 ## The clean-room rule, stated in full
 
-Shopper-level identifiers (`user_id`, `purchase_id`, `event_id`,
+The five `VERY_HIGH` columns (`user_id`, `purchase_id`, `event_id`,
 `origin_session_id`, `purchase_session_id`) may be grouped and joined **inside**
 common table expressions. They may not appear in the final `SELECT`, the final
 `GROUP BY`, or the final `ORDER BY`. All three clauses count.

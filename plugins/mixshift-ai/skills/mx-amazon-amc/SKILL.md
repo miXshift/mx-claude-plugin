@@ -274,10 +274,15 @@ of `PURCHASE_RETAIL_PROGRAM` means `amazon_retail_purchases` is queryable here.
 Read `activationTime` too: it is roughly where that dataset's history starts, so
 it bounds what a multi-year claim can honestly say.
 
+`amc.list_instances` carries the same array for every instance it lists, so
+either call answers this; prefer `amc.get_instance` once you hold an instance
+id, since the list pages at 100.
+
 A missing label is a reliable no. A present label is necessary but not proven
 sufficient, since the entry carries no expiry and a lapsed subscription may
 still list. If a query is rejected at compile time with the label present,
-suspect the subscription before rewriting the SQL.
+suspect the subscription before rewriting the SQL. The schema call in step 5
+gives a second signal for free: a paid table reports `isPremium: true`.
 
 ### 5. Find the schema before writing SQL
 
@@ -292,8 +297,10 @@ mixshift ads call amc.get_data_source --legacy-seller-id <id>   --path instanceI
 ```
 
 **When you are exploring**, list everything, and page until the response carries
-no `nextToken`. `limit` caps at 100 and an instance can hold more tables than
-one page, so a single unpaged call can show you a truncated catalog:
+no `nextToken`. `limit` caps at 100, so do not assume one call covered it (a
+subscribed instance checked 2026-09-09 held 46 tables, comfortably one page, but
+that is not a guarantee). Every row carries that table's full column list, so
+the response is large even at 46 tables:
 
 ```bash
 mixshift ads call amc.list_data_sources --legacy-seller-id <id>   --path instanceId=<instanceId>   --path entityId=<entityId>   --path marketplaceId=<same marketplace> --json
@@ -308,9 +315,13 @@ mistyped name, the wrong marketplace, the wrong entity, or a table this instance
 cannot see. It is not proof that a subscription is off. Only step 4 answers
 that.
 
-Both calls return each column's name, type, and description. Neither returns the
-**aggregation threshold**, which decides whether a column may appear in your
-output. That rule is in the next section.
+Both calls return, per column, its `name`, `columnType` (DIMENSION or METRIC),
+`dataType`, `description`, and — the one that matters most — its
+**`sensitivity`**: `NONE`, `LOW`, `MEDIUM` or `VERY_HIGH`. That is the
+aggregation threshold deciding whether a column may appear in your output, so
+read it from the response rather than assuming. The next section explains what
+each value means. The response also carries `isPremium`, which says whether the
+table is a paid dataset.
 
 **For `amazon_retail_purchases` specifically** - the long-window dataset behind
 lifetime value, repeat purchase and cohort analysis - read
@@ -349,11 +360,11 @@ that reads perfectly well comes back rejected or empty.
   and counted **inside** common table expressions, but what you return has to be
   an aggregate: `COUNT`, `COUNT(DISTINCT ...)`, `APPROX_COUNT_DISTINCT`, sums,
   averages. Every worked example below follows that shape.
-- **Some columns are never returnable at all.** In `amazon_retail_purchases`
-  that is `marketplace_id`; use `marketplace_name`.
-- **A returnable column can still carry a floor.** Most dimensions need two
-  distinct shoppers per row, and some (a full timestamp, for instance) need a
-  hundred. Fine grouping therefore drops rows.
+- **A returnable column can still carry a floor.** Each column's `sensitivity`
+  says which: `NONE` has no floor, `LOW` needs two distinct shoppers per row,
+  `MEDIUM` needs a hundred, and `VERY_HIGH` can never be returned. Fine grouping
+  on a `MEDIUM` column therefore drops most rows. `amc.get_data_source` returns
+  `sensitivity` per column, so read it rather than guessing.
 - **An empty result may be redaction, not an absence of data.** Before telling a
   user a segment had no sales, coarsen the grouping or widen the window and
   re-run. Better, set `distinctUserCountColumn`,

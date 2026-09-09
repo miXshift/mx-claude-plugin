@@ -17,15 +17,19 @@ starts at 0.5.39; earlier versions predate the changelog.
   an ad was involved, which is what makes long-window customer questions
   possible at all: the free AMC tables only see purchases Amazon could tie to an
   ad, over about thirteen months. The skill now carries the table's full column
-  list, the five column traps that quietly produce a wrong answer instead of an
-  error (its date column is not the one every other AMC table uses, there is no
-  total-sales column, its month column is a number from one to twelve rather
+  list, the six column traps that quietly produce a wrong answer instead of an
+  error (its date column is not the one the other AMC tables use, there is no
+  total-sales column, prices are in the marketplace's own currency and Amazon
+  will not convert them, its month column is a number from one to twelve rather
   than a year-and-month, one order spans many rows so counting rows overcounts
-  orders, and one column is blocked outright), how the numbers line up against
+  orders, and item titles drift over a long window), how the numbers line up against
   the Seller Central and Vendor Central reports a client already has, and three
   query recipes: a customer-value segmentation that has been run against a live
-  instance, plus lifetime value by ASIN and acquisition cohorts, both marked as
-  not yet run live so nobody presents them as verified.
+  instance, plus revenue per buyer by ASIN and acquisition cohorts, both marked as
+  not yet run live so nobody presents them as verified. Every column and its
+  privacy floor was checked against a real subscribed account rather than taken
+  from documentation, and asking Amazon for a table's schema now returns those
+  floors directly, so the guidance can be confirmed rather than trusted.
 
 - **AMC now says whether a paid dataset is actually switched on before you
   query it.** A query against a dataset the advertiser is not subscribed to
