@@ -227,8 +227,16 @@ still filling in and a short tail reads as a sales decline.
 
 ## Query recipes
 
-Each recipe says whether it has been run against a live instance. Do not
-present an unproven one to a user as a verified result.
+Each recipe carries an evidence label, and they mean three different things. Do
+not present a weaker one as if it were the strongest.
+
+- **VERIFIED LIVE**: run to completion in production and its output used.
+- **COMPILES LIVE, NUMBERS UNVERIFIED**: dry-run validated against a real
+  subscribed instance on 2026-09-09, so the dialect is right and every column
+  exists, but no result set has been produced or sanity-checked. The arithmetic
+  could still be wrong in a way that compiles perfectly. Say so when you present
+  it, and sanity-check the first real run against something the client already
+  believes.
 
 ### A. Customer lifetime value segmentation — VERIFIED LIVE
 
@@ -339,7 +347,7 @@ Four things to say out loud whenever you present `avg_cltv` or `sum_cltv`.
 If any of that is too heavy for the audience, report `sum_total_sales` and
 `sum_total_spend` as separate columns and drop the subtraction.
 
-### B. Revenue per buyer by ASIN — NOT YET RUN LIVE
+### B. Revenue per buyer by ASIN — COMPILES LIVE, NUMBERS UNVERIFIED
 
 Answers which product earns the most from each customer it wins, and how often
 those customers come back to it. Grouping is on `asin` alone, with the label
@@ -398,7 +406,7 @@ shoppers in a separate query.
 Expect low-volume ASINs to disappear under the redaction floor. Set the
 filtered-row columns above if the total has to reconcile.
 
-### C. Acquisition cohorts — NOT YET RUN LIVE
+### C. Acquisition cohorts — COMPILES LIVE, NUMBERS UNVERIFIED
 
 Groups shoppers by the month of their first purchase, then follows what each
 cohort spent afterward. This is the shape behind a retention curve.
@@ -446,10 +454,13 @@ convenient, and why the earliest cohort should usually be dropped from the read.
 A cohort's later months only compare to another cohort's later months when both
 have had the same time to accumulate them.
 
-Confirm `EXTRACT` behaves as written on the target instance before presenting
-these numbers. It is standard, but this recipe has not been run live, and a
-date-function difference would move every number without erroring. A dry run
-settles it in seconds.
+`EXTRACT` is accepted: this query dry-run validated against a live subscribed
+instance on 2026-09-09, so the month arithmetic compiles and every column
+resolves. That rules out the failure where a date function is simply
+unsupported. It does **not** rule out the month arithmetic being off by one at a
+year boundary, which would compile perfectly and be wrong. Check the first real
+run's earliest and latest `cohort_month` against the window you submitted before
+showing anyone the curve.
 
 ## Reconciling to numbers the client already has
 
@@ -474,8 +485,9 @@ in it.
 
 - Say which window the numbers cover, and say it in months. Confirm it is the
   window you actually submitted, not the default.
-- Say which recipe produced them and whether it has been run against a live
-  instance. B and C have not.
+- Say which recipe produced them and how far it has been proven. Only A has
+  produced numbers anyone has checked; B and C are known to be valid queries
+  whose output is still unconfirmed.
 - Say whether advertising is in scope. Most of these purchases were never
   ad-attributed, and a reader who assumes otherwise misreads everything.
 - Say which marketplace, and never sum money across marketplaces.
