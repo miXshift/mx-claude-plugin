@@ -9,6 +9,18 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
+- **Sponsored Brands bid and state changes now say what Amazon actually
+  requires, and a bad one is caught before it reaches your account.** Updating
+  an SB keyword, product target or negative target needs the ad group's id
+  alongside the entity's own id. That was missing from the guidance, so a
+  change could look correct, preview cleanly, and then be rejected by Amazon
+  only once it was already being applied to a live account. The guidance now
+  carries the requirement (and the correct field name for negative targets,
+  which Amazon calls `targetId`), and a missing required field is now caught in
+  the preview with the fix named, so nothing is sent. This also fixes SB
+  keyword and target ids being handed back a few digits off, which made bid
+  changes on some of the highest-performing keywords fail as not found.
+
 - **Amazon Marketing Cloud can now answer what a customer is worth, not only
   what an ad did.** Ask for retail purchases, lifetime value by ASIN, purchase
   cohorts or repeat-purchase analysis and the AMC skill knows the dataset those
