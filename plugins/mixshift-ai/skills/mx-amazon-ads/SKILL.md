@@ -613,7 +613,10 @@ Three things that decide whether the commit succeeds:
 
 **A dry run does not check any of this.** The preview validates the shape of
 the request and records an audit entry; it never reaches Amazon, so none of the
-creative rules above are tested until you commit. Amazon validates per item, so
+creative rules above are tested until you commit. It does now catch a missing
+required field (such as the `adGroupId` on an SB keyword or target update)
+before anything is sent, and `mixshift ads operations` reports those fields per
+operation, so that class of mistake no longer waits for a live commit. Amazon validates per item, so
 commit a single ad first, read the per-item error results, and send the rest of
 the batch only once one has gone through.
 
@@ -623,9 +626,23 @@ programmatic path for those rows and they had to be keyed into Amazon's console
 by hand, so if a plan mixes SP and SB target changes, all of it can now be
 applied through the same preview-then-commit flow.
 
+**Every Sponsored Brands update item needs `adGroupId` as well as the entity's
+own id**, even though you are addressing one keyword or target by id. Amazon
+rejects the item without it ("Adgroup identifier should be provided" on
+keywords, "Ad group was not found." on targets and negative targets), and
+`campaignId` does not substitute. The list operations return `adGroupId`
+alongside each id, so read it from there. This applies to `sb.update_keywords`,
+`sb.update_targets` and `sb.update_negative_targets`; the v4 campaign and
+ad-group updates address their own entity and do not need it.
+
+`sb.update_negative_targets` names that id `targetId`, not `negativeTargetId`.
+
 ```jsonc
-// sb.update_targets  (PUT, max 200) - only send fields you change
-{ "targets": [ { "targetId": "123", "bid": 2.1, "state": "enabled" } ] }
+// sb.update_targets  (PUT, max 200) - only send the other fields you change
+{ "targets": [ { "targetId": "123", "adGroupId": "456", "bid": 2.1, "state": "enabled" } ] }
+
+// sb.update_negative_targets - state is how you retire one
+{ "negativeTargets": [ { "targetId": "789", "adGroupId": "456", "state": "paused" } ] }
 
 // sb.create_targets - one ASIN per targeting clause
 { "targets": [ { "campaignId": "1", "adGroupId": "2",
