@@ -1,13 +1,18 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
   loop: discover the AMC instances an advertising login can reach, inspect the
   data sources, author dialect-correct AMC SQL, submit a workflow execution,
-  poll it to completion across turns, and fetch the CSV results. Read-only:
+  poll it to completion across turns, and fetch the CSV results. Also the
+  surface for the paid Amazon Retail Purchases dataset
+  (`amazon_retail_purchases`), which covers every Amazon store purchase whether
+  or not an ad was involved and across a far longer history than the
+  ad-attributed tables: use it for customer lifetime value, revenue and repeat
+  rate by ASIN, acquisition cohorts, and repeat-purchase analysis. Read-only:
   running a query mutates nothing advertiser-facing and needs no write scope.
   Routes through the bundled harness CLI. Does not require brand setup,
   only that the user has signed in (`mixshift auth login`).
@@ -33,7 +38,9 @@ harness_commands:
   - mixshift ads call amc.list_accounts
   - mixshift ads call amc.list_instances --path entityId= --path marketplaceId=
   - mixshift ads call accounts.query_advertiser_accounts
+  - mixshift ads call amc.get_instance --path instanceId= --path entityId=
   - mixshift ads call amc.list_data_sources --path instanceId= --path entityId=
+  - mixshift ads call amc.get_data_source --path instanceId= --path entityId= --path dataSourceName=
   - mixshift ads call amc.create_workflow_execution --path instanceId= --path entityId= --body-file <file>
   - mixshift ads call amc.get_workflow_execution --path workflowExecutionId=
   - mixshift ads call amc.get_download_urls --path workflowExecutionId=
@@ -57,6 +64,13 @@ trigger_phrases:
   - amc data sources
   - submit an amc workflow
   - amc sql
+  - pull retail purchases
+  - amazon retail purchases
+  - retail purchases data set
+  - customer lifetime value
+  - ltv by asin
+  - purchase cohorts
+  - repeat purchase analysis
 notes: >
   Auth model: AMC rides the Amazon Ads API, whose tokens are PER ADVERTISING
   LOGIN (not per seller). The service reads the tenant's stored advertising
@@ -81,7 +95,16 @@ notes: >
   that pair and is normal); accounts.query_advertiser_accounts is the fallback
   for self-service Sponsored Ads entityIds (different client-id header; query
   global AND non-global; empty pages with a valid nextToken are normal, keep
-  iterating); amc.list_data_sources lists the tables for schema discovery.
+  iterating); then schema discovery, which is amc.get_data_source for a table
+  you can already name and amc.list_data_sources (PAGED - limit caps at 100 and
+  an instance holds far more) when exploring.
+
+  Paid datasets: some AMC tables require a subscription the advertiser holds,
+  and querying one without it fails at COMPILE TIME with a message that never
+  names the subscription, so it reads as broken SQL. amc.get_instance returns
+  instance.optionalDatasets; the label PURCHASE_RETAIL_PROGRAM means
+  amazon_retail_purchases is queryable. Subscriptions are time-limited, so
+  re-check this first when a working query starts failing.
 
   AMC SQL dialect (FAILED executions are usually dialect violations): declare
   every CUSTOM_PARAMETER in workflow.inputParameters (array params need
@@ -90,10 +113,29 @@ notes: >
   no computed expressions inside COLLECT (pre-compute in a CTE, then COLLECT the
   column).
 
+  Aggregation thresholds are a CLEAN-ROOM rule about the result set, not a SQL
+  rule, and they are the most common reason a valid query is rejected:
+  shopper-level ids (user_id, purchase_id, event_id, session ids) may be
+  grouped and joined inside CTEs but must never reach the final SELECT, and AMC
+  suppresses rows built from too few distinct users, so an empty segment can be
+  a privacy floor rather than missing data.
+
+  amazon_retail_purchases (the long-window paid dataset behind lifetime value,
+  repeat purchase and cohorts) has its own reference at
+  references/amazon-retail-purchases.md: full column list with the output rules
+  the API does not return, five column traps that silently produce wrong
+  answers (purchase_date_utc not event_dt_utc; revenue is unit_price *
+  purchase_units_sold with no total column; purchase_month_utc is 1-12 not
+  YYYYMM; one purchase_id spans many event_id rows so orders are
+  COUNT(DISTINCT purchase_id); marketplace_id is blocked, use marketplace_name),
+  and three query recipes of which ONE is verified live and two are not.
+
   Lifecycle: amc.create_workflow_execution (body: workflow.sqlQuery + optional
   inputParameters; timeWindowType EXPLICIT | MOST_RECENT_DAY | MOST_RECENT_WEEK;
   timeWindowStart/End/TimeZone; parameterValues) returns a workflowExecutionId.
   Poll amc.get_workflow_execution ACROSS TURNS (PENDING, RUNNING, SUCCEEDED,
+  CANCELLED, REJECTED (the clean-room refusal: coarsen the grouping or widen the
+  window, do not retry unchanged),
   FAILED; no sleep-loops in one Bash call). On SUCCEEDED, amc.get_download_urls
   returns presigned CSV urls that EXPIRE IN MINUTES: fetch them immediately and
   WITHOUT auth headers, before summarizing anything; re-call for a fresh set if

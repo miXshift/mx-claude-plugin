@@ -9,6 +9,43 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
+- **Amazon Marketing Cloud can now answer what a customer is worth, not only
+  what an ad did.** Ask for retail purchases, lifetime value by ASIN, purchase
+  cohorts or repeat-purchase analysis and the AMC skill knows the dataset those
+  questions need. Amazon Retail Purchases is a paid AMC dataset covering every
+  Amazon store purchase of your products across up to five years, whether or not
+  an ad was involved, which is what makes long-window customer questions
+  possible at all: the free AMC tables only see purchases Amazon could tie to an
+  ad, over about thirteen months. The skill now carries the table's full column
+  list, the five column traps that quietly produce a wrong answer instead of an
+  error (its date column is not the one every other AMC table uses, there is no
+  total-sales column, its month column is a number from one to twelve rather
+  than a year-and-month, one order spans many rows so counting rows overcounts
+  orders, and one column is blocked outright), how the numbers line up against
+  the Seller Central and Vendor Central reports a client already has, and three
+  query recipes: a customer-value segmentation that has been run against a live
+  instance, plus lifetime value by ASIN and acquisition cohorts, both marked as
+  not yet run live so nobody presents them as verified.
+
+- **AMC now says whether a paid dataset is actually switched on before you
+  query it.** A query against a dataset the advertiser is not subscribed to
+  fails when Amazon compiles it, and the message never mentions the
+  subscription, so it reads as a broken query and sends you off correcting SQL
+  that was never wrong. Asking about an instance now returns which paid datasets
+  are active on it. Because these subscriptions are time-limited, this is also
+  the first thing to check when a query that worked last month stops working.
+
+- **AMC schema lookups no longer make you read the whole catalog to find one
+  table.** Listing every data source in an instance returns each table with all
+  of its columns, across more pages than the default request returns, so it was
+  both large and easy to read as truncated ("that table does not exist" when it
+  simply had not been paged to yet). You can now ask for a single named table
+  and get just its columns back. The AMC guidance also now states the clean-room
+  rule that rejects more first queries than any SQL mistake does: shopper-level
+  identifiers can be grouped and joined inside a query, but what comes back has
+  to be aggregated, and a result that arrives empty may be Amazon's privacy
+  floor rather than an absence of sales.
+
 - **Monthly Performance Report Max now runs on Vendor Central accounts, and on a
   whole brand at once.** Until now the figure battery behind the brief only knew
   Seller Central tables, so a vendor account came back empty and the report had to
