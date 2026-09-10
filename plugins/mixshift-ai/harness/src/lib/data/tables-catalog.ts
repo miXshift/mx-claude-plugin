@@ -20,6 +20,13 @@ export interface TableMetadata {
   time_series: boolean;
   requires_seller_id: boolean;
   date_column?: string;
+  /** The columns callers most often need, by role (`sales`, `spend`, `units`,
+   *  `asin`, ...). Present only where the name is not guessable from the
+   *  table's own description. */
+  key_columns?: Record<string, string>;
+  /** Named wrong turns for this table: columns that do NOT exist here and what
+   *  to use instead. Sourced from real failed queries, not from imagination. */
+  gotchas?: string[];
 }
 
 interface TableMetadataRaw {
@@ -29,6 +36,8 @@ interface TableMetadataRaw {
   time_series?: boolean;
   requires_seller_id?: boolean;
   date_column?: string;
+  key_columns?: Record<string, string>;
+  gotchas?: string[];
 }
 
 interface DataTablesFile {
@@ -72,6 +81,8 @@ function normalize(name: string, raw: TableMetadataRaw): TableMetadata {
     time_series: !!raw.time_series,
     requires_seller_id: !!raw.requires_seller_id,
     date_column: raw.date_column,
+    key_columns: raw.key_columns,
+    gotchas: raw.gotchas,
   };
 }
 

@@ -186,6 +186,16 @@ starts at 0.5.39; earlier versions predate the changelog.
   over, and that asking for the same window again only queues a second copy
   behind the first.
 
+- **Asking for sales by month no longer costs a round of guessed column names.**
+  Tables that hold the same idea do not always spell it the same way: daily
+  totals call revenue `SalesAmount` while the SKU-level version of the same
+  report calls it `Amount`, ad sales is `Sales`, and nothing anywhere is called
+  `Date`. Only the date column was ever published, so a question phrased in
+  plain English could turn into two or three rejected queries before landing.
+  Describing a table now names its money, units and ASIN columns alongside its
+  date column, and names the plausible-but-wrong spellings outright, so the
+  first query is the one that runs.
+
 - **The help map now lists Monthly Performance Report Max.** Asking for help in
   chat renders the plugin's capability map, and the max tier of the monthly
   report was missing from its reporting group even though it has been available
