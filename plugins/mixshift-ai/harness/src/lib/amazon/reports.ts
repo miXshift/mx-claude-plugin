@@ -425,6 +425,63 @@ export function throttleBackoffMs(
   return Math.min(Math.max(base, eff), remaining);
 }
 
+/** Number of consecutive not-ready polls that stay at the plain `--interval-ms`
+ *  before the queued backoff starts widening. Reports that finish in the normal
+ *  window (SCP returns in ~23s; most types are ready inside a minute) never
+ *  reach this, so their timing is byte-for-byte unchanged. */
+export const QUEUED_BACKOFF_GRACE_POLLS = 10;
+
+/** Ceiling for the queued backoff. A report Amazon has parked IN_QUEUE for
+ *  hours does not become ready faster because we asked more often, so the wait
+ *  widens to at most this. */
+export const QUEUED_BACKOFF_CAP_MS = 300_000;
+
+/**
+ * How long (ms) to wait before the next poll while a report is merely QUEUED
+ * (accepted by Amazon, not ready, not throttled). Distinct from
+ * `throttleBackoffMs`, which answers a 429.
+ *
+ * Why this exists: the run loop used to sleep a flat `intervalMs` for the whole
+ * wait, so a report Amazon parked in IN_QUEUE was polled at a constant rate for
+ * as long as the caller was willing to wait. Observed live: ~100-160 polls an
+ * hour against a single SQP report for 20 hours, ~3,100 polls that could not
+ * have changed the outcome, on an account that was also being rate-limited.
+ * Polling a queue harder does not drain it; it competes with the very quota the
+ * report needs.
+ *
+ * The shape deliberately preserves current behaviour for healthy reports:
+ *   - the first QUEUED_BACKOFF_GRACE_POLLS not-ready polls wait exactly
+ *     `intervalMs`, so anything that completes in the normal window is
+ *     unaffected and no existing timing expectation moves;
+ *   - past the grace window the wait doubles per poll, capped at
+ *     QUEUED_BACKOFF_CAP_MS;
+ *   - the interval is floored (shared with the throttle path) so a degenerate
+ *     `--interval-ms` cannot produce a 0ms hammer loop;
+ *   - the wait never runs past the deadline, and returns 0 ONLY once the
+ *     deadline has passed, which the caller uses as the "stop now" sentinel.
+ *     A positive `remaining` therefore always yields a positive wait, matching
+ *     `throttleBackoffMs` so the two are interchangeable at the call site.
+ *
+ * `queuedPolls` is the count of not-ready polls so far (1 on the first). Pure
+ * and deterministic (caller passes `now`) so it is unit-testable.
+ */
+export function queuedBackoffMs(
+  intervalMs: number,
+  queuedPolls: number,
+  now: number,
+  deadline: number,
+): number {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
+  const over = Math.max(queuedPolls, 1) - QUEUED_BACKOFF_GRACE_POLLS;
+  if (over <= 0) return Math.min(eff, remaining);
+  // Cap the exponent before it is applied so a very long wait cannot overflow
+  // to Infinity on the way to being capped.
+  const base = Math.min(eff * 2 ** Math.min(over, 20), QUEUED_BACKOFF_CAP_MS);
+  return Math.min(Math.max(base, eff), remaining);
+}
+
 // ---------------------------------------------------------------------------
 // Search Query Performance (SQP) ASIN-option chunking + merge
 //

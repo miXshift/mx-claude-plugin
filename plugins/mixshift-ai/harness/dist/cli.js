@@ -87695,6 +87695,17 @@ function throttleBackoffMs(retryAfterMs, intervalMs, streak, now, deadline) {
   );
   return Math.min(Math.max(base, eff), remaining);
 }
+var QUEUED_BACKOFF_GRACE_POLLS = 10;
+var QUEUED_BACKOFF_CAP_MS = 3e5;
+function queuedBackoffMs(intervalMs, queuedPolls, now, deadline) {
+  const remaining = deadline - now;
+  if (remaining <= 0) return 0;
+  const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
+  const over = Math.max(queuedPolls, 1) - QUEUED_BACKOFF_GRACE_POLLS;
+  if (over <= 0) return Math.min(eff, remaining);
+  const base = Math.min(eff * 2 ** Math.min(over, 20), QUEUED_BACKOFF_CAP_MS);
+  return Math.min(Math.max(base, eff), remaining);
+}
 var SQP_REPORT_TYPE = "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT";
 var SQP_ASIN_OPTION_CHAR_LIMIT = 200;
 function chunkAsinList(raw, charLimit = SQP_ASIN_OPTION_CHAR_LIMIT) {
@@ -89794,7 +89805,7 @@ function registerReportRun(report) {
           return emitFailure3(outcome.failure, !!root.json);
         }
         if (outcome.outcome === "timeout") {
-          const msg2 = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${outcome.lastStatus}). The run handle is still valid \u2014 poll it later with \`mixshift amazon report poll ${outcome.runId}\`.`;
+          const msg2 = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${outcome.lastStatus}). This is a wait, not a failure: the report is still queued at Amazon and the run handle is still valid. Do NOT request it again, which only queues a second copy behind this one. Resume this run with \`mixshift amazon report poll ${outcome.runId}\`.`;
           if (root.json) {
             writeJson3({
               status: "error",
@@ -90031,6 +90042,7 @@ async function startAndPollUntilReady(input, ctx) {
     root.dataDir
   );
   let polls = 0;
+  let queuedPolls = 0;
   let throttledPolls = 0;
   let throttleStreak = 0;
   let lastStatus = started.status ?? "UNKNOWN";
@@ -90061,9 +90073,15 @@ async function startAndPollUntilReady(input, ctx) {
     lastStatus = poll.status;
     lastPoll = poll;
     if (poll.ready) break;
-    if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})
+    queuedPolls += 1;
+    const wait = queuedBackoffMs(intervalMs, queuedPolls, Date.now(), deadline);
+    if (wait <= 0) break;
+    if (!root.json) {
+      const pacing = wait > intervalMs ? `, next check in ${Math.round(wait / 1e3)}s` : "";
+      process.stderr.write(`  ... ${poll.status} (poll ${polls})${pacing}
 `);
-    await sleep(intervalMs);
+    }
+    await sleep(wait);
   }
   if (throttledPolls > 0) {
     await track(
@@ -90205,7 +90223,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
   process.exitCode = exitCodeForKind(failure.kind);
 }
 function emitChunkTimeout(json2, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
-  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). Its run handle is still valid; poll it later with \`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
+  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at Amazon and its run handle is still valid. Resume it with \`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second copy behind the one you are already waiting on and makes the wait longer. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
   if (json2) {
     writeJson3({
       status: "error",

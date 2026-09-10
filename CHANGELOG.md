@@ -173,6 +173,19 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **A report waiting in Amazon's queue is no longer checked flat out, and a run
+  that stops now says so.** Some report types, Search Query Performance most of
+  all, can sit in Amazon's queue for hours. The plugin used to re-check such a
+  report at the same rate for as long as you were willing to wait, which does
+  not make it arrive sooner and competes for the same Amazon limit the report
+  itself needs. It now waits longer between checks the longer a report stays
+  queued, and tells you when the next check is due. Reports that finish in the
+  normal window are unaffected. Separately, when a run reaches its wait limit it
+  now makes clear that this is a wait rather than a failure, that the report is
+  still queued at Amazon, that you can resume that exact run instead of starting
+  over, and that asking for the same window again only queues a second copy
+  behind the first.
+
 - **The help map now lists Monthly Performance Report Max.** Asking for help in
   chat renders the plugin's capability map, and the max tier of the monthly
   report was missing from its reporting group even though it has been available
