@@ -196,6 +196,17 @@ starts at 0.5.39; earlier versions predate the changelog.
   date column, and names the plausible-but-wrong spellings outright, so the
   first query is the one that runs.
 
+- **A lapsed Amazon authorization is now reported once, instead of failing
+  every step of what you asked for.** When an advertiser's grant has expired,
+  no call against that account can succeed until someone re-connects it. The
+  guidance and the error message both used to end by suggesting a retry, so a
+  request covering several changes would attempt each one and fail each one in
+  turn, and you would watch a whole campaign build fail a step at a time
+  without ever being told the account simply needed re-authorizing. Both now
+  say plainly that this is terminal until a person acts, so you are told once,
+  up front, with the fix named, and are also told which changes had already
+  been applied before it stopped.
+
 - **The help map now lists Monthly Performance Report Max.** Asking for help in
   chat renders the plugin's capability map, and the max tier of the monthly
   report was missing from its reporting group even though it has been available
