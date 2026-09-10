@@ -88372,7 +88372,7 @@ function defaultFriendly(kind, surface) {
     case "insufficient_scope":
       return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
     case "reauth_required":
-      return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Re-connect the account in the MixShift app, then retry.";
+      return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Until someone re-connects the account in the MixShift app, every call against it will fail the same way, so do not retry this one or run the rest of a change set against it.";
     case "bad_request":
       return `${requestLabel(surface)} was rejected by Amazon because of the request itself, not a MixShift or Amazon outage. Retrying it unchanged will not help.`;
     case "restricted_report":

@@ -1649,8 +1649,9 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
     case 'reauth_required':
       return (
         'This Amazon merchant needs to be re-authorized in MixShift before ' +
-        'this call can run. Re-connect the account in the MixShift app, then ' +
-        'retry.'
+        'this call can run. Until someone re-connects the account in the ' +
+        'MixShift app, every call against it will fail the same way, so do ' +
+        'not retry this one or run the rest of a change set against it.'
       );
     case 'bad_request':
       return (
