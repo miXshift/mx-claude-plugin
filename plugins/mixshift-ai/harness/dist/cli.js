@@ -83555,7 +83555,9 @@ function normalize2(name, raw) {
     account_types: raw.account_types,
     time_series: !!raw.time_series,
     requires_seller_id: !!raw.requires_seller_id,
-    date_column: raw.date_column
+    date_column: raw.date_column,
+    key_columns: raw.key_columns,
+    gotchas: raw.gotchas
   };
 }
 function candidatePaths3() {
@@ -84306,8 +84308,18 @@ function renderTableDetail(t) {
   lines.push(`- **time-series**: ${t.time_series ? "yes" : "no"}`);
   lines.push(`- **seller-id filter required**: ${t.requires_seller_id ? "yes" : "no"}`);
   if (t.date_column) lines.push(`- **date column**: \`${t.date_column}\``);
+  if (t.key_columns && Object.keys(t.key_columns).length > 0) {
+    for (const [role, col] of Object.entries(t.key_columns)) {
+      lines.push(`- **${role} column**: \`${col}\``);
+    }
+  }
   if (t.account_types && t.account_types.length > 0) {
     lines.push(`- **account types**: ${t.account_types.join(", ")}`);
+  }
+  if (t.gotchas && t.gotchas.length > 0) {
+    lines.push("");
+    lines.push("**Before you name a column:**");
+    for (const g of t.gotchas) lines.push(`- ${g}`);
   }
   return lines.join("\n");
 }
