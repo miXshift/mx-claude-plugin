@@ -44,6 +44,7 @@ import {
   isReportFailure,
   exitCodeForKind,
   throttleBackoffMs,
+  queuedBackoffMs,
   chunkAsinList,
   mergeSqpDocuments,
   SQP_REPORT_TYPE,
@@ -626,8 +627,10 @@ function registerReportRun(report: Command): void {
           if (outcome.outcome === 'timeout') {
             const msg =
               `Timed out after ${Math.round(opts.maxWaitMs / 1000)}s waiting for the report ` +
-              `(last status: ${outcome.lastStatus}). The run handle is still valid — ` +
-              `poll it later with \`mixshift amazon report poll ${outcome.runId}\`.`;
+              `(last status: ${outcome.lastStatus}). This is a wait, not a failure: the report ` +
+              `is still queued at Amazon and the run handle is still valid. Do NOT request it ` +
+              `again, which only queues a second copy behind this one. Resume this run with ` +
+              `\`mixshift amazon report poll ${outcome.runId}\`.`;
             if (root.json) {
               writeJson({
                 status: 'error',
@@ -956,6 +959,7 @@ async function startAndPollUntilReady(
   // the loop; a run that stays throttled to the deadline surfaces at the
   // finalPoll below as ONE report.failed, not one per poll.
   let polls = 0;
+  let queuedPolls = 0;
   let throttledPolls = 0;
   let throttleStreak = 0;
   let lastStatus = started.status ?? 'UNKNOWN';
@@ -988,8 +992,20 @@ async function startAndPollUntilReady(
     lastStatus = poll.status;
     lastPoll = poll;
     if (poll.ready) break;
-    if (!root.json) process.stderr.write(`  ... ${poll.status} (poll ${polls})\n`);
-    await sleep(intervalMs);
+    queuedPolls += 1;
+    // A report Amazon has parked in the queue does not arrive sooner because we
+    // ask more often, so widen the gap once it is clearly not a fast report.
+    // The first QUEUED_BACKOFF_GRACE_POLLS waits are the plain interval, so a
+    // normal report's timing is unchanged.
+    const wait = queuedBackoffMs(intervalMs, queuedPolls, Date.now(), deadline);
+    if (wait <= 0) break; // out of time; fall through to the timeout path
+    if (!root.json) {
+      // Name the widened wait so a long gap reads as deliberate pacing rather
+      // than a hung command.
+      const pacing = wait > intervalMs ? `, next check in ${Math.round(wait / 1000)}s` : '';
+      process.stderr.write(`  ... ${poll.status} (poll ${polls})${pacing}\n`);
+    }
+    await sleep(wait);
   }
 
   // One deduped summary when throttling happened at all, so the
@@ -1190,8 +1206,11 @@ function emitChunkTimeout(
 ): void {
   const msg =
     `Timed out after ${Math.round(maxWaitMs / 1000)}s waiting for SQP chunk ${chunk}/${totalChunks} ` +
-    `(last status: ${lastStatus}). Its run handle is still valid; poll it later with ` +
-    `\`mixshift amazon report poll ${runId}\`. ${completedRunIds.length} chunk(s) completed ` +
+    `(last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at ` +
+    `Amazon and its run handle is still valid. Resume it with ` +
+    `\`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second ` +
+    `copy behind the one you are already waiting on and makes the wait longer. ` +
+    `${completedRunIds.length} chunk(s) completed ` +
     `before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(', ')}` : ''}.`;
   if (json) {
     writeJson({

@@ -13,6 +13,9 @@ import {
   streamReportDocumentToFile,
   exitCodeForKind,
   throttleBackoffMs,
+  queuedBackoffMs,
+  QUEUED_BACKOFF_GRACE_POLLS,
+  QUEUED_BACKOFF_CAP_MS,
   chunkAsinList,
   mergeSqpDocuments,
   SQP_ASIN_OPTION_CHAR_LIMIT,
@@ -1305,3 +1308,66 @@ function freshDatahubFixture(): DatahubCreds {
     client_id: 'mx-claude-plugin',
   };
 }
+
+// ---------------------------------------------------------------------------
+// queuedBackoffMs — the poll-loop backoff while a report sits IN_QUEUE, so a
+// long wait stops competing with the same Amazon quota the report needs.
+// Regression origin: mx-ops#52 (a single SQP report polled ~3,100 times over
+// 20 hours at a flat interval, on an account that was also being rate-limited)
+// ---------------------------------------------------------------------------
+
+describe('queuedBackoffMs', () => {
+  const INTERVAL = 5000;
+  const DEADLINE = 24 * 60 * 60 * 1000; // a long window; `now` is passed explicitly
+
+  it('leaves a healthy report untouched: the grace window is the plain interval', () => {
+    // This is the regression guard that matters most. SCP returns in ~23s and
+    // most types are ready inside a minute, so they must not be slowed at all.
+    for (let poll = 1; poll <= QUEUED_BACKOFF_GRACE_POLLS; poll += 1) {
+      expect(queuedBackoffMs(INTERVAL, poll, 0, DEADLINE)).toBe(INTERVAL);
+    }
+  });
+
+  it('doubles past the grace window', () => {
+    expect(queuedBackoffMs(INTERVAL, QUEUED_BACKOFF_GRACE_POLLS + 1, 0, DEADLINE)).toBe(INTERVAL * 2);
+    expect(queuedBackoffMs(INTERVAL, QUEUED_BACKOFF_GRACE_POLLS + 2, 0, DEADLINE)).toBe(INTERVAL * 4);
+    expect(queuedBackoffMs(INTERVAL, QUEUED_BACKOFF_GRACE_POLLS + 3, 0, DEADLINE)).toBe(INTERVAL * 8);
+  });
+
+  it('caps the wait, and never overflows to Infinity on a very long wait', () => {
+    expect(queuedBackoffMs(INTERVAL, 200, 0, DEADLINE)).toBe(QUEUED_BACKOFF_CAP_MS);
+    expect(Number.isFinite(queuedBackoffMs(INTERVAL, 5000, 0, DEADLINE))).toBe(true);
+  });
+
+  it('never waits past the deadline, and returns 0 only once the deadline has passed', () => {
+    // A positive `remaining` always yields a positive wait: the caller treats 0
+    // as the stop-now sentinel, so a 0 with time left would end a run early.
+    expect(queuedBackoffMs(INTERVAL, 50, DEADLINE - 1200, DEADLINE)).toBe(1200);
+    expect(queuedBackoffMs(INTERVAL, 1, DEADLINE, DEADLINE)).toBe(0);
+    expect(queuedBackoffMs(INTERVAL, 1, DEADLINE + 5000, DEADLINE)).toBe(0);
+  });
+
+  it('floors a degenerate interval so it cannot become a 0ms hammer loop', () => {
+    expect(queuedBackoffMs(0, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+    expect(queuedBackoffMs(Number.NaN, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+    expect(queuedBackoffMs(-5000, 1, 0, DEADLINE)).toBe(THROTTLE_BACKOFF_FLOOR_MS);
+  });
+
+  it('cuts the poll count for the incident shape by more than an order of magnitude', () => {
+    // Michael's run: ~17.5s interval, 20 hours of IN_QUEUE. Walk the loop and
+    // count polls, the same way the run loop does.
+    const interval = 17_500;
+    const deadline = 20 * 60 * 60 * 1000;
+    let now = 0;
+    let polls = 0;
+    while (now < deadline) {
+      polls += 1;
+      const wait = queuedBackoffMs(interval, polls, now, deadline);
+      if (wait <= 0) break;
+      now += wait;
+    }
+    const flat = Math.ceil(deadline / interval); // ~4114 polls before this fix
+    expect(flat).toBeGreaterThan(4000);
+    expect(polls).toBeLessThan(flat / 10);
+  });
+});
