@@ -157,6 +157,19 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Fixed
 
+- **A report waiting in Amazon's queue is no longer checked flat out, and a run
+  that stops now says so.** Some report types, Search Query Performance most of
+  all, can sit in Amazon's queue for hours. The plugin used to re-check such a
+  report at the same rate for as long as you were willing to wait, which does
+  not make it arrive sooner and competes for the same Amazon limit the report
+  itself needs. It now waits longer between checks the longer a report stays
+  queued, and tells you when the next check is due. Reports that finish in the
+  normal window are unaffected. Separately, when a run reaches its wait limit it
+  now makes clear that this is a wait rather than a failure, that the report is
+  still queued at Amazon, that you can resume that exact run instead of starting
+  over, and that asking for the same window again only queues a second copy
+  behind the first.
+
 - **Asking for sales by month no longer costs a round of guessed column names.**
   Tables that hold the same idea do not always spell it the same way: daily
   totals call revenue `SalesAmount` while the SKU-level version of the same
