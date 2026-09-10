@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -715,7 +715,7 @@ code for terminal scripts.
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `restricted_report` | 4 | Amazon refused this call for an access/role reason MixShift does not hold. Do NOT retry unchanged. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
-| `reauth_required` | 5 | This advertiser's grant lapsed. Re-connect the account in the MixShift app, then retry. |
+| `reauth_required` | 5 | This advertiser's grant lapsed, and NO call against it can succeed until a person re-authorizes it. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to re-connect the account in the MixShift app, then re-run. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no profile. Re-run `ads profiles` and pick a listed row (use its `legacySellerId`). A multi-marketplace selector returns a `candidates` list; pick the marketplace and re-run. |
 | `throttled` | 8 | Amazon is rate-limiting (Ads limits are dynamic). Wait a moment and retry; a `retry_after_ms` may be present. |
@@ -724,6 +724,19 @@ code for terminal scripts.
 | `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
 
 Notes:
+
+- **An auth-class failure stops the whole run, not just the call that hit it.**
+  `reauth_required`, `session_expired` and `not_authenticated` all mean the same
+  thing operationally: no call against that advertiser can succeed until a
+  person acts. Report it ONCE, name the remediation, and stop. Do not retry the
+  failing call, and do not carry on to the remaining operations in a change set
+  or a multi-step plan. Observed live: an agent walked four different write
+  operations (`sp.update_targets`, `sp.update_keywords`, `sp.update_campaigns`,
+  then a read) through a lapsed grant inside 28 seconds, so the user watched
+  every step of their campaign build fail one at a time instead of being told
+  once, up front, that the account needed re-authorizing. If you are part way
+  through a change set when this lands, tell the user which operations already
+  applied and which were not attempted.
 
 - **Throttling is expected under load.** Ads rate limits are dynamic and the
   service paces lightly and retries 429s with Retry-After; an occasional

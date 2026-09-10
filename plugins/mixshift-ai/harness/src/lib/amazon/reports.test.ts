@@ -737,6 +737,13 @@ describe('failure envelope mapping', () => {
       expect(r.amazonSellerId).toBe('A999');
       // Server omitted friendly -> client fills a default.
       expect(r.friendly).toMatch(/re-authorized/i);
+      // mx-ops#46: reauth_required is TERMINAL. The default copy used to end
+      // "...then retry", which read to an agent as a retry instruction, and
+      // agents duly retried: 5 humans across 3 tenants, 13 distinct operations,
+      // including one that walked four writes through a lapsed grant in 28
+      // seconds. The copy must tell the caller to stop, not to try again.
+      expect(r.friendly).toMatch(/do\s+not\s+retry/i);
+      expect(r.friendly).not.toMatch(/then retry/i);
     }
   });
 
