@@ -404,6 +404,8 @@ function renderTableDetail(t: {
   requires_seller_id: boolean;
   account_types?: string[];
   date_column?: string;
+  key_columns?: Record<string, string>;
+  gotchas?: string[];
 }): string {
   const lines: string[] = [];
   lines.push('');
@@ -415,8 +417,20 @@ function renderTableDetail(t: {
   lines.push(`- **time-series**: ${t.time_series ? 'yes' : 'no'}`);
   lines.push(`- **seller-id filter required**: ${t.requires_seller_id ? 'yes' : 'no'}`);
   if (t.date_column) lines.push(`- **date column**: \`${t.date_column}\``);
+  if (t.key_columns && Object.keys(t.key_columns).length > 0) {
+    for (const [role, col] of Object.entries(t.key_columns)) {
+      lines.push(`- **${role} column**: \`${col}\``);
+    }
+  }
   if (t.account_types && t.account_types.length > 0) {
     lines.push(`- **account types**: ${t.account_types.join(', ')}`);
+  }
+  // Named wrong turns go last, so they are the final thing read before a query
+  // gets written. These exist because agents were guessing these exact names.
+  if (t.gotchas && t.gotchas.length > 0) {
+    lines.push('');
+    lines.push('**Before you name a column:**');
+    for (const g of t.gotchas) lines.push(`- ${g}`);
   }
   return lines.join('\n');
 }

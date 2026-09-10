@@ -65,6 +65,13 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    key_columns:
+      spend: Cost
+      sales: Sales
+    gotchas:
+      - "There is no `Date` column. Filter on `DateTime` (datetime), or `DateKey` (int, YYYYMMDD)."
+      - "There is no `SalesAmount` here; that is a business_reports_dpst_date column. Ad sales is `Sales`, spend is `Cost`."
+      - "There is no `OrderQuantity`. Order counts live in the attribution columns (`AttributedConversions*`, `attributedOrders*`), which are windowed."
 
   adgroupmetric:
     description: "Ad-group-level daily ad metrics. Same fields as campaignmetric, one level deeper. Joins to adgroup for DefaultBid + naming."
@@ -278,6 +285,12 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    key_columns:
+      sales: SalesAmount
+      units: UnitsOrdered
+    gotchas:
+      - "There is no `Date` column. Filter on `DateTime`."
+      - "Sales here is `SalesAmount`. Its SKU-level sibling business_reports_dpst_sku calls the same thing `Amount`. Check which table you are in before naming the money column."
 
   business_reports_dpst_sku:
     description: "Daily SKU/ASIN-level sales for Seller Central. Amount, UnitsOrdered, Sessions, PageViews, BuyBoxPercentage. Join to mws_items for catalog metadata (Brand, ItemGroup, Tags)."
@@ -286,6 +299,14 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    key_columns:
+      sales: Amount
+      units: UnitsOrdered
+      asin: ChildAsin
+    gotchas:
+      - "There is no `Date` or `ReportDate` column. Filter on `DateTime`."
+      - "Sales here is `Amount`, NOT `SalesAmount` (that is the day-level sibling business_reports_dpst_date) and NOT `OrderedProductSales` (which does not exist in this warehouse)."
+      - "The ASIN columns are `ChildAsin` and `ParentAsin`, spelled exactly that way. There is no `ASIN`, `Asin` or `ChildASIN`."
 
   business_reports_dpst_total:
     description: "DEPRECATED - no longer populated (no new rows since 2022). Do not use. For account-level daily totals, aggregate business_reports_dpst_date instead."
