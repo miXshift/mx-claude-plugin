@@ -106,6 +106,13 @@ const CATALOG: HubGroup[] = [
     skills: [
       { id: 'mx-monthly-report', say: 'write the monthly report for <brand>', what: 'MoM and YoY performance narrative' },
       { id: 'mx-monthly-report-max', say: 'prep my call with <brand>', what: 'client brief plus private call notes, any cadence' },
+      // Deliberately a SECOND row for mx-amazon-amc, which is also listed under
+      // the Amazon surfaces above as "run an AMC query". That row only finds
+      // someone who already knows what AMC is. The questions this answers get
+      // asked in retail language ("do my small-pack buyers come back for the
+      // large pack?"), by people looking under reporting, so it is listed where
+      // the question lives as well as where the surface lives.
+      { id: 'mx-amazon-amc', say: 'what is a customer worth after their first order', what: 'lifetime value, repeat purchase and acquisition cohorts (needs the Amazon Retail Purchases subscription)' },
     ],
   },
   {

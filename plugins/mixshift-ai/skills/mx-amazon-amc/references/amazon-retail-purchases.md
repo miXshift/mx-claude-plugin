@@ -225,6 +225,17 @@ Start no earlier than the subscription's `activationTime`, because there is
 nothing before it. End at least two days before now, because recent days are
 still filling in and a short tail reads as a sales decline.
 
+**Submit the window in UTC unless you have a reason not to.** If you pass
+`timeWindowTimeZone`, Amazon converts the bounds to UTC while the table's own
+`purchase_date_utc` stays in UTC, so a window ending at midnight local time
+reaches into the next UTC day. That does not matter for a single total, and it
+matters a lot for anything grouped BY a date derived from the data: the overhang
+becomes its own tiny month or day, sitting next to full ones. Seen live on
+2026-09-10, an `America/Los_Angeles` window ending `2026-09-01T00:00:00` produced
+a September cohort of 217 buyers beside months of 10,000 to 30,000 (recipe C).
+Whatever you submit, check the earliest and latest period in the result against
+the window you asked for, and drop anything outside it.
+
 ## Query recipes
 
 Each recipe carries an evidence label, and they mean three different things. Do
@@ -347,7 +358,7 @@ Four things to say out loud whenever you present `avg_cltv` or `sum_cltv`.
 If any of that is too heavy for the audience, report `sum_total_sales` and
 `sum_total_spend` as separate columns and drop the subtraction.
 
-### B. Revenue per buyer by ASIN — COMPILES LIVE, NUMBERS UNVERIFIED
+### B. Revenue per buyer by ASIN — VERIFIED LIVE
 
 Answers which product earns the most from each customer it wins, and how often
 those customers come back to it. Grouping is on `asin` alone, with the label
@@ -406,7 +417,20 @@ shoppers in a separate query.
 Expect low-volume ASINs to disappear under the redaction floor. Set the
 filtered-row columns above if the total has to reconcile.
 
-### C. Acquisition cohorts — COMPILES LIVE, NUMBERS UNVERIFIED
+**Verified 2026-09-10** against a live subscribed STANDARD instance, three
+months (2026-06-01 to 2026-09-01, `America/Los_Angeles`), 57 ASINs returned.
+Every derived column recomputes exactly from its own inputs
+(`sales_per_buyer` = `total_sales` / `buyers`, `repeat_rate` = `repeat_buyers`
+/ `buyers`), and no row breaks an ordering invariant (`orders` >= `buyers`,
+`repeat_buyers` <= `buyers`). More usefully, the total reconciles OUTWARD:
+`SUM(total_sales)` came to **0.78% under** the same window's Business Reports
+by-ASIN revenue in the warehouse. Under, not over, is the expected direction,
+and the size is what the redaction floor plus the single-marketplace filter
+predict. If your own reconciliation lands over the client's figure, or more
+than a few percent under, something is wrong with the window or the filter,
+not with the redaction floor.
+
+### C. Acquisition cohorts — VERIFIED LIVE
 
 Groups shoppers by the month of their first purchase, then follows what each
 cohort spent afterward. This is the shape behind a retention curve.
@@ -454,13 +478,29 @@ convenient, and why the earliest cohort should usually be dropped from the read.
 A cohort's later months only compare to another cohort's later months when both
 have had the same time to accumulate them.
 
-`EXTRACT` is accepted: this query dry-run validated against a live subscribed
-instance on 2026-09-09, so the month arithmetic compiles and every column
-resolves. That rules out the failure where a date function is simply
-unsupported. It does **not** rule out the month arithmetic being off by one at a
-year boundary, which would compile perfectly and be wrong. Check the first real
-run's earliest and latest `cohort_month` against the window you submitted before
-showing anyone the curve.
+**Verified 2026-09-10** against a live subscribed STANDARD instance over a
+13-month window (2025-08-06 to 2026-09-01) chosen to cross a year boundary,
+because that was the open risk: `EXTRACT` compiling is not the same as the month
+arithmetic being right. It is right. Cohort `202511` reports `months_since` 1,
+2 and 3 landing on `202512`, `202601` and `202602`, so the December-to-January
+rollover carries correctly, no row came back with a negative `months_since`, and
+`months_since` topped out at 13 for a 13-month window.
+
+**The real trap is the window's timezone, and it produces a phantom cohort.**
+A `timeWindowEnd` of `2026-09-01T00:00:00` in `America/Los_Angeles` is converted
+to `2026-09-01T07:00:00Z`, but `purchase_date_utc` is UTC. Those seven hours
+land in the NEXT month, and because this query derives the cohort from the data
+rather than from the window, they become a cohort of their own: a `202609` row
+with **217** buyers sitting next to months of 10,000 to 30,000. On a retention
+curve that reads as a total collapse in acquisition, and it is an artifact of
+the conversion, nothing else. Either submit the window in UTC, or drop any
+cohort outside the months you asked for before showing the curve. Check the
+earliest AND latest `cohort_month` against your window every time.
+
+The earliest-cohort warning above is not theoretical either: in the same run the
+first cohort was the largest in the whole series (29,789 month-0 buyers against
+a 9,700 to 23,000 range for every later month), because everyone already buying
+before the window opened was filed into it. Drop it.
 
 ## Reconciling to numbers the client already has
 
