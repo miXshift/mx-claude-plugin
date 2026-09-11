@@ -155,8 +155,6 @@ starts at 0.5.39; earlier versions predate the changelog.
   be kept when you group by creative type. Doc-only: nothing about the data
   itself changed.
 
-### Changed
-
 - **Every Amazon Retail Purchases recipe has now been run for real, and the
   lifetime-value questions are easier to find.** The revenue-per-buyer and
   acquisition-cohort queries previously shipped marked as compiling but with
