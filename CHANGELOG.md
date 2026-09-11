@@ -7,60 +7,6 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ### Changed
 
-- **Sponsored Brands bid and state changes now say what Amazon actually
-  requires, and a bad one is caught before it reaches your account.** Updating
-  an SB keyword, product target or negative target needs the ad group's id
-  alongside the entity's own id. That was missing from the guidance, so a
-  change could look correct, preview cleanly, and then be rejected by Amazon
-  only once it was already being applied to a live account. The guidance now
-  carries the requirement (and the correct field name for negative targets,
-  which Amazon calls `targetId`), and a missing required field is now caught in
-  the preview with the fix named, so nothing is sent. This also fixes SB
-  keyword and target ids being handed back a few digits off, which made bid
-  changes on some of the highest-performing keywords fail as not found.
-
-- **Amazon Marketing Cloud can now answer what a customer is worth, not only
-  what an ad did.** Ask for retail purchases, lifetime value by ASIN, purchase
-  cohorts or repeat-purchase analysis and the AMC skill knows the dataset those
-  questions need. Amazon Retail Purchases is a paid AMC dataset covering every
-  Amazon store purchase of your products across up to five years, whether or not
-  an ad was involved, which is what makes long-window customer questions
-  possible at all: the free AMC tables only see purchases Amazon could tie to an
-  ad, over about thirteen months. The skill now carries the table's full column
-  list, the six column traps that quietly produce a wrong answer instead of an
-  error (its date column is not the one the other AMC tables use, there is no
-  total-sales column, prices are in the marketplace's own currency and Amazon
-  will not convert them, its month column is a number from one to twelve rather
-  than a year-and-month, one order spans many rows so counting rows overcounts
-  orders, and item titles drift over a long window), how the numbers line up against
-  the Seller Central and Vendor Central reports a client already has, and three
-  query recipes, each labelled with how far it has actually been proven: a
-  customer-value segmentation, revenue per buyer by ASIN, and acquisition
-  cohorts. All three have since been run to completion against a live subscribed
-  account, which is covered in its own note below. Every column and its
-  privacy floor was checked against a real subscribed account rather than taken
-  from documentation, and asking Amazon for a table's schema now returns those
-  floors directly, so the guidance can be confirmed rather than trusted.
-
-- **AMC now says whether a paid dataset is actually switched on before you
-  query it.** A query against a dataset the advertiser is not subscribed to
-  fails when Amazon compiles it, and the message never mentions the
-  subscription, so it reads as a broken query and sends you off correcting SQL
-  that was never wrong. Asking about an instance now returns which paid datasets
-  are active on it. Because these subscriptions are time-limited, this is also
-  the first thing to check when a query that worked last month stops working.
-
-- **AMC schema lookups no longer make you read the whole catalog to find one
-  table.** Listing every data source in an instance returns each table with all
-  of its columns, across more pages than the default request returns, so it was
-  both large and easy to read as truncated ("that table does not exist" when it
-  simply had not been paged to yet). You can now ask for a single named table
-  and get just its columns back. The AMC guidance also now states the clean-room
-  rule that rejects more first queries than any SQL mistake does: shopper-level
-  identifiers can be grouped and joined inside a query, but what comes back has
-  to be aggregated, and a result that arrives empty may be Amazon's privacy
-  floor rather than an absence of sales.
-
 - **Monthly Performance Report Max now runs on Vendor Central accounts, and on a
   whole brand at once.** Until now the figure battery behind the brief only knew
   Seller Central tables, so a vendor account came back empty and the report had to
@@ -115,6 +61,75 @@ starts at 0.5.39; earlier versions predate the changelog.
   commitments is a required section after the first run. A structural event dated to a
   month (`2026-04`) now syncs to the timeline as the first (or last) day of that month
   instead of failing silently, and `context sync` names each failed event and the reason.
+
+- **Amazon Marketing Cloud can now answer what a customer is worth, not only
+  what an ad did.** Ask for retail purchases, lifetime value by ASIN, purchase
+  cohorts or repeat-purchase analysis and the AMC skill knows the dataset those
+  questions need. Amazon Retail Purchases is a paid AMC dataset covering every
+  Amazon store purchase of your products across up to five years, whether or not
+  an ad was involved, which is what makes long-window customer questions
+  possible at all: the free AMC tables only see purchases Amazon could tie to an
+  ad, over about thirteen months. The skill now carries the table's full column
+  list, the six column traps that quietly produce a wrong answer instead of an
+  error (its date column is not the one the other AMC tables use, there is no
+  total-sales column, prices are in the marketplace's own currency and Amazon
+  will not convert them, its month column is a number from one to twelve rather
+  than a year-and-month, one order spans many rows so counting rows overcounts
+  orders, and item titles drift over a long window), how the numbers line up against
+  the Seller Central and Vendor Central reports a client already has, and three
+  query recipes, each labelled with how far it has actually been proven: a
+  customer-value segmentation, revenue per buyer by ASIN, and acquisition
+  cohorts. All three have since been run to completion against a live subscribed
+  account, which is covered in its own note below. Every column and its
+  privacy floor was checked against a real subscribed account rather than taken
+  from documentation, and asking Amazon for a table's schema now returns those
+  floors directly, so the guidance can be confirmed rather than trusted.
+
+- **Every Amazon Retail Purchases recipe has now been run for real, and the
+  lifetime-value questions are easier to find.** The revenue-per-buyer and
+  acquisition-cohort queries previously shipped marked as compiling but with
+  their numbers unchecked. Both have now been run end to end against a live
+  subscribed account: revenue per buyer lands within 0.78% of the same window's
+  Business Reports revenue, and the cohort month arithmetic is correct across a
+  year boundary. Running them also turned up a trap now documented: submitting a
+  window in a local timezone reaches a few hours into the next UTC day, which
+  shows up as a tiny extra month sitting beside full ones and reads as a
+  collapse in new customers when it is nothing of the kind. Asking for help now
+  also surfaces these questions in the words people use for them, so you no
+  longer have to know that Amazon Marketing Cloud is the thing that answers
+  "what is a customer worth after their first order".
+
+- **AMC now says whether a paid dataset is actually switched on before you
+  query it.** A query against a dataset the advertiser is not subscribed to
+  fails when Amazon compiles it, and the message never mentions the
+  subscription, so it reads as a broken query and sends you off correcting SQL
+  that was never wrong. Asking about an instance now returns which paid datasets
+  are active on it. Because these subscriptions are time-limited, this is also
+  the first thing to check when a query that worked last month stops working.
+
+- **AMC schema lookups no longer make you read the whole catalog to find one
+  table.** Listing every data source in an instance returns each table with all
+  of its columns, across more pages than the default request returns, so it was
+  both large and easy to read as truncated ("that table does not exist" when it
+  simply had not been paged to yet). You can now ask for a single named table
+  and get just its columns back. The AMC guidance also now states the clean-room
+  rule that rejects more first queries than any SQL mistake does: shopper-level
+  identifiers can be grouped and joined inside a query, but what comes back has
+  to be aggregated, and a result that arrives empty may be Amazon's privacy
+  floor rather than an absence of sales.
+
+- **Sponsored Brands bid and state changes now say what Amazon actually
+  requires, and a bad one is caught before it reaches your account.** Updating
+  an SB keyword, product target or negative target needs the ad group's id
+  alongside the entity's own id. That was missing from the guidance, so a
+  change could look correct, preview cleanly, and then be rejected by Amazon
+  only once it was already being applied to a live account. The guidance now
+  carries the requirement (and the correct field name for negative targets,
+  which Amazon calls `targetId`), and a missing required field is now caught in
+  the preview with the fix named, so nothing is sent. This also fixes SB
+  keyword and target ids being handed back a few digits off, which made bid
+  changes on some of the highest-performing keywords fail as not found.
+
 - **Amazon failures now report what actually went wrong instead of "unknown".**
   When a call to Amazon failed, some failures arrived labelled `unknown` even
   though MixShift knew exactly what had happened: a retired report type, an
@@ -151,20 +166,6 @@ starts at 0.5.39; earlier versions predate the changelog.
   that Amazon's own line-item totals already include them, and that they have to
   be kept when you group by creative type. Doc-only: nothing about the data
   itself changed.
-
-- **Every Amazon Retail Purchases recipe has now been run for real, and the
-  lifetime-value questions are easier to find.** The revenue-per-buyer and
-  acquisition-cohort queries previously shipped marked as compiling but with
-  their numbers unchecked. Both have now been run end to end against a live
-  subscribed account: revenue per buyer lands within 0.78% of the same window's
-  Business Reports revenue, and the cohort month arithmetic is correct across a
-  year boundary. Running them also turned up a trap now documented: submitting a
-  window in a local timezone reaches a few hours into the next UTC day, which
-  shows up as a tiny extra month sitting beside full ones and reads as a
-  collapse in new customers when it is nothing of the kind. Asking for help now
-  also surfaces these questions in the words people use for them, so you no
-  longer have to know that Amazon Marketing Cloud is the thing that answers
-  "what is a customer worth after their first order".
 
 ### Fixed
 
