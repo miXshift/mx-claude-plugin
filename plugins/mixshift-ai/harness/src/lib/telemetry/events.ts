@@ -176,6 +176,15 @@ export const EventName = {
   // throttled_polls, via}. Internal diagnostic only — not in the Discord fanout.
   ReportPollThrottled: 'report.poll_throttled',
 
+  // Same idea as ReportPollThrottled, but for the CREATE side: Amazon 429'd the
+  // request that asks for the report, and the run backed off and asked again
+  // rather than failing. Kept as its own name instead of reusing the poll event
+  // because the two say different things to a sweep — a throttled poll means a
+  // report exists and we are waiting on it, a throttled start means it does not
+  // exist yet. payload: {report_type, throttled_starts, via}. Internal
+  // diagnostic only — not in the Discord fanout.
+  ReportStartThrottled: 'report.start_throttled',
+
   // Service-credential setup (`mixshift auth service-setup`). Fired after
   // the service block is persisted so a fresh data dir's synthetic
   // plugin.installed event attributes to the svc: label instead of landing

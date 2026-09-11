@@ -919,7 +919,56 @@ async function startAndPollUntilReady(
 ): Promise<StartPollOutcome> {
   const { root, clientOpts, stepStartedAt, deadline, intervalMs, reportType } = ctx;
 
-  const started = await startReport(input, clientOpts);
+  // Asking Amazon to CREATE the report. A 429 here is transient in exactly the
+  // way a throttled poll is — the request was rate-limited, the pull is fine —
+  // so it gets the same treatment: back off and ask again inside the deadline,
+  // rather than failing the run on the first one.
+  //
+  // Until this existed, a throttled start was TERMINAL while a throttled poll
+  // was ridden out, and that asymmetry was the whole defect: the caller got a
+  // hard failure for a transient condition and re-invoked on its own schedule,
+  // which is what produced the flat ~53s retry cadence observed on an SQP
+  // automation (mx-ops#52). The pacing was never ours; we simply never gave the
+  // run a chance to wait. Backing off here also staggers concurrent starts for
+  // free, since each caller waits a different, growing amount.
+  let started = await startReport(input, clientOpts);
+  let throttledStarts = 0;
+  let startThrottleStreak = 0;
+  while (isReportFailure(started) && started.kind === 'throttled') {
+    throttledStarts += 1;
+    startThrottleStreak += 1;
+    const backoff = throttleBackoffMs(
+      started.retryAfterMs,
+      intervalMs,
+      startThrottleStreak,
+      Date.now(),
+      deadline,
+    );
+    if (backoff <= 0) break; // out of time; fall through and report the throttle
+    if (!root.json) {
+      process.stderr.write(
+        `  ... Amazon rate-limited the report request; backing off ${(backoff / 1000).toFixed(1)}s ` +
+          `(throttle ${throttledStarts})\n`,
+      );
+    }
+    await sleep(backoff);
+    started = await startReport(input, clientOpts);
+  }
+
+  // One deduped summary when the start was throttled at all, so a throttle the
+  // run ABSORBED is not counted as a failed pull by the error-aggregate sweep.
+  if (throttledStarts > 0) {
+    await track(
+      {
+        event_name: EventName.ReportStartThrottled,
+        outcome: 'ok',
+        duration_ms: Date.now() - stepStartedAt,
+        payload: { report_type: reportType, throttled_starts: throttledStarts, via: 'run' },
+      },
+      root.dataDir,
+    );
+  }
+
   if (isReportFailure(started)) {
     await trackFailure(EventName.ReportFailed, started, stepStartedAt, root.dataDir, reportType);
     return { outcome: 'start_failed', failure: started };
