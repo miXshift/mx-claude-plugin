@@ -71,6 +71,11 @@ jobs:
       - name: Skill contract resolution (sql_ids, context fields, upstream, command surfaces)
         run: npm run check-contracts
 
+      # Validates changelog.d/ fragment names + shape. Does NOT require a PR to
+      # ship a fragment: a docs-only or internal change legitimately has none.
+      - name: Changelog fragments well-formed
+        run: npm run check-changelog-fragments
+
       - name: Deployed named-query pack compatibility
         run: npm run check-named-pack
         env:

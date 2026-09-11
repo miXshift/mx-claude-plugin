@@ -4,3 +4,14 @@
 # which made release builds look stale and added noise to every diff. Forcing
 # eol=lf on the committed artifacts keeps the working tree matching the build.
 plugins/mixshift-ai/harness/dist/* text eol=lf
+
+# The bundle is GENERATED, and is rebuilt+committed only at the release cut (see
+# CONTRIBUTING -> "dist/ is release-time, not PR-time"). Marking it generated
+# collapses it in GitHub PR diffs and keeps it out of language stats, so a review
+# shows the source change instead of 4MB of bundled output.
+#
+# Deliberately NOT given a merge strategy. `merge=ours` would silently keep one
+# side and drop the other, which on a bundle means quietly shipping a build that
+# is missing another PR's feature. The correct resolution for a dist conflict is
+# always to REBUILD from the merged source, never to pick a side.
+plugins/mixshift-ai/harness/dist/* linguist-generated=true

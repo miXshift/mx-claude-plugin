@@ -1,7 +1,7 @@
 {
   "name": "@mixshift/harness",
   "version": "0.0.1",
-  "description": "Internal harness for the mixshift-ai plugin. Not user-facing — invoked by Claude via Bash tool during skill execution.",
+  "description": "Internal harness for the mixshift-ai plugin. Not user-facing \u2014 invoked by Claude via Bash tool during skill execution.",
   "private": true,
   "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
@@ -22,7 +22,9 @@
     "check-named-pack": "tsx scripts/check-named-pack.mjs",
     "check-no-internal-exposure": "node scripts/check-no-internal-exposure.mjs",
     "check-changelog-marker": "node scripts/check-changelog-marker.mjs",
-    "package-zip": "node scripts/package-zip.mjs"
+    "package-zip": "node scripts/package-zip.mjs",
+    "changelog:collect": "node scripts/collect-changelog.mjs",
+    "check-changelog-fragments": "node scripts/collect-changelog.mjs --check"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.4.3",

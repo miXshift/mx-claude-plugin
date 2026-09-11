@@ -36,6 +36,49 @@ If the CLA is a blocker for you, please reach out before investing time in a PR.
 
 (To be filled in as the productization work lands. For now, the plugin is in pre-beta and not yet ready for outside development. Watch the repo for updates.)
 
+## Two things a feature PR must NOT touch
+
+Both of these used to be edited by every PR in a release, and because every PR in
+a cut touched the same file, every merge conflicted every other open PR. It is
+quadratic: measured on 2026-09-10, four PRs in one cut produced six pairwise
+conflicts; six PRs would produce fifteen.
+
+### `CHANGELOG.md` is release-time, not PR-time
+
+Add a fragment under `changelog.d/` instead, named
+`<added|changed|fixed>-<slug>.md`, containing the bullet. See
+`changelog.d/README.md` for the format. The release cut folds every fragment into
+the version heading and deletes them.
+
+CI validates fragment shape (`npm run check-changelog-fragments`) but does not
+require one: a docs-only or internal change legitimately ships no fragment.
+
+### `dist/` is release-time, not PR-time
+
+**Do not run `npm run build` and commit the bundle in a feature PR.** The release
+cut rebuilds it, and `.github/workflows/release.yml` hard-fails the tag if the
+committed bundle does not match a fresh build, so correctness at the tag is
+already enforced by machine. Rebuilding per-PR adds nothing that gate does not
+already guarantee, and costs a guaranteed conflict between every pair of
+concurrent PRs.
+
+It also removes a real hazard. Git will happily **auto-merge** `dist/cli.js`
+without reporting a conflict, and an auto-merged 4MB bundle is meaningless: it can
+silently contain one PR's feature and not another's, and per-PR CI would not catch
+it because CI builds fresh rather than comparing against the commit. Only the
+release job compares.
+
+Consequence to expect, and it is the intended one: between cuts, `main`'s `dist/`
+lags the source on `main`. That is *more* coherent than the alternative, not less
+— main's committed bundle and its `plugin.json` version then both describe the
+last release, instead of a bundle carrying unreleased features while the version
+string claims otherwise.
+
+**If you ever do hit a `dist/` conflict** (merging main into a long-lived branch
+that predates this rule, say): resolve it by **rebuilding from the merged source**,
+never by picking a side, and then grep the rebuilt bundle for a marker from each
+change in the cut to prove it carries all of them.
+
 ## Releasing
 
 The plugin's release mechanics have known friction with Cowork's plugin update path (see [`docs/install/cowork-personal.md` troubleshooting](docs/install/cowork-personal.md#troubleshooting) for user-facing workarounds). To keep release state internally consistent, every version bump must update three places together. If any drift, the install lands wrong in a different way (see "Drift consequences" below).
@@ -47,7 +90,8 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 - [ ] `npm run check-catalog-drift` passes if you touched skill docs or manifests. It fails when a skill names an Amazon operation id the catalog does not have, which nothing else catches: an uncataloged id the agent routes around produces no failed call and no telemetry. It needs `MIXSHIFT_CATALOG_DIR` pointed at the auth service's `src/amazon`, and fails closed (exit 1) when that is unset, so it cannot be silently skipped the way an absent gate can. Not in per-push CI, which has no access to that source; it runs at release.
 - [ ] `plugins/mixshift-ai/.claude-plugin/plugin.json` version bumped
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
-- [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed
+- [ ] **Changelog fragments folded** — `npm run changelog:collect -- --version X.Y.Z` from `plugins/mixshift-ai/harness/` writes every `changelog.d/` fragment into the new version heading (Added → Changed → Fixed) and deletes the fragments. Feature PRs do NOT edit `CHANGELOG.md`; this step is where their bullets arrive. Commit the folded changelog and the deletions together.
+- [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed — **this is the ONLY place dist is rebuilt.** Feature PRs leave it alone (see "dist/ is release-time, not PR-time" below), so at the cut it is expected to be behind every source change merged since the last release.
 - [ ] Release commit titled `release: X.Y.Z <summary>`
 - [ ] Annotated tag `mixshift-ai--vX.Y.Z`
 - [ ] Branch + tag pushed to origin together
