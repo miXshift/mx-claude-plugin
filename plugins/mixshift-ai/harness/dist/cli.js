@@ -64914,6 +64914,14 @@ var init_events = __esm({
       // which skewed the error-aggregate triage). payload: {report_type,
       // throttled_polls, via}. Internal diagnostic only — not in the Discord fanout.
       ReportPollThrottled: "report.poll_throttled",
+      // Same idea as ReportPollThrottled, but for the CREATE side: Amazon 429'd the
+      // request that asks for the report, and the run backed off and asked again
+      // rather than failing. Kept as its own name instead of reusing the poll event
+      // because the two say different things to a sweep — a throttled poll means a
+      // report exists and we are waiting on it, a throttled start means it does not
+      // exist yet. payload: {report_type, throttled_starts, via}. Internal
+      // diagnostic only — not in the Discord fanout.
+      ReportStartThrottled: "report.start_throttled",
       // Service-credential setup (`mixshift auth service-setup`). Fired after
       // the service block is persisted so a fresh data dir's synthetic
       // plugin.installed event attributes to the svc: label instead of landing
@@ -90021,7 +90029,40 @@ function registerReportRun(report) {
 }
 async function startAndPollUntilReady(input, ctx) {
   const { root, clientOpts, stepStartedAt, deadline, intervalMs, reportType } = ctx;
-  const started = await startReport(input, clientOpts);
+  let started = await startReport(input, clientOpts);
+  let throttledStarts = 0;
+  let startThrottleStreak = 0;
+  while (isReportFailure(started) && started.kind === "throttled") {
+    throttledStarts += 1;
+    startThrottleStreak += 1;
+    const backoff = throttleBackoffMs(
+      started.retryAfterMs,
+      intervalMs,
+      startThrottleStreak,
+      Date.now(),
+      deadline
+    );
+    if (backoff <= 0) break;
+    if (!root.json) {
+      process.stderr.write(
+        `  ... Amazon rate-limited the report request; backing off ${(backoff / 1e3).toFixed(1)}s (throttle ${throttledStarts})
+`
+      );
+    }
+    await sleep(backoff);
+    started = await startReport(input, clientOpts);
+  }
+  if (throttledStarts > 0) {
+    await track(
+      {
+        event_name: EventName.ReportStartThrottled,
+        outcome: "ok",
+        duration_ms: Date.now() - stepStartedAt,
+        payload: { report_type: reportType, throttled_starts: throttledStarts, via: "run" }
+      },
+      root.dataDir
+    );
+  }
   if (isReportFailure(started)) {
     await trackFailure2(EventName.ReportFailed, started, stepStartedAt, root.dataDir, reportType);
     return { outcome: "start_failed", failure: started };
