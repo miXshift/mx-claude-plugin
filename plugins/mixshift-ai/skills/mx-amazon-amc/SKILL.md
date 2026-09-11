@@ -18,7 +18,7 @@ description: >
   require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: "MixShift"
 trigger_phrases:
   - run an amc query

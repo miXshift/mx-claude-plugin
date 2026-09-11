@@ -155,6 +155,22 @@ starts at 0.5.39; earlier versions predate the changelog.
   be kept when you group by creative type. Doc-only: nothing about the data
   itself changed.
 
+### Changed
+
+- **Every Amazon Retail Purchases recipe has now been run for real, and the
+  lifetime-value questions are easier to find.** The revenue-per-buyer and
+  acquisition-cohort queries previously shipped marked as compiling but with
+  their numbers unchecked. Both have now been run end to end against a live
+  subscribed account: revenue per buyer lands within 0.78% of the same window's
+  Business Reports revenue, and the cohort month arithmetic is correct across a
+  year boundary. Running them also turned up a trap now documented: submitting a
+  window in a local timezone reaches a few hours into the next UTC day, which
+  shows up as a tiny extra month sitting beside full ones and reads as a
+  collapse in new customers when it is nothing of the kind. Asking for help now
+  also surfaces these questions in the words people use for them, so you no
+  longer have to know that Amazon Marketing Cloud is the thing that answers
+  "what is a customer worth after their first order".
+
 ### Fixed
 
 - **A report waiting in Amazon's queue is no longer checked flat out, and a run
