@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.2.1"
+version: "0.2.2"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
@@ -104,7 +104,12 @@ notes: >
   names the subscription, so it reads as broken SQL. amc.get_instance returns
   instance.optionalDatasets; the label PURCHASE_RETAIL_PROGRAM means
   amazon_retail_purchases is queryable. Subscriptions are time-limited, so
-  re-check this first when a working query starts failing.
+  re-check this first when a working query starts failing. That label's
+  activationTime is the SUBSCRIPTION date and NOT where the data starts: Amazon
+  backfills roughly five years behind it (instance activated 2025-08-05, earliest
+  purchase row 2021-09-13, measured 2026-09-13). No API field reports the floor,
+  so measure it with SELECT MIN(purchase_date_utc) over a deliberately over-wide
+  window BEFORE setting any real window.
 
   AMC SQL dialect (FAILED executions are usually dialect violations): declare
   every CUSTOM_PARAMETER in workflow.inputParameters (array params need
@@ -122,14 +127,17 @@ notes: >
 
   amazon_retail_purchases (the long-window paid dataset behind lifetime value,
   repeat purchase and cohorts) has its own reference at
-  references/amazon-retail-purchases.md: full column list with the output rules
+  references/amazon-retail-purchases.md: the required first step of measuring
+  the history floor from the data, full column list with the output rules
   the API does not return, five column traps that silently produce wrong
   answers (purchase_date_utc not event_dt_utc; revenue is unit_price *
   purchase_units_sold with no total column; purchase_month_utc is 1-12 not
   YYYYMM; one purchase_id spans many event_id rows so orders are
   COUNT(DISTINCT purchase_id); unit_price is LOCAL currency and AMC cannot
   convert, so filter or group on marketplace_name before summing money),
-  and three query recipes of which ONE is verified live and two are not.
+  and three query recipes. Cohort and new-versus-repeat work has one extra
+  trap: a window anchored at activationTime makes its first month read 100% new
+  by construction, so the window must open well before the first period reported.
 
   Lifecycle: amc.create_workflow_execution (body: workflow.sqlQuery + optional
   inputParameters; timeWindowType EXPLICIT | MOST_RECENT_DAY | MOST_RECENT_WEEK;

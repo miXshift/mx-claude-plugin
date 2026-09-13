@@ -18,7 +18,7 @@ description: >
   require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -271,8 +271,15 @@ mixshift ads call amc.get_instance --legacy-seller-id <id>   --path instanceId=<
 
 `instance.optionalDatasets` is an array of `{ label, activationTime }`. A `label`
 of `PURCHASE_RETAIL_PROGRAM` means `amazon_retail_purchases` is queryable here.
-Read `activationTime` too: it is roughly where that dataset's history starts, so
-it bounds what a multi-year claim can honestly say.
+
+`activationTime` is when the advertiser **subscribed**, and it is not where the
+data starts. Amazon backfills roughly five years behind it, so an instance
+activated last year can hold history from years before that. Never bound a window
+with it: measure the real floor with `SELECT MIN(purchase_date_utc)` over a
+window deliberately opened years earlier, then set every later window from that
+result. Nothing in the API reports the floor, so this query is the only route to
+it. `references/amazon-retail-purchases.md` has the full procedure and what goes
+wrong without it.
 
 `amc.list_instances` carries the same array for every instance it lists, so
 either call answers this; prefer `amc.get_instance` once you hold an instance
