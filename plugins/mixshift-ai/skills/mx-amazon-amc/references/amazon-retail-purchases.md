@@ -24,12 +24,44 @@ That is what makes long-window customer questions possible:
 
 Two limits to establish before promising any of that.
 
-**Retention is a ceiling, not what this instance holds.** History effectively
-starts when the advertiser's subscription was activated. A real subscribed
-instance checked 2026-09-09 had an `activationTime` of 2025-08-05, so about 13
-months, not years. Never promise a five-year read without looking: the
-subscription check below returns that `activationTime`, and
-`SELECT MIN(purchase_date_utc)` confirms the real floor.
+**The subscription date is not the start of the data.** `activationTime` on the
+`PURCHASE_RETAIL_PROGRAM` label is when the advertiser *subscribed*. Amazon
+backfills roughly five years behind it, so the history is normally much older
+than the subscription. Measured 2026-09-13 on instance `amcoxdvrerk`, which
+activated on 2025-08-05: the earliest purchase row is **2021-09-13**, with rows
+through 2026-08-31. Sixty months, on an instance a little over one year old.
+
+An earlier version of this file read that same `activationTime` as the floor and
+told you the instance held "about 13 months, not years". That was an inference
+from a date, not a measurement, and following it costs you four years of the
+history you are paying for. **Find the floor from the data, and do it before you
+set a window.** The next section is how.
+
+## First call every time: find the real floor
+
+Nothing in the API tells you where the data starts. All 23 `optionalDatasets`
+entries on the instance above were checked, and none carries a retention or
+earliest-date field. So you measure it, with a window deliberately opened years
+earlier than you think you need:
+
+```sql
+SELECT
+  MIN(purchase_date_utc) AS earliest,
+  MAX(purchase_date_utc) AS latest
+FROM amazon_retail_purchases
+```
+
+Submit it with `timeWindowType` `EXPLICIT` and a `timeWindowStart` well before
+the subscription, `2020-01-01T00:00:00` is a sensible default. Two ways to read
+the answer:
+
+- If `earliest` sits comfortably inside the window you asked for, it is the real
+  floor and you can set every later window from it.
+- If `earliest` lands on the first day of your window, the window was the
+  binding constraint, not the data. Open it wider and ask again.
+
+This costs one cheap execution and it is the difference between a five-year
+customer history and a truncated one that still looks right.
 
 **Windows do not line up with the ad tables.** Joining to advertising data gives
 you multi-year history on one side and about 13 months on the other. Clamp both sides to
@@ -50,8 +82,9 @@ mixshift ads call amc.get_instance --legacy-seller-id <id> \
 ```
 
 `instance.optionalDatasets` is an array of `{ label, activationTime }`. Look for
-a `label` of `PURCHASE_RETAIL_PROGRAM`, and read its `activationTime` while you
-are there, because that is where the data starts. `amc.list_instances` returns
+a `label` of `PURCHASE_RETAIL_PROGRAM`. Its `activationTime` tells you when the
+advertiser subscribed and **nothing about where the data starts**, so do not
+build a window from it. `amc.list_instances` returns
 the same array for every instance it lists, so either call answers the question;
 prefer `amc.get_instance` once you hold an instance id, since the list pages at
 100 and a real entity had more than 100 instances.
@@ -221,9 +254,11 @@ Every recipe here needs an explicit window:
 }
 ```
 
-Start no earlier than the subscription's `activationTime`, because there is
-nothing before it. End at least two days before now, because recent days are
-still filling in and a short tail reads as a sales decline.
+Start at the floor you measured, not at the subscription's `activationTime`. The
+data reaches years further back than the subscription does, and a window anchored
+at `activationTime` silently discards all of it. End at least two days before
+now, because recent days are still filling in and a short tail reads as a sales
+decline.
 
 **Submit the window in UTC unless you have a reason not to.** If you pass
 `timeWindowTimeZone`, Amazon converts the bounds to UTC while the table's own
@@ -472,8 +507,21 @@ Three caveats to pass on.
 "First purchase" means first **inside the window you submitted**, not first
 ever. Shoppers who were already buying before the window opened are misfiled
 into its earliest cohort and look artificially loyal. This is why the window has
-to start at the subscription's real beginning rather than wherever is
-convenient, and why the earliest cohort should usually be dropped from the read.
+to start at the measured floor rather than wherever is convenient, and why the
+earliest cohort should usually be dropped from the read.
+
+**Anchoring this window at `activationTime` is circular, and it is the single
+most expensive way to get this wrong.** Any query that derives a first purchase
+from the window will report the window's first month as 100% new customers,
+because there is nothing behind it to compare against. That is an artifact of
+where you opened the window, not a fact about the business, and the query
+succeeds without complaint. Measured on a real account: a new-versus-repeat read
+anchored at `activationTime` returned 100% new and zero repeat for the first
+month, and still overstated new customers by 18% a full year in (18,710 against
+a true 15,802), which carried a cost per acquisition 16% too low. Re-run from the
+measured floor, it reconciled to the client's own series within 22 customers per
+month. If you need repeat and new-customer splits, the window must open at least
+a full purchase cycle before the first period you intend to report.
 
 A cohort's later months only compare to another cohort's later months when both
 have had the same time to accumulate them.
@@ -525,9 +573,10 @@ in it.
 
 - Say which window the numbers cover, and say it in months. Confirm it is the
   window you actually submitted, not the default.
-- Say which recipe produced them and how far it has been proven. Only A has
-  produced numbers anyone has checked; B and C are known to be valid queries
-  whose output is still unconfirmed.
+- Confirm the window opens at the measured floor, not at the subscription date.
+  If you cannot say what `MIN(purchase_date_utc)` returned, you do not yet know
+  whether these numbers are missing years.
+- Say which recipe produced them and how far it has been proven.
 - Say whether advertising is in scope. Most of these purchases were never
   ad-attributed, and a reader who assumes otherwise misreads everything.
 - Say which marketplace, and never sum money across marketplaces.
