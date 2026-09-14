@@ -15,6 +15,15 @@ name: ci
 #   context fields, upstream skills, or unimplemented command surfaces.
 #   check-named-pack is BLOCKING and reads the public tenant-free deployment
 #   manifest. This catches plugin/gateway skew before merge.
+#   check-figures is BLOCKING and catches the HALF of plugin/gateway skew that
+#   check-named-pack structurally cannot see: the deployed manifest carries ids
+#   with no param schema, so a tuned default moving under the docs (0.99 -> 0.25
+#   in Sep 2026) passes it untouched. It compares the numbers the skills and the
+#   --help strings state against a lock vendored from the gateway.
+#
+# The JOB NAME is deliberately left unchanged when gates are added: it is the
+# check-run name branch protection matches on, and renaming it silently drops
+# the required check.
 
 on:
   push:
@@ -80,6 +89,14 @@ jobs:
         run: npm run check-named-pack
         env:
           MIXSHIFT_PACK_CHECK_API_BASE: https://mcp.mixshift.io
+
+      # Runs BESIDE check-named-pack because it closes that check's blind spot:
+      # the deployed pack manifest is {schema_version, ids} with no param schema,
+      # so it passes whether or not the service's tuned defaults match what the
+      # docs tell a brief author. Reads the vendored figures.lock.json, needs no
+      # network, and is BLOCKING.
+      - name: Figure drift (docs vs the gateway's tuned defaults)
+        run: npm run check-figures
 
       - name: Build CLI bundle
         run: npm run build

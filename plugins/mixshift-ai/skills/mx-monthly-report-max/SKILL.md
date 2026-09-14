@@ -114,14 +114,14 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Voice | house voice (the Voice section + `references/brief-structure.md`) | voice profiles: `~/.mixshift/voice.md` (the manager's voice, all their brands) and `clients/<brand>/voice.md` (this client's register); brand wins on conflict. Seed and update them per "Voice profiles" below |
 
 **Threshold defaults** (quote the active values in the method notes; override via
-`reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
-worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
-SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
+`reporting.thresholds.*`): Buy Box attention floor <!-- figure:buybox_floor -->92<!-- /figure -->% page-view-weighted; Buy Box MoM drop
+worth flagging <!-- figure:buybox_drop -->5<!-- /figure --> pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
+SKU reconciliation tolerance 0.5%; settled-window exclusion <!-- figure:settled_exclusion_days_sc -->7<!-- /figure --> days on Seller Central and <!-- figure:settled_exclusion_days_vc -->14<!-- /figure --> on Vendor
 Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
-Vendor Central out-of-stock rate threshold 0.25
+Vendor Central out-of-stock rate threshold <!-- figure:oos_rate_threshold -->0.25<!-- /figure -->
 (an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); Vendor Central availability-interruption
-floor 40 sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
+floor <!-- figure:min_sellable_units -->40<!-- /figure --> sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
 Those last two are SERVICE-SIDE defaults, calibrated on one account and two months rather than chosen
 (`rules-provenance.md`, "The Vendor Central interruption thresholds are calibrated, not chosen"), and a run can
 override either, so report what `thresholds_applied` says ran, not these, whenever the two could differ.
