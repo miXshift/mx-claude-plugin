@@ -121,8 +121,11 @@ Central under the default basis (the attribution tail of each channel's rule; `-
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
 Vendor Central out-of-stock rate threshold 0.25
 (an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); Vendor Central availability-interruption
-floor 40 sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides);
-sales floor for per-item
+floor 40 sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
+Those last two are SERVICE-SIDE defaults, calibrated on one account and two months rather than chosen
+(`rules-provenance.md`, "The Vendor Central interruption thresholds are calibrated, not chosen"), and a run can
+override either, so report what `thresholds_applied` says ran, not these, whenever the two could differ.
+Sales floor for per-item
 Buy Box flags: the account's median item revenue in the current window (so thin accounts
 still flag something and large accounts do not flag noise).
 
@@ -370,9 +373,13 @@ knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_reve
 in context.yaml records a client whose convention is shipped), `--oos-rate-threshold` (the
 procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, 0.25 by
 default) and `--min-sellable-units` (the sellable-unit floor at or above which one of those
-out-of-stock ASIN-days ALSO counts as an availability interruption, 40 by default). Leave both
-off unless the client has ruled otherwise: the defaults are calibrated, and the two move
-together, so changing one alone changes what the other is applied to.
+out-of-stock ASIN-days ALSO counts as an availability interruption, 40 by default). Both defaults
+are service-side and a run can override either; `thresholds_applied` reports what ran. Leave both
+off unless the client has ruled otherwise: the defaults are calibrated (on one account and two
+months, see `rules-provenance.md`), and the two move together, so changing one alone changes what
+the other is applied to. `--min-sellable-units` needs the gateway change that introduces the
+`min_sellable_units` param; against a service that predates it the call is rejected on the unknown
+param, and that is the signal to drop the flag rather than to work around it.
 
 **The attribution basis applies on every channel: `--attribution legacy_sales|all_14|sc_default`.**
 Leave it off unless the client asks for a click-only reading. The service default `legacy_sales`
@@ -424,8 +431,12 @@ sentences, `oos_rate_threshold`, and on Vendor Central rows `min_sellable_units`
 account actually applied; quote the top-level one in the method notes, the `attribution_note`
 once in the client brief under the first ad figure, `availability_interruption_note` verbatim
 the same way beside the first interruption figure (it is the one sentence that says which two
-thresholds produced the count, and it is the only honest source for them: never restate either
-number from this file, because a run can override both), and `attribution_detail` as the Attribution
+thresholds actually produced the count; the 0.25 and 40 quoted in this file are only the service
+defaults, so quote the note for what ran, not the defaults, whenever the two could differ. The
+note arrives with the gateway change: if `availability_interruption_note` is absent from
+`thresholds_applied`, the run predates it, so say which thresholds you believe applied and that
+the run did not report them rather than quoting a default as if it were measured), and
+`attribution_detail` as the Attribution
 line of i06 (see the composition rules). Charts that need
 `monthly_history` read it per account.
 
