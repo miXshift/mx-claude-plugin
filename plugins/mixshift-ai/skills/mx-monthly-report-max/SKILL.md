@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.3.0
+version: 2.4.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -119,8 +119,13 @@ worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 t
 SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
 Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
-Vendor Central out-of-stock rate threshold 0.99
-(an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); sales floor for per-item
+Vendor Central out-of-stock rate threshold 0.25
+(an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); Vendor Central availability-interruption
+floor 40 sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
+Those last two are SERVICE-SIDE defaults, calibrated on one account and two months rather than chosen
+(`rules-provenance.md`, "The Vendor Central interruption thresholds are calibrated, not chosen"), and a run can
+override either, so report what `thresholds_applied` says ran, not these, whenever the two could differ.
+Sales floor for per-item
 Buy Box flags: the account's median item revenue in the current window (so thin accounts
 still flag something and large accounts do not flag noise).
 
@@ -365,7 +370,16 @@ mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <d
 `--brand` takes every account in the brand context whose status is not `inactive` (a
 `wind_down` code still sold this month and the brief must account for it). Vendor Central
 knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
-in context.yaml records a client whose convention is shipped).
+in context.yaml records a client whose convention is shipped), `--oos-rate-threshold` (the
+procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, 0.25 by
+default) and `--min-sellable-units` (the sellable-unit floor at or above which one of those
+out-of-stock ASIN-days ALSO counts as an availability interruption, 40 by default). Both defaults
+are service-side and a run can override either; `thresholds_applied` reports what ran. Leave both
+off unless the client has ruled otherwise: the defaults are calibrated (on one account and two
+months, see `rules-provenance.md`), and the two move together, so changing one alone changes what
+the other is applied to. `--min-sellable-units` needs the gateway change that introduces the
+`min_sellable_units` param; against a service that predates it the call is rejected on the unknown
+param, and that is the signal to drop the flag rather than to work around it.
 
 **The attribution basis applies on every channel: `--attribution legacy_sales|all_14|sc_default`.**
 Leave it off unless the client asks for a click-only reading. The service default `legacy_sales`
@@ -412,9 +426,17 @@ the account). Per account only, under `accounts[i].document`: `windows`, `accoun
 by campaign type for the current window), `sections_failed`. `account_retail` and the brand
 `traffic` block carry `traffic_quality` per comparison (see Step 4). `thresholds_applied` is at the top level for the call (brands, floors,
 revenue basis, attribution per channel with its `attribution_note` and `attribution_detail`
-sentences, OOS threshold) and repeated per account with what that
+sentences, `oos_rate_threshold`, and on Vendor Central rows `min_sellable_units` with its
+`availability_interruption_note`) and repeated per account with what that
 account actually applied; quote the top-level one in the method notes, the `attribution_note`
-once in the client brief under the first ad figure, and `attribution_detail` as the Attribution
+once in the client brief under the first ad figure, `availability_interruption_note` verbatim
+the same way beside the first interruption figure (it is the one sentence that says which two
+thresholds actually produced the count; the 0.25 and 40 quoted in this file are only the service
+defaults, so quote the note for what ran, not the defaults, whenever the two could differ. The
+note arrives with the gateway change: if `availability_interruption_note` is absent from
+`thresholds_applied`, the run predates it, so say which thresholds you believe applied and that
+the run did not report them rather than quoting a default as if it were measured), and
+`attribution_detail` as the Attribution
 line of i06 (see the composition rules). Charts that need
 `monthly_history` read it per account.
 
@@ -435,8 +457,8 @@ the gap.
 **Vendor Central figures are named for what they are.** `glance_views` and
 `gv_conversion_pct` are the traffic and conversion basis (a vendor account has no sessions
 and no Buy Box); `oos_days` counts ASIN-days at or above the procurable out-of-stock
-threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE
-sellable units were on hand, a listing or procurability problem rather than a stockout, and
+threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE at least the
+sellable-unit floor was on hand (40 by default), a listing or procurability problem rather than a stockout, and
 usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
 snapshot on the last loaded day plus net received units over the window. Ad figures come
 from `campaignmetric` on every channel, never from a monthly rollup table.

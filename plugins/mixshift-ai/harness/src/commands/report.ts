@@ -650,7 +650,11 @@ export function registerReportCommands(program: Command): void {
     )
     .option(
       '--oos-rate-threshold <rate>',
-      'Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)',
+      'Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.25 on the service)',
+    )
+    .option(
+      '--min-sellable-units <n>',
+      'Vendor Central: sellable units on hand at or above which an out-of-stock ASIN-day ALSO counts as an availability interruption, a listing or procurability problem rather than an empty shelf. Interruption days are a subset of the out-of-stock days and stay counted in oos_days, so the two figures overlap and never sum to a total. A fixed unit floor, not a share of run rate (default 40 on the service; 1 together with --oos-rate-threshold 0.99 restores the pre-2026-09 rule, and both flags are needed because the out-of-stock set the floor is applied to moved in the same change)',
     )
     .option(
       '--attribution <basis>',
@@ -781,6 +785,7 @@ interface BatteryOptions {
   buyboxDrop: string;
   revenueBasis?: string;
   oosRateThreshold?: string;
+  minSellableUnits?: string;
   attribution?: string;
   out: string;
   timeout: string;
@@ -978,6 +983,9 @@ export function batteryParams(
   }
   if (opts.oosRateThreshold !== undefined) {
     params.oos_rate_threshold = batteryNumber(opts.oosRateThreshold, '--oos-rate-threshold', 1);
+  }
+  if (opts.minSellableUnits !== undefined) {
+    params.min_sellable_units = batteryInt(opts.minSellableUnits, '--min-sellable-units', 1);
   }
   if (opts.attribution !== undefined) params.attribution = opts.attribution;
   return params;

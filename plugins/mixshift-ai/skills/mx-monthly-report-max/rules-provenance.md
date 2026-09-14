@@ -295,6 +295,131 @@ lane; the identity **same + other + view-through === total** holds per row at ev
 ~$345K identified → ~$100K unattributable (SB + view-through, unsplittable). Quote ad-driven as a floor and name the basis. *Enforcement: CATALOG basis
 metadata + the extractor's identity check (already live in `extract_figures --check`).*
 
+### The Vendor Central interruption thresholds are calibrated, not chosen (2026-09-14)
+**Two published counts of one event disagreed.** The Vendor Central battery shipped
+`availability_interruptions` at an out-of-stock rate of 0.99 with a hardcoded
+`SellableOnHandInventoryUnits > 0`, which on a non-negative integer column is identical to a floor
+of 1, and read **July 23 / August 20** ASIN-days on Brand B (US), a Vendor Central account, where
+the vendor engine's published figures for the same account and the same two months were
+**July 1 / August 16**. Same event, two numbers, and the vendor manager reconciling them by hand.
+The fix was to CALIBRATE the two knobs against the engine's published counts instead of picking
+round numbers, and this entry exists so the next person to touch them knows they are pinned rather
+than preferred. What this change does to the calibration account's own published figures:
+July 23 → 1 and August 20 → 16.
+
+**Where the target came from.** July 1 / August 16 is not our number. It is the vendor engine's
+own published figure for that account and those two months, taken from the engine team's round-2
+reply dated 2026-09-08 and received 2026-09-10; the reply packet and our verification of it are
+recorded in the private ops-repo handoff for that service, not reproduced here, because this repo
+is public.
+
+**Measured 2026-09-14** against `vendor_inventory_manufacturing_asin_daily`, July and August 2026,
+an ASIN-day taken as the MAX over the day, predicate `ProcurableProductOutOfStockRate >= rate AND
+SellableOnHandInventoryUnits >= floor`.
+
+*Rate grid, at a fixed sellable floor of 40* (interruption ASIN-days, July / August): 0.01 → 4 / 19;
+0.05 → 2 / 17; 0.10 → 2 / 17; 0.20 → 2 / 16; **0.25 → 1 / 16**; **0.30 → 1 / 16**; 0.40 → 1 / 15;
+0.50 → 1 / 15; 0.75 → 1 / 10; 0.90 → 0 / 9; 0.99 → 0 / 5. The target reproduces at the tested rates
+**0.25 and 0.30**. July pins the lower edge (0.20 gives July 2, 0.25 gives July 1) and August pins
+the upper edge (0.30 gives August 16, 0.40 gives August 15), so BOTH months discriminate the rate,
+and July is not flat in it (4 / 2 / 2 / 2 / 1 / 1 / 1 / 1 / 1 / 0 / 0 across the row). The TRUE
+edges lie in the untested bands **(0.20, 0.25]** and **(0.30, 0.40]**: nothing was measured between
+0.20 and 0.25, or between 0.30 and 0.40. This is a tested interval with untested bands on both
+sides, never an "and nowhere else". 0.25 is the lowest TESTED rate that reproduces.
+
+*Floor grid, at a fixed rate of 0.25* (same units): 1 → 30 / 37; 25 → 3 / 16; 30 → 2 / 16;
+**40 → 1 / 16**; **50 → 1 / 16**; **75 → 1 / 16**; **150 → 1 / 16**. The target reproduces at the
+tested floors **40, 50, 75 and 150**. July is the BINDING constraint: it needs floor ≥ 40 (30 gives
+July 2, 40 gives July 1). August is satisfied at every TESTED floor from 25 up, reading 16 at
+**25, 30, 40, 50, 75 and 150**. Those six points and no others were measured, so this is NOT a
+claim that August is flat from 25 to 150; nothing here speaks for the gaps between them. August
+is in any case **not** flat across the grid: at floor 1 it reads **37**, not 16. So both months
+discriminate the floor, August only at the low end. The tested lower edge is 40 and the TRUE
+edge lies in the untested band **(30, 40]**; no upper edge was found, because the grid stopped at
+150. 40 is the lowest TESTED floor that reproduces.
+
+**Correction, 2026-09-14 (same day).** An earlier version of this entry recorded the floor-1 column
+as `1 → 30 / 16` and concluded from it that "August is 16 at every floor from 1 to 150, so only July
+discriminates the floor". The August cell is **37**, and that conclusion is FALSE. It has been
+removed rather than softened, along with the paragraph it supported, which claimed August was flat
+in the floor and July nearly flat in the rate. Neither is true. If either sentence resurfaces in a
+downstream copy of this grid, it came from the withdrawn version.
+
+**Second correction, 2026-09-14 (same day, later pass).** That rewrite left three defects of its
+own, withdrawn here. (1) "No single month would have settled either knob ... Both knobs need both
+months" is true of the RATE and FALSE of the floor: July's floor row settles the floor by itself,
+in the same entry that names July the binding constraint. It is now stated per knob.
+(2) "August ... is flat at 16 from 25 to 150" asserted flatness across gaps nobody measured; only
+25, 30, 40, 50, 75 and 150 were run, and the text now says "at every tested floor from 25 up" and
+names the six. (3) The target's provenance date was a month transposition: the engine team's
+round-2 reply is dated **2026-09-08**, not 2026-08-08. A downstream copy carrying any of the three
+came from a withdrawn version.
+
+**The RATE needed both months. The FLOOR did not.** Scope this to the knob it is true of.
+
+*On the rate*, neither month alone selects the pair: July pins the lower edge and August the upper
+one, so a run on one month alone leaves the opposite side open. July alone reproduces at every
+tested rate from **0.25 to 0.75** (1 at each of 0.25, 0.30, 0.40, 0.50 and 0.75; it fails only at
+the two highest tested rates, 0.90 and 0.99, where it reads 0), and August alone reproduces at
+**0.20, 0.25 and 0.30** (16 at each). Only together do they pin the tested interval [0.25, 0.30].
+
+*On the floor*, **July alone WOULD have settled it.** Its row across the tested floors 1, 25, 30,
+40, 50, 75 and 150 reads **30 / 3 / 2 / 1 / 1 / 1 / 1** against a July target of 1, which selects
+floor ≥ 40 on its own: the same answer the two months give jointly, because July is the binding
+constraint, as the floor grid above says. August alone would have accepted every tested floor from
+25 up, so August is the month that would NOT have settled it.
+
+So do NOT write "both knobs need both months", or "no single month would have settled either knob".
+Both are FALSE for the floor, and an earlier version of this entry carried the second one. That is
+the same failure mode as the claim retracted just above: a conclusion drawn wider than the grid
+supports. What is true is narrower and has to be said that way, per knob.
+
+**How the defaults were chosen, and what that is not.** 0.25 and 40 are each the LOWEST TESTED value
+that reproduces the target. That is a CHOICE, not something the measurement produced: the lowest
+reproducing pair is the least aggressive one, so an ASIN-day this battery calls an interruption is
+one that every reproducing setting in the tested range agrees on. Each interval was measured with
+the OTHER knob held fixed, so a pair drawn from both far corners (0.30 with a floor of 150, say) was
+never run and is not claimed to reproduce anything.
+
+**Consistency check, for anyone re-deriving these numbers.** The pre-change pair (July 23 / August
+20) and the floor grid's floor-1 column (July 30 / August 37) are the same floor at DIFFERENT rates:
+0.99 for the shipped pair, 0.25 for the grid. They are not supposed to match. Lowering the rate can
+only ADD ASIN-days and raising the floor can only REMOVE them, and both grids obey that: at floor 1,
+rate 0.99 gives 23 / 20 while rate 0.25 gives 30 / 37, both up; at rate 0.99, floor 1 gives 23 / 20
+while floor 40 gives 0 / 5, both down. The two grids and the shipped pair are mutually consistent.
+
+**The `oos_days` move is a consequence, not a measurement.** The same rate drives the separate
+`oos_days` figure (the floor does not affect it), and taking it to 0.25 moves that count as well: at
+rates 0.25 / 0.50 / 0.75 / 0.90 / 0.99, July reads 161 / 159 / 155 / 154 / 154 and August reads
+169 / 167 / 161 / 158 / 152. **No target exists for `oos_days`; it was not calibrated against
+anything.** Nothing measured here establishes 161 / 169 as more correct than 154 / 152. It changed
+because a threshold was chosen to reproduce a DIFFERENT metric. Never present the wider `oos_days`
+as a correction or an improvement; it is an unmeasured side effect of a measured decision. If it is
+ever unwanted, the fix is a third param splitting the two predicates, not a retune of the rate.
+
+**N: one account, two months.** ONE Vendor Central account, TWO months (July and August 2026). The
+July leg of the target is a count of a **single** ASIN-day, so the July edge of each interval turns
+on one ASIN-day. That is enough to stop these two published counts disagreeing on this account; it
+is not a fleet rate, and it is not evidence that 0.25 and 40 are right for every vendor account. The
+second vendor account to be checked is the test of that, and until one is, quote the defaults as
+calibrated on one account rather than as the house rule.
+
+**This entry deviates from the rounding policy above, deliberately.** The append protocol rounds
+figures to magnitudes because this repo is public. These two grids are published as exact per-cell
+counts instead, because a calibration grid rounded to magnitudes is not a calibration grid: its
+entire content is which cell reproduces the target and which cell is one ASIN-day off, and both
+survive rounding as "about 20". What the policy protects is intact: the brand stays anonymized
+(Brand B), the marketplace stays genericized (US), no seller id appears, and the cells are ASIN-day
+counts, never client financials. The deviation is scoped to the interruption and out-of-stock
+ASIN-day counts on this one account; the rounding rule stands for every other entry in this file.
+
+*Enforcement: CATALOG (service-side defaults on `MPRX-FIGURES-VC-01`, both exposed as params so a
+different ruling is a param change rather than a rebuild) + `thresholds_applied.availability_interruption_note`,
+which states the pair that actually ran, so a brief quotes the run rather than any standing default.
+Both the service-side defaults and that note arrive with the gateway change, not with the plugin
+release: until the gateway ships, `min_sellable_units` is not a param the service accepts and the
+note is absent from `thresholds_applied`.*
+
 ---
 
 ## Workflow-step incidents
