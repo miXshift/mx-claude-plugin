@@ -367,7 +367,12 @@ mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <d
 `--brand` takes every account in the brand context whose status is not `inactive` (a
 `wind_down` code still sold this month and the brief must account for it). Vendor Central
 knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
-in context.yaml records a client whose convention is shipped).
+in context.yaml records a client whose convention is shipped), `--oos-rate-threshold` (the
+procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, 0.25 by
+default) and `--min-sellable-units` (the sellable-unit floor at or above which one of those
+out-of-stock ASIN-days ALSO counts as an availability interruption, 40 by default). Leave both
+off unless the client has ruled otherwise: the defaults are calibrated, and the two move
+together, so changing one alone changes what the other is applied to.
 
 **The attribution basis applies on every channel: `--attribution legacy_sales|all_14|sc_default`.**
 Leave it off unless the client asks for a click-only reading. The service default `legacy_sales`
@@ -414,9 +419,13 @@ the account). Per account only, under `accounts[i].document`: `windows`, `accoun
 by campaign type for the current window), `sections_failed`. `account_retail` and the brand
 `traffic` block carry `traffic_quality` per comparison (see Step 4). `thresholds_applied` is at the top level for the call (brands, floors,
 revenue basis, attribution per channel with its `attribution_note` and `attribution_detail`
-sentences, OOS threshold) and repeated per account with what that
+sentences, `oos_rate_threshold`, and on Vendor Central rows `min_sellable_units` with its
+`availability_interruption_note`) and repeated per account with what that
 account actually applied; quote the top-level one in the method notes, the `attribution_note`
-once in the client brief under the first ad figure, and `attribution_detail` as the Attribution
+once in the client brief under the first ad figure, `availability_interruption_note` verbatim
+the same way beside the first interruption figure (it is the one sentence that says which two
+thresholds produced the count, and it is the only honest source for them: never restate either
+number from this file, because a run can override both), and `attribution_detail` as the Attribution
 line of i06 (see the composition rules). Charts that need
 `monthly_history` read it per account.
 

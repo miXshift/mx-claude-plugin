@@ -654,7 +654,7 @@ export function registerReportCommands(program: Command): void {
     )
     .option(
       '--min-sellable-units <n>',
-      'Vendor Central: sellable units on hand at or above which an out-of-stock ASIN-day counts as an availability interruption rather than a stockout; a fixed unit floor, not a share of run rate (default 40 on the service; 1 = the pre-2026-09 rule)',
+      'Vendor Central: sellable units on hand at or above which an out-of-stock ASIN-day ALSO counts as an availability interruption, a listing or procurability problem rather than an empty shelf. Interruption days are a subset of the out-of-stock days and stay counted in oos_days, so the two figures overlap and never sum to a total. A fixed unit floor, not a share of run rate (default 40 on the service; 1 together with --oos-rate-threshold 0.99 restores the pre-2026-09 rule, and both flags are needed because the out-of-stock set the floor is applied to moved in the same change)',
     )
     .option(
       '--attribution <basis>',

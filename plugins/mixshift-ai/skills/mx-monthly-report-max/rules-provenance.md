@@ -295,6 +295,53 @@ lane; the identity **same + other + view-through === total** holds per row at ev
 ~$345K identified → ~$100K unattributable (SB + view-through, unsplittable). Quote ad-driven as a floor and name the basis. *Enforcement: CATALOG basis
 metadata + the extractor's identity check (already live in `extract_figures --check`).*
 
+### The Vendor Central interruption thresholds are calibrated, not chosen (2026-09-14)
+**Two published counts of one event disagreed.** The Vendor Central battery shipped
+`availability_interruptions` at an out-of-stock rate of 0.99 with no sellable-unit floor and read
+July 23 / August 20 ASIN-days on Brand B (US), a Vendor Central account, where the vendor engine's
+published figures for the same account and the same two months were **July 1 / August 16**. Same
+event, two numbers, and the vendor manager reconciling them by hand. (Those pre-change readings were
+recorded with the ruling; they are not a cell of either grid below, since each grid holds one knob at
+its new value.) The fix was to CALIBRATE the two knobs against the engine's published counts instead
+of picking round numbers, and this entry exists so the next person to touch them knows they are
+pinned rather than preferred.
+
+**Measured 2026-09-14** against `vendor_inventory_manufacturing_asin_daily`, July and August 2026, an
+ASIN-day taken as the MAX over the day. Target = the engine's published July 1 / August 16.
+
+*Rate grid, at a fixed sellable floor of 40* (interruption ASIN-days, July / August): 0.01 → 4 / 19;
+0.05 → 2 / 17; 0.10 → 2 / 17; 0.20 → 2 / 16; **0.25 → 1 / 16**; **0.30 → 1 / 16**; 0.40 → 1 / 15;
+0.50 → 1 / 15; 0.75 → 1 / 10; 0.90 → 0 / 9; 0.99 → 0 / 5. The rate reproduces the target on
+**[0.25, 0.30] and nowhere else**: July pins the lower edge (0.20 gives July 2) and August pins the
+upper edge (0.40 gives August 15). 0.25 is the lowest member of that interval.
+
+*Floor grid, at a fixed rate of 0.25* (same units): 1 → 30 / 16; 25 → 3 / 16; 30 → 2 / 16;
+**40 → 1 / 16**; **50 → 1 / 16**; **75 → 1 / 16**; **150 → 1 / 16**. The floor reproduces the target
+on **[40, at least 150]** — the grid never found an upper edge. Only July discriminates it; August is
+16 at every floor from 1 to 150. 40 is the lowest member of that interval.
+
+**The two knobs are pinned by different months, so no single month could have settled both.** August
+discriminates the rate and is flat in the floor; July discriminates the floor and is nearly flat in
+the rate. A calibration run on either month alone would have fixed one knob and left the other free
+while looking complete.
+
+**The `oos_days` move is a consequence, not a measurement.** The same rate drives the separate
+`oos_days` figure, and taking it to 0.25 moves that count as well: at rates 0.25 / 0.50 / 0.75 / 0.90 /
+0.99, July reads 161 / 159 / 155 / 154 / 154 and August reads 169 / 167 / 161 / 158 / 152. **No target
+exists for `oos_days`; it was not calibrated against anything.** It changed because a threshold was
+chosen to reproduce a DIFFERENT metric. Never present the wider `oos_days` as a correction or an
+improvement — it is an unmeasured side effect of a measured decision. If it is ever unwanted, the fix
+is a third param splitting the two predicates, not a retune of the rate.
+
+**N: one account, two months.** The July leg of the target is a count of a **single** ASIN-day, so the
+floor's lower edge rests on one observation, and both intervals are one-account intervals. That is
+enough to stop these two published counts disagreeing on this account; it is not evidence that 0.25
+and 40 are right for every vendor account. The second vendor account to be checked is the test of
+that, and until one is, quote the defaults as calibrated on one account rather than as the house rule.
+*Enforcement: CATALOG (service-side defaults on `MPRX-FIGURES-VC-01`, both exposed as params so a
+different ruling is a param change rather than a rebuild) + `thresholds_applied.availability_interruption_note`,
+which states the pair that actually ran so a brief quotes the run instead of restating these numbers.*
+
 ---
 
 ## Workflow-step incidents

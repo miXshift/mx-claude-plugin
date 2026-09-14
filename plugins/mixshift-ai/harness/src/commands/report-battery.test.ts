@@ -228,6 +228,13 @@ describe('report battery: flags -> battery params', () => {
     expect(battery.options.find((o) => o.long === '--seller-id')!.mandatory).toBe(false);
     expect(battery.options.find((o) => o.long === '--seller-id')!.description).toContain(`max ${BATTERY_MAX_ACCOUNTS}`);
     expect(battery.options.find((o) => o.long === '--revenue-basis')!.defaultValue).toBeUndefined();
+    // The service owns the threshold defaults (0.25 / 40 since 2026-09) and may move them again.
+    // A commander defaultValue here would send a stale number on EVERY run and silently pin the
+    // client to it; the flags must stay absent from params when the operator does not pass them.
+    // batteryParams's not.toHaveProperty checks cannot catch that, because they are fed a fixture
+    // rather than commander's parsed options, so the absence is pinned on the option itself.
+    expect(battery.options.find((o) => o.long === '--oos-rate-threshold')!.defaultValue).toBeUndefined();
+    expect(battery.options.find((o) => o.long === '--min-sellable-units')!.defaultValue).toBeUndefined();
   });
 });
 
