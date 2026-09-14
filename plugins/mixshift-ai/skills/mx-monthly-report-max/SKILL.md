@@ -114,14 +114,14 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Voice | house voice (the Voice section + `references/brief-structure.md`) | voice profiles: `~/.mixshift/voice.md` (the manager's voice, all their brands) and `clients/<brand>/voice.md` (this client's register); brand wins on conflict. Seed and update them per "Voice profiles" below |
 
 **Threshold defaults** (quote the active values in the method notes; override via
-`reporting.thresholds.*`): Buy Box attention floor <!-- figure:buybox_floor -->92<!-- /figure -->% page-view-weighted; Buy Box MoM drop
-worth flagging <!-- figure:buybox_drop -->5<!-- /figure --> pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
-SKU reconciliation tolerance 0.5%; settled-window exclusion <!-- figure:settled_exclusion_days_sc -->7<!-- /figure --> days on Seller Central and <!-- figure:settled_exclusion_days_vc -->14<!-- /figure --> on Vendor
+`reporting.thresholds.*`): Buy Box attention floor <!-- figure:buybox_floor@skill-thresholds -->92<!-- /figure -->% page-view-weighted; Buy Box MoM drop
+worth flagging <!-- figure:buybox_drop@skill-thresholds -->5<!-- /figure --> pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
+SKU reconciliation tolerance 0.5%; settled-window exclusion <!-- figure:settled_exclusion_days_sc@skill-thresholds -->7<!-- /figure --> days on Seller Central and <!-- figure:settled_exclusion_days_vc@skill-thresholds -->14<!-- /figure --> on Vendor
 Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
-Vendor Central out-of-stock rate threshold <!-- figure:oos_rate_threshold -->0.25<!-- /figure -->
+Vendor Central out-of-stock rate threshold <!-- figure:oos_rate_threshold@skill-thresholds -->0.25<!-- /figure -->
 (an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); Vendor Central availability-interruption
-floor <!-- figure:min_sellable_units -->40<!-- /figure --> sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
+floor <!-- figure:min_sellable_units@skill-thresholds -->40<!-- /figure --> sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides).
 Those last two are SERVICE-SIDE defaults, calibrated on one account and two months rather than chosen
 (`rules-provenance.md`, "The Vendor Central interruption thresholds are calibrated, not chosen"), and a run can
 override either, so report what `thresholds_applied` says ran, not these, whenever the two could differ.
@@ -371,9 +371,9 @@ mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <d
 `wind_down` code still sold this month and the brief must account for it). Vendor Central
 knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
 in context.yaml records a client whose convention is shipped), `--oos-rate-threshold` (the
-procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, <!-- figure:oos_rate_threshold -->0.25<!-- /figure --> by
+procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, <!-- figure:oos_rate_threshold@skill-battery-knobs -->0.25<!-- /figure --> by
 default) and `--min-sellable-units` (the sellable-unit floor at or above which one of those
-out-of-stock ASIN-days ALSO counts as an availability interruption, <!-- figure:min_sellable_units -->40<!-- /figure --> by default). Both defaults
+out-of-stock ASIN-days ALSO counts as an availability interruption, <!-- figure:min_sellable_units@skill-battery-knobs -->40<!-- /figure --> by default). Both defaults
 are service-side and a run can override either; `thresholds_applied` reports what ran. Leave both
 off unless the client has ruled otherwise: the defaults are calibrated (on one account and two
 months, see `rules-provenance.md`), and the two move together, so changing one alone changes what
@@ -431,7 +431,7 @@ sentences, `oos_rate_threshold`, and on Vendor Central rows `min_sellable_units`
 account actually applied; quote the top-level one in the method notes, the `attribution_note`
 once in the client brief under the first ad figure, `availability_interruption_note` verbatim
 the same way beside the first interruption figure (it is the one sentence that says which two
-thresholds actually produced the count; the <!-- figure:oos_rate_threshold -->0.25<!-- /figure --> and <!-- figure:min_sellable_units -->40<!-- /figure --> quoted in this file are only the service
+thresholds actually produced the count; the <!-- figure:oos_rate_threshold@skill-thresholds-applied -->0.25<!-- /figure --> and <!-- figure:min_sellable_units@skill-thresholds-applied -->40<!-- /figure --> quoted in this file are only the service
 defaults, so quote the note for what ran, not the defaults, whenever the two could differ. The
 note arrives with the gateway change: if `availability_interruption_note` is absent from
 `thresholds_applied`, the run predates it, so say which thresholds you believe applied and that
@@ -458,7 +458,7 @@ the gap.
 `gv_conversion_pct` are the traffic and conversion basis (a vendor account has no sessions
 and no Buy Box); `oos_days` counts ASIN-days at or above the procurable out-of-stock
 threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE at least the
-sellable-unit floor was on hand (<!-- figure:min_sellable_units -->40<!-- /figure --> by default), a listing or procurability problem rather than a stockout, and
+sellable-unit floor was on hand (<!-- figure:min_sellable_units@skill-vc-figure-naming -->40<!-- /figure --> by default), a listing or procurability problem rather than a stockout, and
 usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
 snapshot on the last loaded day plus net received units over the window. Ad figures come
 from `campaignmetric` on every channel, never from a monthly rollup table.
@@ -511,7 +511,7 @@ encodes on both channels, so you can spot them anywhere else:
    and TACOS; ACOS is a ratio and is left alone.
 4. **Verify every efficiency claim on a settled window.** On Seller Central, Sponsored Products attributes on
    a 7-day window, so the last week of a pull is still filling in. Re-run the comparison
-   excluding the last 7 days from both periods; if the move collapses, it was an
+   excluding the last <!-- figure:settled_exclusion_days_sc@skill-settled-window-step -->7<!-- /figure --> days from both periods; if the move collapses, it was an
    attribution artifact, not a finding.
 5. **Reconcile before quoting item movers.** The SKU sum must agree with the account total
    within about half a percent; a doubled sum is almost always a join multiplying rows. A

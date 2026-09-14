@@ -596,7 +596,7 @@ queries:
       kernel, vendor tables; where the Seller Central concept does not exist
       the section is renamed honestly (glance_views not sessions, no Buy Box,
       availability_interruptions = procurable out-of-stock while at least
-      min_sellable_units sellable units are on hand, default <!-- figure:min_sellable_units -->40<!-- /figure -->). Ad metrics from campaignmetric ONLY, never
+      min_sellable_units sellable units are on hand, default <!-- figure:min_sellable_units@catalog-mprx-vc-notes -->40<!-- /figure -->). Ad metrics from campaignmetric ONLY, never
       sellermonthmetric. Weeks of cover and lost sales are NOT computed here:
       they are engine metrics served by INS-LOSTSALES-01 / INS-OPS-BRIDGE-01.
       Own params (seller_id, as_of, brands[], revenue_basis, attribution,

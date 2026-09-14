@@ -92,6 +92,7 @@ The plugin's release mechanics have known friction with Cowork's plugin update p
 - [ ] `.claude-plugin/marketplace.json` version bumped (same value)
 - [ ] **Changelog fragments folded** — `npm run changelog:collect -- --version X.Y.Z` from `plugins/mixshift-ai/harness/` writes every `changelog.d/` fragment into the new version heading (Added → Changed → Fixed) and deletes the fragments. Feature PRs do NOT edit `CHANGELOG.md`; this step is where their bullets arrive. Commit the folded changelog and the deletions together.
 - [ ] `harness/dist/cli.js` + `harness/dist/build-meta.json` rebuilt and committed — **this is the ONLY place dist is rebuilt.** Feature PRs leave it alone (see "dist/ is release-time, not PR-time" below), so at the cut it is expected to be behind every source change merged since the last release.
+- [ ] **`BUNDLE_BEHIND` in `harness/scripts/check-figures.mjs` emptied of anything the rebuild fixed** — that map records, per figure and pinned to the exact stale literal, where the shipped bundle states a tuned default the service no longer serves. It is what keeps a lagging bundle visible between releases instead of invisible. Once the rebuild above makes the bundle agree, `check-figures` fails on the spent entry until it is removed, so this is enforced rather than remembered: clear it in the release commit.
 - [ ] Release commit titled `release: X.Y.Z <summary>`
 - [ ] Annotated tag `mixshift-ai--vX.Y.Z`
 - [ ] Branch + tag pushed to origin together

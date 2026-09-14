@@ -21,8 +21,10 @@ name: ci
 #   in Sep 2026) passes it untouched. It compares every anchored restatement of
 #   a tuned default -- across the whole repo, skills and harness and shared
 #   catalog and html assets alike -- against a lock vendored from the gateway,
-#   and holds each figure to a recorded SITE COUNT so losing one of several
-#   restatements fails instead of being absorbed.
+#   and holds each figure to a DECLARED LIST OF SITES so losing any one
+#   restatement fails by name instead of being absorbed by an anchor written
+#   elsewhere. It also reads the COMMITTED dist/cli.js, the artifact a customer
+#   runs, because that is where a stale figure actually reaches a user.
 #
 # The JOB NAME is deliberately left unchanged when gates are added: it is the
 # check-run name branch protection matches on, and renaming it silently drops

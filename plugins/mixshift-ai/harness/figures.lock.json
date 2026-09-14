@@ -4,7 +4,7 @@
   "service": {
     "repo": "miXshift/mx-legacy-auth",
     "ref": "f7957e8",
-    "ref_note": "head of feat/vc-interruption-floor (PR #165), merged to main as 4d007f3 and deployed to Railway on 2026-09-14 with post-deploy acceptance passed on the calibration account",
+    "ref_note": "head of feat/vc-interruption-floor (PR #165), merged to main as 4d007f3 and deployed on 2026-09-14 with post-deploy acceptance passed on the calibration account",
     "vendored_at": "2026-09-14",
     "vendored_how": "read out of the gateway source by hand: kernel.ts for the four shared constants, mprx-figures-01.ts / mprx-figures-brand-01.ts for the two Buy Box zod defaults. Every value below was read from that source, not from a handoff, a decision entry or a chat message."
   },
