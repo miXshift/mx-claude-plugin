@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "generator": "mx-legacy-auth: npm run figures:lock (NOT YET IMPLEMENTED -- this copy was written by hand)",
+  "service": {
+    "repo": "miXshift/mx-legacy-auth",
+    "ref": "f7957e8",
+    "ref_note": "head of feat/vc-interruption-floor (PR #165), merged to main as 4d007f3 and deployed on 2026-09-14 with post-deploy acceptance passed on the calibration account",
+    "vendored_at": "2026-09-14",
+    "vendored_how": "read out of the gateway source by hand: kernel.ts for the four shared constants, mprx-figures-01.ts / mprx-figures-brand-01.ts for the two Buy Box zod defaults. Every value below was read from that source, not from a handoff, a decision entry or a chat message."
+  },
+  "figures": [
+    {
+      "id": "oos_rate_threshold",
+      "value": 0.25,
+      "unit": "rate",
+      "servedAs": "thresholds_applied.oos_rate_threshold",
+      "source": "CALIBRATED 2026-09 (kernel.ts DEFAULT_OOS_RATE_THRESHOLD). The lowest TESTED ProcurableProductOutOfStockRate that reproduces the vendor engine's published availability-interruption counts, at a fixed sellable floor of 40. Rates 0.01 / 0.05 / 0.10 / 0.20 / 0.25 / 0.30 / 0.40 / 0.50 / 0.75 / 0.90 / 0.99 were run; the target reproduces at 0.25 and 0.30 only, with UNTESTED bands (0.20, 0.25] and (0.30, 0.40] on either side, so the true edges are not known. N: ONE vendor account, TWO months (July and August 2026), and a July target of a SINGLE ASIN-day. Not a fleet rate and not confirmed on a second account. Full grid: skills/mx-monthly-report-max/rules-provenance.md. Was 0.99 before this deploy."
+    },
+    {
+      "id": "min_sellable_units",
+      "value": 40,
+      "unit": "units",
+      "servedAs": "thresholds_applied.min_sellable_units",
+      "source": "CALIBRATED 2026-09 (kernel.ts DEFAULT_MIN_SELLABLE_UNITS). The lowest TESTED sellable-unit floor that reproduces the same target, at a fixed rate of 0.25. Floors 1 / 25 / 30 / 40 / 50 / 75 / 150 were run; the target reproduces at 40, 50, 75 and 150. July is the binding constraint (floor 30 gives July 2, floor 40 gives July 1); the true lower edge lies in the UNTESTED band (30, 40] and no upper edge was found because the grid stopped at 150. Each interval was measured with the OTHER knob held fixed, so a pair drawn from both far corners was never run. Same N as oos_rate_threshold. A fixed unit count, never a share of run rate. Full grid: skills/mx-monthly-report-max/rules-provenance.md. Did not exist before this deploy."
+    },
+    {
+      "id": "buybox_floor",
+      "value": 92,
+      "unit": "percent",
+      "servedAs": "thresholds_applied.buybox_floor_pct",
+      "source": "NO RECORDED BASIS. On main since the Seller Central battery shipped and served to every customer in thresholds_applied.buybox_floor_pct. The gateway source (mprx-figures-01.ts, mprx-figures-brand-01.ts) documents WHAT it is, a page-view-weighted Buy Box attention floor in percent, but nothing anywhere records HOW 92 was established or on what data. Recorded here as a KNOWN GAP, not as a calibration: this entry exists so the gap is visible in a tracked file instead of being implied to be measured by sitting next to two figures that are."
+    },
+    {
+      "id": "buybox_drop",
+      "value": 5,
+      "unit": "points",
+      "servedAs": "thresholds_applied.buybox_mom_drop_pts",
+      "source": "NO RECORDED BASIS. Same standing as buybox_floor: month-over-month drop in weighted Buy Box points that flags an item even above the floor, on main since the battery shipped, served to every customer, with no record of how 5 was established. Recorded as a KNOWN GAP."
+    },
+    {
+      "id": "settled_exclusion_days_sc",
+      "value": 7,
+      "unit": "days",
+      "servedAs": "thresholds_applied.settled_exclusion_days (Seller Central battery; thresholds_applied.settled_exclusion_days.SC on the brand battery)",
+      "source": "DEFINITIONAL, not tuned (kernel.ts SETTLE_DAYS_SC). Days excluded at the end of a window for the settled-efficiency check: the attribution tail that is still filling in. Seller Central attributes Sponsored Products on 7 days, so the tail is 7. Follows the attribution basis: --attribution all_14 makes it 14 everywhere and sc_default makes it 7 everywhere, and thresholds_applied.settled_exclusion_days reports what actually ran."
+    },
+    {
+      "id": "settled_exclusion_days_vc",
+      "value": 14,
+      "unit": "days",
+      "servedAs": "thresholds_applied.settled_exclusion_days (Vendor Central battery; thresholds_applied.settled_exclusion_days.VC on the brand battery)",
+      "source": "DEFINITIONAL, not tuned (kernel.ts SETTLE_DAYS_VC). Vendor Central reads 14-day columns for every campaign type, so its attribution tail is 14. Same basis-following behaviour as the Seller Central value."
+    }
+  ]
+}
