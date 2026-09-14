@@ -309,7 +309,7 @@ July 23 → 1 and August 20 → 16.
 
 **Where the target came from.** July 1 / August 16 is not our number. It is the vendor engine's
 own published figure for that account and those two months, taken from the engine team's round-2
-reply dated 2026-08-08 and received 2026-09-10; the reply packet and our verification of it are
+reply dated 2026-09-08 and received 2026-09-10; the reply packet and our verification of it are
 recorded in the private ops-repo handoff for that service, not reproduced here, because this repo
 is public.
 
@@ -330,9 +330,11 @@ sides, never an "and nowhere else". 0.25 is the lowest TESTED rate that reproduc
 *Floor grid, at a fixed rate of 0.25* (same units): 1 → 30 / 37; 25 → 3 / 16; 30 → 2 / 16;
 **40 → 1 / 16**; **50 → 1 / 16**; **75 → 1 / 16**; **150 → 1 / 16**. The target reproduces at the
 tested floors **40, 50, 75 and 150**. July is the BINDING constraint: it needs floor ≥ 40 (30 gives
-July 2, 40 gives July 1). August is satisfied from floor 25 upward and is flat at 16 from 25 to 150,
-but it is **not** flat across the grid: at floor 1 August reads **37**, not 16. So both months
-discriminate the floor as well, August only at the low end. The tested lower edge is 40 and the TRUE
+July 2, 40 gives July 1). August is satisfied at every TESTED floor from 25 up, reading 16 at
+**25, 30, 40, 50, 75 and 150**. Those six points and no others were measured, so this is NOT a
+claim that August is flat from 25 to 150; nothing here speaks for the gaps between them. August
+is in any case **not** flat across the grid: at floor 1 it reads **37**, not 16. So both months
+discriminate the floor, August only at the low end. The tested lower edge is 40 and the TRUE
 edge lies in the untested band **(30, 40]**; no upper edge was found, because the grid stopped at
 150. 40 is the lowest TESTED floor that reproduces.
 
@@ -343,10 +345,34 @@ removed rather than softened, along with the paragraph it supported, which claim
 in the floor and July nearly flat in the rate. Neither is true. If either sentence resurfaces in a
 downstream copy of this grid, it came from the withdrawn version.
 
-**No single month would have settled either knob.** On the rate, July pins the lower edge and August
-the upper one, so a run on one month alone leaves the opposite side of the interval open. On the
-floor, July is the binding constraint and August separates only the very low floors from the rest,
-so a run on August alone would have accepted anything from 25 up. Both knobs need both months.
+**Second correction, 2026-09-14 (same day, later pass).** That rewrite left three defects of its
+own, withdrawn here. (1) "No single month would have settled either knob ... Both knobs need both
+months" is true of the RATE and FALSE of the floor: July's floor row settles the floor by itself,
+in the same entry that names July the binding constraint. It is now stated per knob.
+(2) "August ... is flat at 16 from 25 to 150" asserted flatness across gaps nobody measured; only
+25, 30, 40, 50, 75 and 150 were run, and the text now says "at every tested floor from 25 up" and
+names the six. (3) The target's provenance date was a month transposition: the engine team's
+round-2 reply is dated **2026-09-08**, not 2026-08-08. A downstream copy carrying any of the three
+came from a withdrawn version.
+
+**The RATE needed both months. The FLOOR did not.** Scope this to the knob it is true of.
+
+*On the rate*, neither month alone selects the pair: July pins the lower edge and August the upper
+one, so a run on one month alone leaves the opposite side open. July alone reproduces at every
+tested rate from **0.25 to 0.75** (1 at each of 0.25, 0.30, 0.40, 0.50 and 0.75; it fails only at
+the two highest tested rates, 0.90 and 0.99, where it reads 0), and August alone reproduces at
+**0.20, 0.25 and 0.30** (16 at each). Only together do they pin the tested interval [0.25, 0.30].
+
+*On the floor*, **July alone WOULD have settled it.** Its row across the tested floors 1, 25, 30,
+40, 50, 75 and 150 reads **30 / 3 / 2 / 1 / 1 / 1 / 1** against a July target of 1, which selects
+floor ≥ 40 on its own: the same answer the two months give jointly, because July is the binding
+constraint, as the floor grid above says. August alone would have accepted every tested floor from
+25 up, so August is the month that would NOT have settled it.
+
+So do NOT write "both knobs need both months", or "no single month would have settled either knob".
+Both are FALSE for the floor, and an earlier version of this entry carried the second one. That is
+the same failure mode as the claim retracted just above: a conclusion drawn wider than the grid
+supports. What is true is narrower and has to be said that way, per knob.
 
 **How the defaults were chosen, and what that is not.** 0.25 and 40 are each the LOWEST TESTED value
 that reproduces the target. That is a CHOICE, not something the measurement produced: the lowest

@@ -7,6 +7,9 @@
   separate bucket. Both thresholds are set in the MixShift service, so the
   figures change when that change goes live rather than when you update the
   plugin, and every run reports the pair it actually applied under
-  `thresholds_applied`. This release adds the `--min-sellable-units` flag to
-  `mixshift report battery` so you can set the interruption floor per run
-  alongside the existing `--oos-rate-threshold`.
+  `thresholds_applied`. `mixshift report battery` carries a
+  `--min-sellable-units` flag for setting the interruption floor per run,
+  alongside the existing `--oos-rate-threshold`, but it only does anything once
+  the service change is live: a service that predates it rejects the run on the
+  unknown parameter. Leave the flag off until your Vendor Central figures move
+  to the new thresholds, and let the service default apply.
