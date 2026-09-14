@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.3.0
+version: 2.4.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -119,8 +119,10 @@ worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 t
 SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
 Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
-Vendor Central out-of-stock rate threshold 0.99
-(an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); sales floor for per-item
+Vendor Central out-of-stock rate threshold 0.25
+(an ASIN-day at or above it counts as out of stock; `--oos-rate-threshold` overrides); Vendor Central availability-interruption
+floor 40 sellable units on hand, a fixed unit count rather than a share of run rate (`--min-sellable-units` overrides);
+sales floor for per-item
 Buy Box flags: the account's median item revenue in the current window (so thin accounts
 still flag something and large accounts do not flag noise).
 
@@ -435,8 +437,8 @@ the gap.
 **Vendor Central figures are named for what they are.** `glance_views` and
 `gv_conversion_pct` are the traffic and conversion basis (a vendor account has no sessions
 and no Buy Box); `oos_days` counts ASIN-days at or above the procurable out-of-stock
-threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE
-sellable units were on hand, a listing or procurability problem rather than a stockout, and
+threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE at least the
+sellable-unit floor was on hand (40 by default), a listing or procurability problem rather than a stockout, and
 usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
 snapshot on the last loaded day plus net received units over the window. Ad figures come
 from `campaignmetric` on every channel, never from a monthly rollup table.
