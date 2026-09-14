@@ -1,12 +1,15 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.2.0"
+version: "0.3.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
-  the async loop: build a report request (type + dimensions + metrics), submit,
-  poll to completion across turns, fetch the JSON. ACCOUNT READS answer what is
+  the async loop: build a report request, submit, poll to completion across
+  turns, fetch the result. Reporting itself splits by DATE RANGE: the DSP-native
+  reports reach back only 90 days, while Amazon's unified Reporting v1 reaches
+  back years and is the only way to pull older DSP performance or a monthly
+  history. ACCOUNT READS answer what is
   set up right now: campaigns and line items, the advertiser's creatives
   (including ones built in the DSP console), which creatives are attached to
   which line items and whether each placement is live or paused, whether a
