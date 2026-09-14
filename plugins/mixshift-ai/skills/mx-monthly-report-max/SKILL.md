@@ -371,9 +371,9 @@ mixshift report battery --seller-id <SellerID> --seller-id <SellerID> --as-of <d
 `wind_down` code still sold this month and the brief must account for it). Vendor Central
 knobs: `--revenue-basis ordered|shipped` (ordered by default; `reporting.vc_revenue_basis`
 in context.yaml records a client whose convention is shipped), `--oos-rate-threshold` (the
-procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, 0.25 by
+procurable out-of-stock rate at or above which an ASIN-day counts as out of stock, <!-- figure:oos_rate_threshold -->0.25<!-- /figure --> by
 default) and `--min-sellable-units` (the sellable-unit floor at or above which one of those
-out-of-stock ASIN-days ALSO counts as an availability interruption, 40 by default). Both defaults
+out-of-stock ASIN-days ALSO counts as an availability interruption, <!-- figure:min_sellable_units -->40<!-- /figure --> by default). Both defaults
 are service-side and a run can override either; `thresholds_applied` reports what ran. Leave both
 off unless the client has ruled otherwise: the defaults are calibrated (on one account and two
 months, see `rules-provenance.md`), and the two move together, so changing one alone changes what
@@ -431,7 +431,7 @@ sentences, `oos_rate_threshold`, and on Vendor Central rows `min_sellable_units`
 account actually applied; quote the top-level one in the method notes, the `attribution_note`
 once in the client brief under the first ad figure, `availability_interruption_note` verbatim
 the same way beside the first interruption figure (it is the one sentence that says which two
-thresholds actually produced the count; the 0.25 and 40 quoted in this file are only the service
+thresholds actually produced the count; the <!-- figure:oos_rate_threshold -->0.25<!-- /figure --> and <!-- figure:min_sellable_units -->40<!-- /figure --> quoted in this file are only the service
 defaults, so quote the note for what ran, not the defaults, whenever the two could differ. The
 note arrives with the gateway change: if `availability_interruption_note` is absent from
 `thresholds_applied`, the run predates it, so say which thresholds you believe applied and that
@@ -458,7 +458,7 @@ the gap.
 `gv_conversion_pct` are the traffic and conversion basis (a vendor account has no sessions
 and no Buy Box); `oos_days` counts ASIN-days at or above the procurable out-of-stock
 threshold; `availability_interruptions` counts ASIN-days that were out of stock WHILE at least the
-sellable-unit floor was on hand (40 by default), a listing or procurability problem rather than a stockout, and
+sellable-unit floor was on hand (<!-- figure:min_sellable_units -->40<!-- /figure --> by default), a listing or procurability problem rather than a stockout, and
 usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
 snapshot on the last loaded day plus net received units over the window. Ad figures come
 from `campaignmetric` on every channel, never from a monthly rollup table.

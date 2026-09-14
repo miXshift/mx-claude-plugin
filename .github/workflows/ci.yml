@@ -18,8 +18,11 @@ name: ci
 #   check-figures is BLOCKING and catches the HALF of plugin/gateway skew that
 #   check-named-pack structurally cannot see: the deployed manifest carries ids
 #   with no param schema, so a tuned default moving under the docs (0.99 -> 0.25
-#   in Sep 2026) passes it untouched. It compares the numbers the skills and the
-#   --help strings state against a lock vendored from the gateway.
+#   in Sep 2026) passes it untouched. It compares every anchored restatement of
+#   a tuned default -- across the whole repo, skills and harness and shared
+#   catalog and html assets alike -- against a lock vendored from the gateway,
+#   and holds each figure to a recorded SITE COUNT so losing one of several
+#   restatements fails instead of being absorbed.
 #
 # The JOB NAME is deliberately left unchanged when gates are added: it is the
 # check-run name branch protection matches on, and renaming it silently drops

@@ -26,6 +26,20 @@
  * that certifies nothing. The `fails closed` tests below are the load-bearing
  * ones here, and `replays the real P-060 skew` is the test that proves the gate
  * would have caught the defect it was built for.
+ *
+ * AND THE ONE THE FIRST VERSION DID NOT GUARD. Coverage was "this id is claimed
+ * somewhere" plus a single repo-wide claim floor, which an adversarial review
+ * drove green on the exact defect the gate exists to prevent: most figures are
+ * anchored at more than one site, so deleting one site's anchors left the id
+ * claimed elsewhere and the floor absorbed the loss. `fails when a figure loses
+ * ONE of its several anchored sites` is that bypass, and it now exits 1.
+ *
+ * FIXTURE-MODE ENVELOPE. MIXSHIFT_FIGURES_SCAN_DIR is what puts the gate in
+ * fixture mode; MIXSHIFT_FIGURES_EXPECTED_SITES and MIXSHIFT_FIGURES_UNANCHORED
+ * are read only inside it, so the two maps a real run hard-codes can still be
+ * exercised here. A test that supplies no expected-sites map gets the weaker
+ * "documented at least once" rule, which is what the value-comparison and
+ * fail-closed cases below actually want to assert.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -199,14 +213,102 @@ describe('check-figures exit codes', () => {
     expect(run().status, 'an explicitly absent basis is a valid answer').toBe(0);
   });
 
-  it('fails closed when too few claims were extracted to be a real check', () => {
-    // Extracting nothing is not agreement. A renamed docs tree or an anchor
-    // syntax that quietly stopped matching both land on "0 problems".
+  it('fails when a figure loses ONE of its several anchored sites', () => {
+    // THE BYPASS THE FIRST VERSION OF THIS GATE HAD, and the reason the global
+    // floor is gone. Coverage used to be "this id is claimed somewhere" plus one
+    // repo-wide floor. Four of the six real figures are anchored at more than
+    // one site, so deleting one site's anchors left the id claimed elsewhere and
+    // the floor absorbed the loss: reverting the SKILL.md threshold paragraph to
+    // the pre-P-060 values and dropping those anchors exited 0 while the skill
+    // told brief authors a threshold the service does not apply. Per-figure
+    // counts are what close it.
     writeLock([{ id: 'oos_rate_threshold', value: 0.25 }]);
     writeDoc('SKILL.md', 'Threshold <!-- figure:oos_rate_threshold -->0.25<!-- /figure -->.');
-    const r = run({ MIXSHIFT_FIGURES_MIN_CLAIMS: '8' });
+    writeDoc('nested/report.ts', "const help = /* figure:oos_rate_threshold */ '0.25' /* /figure */;");
+    const sites = { MIXSHIFT_FIGURES_EXPECTED_SITES: JSON.stringify({ oos_rate_threshold: 2 }) };
+    expect(run(sites).status, 'both sites present').toBe(0);
+
+    // Drop one site. The id is still claimed, and every remaining literal still
+    // agrees with the lock.
+    writeDoc('SKILL.md', 'Threshold 0.99 applies.');
+    const r = run(sites);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/below the floor/i);
+    expect(r.stderr).toMatch(/expected 2 anchored site\(s\), found 1/);
+  });
+
+  it('fails when a new restatement is anchored without recording it', () => {
+    // The same blind spot from the other direction: the count drifts up, and a
+    // later deletion back down to the recorded number would pass. Exact, both
+    // ways.
+    writeLock([{ id: 'buybox_floor', value: 92, unit: 'percent' }]);
+    writeDoc('SKILL.md', 'Floor <!-- figure:buybox_floor -->92<!-- /figure -->%.');
+    writeDoc('other.md', 'Also floor <!-- figure:buybox_floor -->92<!-- /figure -->%.');
+    const r = run({ MIXSHIFT_FIGURES_EXPECTED_SITES: JSON.stringify({ buybox_floor: 1 }) });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/expected 1 anchored site\(s\), found 2/);
+  });
+
+  it('fails on a lock figure nobody has recorded an expectation for', () => {
+    // A new tuned default arrives from the gateway and the lock refresh lands
+    // before anyone decides where it is documented. min_sellable_units arrived
+    // exactly this way. Refusing to guess is the point.
+    writeLock([
+      { id: 'buybox_floor', value: 92, unit: 'percent' },
+      { id: 'min_sellable_units', value: 40, unit: 'units' },
+    ]);
+    writeDoc('SKILL.md', 'Floor <!-- figure:buybox_floor -->92<!-- /figure -->%.');
+    const r = run({ MIXSHIFT_FIGURES_EXPECTED_SITES: JSON.stringify({ buybox_floor: 1 }) });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('min_sellable_units');
+    expect(r.stderr).toMatch(/no expectation for it/i);
+  });
+
+  it('rejects an UNANCHORED exemption with no written reason', () => {
+    // The escape hatch used to test key presence only, so an empty string
+    // silenced a figure the service tunes and customers see. A reason has to be
+    // written, to the same bar `source` is held to.
+    writeLock([{ id: 'buybox_floor', value: 92, unit: 'percent' }]);
+    writeDoc('SKILL.md', 'Floor 92% is not anchored anywhere.');
+    const empty = run({ MIXSHIFT_FIGURES_UNANCHORED: JSON.stringify({ buybox_floor: '' }) });
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toMatch(/no written reason/i);
+
+    const gestured = run({ MIXSHIFT_FIGURES_UNANCHORED: JSON.stringify({ buybox_floor: 'n/a' }) });
+    expect(gestured.status, 'a token non-answer is not a reason either').toBe(1);
+
+    const real = run({
+      MIXSHIFT_FIGURES_UNANCHORED: JSON.stringify({
+        buybox_floor: 'internal-only knob, never quoted in customer-facing prose',
+      }),
+    });
+    expect(real.status, 'a written reason is a valid answer').toBe(0);
+  });
+
+  it('fails when an UNANCHORED exemption is contradicted by a real site', () => {
+    // A stale exemption is the same hazard one step later: the prose came back
+    // and nobody removed the silence.
+    writeLock([{ id: 'buybox_floor', value: 92, unit: 'percent' }]);
+    writeDoc('SKILL.md', 'Floor <!-- figure:buybox_floor -->92<!-- /figure -->%.');
+    const r = run({
+      MIXSHIFT_FIGURES_UNANCHORED: JSON.stringify({
+        buybox_floor: 'internal-only knob, never quoted in customer-facing prose',
+      }),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/exempted as never quoted/i);
+  });
+
+  it('fails on an anchor hiding in a file type the main pass does not parse', () => {
+    // False coverage in its purest form: the author believes the figure is
+    // gated, the anchor sits in a file this gate cannot read as prose, and the
+    // summary still says "0 problem(s)". The sweep makes it loud instead.
+    writeLock([{ id: 'oos_rate_threshold', value: 0.25 }]);
+    writeDoc('SKILL.md', 'Threshold <!-- figure:oos_rate_threshold -->0.25<!-- /figure -->.');
+    writeDoc('notes.rst', 'Threshold <!-- figure:oos_rate_threshold -->0.25<!-- /figure -->.');
+    const r = run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/does not parse/i);
+    expect(r.stderr).toContain('notes.rst');
   });
 
   it('fails closed when the scan root does not exist', () => {
@@ -228,7 +330,7 @@ describe('check-figures exit codes', () => {
     const r = run();
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('min_sellable_units');
-    expect(r.stderr).toMatch(/no anchored prose site quotes it/i);
+    expect(r.stderr).toMatch(/no anchored prose site quotes it|no expectation for it/i);
   });
 
   it('catches an anchor naming a figure the lock does not carry', () => {

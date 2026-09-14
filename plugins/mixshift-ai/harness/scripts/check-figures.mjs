@@ -1,8 +1,8 @@
 // Release gate: every SERVICE-TUNED FIGURE this plugin restates in prose must
-// equal the value the gateway actually serves. Catches "the docs tell a brief
-// author a threshold the service is not applying" before the two repos can
-// drift, instead of letting a customer read a number out of a skill that no run
-// ever used.
+// equal the value the gateway actually serves, AT EVERY SITE THAT RESTATES IT.
+// Catches "the docs tell a brief author a threshold the service is not
+// applying" before the two repos can drift, instead of letting a customer read
+// a number out of a skill that no run ever used.
 //
 // WHY THIS EXISTS. In Sep 2026 (P-060 / D-056) the Vendor Central
 // availability-interruption rule changed: oos_rate_threshold moved from 0.99 to
@@ -21,12 +21,10 @@
 // byte-identical. The wire said nothing had changed. A human holding a PR title
 // was the entire control.
 //
-// mx-monthly-report-max/SKILL.md restates six of these constants in one
-// customer-facing paragraph and src/commands/report.ts restates four more in its
-// --help strings. That is ten hand-transcribed copies of six numbers across two
-// repos, and the same change week proved hand transcription fails: one cell of a
-// measured calibration grid was mis-copied and a conclusion was drawn from the
-// wrong cell, surviving four days and two repos.
+// Six numbers are restated EIGHTEEN times across five files. That is eighteen
+// hand-transcribed copies, and the same change week proved hand transcription
+// fails: one cell of a measured calibration grid was mis-copied and a conclusion
+// was drawn from the wrong cell, surviving four days and two repos.
 //
 // WHERE THE TRUTH LIVES. figures.lock.json, beside package.json, VENDORED from
 // the gateway. It is generated there (`npm run figures:lock` in mx-legacy-auth,
@@ -66,39 +64,75 @@
 // and the contract makes that gap visible rather than letting silence imply
 // measurement.
 //
-// ANCHORS, NOT NUMBER-HUNTING. Prose sites carry an INVISIBLE anchor naming the
-// figure id around the literal:
+// The lock carries NO site counts, deliberately. It is generated in the gateway
+// repo, which cannot know how many times this plugin's prose quotes a figure,
+// and hand-editing the vendored copy is the transcription failure this gate
+// exists to end. Site counts live in EXPECTED_SITES below, in this repo, beside
+// the prose they describe.
 //
-//   Markdown:   floor <!-- figure:buybox_floor -->92<!-- /figure -->% weighted
-//   TypeScript: ..., /* figure:buybox_floor */ '92' /* /figure */)
-//               '(default ' + /* figure:oos_rate_threshold */ '0.25' /* /figure */ + ' on the service)'
+// ANCHORS, NOT NUMBER-HUNTING. Prose sites carry an anchor naming the figure id
+// around the literal:
 //
-// An HTML comment stays out of the rendered Markdown page; a block comment stays
-// out of the printed --help string. There is DELIBERATELY no free-text "find
-// every number and check it" mode. check-catalog-drift's header states the
-// reason and it holds twice over here: a noisy gate is worse than no gate,
-// because people learn to wave it through. The --min-sellable-units help text is
-// the proof. It contains 40 (the live default), 0.99 and 1 (the pre-2026-09
-// values a caller passes to restore the old rule) and 2026 (a date). Only one of
-// those four is a claim about what the service does now. A find-every-number
-// gate would flag the other three on every run, and rules-provenance.md would
-// drown it outright: that file prints 0.25 and 40 dozens of times as MEASURED
-// GRID CELLS, which are not claims about the default and must never be anchored.
+//   Markdown/HTML:  floor <!-- figure:buybox_floor -->92<!-- /figure -->% weighted
+//   TypeScript:     ..., /* figure:buybox_floor */ '92' /* /figure */)
+//                   '(default ' + /* figure:oos_rate_threshold */ '0.25' /* /figure */ + ')'
+//
+// WHERE THE ANCHOR TEXT ACTUALLY GOES, stated precisely because an earlier
+// version of this header overclaimed it as simply "invisible":
+//
+//   - report.ts: invisible in the PRINTED --help, which is the surface a user
+//     sees. The anchors are block comments OUTSIDE the string literals, so they
+//     are not part of the text commander prints; the help output is
+//     byte-identical to before. Note what is NOT claimed: esbuild does not strip
+//     them from the bundle at this build's settings, and two of the four survive
+//     verbatim in dist/cli.js (the other two are dropped when it folds the
+//     string concatenations). Verified by building dist/ and reading the printed
+//     help, not by assuming the bundler.
+//   - assets/brief-template.html: invisible IN THE RENDERED PAGE. That file is
+//     real HTML that gets rendered, so an HTML comment does not appear to a
+//     reader of the brief. It does survive into the delivered HTML source, which
+//     is acceptable for a comment that names a figure id and nothing else.
+//   - SKILL.md and shared/sql-library/catalog.yaml: NOT invisible to the model.
+//     Nothing renders these; they are injected into the model's context as raw
+//     text, so the anchors are literally in the prompt. In catalog.yaml the
+//     anchor sits inside a `notes: |` block scalar, so it is ordinary text in
+//     that string rather than a YAML comment (nothing prints sql-library notes
+//     at runtime -- checked -- so it reaches no terminal). This costs a few
+//     bytes of prompt on files that already run to hundreds of lines, and the
+//     coupling is worth it, but the cost is real and is not hidden here.
+//
+// There is DELIBERATELY no free-text "find every number and check it" mode.
+// check-catalog-drift's header states the reason and it holds twice over here: a
+// noisy gate is worse than no gate, because people learn to wave it through. The
+// --min-sellable-units help text is the proof. It contains 40 (the live
+// default), 0.99 and 1 (the pre-2026-09 values a caller passes to restore the
+// old rule) and 2026 (a date). Only one of those four is a claim about what the
+// service does now. A find-every-number gate would flag the other three on every
+// run, and rules-provenance.md would drown it outright: that file prints 0.25 and
+// 40 dozens of times as MEASURED GRID CELLS, which are not claims about the
+// default and must never be anchored. Its one prose sentence about the pair
+// ("0.25 and 40 are each the LOWEST TESTED value that reproduces the target") is
+// also left unanchored on purpose: it records what a measurement found, and it
+// stays true whatever the service later defaults to.
 //
 // FAILS CLOSED, on both sides. No lock, a bad lock, an empty figure set, a
-// missing scan root, or fewer claims than the floor all exit 1. A gate that
-// cannot read the truth cannot certify anything, and a green tick that certifies
-// nothing is worse than no gate at all.
+// missing scan root, a figure anchored at fewer sites than expected, a figure
+// the lock carries that nobody has decided about, or an anchor hiding in a file
+// this gate cannot parse all exit 1. A gate that cannot read the truth cannot
+// certify anything, and a green tick that certifies nothing is worse than no
+// gate at all.
 //
 // Run: node scripts/check-figures.mjs
 
-import { readFileSync, readdirSync, existsSync, lstatSync } from 'node:fs';
-import { join, dirname, resolve, relative } from 'node:path';
+import { readFileSync, readdirSync, existsSync, lstatSync, statSync } from 'node:fs';
+import { join, dirname, resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const HARNESS_ROOT = resolve(__dirname, '..');
 const PLUGIN_ROOT = resolve(HARNESS_ROOT, '..');
+const REPO_ROOT = resolve(PLUGIN_ROOT, '..', '..');
 
 function fail(msg) {
   console.error(`check-figures: ${msg}`);
@@ -106,23 +140,111 @@ function fail(msg) {
 }
 
 // Fixture mode exists so the gate's own failure paths can be tested. It is
-// entered ONLY by overriding the scan root, and the claim floor is adjustable
-// ONLY inside it: the same coupling check-catalog-drift uses, for the same
-// reason. A real run never sets these, so the escape hatch the tests need is not
-// also an escape hatch a release can trip over.
+// entered ONLY by overriding the scan root, and the two expectation maps are
+// overridable ONLY inside it: the same coupling check-catalog-drift uses, for
+// the same reason. A real run never sets these, so the escape hatch the tests
+// need is not also an escape hatch a release can trip over.
 const SCAN_OVERRIDE = process.env.MIXSHIFT_FIGURES_SCAN_DIR;
 const FIXTURE_MODE = Boolean(SCAN_OVERRIDE);
 const LOCK_PATH = process.env.MIXSHIFT_FIGURES_LOCK || join(HARNESS_ROOT, 'figures.lock.json');
 
+function fixtureMap(envName) {
+  const raw = process.env[envName];
+  if (!FIXTURE_MODE || !raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    fail(`${envName} is not valid JSON: ${err.message}`);
+  }
+  return new Map(Object.entries(parsed));
+}
+
+// ---------------------------------------------------------------------------
+// The per-figure expectation. THIS is the gate's spine.
+// ---------------------------------------------------------------------------
+//
+// WHY PER FIGURE, AND WHY NOT A GLOBAL FLOOR. The first version of this gate
+// had one global floor (8 anchored claims against 10) plus a per-id
+// claimed-at-least-once check, and it could be driven green on the exact defect
+// it exists to prevent. Four of the six figures are anchored at more than one
+// site, so deleting one site's anchors leaves the id claimed elsewhere and the
+// global floor absorbs the loss. Demonstrated, not theorised: reverting the
+// SKILL.md threshold paragraph to the pre-P-060 values (0.99, no sellable
+// floor) and dropping those two anchors took the count from 10 to 8, which is
+// the floor, so it exited 0 with the skill telling brief authors a threshold
+// the service does not apply. No malice was needed -- an ordinary doc rewrite
+// that drops an HTML comment does it.
+//
+// So the expectation is per figure and EXACT. Fewer sites than expected means a
+// restatement lost its anchor and is no longer checked. More means a new
+// restatement was written and nobody recorded it here, which is the same blind
+// spot arriving from the other direction. Both fail, and both are fixed by
+// either restoring the anchor or updating this map in the same commit that
+// changes the prose.
+//
+// Every entry is a real site, counted from the tree:
+//   buybox_floor  4 - SKILL.md threshold paragraph; report.ts --help default;
+//                     brief-template.html card heading and table caption
+//   buybox_drop   2 - SKILL.md threshold paragraph; report.ts --help default
+//   settled_exclusion_days_sc / _vc  1 each - SKILL.md threshold paragraph.
+//                     The nearby "--attribution all_14 makes it 14 everywhere"
+//                     sentence is override behaviour, not the default, and is
+//                     deliberately NOT a site.
+//   oos_rate_threshold  4 - SKILL.md threshold paragraph, the battery-knobs
+//                     paragraph, the thresholds_applied paragraph; report.ts
+//   min_sellable_units  6 - the same three SKILL.md paragraphs, the Vendor
+//                     Central figure-naming paragraph, report.ts, and the
+//                     MPRX-FIGURES-VC-01 notes in shared/sql-library/catalog.yaml
+const FIXTURE_SITES = fixtureMap('MIXSHIFT_FIGURES_EXPECTED_SITES');
+const EXPECTED_SITES =
+  FIXTURE_SITES ??
+  (FIXTURE_MODE
+    ? new Map()
+    : new Map([
+        ['buybox_floor', 4],
+        ['buybox_drop', 2],
+        ['settled_exclusion_days_sc', 1],
+        ['settled_exclusion_days_vc', 1],
+        ['oos_rate_threshold', 4],
+        ['min_sellable_units', 6],
+      ]));
+// A real run ALWAYS carries site expectations. A fixture run only does when the
+// test supplies them; the rest of the suite exercises the value comparison and
+// the fail-closed paths against ad-hoc docs where a site count would mean
+// nothing, and falls back to the weaker "documented at least once" rule.
+const HAS_SITE_EXPECTATIONS = !FIXTURE_MODE || FIXTURE_SITES !== null;
+
 // Lock figures with no prose site anywhere. This is the gate's ONLY escape hatch
-// and every entry needs a written reason, because an unexplained entry is how a
-// real skew gets waved through: silencing coverage for an id is
-// indistinguishable, at a glance, from the docs having simply forgotten it.
+// and every entry needs a WRITTEN reason, validated below to the same bar
+// `source` is held to, because an unexplained entry is how a real skew gets
+// waved through: silencing coverage for an id is indistinguishable, at a glance,
+// from the docs having simply forgotten it. An empty string is not a reason.
 // EMPTY TODAY, and that is the point. Every figure the service tunes is
 // currently restated somewhere a customer can read it.
-const UNANCHORED = new Map([
-  // ['some_id', 'reason this figure is never quoted in customer-facing prose'],
-]);
+const UNANCHORED =
+  fixtureMap('MIXSHIFT_FIGURES_UNANCHORED') ??
+  new Map([
+    // ['some_id', 'reason this figure is never quoted in customer-facing prose'],
+  ]);
+
+// The same bar `source` is held to: a reason has to be written, not gestured at.
+for (const [id, reason] of UNANCHORED) {
+  if (typeof reason !== 'string' || reason.trim().length < 12) {
+    fail(
+      `UNANCHORED entry "${id}" has no written reason (got ${JSON.stringify(reason)}).\n` +
+        '  This map silences coverage for a figure the service tunes and customers see.\n' +
+        '  Key presence is not a reason: write why no prose site quotes it, or remove\n' +
+        '  the entry and anchor the site.',
+    );
+  }
+  if (EXPECTED_SITES.has(id)) {
+    fail(
+      `figure "${id}" is in BOTH EXPECTED_SITES and UNANCHORED.\n` +
+        '  Those contradict: one says it is quoted, the other says it never is.',
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 1. The truth: the vendored lock.
@@ -192,26 +314,63 @@ for (const [i, f] of lock.figures.entries()) {
 // 2. The claims: anchored literals in prose.
 // ---------------------------------------------------------------------------
 
-const SCAN_ROOTS = FIXTURE_MODE
-  ? [SCAN_OVERRIDE]
-  : [join(PLUGIN_ROOT, 'skills'), join(HARNESS_ROOT, 'src')];
+// THE WHOLE REPO, not two directories. The first version scanned only
+// plugins/mixshift-ai/skills and harness/src, which meant an anchor written in
+// the README, in docs/, in shared/, in hooks/, or in any html or json asset
+// matched nothing and raised nothing. That is false coverage in its purest
+// form: the author believes a figure is gated, the gate never sees it, and the
+// summary line still says "0 problem(s)". Three of the eighteen real sites
+// (two html, one yaml) were outside the old roots.
+if (!FIXTURE_MODE && !existsSync(join(REPO_ROOT, 'plugins', 'mixshift-ai'))) {
+  fail(
+    `repo root ${REPO_ROOT} does not contain plugins/mixshift-ai.\n` +
+      '  The scan root is derived from this script\'s own location; a layout change\n' +
+      '  broke it. Failing closed rather than scanning the wrong tree.',
+  );
+}
+const SCAN_ROOTS = FIXTURE_MODE ? [SCAN_OVERRIDE] : [REPO_ROOT];
+const REL_BASE = FIXTURE_MODE ? resolve(SCAN_OVERRIDE) : REPO_ROOT;
 
-const SCANNABLE = /\.(md|mdx|ts|mts|tsx|ya?ml)$/;
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
+const SCANNABLE = /\.(md|mdx|markdown|ts|mts|cts|tsx|js|mjs|cjs|jsx|ya?ml|html?|json|txt|css|sql)$/i;
+// Built output, vendored code and git internals are not prose anyone reads, and
+// `test`/`fixtures` hold anchors with deliberately WRONG values, written to
+// prove this gate fails. Counting those as claims would be self-defeating.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'test', 'tests', '__tests__', 'fixtures', '__fixtures__']);
+// Co-located unit tests, same reason as the test directories above.
+const TEST_FILE_RE = /\.test\.[cm]?[jt]sx?$/i;
+// The stray sweep below reads every OTHER file looking for a smuggled anchor.
+// These it does not, because reading them as text answers nothing.
+const BINARY_EXT = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.avif', '.bmp',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.pdf', '.zip', '.gz', '.tgz', '.mp4', '.webm', '.mov', '.mp3', '.wav',
+]);
+const STRAY_MAX_BYTES = 2 * 1024 * 1024;
+
+// This script's own header shows the anchor syntax; so would any doc explaining
+// it. Excluding it by absolute path keeps the examples from being read as
+// claims, without a magic marker anyone could paste elsewhere to hide a site.
+function isExcluded(abs) {
+  return abs === __filename || TEST_FILE_RE.test(abs);
+}
 
 // lstatSync, not statSync: statSync follows symlinks, so a directory link
 // pointing at an ancestor recurses until the stack blows, and a gate that
 // crashes is a release outage.
-function walk(dir, out = []) {
+function walk(dir, scanned, others) {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue;
     const p = join(dir, entry);
     const st = lstatSync(p);
     if (st.isSymbolicLink()) continue;
-    if (st.isDirectory()) walk(p, out);
-    else if (SCANNABLE.test(entry)) out.push(p);
+    if (st.isDirectory()) {
+      walk(p, scanned, others);
+      continue;
+    }
+    if (isExcluded(p)) continue;
+    if (SCANNABLE.test(entry)) scanned.push(p);
+    else if (!BINARY_EXT.has(extname(entry).toLowerCase())) others.push(p);
   }
-  return out;
 }
 
 const OPEN_RE = /(?:<!--|\/\*)\s*figure:([A-Za-z0-9_]+)\s*(?:-->|\*\/)/g;
@@ -220,24 +379,31 @@ const OPEN_RE = /(?:<!--|\/\*)\s*figure:([A-Za-z0-9_]+)\s*(?:-->|\*\/)/g;
 // file and "verify" a literal that has nothing to do with the id: a false pass,
 // which is the only outcome worse than a false failure.
 const CLOSE_RE = /^([^\n]{0,60}?)(?:<!--|\/\*)\s*\/figure\s*(?:-->|\*\/)/;
+// Used only by the stray sweep, on files the main pass does not parse.
+const ANY_ANCHOR_RE = /(?:<!--|\/\*)\s*\/?figure:?[A-Za-z0-9_]*\s*(?:-->|\*\/)/;
 
 const problems = []; // { kind, id, where, detail }
-const claimedIds = new Set();
+const siteCounts = new Map(); // id -> number of anchored sites found
 let claims = 0;
 const files = [];
+const otherFiles = [];
 
 for (const root of SCAN_ROOTS) {
   if (!existsSync(root)) fail(`scan root not found at ${root}.`);
-  files.push(...walk(root));
+  walk(root, files, otherFiles);
+}
+
+function rel(file) {
+  return (relative(REL_BASE, file) || file).replace(/\\/g, '/');
 }
 
 for (const file of files) {
   const text = readFileSync(file, 'utf8');
-  const rel = relative(PLUGIN_ROOT, file).replace(/\\/g, '/');
+  const where0 = rel(file);
   for (const open of text.matchAll(OPEN_RE)) {
     const id = open[1];
     const line = text.slice(0, open.index).split('\n').length;
-    const where = `${rel}:${line}`;
+    const where = `${where0}:${line}`;
     const from = open.index + open[0].length;
     const closed = CLOSE_RE.exec(text.slice(from, from + 200));
     if (!closed) {
@@ -252,7 +418,7 @@ for (const file of files) {
       continue;
     }
     claims++;
-    claimedIds.add(id);
+    siteCounts.set(id, (siteCounts.get(id) ?? 0) + 1);
 
     // Strip one layer of matching quotes: the TypeScript sites enclose a string
     // literal ('0.25'), the Markdown sites enclose the bare number.
@@ -292,48 +458,112 @@ for (const file of files) {
   }
 }
 
+// An anchor in a file this gate does not parse looks like coverage and is not.
+// The roots are now the whole repo, so the only remaining way to write one
+// somewhere it cannot count is to put it in a file type the main pass skips.
+for (const file of otherFiles) {
+  let st;
+  try {
+    st = statSync(file);
+  } catch {
+    continue;
+  }
+  if (st.size > STRAY_MAX_BYTES) continue;
+  let text;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    continue;
+  }
+  if (!ANY_ANCHOR_RE.test(text)) continue;
+  problems.push({
+    kind: 'stray',
+    id: '(unparsed file)',
+    where: rel(file),
+    detail:
+      'carries a figure anchor in a file type this gate does not parse, so it reads as ' +
+      'coverage and is not. Move the claim into a scanned file type, or add the extension ' +
+      'to SCANNABLE in this script',
+  });
+}
+
 // ---------------------------------------------------------------------------
-// 3. Coverage: a figure the service tunes and nobody documents.
+// 3. Coverage: PER FIGURE, per site. See EXPECTED_SITES above for why.
 // ---------------------------------------------------------------------------
 
 for (const [id, entry] of expected) {
-  if (claimedIds.has(id)) continue;
-  if (UNANCHORED.has(id)) continue;
+  const found = siteCounts.get(id) ?? 0;
+
+  if (UNANCHORED.has(id)) {
+    if (found > 0) {
+      problems.push({
+        kind: 'stale-exemption',
+        id,
+        where: '(UNANCHORED in this script)',
+        detail:
+          `exempted as never quoted, but ${found} anchored site(s) quote it. ` +
+          'Remove the UNANCHORED entry and give it an EXPECTED_SITES count',
+      });
+    }
+    continue;
+  }
+
+  if (!EXPECTED_SITES.has(id)) {
+    if (!HAS_SITE_EXPECTATIONS) {
+      // Fixture fallback: the weaker rule the first version of this gate used,
+      // kept so the suite's value-comparison and fail-closed cases stay
+      // readable. Never reached on a real run.
+      if (found === 0) {
+        problems.push({
+          kind: 'undecided',
+          id,
+          where: '(nowhere)',
+          detail: `served to customers as ${entry.servedAs} but no anchored prose site quotes it`,
+        });
+      }
+      continue;
+    }
+    // A figure arrived in the lock and nobody decided where it is documented.
+    // min_sellable_units arrived exactly this way; refusing to guess is the
+    // point.
+    problems.push({
+      kind: 'undecided',
+      id,
+      where: found > 0 ? `${found} anchored site(s)` : '(nowhere)',
+      detail:
+        `served to customers as ${entry.servedAs} and this gate has no expectation for it. ` +
+        'Anchor its prose site(s) and add the count to EXPECTED_SITES, or add it to ' +
+        'UNANCHORED in this script WITH a written reason',
+    });
+    continue;
+  }
+
+  const want = EXPECTED_SITES.get(id);
+  if (!Number.isInteger(want) || want < 1) {
+    fail(`EXPECTED_SITES["${id}"] is ${JSON.stringify(want)}; it must be a positive integer.`);
+  }
+  if (found === want) continue;
   problems.push({
-    kind: 'unanchored',
+    kind: found < want ? 'under-anchored' : 'over-anchored',
     id,
-    where: '(nowhere)',
+    where: found > 0 ? `${found} anchored site(s)` : '(nowhere)',
     detail:
-      `served to customers as ${entry.servedAs} but no anchored prose site quotes it. ` +
-      'Anchor it where it is documented, or add it to UNANCHORED in this script WITH a reason',
+      found < want
+        ? `expected ${want} anchored site(s), found ${found}. A restatement lost its anchor ` +
+          `and is no longer compared against the service. Restore it, or lower EXPECTED_SITES ` +
+          `deliberately in the same commit that removes the prose`
+        : `expected ${want} anchored site(s), found ${found}. A new restatement was anchored ` +
+          `without recording it. Raise EXPECTED_SITES["${id}"] to ${found} in this commit`,
   });
 }
 
 const lockLabel = relative(HARNESS_ROOT, LOCK_PATH).replace(/\\/g, '/') || LOCK_PATH;
+const wantTotal = [...EXPECTED_SITES.values()].reduce((a, b) => a + b, 0);
 console.log(
   `check-figures: ${expected.size} figure(s) from ${lockLabel}, ` +
-    `${claims} anchored claim(s) across ${files.length} file(s), ${problems.length} problem(s).`,
+    `${claims} anchored claim(s) (expected ${wantTotal}) across ${files.length} scanned file(s) ` +
+    `+ ${otherFiles.length} swept, ${problems.length} problem(s).`,
 );
-
-// ---------------------------------------------------------------------------
-// 4. Fail closed on the docs side too.
-// ---------------------------------------------------------------------------
-
-// Extracting nothing is not agreement. A wrong scan root, a rename of the skills
-// tree, or an anchor syntax that quietly stopped matching all land on "0
-// problems" and would otherwise report a clean run. The floor is 8 against 10
-// real claims today: low enough that removing one mention is not a false
-// failure, high enough that EITHER scan root dropping out is caught (the skills
-// tree alone carries 6 claims, the harness tree alone carries 4).
-const MIN_EXPECTED_CLAIMS = FIXTURE_MODE ? Number(process.env.MIXSHIFT_FIGURES_MIN_CLAIMS ?? 0) : 8;
-if (claims < MIN_EXPECTED_CLAIMS) {
-  fail(
-    `only ${claims} anchored claim(s) found across ${files.length} file(s), ` +
-      `below the floor of ${MIN_EXPECTED_CLAIMS}.\n` +
-      '  That means the docs were not fully read, not that they agree with the lock.\n' +
-      `  Scanned: ${SCAN_ROOTS.map((r) => relative(PLUGIN_ROOT, r).replace(/\\/g, '/') || r).join(', ')}`,
-  );
-}
 
 if (problems.length === 0) process.exit(0);
 
@@ -342,10 +572,24 @@ const LABEL = {
   'unknown-id': 'Anchor names a figure the lock does not carry',
   unclosed: 'Anchor opened and never closed',
   'not-a-number': 'Anchor does not enclose a bare number',
-  unanchored: 'Tuned figure with no documented site',
+  'under-anchored': 'Figure anchored at FEWER sites than expected',
+  'over-anchored': 'Figure anchored at MORE sites than recorded',
+  undecided: 'Tuned figure with no anchored site or no recorded expectation',
+  'stale-exemption': 'UNANCHORED exemption contradicted by a real site',
+  stray: 'Anchor in a file this gate does not parse',
 };
 console.error('');
-for (const kind of ['mismatch', 'unknown-id', 'unclosed', 'not-a-number', 'unanchored']) {
+for (const kind of [
+  'mismatch',
+  'under-anchored',
+  'over-anchored',
+  'undecided',
+  'unknown-id',
+  'unclosed',
+  'not-a-number',
+  'stale-exemption',
+  'stray',
+]) {
   const group = problems.filter((p) => p.kind === kind);
   if (group.length === 0) continue;
   console.error(`${LABEL[kind]}:\n`);
@@ -364,6 +608,8 @@ console.error(
     '  2. The prose was always wrong. Fix the prose; the lock is the service.\n' +
     'Never resolve it by editing the lock to agree with the docs. The lock is\n' +
     'vendored output, and hand-editing it is the hand-transcription failure this\n' +
-    'gate was built to end.\n',
+    'gate was built to end.\n' +
+    'A site-count failure is never fixed by lowering the count to match what is\n' +
+    'left. Lower it only when the prose that carried the figure is genuinely gone.\n',
 );
 process.exit(1);

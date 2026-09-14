@@ -4,7 +4,7 @@
   "service": {
     "repo": "miXshift/mx-legacy-auth",
     "ref": "f7957e8",
-    "ref_note": "head of feat/vc-interruption-floor (PR #165), merged to main as 4d007f3 and deployed to Railway on 2026-09-14 with post-deploy acceptance passed on seller 113",
+    "ref_note": "head of feat/vc-interruption-floor (PR #165), merged to main as 4d007f3 and deployed to Railway on 2026-09-14 with post-deploy acceptance passed on the calibration account",
     "vendored_at": "2026-09-14",
     "vendored_how": "read out of the gateway source by hand: kernel.ts for the four shared constants, mprx-figures-01.ts / mprx-figures-brand-01.ts for the two Buy Box zod defaults. Every value below was read from that source, not from a handoff, a decision entry or a chat message."
   },
@@ -14,7 +14,7 @@
       "value": 0.25,
       "unit": "rate",
       "servedAs": "thresholds_applied.oos_rate_threshold",
-      "source": "CALIBRATED 2026-09 (kernel.ts DEFAULT_OOS_RATE_THRESHOLD). The lowest TESTED ProcurableProductOutOfStockRate that reproduces Todd's published availability-interruption counts, at a fixed sellable floor of 40. Rates 0.01 / 0.05 / 0.10 / 0.20 / 0.25 / 0.30 / 0.40 / 0.50 / 0.75 / 0.90 / 0.99 were run; the target reproduces at 0.25 and 0.30 only, with UNTESTED bands (0.20, 0.25] and (0.30, 0.40] on either side, so the true edges are not known. N: ONE vendor account, TWO months (July and August 2026), and a July target of a SINGLE ASIN-day. Not a fleet rate and not confirmed on a second account. Full grid: skills/mx-monthly-report-max/rules-provenance.md. Was 0.99 before this deploy."
+      "source": "CALIBRATED 2026-09 (kernel.ts DEFAULT_OOS_RATE_THRESHOLD). The lowest TESTED ProcurableProductOutOfStockRate that reproduces the vendor engine's published availability-interruption counts, at a fixed sellable floor of 40. Rates 0.01 / 0.05 / 0.10 / 0.20 / 0.25 / 0.30 / 0.40 / 0.50 / 0.75 / 0.90 / 0.99 were run; the target reproduces at 0.25 and 0.30 only, with UNTESTED bands (0.20, 0.25] and (0.30, 0.40] on either side, so the true edges are not known. N: ONE vendor account, TWO months (July and August 2026), and a July target of a SINGLE ASIN-day. Not a fleet rate and not confirmed on a second account. Full grid: skills/mx-monthly-report-max/rules-provenance.md. Was 0.99 before this deploy."
     },
     {
       "id": "min_sellable_units",
