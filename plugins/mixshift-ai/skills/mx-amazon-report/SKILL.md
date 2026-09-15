@@ -744,6 +744,8 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `restricted_report` | 4 | Amazon needs a Restricted Data Token / PII role MixShift does not hold. Offer the default (non-PII) form of the report, or a different report. Do NOT retry the same request unchanged. |
 | `reauth_required` | 5 | This merchant's SP-API grant lapsed. Re-connect the account in the MixShift app, then retry. |
+| `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal**: the user activates the merchant in the MixShift platform, then retries. Do NOT tell them to re-authorize: the Amazon connection is working, this is an activation setting. |
+| `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is mapped to. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal**: check that the advertising login has access to that advertiser in Amazon Ads, or contact MixShift support to re-map it. |
 | `spapi_not_configured` | 6 | SP-API pulls are not enabled for this MixShift account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The `--seller-id` matched no merchant. Re-run `amazon merchants` and pick a listed `amazonSellerId`. |
 | `throttled` | 8 | Amazon is rate-limiting. This is NORMAL, especially on Brand Analytics search-terms pulls, not a failure: wait and keep polling patiently with backoff (a `retry_after_ms` may be present). Never suggest canceling the pull because of a `throttled` response; it is not a reason to stop. |

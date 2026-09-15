@@ -77,11 +77,19 @@ function registerProfiles(ads: Command): void {
   ads
     .command('profiles')
     .description('List the Ads profiles you can call for (one per advertiser account + marketplace).')
-    .action(async (_opts: unknown, cmd: Command) => {
+    .option(
+      '--include-inactive',
+      'Also list merchants that are INACTIVE for Ads. They cannot serve Ads data until ' +
+        'someone activates them in the MixShift platform; use this to find one that needs it.',
+    )
+    .action(async (opts: { includeInactive?: boolean }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
       try {
-        const result = await listAdsProfiles({ dataDirOverride: root.dataDir });
+        const result = await listAdsProfiles({
+          dataDirOverride: root.dataDir,
+          includeInactive: opts.includeInactive === true,
+        });
         if (isReportFailure(result)) {
           await trackAds(EventName.AdsProfilesListed, 'failed', startedAt, root.dataDir, {
             kind: result.kind,
@@ -102,12 +110,30 @@ function registerProfiles(ads: Command): void {
             ...(p.countryCode != null ? { country_code: p.countryCode } : {}),
           })),
           truncated: result.profiles.length > 25,
+          ...(typeof result.activeCount === 'number' ? { active_count: result.activeCount } : {}),
+          ...(typeof result.inactiveCount === 'number'
+            ? { inactive_count: result.inactiveCount }
+            : {}),
+          ...(opts.includeInactive ? { include_inactive: true } : {}),
         });
         if (root.json) {
-          writeJson({ status: 'ok', count: result.profiles.length, profiles: result.profiles });
+          writeJson({
+            status: 'ok',
+            count: result.profiles.length,
+            ...(typeof result.activeCount === 'number' ? { active_count: result.activeCount } : {}),
+            ...(typeof result.inactiveCount === 'number'
+              ? { inactive_count: result.inactiveCount }
+              : {}),
+            ...(result.inactiveHidden ? { inactive_hidden: true } : {}),
+            ...(result.note ? { note: result.note } : {}),
+            profiles: result.profiles,
+          });
         } else {
           process.stderr.write(`\n✓ ${result.profiles.length} profile(s)\n\n`);
           process.stdout.write(renderProfiles(result.profiles) + '\n');
+          // Say what was withheld. Silently hiding most of the list is how the
+          // original bug read to users as "my merchant is missing".
+          if (result.note) process.stderr.write(`\n${result.note}\n`);
         }
         return;
       } catch (err) {
@@ -262,6 +288,23 @@ function registerCall(ads: Command): void {
           await trackAds(EventName.AdsCalled, 'failed', startedAt, root.dataDir, {
             operation,
             kind: result.kind,
+            // mx-ops#57: WHICH merchant failed. The success path has stamped
+            // these since feedback #10; failures stamped nothing, so a user
+            // reporting "every profile returns an error" produced events that
+            // could not say which merchant any of them was. That blind spot
+            // is what stopped the #57 investigation closing: five failures,
+            // three merchants named by the reporter, and no way to match them.
+            //
+            // Taken from the REQUEST selector, not the response: a failure
+            // envelope often carries no profile at all (the call never
+            // reached Amazon), and what the user ASKED for is the thing worth
+            // knowing. Ids the caller already supplied, never response data.
+            ...(opts.profileId ? { profile_id: opts.profileId } : {}),
+            ...(opts.legacySellerId !== undefined
+              ? { legacy_seller_id: opts.legacySellerId }
+              : {}),
+            ...(opts.sellerId ? { seller_id: opts.sellerId } : {}),
+            ...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
             ...(opts.commit ? { committed: true } : {}),
             ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
             // Amazon's OWN error code: (operation, amazon_error_code)

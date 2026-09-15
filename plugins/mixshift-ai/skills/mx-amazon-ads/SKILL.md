@@ -152,12 +152,23 @@ Every `ads call` targets exactly one profile. Resolve it the same way
 `mx-amazon-report` resolves a merchant, because the ids line up:
 
 ```bash
-mixshift ads profiles            # human table
-mixshift ads profiles --json     # structured, for matching by name
+mixshift ads profiles                      # active merchants (human table)
+mixshift ads profiles --json               # structured, for matching by name
+mixshift ads profiles --include-inactive   # also the inactive ones, flagged
 ```
 
 The columns are: `profileId`, `legacySellerId`, `name`, `type`, `region`,
-`marketplace`. Two things to know:
+`marketplace`, `isActive`. Three things to know:
+
+- **Only merchants ACTIVE for Ads are listed by default**, because Amazon will
+  not serve data for an inactive one. The response carries `activeCount`,
+  `inactiveCount` and, when any were withheld, a `note` saying so. Relay that
+  note: if a user is looking for a brand that is not in the list, the answer is
+  usually that it is inactive, not that it is missing. To answer "which of my
+  merchants are inactive?" or to find one the user needs to switch on, pass
+  `--include-inactive`; inactive rows come back flagged `isActive: false`.
+  Activating a merchant is the CUSTOMER's action in the MixShift platform, not
+  something this skill can do.
 
 - **`legacySellerId` is the deterministic pin** and the same id you see in
   `mixshift amazon merchants`. Prefer `--legacy-seller-id <id>` over anything
@@ -716,6 +727,8 @@ code for terminal scripts.
 | `restricted_report` | 4 | Amazon refused this call for an access/role reason MixShift does not hold. Do NOT retry unchanged. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
 | `reauth_required` | 5 | This advertiser's grant lapsed, and NO call against it can succeed until a person re-authorizes it. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to re-connect the account in the MixShift app, then re-run. |
+| `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to activate the merchant in the MixShift platform, then re-run. Do NOT tell them to re-authorize: the connection is working, this is an activation setting. |
+| `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no profile. Re-run `ads profiles` and pick a listed row (use its `legacySellerId`). A multi-marketplace selector returns a `candidates` list; pick the marketplace and re-run. |
 | `throttled` | 8 | Amazon is rate-limiting (Ads limits are dynamic). Wait a moment and retry; a `retry_after_ms` may be present. |

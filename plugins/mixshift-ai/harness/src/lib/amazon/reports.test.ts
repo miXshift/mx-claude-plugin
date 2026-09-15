@@ -1020,6 +1020,12 @@ describe('exitCodeForKind', () => {
       session_expired: 2,
       restricted_report: 4,
       reauth_required: 5,
+      // mx-ops#57. New codes rather than 1, and deliberately NOT reauth's 5:
+      // a script branching on 5 means "reconnect the account", which is the
+      // wrong action for both of these and the exact confusion the fix exists
+      // to end. Both are terminal.
+      merchant_inactive: 13,
+      profile_not_authorized: 14,
       spapi_not_configured: 6,
       ads_not_configured: 6,
       merchant_not_found: 7,
