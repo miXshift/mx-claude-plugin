@@ -59,6 +59,10 @@ export interface AdsProfileView {
   marketplaceId: string | null;
   countryCode?: string | null;
   marketplaceName?: string | null;
+  /** Whether the merchant is ACTIVE for Ads in MixShift. Only ever false in a
+   *  response the caller asked for with includeInactive (mx-ops#57). Optional
+   *  so an older service build that omits it still parses. */
+  isActive?: boolean;
 }
 
 /** One callable Ads operation from the service catalog. `notes` is the
@@ -84,6 +88,16 @@ export interface AdsOperationView {
 export interface ListAdsProfilesResult {
   ok: true;
   profiles: AdsProfileView[];
+  /** Merchants active for Ads. Optional: older service builds omit it. */
+  activeCount?: number;
+  /** Merchants present but inactive, whether or not they were returned. */
+  inactiveCount?: number;
+  /** True when inactive merchants exist and were withheld from `profiles`. */
+  inactiveHidden?: boolean;
+  /** Set only when something was withheld: what is missing and how to see it.
+   *  Relay it, or a user hunting a brand that is merely inactive is told
+   *  nothing at all. */
+  note?: string;
 }
 
 export interface ListAdsOperationsResult {
@@ -145,16 +159,34 @@ export interface AdsCallSuccess {
 
 /** List the warehouse-known Ads profiles for the signed-in tenant. */
 export async function listAdsProfiles(
-  opts: ReportClientOptions = {},
+  opts: ReportClientOptions & { includeInactive?: boolean } = {},
 ): Promise<ListAdsProfilesResult | ReportFailure> {
+  // Active-only is the service default (mx-ops#57); ask for the rest only
+  // when the caller wants to discover inactive merchants.
+  const qs = opts.includeInactive ? '?includeInactive=true' : '';
   const r = await amazonRequest(
-    { method: 'GET', path: '/api/amazon/ads/profiles', surface: 'ads' },
+    { method: 'GET', path: `/api/amazon/ads/profiles${qs}`, surface: 'ads' },
     { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 },
   );
   if (!r.ok) return r;
-  const raw = (r.json as { profiles?: unknown }).profiles;
-  const profiles = Array.isArray(raw) ? (raw as AdsProfileView[]) : [];
-  return { ok: true, profiles };
+  const body = r.json as {
+    profiles?: unknown;
+    activeCount?: unknown;
+    inactiveCount?: unknown;
+    inactiveHidden?: unknown;
+    note?: unknown;
+  };
+  const profiles = Array.isArray(body.profiles) ? (body.profiles as AdsProfileView[]) : [];
+  return {
+    ok: true,
+    profiles,
+    // Tolerated as optional: an older service build does not send them, and
+    // the list still works without the counts.
+    ...(typeof body.activeCount === 'number' ? { activeCount: body.activeCount } : {}),
+    ...(typeof body.inactiveCount === 'number' ? { inactiveCount: body.inactiveCount } : {}),
+    ...(typeof body.inactiveHidden === 'boolean' ? { inactiveHidden: body.inactiveHidden } : {}),
+    ...(typeof body.note === 'string' ? { note: body.note } : {}),
+  };
 }
 
 /** List the service's Ads operation catalog, optionally filtered by family. */

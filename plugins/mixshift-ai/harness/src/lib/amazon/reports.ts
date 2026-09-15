@@ -132,6 +132,12 @@ export type ReportFailureKind =
   | 'ads_not_configured' // 503 — Amazon Ads API creds not set on the service
   | 'insufficient_scope' // 403 — credential lacks a required scope (ads:write)
   | 'reauth_required' // 409 — merchant grant lapsed; +amazonSellerId
+  // --- added 2026-09-15 (mx-ops#57): the two halves reauth_required used to
+  // swallow. A dead credential and an unreachable/inactive merchant had the
+  // same kind and the same "re-authorize" copy, so users re-connected
+  // healthy accounts. Measured: zero dead credentials across six tenants.
+  | 'merchant_inactive' // 422 — merchant is not ACTIVE for Ads in MixShift. Terminal: activate it, do not retry
+  | 'profile_not_authorized' // 403 — credential is fine; Amazon denies this profile to that advertising login
   | 'bad_request' // 400 — AMAZON rejected the request; +amazonErrorCode. Terminal: do not retry
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
@@ -356,6 +362,10 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
       return 4; // Amazon needs an RDT/PII role MixShift lacks
     case 'reauth_required':
       return 5; // merchant grant lapsed — reconnect this merchant
+    case 'merchant_inactive':
+      return 13; // merchant is not active for Ads — activate it in MixShift
+    case 'profile_not_authorized':
+      return 14; // Amazon denies this profile to the advertising login
     case 'spapi_not_configured':
     case 'ads_not_configured':
       return 6; // the relevant Amazon API is not enabled on the service
@@ -1488,6 +1498,8 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'ads_not_configured',
   'insufficient_scope',
   'reauth_required',
+  'merchant_inactive',
+  'profile_not_authorized',
   'bad_request',
   'restricted_report',
   'merchant_not_found',
@@ -1709,6 +1721,24 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
         'this call can run. Until someone re-connects the account in the ' +
         'MixShift app, every call against it will fail the same way, so do ' +
         'not retry this one or run the rest of a change set against it.'
+      );
+    case 'merchant_inactive':
+      return (
+        'This merchant is not active for Amazon Ads in MixShift, so Amazon ' +
+        'will not serve data for it. Someone has to activate it in the ' +
+        'MixShift platform first. Re-authorizing will not help: the Amazon ' +
+        'connection is working, this is an activation setting. Until it is ' +
+        'activated every call against this merchant fails the same way, so ' +
+        'do not retry this one or run the rest of a change set against it.'
+      );
+    case 'profile_not_authorized':
+      return (
+        'Amazon says the advertising account this merchant is connected ' +
+        'through does not have access to it. The MixShift connection itself ' +
+        'is working, so re-authorizing will not change this. Check that the ' +
+        'advertising login has access to this advertiser in Amazon Ads, or ' +
+        'contact MixShift support so the merchant can be re-mapped. Retrying ' +
+        'unchanged will not help.'
       );
     case 'bad_request':
       return (
