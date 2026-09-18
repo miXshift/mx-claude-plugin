@@ -87676,6 +87676,12 @@ function exitCodeForKind(kind) {
     case "reauth_required":
       return 5;
     // merchant grant lapsed — reconnect this merchant
+    case "merchant_inactive":
+      return 13;
+    // merchant is not active for Ads — activate it in MixShift
+    case "profile_not_authorized":
+      return 14;
+    // Amazon denies this profile to the advertising login
     case "spapi_not_configured":
     case "ads_not_configured":
       return 6;
@@ -88269,6 +88275,8 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "ads_not_configured",
   "insufficient_scope",
   "reauth_required",
+  "merchant_inactive",
+  "profile_not_authorized",
   "bad_request",
   "restricted_report",
   "merchant_not_found",
@@ -88404,6 +88412,10 @@ function defaultFriendly(kind, surface) {
       return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
     case "reauth_required":
       return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Until someone re-connects the account in the MixShift app, every call against it will fail the same way, so do not retry this one or run the rest of a change set against it.";
+    case "merchant_inactive":
+      return "This merchant is not active for Amazon Ads in MixShift, so Amazon will not serve data for it. Someone has to activate it in the MixShift platform first. Re-authorizing will not help: the Amazon connection is working, this is an activation setting. Until it is activated every call against this merchant fails the same way, so do not retry this one or run the rest of a change set against it.";
+    case "profile_not_authorized":
+      return "Amazon says the advertising account this merchant is connected through does not have access to it. The MixShift connection itself is working, so re-authorizing will not change this. Check that the advertising login has access to this advertiser in Amazon Ads, or contact MixShift support so the merchant can be re-mapped. Retrying unchanged will not help.";
     case "bad_request":
       return `${requestLabel(surface)} was rejected by Amazon because of the request itself, not a MixShift or Amazon outage. Retrying it unchanged will not help.`;
     case "restricted_report":
@@ -90489,14 +90501,24 @@ import { readFile as readFile42 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
+  const qs = opts.includeInactive ? "?includeInactive=true" : "";
   const r = await amazonRequest(
-    { method: "GET", path: "/api/amazon/ads/profiles", surface: "ads" },
+    { method: "GET", path: `/api/amazon/ads/profiles${qs}`, surface: "ads" },
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const raw = r.json.profiles;
-  const profiles = Array.isArray(raw) ? raw : [];
-  return { ok: true, profiles };
+  const body = r.json;
+  const profiles = Array.isArray(body.profiles) ? body.profiles : [];
+  return {
+    ok: true,
+    profiles,
+    // Tolerated as optional: an older service build does not send them, and
+    // the list still works without the counts.
+    ...typeof body.activeCount === "number" ? { activeCount: body.activeCount } : {},
+    ...typeof body.inactiveCount === "number" ? { inactiveCount: body.inactiveCount } : {},
+    ...typeof body.inactiveHidden === "boolean" ? { inactiveHidden: body.inactiveHidden } : {},
+    ...typeof body.note === "string" ? { note: body.note } : {}
+  };
 }
 async function listAdsOperations(family, opts = {}) {
   const qs = family ? `?family=${encodeURIComponent(family)}` : "";
@@ -90697,11 +90719,17 @@ function registerAdsCommands(program3) {
   registerCall2(ads);
 }
 function registerProfiles(ads) {
-  ads.command("profiles").description("List the Ads profiles you can call for (one per advertiser account + marketplace).").action(async (_opts, cmd) => {
+  ads.command("profiles").description("List the Ads profiles you can call for (one per advertiser account + marketplace).").option(
+    "--include-inactive",
+    "Also list merchants that are INACTIVE for Ads. They cannot serve Ads data until someone activates them in the MixShift platform; use this to find one that needs it."
+  ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
-      const result = await listAdsProfiles({ dataDirOverride: root.dataDir });
+      const result = await listAdsProfiles({
+        dataDirOverride: root.dataDir,
+        includeInactive: opts.includeInactive === true
+      });
       if (isReportFailure(result)) {
         await trackAds(EventName.AdsProfilesListed, "failed", startedAt, root.dataDir, {
           kind: result.kind
@@ -90721,16 +90749,30 @@ function registerProfiles(ads) {
           ...p.marketplaceId != null ? { marketplace_id: p.marketplaceId } : {},
           ...p.countryCode != null ? { country_code: p.countryCode } : {}
         })),
-        truncated: result.profiles.length > 25
+        truncated: result.profiles.length > 25,
+        ...typeof result.activeCount === "number" ? { active_count: result.activeCount } : {},
+        ...typeof result.inactiveCount === "number" ? { inactive_count: result.inactiveCount } : {},
+        ...opts.includeInactive ? { include_inactive: true } : {}
       });
       if (root.json) {
-        writeJson4({ status: "ok", count: result.profiles.length, profiles: result.profiles });
+        writeJson4({
+          status: "ok",
+          count: result.profiles.length,
+          ...typeof result.activeCount === "number" ? { active_count: result.activeCount } : {},
+          ...typeof result.inactiveCount === "number" ? { inactive_count: result.inactiveCount } : {},
+          ...result.inactiveHidden ? { inactive_hidden: true } : {},
+          ...result.note ? { note: result.note } : {},
+          profiles: result.profiles
+        });
       } else {
         process.stderr.write(`
 \u2713 ${result.profiles.length} profile(s)
 
 `);
         process.stdout.write(renderProfiles(result.profiles) + "\n");
+        if (result.note) process.stderr.write(`
+${result.note}
+`);
       }
       return;
     } catch (err) {
@@ -90828,6 +90870,21 @@ function registerCall2(ads) {
         await trackAds(EventName.AdsCalled, "failed", startedAt, root.dataDir, {
           operation,
           kind: result.kind,
+          // mx-ops#57: WHICH merchant failed. The success path has stamped
+          // these since feedback #10; failures stamped nothing, so a user
+          // reporting "every profile returns an error" produced events that
+          // could not say which merchant any of them was. That blind spot
+          // is what stopped the #57 investigation closing: five failures,
+          // three merchants named by the reporter, and no way to match them.
+          //
+          // Taken from the REQUEST selector, not the response: a failure
+          // envelope often carries no profile at all (the call never
+          // reached Amazon), and what the user ASKED for is the thing worth
+          // knowing. Ids the caller already supplied, never response data.
+          ...opts.profileId ? { profile_id: opts.profileId } : {},
+          ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {},
+          ...opts.sellerId ? { seller_id: opts.sellerId } : {},
+          ...opts.marketplace ? { marketplace: opts.marketplace } : {},
           ...opts.commit ? { committed: true } : {},
           ...result.httpStatus ? { http_status: result.httpStatus } : {},
           // Amazon's OWN error code: (operation, amazon_error_code)

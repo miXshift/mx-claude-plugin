@@ -27,7 +27,7 @@ Two limits to establish before promising any of that.
 **The subscription date is not the start of the data.** `activationTime` on the
 `PURCHASE_RETAIL_PROGRAM` label is when the advertiser *subscribed*. Amazon
 backfills roughly five years behind it, so the history is normally much older
-than the subscription. Measured 2026-09-13 on instance `amcoxdvrerk`, which
+than the subscription. Measured 2026-09-13 on one subscribed instance that
 activated on 2025-08-05: the earliest purchase row is **2021-09-13**, with rows
 through 2026-08-31. Sixty months, on an instance a little over one year old.
 

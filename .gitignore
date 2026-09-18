@@ -39,3 +39,10 @@ docs/productization/SKILL-AUTHOR-GUIDE.md
 docs/productization/BRAND-MANAGEMENT.md
 docs/productization/HARNESS-REWRITE.md
 docs/productization/MIGRATION-NOTES.md
+
+# `mixshift report battery` writes its figures document to ./figures.json by
+# default (harness/src/commands/report.ts). Run from a repo checkout, that lands
+# a real account's figures at the root of this PUBLIC repo. Ignore it as a
+# backstop; the default itself is tracked as a follow-up.
+figures.json
+figures-*.json

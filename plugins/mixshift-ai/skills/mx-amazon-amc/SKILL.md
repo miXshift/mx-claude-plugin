@@ -134,6 +134,14 @@ Ambiguity returns `merchant_not_found` (exit 7) with a candidates list, one
 entry per marketplace; pick the one the user meant and re-run with its
 `--legacy-seller-id`.
 
+**Only merchants ACTIVE for Ads are listed by default**, because Amazon will
+not serve data for an inactive one. The response carries `activeCount`,
+`inactiveCount` and, when any were withheld, a `note` saying so. Relay that
+note: a brand missing from the list is usually inactive rather than absent.
+Pass `--include-inactive` to see them, flagged `isActive: false`. Calling an
+inactive merchant returns `merchant_inactive` (exit 13), which re-authorizing
+cannot fix; activating it is the CUSTOMER's action in the MixShift platform.
+
 AMC-specific nuance: **an AMC account's marketplace can differ from the seller
 row's.** The service defaults the marketplace header to the resolved row's
 marketplace; when the AMC account lives elsewhere, pass
@@ -506,6 +514,8 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `ads_not_configured` | 6 | The Amazon Ads credentials are not set on the service for this account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no merchant. Re-run `ads profiles` and pick a listed row; prefer `--legacy-seller-id`. |
+| `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to activate the merchant in the MixShift platform, then re-run. Do NOT tell them to re-authorize: the connection is working, this is an activation setting. |
+| `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. Probing instances SEQUENTIALLY prevents most of these. |
 
 Two AMC-specific cases that are NOT failure envelopes and need their own

@@ -3,6 +3,30 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.14
+
+### Fixed
+
+- **Amazon Retail Purchases analyses no longer stop at the date you subscribed.**
+  The AMC guidance treated the retail purchase subscription date as the start of
+  the data, so lifetime value, cohort and repeat purchase reads were quietly
+  clamped to however long the subscription had been running. Amazon actually
+  holds around five years of purchase history behind that date. On one account
+  the difference was 60 months of customers instead of 13, and a new versus
+  repeat read that had reported every buyer as new in its first month and
+  overstated new customers by 18% a year later. The skill now measures the real
+  start of the data before it sets any window, and says so when it reports.
+
+- **MixShift now names the two Amazon Ads failures that re-authorizing cannot
+  fix, instead of reporting them as an unknown error.** Picking a merchant that
+  is inactive in MixShift used to fail with a message saying your Amazon
+  authorization had been lost, so people went and re-connected accounts that
+  were working fine. An inactive merchant now says plainly that it is inactive
+  and that activating it in MixShift is the fix, and a separate message covers
+  the case where Amazon itself denies a merchant to the advertising login it is
+  connected through. Listing merchants also tells you how many inactive ones it
+  left out, with `--include-inactive` when you want to see them.
+
 ## 0.8.13
 
 ### Changed
