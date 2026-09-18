@@ -606,6 +606,26 @@ export interface ExtractedFigure extends Figure {
   pct_change?: number | null;
   footing_ok?: boolean | null;
   net_change?: number | null;
+  /** The two levels this figure's `delta` is ACTUALLY the difference of, when
+   *  the engine says that is not the pair carried by the sibling `.p1`/`.p2`
+   *  figures.
+   *
+   *  Engine >= 0.5.2 narrows a `lost_sales` total's `delta` to entities priced
+   *  in BOTH periods, while `comparisonValue` / `currentValue` keep summing
+   *  every priced entity, because those are period facts. So `delta` stops
+   *  being `p2 - p1` and the two are describing different populations on
+   *  purpose. The engine publishes the narrowed pair on
+   *  `MetricTotal.lostSalesOneSided.comparable{Comparison,Current}Value`;
+   *  these carry it onto the figure so DELTA-IDENTITY can check the identity
+   *  that IS true rather than being switched off for the metric.
+   *
+   *  Absent on every other metric and on any run whose total does not publish
+   *  the block, which is the signal to check `p2 - p1` as before -- see the
+   *  DELTA-IDENTITY comment in `checkFigures`. Stamped as a PAIR, never as a
+   *  pre-differenced number: the check reports both sides of a mismatch, and a
+   *  difference we computed ourselves could not tell which side moved. */
+  comparable_comparison_value?: number | null;
+  comparable_current_value?: number | null;
 }
 
 export interface ExtractSource {
@@ -695,7 +715,14 @@ interface FigOpts {
   caveats?: string[];
   population?: Population;
   extra?: Partial<
-    Pick<ExtractedFigure, 'pct_change' | 'footing_ok' | 'net_change'>
+    Pick<
+      ExtractedFigure,
+      | 'pct_change'
+      | 'footing_ok'
+      | 'net_change'
+      | 'comparable_comparison_value'
+      | 'comparable_current_value'
+    >
   >;
 }
 
@@ -1218,6 +1245,45 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
           }),
         };
       }
+      // The narrowed pair this delta is the difference of, when the engine
+      // says the sibling p1/p2 levels are NOT it (engine >= 0.5.2, today only
+      // `lost_sales`). Read defensively and per field: the block is optional,
+      // is absent on older runs, and a partial block must not half-arm the
+      // check -- so unless BOTH values are finite numbers we stamp neither and
+      // DELTA-IDENTITY keeps checking `p2 - p1`, which is the behaviour every
+      // run had before this existed. Never `?? 0`: a missing comparable level
+      // is not a zero one.
+      // Read from BOTH candidate wire locations, sibling first. The engine
+      // publishes this on `MetricTotal` and persists it on the SIDECAR, and
+      // `buildInsightEnvelope` projects `totals` field-by-field -- so the block
+      // does NOT reach the envelope on its own (the same projection already
+      // drops `lostSalesCoverage`; the gateway's engine-runner.ts says so in
+      // as many words). It arrives only because something puts it there, and
+      // the two plausible placements are a sibling of `totals`, beside
+      // `decompositionStatus`, or inside `totals`. Accepting either means a
+      // gateway graft and a later upstream projection can both satisfy this,
+      // and upstream shipping it turns the graft into a no-op instead of a
+      // conflict. Cheap insurance on a contract we do not own.
+      //
+      // Gated on the metric, because the engine populates the block for
+      // `lost_sales` only. Keeping the gate HERE rather than in `checkFigures`
+      // is deliberate: the producer knows which metric it is reading, so the
+      // rule downstream stays keyed on the figure and needs no second
+      // hardcoded metric name (see the SKU-SPLIT comment for the one place
+      // that could not avoid one).
+      const oneSided =
+        key === 'lost_sales'
+          ? (asRecord(m.lostSalesOneSided) ?? asRecord(t.lostSalesOneSided))
+          : undefined;
+      const cmpComparison = oneSided?.comparableComparisonValue;
+      const cmpCurrent = oneSided?.comparableCurrentValue;
+      const comparablePair =
+        typeof cmpComparison === 'number' &&
+        Number.isFinite(cmpComparison) &&
+        typeof cmpCurrent === 'number' &&
+        Number.isFinite(cmpCurrent)
+          ? { comparable_comparison_value: cmpComparison, comparable_current_value: cmpCurrent }
+          : undefined;
       figures.push(
         // The CHANGE unit, not the LEVEL kept by p1/p2 above: a rate metric's
         // delta is in POINTS. On a served envelope that comes from the
@@ -1227,7 +1293,10 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
         fig(`${domain}.${key}.delta`, key ?? '', delta as number, changeSpec, basis, `${base}.delta`, {
           caveats: deltaCaveats,
           population: pop,
-          extra: { pct_change: (t.pctChange as number | null | undefined) ?? null },
+          extra: {
+            pct_change: (t.pctChange as number | null | undefined) ?? null,
+            ...comparablePair,
+          },
         }),
       );
     }
@@ -1597,15 +1666,89 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
   // delta == p2 - p1 wherever all three exist and are all numeric. A figure
   // already flagged NUMERIC is excluded so this can never NaN-compare (which
   // silently passes) or throw.
+  //
+  // ONE METRIC NOW HAS A DIFFERENT TRUE IDENTITY, and the figure says so
+  // itself. From engine 0.5.2 a `lost_sales` total's `delta` covers only
+  // entities priced in BOTH periods, while `p1`/`p2` keep summing every priced
+  // entity, so `p2 - p1` is a comparison of two populations rather than a
+  // change. Where the engine publishes the narrowed pair, extraction stamps it
+  // on the figure (`comparable_*_value`) and the check asserts the identity
+  // that IS true:
+  //
+  //   pair present -> delta == comparable_current - comparable_comparison
+  //   pair absent  -> delta == p2 - p1, exactly as before
+  //
+  // WHY ABSENT MEANS CHECK, NOT SKIP. The block is absent in two cases: a run
+  // persisted before the engine change, and a run where every entity was
+  // priced in both periods. In BOTH the old identity holds by construction, so
+  // skipping would drop the check on the runs most likely to be stale -- a
+  // blind spot on precisely the metric that just proved it needed one.
+  // Switching the rule off for `lost_sales` outright would do the same thing
+  // permanently, and a tolerance is worse still: it would have to be the size
+  // of the one-sided bucket ($56,625 on the engine's own Skratch reference),
+  // which would void this rule for every other metric sharing the path.
+  //
+  // Deliberately keyed on the FIGURE, not on the metric name: nothing here
+  // knows what `lost_sales` is, so a second metric that grows a narrowed pair
+  // is covered by construction and this stays free of a second hardcoded id
+  // (see the SKU-SPLIT comment below for the one place that could not avoid
+  // one).
   for (const f of out.figures) {
     if (f.id.endsWith('.delta') && !f.id.includes('.bridge.')) {
+      if (invalidIds.has(f.id)) continue;
+      const cmpComparison = f.comparable_comparison_value;
+      const cmpCurrent = f.comparable_current_value;
+      // Either field present arms this branch, and then BOTH have to be finite
+      // numbers. Falling back to `p2 - p1` on a half-written or non-numeric
+      // pair would re-assert the very identity the pair exists to deny, and a
+      // NaN would sail through `Math.abs(...) > TOL` unreported -- the silent
+      // pass the NUMERIC rule above was added to close. So this fails closed.
+      // NUMERIC itself only covers `value`, not these two fields.
+      if (cmpComparison !== undefined && cmpComparison !== null) {
+        const usable =
+          typeof cmpComparison === 'number' &&
+          Number.isFinite(cmpComparison) &&
+          typeof cmpCurrent === 'number' &&
+          Number.isFinite(cmpCurrent);
+        if (!usable) {
+          findings.push({
+            rule: 'DELTA-IDENTITY',
+            subject: f.id,
+            detail:
+              `comparable pair present but unusable ` +
+              `(comparison=${JSON.stringify(cmpComparison)}, current=${JSON.stringify(cmpCurrent)}); ` +
+              `refusing to fall back to p2 - p1, which is not this delta's identity`,
+          });
+          continue;
+        }
+        if (Math.abs(cmpCurrent - cmpComparison - f.value) > TOL) {
+          findings.push({
+            rule: 'DELTA-IDENTITY',
+            subject: f.id,
+            detail:
+              `delta != comparable_current - comparable_comparison ` +
+              `(${cmpCurrent} - ${cmpComparison} != ${f.value})`,
+          });
+        }
+        continue; // the narrowed pair is the identity here; p2 - p1 is not
+      }
+      // The mirror case: a current without a comparison is equally unusable.
+      if (cmpCurrent !== undefined && cmpCurrent !== null) {
+        findings.push({
+          rule: 'DELTA-IDENTITY',
+          subject: f.id,
+          detail:
+            `comparable_current_value present without comparable_comparison_value ` +
+            `(current=${JSON.stringify(cmpCurrent)}); refusing to fall back to p2 - p1`,
+        });
+        continue;
+      }
       const stem = f.id.slice(0, -'.delta'.length);
       const p1 = figs.get(`${stem}.p1`);
       const p2 = figs.get(`${stem}.p2`);
       if (
         p1 &&
         p2 &&
-        !invalidIds.has(f.id) &&
         !invalidIds.has(p1.id) &&
         !invalidIds.has(p2.id) &&
         Math.abs(p2.value - p1.value - f.value) > TOL
