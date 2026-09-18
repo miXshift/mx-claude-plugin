@@ -1253,17 +1253,32 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
       // DELTA-IDENTITY keeps checking `p2 - p1`, which is the behaviour every
       // run had before this existed. Never `?? 0`: a missing comparable level
       // is not a zero one.
-      // Read from BOTH candidate wire locations, sibling first. The engine
-      // publishes this on `MetricTotal` and persists it on the SIDECAR, and
-      // `buildInsightEnvelope` projects `totals` field-by-field -- so the block
-      // does NOT reach the envelope on its own (the same projection already
-      // drops `lostSalesCoverage`; the gateway's engine-runner.ts says so in
-      // as many words). It arrives only because something puts it there, and
-      // the two plausible placements are a sibling of `totals`, beside
-      // `decompositionStatus`, or inside `totals`. Accepting either means a
-      // gateway graft and a later upstream projection can both satisfy this,
-      // and upstream shipping it turns the graft into a no-op instead of a
-      // conflict. Cheap insurance on a contract we do not own.
+      // Read from BOTH candidate wire locations, sibling first.
+      //
+      // ENGINE >= 0.5.3 PUTS IT INSIDE `totals`, so the second branch is the
+      // live one. History, because it explains why both are read: 0.5.2
+      // introduced the narrowed delta but `buildInsightEnvelope` projected
+      // `totals` as four named fields, so the block was computed, persisted to
+      // the sidecar, and dropped before it reached this extractor. It was not
+      // the first field to fall through that hole -- `lostSalesCoverage` went
+      // the same way, and the gateway's engine-runner.ts documents it in as
+      // many words. Upstream fixed the projection in 0.5.3 (`cea78b7`) at
+      // `metrics[].totals.lostSalesOneSided`, conditionally spread so a
+      // sidecar without the block still serializes byte-identically, and now
+      // pins the rule with a test: a new field on `MetricTotal` does not reach
+      // a consumer until the projection names it.
+      //
+      // The sibling branch is kept anyway. It costs one `??`, it is what made
+      // this code correct against a placement we had guessed at, and the
+      // projection is a contract we do not own. At `scope=subtotal` the block
+      // lives at `population.totals[<metric>].lostSalesOneSided` instead --
+      // not read here because that path cannot reach this rule: a one-sided
+      // member makes the metric's coverage incomplete and its total null
+      // before aggregation, so no `.delta` figure is emitted at all.
+      //
+      // NOTE FOR THE VENDOR BUMP: 0.5.2 is not a valid cut point. It has the
+      // narrowed delta WITHOUT the projection, which breaks this check with no
+      // fix available on our side. Go to 0.5.3 or later.
       //
       // Gated on the metric, because the engine populates the block for
       // `lost_sales` only. Keeping the gate HERE rather than in `checkFigures`
