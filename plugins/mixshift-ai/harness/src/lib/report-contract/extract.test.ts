@@ -546,8 +546,19 @@ describe('checkFigures: DELTA-IDENTITY (delta === p2 - p1 within TOL)', () => {
 // extraction stamps it on the figure; these cases pin the rule that results.
 describe('checkFigures: DELTA-IDENTITY re-points at the comparable pair when the figure carries one', () => {
   /** A delta whose p1/p2 siblings deliberately DISAGREE with it: 61151 - 116745
-   *  is -55594, while the narrowed pair says the real change is -3174. Those are
-   *  the engine's own published Skratch Labs figures. */
+   *  is -55594, while the narrowed pair says the real change is -3174.
+   *
+   *  PROVENANCE, because a fixture that looks measured and is not is its own
+   *  defect. The engine's published Skratch Labs US figures are the levels
+   *  116745 and 61151, the change -3174, and the one-sided buckets 56625 (14
+   *  entities, comparison-only) and 4205 (7, current-only). The comparable pair
+   *  below is NOT separately published -- it is FORCED by those, because the
+   *  engine accumulates the comparable and one-sided sets to the whole:
+   *  116745 - 56625 = 60120 and 61151 - 4205 = 56946, whose difference is
+   *  -3174 exactly. So the pair is derived from published values rather than
+   *  chosen, and it satisfies the partition the engine guarantees. (An earlier
+   *  draft used 59799/56625, which is presented-as-measured but reproduces
+   *  neither partition -- both sides were short by 321.) */
   const oneSided = (deltaValue: number, extra: Partial<ExtractedFigure> = {}) =>
     minimalOut({
       figures: [
@@ -556,8 +567,8 @@ describe('checkFigures: DELTA-IDENTITY re-points at the comparable pair when the
         f({
           id: 'ops.lost_sales.delta',
           value: deltaValue,
-          comparable_comparison_value: 59799,
-          comparable_current_value: 56625,
+          comparable_comparison_value: 60120,
+          comparable_current_value: 56946,
           ...extra,
         }),
       ],
@@ -569,11 +580,16 @@ describe('checkFigures: DELTA-IDENTITY re-points at the comparable pair when the
   });
 
   it('fails when the delta does not foot to the comparable pair, and names both sides', () => {
-    expect(checkFigures(oneSided(-3000))).toContainEqual({
-      rule: 'DELTA-IDENTITY',
-      subject: 'ops.lost_sales.delta',
-      detail: 'delta != comparable_current - comparable_comparison (56625 - 59799 != -3000)',
-    });
+    // Asserted on the rule text plus each operand rather than the whole
+    // formatted string: pinning the exact rendering turns any later change to
+    // number formatting into what looks like a behaviour regression.
+    const problems = checkFigures(oneSided(-3000)).filter((p) => p.rule === 'DELTA-IDENTITY');
+    expect(problems).toHaveLength(1);
+    expect(problems[0].subject).toBe('ops.lost_sales.delta');
+    expect(problems[0].detail).toContain('delta != comparable_current - comparable_comparison');
+    for (const operand of ['56946', '60120', '-3000']) {
+      expect(problems[0].detail).toContain(operand);
+    }
   });
 
   it('does not fall back to p2 - p1 once the pair is present, so a one-sided delta cannot pass by the OLD identity', () => {
@@ -669,8 +685,14 @@ describe('checkFigures: DELTA-IDENTITY re-points at the comparable pair when the
     expect(problems[0].detail).toContain('unusable');
   });
 
+  // The value here has to be a string that COERCES, or this test proves
+  // nothing. With 'n/a' the arithmetic yields NaN, `NaN > TOL` is false, and no
+  // finding appears whether the invalid-figure guard exists or not -- the test
+  // passes against an implementation with the guard deleted. '-3000' coerces,
+  // so the guard is what stops a second finding: 56946 - 60120 - (-3000) is
+  // -174, comfortably over tolerance.
   it('does not pile a DELTA-IDENTITY finding on a delta already flagged NUMERIC', () => {
-    const problems = checkFigures(oneSided('n/a' as unknown as number));
+    const problems = checkFigures(oneSided('-3000' as unknown as number));
     expect(problems).toContainEqual(
       expect.objectContaining({ rule: 'NUMERIC', subject: 'ops.lost_sales.delta' }),
     );
@@ -739,10 +761,72 @@ describe('extraction stamps the comparable pair from MetricTotal.lostSalesOneSid
       p1: 116745,
       p2: 61151,
       delta: -55594,
-      lostSalesOneSided: { comparableComparisonValue: '59799', comparableCurrentValue: 56625 },
+      lostSalesOneSided: { comparableComparisonValue: '60120', comparableCurrentValue: 56946 },
     }).get('ops.lost_sales.delta');
     expect('comparable_comparison_value' in (delta as object)).toBe(false);
     expect('comparable_current_value' in (delta as object)).toBe(false);
+  });
+
+  /** Same envelope, but the metric object carries the block as a SIBLING of
+   *  `totals` rather than inside it, and the metric key is caller-chosen. */
+  const extractMetric = (metric: Record<string, unknown>) =>
+    byId(
+      extractFigures({
+        bridgeDomain: 'ops',
+        bridgeRunId: 'run-example-onesided-0002',
+        currency: 'USD',
+        caveats: [],
+        metrics: [metric],
+        insights: [],
+      }),
+    );
+
+  const BLOCK = { comparableComparisonValue: 60120, comparableCurrentValue: 56946 };
+
+  // The engine publishes this on MetricTotal and persists it on the SIDECAR;
+  // buildInsightEnvelope projects `totals` field by field, so the block reaches
+  // an envelope consumer only because something grafts it on. Both plausible
+  // placements are accepted so a gateway graft and a later upstream projection
+  // can each satisfy this.
+  it('accepts the block as a SIBLING of totals, which is where upstream would most likely put it', () => {
+    const delta = extractMetric({
+      metricKey: 'lost_sales',
+      totals: { p1: 116745, p2: 61151, delta: -3174 },
+      lostSalesOneSided: BLOCK,
+      topDrivers: [],
+    }).get('ops.lost_sales.delta');
+    expect(delta?.comparable_comparison_value).toBe(60120);
+    expect(delta?.comparable_current_value).toBe(56946);
+  });
+
+  it('prefers the sibling over a totals copy when both are present, rather than picking by luck', () => {
+    const delta = extractMetric({
+      metricKey: 'lost_sales',
+      totals: { p1: 116745, p2: 61151, delta: -3174, lostSalesOneSided: { comparableComparisonValue: 1, comparableCurrentValue: 2 } },
+      lostSalesOneSided: BLOCK,
+      topDrivers: [],
+    }).get('ops.lost_sales.delta');
+    expect(delta?.comparable_comparison_value).toBe(60120);
+  });
+
+  // The engine populates the block for lost_sales only, so honouring it on any
+  // other metric would let a stray or hand-added block switch DELTA-IDENTITY
+  // off where the old identity still holds.
+  it('IGNORES the block on a metric that is not lost_sales, so it cannot disarm the rule elsewhere', () => {
+    const figs = extractMetric({
+      metricKey: 'ops',
+      totals: { p1: 100000, p2: 144000, delta: 4400 }, // wrong on purpose: the true delta is 44000
+      lostSalesOneSided: { comparableComparisonValue: 0, comparableCurrentValue: 4400 },
+      topDrivers: [],
+    });
+    const delta = figs.get('ops.ops.delta');
+    expect('comparable_comparison_value' in (delta as object)).toBe(false);
+    // and the original identity still catches the bad delta
+    expect(checkFigures(minimalOut({ figures: [...figs.values()] }))).toContainEqual({
+      rule: 'DELTA-IDENTITY',
+      subject: 'ops.ops.delta',
+      detail: 'delta != p2 - p1',
+    });
   });
 });
 

@@ -1253,7 +1253,28 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
       // DELTA-IDENTITY keeps checking `p2 - p1`, which is the behaviour every
       // run had before this existed. Never `?? 0`: a missing comparable level
       // is not a zero one.
-      const oneSided = asRecord(t.lostSalesOneSided);
+      // Read from BOTH candidate wire locations, sibling first. The engine
+      // publishes this on `MetricTotal` and persists it on the SIDECAR, and
+      // `buildInsightEnvelope` projects `totals` field-by-field -- so the block
+      // does NOT reach the envelope on its own (the same projection already
+      // drops `lostSalesCoverage`; the gateway's engine-runner.ts says so in
+      // as many words). It arrives only because something puts it there, and
+      // the two plausible placements are a sibling of `totals`, beside
+      // `decompositionStatus`, or inside `totals`. Accepting either means a
+      // gateway graft and a later upstream projection can both satisfy this,
+      // and upstream shipping it turns the graft into a no-op instead of a
+      // conflict. Cheap insurance on a contract we do not own.
+      //
+      // Gated on the metric, because the engine populates the block for
+      // `lost_sales` only. Keeping the gate HERE rather than in `checkFigures`
+      // is deliberate: the producer knows which metric it is reading, so the
+      // rule downstream stays keyed on the figure and needs no second
+      // hardcoded metric name (see the SKU-SPLIT comment for the one place
+      // that could not avoid one).
+      const oneSided =
+        key === 'lost_sales'
+          ? (asRecord(m.lostSalesOneSided) ?? asRecord(t.lostSalesOneSided))
+          : undefined;
       const cmpComparison = oneSided?.comparableComparisonValue;
       const cmpCurrent = oneSided?.comparableCurrentValue;
       const comparablePair =
