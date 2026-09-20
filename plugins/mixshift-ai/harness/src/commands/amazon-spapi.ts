@@ -169,6 +169,32 @@ function registerCall(amazon: Command): void {
             ...(result.unrecognizedKind
               ? { unrecognized_kind: result.unrecognizedKind }
               : {}),
+            // Which parameters the caller SUPPLIED, by NAME only, never value
+            // (mx-ops#70). Same privacy reasoning already used above for
+            // amazon_error_code: names are low-cardinality and carry no
+            // seller/order/ASIN identifiers, while values are exactly the
+            // seller-level business data this file refuses to send.
+            //
+            // Earns its place because the most useful question about a repeated
+            // rejection is "was a required parameter missing", and nothing in
+            // this payload could answer it. On 2026-09-18 a caller sent 621
+            // identical rejected listings.get_listings_item calls over 2h35m and
+            // we could not tell whether our own operation catalog had led it to
+            // build them that way; by the time anyone looked, the gateway's
+            // Railway logs (which DO carry Amazon's detail) had aged out.
+            //
+            // Sorted so the same shape produces the same array, which makes
+            // (operation, query_keys) groupable as a signature.
+            //
+            // Body keys are deliberately NOT included: a body can carry dynamic
+            // keys that are themselves customer data (listing attribute names),
+            // which query and path parameters cannot.
+            ...(input.query && Object.keys(input.query).length > 0
+              ? { query_keys: Object.keys(input.query).sort() }
+              : {}),
+            ...(input.pathParams && Object.keys(input.pathParams).length > 0
+              ? { path_keys: Object.keys(input.pathParams).sort() }
+              : {}),
           });
           return emitFailure(result, !!root.json);
         }
