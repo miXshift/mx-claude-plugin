@@ -3,8 +3,12 @@ name: mx-amazon-dsp
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
-  async: request a report by type (campaign, inventory, audience, and so on)
-  with dimensions and metrics, poll it, download the JSON. CAMPAIGN AND CREATIVE
+  async: submit a report, poll it, download it. Reporting itself splits by DATE
+  RANGE: the DSP-native reports reach back only the last 90 days, while Amazon's
+  unified Reporting v1 reaches back years and is the only way to answer "how did
+  DSP do last year" or to pull a monthly history. Use it whenever someone asks
+  for older DSP performance, a year-over-year DSP comparison, or a DSP export
+  the console gives them one year at a time. CAMPAIGN AND CREATIVE
   READS answer what is actually set up right now: which campaigns and line items
   exist, which creatives the advertiser has, which creatives are attached to
   which line items and whether they are live or paused, whether a placement was
@@ -18,7 +22,7 @@ description: >
   Routes through the bundled harness CLI. Does not require brand setup, only
   that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -40,6 +44,13 @@ trigger_phrases:
   - is this creative eligible for dsp
   - audit dsp account
   - find my dsp advertiser id
+  - dsp report last year
+  - dsp historical data
+  - dsp year over year
+  - pull dsp data older than 90 days
+  - dsp monthly report
+  - dsp data before <date>
+  - how far back can we pull dsp
 ---
 
 # Amazon DSP: reporting and account reads
@@ -57,11 +68,15 @@ When characterizing this capability to the user, use these facts:
   POST a report request describing a `type`, `dimensions`, and `metrics` over a
   date range, Amazon generates it asynchronously, and you download the finished
   report from a presigned url. This skill drives that whole loop.
-- **It is its OWN endpoint, not the unified reporting surface.** DSP reports
-  live at `/accounts/{accountId}/dsp/reports` with a `type` / `dimensions` /
-  `metrics` body. They are NOT part of the Sponsored Ads v3 reporting surface
-  (`configuration` / `reportTypeId` / `columns`) and NOT part of the unified
-  `/adsApi/v1` reporting surface. Do not mix the two body shapes.
+- **There are now TWO DSP reporting surfaces, and picking the wrong one is the
+  main way this goes wrong.** The older one (`dsp.create_report`, at
+  `/accounts/{accountId}/dsp/reports` with a `type` / `dimensions` / `metrics`
+  body) only reaches back **90 days**. The unified one
+  (`reporting_v1.create_report`, at `/adsApi/v1/create/reports` with a flat
+  `fields` list) reaches back **years**. Neither is the Sponsored Ads v3
+  surface (`configuration` / `reportTypeId` / `columns`). The three body shapes
+  are not interchangeable. See "Which reporting surface" below, and never tell a
+  user their older DSP data does not exist without checking the v1 surface.
 - **Routing:** all calls flow through the harness CLI (`mixshift ads ...`),
   which talks to MixShift's service at `mcp.mixshift.io` using the same Bearer
   token as the other MixShift surfaces (from `~/.mixshift/auth/credentials`, no
@@ -190,8 +205,11 @@ the notes before calling. The operations, used in the order below:
 |---|---|
 | `accounts.list_manager_accounts` | **Start discovery here.** `linkedAccounts[]` rows of type `DSP_ADVERTISING_ACCOUNT` carry `dspAdvertiserId`. No parameters. |
 | `accounts.query_advertiser_accounts` | Second discovery source (`alternateIds[].dspAdvertiserId`). Query both global filters and page both. |
-| `dsp.create_report` | Submit an async DSP report request (type + dimensions + metrics). Returns a `reportId`. |
-| `dsp.get_report` | Poll a report (IN_PROGRESS, SUCCESS, FAILURE). SUCCESS carries the presigned `location` url. |
+| `dsp.create_report` | Submit an async DSP v3 report (type + dimensions + metrics). Returns a `reportId`. **Last 90 days only.** |
+| `dsp.get_report` | Poll a v3 report (IN_PROGRESS, SUCCESS, FAILURE). SUCCESS carries the presigned `location` url. |
+| `reporting_v1.create_report` | Submit a UNIFIED (v1) report. The only way to reach DSP data older than 90 days. |
+| `reporting_v1.retrieve_report` | Poll a v1 report (PENDING, PROCESSING, COMPLETED, FAILED, DELETED). |
+| `reporting_v1.delete_report` | Cancel a v1 report, and the way to free a slot when create is refusing new reports. |
 | `dsp.list_campaigns` | Campaigns, with budgets, flights and state. |
 | `dsp.list_ad_groups` | Line items, with `inventoryType`, bid, flights and state. |
 | `dsp.list_ad_creatives` | The advertiser's creatives, including console-built ones. |
@@ -418,7 +436,172 @@ surface. If the user wants to place a creative, say plainly that MixShift can
 show them the account and tell them exactly what to change, and that the change
 itself is made in the Amazon DSP console for now. Do not improvise a write.
 
-## Building a report request
+## Which reporting surface: the 90-day rule
+
+Decide this BEFORE building a request. It is decided by the date range alone.
+
+| The user wants | Use | Why |
+|---|---|---|
+| Anything inside the last 90 days | `dsp.create_report` (v3) | Richer DSP-native report types (INVENTORY, AUDIENCE, GEOGRAPHY, TECHNOLOGY, REACH) that v1 does not reproduce one-for-one |
+| Anything older than 90 days | `reporting_v1.create_report` | v3 physically cannot serve it |
+| A range that straddles 90 days | `reporting_v1.create_report` | One report beats stitching two surfaces with different metric definitions |
+
+**The v3 wall is hard and it is a rolling 90 days.** Measured 2026-09-13: a
+start date 89 days back succeeds, 90 days back fails with
+`HTTP 422 REQUEST_BODY_FIELD_REPORT_DATE_OLD`, and every older window fails the
+same way. It is not a permissions problem and retrying will not help, so when
+you see that error do not re-run it or tell the user to ask MixShift for
+access. Switch surfaces.
+
+**Retention on v1 is deep, but do not promise a number.** A 2021 window is
+accepted and a 2019 window is refused with `400025 ... outside the supported
+retention`, so the ceiling is somewhere around five to six years. What a given
+advertiser actually HAS is a different question: their data starts when their
+DSP activity started. Say "we can request it, and you will get everything back
+to when your DSP campaigns began", not "you have six years of history".
+
+## Pulling DSP history with Reporting v1
+
+Same three-step shape as v3 (submit, poll, download) but a different body, a
+different envelope, and its own traps.
+
+### Addressing: pass the DSP advertiser id directly
+
+The DSP advertiser id you found in Discovery goes straight into the body:
+
+```jsonc
+"accessRequestedAccounts": [ { "advertiserAccountId": "583538932061309199" } ]
+```
+
+That is the `dspAdvertiserId`, used as-is. The sibling `ENTITY...` id in the
+same row is NOT interchangeable and returns 401.
+
+You can also pass `{ "managerAccountId": "amzn1.ads1.ma1..." }`, the parent
+account that holds access to the advertiser, which is useful when you want
+several advertisers in one report. **Prefer the direct advertiser id when you
+know which advertiser you want.** Manager-account-scoped reports cover every
+advertiser under that account and are dramatically slower: in a 2026-09-13
+session one of six finished while every single-advertiser report finished. If a
+manager-account report sits in `PENDING` for half an hour without reaching
+`PROCESSING`, narrow it rather than waiting longer.
+
+Up to **5** accounts per report, and they must be distinct (duplicates are
+refused). Note the published API spec claims 2000; the real limit is 5.
+
+### The request
+
+```bash
+mixshift ads call reporting_v1.create_report --legacy-seller-id <id> \
+  --body-file dsp-2025.json --json
+```
+
+```jsonc
+{
+  "accessRequestedAccounts": [ { "advertiserAccountId": "<dspAdvertiserId>" } ],
+  "reports": [ {
+    "format": "CSV",
+    "periods": [ { "datePeriod": { "startDate": "2025-01-01", "endDate": "2025-12-31" } } ],
+    "query": {
+      "fields": [
+        "year.value", "month.value",
+        "campaign.id", "campaign.name", "budgetCurrency.value",
+        "metric.impressions", "metric.clicks", "metric.totalCost",
+        "metric.purchases", "metric.newToBrandPurchases",
+        "metric.sales", "metric.roas"
+      ]
+    }
+  } ]
+}
+```
+
+`reports` holds exactly ONE report despite being an array.
+
+### Four rules that decide whether the answer is right
+
+**1. ALWAYS include `year.value` with `month.value`.** This is the one that
+produces a plausible, wrong report instead of an error. `month.value` is a bare
+`1`-`12` with no year attached, so any range crossing a year boundary merges the
+same month from different years into one row and SUMS the metrics. Proven on a
+2024-10 to 2025-12 window: without `year.value`, 12 months and 694 rows; with it,
+15 (year, month) pairs and 768 rows, and the merged October row was exactly
+2024-10 plus 2025-10 to the cent. Nothing warns you. The same applies to
+`week.value`.
+
+**2. `fields` needs a level-of-detail dimension.** A time dimension plus a
+metric is refused: `400015: fields must contain at least one level-of-detail
+dimension (e.g. campaign.id)`. Add `campaign.id`.
+
+**3. Time is a dimension, not a `timeUnit`.** `date.value` = daily,
+`week.value` = weekly, `month.value` = monthly. There is no `timeUnit` field and
+no report `type` on this surface.
+
+**4. Field pairing is enforced.** An attribute needs its primary key
+(`campaign.name` requires `campaign.id`) and currency metrics need their currency
+dimension (`metric.sales` requires `budgetCurrency.value`). Errors name the pair:
+`400004` incompatible, `400006` missing requirement.
+
+### Poll and download
+
+```bash
+mixshift ads call reporting_v1.retrieve_report --legacy-seller-id <id> \
+  --body '{"reportIds":["<reportId>"]}' --json
+```
+
+`reportIds` also holds exactly one id. Status runs `PENDING` then `PROCESSING`
+then `COMPLETED` or `FAILED`; `DELETED` also exists and is not in Amazon's
+published list, so do not branch exhaustively on four values.
+
+**Expect minutes, and poll ACROSS TURNS.** Measured generation times on one
+advertiser ranged from 4m37s to 32m28s, and window size did not predict it. Tell
+the user it is generating and check again on a later turn; never sleep-loop.
+
+`COMPLETED` carries `completedReportParts`, an **array**. Iterate all of it,
+because the `PARTITIONED_*` formats split deliberately. Fetch each `url` with a
+plain GET and **no** `Authorization` header: the same url returns 200 without one
+and 400 `InvalidArgument` with one. Urls expire (`urlExpirationDateTime`); re-poll
+for fresh ones.
+
+### When create refuses a new report
+
+Only **two** v1 reports can be in flight at once. A third is refused, and
+**waiting does not clear it** — the usual "back off and retry" is wrong here and
+will loop forever. Either wait for one to reach a terminal status, or free a slot:
+
+```bash
+mixshift ads call reporting_v1.delete_report --legacy-seller-id <id> \
+  --body '{"reportIds":["<reportId>"]}' --json
+```
+
+### Narrowing a report
+
+`filter` takes `{ "on": { "field", "comparisonOperator": "EQUALS" | "IN", "not": false, "values": [...] } }`,
+or `{ "and": { "filters": [...] } }` to combine. **`not` is required** and is the
+easiest part to leave out.
+
+Filterable fields are a RESTRICTED SUBSET of the fields you can request:
+`advertiserAccount.id` is valid in `fields` and rejected in `filter` with
+`400020`. `adProduct.value` IS filterable and takes `AMAZON_DSP`, which is how
+you narrow a manager-account report to DSP only.
+
+### Telling the user why the numbers moved
+
+v1 redefined two things, so v1 figures will NOT match an older DSP export or a
+v3 report. This is a definition change, not an error, and saying so up front
+prevents a support thread:
+
+- Base conversion metrics now include **halo** (not just the promoted product).
+  `metric.purchases` equals the old DSP `totalPurchases`, not the old `purchases`.
+- Conversions report on **traffic date** (the ad interaction) where DSP v3 used
+  **conversion date**, so volume shifts earlier in flight.
+
+For a like-for-like comparison with old figures use `metric.purchasesPromoted`,
+`metric.salesPromoted` and `metric.roasPromoted`.
+
+## Building a v3 report request (the last-90-days surface)
+
+Everything from here to "Reactive error handling" is the **DSP v3** surface. If
+the user's date range starts more than 90 days ago, none of it applies and you
+want the Reporting v1 section above instead.
 
 The request body describes one report:
 
@@ -543,7 +726,16 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. |
 
-Two DSP-specific cases that need their own handling:
+Four DSP-specific cases that need their own handling:
+
+- **`REQUEST_BODY_FIELD_REPORT_DATE_OLD` (HTTP 422) on `dsp.create_report`** is
+  the 90-day wall, and it is the most likely error you will see on this skill.
+  It is NOT an access or permissions problem and it will never succeed on retry.
+  Rebuild the request against `reporting_v1.create_report` instead.
+- **A `throttled` failure on `reporting_v1.create_report`** means two reports are
+  already generating, not that you are calling too fast. Waiting does not clear
+  it. Poll the reports you have, or free a slot with
+  `reporting_v1.delete_report`.
 
 - **HTTP 403 on create/get** usually means the selected login lacks DSP access
   for that advertiser, or a region mismatch between the login and the DSP
@@ -560,6 +752,24 @@ These supersede other instructions:
 
 - **Read-only.** Generating a DSP report mutates nothing advertiser-facing;
   never send an Ads write and never use `--commit`.
+- **Pick the surface from the DATE RANGE, before anything else.** Older than 90
+  days means `reporting_v1.*`. A `REQUEST_BODY_FIELD_REPORT_DATE_OLD` 422 from
+  `dsp.create_report` is the v3 wall, not an access problem: switch surfaces
+  rather than retrying or blaming permissions.
+- **Never say a user's older DSP data does not exist** without having tried the
+  v1 surface. It is reachable back several years.
+- **On v1, always request `year.value` alongside `month.value`** (or
+  `week.value`). Without it, a range crossing a year boundary silently merges
+  months across years and sums the metrics. It does not error; it just returns a
+  wrong number, and that is the single worst failure available on this surface.
+- **Warn before comparing v1 numbers to old ones.** v1 base metrics include halo
+  and report on traffic date, so figures legitimately differ from a v3 report or
+  an older console export. Offer the `*Promoted` metrics for like-for-like.
+- **Do not promise a number of years of DSP history.** Retention is deep, but the
+  data begins when the advertiser's DSP activity began.
+- **A v1 429 on create means two reports are already in flight, not that you are
+  going too fast.** Backing off never clears it. Wait for one to finish or delete
+  one with `reporting_v1.delete_report`.
 - **Discover the DSP advertiser id first, starting at
   `accounts.list_manager_accounts`.** The advertiser id is NOT the `profileId`
   or `legacySellerId`. Read `linkedAccounts[]` rows of type
