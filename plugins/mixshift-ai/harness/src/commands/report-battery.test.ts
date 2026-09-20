@@ -160,16 +160,17 @@ describe('report battery: flags -> battery params', () => {
   it('translates every flag, splits and trims brands, defaults as_of to the local day, omits absent optionals', () => {
     expect(
       batteryParams(
-        { ...flags, asOf: '2026-09-03', brands: ' Acme , Zed,, ', minItemSales: '250', buyboxFloor: '95', buyboxDrop: '3', revenueBasis: 'shipped', attribution: 'sc_default', oosRateThreshold: '0.95' },
+        { ...flags, asOf: '2026-09-03', brands: ' Acme , Zed,, ', minItemSales: '250', buyboxFloor: '95', buyboxDrop: '3', revenueBasis: 'shipped', attribution: 'sc_default', oosRateThreshold: '0.95', minSellableUnits: '12' },
         [7, 9],
       ),
     ).toEqual({
-      seller_ids: [7, 9], as_of: '2026-09-03', brands: ['Acme', 'Zed'], min_item_sales: 250, buybox_floor: 95, buybox_drop: 3, revenue_basis: 'shipped', oos_rate_threshold: 0.95, attribution: 'sc_default',
+      seller_ids: [7, 9], as_of: '2026-09-03', brands: ['Acme', 'Zed'], min_item_sales: 250, buybox_floor: 95, buybox_drop: 3, revenue_basis: 'shipped', oos_rate_threshold: 0.95, min_sellable_units: 12, attribution: 'sc_default',
     });
     const defaults = batteryParams(flags, [7]);
     expect(defaults).toEqual({ seller_ids: [7], as_of: expect.stringMatching(DATE), brands: [], buybox_floor: 92, buybox_drop: 5, revenue_basis: 'ordered' });
     expect(defaults).not.toHaveProperty('attribution');
     expect(defaults).not.toHaveProperty('oos_rate_threshold');
+    expect(defaults).not.toHaveProperty('min_sellable_units');
     // The script defaulted --as-of on the operator's clock; a month-end run must not roll over because the service is in UTC.
     const t = new Date();
     expect(defaults.as_of).toBe(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`);
@@ -211,6 +212,9 @@ describe('report battery: flags -> battery params', () => {
       [{ ...flags, attribution: 'all_7' }, [7]],
       [{ ...flags, oosRateThreshold: '1.5' }, [7]],
       [{ ...flags, oosRateThreshold: '99%' }, [7]],
+      [{ ...flags, minSellableUnits: '0' }, [7]],
+      [{ ...flags, minSellableUnits: '2.5' }, [7]],
+      [{ ...flags, minSellableUnits: '-1' }, [7]],
     ] as const) {
       expect(() => batteryParams(bad, [...ids]), JSON.stringify([bad, ids])).toThrow(expect.objectContaining({ errorClass: 'report_battery_bad_flag' }));
     }
@@ -224,6 +228,13 @@ describe('report battery: flags -> battery params', () => {
     expect(battery.options.find((o) => o.long === '--seller-id')!.mandatory).toBe(false);
     expect(battery.options.find((o) => o.long === '--seller-id')!.description).toContain(`max ${BATTERY_MAX_ACCOUNTS}`);
     expect(battery.options.find((o) => o.long === '--revenue-basis')!.defaultValue).toBeUndefined();
+    // The service owns the threshold defaults (0.25 / 40 since 2026-09) and may move them again.
+    // A commander defaultValue here would send a stale number on EVERY run and silently pin the
+    // client to it; the flags must stay absent from params when the operator does not pass them.
+    // batteryParams's not.toHaveProperty checks cannot catch that, because they are fed a fixture
+    // rather than commander's parsed options, so the absence is pinned on the option itself.
+    expect(battery.options.find((o) => o.long === '--oos-rate-threshold')!.defaultValue).toBeUndefined();
+    expect(battery.options.find((o) => o.long === '--min-sellable-units')!.defaultValue).toBeUndefined();
   });
 });
 
@@ -294,11 +305,11 @@ describe('report battery: command', () => {
   it('calls the brand battery id with the params, the seller scope and the battery HTTP budget, writes --out, prints the summary', async () => {
     runDispatched.mockResolvedValue(okDispatch());
     const outPath = join(dir, 'nested', 'figures.json');
-    await runCli({}, '--seller-id', '7', '--seller-id', '9', '--as-of', '2026-09-03', '--brands', 'Acme,Zed', '--min-item-sales', '250', '--buybox-floor', '95', '--buybox-drop', '3', '--revenue-basis', 'shipped', '--attribution', 'all_14', '--oos-rate-threshold', '0.9', '--out', outPath, '--timeout', '90');
+    await runCli({}, '--seller-id', '7', '--seller-id', '9', '--as-of', '2026-09-03', '--brands', 'Acme,Zed', '--min-item-sales', '250', '--buybox-floor', '95', '--buybox-drop', '3', '--revenue-basis', 'shipped', '--attribution', 'all_14', '--oos-rate-threshold', '0.9', '--min-sellable-units', '12', '--out', outPath, '--timeout', '90');
 
     expect(runDispatched).toHaveBeenCalledTimes(1);
     expect(runDispatched).toHaveBeenCalledWith(BATTERY_QUERY_ID, {
-      params: { seller_ids: [7, 9], as_of: '2026-09-03', brands: ['Acme', 'Zed'], min_item_sales: 250, buybox_floor: 95, buybox_drop: 3, revenue_basis: 'shipped', oos_rate_threshold: 0.9, attribution: 'all_14' },
+      params: { seller_ids: [7, 9], as_of: '2026-09-03', brands: ['Acme', 'Zed'], min_item_sales: 250, buybox_floor: 95, buybox_drop: 3, revenue_basis: 'shipped', oos_rate_threshold: 0.9, min_sellable_units: 12, attribution: 'all_14' },
       sellerIds: [7, 9],
       queryTimeoutMs: 90_000,
       httpTimeoutMs: BATTERY_HTTP_TIMEOUT_MS,
