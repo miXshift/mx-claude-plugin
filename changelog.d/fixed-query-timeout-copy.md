@@ -4,5 +4,5 @@
   connecting", with a pointer to `mixshift doctor`. Nothing was wrong with the
   network. It now says the query did not finish within the 60 second limit and
   points at the fix: check that the date filter is on the table's own date
-  column, then narrow the date range. Library queries say the same and name the
-  query.
+  column, then narrow the date range. Library queries name the query and
+  suggest a narrower date range or fewer sellers.

@@ -1436,6 +1436,9 @@ async function runDatahubQuery<Row>(
         err instanceof Error ? err.message : String(err),
         durationMs,
         queryTimeoutMs,
+        // Set by dispatch for library sql/sproc queries, whose SQL is not
+        // the user's to change; absent for the user's own SQL.
+        options.query_id,
       );
     } else if (err instanceof DatahubNetworkError) {
       failure = {
@@ -1670,10 +1673,11 @@ class DatahubNetworkError extends Error {
    *  computed there because this class itself only carries a flattened
    *  string message, losing the `.cause` classify.ts needs. */
   readonly friendly: string;
-  /** True when the client's own AbortSignal.timeout budget fired: the
-   *  request DID reach the service and we gave up waiting on its answer.
+  /** True when the client's own AbortSignal.timeout budget fired: on a
+   *  direct connection the request DID reach the service and we gave up
+   *  waiting on its answer (through a proxy, see isClientBudgetExpiry).
    *  The callers use it (with the elapsed time) to report a query timeout
-   *  rather than a dead host; see isClientBudgetExpiry. */
+   *  rather than a dead host. */
   readonly budgetExpired: boolean;
   /** False when the budget expired. Retrying that just spends the budget
    *  again on a query the server is already struggling with, so only
@@ -1706,13 +1710,23 @@ export const CLIENT_BUDGET_RAW_CODE = 'client_budget';
  * before the service's own `timeout` envelope arrives, and the abort then
  * looks like a dead host. By that point the service has had the query for
  * its full limit, so it is reported as the query timeout it almost certainly
- * was. DNS, refused and undici's 10s connect timeout never match: they are
- * not a budget expiry, and they end well before the limit.
+ * was. On a direct connection, DNS, refused and undici's 10s connect timeout
+ * never match: they are not a budget expiry, and they end well before the
+ * limit.
+ *
+ * Known limitation (mx-ops#79 review): through an HTTP proxy (Cowork, the
+ * Claude Code sandbox, any HTTPS_PROXY), undici sends the tunnel CONNECT with
+ * only this request's signal and no connect timeout of its own. A proxy that
+ * never answers the CONNECT is therefore ended by the budget too, and reads
+ * as a client_budget timeout although the request never reached the service.
+ * Pinned by a test; bounding the CONNECT belongs in lib/net/proxy.ts.
  *
  * Two shapes reach here: the DatahubNetworkError from the fetch itself, and
  * a bare TimeoutError when the budget fires while the response body is still
  * being read (`res.json()` runs outside datahubAuthedPost), which used to
- * surface as kind `unknown`.
+ * surface as kind `unknown`. In the second shape the service has already
+ * answered, so what ran out is the transfer, not the statement; it is still a
+ * budget expiry, and fewer rows is still the fix.
  */
 function isClientBudgetExpiry(err: unknown, durationMs: number, queryTimeoutMs: number): boolean {
   const expired =
@@ -1728,25 +1742,26 @@ function isClientBudgetExpiry(err: unknown, durationMs: number, queryTimeoutMs: 
  * guidance, never connect copy or `mixshift doctor`: a slow query is fixed by
  * reshaping it, not by checking the network. Same idea as report.ts
  * batteryFailure's budget branch (PR #163), which keeps its own copy for the
- * battery's much longer budget. A library query's SQL is not the user's to
- * change, so its copy names the inputs they do control. Copy rule: no em
- * dashes (customer-facing).
+ * battery's much longer budget. A library query's SQL (named, or dispatched
+ * sql/sproc with a query_id) is not the user's to change, so its copy names
+ * the inputs they do control. Copy rule: no em dashes (customer-facing).
  */
 function clientBudgetTimeout(
   message: string,
   durationMs: number,
   queryTimeoutMs: number,
-  namedQueryId?: string,
+  libraryQueryId?: string,
 ): DataQueryFailure {
   const limit = `${Math.round(queryTimeoutMs / 1000)}s`;
-  const friendly = namedQueryId
-    ? `Library query ${namedQueryId} did not finish within the ${limit} query limit. ` +
+  const friendly = libraryQueryId
+    ? `Library query ${libraryQueryId} did not finish within the ${limit} query limit. ` +
       'Narrow the date range or the number of sellers and run it again; if it keeps ' +
       'timing out, report it with `mixshift feedback`.'
     : `Query did not finish within the ${limit} query limit. Check the date filter ` +
       "first: filter on the table's own date column (`mixshift data describe <table>` " +
-      'names it) and run the query with EXPLAIN in front to confirm an index covers that ' +
-      'date filter. Then narrow the date range or filter to one seller.';
+      'names it for catalogued tables) and run the query with EXPLAIN in front to ' +
+      'confirm an index covers that date filter. Then narrow the date range or filter ' +
+      'to one seller.';
   return {
     ok: false,
     kind: 'timeout',

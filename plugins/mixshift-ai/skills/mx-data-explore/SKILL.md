@@ -386,7 +386,7 @@ If yes, run `mixshift feedback "Need read access to table <name> for seller_ids:
 
 ### Query timeout (60s)
 Default timeout is 60s. A query that runs past it fails with `failure_kind: "timeout"`. The message reads "Query exceeded the 60s timeout" when the service's own answer arrives, or "Query did not finish within the 60s query limit" when a slow connection meant the harness stopped waiting first. A library query reads "Library query <id> did not finish within the 60s query limit". All of them mean the query is too slow, not that the network is down, so do not send the user to `mixshift doctor` for it. Suggest, in this order:
-- Check the date filter first. It should be on the table's own date column (`mixshift data describe <table>` names it). Run the query with `EXPLAIN` in front to confirm an index covers that date filter: a date filter no index serves scans every row for the seller, and narrowing the range does little until it is fixed.
+- Check the date filter first. It should be on the table's own date column (`mixshift data describe <table>` names it for catalogued tables). Run the query with `EXPLAIN` in front to confirm an index covers that date filter; for a table outside the catalog, that is also how you see which key, if any, serves it. A date filter no index serves scans every row for the seller, and narrowing the range does little until it is fixed.
 - Narrowing the date range
 - Filtering by a specific SellerID (if they didn't already)
 - Selecting fewer columns

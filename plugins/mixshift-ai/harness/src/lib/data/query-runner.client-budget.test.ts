@@ -37,6 +37,8 @@ import {
 } from './query-runner.js';
 import { getValidAccessToken } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
+import net from 'node:net';
+import { EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 
 const getTokenMock = vi.mocked(getValidAccessToken);
 
@@ -117,6 +119,7 @@ describe('client budget expiry after the statement limit reads as a query timeou
     expect(result.friendly).toContain('did not finish within the 60s query limit');
     expect(result.friendly).toContain('date filter');
     expect(result.friendly).toContain('mixshift data describe');
+    expect(result.friendly).toContain('for catalogued tables');
     expect(result.friendly).toContain('EXPLAIN');
     expect(result.friendly).toContain('narrow the date range');
     expectQueryTimeoutCopy(result.friendly);
@@ -148,6 +151,21 @@ describe('client budget expiry after the statement limit reads as a query timeou
     expect(result.kind).toBe('timeout');
     expect(result.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
     expectQueryTimeoutCopy(result.friendly);
+  });
+
+  it('/api/query: a library query dispatched as sql/sproc (query_id set) gets the library copy, not EXPLAIN', async () => {
+    fetchMock.mockImplementation(slowReject(65_000, budgetAbort()));
+
+    const result = await runQuery('CALL sp_example(?, ?)', ['{}', '[]'], { creds, query_id: 'LIB-01' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
+    expect(result.friendly).toContain('Library query LIB-01 did not finish within the 60s query limit');
+    expect(result.friendly).not.toContain('EXPLAIN');
+    expectQueryTimeoutCopy(result.friendly);
+    expect(lastFailedEmit().payload.raw_code).toBe('client_budget');
   });
 
   it('/api/named-query: kind timeout, raw_code client_budget, library-query copy', async () => {
@@ -262,4 +280,46 @@ describe('genuine network failures classify exactly as before', () => {
     expect(result.raw_code).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('known limitation: a proxy that never answers the tunnel CONNECT', () => {
+  it('reads as a client_budget timeout although the request never reached the service', async () => {
+    // Real fetch, real clock and a real undici proxy tunnel (the Cowork and
+    // Claude Code sandbox path). undici sends the CONNECT with only the
+    // request's signal and no connect timeout of its own, so the budget is
+    // what ends a hung CONNECT. Only the budget's length is shortened here.
+    // If this starts returning host_unreachable, the CONNECT got its own
+    // bound (lib/net/proxy.ts): update the isClientBudgetExpiry comment.
+    vi.unstubAllGlobals();
+    vi.mocked(Date.now).mockRestore();
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(500));
+
+    const firstLines: string[] = [];
+    const sockets = new Set<net.Socket>();
+    const blackhole = net.createServer((s) => {
+      sockets.add(s);
+      s.on('error', () => {});
+      s.once('data', (d) => firstLines.push(d.toString('latin1').split('\r\n')[0]!));
+    });
+    await new Promise<void>((resolve) => blackhole.listen(0, '127.0.0.1', resolve));
+    const proxyUrl = `http://127.0.0.1:${(blackhole.address() as net.AddressInfo).port}`;
+    const previous = getGlobalDispatcher();
+    const agent = new EnvHttpProxyAgent({ httpProxy: proxyUrl, httpsProxy: proxyUrl, noProxy: '' });
+    setGlobalDispatcher(agent);
+    try {
+      const result = await runQuery('SELECT 1', [], { creds, queryTimeoutMs: 100 });
+
+      expect(firstLines.some((l) => l.startsWith('CONNECT mcp.test:443'))).toBe(true);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.kind).toBe('timeout');
+      expect(result.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
+    } finally {
+      setGlobalDispatcher(previous);
+      for (const s of sockets) s.destroy();
+      await new Promise((resolve) => blackhole.close(resolve));
+      await agent.destroy().catch(() => {});
+    }
+  }, 15_000);
 });
