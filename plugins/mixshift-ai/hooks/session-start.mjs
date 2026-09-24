@@ -20,7 +20,14 @@
  * allowlist, we write nothing rather than risk a malformed or injectable
  * line; skills' fallback covers functionality.
  */
-import { appendFileSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import {
   readFile,
   writeFile,
@@ -29,16 +36,21 @@ import {
   rename,
   unlink,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, platform, release } from 'node:os';
 
 const MARKER = '# mixshift-ai session PATH registration';
-const SAFE = /^[A-Za-z0-9 _/:.\-]+$/;
+// `~` is allowed because claude.ai org-synced installs live in a
+// `<plugin>~g<n>` folder; inside the single quotes it is a literal character.
+const SAFE = /^[A-Za-z0-9 _/:.~\-]+$/;
 // The two export lines that follow MARKER in a registration block. Every
 // version of this hook has written them in exactly this shape, so a block an
 // older version left behind is recognized (and replaced) too.
 const REGISTRATION_EXPORT = /^export (PATH='[^']*':"\$PATH"|MIXSHIFT_CLI='[^']*')$/;
+// Claude Code's name for this hook's env file: `sessionstart-hook-<n>.sh`.
+const ENV_FILE_NAME = /^sessionstart-hook-(\d+)\.sh$/;
+const CLI_SUFFIX = '/harness/dist/cli.js';
 
 function posixify(p) {
   if (process.platform !== 'win32') return p;
@@ -70,6 +82,55 @@ function splitRegistrations(text) {
     if (rest.length > 0 && rest[rest.length - 1] === '') rest.pop();
   }
   return { rest: rest.join('\n'), blocks };
+}
+
+/**
+ * The folder holding the plugin root a registration block points at (Claude
+ * Code keeps each version of one install side by side there). Null when the
+ * block names no CLI path.
+ */
+function installDirOf(block) {
+  const m = /^export MIXSHIFT_CLI='([^']*)'$/m.exec(block);
+  if (!m || !m[1].endsWith(CLI_SUFFIX)) return null;
+  return posix.dirname(m[1].slice(0, -CLI_SUFFIX.length));
+}
+
+/**
+ * <n> in `sessionstart-hook-<n>.sh` is this hook's position among the
+ * SessionStart hooks that matched this fire, and it can drop between startup
+ * and a resume (a `startup`-only hook ahead of ours, or a plugin disabled in
+ * between). The previous version's block is then left in a sibling file the
+ * host sources AFTER ours, where it would still win. Remove our blocks from
+ * those later siblings. A sibling is only rewritten when every block in it
+ * belongs to this same install (a second installed copy keeps its own), its
+ * other lines are kept verbatim, and a file that changes while we work is
+ * left for the next fire.
+ */
+function dropStaleSiblingBlocks(envFile, ownInstallDir) {
+  const own = ENV_FILE_NAME.exec(basename(envFile));
+  if (!own || ownInstallDir === null) return;
+  const dir = dirname(envFile);
+  for (const name of readdirSync(dir)) {
+    const sibling = ENV_FILE_NAME.exec(name);
+    if (!sibling || Number(sibling[1]) <= Number(own[1])) continue;
+    const file = join(dir, name);
+    const tmp = `${file}.${process.pid}.tmp`;
+    try {
+      const text = readFileSync(file, 'utf8');
+      const { rest, blocks } = splitRegistrations(text);
+      if (blocks.length === 0 || !blocks.every((b) => installDirOf(b) === ownInstallDir)) {
+        continue;
+      }
+      writeFileSync(tmp, rest);
+      // Another hook may own this index now and be writing to it.
+      if (readFileSync(file, 'utf8') === text) renameSync(tmp, file);
+      else unlinkSync(tmp);
+    } catch {
+      try {
+        unlinkSync(tmp);
+      } catch {}
+    }
+  }
 }
 
 try {
@@ -127,6 +188,7 @@ try {
           }
         }
       }
+      dropStaleSiblingBlocks(envFile, installDirOf(block));
     }
   }
 } catch {
@@ -488,6 +550,14 @@ async function resolveLatestVersion({ dataDir, state, now, markDirty }) {
 
 // --- notice copy (steps 8-9) --------------------------------------------------
 
+// A resumed conversation can still hold commands that ran the previous
+// version by its absolute cli.js path; this notice reaches it right after an
+// update.
+const RERESOLVE_CLI =
+  'If earlier turns of this conversation ran MixShift through an absolute cli.js path, ' +
+  'do not reuse that path: it runs the previous version. Use "mixshift" or ' +
+  'node "$MIXSHIFT_CLI" instead.';
+
 /** Customer-facing copy: no em dashes, never "cold start".
  *
  *  Defense in depth (final gate before anything reaches stdout): every
@@ -517,10 +587,10 @@ function renderNotice(notice) {
           `is also available. Run "mixshift whatsnew" for what changed.`,
         additionalContext:
           `[mixshift-ai plugin] This install just updated from ${from} to ${to}. An even ` +
-          `newer version (${newerAvailable}) is already available. At the START of your ` +
-          `FIRST reply only, tell the user in one friendly sentence that the MixShift ` +
-          `plugin updated (and mention the newer version available too) and offer to run ` +
-          `"mixshift whatsnew" for a rundown of what is new and any recommended ` +
+          `newer version (${newerAvailable}) is already available. ${RERESOLVE_CLI} At the ` +
+          `START of your FIRST reply only, tell the user in one friendly sentence that the ` +
+          `MixShift plugin updated (and mention the newer version available too) and offer ` +
+          `to run "mixshift whatsnew" for a rundown of what is new and any recommended ` +
           `follow-ups. If they accept, run it via Bash and walk them through the output. ` +
           `If they decline or ignore it, drop the subject for the rest of the session. If ` +
           `they ask to stop being reminded, run "mixshift whatsnew --dismiss". Do not ` +
@@ -530,13 +600,13 @@ function renderNotice(notice) {
     return {
       systemMessage: `[mixshift-ai] Updated ${from} -> ${to}. Run "mixshift whatsnew" for what changed.`,
       additionalContext:
-        `[mixshift-ai plugin] This install just updated from ${from} to ${to}. At the ` +
-        `START of your FIRST reply only, tell the user in one friendly sentence that the ` +
-        `MixShift plugin updated and offer to run "mixshift whatsnew" for a rundown of ` +
-        `what is new and any recommended follow-ups. If they accept, run it via Bash and ` +
-        `walk them through the output. If they decline or ignore it, drop the subject for ` +
-        `the rest of the session. If they ask to stop being reminded, run "mixshift ` +
-        `whatsnew --dismiss". Do not repeat this notice.`,
+        `[mixshift-ai plugin] This install just updated from ${from} to ${to}. ` +
+        `${RERESOLVE_CLI} At the START of your FIRST reply only, tell the user in one ` +
+        `friendly sentence that the MixShift plugin updated and offer to run "mixshift ` +
+        `whatsnew" for a rundown of what is new and any recommended follow-ups. If they ` +
+        `accept, run it via Bash and walk them through the output. If they decline or ` +
+        `ignore it, drop the subject for the rest of the session. If they ask to stop ` +
+        `being reminded, run "mixshift whatsnew --dismiss". Do not repeat this notice.`,
     };
   }
   const { current, latest } = notice;

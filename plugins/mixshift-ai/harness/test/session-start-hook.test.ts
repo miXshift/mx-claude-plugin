@@ -61,8 +61,10 @@ afterEach(async () => {
   }
 });
 
-async function makePluginRoot(version: string): Promise<string> {
-  const root = join(workDir, `plugin-${Math.random().toString(36).slice(2)}`);
+async function makePluginRoot(
+  version: string,
+  root = join(workDir, `plugin-${Math.random().toString(36).slice(2)}`),
+): Promise<string> {
   await mkdir(join(root, '.claude-plugin'), { recursive: true });
   await writeFile(
     join(root, '.claude-plugin', 'plugin.json'),
@@ -192,6 +194,10 @@ describe('session-start hook: just-updated notice', () => {
       'just updated from 0.8.5 to 0.8.6',
     );
     expect(parsed.hookSpecificOutput.additionalContext).toContain('mixshift whatsnew --dismiss');
+    // A resumed conversation must stop reusing the previous version's cli.js path.
+    expect(parsed.hookSpecificOutput.additionalContext).toContain(
+      'ran MixShift through an absolute cli.js path, do not reuse that path',
+    );
     // No em dashes in customer-facing copy.
     expect(parsed.systemMessage).not.toContain('—');
     expect(parsed.hookSpecificOutput.additionalContext).not.toContain('—');
@@ -483,6 +489,74 @@ describe('session-start hook: PATH stage', { timeout: 30_000 }, () => {
       `export OTHER_TOOL='a'\nexport LATER_TOOL='b'\n\n${registrationBlock(newRoot)}\n`,
     );
     expect(text).not.toContain('0.8.10');
+  });
+
+  it('collapses a file left holding two blocks by the append fallback back to one block', async () => {
+    const envFile = join(workDir, 'env-file.sh');
+    const oldRoot = await makePluginRoot('0.8.13');
+    const newRoot = await makePluginRoot('0.8.14');
+    // What a refused rename leaves behind: the old block, then the new one appended.
+    await writeFile(envFile, `\n${registrationBlock(oldRoot)}\n\n${registrationBlock(newRoot)}\n`);
+
+    expect(runHook(await pathStageEnv(newRoot, envFile)).status).toBe(0);
+    expect(await readFile(envFile, 'utf-8')).toBe(`\n${registrationBlock(newRoot)}\n`);
+  });
+
+  it('registers an org-synced install, whose folder name carries a `~`', async () => {
+    // claude.ai org-distributed copies live at .../synced/<org>_<acct>/mixshift-ai~g<n>.
+    const root = await makePluginRoot(
+      '0.8.14',
+      join(workDir, 'synced', 'org_acct', 'mixshift-ai~g2'),
+    );
+    const envFile = join(workDir, 'env-file.sh');
+
+    expect(runHook(await pathStageEnv(root, envFile)).status).toBe(0);
+    const text = await readFile(envFile, 'utf-8');
+    expect(text).toBe(`\n${registrationBlock(root)}\n`);
+    expect(text).toContain('mixshift-ai~g2/harness/dist/cli.js');
+  });
+
+  // Claude Code names the env file sessionstart-hook-<n>.sh by this hook's
+  // position among the matched SessionStart hooks, which can drop between
+  // startup and a resume. The host sources the files in index order.
+  it("removes the previous version's block from a later-sourced sibling env file after its index drops", async () => {
+    const envDir = join(workDir, 'session-env');
+    await mkdir(envDir);
+    const oldRoot = await makePluginRoot('0.8.14', join(workDir, 'cache', 'mixshift-ai', '0.8.14'));
+    const newRoot = await makePluginRoot('0.8.15', join(workDir, 'cache', 'mixshift-ai', '0.8.15'));
+    // Startup: a startup-only hook held index 0, ours index 1.
+    const hook0 = join(envDir, 'sessionstart-hook-0.sh');
+    const hook1 = join(envDir, 'sessionstart-hook-1.sh');
+    await writeFile(hook0, `export OTHER_TOOL='a'\n`);
+    await writeFile(hook1, `export LATER_TOOL='b'\n\n${registrationBlock(oldRoot)}\n`);
+
+    // Resume on the new version: ours is now index 0.
+    expect(runHook(await pathStageEnv(newRoot, hook0)).status).toBe(0);
+    expect(await readFile(hook0, 'utf-8')).toBe(
+      `export OTHER_TOOL='a'\n\n${registrationBlock(newRoot)}\n`,
+    );
+    expect(await readFile(hook1, 'utf-8')).toBe(`export LATER_TOOL='b'\n`);
+  });
+
+  it("leaves earlier siblings, and a sibling holding another install's block, untouched", async () => {
+    const envDir = join(workDir, 'session-env');
+    await mkdir(envDir);
+    const oldRoot = await makePluginRoot('0.8.14', join(workDir, 'cache', 'mixshift-ai', '0.8.14'));
+    const newRoot = await makePluginRoot('0.8.15', join(workDir, 'cache', 'mixshift-ai', '0.8.15'));
+    const otherInstall = await makePluginRoot(
+      '0.8.10',
+      join(workDir, 'synced', 'org_acct', 'mixshift-ai~g2'),
+    );
+    const earlier = `\n${registrationBlock(oldRoot)}\n`;
+    const otherCopy = `\n${registrationBlock(otherInstall)}\n`;
+    await writeFile(join(envDir, 'sessionstart-hook-0.sh'), earlier);
+    await writeFile(join(envDir, 'sessionstart-hook-2.sh'), otherCopy);
+
+    const own = join(envDir, 'sessionstart-hook-1.sh');
+    expect(runHook(await pathStageEnv(newRoot, own)).status).toBe(0);
+    expect(await readFile(own, 'utf-8')).toBe(`\n${registrationBlock(newRoot)}\n`);
+    expect(await readFile(join(envDir, 'sessionstart-hook-0.sh'), 'utf-8')).toBe(earlier);
+    expect(await readFile(join(envDir, 'sessionstart-hook-2.sh'), 'utf-8')).toBe(otherCopy);
   });
 
   // Proves the effect the way the host consumes the file: sourced by bash,
