@@ -466,6 +466,17 @@ describe('report battery: failure mapping', () => {
     expect(fast.errorClass).toBe('report_battery_host_unreachable');
   });
 
+  it('the runner\'s client_budget timeout (mx-ops#79) keeps the battery copy, not the single-statement copy', () => {
+    const err = batteryFailure({ ok: false, kind: 'timeout', raw_code: 'client_budget', message: 'aborted', friendly: 'Library query X did not finish within the 60s query limit.', durationMs: BATTERY_HTTP_TIMEOUT_MS + 12 });
+    expect(err.errorClass).toBe('report_battery_timeout');
+    expect(err.message).toContain('did not answer within 290s');
+    expect(err.message).not.toContain('60s query limit');
+    // The service's own statement timeout is not a budget expiry: its copy passes through.
+    const server = batteryFailure({ ok: false, kind: 'timeout', raw_code: 'ER_QUERY_TIMEOUT', message: 'm', friendly: 'Query exceeded the 60s timeout.', durationMs: 61_000 });
+    expect(server.errorClass).toBe('report_battery_timeout');
+    expect(server.message).toBe('Query exceeded the 60s timeout. (MPRX-FIGURES-BRAND-01: timeout)');
+  });
+
   it('keeps the error class bounded: an unknown wire kind folds to unknown while the message keeps the raw kind', () => {
     const err = batteryFailure({ ok: false, kind: 'brand_new_kind' as never, message: 'm', friendly: 'f', durationMs: 1 });
     expect(err.errorClass).toBe('report_battery_unknown');

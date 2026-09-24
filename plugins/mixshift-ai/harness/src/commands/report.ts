@@ -22,7 +22,7 @@ import {
 } from '../lib/report-contract/render-report.js';
 import { UserFacingError } from '../lib/errors.js';
 import { runDispatched } from '../lib/data/dispatch.js';
-import type { DataQueryFailure } from '../lib/data/query-runner.js';
+import { CLIENT_BUDGET_RAW_CODE, type DataQueryFailure } from '../lib/data/query-runner.js';
 import { validateBrandContext } from '../lib/context/load.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { readIndex } from '../lib/clients/index.js';
@@ -992,12 +992,16 @@ export function batteryParams(
 }
 
 /** Map a dispatcher failure to the user-facing error. The client's own HTTP
- *  budget expiring is classified host_unreachable by the transport (an abort
- *  looks like a dead host); for the battery, which legitimately runs for
- *  minutes, that is a timeout and must not read as a connectivity problem or
- *  land in the connectivity telemetry bucket. */
+ *  budget expiring is a timeout, not a connectivity problem, and must not
+ *  land in the connectivity telemetry bucket. The runner now reports it as
+ *  kind timeout with raw_code client_budget (mx-ops#79); the host_unreachable
+ *  arm is the shape it had before. Either way the battery, which legitimately
+ *  runs for minutes, keeps its own copy naming its own budget. */
 export function batteryFailure(failure: DataQueryFailure): UserFacingError {
-  if (failure.kind === 'host_unreachable' && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5_000) {
+  const budgetExpired =
+    failure.raw_code === CLIENT_BUDGET_RAW_CODE ||
+    (failure.kind === 'host_unreachable' && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5_000);
+  if (budgetExpired) {
     return new UserFacingError(
       `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1000)}s. Retry once, or with fewer accounts; ` +
         'if it repeats, report it with `mixshift feedback` and label the gap in the method notes. ' +

@@ -83,7 +83,7 @@ Trigger when the user asks any of:
 | State | How to check | What to do if missing |
 |---|---|---|
 | Auth set up | `~/.mixshift/auth/credentials` exists | Direct user to run `mixshift auth login` (token-based; the only supported sign-in path). Unattended runs use a service credential (mx-auth-service-setup). |
-| Service reachable | Inferred from successful query | No per-user IP whitelist is needed; the auth service holds the single static egress IP. If queries hang or time out, run `mixshift doctor` to diagnose. |
+| Service reachable | Inferred from successful query | No per-user IP whitelist is needed; the auth service holds the single static egress IP. If queries cannot reach the service, run `mixshift doctor` to diagnose. A query that runs past the 60s limit is a slow query, not a network problem: see "Query timeout (60s)" below. |
 | Brand registry populated | `~/.mixshift/clients/index.yaml` exists | Auto-populated after sign-in completes; if missing, run `mixshift brand discover` |
 | Knows a SellerID or brand slug | They tell you, or look up via the registry | Run `mixshift brand list` to surface the active brands |
 
@@ -385,10 +385,13 @@ If the harness returns `failure_kind: "access_denied_table"`, the user's MySQL g
 If yes, run `mixshift feedback "Need read access to table <name> for seller_ids: <list>" --category feature_request`. (We don't have a dedicated "request table access" CLI yet — feedback with that category captures it for ops.)
 
 ### Query timeout (60s)
-Default timeout is 60s. If a query times out, the harness says so. Suggest:
+Default timeout is 60s. A query that runs past it fails with `failure_kind: "timeout"`. The message reads "Query exceeded the 60s timeout" when the service's own answer arrives, or "Query did not finish within the 60s query limit" when a slow connection meant the harness stopped waiting first. A library query reads "Library query <id> did not finish within the 60s query limit". All of them mean the query is too slow, not that the network is down, so do not send the user to `mixshift doctor` for it. Suggest, in this order:
+- Check the date filter first. It should be on the table's own date column (`mixshift data describe <table>` names it). Run the query with `EXPLAIN` in front to confirm an index covers that date filter: a date filter no index serves scans every row for the seller, and narrowing the range does little until it is fixed.
 - Narrowing the date range
 - Filtering by a specific SellerID (if they didn't already)
 - Selecting fewer columns
+
+For a library query the SQL is not yours to change: narrow its date range or the number of sellers and run it again, and if it keeps timing out, send it with `mixshift feedback`.
 
 ### Empty results
 A successful query that returns 0 rows isn't an error — surface it cleanly. Often means the date range or filter excluded all rows.
