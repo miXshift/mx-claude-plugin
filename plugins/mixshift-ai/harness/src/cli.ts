@@ -79,7 +79,7 @@ import { registerShareSkillCommand } from './commands/share-skill.js';
 import { registerContextCommands } from './commands/context.js';
 import { registerTimelineCommands } from './commands/timeline.js';
 import { registerTaskCommands } from './commands/task.js';
-import { UserFacingError } from './lib/errors.js';
+import { applyExitOverride, handleTopLevelError } from './lib/cli/top-level-error.js';
 import {
   hasAcknowledgedConsent,
   markConsentAcknowledged,
@@ -140,6 +140,13 @@ registerShareSkillCommand(program);
 registerContextCommands(program);
 registerTimelineCommands(program);
 registerTaskCommands(program);
+
+// Without an override, commander's own usage errors (unknown option, missing
+// required option) and its help/version output call process.exit() directly,
+// skipping the catch below: no telemetry, no --json envelope, no flush. With
+// it they throw a CommanderError into that catch like any other failure.
+// Applied after registration so every subcommand gets it.
+applyExitOverride(program);
 
 // First-run cross-cutting telemetry chore: show the consent notice once
 // per install. Idempotent on subsequent runs. Skipped silently when
@@ -279,30 +286,14 @@ function printFirstRunNotice(): void {
 try {
   await program.parseAsync(process.argv);
 } catch (err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`error: ${message}\n`);
-  // A UserFacingError is an expected, recoverable condition (a bad/legacy file,
-  // a missing prerequisite) — not a plugin bug. Its message is already clean +
-  // actionable, so we print it as-is above, and here we tag the telemetry with
-  // its specific error_class plus user_facing:true so it lands in its own
-  // bucket in the error-aggregate sweep instead of inflating real crashes.
-  const isUserFacing = err instanceof UserFacingError;
-  // Best-effort: fire a crash event so we see this in telemetry. We
-  // await `track()` (not `void track(...)`) so the event is on disk
-  // before the `finally` block flushes — otherwise the queue write
-  // races the flush and we lose the crash. This catch runs at most once
-  // per process (single emit site), so the crash is reported exactly once.
-  await track({
-    event_name: EventName.PluginCrashed,
-    outcome: 'failed',
-    error_class: isUserFacing ? err.errorClass : 'unhandled_exception',
-    payload: {
-      message,
-      argv: redactArgs(process.argv.slice(2)),
-      ...(isUserFacing ? { user_facing: true } : {}),
-    },
+  // Prints the error (the --json envelope, or `error: ...` on stderr), records
+  // one plugin.crashed event with the error's class, and returns the exit
+  // code. Help and version exits come through here too and stay silent with
+  // exit 0. See lib/cli/top-level-error.ts.
+  process.exitCode = await handleTopLevelError(err, {
+    json: program.opts<{ json?: boolean }>().json === true,
+    argv: process.argv.slice(2),
   });
-  process.exitCode = 1;
 } finally {
   // Drain every event queued during this run before we exit. Adds
   // ~100-500ms when the queue has events; near-zero when empty

@@ -62,6 +62,7 @@ import {
 import { reportOutputPath, outputDir } from '../lib/paths/resolve.js';
 import { planInlineDocument, previewLines } from '../lib/output/inline-ceiling.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { integerOption, keyValueOption } from '../lib/cli/option-parsers.js';
 import { registerAmazonPricingCommands } from './amazon-pricing.js';
 import { registerAmazonSpApiCommands } from './amazon-spapi.js';
 
@@ -263,7 +264,12 @@ function registerReportStart(report: Command): void {
     .option('--start <date>', 'data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.')
     .option('--end <date>', 'data window end (YYYY-MM-DD or ISO 8601).')
     .option('--marketplace <id>', 'marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.')
-    .option('--option <key=value>', 'reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK', collectKV, {})
+    .option(
+      '--option <key=value>',
+      'reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK',
+      keyValueOption('--option', { example: 'reportPeriod=WEEK' }),
+      {},
+    )
     .action(async (opts: StartCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -565,10 +571,20 @@ function registerReportRun(report: Command): void {
     .option('--start <date>', 'data window start (YYYY-MM-DD or ISO 8601)')
     .option('--end <date>', 'data window end (YYYY-MM-DD or ISO 8601)')
     .option('--marketplace <id>', 'marketplace: country code (US/UK/DE/JP) or a raw marketplaceId')
-    .option('--option <key=value>', 'reportOptions knob (repeatable)', collectKV, {})
+    .option(
+      '--option <key=value>',
+      'reportOptions knob (repeatable)',
+      keyValueOption('--option', { example: 'reportPeriod=WEEK' }),
+      {},
+    )
     .option('--out <path>', 'output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)')
-    .option('--interval-ms <ms>', 'poll interval', parseIntOpt, 5000)
-    .option('--max-wait-ms <ms>', 'give up after this long', parseIntOpt, 300000)
+    .option('--interval-ms <ms>', 'poll interval', integerOption('--interval-ms', { min: 0 }), 5000)
+    .option(
+      '--max-wait-ms <ms>',
+      'give up after this long',
+      integerOption('--max-wait-ms', { min: 0 }),
+      300000,
+    )
     .action(async (opts: RunCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -1524,26 +1540,6 @@ function requireAsinFitsSingleReport(asin: string): void {
         'the resulting JSON documents into one output file.',
     );
   }
-}
-
-function collectKV(
-  value: string,
-  prev: Record<string, string>,
-): Record<string, string> {
-  const eq = value.indexOf('=');
-  if (eq < 0) {
-    throw new Error(`--option must be key=value (got "${value}")`);
-  }
-  const key = value.slice(0, eq).trim();
-  const val = value.slice(eq + 1);
-  if (!key) throw new Error(`--option key is empty in "${value}"`);
-  return { ...prev, [key]: val };
-}
-
-function parseIntOpt(v: string): number {
-  const n = Number.parseInt(v, 10);
-  if (!Number.isFinite(n) || n < 0) throw new Error(`Expected a non-negative integer, got "${v}"`);
-  return n;
 }
 
 async function defaultOutPath(

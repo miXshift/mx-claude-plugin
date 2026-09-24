@@ -48,6 +48,7 @@ import {
 } from '../lib/amazon/reports.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { keyValueOption } from '../lib/cli/option-parsers.js';
 
 interface RootOptions {
   json?: boolean;
@@ -218,10 +219,15 @@ function registerCall(ads: Command): void {
     .option(
       '--query <k=v>',
       'query param (SD lists, sb.list_keywords; repeatable)',
-      collectKv,
+      keyValueOption('--query', { bodyFlag: '--body' }),
       {},
     )
-    .option('--path <k=v>', 'path placeholder, e.g. --path reportId=... (repeatable)', collectKv, {})
+    .option(
+      '--path <k=v>',
+      'path placeholder, e.g. --path reportId=... (repeatable)',
+      keyValueOption('--path', { bodyFlag: '--body' }),
+      {},
+    )
     .option('--body-file <file>', 'JSON request body from a file')
     .option('--body <json>', 'inline JSON request body (small payloads; prefer --body-file)')
     .option('--content-type <vnd>', 'advanced: override the cataloged vnd media type')
@@ -418,16 +424,6 @@ function registerCall(ads: Command): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** commander collector for repeatable k=v options. */
-function collectKv(pair: string, acc: Record<string, string>): Record<string, string> {
-  const idx = pair.indexOf('=');
-  if (idx <= 0) {
-    throw new Error(`Expected k=v, got '${pair}'.`);
-  }
-  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
-  return acc;
-}
 
 async function trackAds(
   eventName: string,

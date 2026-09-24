@@ -36,6 +36,7 @@ import {
   type ReportFailure,
 } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { keyValueOption } from '../lib/cli/option-parsers.js';
 
 interface RootOptions {
   json?: boolean;
@@ -117,13 +118,13 @@ function registerCall(amazon: Command): void {
     .option(
       '--query <k=v>',
       'query param per the operation notes (repeatable; csv values pass through)',
-      collectKv,
+      keyValueOption('--query', { bodyFlag: '--body' }),
       {},
     )
     .option(
       '--path <k=v>',
       'path placeholder, e.g. --path asin=B0CV4JLCVZ (repeatable)',
-      collectKv,
+      keyValueOption('--path', { bodyFlag: '--body' }),
       {},
     )
     .option('--body-file <file>', 'JSON request body from a file (body-required operations)')
@@ -233,16 +234,6 @@ function registerCall(amazon: Command): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** commander collector for repeatable k=v options. */
-function collectKv(pair: string, acc: Record<string, string>): Record<string, string> {
-  const idx = pair.indexOf('=');
-  if (idx <= 0) {
-    throw new Error(`Expected k=v, got '${pair}'.`);
-  }
-  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
-  return acc;
-}
 
 async function trackSpApi(
   eventName: string,

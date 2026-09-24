@@ -13,6 +13,7 @@ import {
   type InlineCeilingOptions,
 } from '../lib/output/inline-ceiling.js';
 import { outputDir } from '../lib/paths/resolve.js';
+import { integerOption } from '../lib/cli/option-parsers.js';
 
 interface RootOptions {
   json?: boolean;
@@ -79,8 +80,12 @@ export function registerDataCommands(program: Command): void {
     .command('sample')
     .description('Preview rows from a table')
     .requiredOption('--table <name>', 'table name')
-    .option('--seller-id <id>', 'scope to a single seller (required for time-series tables)', parseInt10)
-    .option('--limit <n>', 'row limit', parseInt10, 10)
+    .option(
+      '--seller-id <id>',
+      'scope to a single seller (required for time-series tables)',
+      integerOption('--seller-id', { warehouseSellerId: true }),
+    )
+    .option('--limit <n>', 'row limit', integerOption('--limit'), 10)
     .action(
       async (
         opts: { table: string; sellerId?: number; limit: number },
@@ -144,11 +149,15 @@ export function registerDataCommands(program: Command): void {
     .command('export')
     .description('Bulk export a table (or filtered subset) to CSV')
     .requiredOption('--table <name>', 'table name')
-    .option('--seller-id <id>', 'scope to a single seller', parseInt10)
+    .option(
+      '--seller-id <id>',
+      'scope to a single seller',
+      integerOption('--seller-id', { warehouseSellerId: true }),
+    )
     .option('--start <YYYY-MM-DD>', 'inclusive start date (uses table date_column)')
     .option('--end <YYYY-MM-DD>', 'inclusive end date')
     .option('--out <path>', 'output CSV file path (default ~/.mixshift/output/<table>-<date>.csv)')
-    .option('--max-rows <n>', 'cap row count', parseInt10)
+    .option('--max-rows <n>', 'cap row count', integerOption('--max-rows'))
     .action(
       async (
         opts: {
@@ -246,7 +255,7 @@ export function registerDataCommands(program: Command): void {
       '--rows <n>',
       'inline up to N rows before spilling a large result to a file ' +
         `(default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
-      parseInt10,
+      integerOption('--rows'),
     )
     .action(
       async (opts: { sql: string; out?: string; inline?: boolean; rows?: number }, cmd: Command) => {
@@ -276,7 +285,11 @@ export function registerDataCommands(program: Command): void {
         'ASINs not listed in mws_items come back under "missing"; resolve those ' +
         'live via mx-amazon-retail catalog.search_items.',
     )
-    .requiredOption('--seller-id <id>', 'seller to resolve against', parseInt10)
+    .requiredOption(
+      '--seller-id <id>',
+      'seller to resolve against',
+      integerOption('--seller-id', { warehouseSellerId: true }),
+    )
     .requiredOption('--asins <list>', 'comma-separated ASINs (e.g. B0ABC,B0XYZ)')
     .action(
       async (opts: { sellerId: number; asins: string }, cmd: Command) => {
@@ -789,12 +802,6 @@ function emitError(err: unknown, json: boolean): void {
     process.stderr.write(`error: ${message}\n`);
   }
   process.exitCode = 1;
-}
-
-function parseInt10(v: string): number {
-  const n = parseInt(v, 10);
-  if (Number.isNaN(n)) throw new Error(`Expected integer, got "${v}"`);
-  return n;
 }
 
 function todayISO(): string {
