@@ -65,18 +65,19 @@ describe('option parser sites throw InvalidOptionValueError naming the flag', ()
     expect(err.message.startsWith(flag as string)).toBe(true);
   });
 
-  it('the --query hint on both call commands points JSON at --body', async () => {
+  it('the --query hint on both call commands points a JSON request body at --body', async () => {
     for (const group of ['ads', 'amazon']) {
       const err = await parseError(group, 'call', 'op.synthetic', '--query', JSON_QUERY);
-      expect(err.message).toContain('JSON goes in --body');
+      expect(err.message).toContain('goes in --body');
       expect(err.message).toContain('--query maxResults=10');
     }
   });
 
-  it('the data --seller-id hint names legacySellerId and `mixshift amazon merchants`', async () => {
+  it('the data --seller-id hint names legacySellerId, `mixshift amazon merchants` and `mixshift ads profiles`', async () => {
     const err = await parseError('data', 'sample', '--table', 't', '--seller-id', 'A1SYNTHETIC0001');
     expect(err.message).toContain('numeric warehouse SellerID');
     expect(err.message).toContain('legacySellerId');
     expect(err.message).toContain('mixshift amazon merchants');
+    expect(err.message).toContain('mixshift ads profiles');
   });
 });

@@ -74,7 +74,7 @@ export async function handleTopLevelError(
   if (err instanceof CommanderError) {
     message = err.message.replace(/^error: /, '');
     errorClass = err.code === 'commander.invalidArgument' ? 'invalid_argument' : 'usage_error';
-    telemetryMessage = scrubCommanderMessage(err.message);
+    telemetryMessage = scrubCommanderMessage(message);
     extra = { user_facing: true, commander_code: err.code };
     alreadyPrinted = true;
   } else if (err instanceof InvalidOptionValueError) {
@@ -123,13 +123,24 @@ export async function handleTopLevelError(
 }
 
 /**
- * Drop flag values from a commander message before it reaches telemetry:
- * `unknown option '--x=VALUE'` keeps the flag, and `argument 'VALUE' is
- * invalid` loses the value. Other commander messages carry no values.
+ * Drop values from a commander message before it reaches telemetry (the ops
+ * channel shows this message). Flag and command names stay:
+ * `unknown option '--x=VALUE'` keeps `--x`, and a short flag with its value
+ * attached (`-s123`) keeps `-s`. The operand of `unknown command '...'` goes,
+ * because a misplaced operand can be a slug, an ASIN or SQL, and so does the
+ * value in `argument '...' is invalid`. Each match runs to the last quote on
+ * the line, so a value that itself contains a quote is dropped whole. Other
+ * commander messages carry no values.
  */
 function scrubCommanderMessage(message: string): string {
   return message
-    .replace(/unknown option '([^'=]*)=[^']*'/, "unknown option '$1'")
-    .replace(/argument '[^']*' is invalid/, 'argument is invalid')
-    .replace(/value '[^']*' is invalid/, 'value is invalid');
+    .replace(/unknown option '(.*)'/, (_match, arg: string) => `unknown option '${flagName(arg)}'`)
+    .replace(/unknown command '.*'/, 'unknown command')
+    .replace(/argument '.*' is invalid/, 'argument is invalid')
+    .replace(/value '.*' is invalid/, 'value is invalid');
+}
+
+/** `--flag=value` -> `--flag`; `-xVALUE` -> `-x`. */
+function flagName(arg: string): string {
+  return arg.startsWith('--') ? arg.split('=')[0]! : arg.slice(0, 2);
 }

@@ -271,14 +271,17 @@ interface FileResult {
 }
 
 /**
- * `--json` mode must never let a UserFacingError (a refusal or a read/write
- * failure) fall through to the CLI's top-level catch (cli.ts), which always
- * prints plain text ("error: ...") regardless of --json -- exactly the gap
- * that left --json callers with no parseable output on every failure path.
- * In JSON mode this emits the repo's standard `{status:'error', ...}`
- * envelope (mirrors ads.ts's emitFailure / data.ts's emitError) and sets
- * the exit code itself. In text mode the error is rethrown so cli.ts's
- * existing plain-text handling (and its crash telemetry) is unchanged.
+ * In `--json` mode this emits the repo's standard `{status:'error', ...}`
+ * envelope for a UserFacingError (a refusal or a read/write failure) and
+ * sets the exit code itself (mirrors ads.ts's emitFailure / data.ts's
+ * emitError). It predates mx-ops#86: the CLI's top-level catch then printed
+ * plain text ("error: ...") regardless of --json, which left --json callers
+ * with no parseable output. That catch (lib/cli/top-level-error.ts) now
+ * emits the same envelope under --json, so this wrapper is no longer the
+ * only thing standing between a report failure and plain text; it stays in
+ * place, and still means a --json report failure records no plugin.crashed.
+ * In text mode the error is rethrown to that catch, which prints it and
+ * records the crash telemetry.
  */
 async function withReportErrorHandling(json: boolean, fn: () => Promise<void>): Promise<void> {
   try {

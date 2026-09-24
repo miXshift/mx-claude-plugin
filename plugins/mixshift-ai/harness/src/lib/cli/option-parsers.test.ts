@@ -42,8 +42,25 @@ describe('keyValueOption', () => {
     expect(err.flag).toBe('--query');
     expect(err.valueShape).toBe('json_object');
     expect(err.message).toContain('--query key=value');
-    expect(err.message).toContain('JSON goes in --body');
+    expect(err.message).toContain('A JSON request body, for an operation that takes one, goes in --body.');
     expect(err.message).toContain('--query maxResults=10 --query stateFilter=enabled');
+  });
+
+  it('a list of scalars is spelled as the comma-separated value', () => {
+    const err = thrown(() => query('{"includedData":["summaries","attributes"],"keywords":"x"}', {}));
+    expect(err.message).toContain('--query includedData=summaries,attributes --query keywords=x');
+  });
+
+  it('a list with a comma in an item, or with a non-scalar item, gets no corrected flags', () => {
+    expect(thrown(() => query('{"k":["a,b"]}', {})).message).not.toContain('For this value');
+    expect(thrown(() => query('{"k":[{"a":1}]}', {})).message).not.toContain('For this value');
+    expect(thrown(() => query('{"k":[]}', {})).message).not.toContain('For this value');
+  });
+
+  it('a value with a single quote gets no corrected flags (no quoting works in both bash and PowerShell)', () => {
+    const err = thrown(() => query(`{"keywords":"it's here"}`, {}));
+    expect(err.message).toContain('--query key=value');
+    expect(err.message).not.toContain('For this value');
   });
 
   it('JSON object containing "=" is still rejected as JSON, not split into a bogus key', () => {
@@ -113,6 +130,7 @@ describe('integerOption', () => {
     expect(err.message).toContain('--seller-id takes the numeric warehouse SellerID');
     expect(err.message).toContain('legacySellerId');
     expect(err.message).toContain('mixshift amazon merchants');
+    expect(err.message).toContain('mixshift ads profiles');
     expect(err.message).toContain('not the AmazonSellerID');
     expect(err.telemetryMessage).toBe('invalid value for --seller-id (merchant_token)');
     expect(err.telemetryMessage).not.toContain('A1SYNTHETIC0001');

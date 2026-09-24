@@ -39,7 +39,11 @@ export function keyValueOption(
     `Pass each parameter as ${flag} key=value, repeating the flag once per parameter` +
     (hints.example ? ` (e.g. ${flag} ${hints.example})` : '') +
     '.';
-  const bodyHint = hints.bodyFlag ? ` JSON goes in ${hints.bodyFlag}.` : '';
+  // Conditional: most `call` operations are GETs with no body, and a --path
+  // placeholder never belongs in one.
+  const bodyHint = hints.bodyFlag
+    ? ` A JSON request body, for an operation that takes one, goes in ${hints.bodyFlag}.`
+    : '';
 
   return (value, previous) => {
     const trimmed = value.trim();
@@ -100,7 +104,8 @@ export function integerOption(
           `${flag} takes the numeric warehouse SellerID (the legacySellerId column of ` +
             '`mixshift amazon merchants`)' +
             (isToken ? `, not the AmazonSellerID "${value}".` : `, got "${value}".`) +
-            " Run `mixshift amazon merchants` and pass that merchant's legacySellerId.",
+            ' Run `mixshift amazon merchants` (or `mixshift ads profiles` for a seller' +
+            " with Ads only) and pass that merchant's legacySellerId.",
         );
       }
       throw new InvalidOptionValueError(
@@ -121,9 +126,12 @@ export function integerOption(
 }
 
 /**
- * The corrected flags for a flat JSON object, e.g. `{"a":1,"b":"x"}` becomes
- * `--query a=1 --query b=x`. Null when the JSON does not parse or holds a
- * nested value, which has no single key=value spelling.
+ * The corrected flags for a flat JSON object, e.g. `{"a":1,"b":["x","y"]}`
+ * becomes `--query a=1 --query b=x,y` (a list is the comma-separated value
+ * the flags accept). Null when the JSON does not parse, holds a nested value
+ * or a list item with a comma, which have no single key=value spelling, or
+ * holds a single quote, which has no quoting that works in both a POSIX
+ * shell and PowerShell.
  */
 function correctedKeyValueFlags(flag: string, json: string): string | null {
   let parsed: unknown;
@@ -135,12 +143,21 @@ function correctedKeyValueFlags(flag: string, json: string): string | null {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const parts: string[] = [];
   for (const [key, v] of Object.entries(parsed)) {
-    if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') return null;
-    parts.push(`${flag} ${shellQuote(`${key}=${v}`)}`);
+    const value = Array.isArray(v) ? csvValue(v) : scalarValue(v);
+    if (value === null) return null;
+    const pair = `${key}=${value}`;
+    if (pair.includes("'")) return null;
+    parts.push(`${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`);
   }
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
-function shellQuote(s: string): string {
-  return /^[\w.,:/@%+=-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+function scalarValue(v: unknown): string | null {
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : null;
+}
+
+function csvValue(items: unknown[]): string | null {
+  const values = items.map(scalarValue);
+  if (values.length === 0 || values.some((s) => s === null || s.includes(','))) return null;
+  return values.join(',');
 }

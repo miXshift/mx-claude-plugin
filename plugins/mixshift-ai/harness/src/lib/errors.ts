@@ -2,13 +2,13 @@
  * Typed, user-facing errors.
  *
  * A `UserFacingError` is a condition the user can act on (a bad/legacy file, a
- * missing prerequisite) rather than a bug in the plugin. The top-level CLI catch
- * (see cli.ts) recognizes these and, instead of framing them as an
- * `unhandled_exception` crash with a raw stack-flavored message, prints the
- * clean `message` and tags the telemetry crash event with the specific
- * `errorClass` plus `user_facing: true`. That keeps a recoverable, expected
- * failure out of the "real crash" bucket in the error-aggregate sweep while
- * still giving the user an actionable message.
+ * missing prerequisite) rather than a bug in the plugin. The top-level CLI
+ * catch (lib/cli/top-level-error.ts) recognizes these and, instead of framing
+ * them as an `unhandled_exception` crash with a raw stack-flavored message,
+ * prints the clean `message` and tags the telemetry crash event with the
+ * specific `errorClass` plus `user_facing: true`. That keeps a recoverable,
+ * expected failure out of the "real crash" bucket in the error-aggregate
+ * sweep while still giving the user an actionable message.
  *
  * `message` is shown verbatim to the user, so keep it clean and actionable
  * (what happened + the exact command to recover). No stack traces, no Zod dumps

@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 
 import { applyExitOverride, handleTopLevelError, type TopLevelErrorIo } from './top-level-error.js';
 import { registerAdsCommands } from '../../commands/ads.js';
@@ -122,7 +122,7 @@ describe('exitOverride routes commander usage errors through the same catch', ()
     expect(r.events[0]!.payload).toMatchObject({
       user_facing: true,
       commander_code: 'commander.unknownOption',
-      message: "error: unknown option '--seller-id'",
+      message: "unknown option '--seller-id'",
     });
   });
 
@@ -149,7 +149,39 @@ describe('exitOverride routes commander usage errors through the same catch', ()
   it('an unknown option given as --flag=value keeps the flag and drops the value in telemetry', async () => {
     const r = await run('data', 'query', '--sql', 'select 1', '--seller-id=SYNTH-VALUE');
     const { message } = r.events[0]!.payload as { message: string };
-    expect(message).toBe("error: unknown option '--seller-id'");
+    expect(message).toBe("unknown option '--seller-id'");
+  });
+
+  it.each([
+    ['a value containing a quote', ["--seller-id=it's SYNTH-VALUE"], "unknown option '--seller-id'"],
+    ['a short flag with its value attached', ['-sSYNTH-VALUE'], "unknown option '-s'"],
+  ])('telemetry drops %s from an unknown option', async (_label, extra, expected) => {
+    const r = await run('data', 'query', '--sql', 'select 1', ...extra);
+    const { message } = r.events[0]!.payload as { message: string };
+    expect(message).toBe(expected);
+  });
+
+  it('an unknown command keeps its usage_error class and drops the operand from telemetry', async () => {
+    const r = await run('--json', 'data', 'B0SYNTH001');
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toMatchObject({ error_class: 'usage_error' });
+    expect(r.events[0]!.payload).toMatchObject({ commander_code: 'commander.unknownCommand' });
+    const { message } = r.events[0]!.payload as { message: string };
+    expect(message).toMatch(/^unknown command/);
+    expect(message).not.toContain('B0SYNTH001');
+  });
+
+  it("commander's invalid-argument message is invalid_argument and loses the value, quotes and all", async () => {
+    const rec = recorder();
+    const err = new CommanderError(
+      1,
+      'commander.invalidArgument',
+      "error: option '--mode <m>' argument 'it's SYNTH-VALUE' is invalid. Allowed choices are a, b.",
+    );
+    expect(await handleTopLevelError(err, { json: false, argv: [] }, rec.io)).toBe(1);
+    expect(rec.events[0]!.error_class).toBe('invalid_argument');
+    const { message } = rec.events[0]!.payload as { message: string };
+    expect(message).toBe("option '--mode <m>' argument is invalid. Allowed choices are a, b.");
   });
 });
 
