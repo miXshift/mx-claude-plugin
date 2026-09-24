@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync, spawn } from 'node:child_process';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -370,37 +370,173 @@ describe('session-start hook: CLAUDE_PLUGIN_DATA', () => {
   });
 });
 
-describe('session-start hook: PATH stage (unchanged semantics)', () => {
-  it('still writes the PATH/MIXSHIFT_CLI exports exactly once across repeated invocations', async () => {
-    const pluginRoot = await makePluginRoot('0.8.5');
+const PATH_MARKER = '# mixshift-ai session PATH registration';
+
+/** Mirrors the hook's posixify(): the env file is sourced by (Git) Bash. */
+function shPath(p: string): string {
+  if (process.platform !== 'win32') return p;
+  return p.replace(/\\/g, '/').replace(/^([A-Za-z]):\//, (_, d: string) => `/${d.toLowerCase()}/`);
+}
+
+function binDirOf(pluginRoot: string): string {
+  return shPath(join(pluginRoot, 'harness', 'bin'));
+}
+
+function cliPathOf(pluginRoot: string): string {
+  return shPath(join(pluginRoot, 'harness', 'dist', 'cli.js'));
+}
+
+/** The registration block exactly as the hook writes it for `pluginRoot`. */
+function registrationBlock(pluginRoot: string): string {
+  return (
+    `${PATH_MARKER}\n` +
+    `export PATH='${binDirOf(pluginRoot)}':"$PATH"\n` +
+    `export MIXSHIFT_CLI='${cliPathOf(pluginRoot)}'`
+  );
+}
+
+function countMarkers(text: string): number {
+  return text.split(PATH_MARKER).length - 1;
+}
+
+// Each test here spawns the hook several times in a row; on a loaded runner
+// (the full suite runs files in parallel) one spawn can take over a second.
+describe('session-start hook: PATH stage', { timeout: 30_000 }, () => {
+  async function pathStageEnv(pluginRoot: string, envFile: string) {
     const dataDir = join(workDir, 'data');
     await mkdir(dataDir, { recursive: true });
-    const envFile = join(workDir, 'env-file.sh');
-
-    const env = {
+    return {
       CLAUDE_PLUGIN_ROOT: pluginRoot,
       CLAUDE_ENV_FILE: envFile,
       MIXSHIFT_DATA_DIR: dataDir,
       MIXSHIFT_VERSION_CHECK_URL: DEAD_PORT_URL,
     };
+  }
+
+  it('writes the PATH/MIXSHIFT_CLI block on the first run, and repeat runs on the same root leave the file byte-identical', async () => {
+    const pluginRoot = await makePluginRoot('0.8.5');
+    const envFile = join(workDir, 'env-file.sh');
+    const env = await pathStageEnv(pluginRoot, envFile);
 
     const first = runHook(env);
     expect(first.status).toBe(0);
     const afterFirst = await readFile(envFile, 'utf-8');
-    expect(afterFirst).toContain('export MIXSHIFT_CLI=');
-    expect(afterFirst).toContain('# mixshift-ai session PATH registration');
+    expect(afterFirst).toBe(`\n${registrationBlock(pluginRoot)}\n`);
 
-    // Simulate a resume: the hook fires again against the SAME env file.
-    const second = runHook(env);
-    expect(second.status).toBe(0);
-    const afterSecond = await readFile(envFile, 'utf-8');
-
-    const markerCount = (afterSecond.match(/# mixshift-ai session PATH registration/g) ?? [])
-      .length;
-    expect(markerCount).toBe(1);
-    const cliExportCount = (afterSecond.match(/export MIXSHIFT_CLI=/g) ?? []).length;
-    expect(cliExportCount).toBe(1);
+    // Simulate resumes/compacts: the hook fires again against the SAME env
+    // file with the SAME plugin root. The file must not grow or change.
+    for (let i = 0; i < 3; i++) {
+      expect(runHook(env).status).toBe(0);
+      expect(await readFile(envFile, 'utf-8')).toBe(afterFirst);
+    }
   });
+
+  it('after a plugin update, a resumed session re-points PATH and MIXSHIFT_CLI at the new root (one block, old paths gone)', async () => {
+    const oldRoot = await makePluginRoot('0.8.13');
+    const newRoot = await makePluginRoot('0.8.14');
+    const envFile = join(workDir, 'env-file.sh');
+
+    expect(runHook(await pathStageEnv(oldRoot, envFile)).status).toBe(0);
+    expect(await readFile(envFile, 'utf-8')).toContain(`export MIXSHIFT_CLI='${cliPathOf(oldRoot)}'`);
+
+    // The resume after the update: same env file, new CLAUDE_PLUGIN_ROOT.
+    const newEnv = await pathStageEnv(newRoot, envFile);
+    expect(runHook(newEnv).status).toBe(0);
+    const afterUpdate = await readFile(envFile, 'utf-8');
+    expect(afterUpdate).toBe(`\n${registrationBlock(newRoot)}\n`);
+    expect(afterUpdate).not.toContain(cliPathOf(oldRoot));
+    expect(afterUpdate).not.toContain(binDirOf(oldRoot));
+
+    // And it is stable again on the new version.
+    expect(runHook(newEnv).status).toBe(0);
+    expect(await readFile(envFile, 'utf-8')).toBe(afterUpdate);
+  });
+
+  it('does not accumulate blocks across many version changes', async () => {
+    const envFile = join(workDir, 'env-file.sh');
+    for (const version of ['0.8.12', '0.8.13', '0.8.14', '0.8.15']) {
+      const root = await makePluginRoot(version);
+      const env = await pathStageEnv(root, envFile);
+      // Twice per version: startup, then a resume on the same version.
+      expect(runHook(env).status).toBe(0);
+      expect(runHook(env).status).toBe(0);
+      const text = await readFile(envFile, 'utf-8');
+      expect(countMarkers(text)).toBe(1);
+      expect(text).toBe(`\n${registrationBlock(root)}\n`);
+    }
+  });
+
+  it("replaces a block left by an earlier hook version and keeps other writers' lines in place", async () => {
+    const envFile = join(workDir, 'env-file.sh');
+    // Byte-for-byte what the previous hook wrote, around lines from another writer.
+    const legacyBlock =
+      `${PATH_MARKER}\n` +
+      `export PATH='/opt/plugins/mixshift-ai/0.8.10/harness/bin':"$PATH"\n` +
+      `export MIXSHIFT_CLI='/opt/plugins/mixshift-ai/0.8.10/harness/dist/cli.js'`;
+    await writeFile(envFile, `export OTHER_TOOL='a'\n\n${legacyBlock}\nexport LATER_TOOL='b'\n`);
+
+    const newRoot = await makePluginRoot('0.8.14');
+    expect(runHook(await pathStageEnv(newRoot, envFile)).status).toBe(0);
+
+    const text = await readFile(envFile, 'utf-8');
+    expect(text).toBe(
+      `export OTHER_TOOL='a'\nexport LATER_TOOL='b'\n\n${registrationBlock(newRoot)}\n`,
+    );
+    expect(text).not.toContain('0.8.10');
+  });
+
+  // Proves the effect the way the host consumes the file: sourced by bash,
+  // top to bottom. POSIX only: on Windows a bare `bash` can resolve to WSL,
+  // which cannot read the posixified /c/... paths the hook writes.
+  it.skipIf(process.platform === 'win32')(
+    'sourcing the env file after an update yields the new MIXSHIFT_CLI and puts the new bin dir first on PATH',
+    async () => {
+      const oldRoot = await makePluginRoot('0.8.13');
+      const newRoot = await makePluginRoot('0.8.14');
+      const envFile = join(workDir, 'env-file.sh');
+      expect(runHook(await pathStageEnv(oldRoot, envFile)).status).toBe(0);
+      expect(runHook(await pathStageEnv(newRoot, envFile)).status).toBe(0);
+
+      const sourced = spawnSync(
+        'bash',
+        ['-c', '. "$1" && printf "%s\\n%s\\n" "$MIXSHIFT_CLI" "${PATH%%:*}"', 'bash', envFile],
+        { encoding: 'utf-8', env: { PATH: '/usr/bin:/bin' } },
+      );
+      expect(sourced.status).toBe(0);
+      expect(sourced.stdout).toBe(`${cliPathOf(newRoot)}\n${binDirOf(newRoot)}\n`);
+    },
+  );
+
+  // A rename the OS refuses (read-only directory here; on Windows, a file
+  // another process holds open) falls back to appending, which still wins by
+  // source order, and must not grow the file on later fires of the same
+  // version. POSIX only (Windows ignores directory write bits); skipped as
+  // root, which bypasses them.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'when the file cannot be rewritten, appends the new block once and then stops growing',
+    async () => {
+      const envDir = join(workDir, 'locked');
+      await mkdir(envDir);
+      const envFile = join(envDir, 'env-file.sh');
+      const oldRoot = await makePluginRoot('0.8.13');
+      const newRoot = await makePluginRoot('0.8.14');
+      expect(runHook(await pathStageEnv(oldRoot, envFile)).status).toBe(0);
+
+      await chmod(envDir, 0o555);
+      try {
+        const newEnv = await pathStageEnv(newRoot, envFile);
+        expect(runHook(newEnv).status).toBe(0);
+        const afterFallback = await readFile(envFile, 'utf-8');
+        expect(afterFallback).toBe(
+          `\n${registrationBlock(oldRoot)}\n\n${registrationBlock(newRoot)}\n`,
+        );
+        expect(runHook(newEnv).status).toBe(0);
+        expect(await readFile(envFile, 'utf-8')).toBe(afterFallback);
+      } finally {
+        await chmod(envDir, 0o755);
+      }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

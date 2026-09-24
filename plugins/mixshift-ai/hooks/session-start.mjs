@@ -5,7 +5,7 @@
  * The claude.ai plugin validator forbids top-level bin/ executables (which the
  * CLI runtime used to PATH-register automatically), so the shim now lives at
  * harness/bin/mixshift and this hook performs the PATH registration instead,
- * by appending exports to the session env file the host exposes via
+ * by writing exports to the session env file the host exposes via
  * CLAUDE_ENV_FILE (sourced by the Bash tool). It also exports MIXSHIFT_CLI
  * (absolute path to the bundled cli.js) so skills have a PATH-independent
  * invocation: `node "$MIXSHIFT_CLI" <args>`.
@@ -20,7 +20,7 @@
  * allowlist, we write nothing rather than risk a malformed or injectable
  * line; skills' fallback covers functionality.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import {
   readFile,
   writeFile,
@@ -35,12 +35,41 @@ import { homedir, platform, release } from 'node:os';
 
 const MARKER = '# mixshift-ai session PATH registration';
 const SAFE = /^[A-Za-z0-9 _/:.\-]+$/;
+// The two export lines that follow MARKER in a registration block. Every
+// version of this hook has written them in exactly this shape, so a block an
+// older version left behind is recognized (and replaced) too.
+const REGISTRATION_EXPORT = /^export (PATH='[^']*':"\$PATH"|MIXSHIFT_CLI='[^']*')$/;
 
 function posixify(p) {
   if (process.platform !== 'win32') return p;
   // The env file is sourced by Git Bash, whose PATH is colon-separated —
   // a `C:/...` entry would split at the drive colon. Use the /c/... form.
   return p.replace(/\\/g, '/').replace(/^([A-Za-z]):\//, (_, d) => `/${d.toLowerCase()}/`);
+}
+
+/**
+ * Split env-file text into everything that is NOT one of our registration
+ * blocks (`rest`, other writers' lines kept verbatim and in order) and the
+ * registration blocks themselves (`blocks`, each MARKER plus its exports).
+ */
+function splitRegistrations(text) {
+  const lines = text.split('\n');
+  const rest = [];
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] !== MARKER) {
+      rest.push(lines[i]);
+      continue;
+    }
+    const block = [MARKER];
+    while (block.length < 3 && i + 1 < lines.length && REGISTRATION_EXPORT.test(lines[i + 1])) {
+      block.push(lines[++i]);
+    }
+    blocks.push(block.join('\n'));
+    // Drop the blank separator line written ahead of every block.
+    if (rest.length > 0 && rest[rest.length - 1] === '') rest.pop();
+  }
+  return { rest: rest.join('\n'), blocks };
 }
 
 try {
@@ -51,17 +80,52 @@ try {
     const binDir = posixify(join(pluginRoot, 'harness', 'bin'));
     const cliPath = posixify(join(pluginRoot, 'harness', 'dist', 'cli.js'));
     if (SAFE.test(binDir) && SAFE.test(cliPath)) {
+      const block = `${MARKER}\nexport PATH='${binDir}':"$PATH"\nexport MIXSHIFT_CLI='${cliPath}'`;
       // SessionStart fires more than once per session (startup, then again on
-      // every resume/compact) against the SAME env file — append only once.
-      let already = false;
+      // every resume/compact) against the SAME env file, and that file
+      // outlives a plugin update. So the check is keyed on the PATHS, not on
+      // the marker alone: if the file already registers exactly this plugin
+      // root, leave it byte-for-byte alone; if it registers any other root
+      // (the version before an update), replace that block with this one.
+      // Either way the file ends holding one block, however many times the
+      // hook fires or the plugin updates.
+      //
+      // Fallback when the file cannot be rewritten: append. The file is
+      // sourced top to bottom, so a later block's PATH prepend and
+      // MIXSHIFT_CLI win, and the next fire that can rewrite collapses the
+      // file back to one block.
+      const appendBlock = () => appendFileSync(envFile, `\n${block}\n`);
+      let existing = '';
+      let readable = true;
       try {
-        already = readFileSync(envFile, 'utf8').includes(MARKER);
-      } catch {}
-      if (!already) {
-        appendFileSync(
-          envFile,
-          `\n${MARKER}\nexport PATH='${binDir}':"$PATH"\nexport MIXSHIFT_CLI='${cliPath}'\n`
-        );
+        existing = readFileSync(envFile, 'utf8');
+      } catch (err) {
+        // A missing file is simply empty. Any other read failure means we
+        // cannot see what else is in it, so never rewrite it: append only.
+        readable = err?.code === 'ENOENT';
+      }
+      if (!readable) {
+        appendBlock();
+      } else {
+        const { rest, blocks } = splitRegistrations(existing);
+        if (!(blocks.length === 1 && blocks[0] === block)) {
+          const tmp = `${envFile}.${process.pid}.tmp`;
+          try {
+            // Write-then-rename, so a Bash command never sources a
+            // half-written file. The temp name is never one the host sources:
+            // it reads CLAUDE_ENV_FILE by exact name (Claude Code: only
+            // `<event>-hook-<n>.sh` files in that directory).
+            writeFileSync(tmp, `${rest}\n${block}\n`);
+            renameSync(tmp, envFile);
+          } catch {
+            try {
+              unlinkSync(tmp);
+            } catch {}
+            // Skip the append when this block is already the last one, so a
+            // rename that keeps failing cannot grow the file on every fire.
+            if (blocks[blocks.length - 1] !== block) appendBlock();
+          }
+        }
       }
     }
   }
