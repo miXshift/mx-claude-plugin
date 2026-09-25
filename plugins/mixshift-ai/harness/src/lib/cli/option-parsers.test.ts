@@ -100,6 +100,70 @@ describe('keyValueOption', () => {
     expect(err.telemetryMessage).toBe('invalid value for --query (json_object)');
     expect(err.telemetryMessage).not.toContain('SYNTH-SKU-001');
   });
+
+  describe('parameters joined with "&" in one value', () => {
+    it('is ampersand_joined, says why, and spells one flag per parameter', () => {
+      const err = thrown(() =>
+        query('details=true&granularityType=Marketplace&nextToken=c3ludGg+/dG9rZW4=', {}),
+      );
+      expect(err.errorClass).toBe('invalid_argument');
+      expect(err.flag).toBe('--query');
+      expect(err.valueShape).toBe('ampersand_joined');
+      expect(err.message.startsWith('--query takes one key=value pair per flag')).toBe(true);
+      expect(err.message).toContain('--query key=value');
+      expect(err.message).toContain(
+        'For this value: --query details=true --query granularityType=Marketplace --query nextToken=c3ludGg+/dG9rZW4=',
+      );
+    });
+
+    it('splits only where a name= follows, keeping a bare "&" and an "=" inside a value', () => {
+      const err = thrown(() => query('sku=SYNTH&SKU&filter=a=b', {}));
+      expect(err.message).toContain("For this value: --query 'sku=SYNTH&SKU' --query filter=a=b");
+    });
+
+    it('uses the trimmed key in the corrected flags', () => {
+      const err = thrown(() => query(' details =true&nextToken=x', {}));
+      expect(err.message).toContain('For this value: --query details=true --query nextToken=x');
+    });
+
+    it('a pair with a single quote gets the instruction but no corrected flags', () => {
+      const err = thrown(() => query("keywords=it's&details=true", {}));
+      expect(err.valueShape).toBe('ampersand_joined');
+      expect(err.message).not.toContain('For this value');
+    });
+
+    it('telemetryMessage carries the shape and none of the values', () => {
+      const err = thrown(() => query('sku=SYNTH-SKU-001&nextToken=SYNTHTOKEN', {}));
+      expect(err.telemetryMessage).toBe('invalid value for --query (ampersand_joined)');
+      expect(err.telemetryMessage).not.toContain('SYNTH');
+    });
+
+    it('a literal "&" inside a value is accepted', () => {
+      for (const v of ['SALT&PEPPER', 'salt & pepper', 'a&', 'a&&b', 'a&1=b', 'a& b=c', 'a&=b', 'a&amp;b']) {
+        expect(query(`keywords=${v}`, {})).toEqual({ keywords: v });
+      }
+    });
+
+    it('an "&" in the key, before the first "=", is left alone', () => {
+      expect(query('a&b=c', {})).toEqual({ 'a&b': 'c' });
+    });
+
+    it('--path accepts a SKU with "&" in it', () => {
+      const path = keyValueOption('--path', { bodyFlag: '--body' });
+      expect(path('sellerSku=SYNTH&SKU-01', {})).toEqual({ sellerSku: 'SYNTH&SKU-01' });
+      expect(path('sellerSku=R&D-KIT', {})).toEqual({ sellerSku: 'R&D-KIT' });
+    });
+
+    it('--option (amazon report) is checked the same way', () => {
+      const option = keyValueOption('--option', { example: 'reportPeriod=WEEK' });
+      const err = thrown(() => option('reportPeriod=WEEK&distributorView=MANUFACTURING', {}));
+      expect(err.valueShape).toBe('ampersand_joined');
+      expect(err.message).toContain(
+        'For this value: --option reportPeriod=WEEK --option distributorView=MANUFACTURING',
+      );
+      expect(option('sellingProgram=R&D', {})).toEqual({ sellingProgram: 'R&D' });
+    });
+  });
 });
 
 describe('integerOption', () => {

@@ -18,6 +18,15 @@ import { InvalidOptionValueError } from '../errors.js';
 /** An AmazonSellerID (merchant token): `A` plus 9-15 uppercase alphanumerics. */
 const MERCHANT_TOKEN = /^A[0-9A-Z]{9,15}$/;
 
+/**
+ * A second parameter joined into a value with `&`, as in a URL query string:
+ * `details=true&nextToken=abc`. Only `&` followed by `name=` counts, so a bare
+ * `&` (a SKU like `SALT&PEPPER` on --path) still passes. The lookahead form
+ * splits such a value back into its pairs.
+ */
+const AMPERSAND_JOINED = /&[A-Za-z_][A-Za-z0-9_]*=/;
+const AMPERSAND_JOIN_POINT = /&(?=[A-Za-z_][A-Za-z0-9_]*=)/;
+
 export interface KeyValueOptionHints {
   /** The command's JSON body flag, when it has one (e.g. `--body`). */
   bodyFlag?: string;
@@ -29,7 +38,10 @@ export interface KeyValueOptionHints {
  * Collector for a repeatable `--flag key=value` option. Accumulates into a
  * record; a repeated key keeps its last value. Rejects JSON (the commonest
  * misuse: an agent passing `{"maxResults":10}` to `--query`), a value with no
- * `=`, and an empty key.
+ * `=`, an empty key, and several pairs joined with `&` in one value. The last
+ * does not fail on its own: everything after the first `=` became one value,
+ * which the gateway encodes (`&` as `%26`) and Amazon answers with a 500 that
+ * reads as a retryable outage.
  */
 export function keyValueOption(
   flag: string,
@@ -71,6 +83,17 @@ export function keyValueOption(
         flag,
         'empty_key',
         `${flag} got "${value}", which has no key before the "=". ${howTo}`,
+      );
+    }
+    if (AMPERSAND_JOINED.test(value.slice(eq + 1))) {
+      const pairs = `${key}=${value.slice(eq + 1)}`.split(AMPERSAND_JOIN_POINT);
+      const corrected = spelledFlags(flag, pairs);
+      throw new InvalidOptionValueError(
+        flag,
+        'ampersand_joined',
+        `${flag} takes one key=value pair per flag, not several joined with "&": ` +
+          `everything after the first "=" would be sent as one value. ${howTo}` +
+          (corrected ? `\nFor this value: ${corrected}` : ''),
       );
     }
     return { ...previous, [key]: value.slice(eq + 1) };
@@ -141,15 +164,26 @@ function correctedKeyValueFlags(flag: string, json: string): string | null {
     return null;
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const parts: string[] = [];
+  const pairs: string[] = [];
   for (const [key, v] of Object.entries(parsed)) {
     const value = Array.isArray(v) ? csvValue(v) : scalarValue(v);
     if (value === null) return null;
-    const pair = `${key}=${value}`;
-    if (pair.includes("'")) return null;
-    parts.push(`${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`);
+    pairs.push(`${key}=${value}`);
   }
-  return parts.length > 0 ? parts.join(' ') : null;
+  return spelledFlags(flag, pairs);
+}
+
+/**
+ * `--query a=1 --query 'b=two words'`: one flag per pair, single-quoted when
+ * the pair holds anything beyond a safe set. Null for no pairs, or when a pair
+ * holds a single quote, which has no quoting that works in both a POSIX shell
+ * and PowerShell.
+ */
+function spelledFlags(flag: string, pairs: string[]): string | null {
+  if (pairs.length === 0 || pairs.some((pair) => pair.includes("'"))) return null;
+  return pairs
+    .map((pair) => `${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`)
+    .join(' ');
 }
 
 function scalarValue(v: unknown): string | null {
