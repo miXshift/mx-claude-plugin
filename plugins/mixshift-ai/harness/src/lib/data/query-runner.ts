@@ -1294,7 +1294,7 @@ async function datahubAuthedPost(
       // means the service HAD the request and we stopped waiting — a
       // different situation from never reaching it, and not worth replaying.
       const budgetExpired = err instanceof Error && err.name === 'TimeoutError';
-      throw new DatahubNetworkError(message, friendly, !budgetExpired);
+      throw new DatahubNetworkError(message, friendly, budgetExpired);
     }
   };
 
@@ -1431,7 +1431,16 @@ async function runDatahubQuery<Row>(
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure: DataQueryFailure;
-    if (err instanceof DatahubNetworkError) {
+    if (isClientBudgetExpiry(err, durationMs, queryTimeoutMs)) {
+      failure = clientBudgetTimeout(
+        err instanceof Error ? err.message : String(err),
+        durationMs,
+        queryTimeoutMs,
+        // Set by dispatch for library sql/sproc queries, whose SQL is not
+        // the user's to change; absent for the user's own SQL.
+        options.query_id,
+      );
+    } else if (err instanceof DatahubNetworkError) {
       failure = {
         ok: false,
         kind: 'host_unreachable',
@@ -1461,6 +1470,8 @@ async function runDatahubQuery<Row>(
         error_class: failure.kind,
         payload: {
           auth_path: 'datahub',
+          // Set only for a client budget expiry; absent on a true network failure.
+          raw_code: failure.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
         },
@@ -1619,7 +1630,14 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure: DataQueryFailure;
-    if (err instanceof DatahubNetworkError) {
+    if (isClientBudgetExpiry(err, durationMs, queryTimeoutMs)) {
+      failure = clientBudgetTimeout(
+        err instanceof Error ? err.message : String(err),
+        durationMs,
+        queryTimeoutMs,
+        id,
+      );
+    } else if (err instanceof DatahubNetworkError) {
       failure = {
         ok: false,
         kind: 'host_unreachable',
@@ -1640,7 +1658,8 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
         duration_ms: durationMs,
         query_id: id,
         error_class: failure.kind,
-        payload: { auth_path: 'datahub', named_query: true },
+        // raw_code is set only for a client budget expiry.
+        payload: { auth_path: 'datahub', named_query: true, raw_code: failure.raw_code },
       },
       options.dataDirOverride,
     );
@@ -1654,22 +1673,103 @@ class DatahubNetworkError extends Error {
    *  computed there because this class itself only carries a flattened
    *  string message, losing the `.cause` classify.ts needs. */
   readonly friendly: string;
-  /** False when the request DID reach the service and we gave up waiting on
-   *  its answer (the AbortSignal.timeout budget fired). Retrying that just
-   *  spends the budget again on a query the server is already struggling
-   *  with, so only genuinely pre-response failures — DNS, TLS, connection
-   *  refused, connect timeout, socket hang-up — are replayed.
+  /** True when the client's own AbortSignal.timeout budget fired: on a
+   *  direct connection the request DID reach the service and we gave up
+   *  waiting on its answer (through a proxy, see isClientBudgetExpiry).
+   *  The callers use it (with the elapsed time) to report a query timeout
+   *  rather than a dead host. */
+  readonly budgetExpired: boolean;
+  /** False when the budget expired. Retrying that just spends the budget
+   *  again on a query the server is already struggling with, so only
+   *  genuinely pre-response failures — DNS, TLS, connection refused,
+   *  connect timeout, socket hang-up — are replayed.
    *
    *  Defaulted rather than required: every call site that constructs this
    *  for a real fetch failure is pre-response, and defaulting keeps the
    *  friendly-message change (#141) and the replay (mx-ops#6) independent. */
   readonly retryable: boolean;
-  constructor(msg: string, friendly: string, retryable = true) {
+  constructor(msg: string, friendly: string, budgetExpired = false) {
     super(msg);
     this.name = 'DatahubNetworkError';
     this.friendly = friendly;
-    this.retryable = retryable;
+    this.budgetExpired = budgetExpired;
+    this.retryable = !budgetExpired;
   }
+}
+
+/** `raw_code` on a failure that the CLIENT's HTTP budget ended (mx-ops#79).
+ *  Distinct from the service's own timeout codes (ER_QUERY_TIMEOUT and kin)
+ *  and from a true unreachable host, which carries none, so query.failed
+ *  telemetry can tell the three apart. */
+export const CLIENT_BUDGET_RAW_CODE = 'client_budget';
+
+/**
+ * True when the client's HTTP budget (AbortSignal.timeout) ended the wait
+ * after the statement limit had already run out. The budget covers connect
+ * and transfer time as well as the query, so on a slow link it can fire
+ * before the service's own `timeout` envelope arrives, and the abort then
+ * looks like a dead host. By that point the service has had the query for
+ * its full limit, so it is reported as the query timeout it almost certainly
+ * was. On a direct connection, DNS, refused and undici's 10s connect timeout
+ * never match: they are not a budget expiry, and they end well before the
+ * limit.
+ *
+ * Known limitation (mx-ops#79 review): through an HTTP proxy (Cowork, the
+ * Claude Code sandbox, any HTTPS_PROXY), undici sends the tunnel CONNECT with
+ * only this request's signal and no connect timeout of its own. A proxy that
+ * never answers the CONNECT is therefore ended by the budget too, and reads
+ * as a client_budget timeout although the request never reached the service.
+ * Pinned by a test; bounding the CONNECT belongs in lib/net/proxy.ts.
+ *
+ * Two shapes reach here: the DatahubNetworkError from the fetch itself, and
+ * a bare TimeoutError when the budget fires while the response body is still
+ * being read (`res.json()` runs outside datahubAuthedPost), which used to
+ * surface as kind `unknown`. In the second shape the service has already
+ * answered, so what ran out is the transfer, not the statement; it is still a
+ * budget expiry, and fewer rows is still the fix.
+ */
+function isClientBudgetExpiry(err: unknown, durationMs: number, queryTimeoutMs: number): boolean {
+  const expired =
+    err instanceof DatahubNetworkError
+      ? err.budgetExpired
+      : err instanceof Error && err.name === 'TimeoutError';
+  return expired && durationMs >= queryTimeoutMs;
+}
+
+/**
+ * The failure for a client budget expiry: kind `timeout`, like the service's
+ * own, with CLIENT_BUDGET_RAW_CODE as the sub-reason. The copy is query-timeout
+ * guidance, never connect copy or `mixshift doctor`: a slow query is fixed by
+ * reshaping it, not by checking the network. Same idea as report.ts
+ * batteryFailure's budget branch (PR #163), which keeps its own copy for the
+ * battery's much longer budget. A library query's SQL (named, or dispatched
+ * sql/sproc with a query_id) is not the user's to change, so its copy names
+ * the inputs they do control. Copy rule: no em dashes (customer-facing).
+ */
+function clientBudgetTimeout(
+  message: string,
+  durationMs: number,
+  queryTimeoutMs: number,
+  libraryQueryId?: string,
+): DataQueryFailure {
+  const limit = `${Math.round(queryTimeoutMs / 1000)}s`;
+  const friendly = libraryQueryId
+    ? `Library query ${libraryQueryId} did not finish within the ${limit} query limit. ` +
+      'Narrow the date range or the number of sellers and run it again; if it keeps ' +
+      'timing out, report it with `mixshift feedback`.'
+    : `Query did not finish within the ${limit} query limit. Check the date filter ` +
+      "first: filter on the table's own date column (`mixshift data describe <table>` " +
+      'names it for catalogued tables) and run the query with EXPLAIN in front to ' +
+      'confirm an index covers that date filter. Then narrow the date range or filter ' +
+      'to one seller.';
+  return {
+    ok: false,
+    kind: 'timeout',
+    raw_code: CLIENT_BUDGET_RAW_CODE,
+    message,
+    friendly,
+    durationMs,
+  };
 }
 
 // Note: an earlier row-by-row streaming variant using mysql2's .stream() API
