@@ -5,7 +5,7 @@
  * The claude.ai plugin validator forbids top-level bin/ executables (which the
  * CLI runtime used to PATH-register automatically), so the shim now lives at
  * harness/bin/mixshift and this hook performs the PATH registration instead,
- * by appending exports to the session env file the host exposes via
+ * by writing exports to the session env file the host exposes via
  * CLAUDE_ENV_FILE (sourced by the Bash tool). It also exports MIXSHIFT_CLI
  * (absolute path to the bundled cli.js) so skills have a PATH-independent
  * invocation: `node "$MIXSHIFT_CLI" <args>`.
@@ -20,7 +20,14 @@
  * allowlist, we write nothing rather than risk a malformed or injectable
  * line; skills' fallback covers functionality.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import {
   readFile,
   writeFile,
@@ -29,18 +36,101 @@ import {
   rename,
   unlink,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, platform, release } from 'node:os';
 
 const MARKER = '# mixshift-ai session PATH registration';
-const SAFE = /^[A-Za-z0-9 _/:.\-]+$/;
+// `~` is allowed because claude.ai org-synced installs live in a
+// `<plugin>~g<n>` folder; inside the single quotes it is a literal character.
+const SAFE = /^[A-Za-z0-9 _/:.~\-]+$/;
+// The two export lines that follow MARKER in a registration block. Every
+// version of this hook has written them in exactly this shape, so a block an
+// older version left behind is recognized (and replaced) too.
+const REGISTRATION_EXPORT = /^export (PATH='[^']*':"\$PATH"|MIXSHIFT_CLI='[^']*')$/;
+// Claude Code's name for this hook's env file: `sessionstart-hook-<n>.sh`.
+const ENV_FILE_NAME = /^sessionstart-hook-(\d+)\.sh$/;
+const CLI_SUFFIX = '/harness/dist/cli.js';
 
 function posixify(p) {
   if (process.platform !== 'win32') return p;
   // The env file is sourced by Git Bash, whose PATH is colon-separated —
   // a `C:/...` entry would split at the drive colon. Use the /c/... form.
   return p.replace(/\\/g, '/').replace(/^([A-Za-z]):\//, (_, d) => `/${d.toLowerCase()}/`);
+}
+
+/**
+ * Split env-file text into everything that is NOT one of our registration
+ * blocks (`rest`, other writers' lines kept verbatim and in order) and the
+ * registration blocks themselves (`blocks`, each MARKER plus its exports).
+ */
+function splitRegistrations(text) {
+  const lines = text.split('\n');
+  const rest = [];
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] !== MARKER) {
+      rest.push(lines[i]);
+      continue;
+    }
+    const block = [MARKER];
+    while (block.length < 3 && i + 1 < lines.length && REGISTRATION_EXPORT.test(lines[i + 1])) {
+      block.push(lines[++i]);
+    }
+    blocks.push(block.join('\n'));
+    // Drop the blank separator line written ahead of every block.
+    if (rest.length > 0 && rest[rest.length - 1] === '') rest.pop();
+  }
+  return { rest: rest.join('\n'), blocks };
+}
+
+/**
+ * The folder holding the plugin root a registration block points at (Claude
+ * Code keeps each version of one install side by side there). Null when the
+ * block names no CLI path.
+ */
+function installDirOf(block) {
+  const m = /^export MIXSHIFT_CLI='([^']*)'$/m.exec(block);
+  if (!m || !m[1].endsWith(CLI_SUFFIX)) return null;
+  return posix.dirname(m[1].slice(0, -CLI_SUFFIX.length));
+}
+
+/**
+ * <n> in `sessionstart-hook-<n>.sh` is this hook's position among the
+ * SessionStart hooks that matched this fire, and it can drop between startup
+ * and a resume (a `startup`-only hook ahead of ours, or a plugin disabled in
+ * between). The previous version's block is then left in a sibling file the
+ * host sources AFTER ours, where it would still win. Remove our blocks from
+ * those later siblings. A sibling is only rewritten when every block in it
+ * belongs to this same install (a second installed copy keeps its own), its
+ * other lines are kept verbatim, and a file that changes while we work is
+ * left for the next fire.
+ */
+function dropStaleSiblingBlocks(envFile, ownInstallDir) {
+  const own = ENV_FILE_NAME.exec(basename(envFile));
+  if (!own || ownInstallDir === null) return;
+  const dir = dirname(envFile);
+  for (const name of readdirSync(dir)) {
+    const sibling = ENV_FILE_NAME.exec(name);
+    if (!sibling || Number(sibling[1]) <= Number(own[1])) continue;
+    const file = join(dir, name);
+    const tmp = `${file}.${process.pid}.tmp`;
+    try {
+      const text = readFileSync(file, 'utf8');
+      const { rest, blocks } = splitRegistrations(text);
+      if (blocks.length === 0 || !blocks.every((b) => installDirOf(b) === ownInstallDir)) {
+        continue;
+      }
+      writeFileSync(tmp, rest);
+      // Another hook may own this index now and be writing to it.
+      if (readFileSync(file, 'utf8') === text) renameSync(tmp, file);
+      else unlinkSync(tmp);
+    } catch {
+      try {
+        unlinkSync(tmp);
+      } catch {}
+    }
+  }
 }
 
 try {
@@ -51,18 +141,54 @@ try {
     const binDir = posixify(join(pluginRoot, 'harness', 'bin'));
     const cliPath = posixify(join(pluginRoot, 'harness', 'dist', 'cli.js'));
     if (SAFE.test(binDir) && SAFE.test(cliPath)) {
+      const block = `${MARKER}\nexport PATH='${binDir}':"$PATH"\nexport MIXSHIFT_CLI='${cliPath}'`;
       // SessionStart fires more than once per session (startup, then again on
-      // every resume/compact) against the SAME env file — append only once.
-      let already = false;
+      // every resume/compact) against the SAME env file, and that file
+      // outlives a plugin update. So the check is keyed on the PATHS, not on
+      // the marker alone: if the file already registers exactly this plugin
+      // root, leave it byte-for-byte alone; if it registers any other root
+      // (the version before an update), replace that block with this one.
+      // Either way the file ends holding one block, however many times the
+      // hook fires or the plugin updates.
+      //
+      // Fallback when the file cannot be rewritten: append. The file is
+      // sourced top to bottom, so a later block's PATH prepend and
+      // MIXSHIFT_CLI win, and the next fire that can rewrite collapses the
+      // file back to one block.
+      const appendBlock = () => appendFileSync(envFile, `\n${block}\n`);
+      let existing = '';
+      let readable = true;
       try {
-        already = readFileSync(envFile, 'utf8').includes(MARKER);
-      } catch {}
-      if (!already) {
-        appendFileSync(
-          envFile,
-          `\n${MARKER}\nexport PATH='${binDir}':"$PATH"\nexport MIXSHIFT_CLI='${cliPath}'\n`
-        );
+        existing = readFileSync(envFile, 'utf8');
+      } catch (err) {
+        // A missing file is simply empty. Any other read failure means we
+        // cannot see what else is in it, so never rewrite it: append only.
+        readable = err?.code === 'ENOENT';
       }
+      if (!readable) {
+        appendBlock();
+      } else {
+        const { rest, blocks } = splitRegistrations(existing);
+        if (!(blocks.length === 1 && blocks[0] === block)) {
+          const tmp = `${envFile}.${process.pid}.tmp`;
+          try {
+            // Write-then-rename, so a Bash command never sources a
+            // half-written file. The temp name is never one the host sources:
+            // it reads CLAUDE_ENV_FILE by exact name (Claude Code: only
+            // `<event>-hook-<n>.sh` files in that directory).
+            writeFileSync(tmp, `${rest}\n${block}\n`);
+            renameSync(tmp, envFile);
+          } catch {
+            try {
+              unlinkSync(tmp);
+            } catch {}
+            // Skip the append when this block is already the last one, so a
+            // rename that keeps failing cannot grow the file on every fire.
+            if (blocks[blocks.length - 1] !== block) appendBlock();
+          }
+        }
+      }
+      dropStaleSiblingBlocks(envFile, installDirOf(block));
     }
   }
 } catch {
@@ -424,6 +550,14 @@ async function resolveLatestVersion({ dataDir, state, now, markDirty }) {
 
 // --- notice copy (steps 8-9) --------------------------------------------------
 
+// A resumed conversation can still hold commands that ran the previous
+// version by its absolute cli.js path; this notice reaches it right after an
+// update.
+const RERESOLVE_CLI =
+  'If earlier turns of this conversation ran MixShift through an absolute cli.js path, ' +
+  'do not reuse that path: it runs the previous version. Use "mixshift" or ' +
+  'node "$MIXSHIFT_CLI" instead.';
+
 /** Customer-facing copy: no em dashes, never "cold start".
  *
  *  Defense in depth (final gate before anything reaches stdout): every
@@ -453,10 +587,10 @@ function renderNotice(notice) {
           `is also available. Run "mixshift whatsnew" for what changed.`,
         additionalContext:
           `[mixshift-ai plugin] This install just updated from ${from} to ${to}. An even ` +
-          `newer version (${newerAvailable}) is already available. At the START of your ` +
-          `FIRST reply only, tell the user in one friendly sentence that the MixShift ` +
-          `plugin updated (and mention the newer version available too) and offer to run ` +
-          `"mixshift whatsnew" for a rundown of what is new and any recommended ` +
+          `newer version (${newerAvailable}) is already available. ${RERESOLVE_CLI} At the ` +
+          `START of your FIRST reply only, tell the user in one friendly sentence that the ` +
+          `MixShift plugin updated (and mention the newer version available too) and offer ` +
+          `to run "mixshift whatsnew" for a rundown of what is new and any recommended ` +
           `follow-ups. If they accept, run it via Bash and walk them through the output. ` +
           `If they decline or ignore it, drop the subject for the rest of the session. If ` +
           `they ask to stop being reminded, run "mixshift whatsnew --dismiss". Do not ` +
@@ -466,13 +600,13 @@ function renderNotice(notice) {
     return {
       systemMessage: `[mixshift-ai] Updated ${from} -> ${to}. Run "mixshift whatsnew" for what changed.`,
       additionalContext:
-        `[mixshift-ai plugin] This install just updated from ${from} to ${to}. At the ` +
-        `START of your FIRST reply only, tell the user in one friendly sentence that the ` +
-        `MixShift plugin updated and offer to run "mixshift whatsnew" for a rundown of ` +
-        `what is new and any recommended follow-ups. If they accept, run it via Bash and ` +
-        `walk them through the output. If they decline or ignore it, drop the subject for ` +
-        `the rest of the session. If they ask to stop being reminded, run "mixshift ` +
-        `whatsnew --dismiss". Do not repeat this notice.`,
+        `[mixshift-ai plugin] This install just updated from ${from} to ${to}. ` +
+        `${RERESOLVE_CLI} At the START of your FIRST reply only, tell the user in one ` +
+        `friendly sentence that the MixShift plugin updated and offer to run "mixshift ` +
+        `whatsnew" for a rundown of what is new and any recommended follow-ups. If they ` +
+        `accept, run it via Bash and walk them through the output. If they decline or ` +
+        `ignore it, drop the subject for the rest of the session. If they ask to stop ` +
+        `being reminded, run "mixshift whatsnew --dismiss". Do not repeat this notice.`,
     };
   }
   const { current, latest } = notice;

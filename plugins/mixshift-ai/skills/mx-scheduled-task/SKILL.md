@@ -36,7 +36,7 @@ trigger_phrases:
 
 # Scheduled MixShift tasks that survive fresh sandboxes
 
-> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed.
+> Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
 A scheduled run starts from nothing: fresh sandbox, no session, no memory of the
 session that created it. The one thing a task needs is a persistent folder it can
@@ -144,7 +144,14 @@ first, filling in the bracketed values, then the actual work steps:
 STEP 0: MixShift preflight. Must pass before any other work.
 Resolve the CLI (scheduled sandboxes have no PATH hook and no $MIXSHIFT_CLI, and
 `mixshift` is NOT on PATH — every call must run as `node <cli.js>`):
-  MIXSHIFT_CLI="$(find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1)"
+  find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null
+If that returns more than one path, take the highest version, not the first line.
+A machine keeps every version it has ever installed. Skip any path under a
+.trash folder, and read each remaining copy's version from
+.claude-plugin/plugin.json in its plugin folder (the path minus
+/harness/dist/cli.js), not from the path text and not by running it: many paths
+carry no version, and text order is not version order (as text, 0.8.10 sorts
+before both 0.8.9 and 0.9.0). Set MIXSHIFT_CLI to the path you picked.
 If empty: STOP and report that the MixShift plugin is not available in this run.
 (Do NOT add a `-path '*mixshift*'` filter: the plugin installs into an ID-named
 directory like `plugin_01LC7x...` with no "mixshift" in the path, so that filter

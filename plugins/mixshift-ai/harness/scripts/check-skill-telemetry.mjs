@@ -91,9 +91,10 @@ async function checkSkill(skillId) {
   if (!raw.includes("-path '*/harness/dist/cli.js'")) {
     result.errors.push(
       "Missing the executable CLI resolver. Every SKILL.md must include the scan " +
-        "`find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null | head -1` " +
-        'in its CLI-invocation guidance so the CLI is locatable in Cowork (no PATH hook, ' +
-        'no $MIXSHIFT_CLI). See the skill-author guide.',
+        "`find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null` " +
+        'in its CLI-invocation guidance, with the highest-version pick (never `| head -1`), ' +
+        'so the CLI is locatable in Cowork (no PATH hook, no $MIXSHIFT_CLI). See the ' +
+        'skill-author guide.',
     );
   }
 
