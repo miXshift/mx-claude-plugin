@@ -115,16 +115,27 @@ function expectQueryTimeoutCopy(friendly: string): void {
   expect(friendly).not.toContain('—'); // no em dashes in customer copy
 }
 
-/** The service answered, so nothing may blame the query or its limit. */
+/** The service answered, so nothing may name the query limit or the date
+ *  filter, and nothing may offer a LIMIT, which silently cuts the result. A
+ *  shorter date range is allowed: it is a way to get fewer rows. */
 function expectDownloadCopy(friendly: string): void {
   expect(friendly).toContain('did not finish downloading');
-  expect(friendly).toContain('slow connection or a large result, not a slow query');
-  expect(friendly).not.toMatch(/date range/i);
+  expect(friendly).toMatch(/shorter date range/);
+  expect(friendly).not.toMatch(/date filter/i);
+  expect(friendly).not.toContain('LIMIT');
   expect(friendly).not.toContain('query limit');
   expect(friendly).not.toMatch(/\b\d+s\b/);
   expect(friendly).not.toContain('EXPLAIN');
   expect(friendly).not.toContain('--out');
   expectQueryTimeoutCopy(friendly);
+}
+
+/** The download took the larger share of the time: the copy blames the link. */
+function expectSlowDownloadCopy(friendly: string): void {
+  expect(friendly).toContain('slow connection or a large result, not a slow query');
+  expect(friendly).toContain('Check your connection');
+  expect(friendly).not.toContain('took most of the time');
+  expectDownloadCopy(friendly);
 }
 
 /**
@@ -168,6 +179,7 @@ describe('client budget expiry after the statement limit reads as a query timeou
     const emit = lastFailedEmit();
     expect(emit.error_class).toBe('timeout');
     expect(emit.payload.raw_code).toBe('client_budget');
+    expect(emit.payload.headers_ms).toBeUndefined();
     expect(emit.duration_ms).toBe(65_000);
   });
 
@@ -251,15 +263,39 @@ describe('client budget expiry during the body download reads as a slow download
     expect(result.kind).toBe('timeout');
     expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
     expect(result.friendly).toContain('The service answered, but the result did not finish downloading in time.');
-    expect(result.friendly).toContain('Check your connection');
-    expect(result.friendly).toContain('select only the columns you need');
-    expect(result.friendly).toContain('LIMIT');
-    expectDownloadCopy(result.friendly);
+    expect(result.friendly).toContain('fewer rows (a shorter date range or fewer sellers)');
+    expect(result.friendly).toContain('only the columns you need');
+    expectSlowDownloadCopy(result.friendly);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const emit = lastFailedEmit();
     expect(emit.error_class).toBe('timeout');
     expect(emit.payload.raw_code).toBe('client_budget_download');
+    expect(emit.payload.headers_ms).toBe(1_000);
+    expect(emit.duration_ms).toBe(65_000);
+  });
+
+  it('/api/query: a service that answered late does not read as a slow connection', async () => {
+    // The service can answer after its statement limit (its pool wait comes on
+    // top), leaving the download only the last seconds of the budget. That is
+    // not a slow link, so the copy says the service took most of the time.
+    fetchMock.mockImplementation(headersThenBodyReject(62_000, 3_000, budgetAbort()));
+
+    const result = await runQuery('SELECT * FROM t', [], { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered, but the result did not finish downloading in time.');
+    expect(result.friendly).toContain('The service took most of the time allowed before it answered');
+    expect(result.friendly).not.toContain('not a slow query');
+    expect(result.friendly).not.toContain('connection');
+    expectDownloadCopy(result.friendly);
+
+    const emit = lastFailedEmit();
+    expect(emit.payload.raw_code).toBe('client_budget_download');
+    expect(emit.payload.headers_ms).toBe(62_000);
     expect(emit.duration_ms).toBe(65_000);
   });
 
@@ -273,10 +309,10 @@ describe('client budget expiry during the body download reads as a slow download
     expect(result.kind).toBe('timeout');
     expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
     expect(result.friendly).toContain('The service answered library query LIB-01');
-    expect(result.friendly).toContain('fewer sellers');
+    expect(result.friendly).toContain('a shorter date range or fewer sellers');
     expect(result.friendly).toContain('mixshift feedback');
     expect(result.friendly).not.toContain('SELECT *');
-    expectDownloadCopy(result.friendly);
+    expectSlowDownloadCopy(result.friendly);
     expect(lastFailedEmit().payload.raw_code).toBe('client_budget_download');
   });
 
@@ -290,13 +326,29 @@ describe('client budget expiry during the body download reads as a slow download
     expect(result.kind).toBe('timeout');
     expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
     expect(result.friendly).toContain('The service answered library query PING');
-    expectDownloadCopy(result.friendly);
+    expectSlowDownloadCopy(result.friendly);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const emit = lastFailedEmit();
     expect(emit.error_class).toBe('timeout');
     expect(emit.query_id).toBe('PING');
-    expect(emit.payload).toMatchObject({ named_query: true, raw_code: 'client_budget_download' });
+    expect(emit.payload).toMatchObject({ named_query: true, raw_code: 'client_budget_download', headers_ms: 2_000 });
+  });
+
+  it('/api/named-query: a library query the service answered late gets the late-answer library copy', async () => {
+    fetchMock.mockImplementation(headersThenBodyReject(62_000, 3_000, budgetAbort()));
+
+    const result = await runNamedQuery('PING', { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered library query PING');
+    expect(result.friendly).toContain('The service took most of the time allowed before it answered');
+    expect(result.friendly).toContain('mixshift feedback');
+    expect(result.friendly).not.toContain('connection');
+    expectDownloadCopy(result.friendly);
+    expect(lastFailedEmit().payload).toMatchObject({ named_query: true, headers_ms: 62_000 });
   });
 
   it('/api/named-query: a download that outlives a budget shorter than the statement limit is still a slow download', async () => {
@@ -312,7 +364,7 @@ describe('client budget expiry during the body download reads as a slow download
     expect(result.durationMs).toBeLessThan(60_000);
     expect(result.kind).toBe('timeout');
     expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
-    expectDownloadCopy(result.friendly);
+    expectSlowDownloadCopy(result.friendly);
   });
 
   it('pager: a page whose body download runs out surfaces as the same slow download', async () => {
@@ -331,7 +383,7 @@ describe('client budget expiry during the body download reads as a slow download
     expect(res.paginated).toBe(true);
     expect(res.failure?.kind).toBe('timeout');
     expect(res.failure?.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
-    expectDownloadCopy(res.failure!.friendly);
+    expectSlowDownloadCopy(res.failure!.friendly);
   });
 
   it('a body read that fails for any other reason is not a budget expiry', async () => {
@@ -345,6 +397,7 @@ describe('client budget expiry during the body download reads as a slow download
     expect(result.raw_code).toBeUndefined();
     expect(result.message).toBe('terminated');
     expect(lastFailedEmit().payload.raw_code).toBeUndefined();
+    expect(lastFailedEmit().payload.headers_ms).toBeUndefined();
   });
 });
 
@@ -518,6 +571,7 @@ describe('real socket: the phase is where the abort landed', () => {
         if (result.ok) return;
         expect(result.kind).toBe('timeout');
         expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+        // Which download copy depends on real timings; the mocked tests pin it.
         expectDownloadCopy(result.friendly);
       },
     );

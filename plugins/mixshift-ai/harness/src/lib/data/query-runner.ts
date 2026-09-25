@@ -1351,6 +1351,8 @@ async function runDatahubQuery<Row>(
 ): Promise<DataQueryResult<Row>> {
   const t0 = Date.now();
   const queryTimeoutMs = options.queryTimeoutMs ?? 60_000;
+  // Time to the response headers: how long the service took to answer.
+  let headersMs: number | undefined;
 
   try {
     const res = await datahubAuthedPost(
@@ -1360,6 +1362,7 @@ async function runDatahubQuery<Row>(
       queryTimeoutMs + 5_000,
       options.dataDirOverride,
     );
+    headersMs = Date.now() - t0;
 
     // Server returns the same envelope shape as DataQueryResult — just
     // pass through. Type assertion is safe because the schema is
@@ -1438,6 +1441,7 @@ async function runDatahubQuery<Row>(
         err instanceof Error ? err.message : String(err),
         durationMs,
         queryTimeoutMs,
+        headersMs,
         // Set by dispatch for library sql/sproc queries, whose SQL is not
         // the user's to change; absent for the user's own SQL.
         options.query_id,
@@ -1476,6 +1480,9 @@ async function runDatahubQuery<Row>(
           // client_budget_download when the body download ran out); absent on
           // a true network failure.
           raw_code: failure.raw_code,
+          // Download expiry only: how long the service took to answer, so the
+          // read can tell a slow link from a service that used the budget.
+          headers_ms: budgetPhase === 'download' ? headersMs : undefined,
           ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
         },
@@ -1563,6 +1570,9 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
   const sellerIds =
     options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : undefined;
 
+  // Time to the response headers: how long the service took to answer.
+  let headersMs: number | undefined;
+
   try {
     const res = await datahubAuthedPost(
       creds,
@@ -1571,6 +1581,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
       options.httpTimeoutMs ?? queryTimeoutMs + 5_000,
       options.dataDirOverride,
     );
+    headersMs = Date.now() - t0;
     const json = await readDatahubJson<NamedQueryWire>(res);
     const durationMs = Date.now() - t0;
 
@@ -1641,6 +1652,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
         err instanceof Error ? err.message : String(err),
         durationMs,
         queryTimeoutMs,
+        headersMs,
         id,
       );
     } else if (err instanceof DatahubNetworkError) {
@@ -1664,8 +1676,14 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
         duration_ms: durationMs,
         query_id: id,
         error_class: failure.kind,
-        // raw_code is set only for a client budget expiry (either phase).
-        payload: { auth_path: 'datahub', named_query: true, raw_code: failure.raw_code },
+        // raw_code is set only for a client budget expiry (either phase);
+        // headers_ms only for a download expiry.
+        payload: {
+          auth_path: 'datahub',
+          named_query: true,
+          raw_code: failure.raw_code,
+          headers_ms: budgetPhase === 'download' ? headersMs : undefined,
+        },
       },
       options.dataDirOverride,
     );
@@ -1727,8 +1745,8 @@ class DatahubDownloadTimeoutError extends Error {
  * after the headers arrived; undici then rejects the read with the signal's
  * TimeoutError, which is re-thrown as a DatahubDownloadTimeoutError so the
  * caller can tell a slow download from a slow query by WHERE the abort
- * landed. Elapsed time cannot tell them apart: it is about the full budget
- * in both. Anything else (a malformed body, a connection reset mid-body)
+ * landed. Total elapsed time cannot tell them apart: it is about the full
+ * budget in both. Anything else (a malformed body, a connection reset mid-body)
  * propagates unchanged.
  */
 async function readDatahubJson<T>(res: Response): Promise<T> {
@@ -1812,30 +1830,41 @@ function clientBudgetPhase(
  * `response`: query-timeout guidance, never connect copy or `mixshift
  * doctor`: a slow query is fixed by reshaping it, not by checking the network.
  *
- * `download`: the service answered, so the copy never blames the query or
- * its limit and never says to narrow the date range. It names the connection
- * and the size of the result. `--out` is deliberately not offered: it pages
- * under the same per-request byte budget and time budget as an inline query,
- * so it does not shorten any one download.
+ * `download`: the service answered, so the copy never names the query limit
+ * or the date filter. Its levers are the size of the result: fewer rows (a
+ * shorter date range, fewer sellers) or fewer columns. A LIMIT is not offered,
+ * because it silently cuts the result short. It blames the connection ("not a
+ * slow query") only when the download took the larger share of the elapsed
+ * time, measured from `headersMs`: the service answers only after the
+ * statement finishes, and can answer late (its pool wait comes on top of the
+ * statement limit), so a download that ran out after a late answer says only
+ * that the service took most of the time. `--out` is deliberately not
+ * offered: it pages under the same per-request byte budget and time budget as
+ * an inline query, so it does not shorten any one download.
  */
 function clientBudgetTimeout(
   phase: ClientBudgetPhase,
   message: string,
   durationMs: number,
   queryTimeoutMs: number,
+  headersMs: number | undefined,
   libraryQueryId?: string,
 ): DataQueryFailure {
   if (phase === 'download') {
-    const friendly = libraryQueryId
-      ? `The service answered library query ${libraryQueryId}, but the result did not ` +
-        'finish downloading in time. That points at a slow connection or a large ' +
-        'result, not a slow query. Check your connection and run it again, or run it ' +
-        'for fewer sellers to get a smaller result; if it keeps happening, report it ' +
-        'with `mixshift feedback`.'
-      : 'The service answered, but the result did not finish downloading in time. ' +
-        'That points at a slow connection or a large result, not a slow query. Check ' +
-        'your connection and run it again, or make the result smaller: select only the ' +
-        'columns you need instead of SELECT * and add or lower a LIMIT.';
+    const answered = libraryQueryId
+      ? `The service answered library query ${libraryQueryId}, but the result did not finish downloading in time.`
+      : 'The service answered, but the result did not finish downloading in time.';
+    const slowDownload = headersMs !== undefined && durationMs - headersMs > headersMs;
+    const why = slowDownload
+      ? ' That points at a slow connection or a large result, not a slow query. ' +
+        'Check your connection and run it again, or '
+      : ' The service took most of the time allowed before it answered, so ';
+    const smaller = libraryQueryId
+      ? 'run it for a shorter date range or fewer sellers to get a smaller result; ' +
+        'if it keeps happening, report it with `mixshift feedback`.'
+      : 'ask for a smaller result: fewer rows (a shorter date range or fewer sellers) ' +
+        'or only the columns you need instead of SELECT *.';
+    const friendly = answered + why + smaller;
     return {
       ok: false,
       kind: 'timeout',

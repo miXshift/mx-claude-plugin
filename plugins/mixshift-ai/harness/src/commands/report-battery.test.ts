@@ -477,14 +477,19 @@ describe('report battery: failure mapping', () => {
     expect(server.message).toBe('Query exceeded the 60s timeout. (MPRX-FIGURES-BRAND-01: timeout)');
   });
 
-  it('a battery whose document did not finish downloading keeps the runner\'s download copy, not "did not answer"', () => {
+  it('a battery whose document did not finish downloading says so in battery terms, not "did not answer"', () => {
     // The service DID answer, so the battery's "did not answer within 290s" would be wrong. The
-    // runner's download copy passes through, still in the timeout error class.
+    // runner's library copy ("fewer sellers", "a shorter date range") is not the battery's lever
+    // either: it gets its own download copy, still in the timeout error class.
     const friendly = 'The service answered library query MPRX-FIGURES-BRAND-01, but the result did not finish downloading in time.';
     const err = batteryFailure({ ok: false, kind: 'timeout', raw_code: 'client_budget_download', message: 'aborted', friendly, durationMs: BATTERY_HTTP_TIMEOUT_MS + 12 });
     expect(err.errorClass).toBe('report_battery_timeout');
-    expect(err.message).toBe(`${friendly} (MPRX-FIGURES-BRAND-01: timeout)`);
+    expect(err.message).toContain('The figure battery answered, but its document did not finish downloading in time.');
+    expect(err.message).toContain('fewer accounts');
+    expect(err.message).toContain('label the gap in the method notes');
+    expect(err.message).toMatch(/\(MPRX-FIGURES-BRAND-01: timeout\)$/);
     expect(err.message).not.toContain('did not answer');
+    expect(err.message).not.toContain('fewer sellers');
   });
 
   it('keeps the error class bounded: an unknown wire kind folds to unknown while the message keeps the raw kind', () => {

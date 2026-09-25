@@ -22,7 +22,11 @@ import {
 } from '../lib/report-contract/render-report.js';
 import { UserFacingError } from '../lib/errors.js';
 import { runDispatched } from '../lib/data/dispatch.js';
-import { CLIENT_BUDGET_RAW_CODE, type DataQueryFailure } from '../lib/data/query-runner.js';
+import {
+  CLIENT_BUDGET_RAW_CODE,
+  CLIENT_BUDGET_DOWNLOAD_RAW_CODE,
+  type DataQueryFailure,
+} from '../lib/data/query-runner.js';
 import { validateBrandContext } from '../lib/context/load.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { readIndex } from '../lib/clients/index.js';
@@ -1002,8 +1006,16 @@ export function batteryParams(
  *  runs for minutes, keeps its own copy naming its own budget. A budget that
  *  ran out while the document was downloading (raw_code
  *  client_budget_download) is not "did not answer": the service had answered,
- *  so the runner's slow-download copy passes through, still as a timeout. */
+ *  so it gets the battery's own download copy, still as a timeout. */
 export function batteryFailure(failure: DataQueryFailure): UserFacingError {
+  if (failure.raw_code === CLIENT_BUDGET_DOWNLOAD_RAW_CODE) {
+    return new UserFacingError(
+      'The figure battery answered, but its document did not finish downloading in time. Check your connection and retry once, ' +
+        'or retry with fewer accounts; if it repeats, report it with `mixshift feedback` and label the gap in the method notes. ' +
+        `(${BATTERY_QUERY_ID}: timeout)`,
+      'report_battery_timeout',
+    );
+  }
   const budgetExpired =
     failure.raw_code === CLIENT_BUDGET_RAW_CODE ||
     (failure.kind === 'host_unreachable' && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5_000);
