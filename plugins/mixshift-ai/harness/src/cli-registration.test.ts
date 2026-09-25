@@ -67,3 +67,19 @@ describe('cli.ts registration — bootstrap command is gone (D-034)', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('cli.ts registration — exitOverride covers every command group (mx-ops#86)', () => {
+  // commander copies exitOverride only to commands that exist when it is set,
+  // so a group registered after applyExitOverride(program) would fall back to
+  // commander's own process.exit() on a usage error: no --json envelope, no
+  // event. test/cli-top-level-error.test.ts proves the wiring for one group;
+  // this keeps it true for groups added later.
+  it('applyExitOverride(program) comes after the last register*(program) call', async () => {
+    const source = await readFile(cliPath, 'utf-8');
+    const registrations = [...source.matchAll(/^register\w+\(program\);/gm)];
+    expect(registrations.length).toBeGreaterThan(0);
+    const override = source.search(/^applyExitOverride\(program\);/m);
+    expect(override).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(registrations.at(-1)!.index);
+  });
+});

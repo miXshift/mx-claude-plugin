@@ -8,9 +8,10 @@
  *       the findings already computed for its neighbors. Exit code 2 when
  *       any file was unreadable (wins over 1 when findings ALSO exist).
  *   F9  `--json` used to let a thrown UserFacingError fall through to
- *       cli.ts's top-level catch, which always prints PLAIN TEXT regardless
- *       of --json. Every report command now emits the standard
- *       `{status:'error', error_class, message}` envelope on --json instead.
+ *       cli.ts's top-level catch, which then printed PLAIN TEXT regardless
+ *       of --json (it emits the envelope too since mx-ops#86). Every report
+ *       command emits the standard `{status:'error', error_class, message}`
+ *       envelope on --json itself.
  *   F10 `--out` into a not-yet-existing directory used to throw a raw
  *       ENOENT; the parent directory is now created first, and a residual
  *       write failure is reclassified as `report_out_unwritable`.
