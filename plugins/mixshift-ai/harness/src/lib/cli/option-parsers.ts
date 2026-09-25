@@ -21,11 +21,10 @@ const MERCHANT_TOKEN = /^A[0-9A-Z]{9,15}$/;
 /**
  * A second parameter joined into a value with `&`, as in a URL query string:
  * `details=true&nextToken=abc`. Only `&` followed by `name=` counts, so a bare
- * `&` (a SKU like `SALT&PEPPER` on --path) still passes. The lookahead form
- * splits such a value back into its pairs.
+ * `&` (a SKU like `SALT&PEPPER` on --path) still passes. The same pattern
+ * splits such a value back into its pairs, a doubled `&&` included.
  */
-const AMPERSAND_JOINED = /&[A-Za-z_][A-Za-z0-9_]*=/;
-const AMPERSAND_JOIN_POINT = /&(?=[A-Za-z_][A-Za-z0-9_]*=)/;
+const AMPERSAND_JOIN = /&+(?=[A-Za-z_][A-Za-z0-9_]*=)/;
 
 export interface KeyValueOptionHints {
   /** The command's JSON body flag, when it has one (e.g. `--body`). */
@@ -85,9 +84,12 @@ export function keyValueOption(
         `${flag} got "${value}", which has no key before the "=". ${howTo}`,
       );
     }
-    if (AMPERSAND_JOINED.test(value.slice(eq + 1))) {
-      const pairs = `${key}=${value.slice(eq + 1)}`.split(AMPERSAND_JOIN_POINT);
-      const corrected = spelledFlags(flag, pairs);
+    if (AMPERSAND_JOIN.test(value.slice(eq + 1))) {
+      // Split the value only, so an `&` in the key stays in the key. The
+      // corrected flags drop URL leftovers (a leading `?`, a trailing `&`)
+      // that would otherwise reach Amazon as part of a name or value.
+      const [first, ...rest] = value.slice(eq + 1).replace(/&+$/, '').split(AMPERSAND_JOIN);
+      const corrected = spelledFlags(flag, [`${key.replace(/^\?+/, '')}=${first}`, ...rest]);
       throw new InvalidOptionValueError(
         flag,
         'ampersand_joined',
@@ -175,12 +177,23 @@ function correctedKeyValueFlags(flag: string, json: string): string | null {
 
 /**
  * `--query a=1 --query 'b=two words'`: one flag per pair, single-quoted when
- * the pair holds anything beyond a safe set. Null for no pairs, or when a pair
- * holds a single quote, which has no quoting that works in both a POSIX shell
- * and PowerShell.
+ * the pair holds anything beyond a safe set. Null when following the flags
+ * would not send these pairs: no pairs; a pair with a single quote, which has
+ * no quoting that works in both a POSIX shell and PowerShell; a pair
+ * keyValueOption rejects; or a key given twice, which would silently keep only
+ * its last value.
  */
 function spelledFlags(flag: string, pairs: string[]): string | null {
-  if (pairs.length === 0 || pairs.some((pair) => pair.includes("'"))) return null;
+  if (pairs.length === 0) return null;
+  const keys = new Set<string>();
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    const key = eq < 0 ? '' : pair.slice(0, eq).trim();
+    if (!key || keys.has(key) || pair.includes("'") || AMPERSAND_JOIN.test(pair.slice(eq + 1))) {
+      return null;
+    }
+    keys.add(key);
+  }
   return pairs
     .map((pair) => `${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`)
     .join(' ');

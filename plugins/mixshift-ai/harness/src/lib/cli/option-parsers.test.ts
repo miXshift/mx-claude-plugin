@@ -121,6 +121,32 @@ describe('keyValueOption', () => {
       expect(err.message).toContain("For this value: --query 'sku=SYNTH&SKU' --query filter=a=b");
     });
 
+    it('a PascalCase name (SP-API v0: QueryType, NextToken) counts as a join', () => {
+      const err = thrown(() => query('QueryType=SHIPMENT&NextToken=SYNTHTOKEN', {}));
+      expect(err.valueShape).toBe('ampersand_joined');
+      expect(err.message).toContain('For this value: --query QueryType=SHIPMENT --query NextToken=SYNTHTOKEN');
+    });
+
+    it('drops URL leftovers from the corrected flags: a doubled "&&", a trailing "&", a leading "?"', () => {
+      for (const v of ['details=true&&nextToken=x', 'details=true&nextToken=x&', '?details=true&nextToken=x']) {
+        expect(thrown(() => query(v, {})).message).toContain(
+          'For this value: --query details=true --query nextToken=x',
+        );
+      }
+    });
+
+    it('a key given twice gets no corrected flags, since the last would silently win', () => {
+      const err = thrown(() => query('marketplaceIds=SYNTHMKT1&marketplaceIds=SYNTHMKT2', {}));
+      expect(err.valueShape).toBe('ampersand_joined');
+      expect(err.message).not.toContain('For this value');
+    });
+
+    it('JSON whose value would itself be rejected as joined gets no corrected flags', () => {
+      const err = thrown(() => query('{"sku":"SYNTH&QTY=2"}', {}));
+      expect(err.valueShape).toBe('json_object');
+      expect(err.message).not.toContain('For this value');
+    });
+
     it('uses the trimmed key in the corrected flags', () => {
       const err = thrown(() => query(' details =true&nextToken=x', {}));
       expect(err.message).toContain('For this value: --query details=true --query nextToken=x');
@@ -146,6 +172,9 @@ describe('keyValueOption', () => {
 
     it('an "&" in the key, before the first "=", is left alone', () => {
       expect(query('a&b=c', {})).toEqual({ 'a&b': 'c' });
+      expect(thrown(() => query('a&b=c&d=e', {})).message).toContain(
+        "For this value: --query 'a&b=c' --query d=e",
+      );
     });
 
     it('--path accepts a SKU with "&" in it', () => {
