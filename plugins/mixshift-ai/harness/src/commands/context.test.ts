@@ -20,13 +20,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { registerContextCommands } from './context.js';
 import { createContextSyncClient, type ContextSyncClient } from '../lib/context-sync/client.js';
 import { maybeAutoSync } from '../lib/context-sync/autosync.js';
 import { track } from '../lib/telemetry/index.js';
 import type { WireManifestBrand } from '../lib/context-sync/types.js';
+import { __resetRetiredNotices } from '../lib/context-sync/lifecycle.js';
 
 vi.mock('../lib/context-sync/client.js', () => ({
   createContextSyncClient: vi.fn(),
@@ -464,5 +467,138 @@ describe('status unshared CTA', () => {
 
     const parsed = JSON.parse(stdoutChunks.join('')) as { unshared: number };
     expect(parsed.unshared).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brand retire (slice 1): bulk commands skip retired brands with ONE summary
+// line; an explicit --brand proceeds with a one-line stderr notice; an older
+// service (no lifecycle field) changes nothing. Manifest entries come from the
+// contract-shaped wire fixture (docs emptied so no doc traffic is involved).
+// ---------------------------------------------------------------------------
+
+describe('brand retire: bulk skip and explicit notice', () => {
+  const FIXTURE = JSON.parse(
+    readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..', '..', 'testdata', 'context-sync', 'brand-lifecycle-wire.json',
+      ),
+      'utf8',
+    ),
+  ) as Record<string, { body: { brands: WireManifestBrand[] } }>;
+  const withoutDocs = (brands: WireManifestBrand[]): WireManifestBrand[] =>
+    brands.map((b) => ({ ...b, docs: [] }));
+  const NEW_SERVICE = withoutDocs(FIXTURE.manifest_all!.body.brands);
+  const OLD_SERVICE = withoutDocs(FIXTURE.manifest_old_gateway!.body.brands);
+  const SUMMARY =
+    '1 retired brand skipped: acme-snacks (retired by pat@example.com on Sep 24, 2026; ' +
+    'mixshift brand restore acme-snacks to undo)';
+
+  let stdoutChunks: string[];
+  const stdoutText = (): string => stdoutChunks.join('');
+
+  beforeEach(async () => {
+    __resetRetiredNotices();
+    stdoutChunks = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+    await rm(join(tmpDataDir, 'clients', 'acme'), { recursive: true, force: true });
+    await mkdir(join(tmpDataDir, 'clients', 'acme-snacks'), { recursive: true });
+    await mkdir(join(tmpDataDir, 'clients', 'summit-trail'), { recursive: true });
+  });
+
+  it('status without --brand skips the retired brand and prints the one summary line', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('status', '--data-dir', tmpDataDir);
+
+    const out = stdoutText();
+    expect(out).toContain('summit-trail');
+    expect(out).not.toMatch(/^acme-snacks\s/m);
+    expect(out).toContain(SUMMARY);
+    expect(out.split(SUMMARY)).toHaveLength(2); // exactly once
+    expect(stderrText()).toBe('');
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('status --json carries retired_skipped and leaves the retired brand out of brands', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('status', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as {
+      brands: Array<{ brand: string }>;
+      retired_skipped: unknown;
+    };
+    expect(doc.brands.map((b) => b.brand)).toEqual(['summit-trail']);
+    expect(doc.retired_skipped).toEqual([
+      {
+        brand_slug: 'acme-snacks',
+        changed_by: 'pat@example.com',
+        changed_at: '2026-09-24T15:30:00.000Z',
+        reason_code: 'client_left',
+      },
+    ]);
+  });
+
+  it('sync without --brand skips it, says so once, and counts it in telemetry', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('sync', '--data-dir', tmpDataDir);
+
+    const out = stdoutText();
+    expect(out).toContain(SUMMARY);
+    expect(out).not.toMatch(/^acme-snacks\s/m);
+    expect(process.exitCode ?? 0).toBe(0);
+    const [event] = vi.mocked(track).mock.calls[0]!;
+    expect(event.payload).toMatchObject({ brands: 1, retired_skipped: 1 });
+  });
+
+  it('sync --quiet stays silent when skipping a retired brand is the only news', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('sync', '--quiet', '--data-dir', tmpDataDir);
+    expect(stdoutText()).toBe('');
+    expect(stderrText()).toBe('');
+  });
+
+  it('an explicit --brand on a retired brand proceeds with a one-line stderr notice', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('sync', '--brand', 'acme-snacks', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as { brands: Array<{ brand: string }>; retired_skipped?: unknown };
+    expect(doc.brands.map((b) => b.brand)).toEqual(['acme-snacks']);
+    expect(doc.retired_skipped).toBeUndefined();
+    expect(stderrText()).toBe(
+      'acme-snacks was retired for your team by pat@example.com on Sep 24, 2026 via plugin. ' +
+        'Continuing, because you asked for it by name. To bring it back for everyone: ' +
+        '`mixshift brand restore acme-snacks`.\n',
+    );
+    expect(stderrText()).not.toMatch(/delet/i);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('when every local brand is retired, the run is the summary line and exit 0', async () => {
+    await rm(join(tmpDataDir, 'clients', 'summit-trail'), { recursive: true, force: true });
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
+    await runContext('status', '--data-dir', tmpDataDir);
+    expect(stdoutText()).toContain(SUMMARY);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('an older service (no lifecycle field) treats every brand as active: nothing skipped', async () => {
+    vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(OLD_SERVICE));
+    await runContext('status', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as { brands: Array<{ brand: string }>; retired_skipped?: unknown };
+    expect(doc.brands.map((b) => b.brand).sort()).toEqual(['acme-snacks', 'summit-trail']);
+    expect(doc.retired_skipped).toBeUndefined();
+    expect(stderrText()).toBe('');
+  });
+
+  it('`context autosync <brand>` names the brand, so it may seed a retired one (seedRetired)', async () => {
+    vi.mocked(maybeAutoSync).mockResolvedValue({ ran: false, reason: 'disabled' });
+    await runContext('autosync', 'acme-snacks', '--data-dir', tmpDataDir);
+    const [, optsArg] = vi.mocked(maybeAutoSync).mock.calls[0]!;
+    expect(optsArg).toMatchObject({ seedRetired: true });
   });
 });

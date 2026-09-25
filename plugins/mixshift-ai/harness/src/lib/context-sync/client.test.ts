@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createContextSyncClient } from './client.js';
 
@@ -103,7 +105,9 @@ describe('fetchManifest', () => {
     expect(result).toEqual({ ok: true, brands });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe(`${API_BASE}/api/context/manifest`);
+    // Brand retire: the plugin always asks for lifecycle=all (retired brands
+    // listed WITH their lifecycle field), whatever the service default is.
+    expect(calls[0]!.url).toBe(`${API_BASE}/api/context/manifest?lifecycle=all`);
     expect(calls[0]!.init?.method).toBe('GET');
     expect(
       (calls[0]!.init?.headers as Record<string, string>).Authorization,
@@ -320,5 +324,158 @@ describe('credentials plumbing', () => {
       expect(result.friendly).toMatch(/mixshift auth login/);
     }
     expect(calls).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brand retire (slice 1): manifest lifecycle field + POST /api/context/lifecycle.
+// Response bodies come from the contract-shaped wire fixture.
+// ---------------------------------------------------------------------------
+
+const LIFECYCLE_FIXTURE = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..', '..', '..', 'testdata', 'context-sync', 'brand-lifecycle-wire.json',
+    ),
+    'utf8',
+  ),
+) as Record<string, { status: number; body: Record<string, unknown> }>;
+
+function fixtureResponse(key: string): Response {
+  const f = LIFECYCLE_FIXTURE[key]!;
+  return jsonResponse(f.status, f.body);
+}
+
+describe('fetchManifest lifecycle (brand retire)', () => {
+  it('passes lifecycle + retired_count through from a service that knows retire', async () => {
+    const { fetchImpl } = makeFetch(() => fixtureResponse('manifest_all'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.fetchManifest();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.retired_count).toBe(1);
+      const acme = result.brands.find((b) => b.brand_slug === 'acme-snacks');
+      expect(acme?.lifecycle?.state).toBe('retired');
+    }
+  });
+
+  it('an older service (no lifecycle, no retired_count) parses unchanged', async () => {
+    const { fetchImpl } = makeFetch(() => fixtureResponse('manifest_old_gateway'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.fetchManifest();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect('retired_count' in result).toBe(false);
+      expect(result.brands.every((b) => b.lifecycle === undefined)).toBe(true);
+    }
+  });
+
+  it('can ask for lifecycle=active explicitly', async () => {
+    const { fetchImpl, calls } = makeFetch(() => jsonResponse(200, { ok: true, brands: [] }));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    await client.fetchManifest({ lifecycle: 'active' });
+    expect(calls[0]!.url).toBe(`${API_BASE}/api/context/manifest?lifecycle=active`);
+  });
+});
+
+describe('setBrandLifecycle (brand retire)', () => {
+  it('POSTs the contract body (no identity fields) and parses a change', async () => {
+    const { fetchImpl, calls } = makeFetch(() => fixtureResponse('lifecycle_retire_changed'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({
+      brand_slug: 'acme-snacks',
+      action: 'retire',
+      reason_code: 'client_left',
+      note: 'moved in-house',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(`${API_BASE}/api/context/lifecycle`);
+    expect(calls[0]!.init?.method).toBe('POST');
+    const headers = calls[0]!.init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer test-token');
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      brand_slug: 'acme-snacks',
+      action: 'retire',
+      reason_code: 'client_left',
+      note: 'moved in-house',
+    });
+    expect(result).toEqual({
+      ok: true,
+      brand_slug: 'acme-snacks',
+      state: 'retired',
+      changed: true,
+      at: '2026-09-24T15:30:00.000Z',
+      event_id: 'evt_000000000001',
+    });
+  });
+
+  it('a repeat is changed:false', async () => {
+    const { fetchImpl } = makeFetch(() => fixtureResponse('lifecycle_retire_unchanged'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+    expect(result).toMatchObject({ ok: true, state: 'retired', changed: false });
+  });
+
+  it('404 {error:"unknown_brand"} is unknown_brand', async () => {
+    const { fetchImpl } = makeFetch(() => fixtureResponse('lifecycle_unknown_brand'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'nope', action: 'retire' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.kind).toBe('unknown_brand');
+      expect(result.friendly).toContain('"nope"');
+    }
+  });
+
+  it.each(['lifecycle_old_gateway_404', 'lifecycle_old_gateway_405'])(
+    'an older service (%s) reads as unsupported, never as "no such brand"',
+    async (key) => {
+      const { fetchImpl } = makeFetch(() => fixtureResponse(key));
+      const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+      const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe('unsupported');
+        expect(result.friendly).toContain('not available on this MixShift service yet');
+        expect(result.friendly).toContain('Nothing was changed');
+      }
+    },
+  );
+
+  it('403 is insufficient_scope with the service friendly text; 400 is bad_params', async () => {
+    const forbidden = makeFetch(() => fixtureResponse('lifecycle_forbidden'));
+    const c1 = createContextSyncClient({ dataDirOverride: testDir, fetchImpl: forbidden.fetchImpl });
+    const r1 = await c1.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'restore' });
+    expect(r1).toMatchObject({ ok: false, kind: 'insufficient_scope', http_status: 403 });
+
+    const bad = makeFetch(() => fixtureResponse('lifecycle_bad_params'));
+    const c2 = createContextSyncClient({ dataDirOverride: testDir, fetchImpl: bad.fetchImpl });
+    const r2 = await c2.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+    expect(r2).toMatchObject({ ok: false, kind: 'bad_params' });
+  });
+
+  it('a bare 403 without friendly text still explains itself', async () => {
+    const { fetchImpl } = makeFetch(() => jsonResponse(403, { error: 'forbidden' }));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+    expect(result).toMatchObject({ ok: false, kind: 'insufficient_scope' });
+    if (!result.ok) expect(result.friendly).toContain('not allowed to change');
+  });
+
+  it('a 2xx in an unknown shape is a failure, not a silent success', async () => {
+    const { fetchImpl } = makeFetch(() => jsonResponse(200, { ok: true }));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+    expect(result).toMatchObject({ ok: false, kind: 'unknown' });
+  });
+
+  it('a network failure is host_unreachable', async () => {
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
+    expect(result).toMatchObject({ ok: false, kind: 'host_unreachable' });
   });
 });

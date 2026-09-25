@@ -408,6 +408,15 @@ export async function getBrandField(
 export async function resolveBrandFields(
   brandSlug: string,
   dataDirOverride?: string,
+  options: {
+    /**
+     * True when the user (or a skill acting for them) named this brand
+     * explicitly, as `mixshift brand context resolve <slug>` does. Lets
+     * autosync seed a brand the org store lists as RETIRED (brand retire:
+     * explicit actions proceed; only implicit seeding skips it).
+     */
+    explicit?: boolean;
+  } = {},
 ): Promise<Record<BrandFieldKey, ResolvedField<unknown> | null>> {
   // Preflight pull-if-stale (P2 auto-sync). This is THE seam: every skill
   // enters brand context through resolveBrandFields (Step-0 `brand context
@@ -418,7 +427,10 @@ export async function resolveBrandFields(
   // brand per 15 min, ~2s worst-case budget, pull-only on conflict-free
   // docs, and ANY failure is a silent no-op — the local read below always
   // proceeds unchanged. Kill switch: MIXSHIFT_CONTEXT_AUTOSYNC=off.
-  await maybeAutoSync(brandSlug, { dataDirOverride });
+  await maybeAutoSync(brandSlug, {
+    dataDirOverride,
+    ...(options.explicit ? { seedRetired: true } : {}),
+  });
 
   const ctx = await validateBrandContext(brandSlug, dataDirOverride);
   const brain = await loadBrain(brandSlug, dataDirOverride);

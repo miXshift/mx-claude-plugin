@@ -62,6 +62,7 @@ const CATALOG: HubGroup[] = [
       { id: 'mx-brand-context', say: 'set up brand context for <brand>', what: 'onboard a brand so the analytical skills know it' },
       { id: 'mx-brand-context', say: 'find the sub-brands in my account', what: 'discover the brands hiding under one seller account' },
       { id: 'mx-brand-context', say: 'build a promotion plan', what: 'plan which sub-brand labels become real brands' },
+      { id: 'mx-brand-context', say: 'retire <brand>', what: 'stop showing a brand your team no longer works on (undo any time)' },
       { id: 'mx-update', say: 'update the plugin', what: 'guide the update and walk post-update catch-up actions' },
     ],
   },

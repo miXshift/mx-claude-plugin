@@ -56,10 +56,82 @@ export interface WireManifestDoc {
   updated_by_actor: string;
 }
 
+/**
+ * Brand lifecycle (brand retire, slice 1). A brand is `active` unless a
+ * teammate retired it; the service stores that as reserved timeline events
+ * and reports the latest one here. Retiring never deletes docs, revisions,
+ * timeline history, Amazon accounts or warehouse data.
+ */
+export type BrandLifecycleState = 'active' | 'retired';
+
+/** `lifecycle` query param of GET /api/context/manifest. The plugin always
+ *  asks for `all` so retired brands stay visible (with the field) to the
+ *  code that must know about them: bulk-sync skip lines, slug reservation,
+ *  preflight warnings. */
+export type ManifestLifecycleFilter = 'active' | 'all';
+
+export interface WireBrandLifecycle {
+  state: BrandLifecycleState;
+  changed_at: string | null;
+  changed_by: string | null;
+  surface: string | null;
+  reason_code: string | null;
+}
+
 export interface WireManifestBrand {
   brand_slug: string;
   docs: WireManifestDoc[];
+  /**
+   * OPTIONAL: a MixShift service older than brand retire sends no
+   * `lifecycle` field at all. Absent always means `active`.
+   */
+  lifecycle?: WireBrandLifecycle;
 }
+
+/** Reason codes accepted by POST /api/context/lifecycle (retire only). */
+export const RETIRE_REASON_CODES = ['client_left', 'duplicate', 'superseded', 'other'] as const;
+export type RetireReasonCode = (typeof RETIRE_REASON_CODES)[number];
+
+export type BrandLifecycleAction = 'retire' | 'restore';
+
+/** Body of POST /api/context/lifecycle. Identity is NEVER sent: the service
+ *  records the verified caller. `on_behalf_of` is free text, recorded as
+ *  claimed. */
+export interface SetBrandLifecycleInput {
+  brand_slug: string;
+  action: BrandLifecycleAction;
+  reason_code?: RetireReasonCode;
+  note?: string;
+  on_behalf_of?: string;
+}
+
+/**
+ * Failure kinds specific to the lifecycle endpoint, on top of the shared
+ * ones:
+ *   unknown_brand — 404 {error:'unknown_brand'}: the team has no shared
+ *                   brand context for that slug.
+ *   unsupported   — a 404/405 WITHOUT unknown_brand: the MixShift service
+ *                   predates brand retire (old gateway).
+ */
+export type LifecycleFailureKind = ContextSyncFailureKind | 'unknown_brand' | 'unsupported';
+
+export type SetBrandLifecycleResult =
+  | {
+      ok: true;
+      brand_slug: string;
+      state: BrandLifecycleState;
+      /** false = the brand was already in that state; nothing was recorded. */
+      changed: boolean;
+      at: string;
+      event_id?: string;
+    }
+  | {
+      ok: false;
+      kind: LifecycleFailureKind;
+      message: string;
+      friendly: string;
+      http_status?: number;
+    };
 
 export interface WireDoc {
   brand_slug: string;
@@ -118,7 +190,12 @@ export interface ContextSyncFailure {
 }
 
 export type FetchManifestResult =
-  | { ok: true; brands: WireManifestBrand[] }
+  | {
+      ok: true;
+      brands: WireManifestBrand[];
+      /** Present on a service that knows brand retire; absent on older ones. */
+      retired_count?: number;
+    }
   | ContextSyncFailure;
 
 export type FetchDocResult = { ok: true; doc: WireDoc } | ContextSyncFailure;

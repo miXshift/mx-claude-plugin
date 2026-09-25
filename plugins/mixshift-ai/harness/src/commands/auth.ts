@@ -24,6 +24,7 @@ import {
 } from '../lib/clients/index.js';
 import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
 import { listLocalBrands } from '../lib/context-sync/local.js';
+import { isRetiredBrand } from '../lib/context-sync/lifecycle.js';
 import { networkErrorMessage } from '../lib/net/classify.js';
 import { resolveApiBaseHost } from '../lib/net/api-base.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
@@ -220,9 +221,7 @@ export function registerAuthCommands(program: Command): void {
               // `--json` run for a value that was always thrown away.
               const org = await computeOrgAwareness(root.dataDir);
               if (org) {
-                process.stdout.write(
-                  `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`,
-                );
+                process.stdout.write(orgAwarenessLine(org) + '\n');
               }
             }
             // JSON mode deliberately prints NOTHING here: `auth setup
@@ -438,8 +437,12 @@ function parseLoginMode(raw: string | undefined): 'pkce' | 'device' | 'auto' {
 }
 
 interface OrgAwareness {
+  /** Brands set up for the team, NOT counting retired ones. */
   total: number;
+  /** Of those, how many are not on this machine yet. */
   not_local: number;
+  /** Brand retire: brands a teammate retired (present only when > 0). */
+  retired?: number;
 }
 
 /** Bound for computeOrgAwareness's local listLocalBrands() read (FIX D) —
@@ -478,14 +481,25 @@ async function computeOrgAwareness(
     );
     if (localBrands === DEADLINE) return undefined;
     const localSlugs = new Set(localBrands);
-    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    // Brand retire: a retired brand is not "set up for your team" any more;
+    // count it separately (absent lifecycle field = active, older service).
+    const orgSlugs = manifest.brands.filter((b) => !isRetiredBrand(b)).map((b) => b.brand_slug);
+    const retired = manifest.brands.length - orgSlugs.length;
     return {
       total: orgSlugs.length,
       not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
+      ...(retired > 0 ? { retired } : {}),
     };
   } catch {
     return undefined;
   }
+}
+
+/** "Your org has N brands set up (M more retired). K not yet on this machine."
+ *  The retired clause appears only when a teammate retired at least one. */
+function orgAwarenessLine(org: OrgAwareness): string {
+  const retired = org.retired ? ` (${org.retired} more retired)` : '';
+  return `Your org has ${org.total} brands set up${retired}. ${org.not_local} not yet on this machine.`;
 }
 
 function renderLoginResult(
@@ -509,7 +523,7 @@ function renderLoginResult(
       `  - client_id:     ${result.clientId}\n` +
       `  - duration:      ${(result.durationMs / 1000).toFixed(1)}s\n` +
       (org
-        ? `\nYour org has ${org.total} brands set up. ${org.not_local} not yet on this machine.\n`
+        ? `\n${orgAwarenessLine(org)}\n`
         : '') +
       `\nTry: \`mixshift data query --sql "SELECT 1"\` to verify ` +
       `warehouse access.\n`,

@@ -26,6 +26,14 @@ import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
 import type { DocActionReport, DocStatusReport, WireManifestBrand } from '../lib/context-sync/types.js';
 import { syncStakes, type StakeSyncResult } from '../lib/timeline/stake-sync.js';
 import { track, EventName, type EventNameValue } from '../lib/telemetry/index.js';
+import {
+  emitRetiredNotice,
+  findManifestBrand,
+  partitionRetired,
+  retiredLifecycleOf,
+  retiredSkipSummaryLine,
+  type RetiredBrandRef,
+} from '../lib/context-sync/lifecycle.js';
 
 interface RootOptions {
   json?: boolean;
@@ -53,7 +61,7 @@ export function registerContextCommands(program: Command): void {
       try {
         const setup = await resolveBrandsAndManifest(opts.brand, root);
         if (!setup) return;
-        const { brands, engineOptions } = setup;
+        const { brands, engineOptions, retiredSkipped } = setup;
 
         const results: Array<{ ok: true; brand: string; docs: DocStatusReport[] }> = [];
         for (const brand of brands) {
@@ -90,6 +98,9 @@ export function registerContextCommands(program: Command): void {
                 brands: results.map((r) => ({ brand: r.brand, docs: r.docs })),
                 conflicts,
                 unshared,
+                ...(retiredSkipped.length > 0
+                  ? { retired_skipped: retiredSkippedJson(retiredSkipped) }
+                  : {}),
               },
               null,
               2,
@@ -142,6 +153,10 @@ export function registerContextCommands(program: Command): void {
             );
             lines.push('');
           }
+        }
+        if (retiredSkipped.length > 0) {
+          lines.push(retiredSkipSummaryLine(retiredSkipped));
+          lines.push('');
         }
         process.stdout.write(lines.join('\n') + '\n');
         return;
@@ -370,7 +385,7 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
       }
       const setup = await resolveBrandsAndManifest(opts.brand, root);
       if (!setup) return;
-      const { brands, engineOptions } = setup;
+      const { brands, engineOptions, retiredSkipped } = setup;
 
       const results: Array<{ brand: string; reports: DocActionReport[] }> = [];
       for (const brand of brands) {
@@ -416,6 +431,7 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
             force: opts.force ?? false,
             ...counts,
             ...(spec.syncStakesAfter ? stakeCounts : {}),
+            ...(retiredSkipped.length > 0 ? { retired_skipped: retiredSkipped.length } : {}),
           },
         },
         root.dataDir,
@@ -432,6 +448,9 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
               counts,
               ...(spec.syncStakesAfter
                 ? { stake_events: stakeRuns.map((s) => s.result) }
+                : {}),
+              ...(retiredSkipped.length > 0
+                ? { retired_skipped: retiredSkippedJson(retiredSkipped) }
                 : {}),
             },
             null,
@@ -460,6 +479,10 @@ function registerActionSubcommand(context: Command, spec: ActionSpec): void {
         for (const line of stakeLines(stakeRuns)) lines.push(line);
         lines.push('');
         lines.push(summaryLine(counts));
+        // Brand retire: one line naming the retired brands this bulk run
+        // skipped (who, when, how to undo). A standing condition, so
+        // `sync --quiet` stays silent about it when nothing else happened.
+        if (retiredSkipped.length > 0) lines.push(retiredSkipSummaryLine(retiredSkipped));
         process.stdout.write(lines.join('\n') + '\n');
       }
       // Per-doc errors are a non-zero exit; conflicts are a report, not an
@@ -509,6 +532,10 @@ function registerAutosyncSubcommand(context: Command): void {
           dataDirOverride: root.dataDir,
           force: opts.force ?? false,
           trigger: 'manual',
+          // The brand is named on the command line: an explicit action, so a
+          // retired brand may still be fetched here (brand retire only skips
+          // implicit seeding).
+          seedRetired: true,
         });
 
         await track(
@@ -615,18 +642,41 @@ function registerAutosyncSubcommand(context: Command): void {
 async function resolveBrandsAndManifest(
   brandOpt: string | undefined,
   root: RootOptions,
-): Promise<{ brands: string[]; engineOptions: EngineOptions } | null> {
-  const brands = brandOpt ? [brandOpt] : await listLocalBrands(root.dataDir);
-  if (brands.length === 0) {
+): Promise<{
+  brands: string[];
+  engineOptions: EngineOptions;
+  /** Brand retire: local brands the bulk (no --brand) run skipped. */
+  retiredSkipped: RetiredBrandRef[];
+} | null> {
+  const localOrExplicit = brandOpt ? [brandOpt] : await listLocalBrands(root.dataDir);
+  if (localOrExplicit.length === 0) {
     emitNoBrands(root);
     return null;
   }
 
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
-  const manifest = await client.fetchManifest();
+  // lifecycle=all: retired brands come back WITH their lifecycle field (and
+  // their docs), so they are skipped by name below instead of looking like
+  // brands whose docs were all deleted server-side.
+  const manifest = await client.fetchManifest({ lifecycle: 'all' });
   if (!manifest.ok) {
     emitError(manifest.friendly, root);
     return null;
+  }
+
+  // Brand retire: only the IMPLICIT bulk path (no --brand) skips retired
+  // brands, and it says so in one summary line. An explicitly named brand
+  // proceeds with a one-line stderr notice (who retired it, when, and how to
+  // undo). Absent lifecycle (older service) = active, so nothing changes.
+  let brands = localOrExplicit;
+  let retiredSkipped: RetiredBrandRef[] = [];
+  if (brandOpt) {
+    const lc = retiredLifecycleOf(findManifestBrand(manifest.brands, brandOpt));
+    if (lc) emitRetiredNotice(brandOpt, lc);
+  } else {
+    const split = partitionRetired(localOrExplicit, manifest.brands);
+    brands = split.active;
+    retiredSkipped = split.retired;
   }
 
   // A --brand slug that exists neither locally nor in the manifest is a
@@ -650,7 +700,24 @@ async function resolveBrandsAndManifest(
     manifest: manifest.brands satisfies WireManifestBrand[],
     ...(root.dataDir !== undefined ? { dataDirOverride: root.dataDir } : {}),
   };
-  return { brands, engineOptions };
+  return { brands, engineOptions, retiredSkipped };
+}
+
+/** JSON shape of the retired brands a bulk run skipped (additive field). */
+function retiredSkippedJson(
+  retired: readonly RetiredBrandRef[],
+): Array<{
+  brand_slug: string;
+  changed_by: string | null;
+  changed_at: string | null;
+  reason_code: string | null;
+}> {
+  return retired.map((r) => ({
+    brand_slug: r.slug,
+    changed_by: r.lifecycle.changed_by ?? null,
+    changed_at: r.lifecycle.changed_at ?? null,
+    reason_code: r.lifecycle.reason_code ?? null,
+  }));
 }
 
 interface ActionCounts {

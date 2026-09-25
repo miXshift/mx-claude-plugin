@@ -1810,19 +1810,29 @@ describe('seed path: missing dir consults the org manifest', () => {
     await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
   });
 
-  it('the dir-exists path is untouched: no org-manifest cache file appears for an ordinary sync', async () => {
+  it('the dir-exists path never consults the cache, but refreshes it with the manifest its own sync fetched (brand retire warm-up)', async () => {
     await makeBrandDir('acme');
-    const { client } = countingClient([manifestBrand('acme', [])], {});
+    const { client, state } = countingClient([manifestBrand('acme', [])], {});
     const result = await maybeAutoSync('acme', {
       dataDirOverride: testDir,
       client,
       env: LIVE_ENV,
+      identity: 'https://mcp.example.test#u1',
     });
     expect(result.ran).toBe(true);
-    // getCachedOrgManifest is only ever reached when brandDirExists() is
-    // false — an existing brand dir never triggers it, so the cache file
-    // this seed-path machinery writes must not appear here.
-    await expect(readFile(orgManifestCachePath(testDir), 'utf8')).rejects.toThrow();
+    // Still exactly ONE manifest fetch: getCachedOrgManifest is only reached
+    // when brandDirExists() is false. Brand retire changed one thing on this
+    // path, deliberately: the manifest buildDocPairs fetched for the sync is
+    // now persisted as the org-manifest cache (identity-stamped), so the
+    // retired-brand notice at Step 0 reads a warm cache instead of paying a
+    // second round trip.
+    expect(state.manifestCalls).toBe(1);
+    const cache = JSON.parse(await readFile(orgManifestCachePath(testDir), 'utf8')) as {
+      identity?: string;
+      brands: WireManifestBrand[];
+    };
+    expect(cache.identity).toBe('https://mcp.example.test#u1');
+    expect(cache.brands.map((b) => b.brand_slug)).toEqual(['acme']);
   });
 });
 
@@ -2232,5 +2242,87 @@ describe('org-manifest cache is identity-bound (FIX A)', () => {
         '`mixshift context pull --brand <slug>`',
     });
     await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brand retire (slice 1): autosync never SEEDS a retired brand nobody asked
+// for (that is what makes deleting a retired brand's local copy stick); an
+// explicit caller (seedRetired) seeds it like any other; a brand whose dir
+// already exists is unaffected.
+// ---------------------------------------------------------------------------
+
+describe('brand retire: autosync seeding', () => {
+  const RETIRED = {
+    state: 'retired' as const,
+    changed_at: '2026-09-24T15:30:00.000Z',
+    changed_by: 'pat@example.com',
+    surface: 'plugin',
+    reason_code: 'client_left',
+  };
+  function retiredBrand(slug: string, docs: Array<{ key: string; content: string; revision: number }>): WireManifestBrand {
+    return { ...manifestBrand(slug, docs), lifecycle: RETIRED };
+  }
+
+  it('does not seed a retired brand implicitly: no mkdir, no stamp, no telemetry', async () => {
+    const { client, state } = countingClient(
+      [retiredBrand('acme-snacks', [{ key: 'narrative', content: 'n\n', revision: 1 }])],
+      { narrative: { content: 'n\n', revision: 1 } },
+    );
+    const result = await maybeAutoSync('acme-snacks', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toMatchObject({ ran: false, reason: 'skipped' });
+    if (!result.ran && result.reason === 'skipped') {
+      expect(result.detail).toContain('retired');
+      expect(result.detail).toContain('mixshift brand restore acme-snacks');
+    }
+    expect(state.docFetches).toEqual([]);
+    await expect(readdir(join(testDir, 'clients'))).rejects.toThrow();
+    expect(vi.mocked(track)).not.toHaveBeenCalled();
+  });
+
+  it('seeds a retired brand when the caller named it explicitly (seedRetired)', async () => {
+    const { client } = countingClient(
+      [retiredBrand('acme-snacks', [{ key: 'narrative', content: 'n\n', revision: 1 }])],
+      { narrative: { content: 'n\n', revision: 1 } },
+    );
+    const result = await maybeAutoSync('acme-snacks', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+      seedRetired: true,
+    });
+    expect(result).toMatchObject({ ran: true, pulled: 1, seeded: true });
+    expect(await readFile(join(brandDir('acme-snacks', testDir), 'narrative.md'), 'utf8')).toBe('n\n');
+  });
+
+  it('an existing local dir of a retired brand still syncs (explicit reads proceed)', async () => {
+    await makeBrandDir('acme-snacks');
+    const { client } = countingClient(
+      [retiredBrand('acme-snacks', [{ key: 'narrative', content: 'n\n', revision: 1 }])],
+      { narrative: { content: 'n\n', revision: 1 } },
+    );
+    const result = await maybeAutoSync('acme-snacks', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toMatchObject({ ran: true, pulled: 1 });
+  });
+
+  it('an older service (no lifecycle field) seeds exactly as before', async () => {
+    const { client } = countingClient(
+      [manifestBrand('acme-snacks', [{ key: 'narrative', content: 'n\n', revision: 1 }])],
+      { narrative: { content: 'n\n', revision: 1 } },
+    );
+    const result = await maybeAutoSync('acme-snacks', {
+      dataDirOverride: testDir,
+      client,
+      env: LIVE_ENV,
+    });
+    expect(result).toMatchObject({ ran: true, seeded: true });
   });
 });

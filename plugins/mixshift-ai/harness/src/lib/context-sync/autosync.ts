@@ -144,6 +144,7 @@ import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { DocActionReport, WireManifestBrand } from './types.js';
 import { track, EventName } from '../telemetry/index.js';
 import { scrubDetail } from './telemetry-detail.js';
+import { findManifestBrand, isRetiredBrand, restoreCommand } from './lifecycle.js';
 
 /** Overall wall-clock budget for one autosync attempt (network inclusive). */
 export const AUTOSYNC_BUDGET_MS = 2_000;
@@ -182,6 +183,16 @@ export interface AutoSyncOptions {
    * always yields exactly one row.
    */
   trigger?: 'preflight' | 'manual';
+  /**
+   * Brand retire: may the SEED path create a local copy of a brand the org
+   * store lists as RETIRED? Default false: autosync never seeds a retired
+   * brand nobody asked for, which is what makes deleting a retired brand's
+   * local copy stick. Callers that act on a slug the user named explicitly
+   * (`mixshift brand context resolve <slug>`, `mixshift context autosync
+   * <brand>`) pass true, and the brand is seeded as any other. A brand whose
+   * directory already exists is unaffected either way.
+   */
+  seedRetired?: boolean;
 }
 
 export type AutoSyncResult =
@@ -451,6 +462,23 @@ export async function maybeAutoSync(
       if (!isSafeBrandSlug(brandSlug)) {
         return { ran: false, reason: 'skipped', detail: 'not a valid brand slug' };
       }
+      // Brand retire: a retired brand is never seeded implicitly. Same quiet
+      // early skip as an unlisted slug (no stamp, no mkdir, no telemetry), so
+      // a teammate who deleted the local copy of a retired brand does not get
+      // it back behind their back. An explicit caller opts in (seedRetired).
+      if (
+        !options.seedRetired &&
+        manifestResult.ok &&
+        isRetiredBrand(findManifestBrand(manifestResult.brands, brandSlug))
+      ) {
+        return {
+          ran: false,
+          reason: 'skipped',
+          detail:
+            'brand is retired for your team; not fetched. Ask for it by name, or run ' +
+            `\`${restoreCommand(brandSlug)}\` to bring it back`,
+        };
+      }
       seeded = true;
       // FIX C: remember the exact brands list this decision was made from —
       // op() below reuses it instead of buildDocPairs fetching its own (see
@@ -595,6 +623,30 @@ export async function maybeAutoSync(
           // (seedManifestBrands stays undefined there) is unaffected:
           // buildDocPairs fetches its own manifest exactly as before.
           ...(seedManifestBrands !== undefined ? { manifest: seedManifestBrands } : {}),
+          // Brand retire: on the dir-exists path buildDocPairs fetches the
+          // manifest itself. Persist that fresh copy as the org-manifest
+          // cache too (bounded, best-effort, identity-stamped exactly like
+          // getCachedOrgManifest's own save), so the retired-brand notice the
+          // Step 0 resolve prints reads a warm cache instead of paying a
+          // second round trip. The seed path needs none: its manifest already
+          // came from (or was just written to) that cache.
+          ...(seedManifestBrands === undefined
+            ? {
+                onManifest: async (brands: WireManifestBrand[]) => {
+                  await raceDeadline(
+                    saveOrgManifestCache(
+                      {
+                        fetched_at: new Date().toISOString(),
+                        brands,
+                        ...(typeof identity === 'string' ? { identity } : {}),
+                      },
+                      options.dataDirOverride,
+                    ),
+                    ORG_MANIFEST_PERSIST_BUDGET_MS,
+                  );
+                },
+              }
+            : {}),
           // NEVER force: diverged docs stay untouched by design.
         }),
         raceMs,

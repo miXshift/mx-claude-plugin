@@ -23,6 +23,21 @@
  *     → 200 { ok:true }   (actor defaults server-side to the caller)
  *     | 403 { ok:false, kind:'insufficient_scope', friendly }
  *     | 400 { ok:false, kind:'bad_params', friendly }
+ *
+ * Brand retire (slice 1; additive, safe against an older service):
+ *
+ *   GET /api/context/manifest?lifecycle=active|all
+ *     → every brand entry MAY carry lifecycle:{ state, changed_at,
+ *       changed_by, surface, reason_code } and the envelope MAY carry
+ *       retired_count. An older service ignores the param and sends
+ *       neither: absent lifecycle = active. The plugin always asks for
+ *       `all` (see fetchManifest).
+ *   POST /api/context/lifecycle  { brand_slug, action:'retire'|'restore',
+ *                                  reason_code?, note?, on_behalf_of? }
+ *     → 200 { brand_slug, state, changed, at, event_id? }
+ *     | 404 { error:'unknown_brand' }   (no shared context for that slug)
+ *     | 404/405 anything else           (older service: retire unsupported)
+ *     | 400 validation | 403 without context:write
  */
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
@@ -38,6 +53,10 @@ import type {
   FetchManifestResult,
   PutDocInput,
   PutDocResult,
+  LifecycleFailureKind,
+  ManifestLifecycleFilter,
+  SetBrandLifecycleInput,
+  SetBrandLifecycleResult,
   WireDoc,
   WireManifestBrand,
 } from './types.js';
@@ -52,6 +71,9 @@ export const CORPUS_TIMEOUT_MS = 120_000;
  *  mode the mirror is awaited before the JSON is written, so this bounds the
  *  worst-case stdout stall on a reachable-but-hanging host to ~2s, not 10s. */
 export const ASSIGNMENT_TIMEOUT_MS = 2_000;
+/** Retire/restore is one small interactive write; a hung host should fail
+ *  the command in seconds, not the 30s text-doc budget. */
+export const LIFECYCLE_TIMEOUT_MS = 15_000;
 
 class ContextSyncNetworkError extends Error {
   /** Sandbox-aware, doctor-pointing text classified from the raw fetch
@@ -77,8 +99,15 @@ export interface AssignmentInput {
 
 export type PutAssignmentResult = { ok: true } | ContextSyncFailure;
 
+export interface FetchManifestOptions {
+  /** Defaults to 'all': retired brands are listed WITH their lifecycle field,
+   *  so no caller of this client ever mistakes a retired brand for a deleted
+   *  one, whatever default the service picks for other clients. */
+  lifecycle?: ManifestLifecycleFilter;
+}
+
 export interface ContextSyncClient {
-  fetchManifest(): Promise<FetchManifestResult>;
+  fetchManifest(options?: FetchManifestOptions): Promise<FetchManifestResult>;
   fetchDoc(
     brandSlug: string,
     docType: DocType,
@@ -86,6 +115,13 @@ export interface ContextSyncClient {
   ): Promise<FetchDocResult>;
   putDoc(input: PutDocInput): Promise<PutDocResult>;
   putAssignment(input: AssignmentInput): Promise<PutAssignmentResult>;
+  /**
+   * POST /api/context/lifecycle (brand retire/restore). Optional in the TYPE
+   * only so the many pre-existing test doubles of this interface stay valid;
+   * the real client below always implements it, and callers treat a missing
+   * method as "not supported".
+   */
+  setBrandLifecycle?(input: SetBrandLifecycleInput): Promise<SetBrandLifecycleResult>;
 }
 
 export interface ContextSyncClientOptions {
@@ -111,7 +147,7 @@ export function createContextSyncClient(
    * when no credentials exist or the session can't be refreshed.
    */
   async function authedRequest(
-    method: 'GET' | 'PUT',
+    method: 'GET' | 'PUT' | 'POST',
     path: string,
     body: unknown,
     timeoutMs: number,
@@ -160,17 +196,24 @@ export function createContextSyncClient(
   }
 
   return {
-    async fetchManifest(): Promise<FetchManifestResult> {
+    async fetchManifest(options: FetchManifestOptions = {}): Promise<FetchManifestResult> {
       try {
+        const lifecycle: ManifestLifecycleFilter = options.lifecycle ?? 'all';
         const res = await authedRequest(
           'GET',
-          '/api/context/manifest',
+          `/api/context/manifest?lifecycle=${lifecycle}`,
           undefined,
           TEXT_DOC_TIMEOUT_MS,
         );
         const json = await parseEnvelope(res);
         if (json.ok === true && Array.isArray(json.brands)) {
-          return { ok: true, brands: json.brands as WireManifestBrand[] };
+          return {
+            ok: true,
+            brands: json.brands as WireManifestBrand[],
+            ...(typeof json.retired_count === 'number'
+              ? { retired_count: json.retired_count }
+              : {}),
+          };
         }
         return failureFromEnvelope(json, res.status);
       } catch (err) {
@@ -237,7 +280,108 @@ export function createContextSyncClient(
         return failureFromException(err);
       }
     },
+
+    async setBrandLifecycle(input: SetBrandLifecycleInput): Promise<SetBrandLifecycleResult> {
+      try {
+        const res = await authedRequest(
+          'POST',
+          '/api/context/lifecycle',
+          input,
+          LIFECYCLE_TIMEOUT_MS,
+        );
+        const json = await parseEnvelope(res);
+        return lifecycleResultFrom(json, res.status, input.brand_slug);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
   };
+}
+
+/**
+ * Map a POST /api/context/lifecycle response onto a result (exported for
+ * tests). The two 404s are told apart by BODY, not status: the service that
+ * knows brand retire answers an unknown slug with {error:'unknown_brand'},
+ * while a service that predates it answers the unknown ROUTE with its
+ * generic 404 (or a 405). That one must read as "not available on this
+ * service yet", never as "no such brand".
+ */
+export function lifecycleResultFrom(
+  json: WireEnvelope,
+  httpStatus: number,
+  requestedSlug: string,
+): SetBrandLifecycleResult {
+  const isUnknownBrand = json.error === 'unknown_brand' || json.kind === 'unknown_brand';
+  if (httpStatus >= 200 && httpStatus < 300) {
+    if (
+      (json.state === 'active' || json.state === 'retired') &&
+      typeof json.changed === 'boolean'
+    ) {
+      return {
+        ok: true,
+        brand_slug: typeof json.brand_slug === 'string' ? json.brand_slug : requestedSlug,
+        state: json.state,
+        changed: json.changed,
+        at: typeof json.at === 'string' ? json.at : new Date().toISOString(),
+        ...(typeof json.event_id === 'string' ? { event_id: json.event_id } : {}),
+      };
+    }
+    return lifecycleFailure(
+      'unknown',
+      'The MixShift service answered in a shape this plugin does not recognize. ' +
+        'Run `mixshift brand list --all` to see whether the brand changed.',
+      httpStatus,
+    );
+  }
+  if (isUnknownBrand) {
+    return lifecycleFailure(
+      'unknown_brand',
+      `Your team has no shared brand context for "${requestedSlug}". Check the slug with ` +
+        '`mixshift context status`, which lists the brands your team has.',
+      httpStatus,
+    );
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    return lifecycleFailure(
+      'unsupported',
+      'Retiring a brand is not available on this MixShift service yet. Nothing was changed. ' +
+        'Try again after the service is updated.',
+      httpStatus,
+    );
+  }
+  const base = failureFromEnvelope(
+    {
+      ...json,
+      // The lifecycle route may answer with a bare {error:'...'} code; keep it
+      // as the message when no friendly text came with it.
+      ...(json.friendly === undefined &&
+      json.message === undefined &&
+      typeof json.error === 'string'
+        ? { message: json.error }
+        : {}),
+    },
+    httpStatus,
+  );
+  const friendly =
+    httpStatus === 403 && json.friendly === undefined
+      ? 'This sign-in is not allowed to change your team\'s shared brand context. ' +
+        'Sign in with an account that can edit brand context, or ask your MixShift admin.'
+      : base.friendly;
+  return {
+    ok: false,
+    kind: httpStatus === 403 && base.kind === 'unknown' ? 'insufficient_scope' : base.kind,
+    message: base.message,
+    friendly,
+    http_status: httpStatus,
+  };
+}
+
+function lifecycleFailure(
+  kind: LifecycleFailureKind,
+  friendly: string,
+  httpStatus: number,
+): SetBrandLifecycleResult {
+  return { ok: false, kind, message: friendly, friendly, http_status: httpStatus };
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +406,7 @@ async function resolveApiBase(dataDirOverride?: string): Promise<string> {
   return apiBase;
 }
 
-interface WireEnvelope {
+export interface WireEnvelope {
   ok?: boolean;
   kind?: string;
   friendly?: string;
@@ -272,6 +416,15 @@ interface WireEnvelope {
   doc?: unknown;
   status?: string;
   revision?: unknown;
+  /** Manifest (brand retire): how many of the tenant's brands are retired. */
+  retired_count?: unknown;
+  /** POST /api/context/lifecycle fields. */
+  error?: unknown;
+  brand_slug?: unknown;
+  state?: unknown;
+  changed?: unknown;
+  at?: unknown;
+  event_id?: unknown;
 }
 
 async function parseEnvelope(res: Response): Promise<WireEnvelope> {

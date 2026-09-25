@@ -94,7 +94,11 @@ export async function collectExistingSlugs(dataDirOverride?: string): Promise<Se
   try {
     const { createContextSyncClient } = await import('../context-sync/client.js');
     const client = createContextSyncClient({ dataDirOverride });
-    const manifest = await client.fetchManifest();
+    // Brand retire: a RETIRED brand keeps its slug forever (restore brings it
+    // back with the same docs, timeline and ledger keys), so it must stay
+    // reserved. lifecycle=all lists retired brands too, whatever the
+    // service's default for other callers.
+    const manifest = await client.fetchManifest({ lifecycle: 'all' });
     if (manifest.ok) {
       for (const b of manifest.brands) slugs.add(b.brand_slug);
     }
