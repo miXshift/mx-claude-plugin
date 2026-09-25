@@ -104,7 +104,7 @@ describe('keyValueOption', () => {
   describe('parameters joined with "&" in one value', () => {
     it('is ampersand_joined, says why, and spells one flag per parameter', () => {
       const err = thrown(() =>
-        query('details=true&granularityType=Marketplace&nextToken=c3ludGg+/dG9rZW4=', {}),
+        query('details=true&granularityType=Marketplace&nextToken=SYNTH+/SYNTH=', {}),
       );
       expect(err.errorClass).toBe('invalid_argument');
       expect(err.flag).toBe('--query');
@@ -112,7 +112,7 @@ describe('keyValueOption', () => {
       expect(err.message.startsWith('--query takes one key=value pair per flag')).toBe(true);
       expect(err.message).toContain('--query key=value');
       expect(err.message).toContain(
-        'For this value: --query details=true --query granularityType=Marketplace --query nextToken=c3ludGg+/dG9rZW4=',
+        'For this value: --query details=true --query granularityType=Marketplace --query nextToken=SYNTH+/SYNTH=',
       );
     });
 
