@@ -474,7 +474,7 @@ describe('status unshared CTA', () => {
 // Brand retire (slice 1): bulk commands skip retired brands with ONE summary
 // line; an explicit --brand proceeds with a one-line stderr notice; an older
 // service (no lifecycle field) changes nothing. Manifest entries come from the
-// contract-shaped wire fixture (docs emptied so no doc traffic is involved).
+// gateway's real manifest (wire fixture; docs emptied so no doc traffic is involved).
 // ---------------------------------------------------------------------------
 
 describe('brand retire: bulk skip and explicit notice', () => {
@@ -492,7 +492,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
   const NEW_SERVICE = withoutDocs(FIXTURE.manifest_all!.body.brands);
   const OLD_SERVICE = withoutDocs(FIXTURE.manifest_old_gateway!.body.brands);
   const SUMMARY =
-    '1 retired brand skipped: acme-snacks (retired by pat@example.com on Sep 24, 2026; ' +
+    '1 retired brand skipped: acme-snacks (retired by am@example.com on Sep 25, 2026; ' +
     'mixshift brand restore acme-snacks to undo)';
 
   let stdoutChunks: string[];
@@ -507,7 +507,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
     });
     await rm(join(tmpDataDir, 'clients', 'acme'), { recursive: true, force: true });
     await mkdir(join(tmpDataDir, 'clients', 'acme-snacks'), { recursive: true });
-    await mkdir(join(tmpDataDir, 'clients', 'summit-trail'), { recursive: true });
+    await mkdir(join(tmpDataDir, 'clients', 'bravo-bottles'), { recursive: true });
   });
 
   it('status without --brand skips the retired brand and prints the one summary line', async () => {
@@ -515,7 +515,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
     await runContext('status', '--data-dir', tmpDataDir);
 
     const out = stdoutText();
-    expect(out).toContain('summit-trail');
+    expect(out).toContain('bravo-bottles');
     expect(out).not.toMatch(/^acme-snacks\s/m);
     expect(out).toContain(SUMMARY);
     expect(out.split(SUMMARY)).toHaveLength(2); // exactly once
@@ -531,12 +531,12 @@ describe('brand retire: bulk skip and explicit notice', () => {
       brands: Array<{ brand: string }>;
       retired_skipped: unknown;
     };
-    expect(doc.brands.map((b) => b.brand)).toEqual(['summit-trail']);
+    expect(doc.brands.map((b) => b.brand)).toEqual(['bravo-bottles']);
     expect(doc.retired_skipped).toEqual([
       {
         brand_slug: 'acme-snacks',
-        changed_by: 'pat@example.com',
-        changed_at: '2026-09-24T15:30:00.000Z',
+        changed_by: 'am@example.com',
+        changed_at: NEW_SERVICE.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at,
         reason_code: 'client_left',
       },
     ]);
@@ -569,7 +569,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
     expect(doc.brands.map((b) => b.brand)).toEqual(['acme-snacks']);
     expect(doc.retired_skipped).toBeUndefined();
     expect(stderrText()).toBe(
-      'acme-snacks was retired for your team by pat@example.com on Sep 24, 2026 via plugin. ' +
+      'acme-snacks was retired for your team by am@example.com on Sep 25, 2026 via plugin. ' +
         'Continuing, because you asked for it by name. To bring it back for everyone: ' +
         '`mixshift brand restore acme-snacks`.\n',
     );
@@ -578,7 +578,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
   });
 
   it('when every local brand is retired, the run is the summary line and exit 0', async () => {
-    await rm(join(tmpDataDir, 'clients', 'summit-trail'), { recursive: true, force: true });
+    await rm(join(tmpDataDir, 'clients', 'bravo-bottles'), { recursive: true, force: true });
     vi.mocked(createContextSyncClient).mockReturnValue(fakeClient(NEW_SERVICE));
     await runContext('status', '--data-dir', tmpDataDir);
     expect(stdoutText()).toContain(SUMMARY);
@@ -590,7 +590,7 @@ describe('brand retire: bulk skip and explicit notice', () => {
     await runContext('status', '--json', '--data-dir', tmpDataDir);
 
     const doc = JSON.parse(stdoutText()) as { brands: Array<{ brand: string }>; retired_skipped?: unknown };
-    expect(doc.brands.map((b) => b.brand).sort()).toEqual(['acme-snacks', 'summit-trail']);
+    expect(doc.brands.map((b) => b.brand).sort()).toEqual(['acme-snacks', 'bravo-bottles']);
     expect(doc.retired_skipped).toBeUndefined();
     expect(stderrText()).toBe('');
   });

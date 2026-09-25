@@ -472,7 +472,7 @@ describe('task preflight (command)', () => {
   // -------------------------------------------------------------------------
   // Brand retire (slice 1): a retired brand is READY + status 'retired' +
   // one warnings[] line (who, when, how to undo); it never blocks the run.
-  // Lifecycle comes from the contract-shaped wire fixture.
+  // Lifecycle comes from the gateway's real manifest (wire fixture).
   // -------------------------------------------------------------------------
 
   describe('brand retire', () => {
@@ -487,7 +487,7 @@ describe('task preflight (command)', () => {
     ) as Record<string, { body: { brands: WireManifestBrand[] } }>;
     const RETIRED_MANIFEST = LIFECYCLE_FIXTURE.manifest_all!.body.brands;
     const WARNING =
-      'brand acme-snacks is retired for your team (retired by pat@example.com on Sep 24, 2026). ' +
+      'brand acme-snacks is retired for your team (retired by am@example.com on Sep 25, 2026). ' +
       'This task still names it: skip it in this run and say so at the top of the output, ' +
       'remove it from the task, or bring it back with `mixshift brand restore acme-snacks`.';
 
@@ -502,7 +502,7 @@ describe('task preflight (command)', () => {
 
     it('retired + present: READY exit 0, status retired, a warning naming who and the undo', async () => {
       await writeContext('acme-snacks');
-      await writeContext('summit-trail');
+      await writeContext('bravo-bottles');
       vi.mocked(createContextSyncClient).mockReturnValue(
         manifestClient({ ok: true, brands: RETIRED_MANIFEST, retired_count: 1 }),
       );
@@ -510,7 +510,7 @@ describe('task preflight (command)', () => {
       await runTask(
         'preflight',
         '--brand', 'acme-snacks',
-        '--brand', 'summit-trail',
+        '--brand', 'bravo-bottles',
         '--json',
         '--data-dir', tmpDataDir,
       );
@@ -530,12 +530,12 @@ describe('task preflight (command)', () => {
           status: 'retired',
           lifecycle: {
             state: 'retired',
-            changed_at: '2026-09-24T15:30:00.000Z',
-            changed_by: 'pat@example.com',
+            changed_at: RETIRED_MANIFEST.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at,
+            changed_by: 'am@example.com',
             reason_code: 'client_left',
           },
         },
-        { slug: 'summit-trail', status: 'present' },
+        { slug: 'bravo-bottles', status: 'present' },
       ]);
       expect(parsed.warnings).toEqual([WARNING]);
       expect(pull).not.toHaveBeenCalled();
@@ -567,7 +567,7 @@ describe('task preflight (command)', () => {
       expect(pull).toHaveBeenCalledTimes(1);
       expect(vi.mocked(pull).mock.calls[0]![1]).toMatchObject({ manifest: RETIRED_MANIFEST });
       const out = stdoutText();
-      expect(out).toContain('warn    brand acme-snacks: retired by pat@example.com on Sep 24, 2026');
+      expect(out).toContain('warn    brand acme-snacks: retired by am@example.com on Sep 25, 2026');
       expect(out).toContain('\nREADY\n');
       expect(out).not.toContain('BLOCKED');
     });

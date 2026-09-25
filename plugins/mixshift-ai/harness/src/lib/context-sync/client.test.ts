@@ -329,7 +329,8 @@ describe('credentials plumbing', () => {
 
 // ---------------------------------------------------------------------------
 // Brand retire (slice 1): manifest lifecycle field + POST /api/context/lifecycle.
-// Response bodies come from the contract-shaped wire fixture.
+// Response bodies are the gateway's real responses (the wire fixture is
+// derived from mx-legacy-auth's own fixture test; see its _provenance).
 // ---------------------------------------------------------------------------
 
 const LIFECYCLE_FIXTURE = JSON.parse(
@@ -400,21 +401,36 @@ describe('setBrandLifecycle (brand retire)', () => {
       reason_code: 'client_left',
       note: 'moved in-house',
     });
+    // The service's extra `ok: true` is not carried into the result.
+    const real = LIFECYCLE_FIXTURE.lifecycle_retire_changed!.body;
     expect(result).toEqual({
       ok: true,
       brand_slug: 'acme-snacks',
       state: 'retired',
       changed: true,
-      at: '2026-09-24T15:30:00.000Z',
-      event_id: 'evt_000000000001',
+      at: real.at,
+      event_id: real.event_id,
     });
   });
 
-  it('a repeat is changed:false', async () => {
+  it('a repeat is changed:false and names the event that set the current state', async () => {
     const { fetchImpl } = makeFetch(() => fixtureResponse('lifecycle_retire_unchanged'));
     const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
     const result = await client.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'retire' });
-    expect(result).toMatchObject({ ok: true, state: 'retired', changed: false });
+    expect(result).toMatchObject({
+      ok: true,
+      state: 'retired',
+      changed: false,
+      at: LIFECYCLE_FIXTURE.lifecycle_retire_changed!.body.at,
+      event_id: LIFECYCLE_FIXTURE.lifecycle_retire_changed!.body.event_id,
+    });
+  });
+
+  it('a restore parses the brand the service names', async () => {
+    const { fetchImpl } = makeFetch(() => fixtureResponse('lifecycle_restore_changed'));
+    const client = createContextSyncClient({ dataDirOverride: testDir, fetchImpl });
+    const result = await client.setBrandLifecycle!({ brand_slug: 'bravo-bottles', action: 'restore' });
+    expect(result).toMatchObject({ ok: true, brand_slug: 'bravo-bottles', state: 'active', changed: true });
   });
 
   it('404 {error:"unknown_brand"} is unknown_brand', async () => {
@@ -448,6 +464,7 @@ describe('setBrandLifecycle (brand retire)', () => {
     const c1 = createContextSyncClient({ dataDirOverride: testDir, fetchImpl: forbidden.fetchImpl });
     const r1 = await c1.setBrandLifecycle!({ brand_slug: 'acme-snacks', action: 'restore' });
     expect(r1).toMatchObject({ ok: false, kind: 'insufficient_scope', http_status: 403 });
+    if (!r1.ok) expect(r1.friendly).toBe(LIFECYCLE_FIXTURE.lifecycle_forbidden!.body.friendly);
 
     const bad = makeFetch(() => fixtureResponse('lifecycle_bad_params'));
     const c2 = createContextSyncClient({ dataDirOverride: testDir, fetchImpl: bad.fetchImpl });

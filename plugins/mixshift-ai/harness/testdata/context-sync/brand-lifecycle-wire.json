@@ -1,5 +1,27 @@
 {
-  "_comment": "Brand retire wire fixture, shaped EXACTLY by the slice-1 wire contract (manifest lifecycle field + retired_count, POST /api/context/lifecycle answers). Synthetic slugs and actors only. A reconcile stage replaces these bodies with real responses captured from the gateway under test; keep the keys stable so the tests keep reading them.",
+  "_comment": "Brand retire wire fixture. Every body below is a REAL mx-legacy-auth response (fixture from the producer), copied verbatim from the gateway fixture test except where _provenance says otherwise. Synthetic tenant, slugs and actors only. Regenerating it changes ids and timestamps; the tests read ids/timestamps from here and pin the human copy (actor, calendar date) literally.",
+  "_provenance": {
+    "producer": "mx-legacy-auth test/context-lifecycle.test.ts fixture test (LIFECYCLE_FIXTURE_OUT), real route + store code over its in-memory PostgREST stand-in",
+    "producer_branch": "feat/brand-lifecycle-retire",
+    "producer_sha": "082643c",
+    "producer_generated_at": "2026-09-25T14:55:18.297Z",
+    "manifest_default_lifecycle": "all",
+    "keys": {
+      "manifest_all": "get_manifest_default (the default is all, so this is also the ?lifecycle=all answer the plugin asks for)",
+      "manifest_lifecycle_active": "get_manifest_lifecycle_active",
+      "manifest_after_svc_retire": "get_manifest_default_after_svc_retire",
+      "manifest_old_gateway": "DERIVED from get_manifest_default: lifecycle and retired_count removed (the pre-retire route + store emit exactly that)",
+      "lifecycle_retire_changed": "post_lifecycle_retire_200",
+      "lifecycle_retire_unchanged": "post_lifecycle_retire_repeat_200",
+      "lifecycle_retire_by_service_credential": "post_lifecycle_retire_by_service_credential_200",
+      "lifecycle_restore_changed": "post_lifecycle_restore_200",
+      "lifecycle_unknown_brand": "post_lifecycle_unknown_brand_404",
+      "lifecycle_forbidden": "post_lifecycle_no_context_write_403",
+      "lifecycle_bad_params": "post_lifecycle_bad_action_400",
+      "lifecycle_old_gateway_404": "unknown_path_404_as_old_gateway_answers_post_lifecycle (the /api/context fallthrough, unchanged from the pre-retire gateway)",
+      "lifecycle_old_gateway_405": "SYNTHETIC: no MixShift gateway answers 405 here; kept because the wire contract names 404/405 as the old-service signal"
+    }
+  },
   "manifest_all": {
     "status": 200,
     "body": {
@@ -10,31 +32,39 @@
           "docs": [
             {
               "doc_type": "context",
-              "revision": 4,
-              "content_hash": "3f1d6c1b9a0e2d5f7c8b4a6e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c",
+              "revision": 1,
+              "content_hash": "30e2f95713e2530596d70e7ba2a19dd6fac10919844a86be32ccc96efd78533f",
               "sensitivity": "internal",
-              "updated_at": "2026-09-11T16:02:11.000Z",
-              "updated_by_actor": "pat@example.com"
+              "updated_at": "2026-09-25T14:55:18.263000+00:00",
+              "updated_by_actor": "am@example.com"
+            },
+            {
+              "doc_type": "narrative",
+              "revision": 1,
+              "content_hash": "84b29ee815789d7b891ae23586cecbe76f4e10c4bc31c464ff2055074c3637f8",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.265000+00:00",
+              "updated_by_actor": "am@example.com"
             }
           ],
           "lifecycle": {
             "state": "retired",
-            "changed_at": "2026-09-24T15:30:00.000Z",
-            "changed_by": "pat@example.com",
+            "changed_at": "2026-09-25T14:55:18.276000+00:00",
+            "changed_by": "am@example.com",
             "surface": "plugin",
             "reason_code": "client_left"
           }
         },
         {
-          "brand_slug": "summit-trail",
+          "brand_slug": "bravo-bottles",
           "docs": [
             {
               "doc_type": "context",
-              "revision": 2,
-              "content_hash": "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
+              "revision": 1,
+              "content_hash": "6cad0868a5dce1f8c565ddf46ccb4d448b99fd865ca6ca8dbee077a0d24393c5",
               "sensitivity": "internal",
-              "updated_at": "2026-09-20T10:00:00.000Z",
-              "updated_by_actor": "lee@example.com"
+              "updated_at": "2026-09-25T14:55:18.267000+00:00",
+              "updated_by_actor": "am@example.com"
             }
           ],
           "lifecycle": {
@@ -49,6 +79,92 @@
       "retired_count": 1
     }
   },
+  "manifest_lifecycle_active": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "brands": [
+        {
+          "brand_slug": "bravo-bottles",
+          "docs": [
+            {
+              "doc_type": "context",
+              "revision": 1,
+              "content_hash": "6cad0868a5dce1f8c565ddf46ccb4d448b99fd865ca6ca8dbee077a0d24393c5",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.267000+00:00",
+              "updated_by_actor": "am@example.com"
+            }
+          ],
+          "lifecycle": {
+            "state": "active",
+            "changed_at": null,
+            "changed_by": null,
+            "surface": null,
+            "reason_code": null
+          }
+        }
+      ],
+      "retired_count": 1
+    }
+  },
+  "manifest_after_svc_retire": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "brands": [
+        {
+          "brand_slug": "acme-snacks",
+          "docs": [
+            {
+              "doc_type": "context",
+              "revision": 1,
+              "content_hash": "30e2f95713e2530596d70e7ba2a19dd6fac10919844a86be32ccc96efd78533f",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.263000+00:00",
+              "updated_by_actor": "am@example.com"
+            },
+            {
+              "doc_type": "narrative",
+              "revision": 1,
+              "content_hash": "84b29ee815789d7b891ae23586cecbe76f4e10c4bc31c464ff2055074c3637f8",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.265000+00:00",
+              "updated_by_actor": "am@example.com"
+            }
+          ],
+          "lifecycle": {
+            "state": "retired",
+            "changed_at": "2026-09-25T14:55:18.276000+00:00",
+            "changed_by": "am@example.com",
+            "surface": "plugin",
+            "reason_code": "client_left"
+          }
+        },
+        {
+          "brand_slug": "bravo-bottles",
+          "docs": [
+            {
+              "doc_type": "context",
+              "revision": 1,
+              "content_hash": "6cad0868a5dce1f8c565ddf46ccb4d448b99fd865ca6ca8dbee077a0d24393c5",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.267000+00:00",
+              "updated_by_actor": "am@example.com"
+            }
+          ],
+          "lifecycle": {
+            "state": "retired",
+            "changed_at": "2026-09-25T14:55:18.294000+00:00",
+            "changed_by": "svc:nightly-sync",
+            "surface": "api",
+            "reason_code": "superseded"
+          }
+        }
+      ],
+      "retired_count": 2
+    }
+  },
   "manifest_old_gateway": {
     "status": 200,
     "body": {
@@ -59,17 +175,34 @@
           "docs": [
             {
               "doc_type": "context",
-              "revision": 4,
-              "content_hash": "3f1d6c1b9a0e2d5f7c8b4a6e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c",
+              "revision": 1,
+              "content_hash": "30e2f95713e2530596d70e7ba2a19dd6fac10919844a86be32ccc96efd78533f",
               "sensitivity": "internal",
-              "updated_at": "2026-09-11T16:02:11.000Z",
-              "updated_by_actor": "pat@example.com"
+              "updated_at": "2026-09-25T14:55:18.263000+00:00",
+              "updated_by_actor": "am@example.com"
+            },
+            {
+              "doc_type": "narrative",
+              "revision": 1,
+              "content_hash": "84b29ee815789d7b891ae23586cecbe76f4e10c4bc31c464ff2055074c3637f8",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.265000+00:00",
+              "updated_by_actor": "am@example.com"
             }
           ]
         },
         {
-          "brand_slug": "summit-trail",
-          "docs": []
+          "brand_slug": "bravo-bottles",
+          "docs": [
+            {
+              "doc_type": "context",
+              "revision": 1,
+              "content_hash": "6cad0868a5dce1f8c565ddf46ccb4d448b99fd865ca6ca8dbee077a0d24393c5",
+              "sensitivity": "internal",
+              "updated_at": "2026-09-25T14:55:18.267000+00:00",
+              "updated_by_actor": "am@example.com"
+            }
+          ]
         }
       ]
     }
@@ -77,39 +210,63 @@
   "lifecycle_retire_changed": {
     "status": 200,
     "body": {
+      "ok": true,
       "brand_slug": "acme-snacks",
       "state": "retired",
       "changed": true,
-      "at": "2026-09-24T15:30:00.000Z",
-      "event_id": "evt_000000000001"
+      "at": "2026-09-25T14:55:18.276000+00:00",
+      "event_id": "ab01e2ea-db9e-477c-8b06-98a6484da0fb"
     }
   },
   "lifecycle_retire_unchanged": {
     "status": 200,
     "body": {
+      "ok": true,
       "brand_slug": "acme-snacks",
       "state": "retired",
       "changed": false,
-      "at": "2026-09-24T15:31:00.000Z"
+      "at": "2026-09-25T14:55:18.276000+00:00",
+      "event_id": "ab01e2ea-db9e-477c-8b06-98a6484da0fb"
+    }
+  },
+  "lifecycle_retire_by_service_credential": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "brand_slug": "bravo-bottles",
+      "state": "retired",
+      "changed": true,
+      "at": "2026-09-25T14:55:18.294000+00:00",
+      "event_id": "377e93fb-1eb0-4e4c-ada8-83dbc12402c0"
     }
   },
   "lifecycle_restore_changed": {
     "status": 200,
     "body": {
-      "brand_slug": "acme-snacks",
+      "ok": true,
+      "brand_slug": "bravo-bottles",
       "state": "active",
       "changed": true,
-      "at": "2026-09-25T09:00:00.000Z",
-      "event_id": "evt_000000000002"
+      "at": "2026-09-25T14:55:18.295000+00:00",
+      "event_id": "e981a034-cf52-401a-b290-345f9e015056"
     }
   },
   "lifecycle_unknown_brand": {
     "status": 404,
-    "body": { "error": "unknown_brand" }
+    "body": {
+      "ok": false,
+      "kind": "unknown_brand",
+      "error": "unknown_brand",
+      "friendly": "No brand context is set up for \"no-such-brand\" on this account, so there is nothing to retire."
+    }
   },
   "lifecycle_old_gateway_404": {
     "status": 404,
-    "body": { "ok": false, "kind": "unknown", "friendly": "not_found" }
+    "body": {
+      "ok": false,
+      "kind": "unknown",
+      "friendly": "not_found"
+    }
   },
   "lifecycle_old_gateway_405": {
     "status": 405,
@@ -117,10 +274,32 @@
   },
   "lifecycle_forbidden": {
     "status": 403,
-    "body": { "ok": false, "kind": "insufficient_scope", "friendly": "This token lacks the context:write scope." }
+    "body": {
+      "ok": false,
+      "kind": "insufficient_scope",
+      "friendly": "This credential cannot write brand context (context:write required). Ask a MixShift admin to issue a credential with it."
+    }
   },
   "lifecycle_bad_params": {
     "status": 400,
-    "body": { "ok": false, "kind": "bad_params", "friendly": "note must be at most 280 characters." }
+    "body": {
+      "ok": false,
+      "kind": "bad_params",
+      "friendly": "Invalid request: action: Invalid enum value. Expected 'retire' | 'restore', received 'archive'",
+      "issues": [
+        {
+          "received": "archive",
+          "code": "invalid_enum_value",
+          "options": [
+            "retire",
+            "restore"
+          ],
+          "path": [
+            "action"
+          ],
+          "message": "Invalid enum value. Expected 'retire' | 'restore', received 'archive'"
+        }
+      ]
+    }
   }
 }

@@ -1,8 +1,8 @@
 /**
  * Brand retire helpers: the manifest lifecycle reader and the copy every
- * retired-brand line comes from. The manifest bodies come from the wire
- * fixture (testdata/context-sync/brand-lifecycle-wire.json), shaped exactly by
- * the slice-1 wire contract.
+ * retired-brand line comes from. The manifest bodies are the gateway's real
+ * responses (testdata/context-sync/brand-lifecycle-wire.json, derived from
+ * mx-legacy-auth's own fixture test; see its _provenance).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -36,14 +36,14 @@ const NEW_BRANDS = FIXTURE.manifest_all!.body.brands!;
 const OLD_BRANDS = FIXTURE.manifest_old_gateway!.body.brands!;
 
 describe('lifecycle state', () => {
-  it('reads retired and active entries from the contract-shaped manifest', () => {
+  it('reads retired and active entries from the real manifest', () => {
     const acme = NEW_BRANDS.find((b) => b.brand_slug === 'acme-snacks');
-    const summit = NEW_BRANDS.find((b) => b.brand_slug === 'summit-trail');
+    const bravo = NEW_BRANDS.find((b) => b.brand_slug === 'bravo-bottles');
     expect(lifecycleStateOf(acme)).toBe('retired');
     expect(isRetiredBrand(acme)).toBe(true);
-    expect(retiredLifecycleOf(acme)).toMatchObject({ changed_by: 'pat@example.com' });
-    expect(lifecycleStateOf(summit)).toBe('active');
-    expect(retiredLifecycleOf(summit)).toBeNull();
+    expect(retiredLifecycleOf(acme)).toMatchObject({ changed_by: 'am@example.com' });
+    expect(lifecycleStateOf(bravo)).toBe('active');
+    expect(retiredLifecycleOf(bravo)).toBeNull();
   });
 
   it('treats an ABSENT lifecycle field (older service) and an unlisted brand as active', () => {
@@ -53,13 +53,13 @@ describe('lifecycle state', () => {
 
   it('partitions a bulk slug list, keeping order and local-only brands', () => {
     const { active, retired } = partitionRetired(
-      ['summit-trail', 'acme-snacks', 'local-only'],
+      ['bravo-bottles', 'acme-snacks', 'local-only'],
       NEW_BRANDS,
     );
-    expect(active).toEqual(['summit-trail', 'local-only']);
+    expect(active).toEqual(['bravo-bottles', 'local-only']);
     expect(retired.map((r) => r.slug)).toEqual(['acme-snacks']);
     // Against an older service nothing is ever skipped.
-    expect(partitionRetired(['acme-snacks', 'summit-trail'], OLD_BRANDS).retired).toEqual([]);
+    expect(partitionRetired(['acme-snacks', 'bravo-bottles'], OLD_BRANDS).retired).toEqual([]);
   });
 });
 
@@ -68,7 +68,7 @@ describe('copy', () => {
 
   it('bulk skip summary line matches the contract wording exactly', () => {
     expect(retiredSkipSummaryLine([{ slug: 'acme-snacks', lifecycle: lc }])).toBe(
-      '1 retired brand skipped: acme-snacks (retired by pat@example.com on Sep 24, 2026; ' +
+      '1 retired brand skipped: acme-snacks (retired by am@example.com on Sep 25, 2026; ' +
         'mixshift brand restore acme-snacks to undo)',
     );
     expect(
@@ -77,7 +77,7 @@ describe('copy', () => {
         { slug: 'b-two', lifecycle: { ...lc, changed_by: null, changed_at: null } },
       ]),
     ).toBe(
-      '2 retired brands skipped: acme-snacks (retired by pat@example.com on Sep 24, 2026; ' +
+      '2 retired brands skipped: acme-snacks (retired by am@example.com on Sep 25, 2026; ' +
         'mixshift brand restore acme-snacks to undo), b-two (retired by a teammate; ' +
         'mixshift brand restore b-two to undo)',
     );
@@ -86,7 +86,7 @@ describe('copy', () => {
   it('explicit-action notice names who, when, how, and never says deleted', () => {
     const line = retiredExplicitNoticeLine('acme-snacks', lc);
     expect(line).toBe(
-      'acme-snacks was retired for your team by pat@example.com on Sep 24, 2026 via plugin. ' +
+      'acme-snacks was retired for your team by am@example.com on Sep 25, 2026 via plugin. ' +
         'Continuing, because you asked for it by name. To bring it back for everyone: ' +
         '`mixshift brand restore acme-snacks`.\n',
     );
@@ -103,6 +103,9 @@ describe('copy', () => {
 
   it('formats dates as a UTC calendar day and rejects junk', () => {
     expect(formatLifecycleDate('2026-09-24T23:59:00.000Z')).toBe('Sep 24, 2026');
+    // The service renders timestamptz the PostgREST way: microseconds + offset.
+    expect(formatLifecycleDate('2026-09-25T23:59:59.999999+00:00')).toBe('Sep 25, 2026');
+    expect(formatLifecycleDate(NEW_BRANDS.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at)).toBe('Sep 25, 2026');
     expect(formatLifecycleDate('not a date')).toBeNull();
     expect(formatLifecycleDate(null)).toBeNull();
   });

@@ -5,7 +5,7 @@
  * line says who retired it, when, and how to undo. Fails open.
  *
  * The autosync module is mocked (no network): maybeAutoSync is a no-op and
- * getCachedOrgManifest serves the contract-shaped wire fixture.
+ * getCachedOrgManifest serves the gateway's real manifest (wire fixture).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -122,7 +122,7 @@ describe('brand context resolve on a retired brand', () => {
       expect(retired.stdout).toBe(active.stdout);
       expect(retired.stdout.length).toBeGreaterThan(0);
       expect(retired.stderr).toBe(
-        'acme-snacks was retired for your team by pat@example.com on Sep 24, 2026 via plugin. ' +
+        'acme-snacks was retired for your team by am@example.com on Sep 25, 2026 via plugin. ' +
           'Continuing, because you asked for it by name. To bring it back for everyone: ' +
           '`mixshift brand restore acme-snacks`.\n',
       );
