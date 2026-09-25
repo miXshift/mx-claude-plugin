@@ -999,7 +999,10 @@ export function batteryParams(
  *  land in the connectivity telemetry bucket. The runner now reports it as
  *  kind timeout with raw_code client_budget (mx-ops#79); the host_unreachable
  *  arm is the shape it had before. Either way the battery, which legitimately
- *  runs for minutes, keeps its own copy naming its own budget. */
+ *  runs for minutes, keeps its own copy naming its own budget. A budget that
+ *  ran out while the document was downloading (raw_code
+ *  client_budget_download) is not "did not answer": the service had answered,
+ *  so the runner's slow-download copy passes through, still as a timeout. */
 export function batteryFailure(failure: DataQueryFailure): UserFacingError {
   const budgetExpired =
     failure.raw_code === CLIENT_BUDGET_RAW_CODE ||

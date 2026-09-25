@@ -1364,7 +1364,7 @@ async function runDatahubQuery<Row>(
     // Server returns the same envelope shape as DataQueryResult — just
     // pass through. Type assertion is safe because the schema is
     // shared with the plugin (DataQueryFailureKind kinds match).
-    const json = (await res.json()) as DatahubQueryWire;
+    const json = await readDatahubJson<DatahubQueryWire>(res);
     const durationMs = Date.now() - t0;
 
     if (json.ok === true) {
@@ -1431,8 +1431,10 @@ async function runDatahubQuery<Row>(
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure: DataQueryFailure;
-    if (isClientBudgetExpiry(err, durationMs, queryTimeoutMs)) {
+    const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
+    if (budgetPhase) {
       failure = clientBudgetTimeout(
+        budgetPhase,
         err instanceof Error ? err.message : String(err),
         durationMs,
         queryTimeoutMs,
@@ -1470,7 +1472,9 @@ async function runDatahubQuery<Row>(
         error_class: failure.kind,
         payload: {
           auth_path: 'datahub',
-          // Set only for a client budget expiry; absent on a true network failure.
+          // Set only for a client budget expiry (client_budget, or
+          // client_budget_download when the body download ran out); absent on
+          // a true network failure.
           raw_code: failure.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
@@ -1567,7 +1571,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
       options.httpTimeoutMs ?? queryTimeoutMs + 5_000,
       options.dataDirOverride,
     );
-    const json = (await res.json()) as NamedQueryWire;
+    const json = await readDatahubJson<NamedQueryWire>(res);
     const durationMs = Date.now() - t0;
 
     if (json.ok === true) {
@@ -1630,8 +1634,10 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure: DataQueryFailure;
-    if (isClientBudgetExpiry(err, durationMs, queryTimeoutMs)) {
+    const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
+    if (budgetPhase) {
       failure = clientBudgetTimeout(
+        budgetPhase,
         err instanceof Error ? err.message : String(err),
         durationMs,
         queryTimeoutMs,
@@ -1658,7 +1664,7 @@ export async function runNamedQuery<Row = Record<string, unknown>>(
         duration_ms: durationMs,
         query_id: id,
         error_class: failure.kind,
-        // raw_code is set only for a client budget expiry.
+        // raw_code is set only for a client budget expiry (either phase).
         payload: { auth_path: 'datahub', named_query: true, raw_code: failure.raw_code },
       },
       options.dataDirOverride,
@@ -1673,11 +1679,13 @@ class DatahubNetworkError extends Error {
    *  computed there because this class itself only carries a flattened
    *  string message, losing the `.cause` classify.ts needs. */
   readonly friendly: string;
-  /** True when the client's own AbortSignal.timeout budget fired: on a
-   *  direct connection the request DID reach the service and we gave up
-   *  waiting on its answer (through a proxy, see isClientBudgetExpiry).
-   *  The callers use it (with the elapsed time) to report a query timeout
-   *  rather than a dead host. */
+  /** True when the client's own AbortSignal.timeout budget fired before any
+   *  response headers arrived: on a direct connection the request DID reach
+   *  the service and we gave up waiting on its answer (through a proxy, see
+   *  clientBudgetPhase). The callers use it (with the elapsed time) to report
+   *  a query timeout rather than a dead host. A budget that fires later, while
+   *  the body downloads, never reaches this class: see
+   *  DatahubDownloadTimeoutError. */
   readonly budgetExpired: boolean;
   /** False when the budget expired. Retrying that just spends the budget
    *  again on a query the server is already struggling with, so only
@@ -1697,61 +1705,146 @@ class DatahubNetworkError extends Error {
   }
 }
 
-/** `raw_code` on a failure that the CLIENT's HTTP budget ended (mx-ops#79).
- *  Distinct from the service's own timeout codes (ER_QUERY_TIMEOUT and kin)
- *  and from a true unreachable host, which carries none, so query.failed
- *  telemetry can tell the three apart. */
-export const CLIENT_BUDGET_RAW_CODE = 'client_budget';
+/**
+ * The client's HTTP budget fired while the response BODY was still being
+ * read. `fetch()` had already resolved, so the response headers had arrived,
+ * and the gateway writes its status and headers only once the statement has
+ * finished (one write of the whole envelope, mx-legacy-auth
+ * src/routes/data.ts). So the service had answered and what ran out was the
+ * download: a slow link or a large result, not the statement limit. Never
+ * replayed, like any budget expiry.
+ */
+class DatahubDownloadTimeoutError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'DatahubDownloadTimeoutError';
+  }
+}
 
 /**
- * True when the client's HTTP budget (AbortSignal.timeout) ended the wait
- * after the statement limit had already run out. The budget covers connect
- * and transfer time as well as the query, so on a slow link it can fire
- * before the service's own `timeout` envelope arrives, and the abort then
- * looks like a dead host. By that point the service has had the query for
- * its full limit, so it is reported as the query timeout it almost certainly
- * was. On a direct connection, DNS, refused and undici's 10s connect timeout
- * never match: they are not a budget expiry, and they end well before the
- * limit.
- *
- * Known limitation (mx-ops#79 review): through an HTTP proxy (Cowork, the
- * Claude Code sandbox, any HTTPS_PROXY), undici sends the tunnel CONNECT with
- * only this request's signal and no connect timeout of its own. A proxy that
- * never answers the CONNECT is therefore ended by the budget too, and reads
- * as a client_budget timeout although the request never reached the service.
- * Pinned by a test; bounding the CONNECT belongs in lib/net/proxy.ts.
- *
- * Two shapes reach here: the DatahubNetworkError from the fetch itself, and
- * a bare TimeoutError when the budget fires while the response body is still
- * being read (`res.json()` runs outside datahubAuthedPost), which used to
- * surface as kind `unknown`. In the second shape the service has already
- * answered, so what ran out is the transfer, not the statement; it is still a
- * budget expiry, and fewer rows is still the fix.
+ * Read a datahub response's JSON body. The body is read under the same
+ * AbortSignal.timeout budget as the request, so that budget can fire here,
+ * after the headers arrived; undici then rejects the read with the signal's
+ * TimeoutError, which is re-thrown as a DatahubDownloadTimeoutError so the
+ * caller can tell a slow download from a slow query by WHERE the abort
+ * landed. Elapsed time cannot tell them apart: it is about the full budget
+ * in both. Anything else (a malformed body, a connection reset mid-body)
+ * propagates unchanged.
  */
-function isClientBudgetExpiry(err: unknown, durationMs: number, queryTimeoutMs: number): boolean {
-  const expired =
-    err instanceof DatahubNetworkError
-      ? err.budgetExpired
-      : err instanceof Error && err.name === 'TimeoutError';
-  return expired && durationMs >= queryTimeoutMs;
+async function readDatahubJson<T>(res: Response): Promise<T> {
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new DatahubDownloadTimeoutError(err.message);
+    }
+    throw err;
+  }
+}
+
+/** `raw_code` on a failure that the CLIENT's HTTP budget ended before any
+ *  response arrived (mx-ops#79). Distinct from the service's own timeout
+ *  codes (ER_QUERY_TIMEOUT and kin) and from a true unreachable host, which
+ *  carries none, so query.failed telemetry can tell the three apart. */
+export const CLIENT_BUDGET_RAW_CODE = 'client_budget';
+
+/** `raw_code` on a failure that the CLIENT's HTTP budget ended while the
+ *  response body was downloading: the service had answered, and the transfer
+ *  ran out (a slow link or a large result). Same kind (`timeout`) as
+ *  CLIENT_BUDGET_RAW_CODE, so the error_class bucket and the `--json`
+ *  failure_kind do not move; the raw_code is what tells a slow download from
+ *  a slow query. */
+export const CLIENT_BUDGET_DOWNLOAD_RAW_CODE = 'client_budget_download';
+
+/** Which phase of the request the client's HTTP budget ended. */
+type ClientBudgetPhase = 'response' | 'download';
+
+/**
+ * Which phase, if any, the client's HTTP budget (AbortSignal.timeout) ended.
+ *
+ * `download`: the budget fired while the response body was still being read
+ * (a DatahubDownloadTimeoutError from readDatahubJson). The service had
+ * already answered, so this is a slow or very large download, never the
+ * statement limit. It is reported whatever the elapsed time.
+ *
+ * `response`: the budget fired before any response headers arrived, after
+ * the statement limit had already run out. The budget covers connect and
+ * transfer time as well as the query, so on a slow link it can fire before
+ * the service's own `timeout` envelope arrives, and the abort then looks like
+ * a dead host. By that point the service has had the query for its full
+ * limit, so it is reported as the query timeout it almost certainly was.
+ *
+ * `null`: not a budget expiry. On a direct connection, DNS, refused and
+ * undici's 10s connect timeout never match: they are not a budget expiry, and
+ * they end well before the limit. A budget shorter than the statement limit
+ * that fires before any response is not a query timeout either.
+ *
+ * Known limitation (mx-ops#79 review), `response` phase only: through an HTTP
+ * proxy (Cowork, the Claude Code sandbox, any HTTPS_PROXY), undici sends the
+ * tunnel CONNECT with only this request's signal and no connect timeout of
+ * its own. A proxy that never answers the CONNECT is therefore ended by the
+ * budget too, and reads as a client_budget timeout although the request never
+ * reached the service. Nothing before the headers says whether the request
+ * got through, so the phase split cannot separate the two. Pinned by a test;
+ * bounding the CONNECT belongs in lib/net/proxy.ts. A `download` expiry is
+ * never this case: headers arrived, so the request reached the service.
+ */
+function clientBudgetPhase(
+  err: unknown,
+  durationMs: number,
+  queryTimeoutMs: number,
+): ClientBudgetPhase | null {
+  if (err instanceof DatahubDownloadTimeoutError) return 'download';
+  if (err instanceof DatahubNetworkError && err.budgetExpired && durationMs >= queryTimeoutMs) {
+    return 'response';
+  }
+  return null;
 }
 
 /**
  * The failure for a client budget expiry: kind `timeout`, like the service's
- * own, with CLIENT_BUDGET_RAW_CODE as the sub-reason. The copy is query-timeout
- * guidance, never connect copy or `mixshift doctor`: a slow query is fixed by
- * reshaping it, not by checking the network. Same idea as report.ts
+ * own, with the phase's raw_code as the sub-reason. Same idea as report.ts
  * batteryFailure's budget branch (PR #163), which keeps its own copy for the
  * battery's much longer budget. A library query's SQL (named, or dispatched
  * sql/sproc with a query_id) is not the user's to change, so its copy names
  * the inputs they do control. Copy rule: no em dashes (customer-facing).
+ *
+ * `response`: query-timeout guidance, never connect copy or `mixshift
+ * doctor`: a slow query is fixed by reshaping it, not by checking the network.
+ *
+ * `download`: the service answered, so the copy never blames the query or
+ * its limit and never says to narrow the date range. It names the connection
+ * and the size of the result. `--out` is deliberately not offered: it pages
+ * under the same per-request byte budget and time budget as an inline query,
+ * so it does not shorten any one download.
  */
 function clientBudgetTimeout(
+  phase: ClientBudgetPhase,
   message: string,
   durationMs: number,
   queryTimeoutMs: number,
   libraryQueryId?: string,
 ): DataQueryFailure {
+  if (phase === 'download') {
+    const friendly = libraryQueryId
+      ? `The service answered library query ${libraryQueryId}, but the result did not ` +
+        'finish downloading in time. That points at a slow connection or a large ' +
+        'result, not a slow query. Check your connection and run it again, or run it ' +
+        'for fewer sellers to get a smaller result; if it keeps happening, report it ' +
+        'with `mixshift feedback`.'
+      : 'The service answered, but the result did not finish downloading in time. ' +
+        'That points at a slow connection or a large result, not a slow query. Check ' +
+        'your connection and run it again, or make the result smaller: select only the ' +
+        'columns you need instead of SELECT * and add or lower a LIMIT.';
+    return {
+      ok: false,
+      kind: 'timeout',
+      raw_code: CLIENT_BUDGET_DOWNLOAD_RAW_CODE,
+      message,
+      friendly,
+      durationMs,
+    };
+  }
   const limit = `${Math.round(queryTimeoutMs / 1000)}s`;
   const friendly = libraryQueryId
     ? `Library query ${libraryQueryId} did not finish within the ${limit} query limit. ` +
