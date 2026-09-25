@@ -40,6 +40,7 @@ async function parseError(...args: string[]): Promise<InvalidOptionValueError> {
 }
 
 const JSON_QUERY = '{"maxResults":10}';
+const JOINED_QUERY = 'details=true&nextToken=SYNTHTOKEN';
 
 describe('option parser sites throw InvalidOptionValueError naming the flag', () => {
   it.each([
@@ -49,6 +50,10 @@ describe('option parser sites throw InvalidOptionValueError naming the flag', ()
     ['amazon call --path', ['amazon', 'call', 'op.synthetic', '--path', '=x'], '--path', 'empty_key'],
     ['amazon report start --option', ['amazon', 'report', 'start', '--type', 'T', '--option', '{"a":"b"}'], '--option', 'json_object'],
     ['amazon report run --option', ['amazon', 'report', 'run', '--type', 'T', '--option', 'reportPeriod'], '--option', 'missing_equals'],
+    ['ads call --query joined', ['ads', 'call', 'op.synthetic', '--query', JOINED_QUERY], '--query', 'ampersand_joined'],
+    ['amazon call --query joined', ['amazon', 'call', 'op.synthetic', '--query', JOINED_QUERY], '--query', 'ampersand_joined'],
+    ['amazon call --path joined', ['amazon', 'call', 'op.synthetic', '--path', 'sku=X&marketplaceIds=Y'], '--path', 'ampersand_joined'],
+    ['amazon report start --option joined', ['amazon', 'report', 'start', '--type', 'T', '--option', 'a=1&b=2'], '--option', 'ampersand_joined'],
     ['amazon report run --interval-ms', ['amazon', 'report', 'run', '--type', 'T', '--interval-ms', '-5'], '--interval-ms', 'below_minimum'],
     ['amazon report run --max-wait-ms', ['amazon', 'report', 'run', '--type', 'T', '--max-wait-ms', 'soon'], '--max-wait-ms', 'not_integer'],
     ['data sample --seller-id', ['data', 'sample', '--table', 't', '--seller-id', 'A1SYNTHETIC0001'], '--seller-id', 'merchant_token'],

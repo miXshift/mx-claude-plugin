@@ -18,6 +18,14 @@ import { InvalidOptionValueError } from '../errors.js';
 /** An AmazonSellerID (merchant token): `A` plus 9-15 uppercase alphanumerics. */
 const MERCHANT_TOKEN = /^A[0-9A-Z]{9,15}$/;
 
+/**
+ * A second parameter joined into a value with `&`, as in a URL query string:
+ * `details=true&nextToken=abc`. Only `&` followed by `name=` counts, so a bare
+ * `&` (a SKU like `SALT&PEPPER` on --path) still passes. The same pattern
+ * splits such a value back into its pairs, a doubled `&&` included.
+ */
+const AMPERSAND_JOIN = /&+(?=[A-Za-z_][A-Za-z0-9_]*=)/;
+
 export interface KeyValueOptionHints {
   /** The command's JSON body flag, when it has one (e.g. `--body`). */
   bodyFlag?: string;
@@ -29,7 +37,10 @@ export interface KeyValueOptionHints {
  * Collector for a repeatable `--flag key=value` option. Accumulates into a
  * record; a repeated key keeps its last value. Rejects JSON (the commonest
  * misuse: an agent passing `{"maxResults":10}` to `--query`), a value with no
- * `=`, and an empty key.
+ * `=`, an empty key, and several pairs joined with `&` in one value. The last
+ * does not fail on its own: everything after the first `=` became one value,
+ * which the gateway encodes (`&` as `%26`) and Amazon answers with a 500 that
+ * reads as a retryable outage.
  */
 export function keyValueOption(
   flag: string,
@@ -71,6 +82,20 @@ export function keyValueOption(
         flag,
         'empty_key',
         `${flag} got "${value}", which has no key before the "=". ${howTo}`,
+      );
+    }
+    if (AMPERSAND_JOIN.test(value.slice(eq + 1))) {
+      // Split the value only, so an `&` in the key stays in the key. The
+      // corrected flags drop URL leftovers (a leading `?`, a trailing `&`)
+      // that would otherwise reach Amazon as part of a name or value.
+      const [first, ...rest] = value.slice(eq + 1).replace(/&+$/, '').split(AMPERSAND_JOIN);
+      const corrected = spelledFlags(flag, [`${key.replace(/^\?+/, '')}=${first}`, ...rest]);
+      throw new InvalidOptionValueError(
+        flag,
+        'ampersand_joined',
+        `${flag} takes one key=value pair per flag, not several joined with "&": ` +
+          `everything after the first "=" would be sent as one value. ${howTo}` +
+          (corrected ? `\nFor this value: ${corrected}` : ''),
       );
     }
     return { ...previous, [key]: value.slice(eq + 1) };
@@ -141,15 +166,37 @@ function correctedKeyValueFlags(flag: string, json: string): string | null {
     return null;
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const parts: string[] = [];
+  const pairs: string[] = [];
   for (const [key, v] of Object.entries(parsed)) {
     const value = Array.isArray(v) ? csvValue(v) : scalarValue(v);
     if (value === null) return null;
-    const pair = `${key}=${value}`;
-    if (pair.includes("'")) return null;
-    parts.push(`${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`);
+    pairs.push(`${key}=${value}`);
   }
-  return parts.length > 0 ? parts.join(' ') : null;
+  return spelledFlags(flag, pairs);
+}
+
+/**
+ * `--query a=1 --query 'b=two words'`: one flag per pair, single-quoted when
+ * the pair holds anything beyond a safe set. Null when following the flags
+ * would not send these pairs: no pairs; a pair with a single quote, which has
+ * no quoting that works in both a POSIX shell and PowerShell; a pair
+ * keyValueOption rejects; or a key given twice, which would silently keep only
+ * its last value.
+ */
+function spelledFlags(flag: string, pairs: string[]): string | null {
+  if (pairs.length === 0) return null;
+  const keys = new Set<string>();
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    const key = eq < 0 ? '' : pair.slice(0, eq).trim();
+    if (!key || keys.has(key) || pair.includes("'") || AMPERSAND_JOIN.test(pair.slice(eq + 1))) {
+      return null;
+    }
+    keys.add(key);
+  }
+  return pairs
+    .map((pair) => `${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`)
+    .join(' ');
 }
 
 function scalarValue(v: unknown): string | null {

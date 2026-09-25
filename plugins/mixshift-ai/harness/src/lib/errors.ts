@@ -50,6 +50,7 @@ export type OptionValueShape =
   | 'merchant_token'
   | 'missing_equals'
   | 'empty_key'
+  | 'ampersand_joined'
   | 'not_integer'
   | 'below_minimum';
 
