@@ -13,6 +13,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * /api/named-query and the pager, and a genuine connect failure still reads
  * exactly as before.
  *
+ * The budget also runs while the response body downloads. A budget that fires
+ * THERE, after the headers arrived, means the service had answered and the
+ * transfer ran out, so it reads as a slow download (raw_code
+ * client_budget_download) and never as a slow query. The phase is decided by
+ * where the abort landed, because elapsed time is about the full budget in
+ * both phases. The last block drives both phases over a real socket.
+ *
  * Date.now is driven by hand so "elapsed" is exact without waiting a minute.
  */
 
@@ -33,11 +40,13 @@ import {
   runNamedQuery,
   streamQuery,
   CLIENT_BUDGET_RAW_CODE,
+  CLIENT_BUDGET_DOWNLOAD_RAW_CODE,
   TRANSIENT_NETWORK_RETRIES,
 } from './query-runner.js';
 import { getValidAccessToken } from '../auth/credentials.js';
 import type { DatahubCreds } from '../auth/schema.js';
 import net from 'node:net';
+import http from 'node:http';
 import { EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 
 const getTokenMock = vi.mocked(getValidAccessToken);
@@ -106,6 +115,47 @@ function expectQueryTimeoutCopy(friendly: string): void {
   expect(friendly).not.toContain('—'); // no em dashes in customer copy
 }
 
+/** The service answered, so nothing may name the query limit or the date
+ *  filter, and nothing may offer a LIMIT, which silently cuts the result. A
+ *  shorter date range is allowed: it is a way to get fewer rows. */
+function expectDownloadCopy(friendly: string): void {
+  expect(friendly).toContain('did not finish downloading');
+  expect(friendly).toMatch(/shorter date range/);
+  expect(friendly).not.toMatch(/date filter/i);
+  expect(friendly).not.toContain('LIMIT');
+  expect(friendly).not.toContain('query limit');
+  expect(friendly).not.toMatch(/\b\d+s\b/);
+  expect(friendly).not.toContain('EXPLAIN');
+  expect(friendly).not.toContain('--out');
+  expectQueryTimeoutCopy(friendly);
+}
+
+/** The download took the larger share of the time: the copy blames the link. */
+function expectSlowDownloadCopy(friendly: string): void {
+  expect(friendly).toContain('slow connection or a large result, not a slow query');
+  expect(friendly).toContain('Check your connection');
+  expect(friendly).not.toContain('took most of the time');
+  expectDownloadCopy(friendly);
+}
+
+/**
+ * A fetch attempt whose headers arrive after `headersMs`, then whose body read
+ * takes `bodyMs` and rejects with `err` (the budget firing mid-download, as
+ * undici rejects `res.json()` with the signal's reason).
+ */
+function headersThenBodyReject(headersMs: number, bodyMs: number, err: unknown) {
+  return async () => {
+    clock += headersMs;
+    return {
+      status: 200,
+      json: async () => {
+        clock += bodyMs;
+        throw err;
+      },
+    } as unknown as Response;
+  };
+}
+
 describe('client budget expiry after the statement limit reads as a query timeout', () => {
   it('/api/query: kind timeout, raw_code client_budget, date-filter-first copy, no replay', async () => {
     fetchMock.mockImplementation(slowReject(65_000, budgetAbort()));
@@ -129,28 +179,8 @@ describe('client budget expiry after the statement limit reads as a query timeou
     const emit = lastFailedEmit();
     expect(emit.error_class).toBe('timeout');
     expect(emit.payload.raw_code).toBe('client_budget');
+    expect(emit.payload.headers_ms).toBeUndefined();
     expect(emit.duration_ms).toBe(65_000);
-  });
-
-  it('/api/query: the budget firing while the body is still being read is the same timeout, not unknown', async () => {
-    fetchMock.mockImplementation(async () => {
-      clock += 62_000;
-      return {
-        status: 200,
-        json: async () => {
-          clock += 3_000;
-          throw budgetAbort();
-        },
-      } as unknown as Response;
-    });
-
-    const result = await runQuery('SELECT 1', [], { creds });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.kind).toBe('timeout');
-    expect(result.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
-    expectQueryTimeoutCopy(result.friendly);
   });
 
   it('/api/query: a library query dispatched as sql/sproc (query_id set) gets the library copy, not EXPLAIN', async () => {
@@ -217,6 +247,157 @@ describe('client budget expiry after the statement limit reads as a query timeou
     expect(res.failure?.kind).toBe('timeout');
     expect(res.failure?.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
     expectQueryTimeoutCopy(res.failure!.friendly);
+  });
+});
+
+describe('client budget expiry during the body download reads as a slow download, not a slow query', () => {
+  it('/api/query: kind timeout, raw_code client_budget_download, connection-or-size copy, no replay', async () => {
+    // The measured shape: the service answers fast, the body crawls, and
+    // elapsed lands past the statement limit just as in a slow query.
+    fetchMock.mockImplementation(headersThenBodyReject(1_000, 64_000, budgetAbort()));
+
+    const result = await runQuery('SELECT * FROM t', [], { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered, but the result did not finish downloading in time.');
+    expect(result.friendly).toContain('fewer rows (a shorter date range or fewer sellers)');
+    expect(result.friendly).toContain('only the columns you need');
+    expectSlowDownloadCopy(result.friendly);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const emit = lastFailedEmit();
+    expect(emit.error_class).toBe('timeout');
+    expect(emit.payload.raw_code).toBe('client_budget_download');
+    expect(emit.payload.headers_ms).toBe(1_000);
+    expect(emit.duration_ms).toBe(65_000);
+  });
+
+  it('/api/query: a service that answered late does not read as a slow connection', async () => {
+    // The service can answer after its statement limit (its pool wait comes on
+    // top), leaving the download only the last seconds of the budget. That is
+    // not a slow link, so the copy says the service took most of the time.
+    fetchMock.mockImplementation(headersThenBodyReject(62_000, 3_000, budgetAbort()));
+
+    const result = await runQuery('SELECT * FROM t', [], { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered, but the result did not finish downloading in time.');
+    expect(result.friendly).toContain('The service took most of the time allowed before it answered');
+    expect(result.friendly).not.toContain('not a slow query');
+    expect(result.friendly).not.toContain('connection');
+    expectDownloadCopy(result.friendly);
+
+    const emit = lastFailedEmit();
+    expect(emit.payload.raw_code).toBe('client_budget_download');
+    expect(emit.payload.headers_ms).toBe(62_000);
+    expect(emit.duration_ms).toBe(65_000);
+  });
+
+  it('/api/query: a library query dispatched as sql/sproc (query_id set) gets the library download copy', async () => {
+    fetchMock.mockImplementation(headersThenBodyReject(1_000, 64_000, budgetAbort()));
+
+    const result = await runQuery('CALL sp_example(?, ?)', ['{}', '[]'], { creds, query_id: 'LIB-01' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered library query LIB-01');
+    expect(result.friendly).toContain('a shorter date range or fewer sellers');
+    expect(result.friendly).toContain('mixshift feedback');
+    expect(result.friendly).not.toContain('SELECT *');
+    expectSlowDownloadCopy(result.friendly);
+    expect(lastFailedEmit().payload.raw_code).toBe('client_budget_download');
+  });
+
+  it('/api/named-query: kind timeout, raw_code client_budget_download, library download copy', async () => {
+    fetchMock.mockImplementation(headersThenBodyReject(2_000, 63_000, budgetAbort()));
+
+    const result = await runNamedQuery('PING', { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered library query PING');
+    expectSlowDownloadCopy(result.friendly);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const emit = lastFailedEmit();
+    expect(emit.error_class).toBe('timeout');
+    expect(emit.query_id).toBe('PING');
+    expect(emit.payload).toMatchObject({ named_query: true, raw_code: 'client_budget_download', headers_ms: 2_000 });
+  });
+
+  it('/api/named-query: a library query the service answered late gets the late-answer library copy', async () => {
+    fetchMock.mockImplementation(headersThenBodyReject(62_000, 3_000, budgetAbort()));
+
+    const result = await runNamedQuery('PING', { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expect(result.friendly).toContain('The service answered library query PING');
+    expect(result.friendly).toContain('The service took most of the time allowed before it answered');
+    expect(result.friendly).toContain('mixshift feedback');
+    expect(result.friendly).not.toContain('connection');
+    expectDownloadCopy(result.friendly);
+    expect(lastFailedEmit().payload).toMatchObject({ named_query: true, headers_ms: 62_000 });
+  });
+
+  it('/api/named-query: a download that outlives a budget shorter than the statement limit is still a slow download', async () => {
+    // Headers arrived, so the host was reachable whatever the elapsed time:
+    // neither host_unreachable (the short-budget rule before any response)
+    // nor unknown (the bare abort text this used to print).
+    fetchMock.mockImplementation(headersThenBodyReject(4_000, 6_000, budgetAbort()));
+
+    const result = await runNamedQuery('PING', { creds, httpTimeoutMs: 10_000 });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.durationMs).toBeLessThan(60_000);
+    expect(result.kind).toBe('timeout');
+    expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expectSlowDownloadCopy(result.friendly);
+  });
+
+  it('pager: a page whose body download runs out surfaces as the same slow download', async () => {
+    fetchMock.mockImplementation(async (_url, init) => {
+      const sql = JSON.parse(String(init?.body)).sql as string;
+      if (!sql.includes('_mx_page')) {
+        return jsonResponse({ ok: false, kind: 'unknown', message: 'Query returned 60000 rows; service cap is 50000.', friendly: '' });
+      }
+      if (/LIMIT 1$/.test(sql)) return jsonResponse({ ok: true, rows: [{ id: 1 }], rowCount: 1, durationMs: 1 });
+      return headersThenBodyReject(500, 64_500, budgetAbort())();
+    });
+
+    const res = await streamQuery('SELECT id FROM t', [], { creds }, () => {});
+
+    expect(res.ok).toBe(false);
+    expect(res.paginated).toBe(true);
+    expect(res.failure?.kind).toBe('timeout');
+    expect(res.failure?.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+    expectSlowDownloadCopy(res.failure!.friendly);
+  });
+
+  it('a body read that fails for any other reason is not a budget expiry', async () => {
+    fetchMock.mockImplementation(headersThenBodyReject(1_000, 64_000, new TypeError('terminated')));
+
+    const result = await runQuery('SELECT 1', [], { creds });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe('unknown');
+    expect(result.raw_code).toBeUndefined();
+    expect(result.message).toBe('terminated');
+    expect(lastFailedEmit().payload.raw_code).toBeUndefined();
+    expect(lastFailedEmit().payload.headers_ms).toBeUndefined();
   });
 });
 
@@ -321,5 +502,78 @@ describe('known limitation: a proxy that never answers the tunnel CONNECT', () =
       await new Promise((resolve) => blackhole.close(resolve));
       await agent.destroy().catch(() => {});
     }
+  }, 15_000);
+});
+
+describe('real socket: the phase is where the abort landed', () => {
+  // Real fetch, real clock, a real local HTTP server. Only the budget's
+  // length is shortened (to 500ms, with a 100ms statement limit so the
+  // response-phase rule applies). This proves what undici actually throws in
+  // each phase, which the mocked tests above assume.
+  async function withServer(
+    handler: (res: http.ServerResponse) => void,
+    run: (apiBase: string) => Promise<void>,
+  ): Promise<void> {
+    vi.unstubAllGlobals();
+    vi.mocked(Date.now).mockRestore();
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(500));
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on('end', () => handler(res));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      await run(`http://127.0.0.1:${(server.address() as net.AddressInfo).port}`);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+
+  it('no headers before the budget: client_budget, the query-timeout copy', async () => {
+    await withServer(
+      () => {
+        // Holds the request, like a statement still running: nothing is written.
+      },
+      async (apiBase) => {
+        const result = await runQuery('SELECT 1', [], {
+          creds: { ...creds, api_base: apiBase },
+          queryTimeoutMs: 100,
+        });
+
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.kind).toBe('timeout');
+        expect(result.raw_code).toBe(CLIENT_BUDGET_RAW_CODE);
+        expect(result.friendly).toContain('query limit');
+        expectQueryTimeoutCopy(result.friendly);
+      },
+    );
+  }, 15_000);
+
+  it('headers arrived, body stalls past the budget: client_budget_download, the download copy', async () => {
+    await withServer(
+      (res) => {
+        // The service answered: status and headers, then the start of a body
+        // that never finishes.
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.write('{"ok":true,"rows":[');
+      },
+      async (apiBase) => {
+        const result = await runNamedQuery('PING', {
+          creds: { ...creds, api_base: apiBase },
+          queryTimeoutMs: 100,
+        });
+
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.kind).toBe('timeout');
+        expect(result.raw_code).toBe(CLIENT_BUDGET_DOWNLOAD_RAW_CODE);
+        // Which download copy depends on real timings; the mocked tests pin it.
+        expectDownloadCopy(result.friendly);
+      },
+    );
   }, 15_000);
 });

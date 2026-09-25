@@ -387,13 +387,15 @@ If the harness returns `failure_kind: "access_denied_table"`, the user's MySQL g
 If yes, run `mixshift feedback "Need read access to table <name> for seller_ids: <list>" --category feature_request`. (We don't have a dedicated "request table access" CLI yet — feedback with that category captures it for ops.)
 
 ### Query timeout (60s)
-Default timeout is 60s. A query that runs past it fails with `failure_kind: "timeout"`. The message reads "Query exceeded the 60s timeout" when the service's own answer arrives, or "Query did not finish within the 60s query limit" when a slow connection meant the harness stopped waiting first. A library query reads "Library query <id> did not finish within the 60s query limit". All of them mean the query is too slow, not that the network is down, so do not send the user to `mixshift doctor` for it. Suggest, in this order:
+Default timeout is 60s. A query that runs past it fails with `failure_kind: "timeout"`. The message reads "Query exceeded the 60s timeout" when the service's own answer arrives, or "Query did not finish within the 60s query limit" when a slow connection meant the harness stopped waiting first. A library query reads "Library query <id> did not finish within the 60s query limit". Those three mean the query is too slow, not that the network is down, so do not send the user to `mixshift doctor` for it. Suggest, in this order:
 - Check the date filter first. It should be on the table's own date column (`mixshift data describe <table>` names it for catalogued tables). Run the query with `EXPLAIN` in front to confirm an index covers that date filter; for a table outside the catalog, that is also how you see which key, if any, serves it. A date filter no index serves scans every row for the seller, and narrowing the range does little until it is fixed.
 - Narrowing the date range
 - Filtering by a specific SellerID (if they didn't already)
 - Selecting fewer columns
 
 For a library query the SQL is not yours to change: narrow its date range or the number of sellers and run it again, and if it keeps timing out, send it with `mixshift feedback`.
+
+One `failure_kind: "timeout"` message is different: "The service answered, but the result did not finish downloading in time" (a library query reads "The service answered library query <id>, ..."). The query itself finished, so reworking the date filter or checking the index will not help. The result did not arrive in time: the connection is slow, the result is large, or the service answered late (the message says which). When the message points at the connection, suggest checking it and running again. Either way, a smaller result helps: fewer rows (a shorter date range, fewer sellers, or aggregating) or only the columns you need instead of `SELECT *`. For a library query, a shorter date range or fewer sellers. If you use a `LIMIT` instead, tell the user the result is partial.
 
 ### Empty results
 A successful query that returns 0 rows isn't an error — surface it cleanly. Often means the date range or filter excluded all rows.
