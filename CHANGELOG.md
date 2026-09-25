@@ -3,6 +3,108 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.15
+
+
+### Added
+
+- **You can now retire a brand your team no longer works on, and bring it back
+  any time.** When a client leaves, or a brand turns out to be a duplicate,
+  `mixshift brand retire <slug>` (or say "retire Acme Snacks" in chat) marks it
+  retired for your whole team: it stops showing as an active brand in your
+  team's shared brand context, and bulk context syncs on this version or later
+  skip it with a one-line note (teammates on an older version keep syncing it
+  until they update). Nothing is deleted and nothing is left out: its brand
+  context docs and their history, its timeline, its Amazon accounts and billing
+  stay as they are, and reports, scheduled tasks and totals still include it.
+  Run files never leave your computer. The command tells you who the change was
+  recorded as, whether your local copy can now be deleted, and the exact undo,
+  `mixshift brand restore <slug>`. Teammates who still ask for the brand by
+  name get it, with a note saying who retired it and when; `brand list` hides
+  retired brands unless you add `--all`; and a scheduled task that names a
+  retired brand still runs and still includes it (tasks set up from now on say
+  at the top of their output that it is retired). `mixshift brand archive`,
+  which used to do nothing, now does the same as retire.
+
+- **DSP reporting can now go back further than 90 days.** Asking for DSP
+  performance from last year used to come back empty, because the DSP reporting
+  Amazon exposes only keeps the last 90 days. MixShift now reaches Amazon's
+  unified reporting as well, so a DSP report can cover months or years instead
+  of one quarter, and you can pull a monthly history in a single request rather
+  than exporting a year at a time from the console. Two things worth knowing
+  when you compare the results to older exports: the numbers will not match
+  exactly, because Amazon changed what its conversion metrics count and which
+  date they are counted on, and how far back you can actually go depends on when
+  your DSP campaigns started.
+
+### Changed
+
+- **Vendor Central out-of-stock and availability-interruption figures move to
+  calibrated thresholds.** An ASIN-day counts as out of stock at a procurable
+  out-of-stock rate of 0.25 or above (previously 0.99), and one of those
+  out-of-stock ASIN-days also counts as an availability interruption when at
+  least 40 sellable units were on hand (previously any stock at all), so the
+  interruption count stays a subset of the out-of-stock count rather than a
+  separate bucket. Both thresholds are set in the MixShift service and already
+  apply, and every run reports the pair it actually applied under
+  `thresholds_applied`. `mixshift report battery` now carries a
+  `--min-sellable-units` flag for setting the interruption floor per run,
+  alongside the existing `--oos-rate-threshold`; leave it off to use the
+  service default.
+
+### Fixed
+
+- **After you update the plugin, a conversation you resume now runs the new
+  version.** A resumed Claude Code conversation kept running the copy of MixShift
+  it had started with, even though the update had installed a newer one, so the
+  fixes you had just updated to never reached your commands. A resumed or
+  compacted conversation now switches to the version you are on, and Claude is
+  told to look the plugin up again rather than reuse an old copy's location
+  from earlier in the conversation. When your organization installs MixShift
+  for you, Claude Code now uses that copy directly instead of searching the
+  machine for one, and wherever a search is still needed (including setting up
+  a scheduled task), it picks the newest copy instead of the first one it finds.
+
+- **A flag given the wrong kind of value now says which flag and what to pass.**
+  Passing JSON to `--query` or `--path` on `amazon call` or `ads call`, or an
+  AmazonSellerID to `--seller-id` on the `data` commands, used to stop with
+  "Expected k=v" or "Expected integer", which named neither the flag nor the
+  fix, so the assistant often got it wrong again on the next try. For `--query`
+  and `--path`, the message now says to pass one `key=value` per flag and
+  spells out the corrected flags for the value you passed. For
+  `data --seller-id`, it points to the numeric warehouse SellerID in the
+  `legacySellerId` column of `mixshift amazon merchants`. With `--json`, these
+  errors and an unknown or missing option now return the same
+  `{"status": "error"}` result as every other failure instead of plain text. The
+  data exploration guidance also no longer suggests a `--seller-id` flag on
+  `data query`, which does not have one.
+
+- **Several parameters packed into one `--query` now get the corrected
+  flags, not an Amazon-is-unavailable error.** Paging through FBA inventory
+  with `--query "details=true&nextToken=..."` sent Amazon one parameter
+  holding all the others in its value. Amazon rejected it, the plugin reported
+  that as Amazon being temporarily unavailable, and the assistant retried a
+  request that could never succeed. The plugin now stops before sending it and
+  spells out one `--query` per parameter, the form that works. The same goes
+  for `--path` on `amazon call` and `ads call` and for `--option` on
+  `amazon report`. An `&` that is part of a value, such as a SKU like
+  `R&D-KIT`, is still accepted.
+
+- **A warehouse query that runs past its time limit no longer reports a network
+  problem.** On a connection that adds a few seconds, the plugin used to stop
+  waiting before the service's answer arrived and say it had "timed out
+  connecting", with a pointer to `mixshift doctor`. Nothing was wrong with the
+  network. It now says the query did not finish within the 60 second limit and
+  points at the fix: check that the date filter is on the table's own date
+  column, then narrow the date range. Library queries name the query and
+  suggest a narrower date range or fewer sellers.
+
+- **A result that is slow to download now says so, instead of a bare
+  "operation was aborted" message.** When the service had already answered but
+  the result took too long to arrive, the plugin stopped with that message and
+  no next step. It now says the result did not finish downloading, and
+  suggests checking the connection or asking for fewer rows or columns.
+
 ## 0.8.14
 
 ### Fixed

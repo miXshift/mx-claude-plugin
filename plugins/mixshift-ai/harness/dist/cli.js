@@ -64858,6 +64858,13 @@ var init_events = __esm({
       // contents.
       BrandSubbrandPromoted: "brand.subbrand_promoted",
       BrandSubbrandDemoted: "brand.subbrand_demoted",
+      // Brand retire / restore (`mixshift brand retire|archive|restore`). One row
+      // per invocation. payload: {brand_slug, action: retire|restore,
+      // reason_code (retire only, else null), outcome: changed | unchanged |
+      // unknown_brand | unsupported | refused | failed, changed?}. The lifted
+      // `outcome` is the coarse ok/failed. Never the free-text note and never
+      // who it was recorded as (the service's timeline event is the audit record).
+      BrandLifecycleChanged: "brand.lifecycle_changed",
       // Brand config editor (mixshift brand config <slug>)
       BrandConfigViewed: "brand_config.viewed",
       BrandConfigEdited: "brand_config.edited",
@@ -65001,7 +65008,9 @@ var init_events = __esm({
       // task's real work starts. Privacy: payload carries discovered_via (an
       // enum) and candidate/brand/pulled/warning COUNTS only — never a brand
       // slug and never a filesystem path (candidate paths and data_dir are
-      // print-only, in the command's stdout, not in telemetry).
+      // print-only, in the command's stdout, not in telemetry). Brand retire adds
+      // brand_lifecycle (one state per --brand, in order: active | retired |
+      // unknown; still no slug) + brands_retired, only when --brand was given.
       TaskPreflightCompleted: "task.preflight_completed"
     };
   }
@@ -66012,7 +66021,7 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
       const message = err instanceof Error ? err.message : String(err);
       const friendly = networkErrorMessage(err, resolveApiBaseHost(creds.api_base));
       const budgetExpired = err instanceof Error && err.name === "TimeoutError";
-      throw new DatahubNetworkError(message, friendly, !budgetExpired);
+      throw new DatahubNetworkError(message, friendly, budgetExpired);
     }
   };
   const doFetch = async (bearer) => {
@@ -66042,6 +66051,7 @@ async function datahubAuthedPost(creds, path2, body, timeoutBudgetMs, dataDirOve
 async function runDatahubQuery(creds, sql, params, options) {
   const t0 = Date.now();
   const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
+  let headersMs;
   try {
     const res = await datahubAuthedPost(
       creds,
@@ -66050,7 +66060,8 @@ async function runDatahubQuery(creds, sql, params, options) {
       queryTimeoutMs + 5e3,
       options.dataDirOverride
     );
-    const json2 = await res.json();
+    headersMs = Date.now() - t0;
+    const json2 = await readDatahubJson(res);
     const durationMs = Date.now() - t0;
     if (json2.ok === true) {
       const rows = json2.rows ?? [];
@@ -66111,7 +66122,19 @@ async function runDatahubQuery(creds, sql, params, options) {
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure;
-    if (err instanceof DatahubNetworkError) {
+    const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
+    if (budgetPhase) {
+      failure = clientBudgetTimeout(
+        budgetPhase,
+        err instanceof Error ? err.message : String(err),
+        durationMs,
+        queryTimeoutMs,
+        headersMs,
+        // Set by dispatch for library sql/sproc queries, whose SQL is not
+        // the user's to change; absent for the user's own SQL.
+        options.query_id
+      );
+    } else if (err instanceof DatahubNetworkError) {
       failure = {
         ok: false,
         kind: "host_unreachable",
@@ -66141,6 +66164,13 @@ async function runDatahubQuery(creds, sql, params, options) {
         error_class: failure.kind,
         payload: {
           auth_path: "datahub",
+          // Set only for a client budget expiry (client_budget, or
+          // client_budget_download when the body download ran out); absent on
+          // a true network failure.
+          raw_code: failure.raw_code,
+          // Download expiry only: how long the service took to answer, so the
+          // read can tell a slow link from a service that used the budget.
+          headers_ms: budgetPhase === "download" ? headersMs : void 0,
           ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape
         }
@@ -66173,6 +66203,7 @@ async function runNamedQuery(id, options = {}) {
   const t0 = Date.now();
   const queryTimeoutMs = options.queryTimeoutMs ?? 6e4;
   const sellerIds = options.sellerIds && options.sellerIds.length > 0 ? options.sellerIds : void 0;
+  let headersMs;
   try {
     const res = await datahubAuthedPost(
       creds,
@@ -66181,7 +66212,8 @@ async function runNamedQuery(id, options = {}) {
       options.httpTimeoutMs ?? queryTimeoutMs + 5e3,
       options.dataDirOverride
     );
-    const json2 = await res.json();
+    headersMs = Date.now() - t0;
+    const json2 = await readDatahubJson(res);
     const durationMs = Date.now() - t0;
     if (json2.ok === true) {
       const rows = json2.rows ?? [];
@@ -66242,7 +66274,17 @@ async function runNamedQuery(id, options = {}) {
   } catch (err) {
     const durationMs = Date.now() - t0;
     let failure;
-    if (err instanceof DatahubNetworkError) {
+    const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
+    if (budgetPhase) {
+      failure = clientBudgetTimeout(
+        budgetPhase,
+        err instanceof Error ? err.message : String(err),
+        durationMs,
+        queryTimeoutMs,
+        headersMs,
+        id
+      );
+    } else if (err instanceof DatahubNetworkError) {
       failure = {
         ok: false,
         kind: "host_unreachable",
@@ -66263,12 +66305,63 @@ async function runNamedQuery(id, options = {}) {
         duration_ms: durationMs,
         query_id: id,
         error_class: failure.kind,
-        payload: { auth_path: "datahub", named_query: true }
+        // raw_code is set only for a client budget expiry (either phase);
+        // headers_ms only for a download expiry.
+        payload: {
+          auth_path: "datahub",
+          named_query: true,
+          raw_code: failure.raw_code,
+          headers_ms: budgetPhase === "download" ? headersMs : void 0
+        }
       },
       options.dataDirOverride
     );
     return failure;
   }
+}
+async function readDatahubJson(res) {
+  try {
+    return await res.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new DatahubDownloadTimeoutError(err.message);
+    }
+    throw err;
+  }
+}
+function clientBudgetPhase(err, durationMs, queryTimeoutMs) {
+  if (err instanceof DatahubDownloadTimeoutError) return "download";
+  if (err instanceof DatahubNetworkError && err.budgetExpired && durationMs >= queryTimeoutMs) {
+    return "response";
+  }
+  return null;
+}
+function clientBudgetTimeout(phase, message, durationMs, queryTimeoutMs, headersMs, libraryQueryId) {
+  if (phase === "download") {
+    const answered = libraryQueryId ? `The service answered library query ${libraryQueryId}, but the result did not finish downloading in time.` : "The service answered, but the result did not finish downloading in time.";
+    const slowDownload = headersMs !== void 0 && durationMs - headersMs > headersMs;
+    const why = slowDownload ? " That points at a slow connection or a large result, not a slow query. Check your connection and run it again, or " : " The service took most of the time allowed before it answered, so ";
+    const smaller = libraryQueryId ? "run it for a shorter date range or fewer sellers to get a smaller result; if it keeps happening, report it with `mixshift feedback`." : "ask for a smaller result: fewer rows (a shorter date range or fewer sellers) or only the columns you need instead of SELECT *.";
+    const friendly2 = answered + why + smaller;
+    return {
+      ok: false,
+      kind: "timeout",
+      raw_code: CLIENT_BUDGET_DOWNLOAD_RAW_CODE,
+      message,
+      friendly: friendly2,
+      durationMs
+    };
+  }
+  const limit = `${Math.round(queryTimeoutMs / 1e3)}s`;
+  const friendly = libraryQueryId ? `Library query ${libraryQueryId} did not finish within the ${limit} query limit. Narrow the date range or the number of sellers and run it again; if it keeps timing out, report it with \`mixshift feedback\`.` : `Query did not finish within the ${limit} query limit. Check the date filter first: filter on the table's own date column (\`mixshift data describe <table>\` names it for catalogued tables) and run the query with EXPLAIN in front to confirm an index covers that date filter. Then narrow the date range or filter to one seller.`;
+  return {
+    ok: false,
+    kind: "timeout",
+    raw_code: CLIENT_BUDGET_RAW_CODE,
+    message,
+    friendly,
+    durationMs
+  };
 }
 function classify(err) {
   const e = err;
@@ -66362,7 +66455,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, DatahubNetworkError;
+var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, DatahubNetworkError, DatahubDownloadTimeoutError, CLIENT_BUDGET_RAW_CODE, CLIENT_BUDGET_DOWNLOAD_RAW_CODE;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -66386,23 +66479,39 @@ var init_query_runner = __esm({
        *  computed there because this class itself only carries a flattened
        *  string message, losing the `.cause` classify.ts needs. */
       friendly;
-      /** False when the request DID reach the service and we gave up waiting on
-       *  its answer (the AbortSignal.timeout budget fired). Retrying that just
-       *  spends the budget again on a query the server is already struggling
-       *  with, so only genuinely pre-response failures — DNS, TLS, connection
-       *  refused, connect timeout, socket hang-up — are replayed.
+      /** True when the client's own AbortSignal.timeout budget fired before any
+       *  response headers arrived: on a direct connection the request DID reach
+       *  the service and we gave up waiting on its answer (through a proxy, see
+       *  clientBudgetPhase). The callers use it (with the elapsed time) to report
+       *  a query timeout rather than a dead host. A budget that fires later, while
+       *  the body downloads, never reaches this class: see
+       *  DatahubDownloadTimeoutError. */
+      budgetExpired;
+      /** False when the budget expired. Retrying that just spends the budget
+       *  again on a query the server is already struggling with, so only
+       *  genuinely pre-response failures — DNS, TLS, connection refused,
+       *  connect timeout, socket hang-up — are replayed.
        *
        *  Defaulted rather than required: every call site that constructs this
        *  for a real fetch failure is pre-response, and defaulting keeps the
        *  friendly-message change (#141) and the replay (mx-ops#6) independent. */
       retryable;
-      constructor(msg2, friendly, retryable = true) {
+      constructor(msg2, friendly, budgetExpired = false) {
         super(msg2);
         this.name = "DatahubNetworkError";
         this.friendly = friendly;
-        this.retryable = retryable;
+        this.budgetExpired = budgetExpired;
+        this.retryable = !budgetExpired;
       }
     };
+    DatahubDownloadTimeoutError = class extends Error {
+      constructor(msg2) {
+        super(msg2);
+        this.name = "DatahubDownloadTimeoutError";
+      }
+    };
+    CLIENT_BUDGET_RAW_CODE = "client_budget";
+    CLIENT_BUDGET_DOWNLOAD_RAW_CODE = "client_budget_download";
   }
 });
 
@@ -66581,8 +66690,10 @@ var client_exports = {};
 __export(client_exports, {
   ASSIGNMENT_TIMEOUT_MS: () => ASSIGNMENT_TIMEOUT_MS,
   CORPUS_TIMEOUT_MS: () => CORPUS_TIMEOUT_MS,
+  LIFECYCLE_TIMEOUT_MS: () => LIFECYCLE_TIMEOUT_MS,
   TEXT_DOC_TIMEOUT_MS: () => TEXT_DOC_TIMEOUT_MS,
-  createContextSyncClient: () => createContextSyncClient
+  createContextSyncClient: () => createContextSyncClient,
+  lifecycleResultFrom: () => lifecycleResultFrom
 });
 function createContextSyncClient(options = {}) {
   const { dataDirOverride } = options;
@@ -66621,17 +66732,22 @@ function createContextSyncClient(options = {}) {
     return res;
   }
   return {
-    async fetchManifest() {
+    async fetchManifest(options2 = {}) {
       try {
+        const lifecycle = options2.lifecycle ?? "all";
         const res = await authedRequest(
           "GET",
-          "/api/context/manifest",
+          `/api/context/manifest?lifecycle=${lifecycle}`,
           void 0,
           TEXT_DOC_TIMEOUT_MS
         );
         const json2 = await parseEnvelope(res);
         if (json2.ok === true && Array.isArray(json2.brands)) {
-          return { ok: true, brands: json2.brands };
+          return {
+            ok: true,
+            brands: json2.brands,
+            ...typeof json2.retired_count === "number" ? { retired_count: json2.retired_count } : {}
+          };
         }
         return failureFromEnvelope(json2, res.status);
       } catch (err) {
@@ -66685,8 +66801,76 @@ function createContextSyncClient(options = {}) {
       } catch (err) {
         return failureFromException(err);
       }
+    },
+    async setBrandLifecycle(input) {
+      try {
+        const res = await authedRequest(
+          "POST",
+          "/api/context/lifecycle",
+          input,
+          LIFECYCLE_TIMEOUT_MS
+        );
+        const json2 = await parseEnvelope(res);
+        return lifecycleResultFrom(json2, res.status, input.brand_slug);
+      } catch (err) {
+        return failureFromException(err);
+      }
     }
   };
+}
+function lifecycleResultFrom(json2, httpStatus, requestedSlug) {
+  const isUnknownBrand = json2.error === "unknown_brand" || json2.kind === "unknown_brand";
+  if (httpStatus >= 200 && httpStatus < 300) {
+    if ((json2.state === "active" || json2.state === "retired") && typeof json2.changed === "boolean") {
+      return {
+        ok: true,
+        brand_slug: typeof json2.brand_slug === "string" ? json2.brand_slug : requestedSlug,
+        state: json2.state,
+        changed: json2.changed,
+        at: typeof json2.at === "string" ? json2.at : (/* @__PURE__ */ new Date()).toISOString(),
+        ...typeof json2.event_id === "string" ? { event_id: json2.event_id } : {}
+      };
+    }
+    return lifecycleFailure(
+      "unknown",
+      "The MixShift service answered in a shape this plugin does not recognize. Run `mixshift brand list --all` to see whether the brand changed.",
+      httpStatus
+    );
+  }
+  if (isUnknownBrand) {
+    return lifecycleFailure(
+      "unknown_brand",
+      `Your team has no shared brand context for "${requestedSlug}". Check the slug: \`mixshift brand list --all\` lists every brand you can access, and \`mixshift context status\` lists the brands set up on this computer. A brand has shared brand context once its brand setup has been run.`,
+      httpStatus
+    );
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    return lifecycleFailure(
+      "unsupported",
+      "Retiring a brand is not available on this MixShift service yet. Nothing was changed. Try again after the service is updated.",
+      httpStatus
+    );
+  }
+  const base = failureFromEnvelope(
+    {
+      ...json2,
+      // The lifecycle route may answer with a bare {error:'...'} code; keep it
+      // as the message when no friendly text came with it.
+      ...json2.friendly === void 0 && json2.message === void 0 && typeof json2.error === "string" ? { message: json2.error } : {}
+    },
+    httpStatus
+  );
+  const friendly = httpStatus === 403 && json2.friendly === void 0 ? "This sign-in is not allowed to change your team's shared brand context. Sign in with an account that can edit brand context, or ask your MixShift admin." : base.friendly;
+  return {
+    ok: false,
+    kind: httpStatus === 403 && base.kind === "unknown" ? "insufficient_scope" : base.kind,
+    message: base.message,
+    friendly,
+    http_status: httpStatus
+  };
+}
+function lifecycleFailure(kind, friendly, httpStatus) {
+  return { ok: false, kind, message: friendly, friendly, http_status: httpStatus };
 }
 async function resolveApiBase(dataDirOverride) {
   const { credentials } = await loadCredentials(dataDirOverride);
@@ -66730,7 +66914,7 @@ function failureFromException(err) {
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
+var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, LIFECYCLE_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
 var init_client2 = __esm({
   "src/lib/context-sync/client.ts"() {
     "use strict";
@@ -66741,6 +66925,7 @@ var init_client2 = __esm({
     TEXT_DOC_TIMEOUT_MS = 3e4;
     CORPUS_TIMEOUT_MS = 12e4;
     ASSIGNMENT_TIMEOUT_MS = 2e3;
+    LIFECYCLE_TIMEOUT_MS = 15e3;
     ContextSyncNetworkError = class extends Error {
       /** Sandbox-aware, doctor-pointing text classified from the raw fetch
        *  failure at the point it was thrown (see authedRequest's doFetch) —
@@ -67039,6 +67224,12 @@ async function buildDocPairs(brandSlug, options) {
     const manifest = await client.fetchManifest();
     if (!manifest.ok) return { ok: false, message: manifest.friendly, kind: manifest.kind };
     manifestBrands = manifest.brands;
+    if (options.onManifest) {
+      try {
+        await options.onManifest(manifestBrands);
+      } catch {
+      }
+    }
   }
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
   const localDocs = await readLocalDocs(brandSlug, options.dataDirOverride);
@@ -68588,7 +68779,7 @@ var init_bootstrap = __esm({
 });
 
 // src/lib/errors.ts
-var UserFacingError, RegistryInvalidError;
+var UserFacingError, RegistryInvalidError, InvalidOptionValueError;
 var init_errors3 = __esm({
   "src/lib/errors.ts"() {
     "use strict";
@@ -68605,6 +68796,19 @@ var init_errors3 = __esm({
       constructor(message) {
         super(message, "registry_invalid");
         this.name = "RegistryInvalidError";
+      }
+    };
+    InvalidOptionValueError = class extends UserFacingError {
+      flag;
+      valueShape;
+      constructor(flag, valueShape, message) {
+        super(message, "invalid_argument");
+        this.name = "InvalidOptionValueError";
+        this.flag = flag;
+        this.valueShape = valueShape;
+      }
+      get telemetryMessage() {
+        return `invalid value for ${this.flag} (${this.valueShape})`;
       }
     };
   }
@@ -72816,6 +73020,92 @@ init_state();
 init_deadline();
 init_telemetry();
 init_telemetry_detail();
+
+// src/lib/context-sync/lifecycle.ts
+var LIFECYCLE_NOTE_MAX = 280;
+function lifecycleStateOf(brand) {
+  return brand?.lifecycle?.state === "retired" ? "retired" : "active";
+}
+function isRetiredBrand(brand) {
+  return lifecycleStateOf(brand) === "retired";
+}
+function retiredLifecycleOf(brand) {
+  return isRetiredBrand(brand) ? brand.lifecycle : null;
+}
+function findManifestBrand(brands, slug) {
+  return brands.find((b) => b.brand_slug === slug);
+}
+function partitionRetired(slugs, brands) {
+  const bySlug = new Map(brands.map((b) => [b.brand_slug, b]));
+  const active = [];
+  const retired = [];
+  for (const slug of slugs) {
+    const lc = retiredLifecycleOf(bySlug.get(slug));
+    if (lc) retired.push({ slug, lifecycle: lc });
+    else active.push(slug);
+  }
+  return { active, retired };
+}
+function safeDisplay(value, max = 120) {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim();
+  if (cleaned === "") return null;
+  return cleaned.length > max ? `${cleaned.slice(0, max - 3)}...` : cleaned;
+}
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function formatLifecycleDate(iso, timeZone) {
+  if (typeof iso !== "string") return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t);
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      ...timeZone !== void 0 ? { timeZone } : {}
+    }).format(d);
+  } catch {
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  }
+}
+function lifecycleActor(lc) {
+  return safeDisplay(lc?.changed_by) ?? "a teammate";
+}
+function retiredByClause(lc) {
+  const date5 = formatLifecycleDate(lc.changed_at);
+  return `retired by ${lifecycleActor(lc)}${date5 ? ` on ${date5}` : ""}`;
+}
+function restoreCommand(slug) {
+  return `mixshift brand restore ${slug}`;
+}
+function retireCommand(slug) {
+  return `mixshift brand retire ${slug}`;
+}
+function retiredSkipSummaryLine(retired) {
+  const n = retired.length;
+  const items = retired.map(
+    (r) => `${r.slug} (${retiredByClause(r.lifecycle)}; ${restoreCommand(r.slug)} to undo)`
+  );
+  return `${n} retired brand${n === 1 ? "" : "s"} skipped: ${items.join(", ")}`;
+}
+function retiredExplicitNoticeLine(slug, lc) {
+  const surface = safeDisplay(lc.surface, 40);
+  const date5 = formatLifecycleDate(lc.changed_at);
+  return `${slug} was retired for your team by ${lifecycleActor(lc)}${date5 ? ` on ${date5}` : ""}${surface ? ` via ${surface}` : ""}. Continuing, because you asked for it by name. To bring it back for everyone: \`${restoreCommand(slug)}\`.
+`;
+}
+var noticedRetiredBrands = /* @__PURE__ */ new Set();
+function emitRetiredNotice(slug, lc) {
+  try {
+    if (noticedRetiredBrands.has(slug)) return;
+    noticedRetiredBrands.add(slug);
+    process.stderr.write(retiredExplicitNoticeLine(slug, lc));
+  } catch {
+  }
+}
+
+// src/lib/context-sync/autosync.ts
 var AUTOSYNC_BUDGET_MS = 2e3;
 var AUTOSYNC_THROTTLE_MS = 15 * 60 * 1e3;
 var AUTOSYNC_ENV = "MIXSHIFT_CONTEXT_AUTOSYNC";
@@ -72927,6 +73217,13 @@ async function maybeAutoSync(brandSlug, options = {}) {
       if (!isSafeBrandSlug(brandSlug)) {
         return { ran: false, reason: "skipped", detail: "not a valid brand slug" };
       }
+      if (!options.seedRetired && manifestResult.ok && isRetiredBrand(findManifestBrand(manifestResult.brands, brandSlug))) {
+        return {
+          ran: false,
+          reason: "skipped",
+          detail: `brand is retired for your team; not fetched. Ask for it by name, or run \`${restoreCommand(brandSlug)}\` to bring it back`
+        };
+      }
       seeded = true;
       seedManifestBrands = manifestResult.ok ? manifestResult.brands : void 0;
     }
@@ -73005,7 +73302,19 @@ async function maybeAutoSync(brandSlug, options = {}) {
           // resurrected or silently reported clean. The dir-exists path
           // (seedManifestBrands stays undefined there) is unaffected:
           // buildDocPairs fetches its own manifest exactly as before.
-          ...seedManifestBrands !== void 0 ? { manifest: seedManifestBrands } : {}
+          ...seedManifestBrands !== void 0 ? { manifest: seedManifestBrands } : {},
+          // Brand retire: on the dir-exists path buildDocPairs fetches the
+          // manifest itself. Persist that fresh copy as the org-manifest
+          // cache too (persistOrgManifestCache: bounded, identity-stamped,
+          // the same save getCachedOrgManifest makes), so the retired-brand notice the
+          // Step 0 resolve prints reads a warm cache instead of paying a
+          // second round trip. The seed path needs none: its manifest already
+          // came from (or was just written to) that cache.
+          ...seedManifestBrands === void 0 ? {
+            onManifest: async (brands) => {
+              await persistOrgManifestCache(brands, identity, options.dataDirOverride);
+            }
+          } : {}
           // NEVER force: diverged docs stay untouched by design.
         }),
         raceMs
@@ -73076,6 +73385,19 @@ function debugLog2(env, message) {
 `);
 }
 var ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
+async function persistOrgManifestCache(brands, identity, dataDirOverride, fetchedAt = /* @__PURE__ */ new Date()) {
+  await raceDeadline(
+    saveOrgManifestCache(
+      {
+        fetched_at: fetchedAt.toISOString(),
+        brands,
+        ...typeof identity === "string" && identity !== "" ? { identity } : {}
+      },
+      dataDirOverride
+    ),
+    ORG_MANIFEST_PERSIST_BUDGET_MS
+  );
+}
 function cachedManifestIdentityMatches(cachedIdentity, currentIdentity) {
   if (cachedIdentity === void 0) {
     return currentIdentity === void 0 || currentIdentity === null;
@@ -73117,17 +73439,7 @@ async function getCachedOrgManifest(options = {}) {
       });
       const raced = await raceDeadline(client.fetchManifest(), budgetMs);
       if (raced === DEADLINE || !raced.ok) return { ok: false };
-      await raceDeadline(
-        saveOrgManifestCache(
-          {
-            fetched_at: now.toISOString(),
-            brands: raced.brands,
-            ...identity ? { identity } : {}
-          },
-          options.dataDirOverride
-        ),
-        ORG_MANIFEST_PERSIST_BUDGET_MS
-      );
+      await persistOrgManifestCache(raced.brands, identity, options.dataDirOverride, now);
       return { ok: true, brands: raced.brands, fromCache: false };
     } finally {
       clearTimeout(abortTimer);
@@ -73442,8 +73754,11 @@ function resolveFieldFrom(ctx, brain, spec) {
   }
   return null;
 }
-async function resolveBrandFields(brandSlug, dataDirOverride) {
-  await maybeAutoSync(brandSlug, { dataDirOverride });
+async function resolveBrandFields(brandSlug, dataDirOverride, options = {}) {
+  await maybeAutoSync(brandSlug, {
+    dataDirOverride,
+    ...options.explicit ? { seedRetired: true } : {}
+  });
   const ctx = await validateBrandContext(brandSlug, dataDirOverride);
   const brain = await loadBrain(brandSlug, dataDirOverride);
   const out = {};
@@ -74258,6 +74573,22 @@ function exitCodeFor(result) {
   }
 }
 
+// src/lib/context-sync/lifecycle-notice.ts
+async function lookupRetiredLifecycle(slug, options = {}) {
+  try {
+    const manifest = await getCachedOrgManifest(options);
+    if (!manifest.ok) return null;
+    return retiredLifecycleOf(findManifestBrand(manifest.brands, slug));
+  } catch {
+    return null;
+  }
+}
+async function noticeIfRetired(slug, options = {}) {
+  const lc = await lookupRetiredLifecycle(slug, options);
+  if (lc) emitRetiredNotice(slug, lc);
+  return lc;
+}
+
 // src/commands/brand-context.ts
 function registerBrandContextCommands(brand) {
   const context = brand.command("context").description(
@@ -74267,7 +74598,8 @@ function registerBrandContextCommands(brand) {
     "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at, account_wide? } | null }; a null field means neither tier has it (use the skill default); account_wide is present and true only for a bound sub-brand whose pre-filled value describes the whole seller account, not this brand."
   ).action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
-    const fields = await resolveBrandFields(slug, root.dataDir);
+    const fields = await resolveBrandFields(slug, root.dataDir, { explicit: true });
+    await noticeIfRetired(slug, { dataDirOverride: root.dataDir });
     if (root.json) {
       process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + "\n");
       return;
@@ -77641,7 +77973,7 @@ async function collectExistingSlugs(dataDirOverride) {
   try {
     const { createContextSyncClient: createContextSyncClient2 } = await Promise.resolve().then(() => (init_client2(), client_exports));
     const client = createContextSyncClient2({ dataDirOverride });
-    const manifest = await client.fetchManifest();
+    const manifest = await client.fetchManifest({ lifecycle: "all" });
     if (manifest.ok) {
       for (const b of manifest.brands) slugs.add(b.brand_slug);
     }
@@ -78574,14 +78906,339 @@ function emitError5(json2, message) {
   process.exitCode = 1;
 }
 
+// src/commands/brand-lifecycle.ts
+init_credentials();
+init_client2();
+init_local();
+init_state();
+
+// src/lib/context-sync/types.ts
+var RETIRE_REASON_CODES = ["client_left", "duplicate", "superseded", "other"];
+
+// src/commands/brand-lifecycle.ts
+init_resolve();
+init_deadline();
+init_telemetry();
+var LIFECYCLE_READBACK_BUDGET_MS = 5e3;
+var REASON_LABELS = {
+  client_left: "client left",
+  duplicate: "duplicate of another brand",
+  superseded: "replaced by another brand",
+  other: "other"
+};
+function registerBrandLifecycleCommands(brand) {
+  brand.command("retire <slug>").alias("archive").description(
+    "Retire a brand your team no longer works on. It stops showing as active in your team's shared brand context, and bulk syncs skip it for teammates on the current MixShift plugin (older versions keep syncing it until they update). Nothing is deleted: docs, revision history, timeline history, Amazon accounts, reports and totals stay as they are. Undo with `mixshift brand restore <slug>`. (`brand archive` is the same command.)"
+  ).option(
+    "--reason <code>",
+    `why the brand is retired: ${RETIRE_REASON_CODES.join(" | ")}`
+  ).option("--note <text>", `a short note for your team (up to ${LIFECYCLE_NOTE_MAX} characters)`).action(async (slug, opts, cmd) => {
+    await runLifecycleChange("retire", slug, opts, cmd.optsWithGlobals());
+  });
+  brand.command("restore <slug>").description(
+    "Bring a retired brand back for your whole team. It shows as active in your team's shared brand context again and bulk syncs on the current MixShift plugin include it again, with its docs, revision history and timeline exactly as they were."
+  ).action(async (slug, _opts, cmd) => {
+    await runLifecycleChange("restore", slug, {}, cmd.optsWithGlobals());
+  });
+}
+async function runLifecycleChange(action, slug, opts, root) {
+  const t0 = Date.now();
+  const safeSlug = isSafeBrandSlug(slug);
+  let invalid = null;
+  let reason;
+  let note;
+  if (!safeSlug) {
+    invalid = `"${safeDisplay(slug, 80) ?? slug}" is not a brand slug. Use the slug \`mixshift brand list --all\` shows (for example acme-snacks).`;
+  } else if (opts.reason !== void 0) {
+    if (RETIRE_REASON_CODES.includes(opts.reason)) {
+      reason = opts.reason;
+    } else {
+      invalid = `--reason must be one of: ${RETIRE_REASON_CODES.join(", ")} (got "${safeDisplay(opts.reason, 40) ?? ""}").`;
+    }
+  }
+  if (invalid === null && opts.note !== void 0) {
+    const trimmed = opts.note.trim();
+    if (trimmed.length > LIFECYCLE_NOTE_MAX) {
+      invalid = `--note is ${trimmed.length} characters; the limit is ${LIFECYCLE_NOTE_MAX}.`;
+    } else if (trimmed !== "") {
+      note = trimmed;
+    }
+  }
+  if (invalid !== null) {
+    await trackChange(action, safeSlug ? slug : null, reason, "invalid_input", void 0, t0, root);
+    emitFailure(root, "bad_params", invalid);
+    return;
+  }
+  const client = createContextSyncClient({ dataDirOverride: root.dataDir });
+  let result;
+  if (!client.setBrandLifecycle) {
+    result = {
+      ok: false,
+      kind: "unsupported",
+      message: "client does not support lifecycle changes",
+      friendly: unsupportedCopy(action)
+    };
+  } else {
+    result = await client.setBrandLifecycle({
+      brand_slug: slug,
+      action,
+      ...reason !== void 0 ? { reason_code: reason } : {},
+      ...note !== void 0 ? { note } : {}
+    });
+  }
+  if (!result.ok) {
+    const outcome = result.kind === "unknown_brand" ? "unknown_brand" : result.kind === "unsupported" ? "unsupported" : result.kind === "insufficient_scope" ? "refused" : "failed";
+    await trackChange(action, slug, reason, outcome, void 0, t0, root);
+    emitFailure(
+      root,
+      result.kind,
+      result.kind === "unsupported" ? unsupportedCopy(action) : result.friendly
+    );
+    return;
+  }
+  const readback = await readBackLifecycle(client, slug, root.dataDir);
+  const recordedAs = result.changed ? await resolveRecordedAs(readback, result, root.dataDir) : null;
+  const localPath = brandDir(slug, root.dataDir);
+  const localExists = await brandDirExists(slug, root.dataDir);
+  await trackChange(
+    action,
+    slug,
+    reason,
+    result.changed ? "changed" : "unchanged",
+    result.changed,
+    t0,
+    root
+  );
+  if (root.json) {
+    const undo = result.state === "retired" ? restoreCommand(slug) : retireCommand(slug);
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: "ok",
+          brand_slug: result.brand_slug,
+          action,
+          state: result.state,
+          changed: result.changed,
+          at: result.at,
+          ...result.event_id !== void 0 ? { event_id: result.event_id } : {},
+          reason_code: action === "retire" ? reason ?? null : null,
+          recorded_as: recordedAs,
+          lifecycle: readback ?? null,
+          local_copy: {
+            path: localPath,
+            exists: localExists,
+            // Retired brands are never re-seeded by syncs, so deleting the
+            // local copy sticks. MixShift never deletes it itself.
+            ...result.state === "retired" ? { safe_to_delete: true } : {}
+          },
+          undo
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    process.exitCode = 0;
+    return;
+  }
+  const lines = result.state === "retired" ? retireLines(slug, readback, recordedAs, reason, note, localPath, localExists) : restoreLines(slug, recordedAs, localExists);
+  process.stdout.write(lines.join("\n") + "\n");
+  process.exitCode = 0;
+}
+function unsupportedCopy(action) {
+  return `${action === "retire" ? "Retiring" : "Restoring"} a brand is not available on this MixShift service yet. Nothing was changed. Try again after the service is updated.`;
+}
+function recordedAsLine(r) {
+  const who = r.source === "service" ? r.label : `${r.label} (the sign-in this computer used)`;
+  return r.service_credential ? `  Recorded as: ${who}. That is a service credential, not a person; your teammates will see this name.` : `  Recorded as: ${who}. Your teammates will see this name.`;
+}
+function retireLines(slug, readback, recordedAs, reason, note, localPath, localExists) {
+  const lines = [""];
+  if (recordedAs === null) {
+    const by = readback ? ` (${retiredByClause(readback)})` : "";
+    lines.push(`${slug} was already retired for your team${by}. Nothing changed.`);
+  } else {
+    lines.push(`Retired ${slug} for your team.`);
+    lines.push(recordedAsLine(recordedAs));
+    if (reason !== void 0 || note !== void 0) {
+      const bits = [];
+      if (reason !== void 0) bits.push(`Reason: ${REASON_LABELS[reason]}.`);
+      if (note !== void 0) bits.push(`Note: "${note}"`);
+      lines.push(`  ${bits.join(" ")}`);
+    }
+    lines.push("");
+    lines.push("What changed");
+    lines.push(`  - ${slug} no longer shows as an active brand in your team's shared brand context.`);
+    lines.push(
+      "  - Bulk syncs (`mixshift context status`, `pull`, `push` and `sync` without --brand) skip it for teammates on the current MixShift plugin. Teammates on an older version keep syncing it as usual until they update."
+    );
+    lines.push(
+      "  - Anyone who asks for it by name still gets it, with a short note that it is retired."
+    );
+    lines.push("");
+    lines.push("What did not change");
+    lines.push("  - Its brand context docs and their revision history are all kept.");
+    lines.push("  - Its timeline history is kept.");
+    lines.push(
+      "  - Its Amazon accounts, billing, reports and totals are not affected. Reports and scheduled tasks still include its data."
+    );
+    lines.push(
+      "  - Run files (sidecars) stay on this computer only. They were never sent to MixShift."
+    );
+  }
+  lines.push("");
+  lines.push("Your local copy");
+  if (localExists) {
+    lines.push(
+      `  - It is now safe to delete ${localPath} if you no longer want it here. Syncs will not bring a retired brand back. MixShift never deletes it for you.`
+    );
+    lines.push(
+      "  - Deleting it also deletes the run files kept inside it, which exist only on this computer."
+    );
+  } else {
+    lines.push("  - This computer has no local copy of this brand. Nothing to clean up.");
+  }
+  lines.push("");
+  lines.push(`To undo: ${restoreCommand(slug)}`);
+  return lines;
+}
+function restoreLines(slug, recordedAs, localExists) {
+  const lines = [""];
+  if (recordedAs === null) {
+    lines.push(`${slug} is already active for your team. Nothing changed.`);
+    return lines;
+  }
+  lines.push(`Restored ${slug} for your team.`);
+  lines.push(recordedAsLine(recordedAs));
+  lines.push("");
+  lines.push(
+    `  - ${slug} shows as an active brand again in your team's shared brand context, and bulk syncs on the current MixShift plugin include it again.`
+  );
+  lines.push(
+    "  - Its docs, revision history and timeline were kept while it was retired, so there is nothing to set up again."
+  );
+  if (!localExists) {
+    lines.push(
+      `  - To get a local copy on this computer: mixshift context pull --brand ${slug}`
+    );
+  }
+  lines.push("");
+  lines.push(`To undo: ${retireCommand(slug)}`);
+  return lines;
+}
+async function readBackLifecycle(client, slug, dataDirOverride) {
+  try {
+    const raced = await raceDeadline(
+      client.fetchManifest({ lifecycle: "all" }),
+      LIFECYCLE_READBACK_BUDGET_MS
+    );
+    if (raced === DEADLINE || !raced.ok) return null;
+    await refreshOrgManifestCache(raced.brands, dataDirOverride);
+    const entry = findManifestBrand(raced.brands, slug);
+    return entry?.lifecycle ?? null;
+  } catch {
+    return null;
+  }
+}
+async function refreshOrgManifestCache(brands, dataDirOverride) {
+  try {
+    const identity = await resolveLedgerIdentity(dataDirOverride);
+    await persistOrgManifestCache(brands, identity, dataDirOverride);
+  } catch {
+  }
+}
+function readbackIsThisChange(readback, result) {
+  if (!readback || readback.state !== result.state) return false;
+  if (typeof readback.changed_at !== "string") return false;
+  const recorded = Date.parse(readback.changed_at);
+  const answered = Date.parse(result.at);
+  return Number.isFinite(recorded) && Number.isFinite(answered) && recorded === answered;
+}
+async function resolveRecordedAs(readback, result, dataDirOverride) {
+  const fromService = readback && readbackIsThisChange(readback, result) ? safeDisplay(readback.changed_by) : null;
+  if (fromService) {
+    return {
+      label: fromService,
+      source: "service",
+      service_credential: fromService.startsWith("svc:")
+    };
+  }
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    if (credentials?.datahub) {
+      return {
+        label: safeDisplay(credentials.datahub.person_label) ?? "your signed-in account",
+        source: "this_sign_in",
+        service_credential: false
+      };
+    }
+    if (credentials?.service) {
+      return {
+        label: safeDisplay(credentials.service.label) ?? "a service credential",
+        source: "this_sign_in",
+        service_credential: true
+      };
+    }
+  } catch {
+  }
+  return { label: "your signed-in account", source: "this_sign_in", service_credential: false };
+}
+function emitFailure(root, kind, message) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: "error", kind, message }, null, 2) + "\n");
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+async function trackChange(action, slug, reason, outcome, changed, t0, root) {
+  try {
+    await track(
+      {
+        event_name: EventName.BrandLifecycleChanged,
+        outcome: outcome === "changed" || outcome === "unchanged" ? "ok" : "failed",
+        duration_ms: Date.now() - t0,
+        payload: {
+          brand_slug: slug,
+          action,
+          reason_code: action === "retire" ? reason ?? null : null,
+          outcome,
+          ...changed !== void 0 ? { changed } : {}
+        }
+      },
+      root.dataDir
+    );
+  } catch {
+  }
+}
+async function loadRetiredBrands(dataDirOverride) {
+  try {
+    const manifest = await getCachedOrgManifest({ dataDirOverride });
+    if (!manifest.ok) return null;
+    const out = /* @__PURE__ */ new Map();
+    for (const b of manifest.brands) {
+      const lc = retiredLifecycleOf(b);
+      if (lc) out.set(b.brand_slug, lc);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+function retiredHiddenFooter(hidden) {
+  const n = hidden.length;
+  const items = hidden.map((h) => `${h.slug} (${retiredByClause(h.lifecycle)})`).join(", ");
+  return `${n} retired brand${n === 1 ? "" : "s"} hidden: ${items}. Use --all to see them; \`mixshift brand restore <slug>\` brings one back.`;
+}
+
 // src/commands/brand.ts
 function registerBrandCommands(program3) {
   const brand = program3.command("brand").description(
-    "Brand portfolio management (list, add, edit, archive) and sub-brand discovery (discover, promote, demote)"
+    "Brand portfolio management (list, add, edit, retire, restore) and sub-brand discovery (discover, promote, demote)"
   );
   brand.command("list").description(
-    "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands; use --all to see everything or --only-inactive to see just dormants."
-  ).option("--all", "include dormant brands (no active ads or retail access)", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).option(
+    "List brands from the local registry (~/.mixshift/clients/index.yaml). Default hides dormant brands and brands your team retired; use --all to see everything (retired brands carry a [retired] tag) or --only-inactive to see just dormants."
+  ).option("--all", "include dormant and retired brands", false).option("--only-inactive", "show ONLY dormant brands", false).option("--key", "show ONLY brands marked as key in your profile", false).option("--refresh", "force a fresh discovery query before listing", false).option(
     "--format <type>",
     "output format: `terminal` (space-aligned table, default) | `chat` (markdown pipe table for Claude/Cowork to surface verbatim in chat)",
     "terminal"
@@ -78623,6 +79280,12 @@ function registerBrandCommands(program3) {
           brands = filterIndex(index, mode);
         }
         const counts = countByActivity(index);
+        const retired = await loadRetiredBrands(root.dataDir);
+        const retiredOf = (slug) => retired?.get(slug);
+        const retiredInIndex = index.brands.filter((b) => retiredOf(b.slug)).length;
+        const activeNotRetired = index.brands.filter(
+          (b) => !b.is_dormant && !retiredOf(b.slug)
+        ).length;
         if (root.json) {
           process.stdout.write(
             JSON.stringify(
@@ -78631,10 +79294,15 @@ function registerBrandCommands(program3) {
                 mode,
                 discovered_at: index.discovered_at,
                 counts: { ...counts, key: keyBrandSlugs.size },
-                brands: brands.map((b) => ({
-                  ...b,
-                  is_key: keyBrandSlugs.has(b.slug)
-                }))
+                ...retired ? { retired_count: retired.size } : {},
+                brands: brands.map((b) => {
+                  const lc = retiredOf(b.slug);
+                  return {
+                    ...b,
+                    is_key: keyBrandSlugs.has(b.slug),
+                    ...lc ? { retired: true, lifecycle: lc } : {}
+                  };
+                })
               },
               null,
               2
@@ -78674,20 +79342,29 @@ Mark brands you focus on day-to-day with:
 
 Or in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".
 
-You have ${counts.active} active brand(s) available \u2014 say "show my brands" to see them.
+You have ${activeNotRetired} active brand(s) available \u2014 say "show my brands" to see them.
 
 `
           );
           return;
+        }
+        const hiddenRetired = [];
+        if (mode === "active" && retired && retired.size > 0) {
+          brands = brands.filter((b) => {
+            const lc = retiredOf(b.slug);
+            if (lc) hiddenRetired.push({ slug: b.slug, lifecycle: lc });
+            return !lc;
+          });
         }
         const renderable = brands.map((b) => {
           const markers = [];
           if (keyBrandSlugs.has(b.slug)) markers.push("\u2B50");
           if (b.cold_started) markers.push("\u2713");
           const prefix = markers.length > 0 ? markers.join("") + " " : "";
+          const retiredTag = retiredOf(b.slug) ? " [retired]" : "";
           return {
             slug: b.slug,
-            display_name: `${prefix}${b.display_name}`,
+            display_name: `${prefix}${b.display_name}${retiredTag}`,
             ads_active: b.ads_active,
             retail_active: b.retail_active,
             accounts: b.accounts.map((a) => ({
@@ -78717,7 +79394,7 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
         }
         const footerLines = [];
         footerLines.push(
-          `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key).`
+          `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key` + (retiredInIndex > 0 ? `; ${retiredInIndex} of these retired by your team${mode === "active" ? ", hidden here" : ""}` : "") + ")."
         );
         if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
           footerLines.push("Markers: \u2B50 = key brand, \u2713 = set up (brand context ready)");
@@ -78728,9 +79405,17 @@ You have ${counts.active} active brand(s) available \u2014 say "show my brands" 
             `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`
           );
         }
-        if ((mode === "active" || mode === "all") && keyBrandSlugs.size === 0 && counts.active > 5) {
+        if (hiddenRetired.length > 0) {
+          footerLines.push(retiredHiddenFooter(hiddenRetired));
+        }
+        if (mode !== "active" && brands.some((b) => retiredOf(b.slug))) {
           footerLines.push(
-            `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`
+            "[retired] = a teammate retired this brand for your team. `mixshift brand restore <slug>` brings it back."
+          );
+        }
+        if ((mode === "active" || mode === "all") && keyBrandSlugs.size === 0 && activeNotRetired > 5) {
+          footerLines.push(
+            `No key brands set. With ${activeNotRetired} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`
           );
         }
         if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
@@ -78868,9 +79553,7 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
   brand.command("refresh <slug>").description("Re-run brand setup for an existing brand (structure change)").action((slug) => {
     notYetImplemented("brand refresh", { slug });
   });
-  brand.command("archive <slug>").description("Move brand to archived state (data preserved)").action((slug) => {
-    notYetImplemented("brand archive", { slug });
-  });
+  registerBrandLifecycleCommands(brand);
   brand.command("rename <old> <new>").description("Rename a brand slug (folder move + index patch)").action((oldSlug, newSlug) => {
     notYetImplemented("brand rename", { old: oldSlug, new: newSlug });
   });
@@ -81824,10 +82507,7 @@ Or in chat: "I manage <brand1>, <brand2>, <brand3>, ..."
             );
             const org = await computeOrgAwareness(root.dataDir);
             if (org) {
-              process.stdout.write(
-                `Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
-`
-              );
+              process.stdout.write(orgAwarenessLine(org) + "\n");
             }
           }
         } catch (err) {
@@ -81994,14 +82674,20 @@ async function computeOrgAwareness(dataDirOverride) {
     );
     if (localBrands === DEADLINE) return void 0;
     const localSlugs = new Set(localBrands);
-    const orgSlugs = manifest.brands.map((b) => b.brand_slug);
+    const orgSlugs = manifest.brands.filter((b) => !isRetiredBrand(b)).map((b) => b.brand_slug);
+    const retired = manifest.brands.length - orgSlugs.length;
     return {
       total: orgSlugs.length,
-      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length
+      not_local: orgSlugs.filter((slug) => !localSlugs.has(slug)).length,
+      ...retired > 0 ? { retired } : {}
     };
   } catch {
     return void 0;
   }
+}
+function orgAwarenessLine(org) {
+  const retired = org.retired ? ` (${org.retired} more retired)` : "";
+  return `Your org has ${org.total} brands set up${retired}. ${org.not_local} not yet on this machine.`;
 }
 function renderLoginResult(result, json2, org) {
   if (json2) {
@@ -82019,7 +82705,7 @@ function renderLoginResult(result, json2, org) {
   - client_id:     ${result.clientId}
   - duration:      ${(result.durationMs / 1e3).toFixed(1)}s
 ` + (org ? `
-Your org has ${org.total} brands set up. ${org.not_local} not yet on this machine.
+${orgAwarenessLine(org)}
 ` : "") + `
 Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 `
@@ -84023,6 +84709,122 @@ function previewLines(text, maxLines = INLINE_DOC_PREVIEW_LINES) {
 
 // src/commands/data.ts
 init_resolve();
+
+// src/lib/cli/option-parsers.ts
+init_errors3();
+var MERCHANT_TOKEN = /^A[0-9A-Z]{9,15}$/;
+var AMPERSAND_JOIN = /&+(?=[A-Za-z_][A-Za-z0-9_]*=)/;
+function keyValueOption(flag, hints = {}) {
+  const howTo = `Pass each parameter as ${flag} key=value, repeating the flag once per parameter` + (hints.example ? ` (e.g. ${flag} ${hints.example})` : "") + ".";
+  const bodyHint = hints.bodyFlag ? ` A JSON request body, for an operation that takes one, goes in ${hints.bodyFlag}.` : "";
+  return (value, previous) => {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      const shape = trimmed.startsWith("{") ? "json_object" : "json_array";
+      const corrected = correctedKeyValueFlags(flag, trimmed);
+      throw new InvalidOptionValueError(
+        flag,
+        shape,
+        `${flag} takes one key=value pair per flag, not JSON. ${howTo}${bodyHint}` + (corrected ? `
+For this value: ${corrected}` : "")
+      );
+    }
+    const eq = value.indexOf("=");
+    if (eq < 0) {
+      throw new InvalidOptionValueError(
+        flag,
+        "missing_equals",
+        `${flag} expects key=value, got "${value}". ${howTo}`
+      );
+    }
+    const key = value.slice(0, eq).trim();
+    if (!key) {
+      throw new InvalidOptionValueError(
+        flag,
+        "empty_key",
+        `${flag} got "${value}", which has no key before the "=". ${howTo}`
+      );
+    }
+    if (AMPERSAND_JOIN.test(value.slice(eq + 1))) {
+      const [first, ...rest] = value.slice(eq + 1).replace(/&+$/, "").split(AMPERSAND_JOIN);
+      const corrected = spelledFlags(flag, [`${key.replace(/^\?+/, "")}=${first}`, ...rest]);
+      throw new InvalidOptionValueError(
+        flag,
+        "ampersand_joined",
+        `${flag} takes one key=value pair per flag, not several joined with "&": everything after the first "=" would be sent as one value. ${howTo}` + (corrected ? `
+For this value: ${corrected}` : "")
+      );
+    }
+    return { ...previous, [key]: value.slice(eq + 1) };
+  };
+}
+function integerOption(flag, hints = {}) {
+  return (value) => {
+    const n = Number.parseInt(value, 10);
+    if (Number.isNaN(n)) {
+      if (hints.warehouseSellerId) {
+        const isToken = MERCHANT_TOKEN.test(value.trim());
+        throw new InvalidOptionValueError(
+          flag,
+          isToken ? "merchant_token" : "not_integer",
+          `${flag} takes the numeric warehouse SellerID (the legacySellerId column of \`mixshift amazon merchants\`)` + (isToken ? `, not the AmazonSellerID "${value}".` : `, got "${value}".`) + " Run `mixshift amazon merchants` (or `mixshift ads profiles` for a seller with Ads only) and pass that merchant's legacySellerId."
+        );
+      }
+      throw new InvalidOptionValueError(
+        flag,
+        "not_integer",
+        `${flag} expects an integer, got "${value}".`
+      );
+    }
+    if (hints.min !== void 0 && n < hints.min) {
+      throw new InvalidOptionValueError(
+        flag,
+        "below_minimum",
+        `${flag} expects an integer of at least ${hints.min}, got "${value}".`
+      );
+    }
+    return n;
+  };
+}
+function correctedKeyValueFlags(flag, json2) {
+  let parsed;
+  try {
+    parsed = JSON.parse(json2);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const pairs = [];
+  for (const [key, v] of Object.entries(parsed)) {
+    const value = Array.isArray(v) ? csvValue(v) : scalarValue(v);
+    if (value === null) return null;
+    pairs.push(`${key}=${value}`);
+  }
+  return spelledFlags(flag, pairs);
+}
+function spelledFlags(flag, pairs) {
+  if (pairs.length === 0) return null;
+  const keys = /* @__PURE__ */ new Set();
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    const key = eq < 0 ? "" : pair.slice(0, eq).trim();
+    if (!key || keys.has(key) || pair.includes("'") || AMPERSAND_JOIN.test(pair.slice(eq + 1))) {
+      return null;
+    }
+    keys.add(key);
+  }
+  return pairs.map((pair) => `${flag} ${/^[\w.,:/@%+=-]+$/.test(pair) ? pair : `'${pair}'`}`).join(" ");
+}
+function scalarValue(v) {
+  return typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : null;
+}
+function csvValue(items) {
+  const values = items.map(scalarValue);
+  if (values.length === 0 || values.some((s) => s === null || s.includes(","))) return null;
+  return values.join(",");
+}
+
+// src/commands/data.ts
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
   data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
@@ -84057,7 +84859,11 @@ function registerDataCommands(program3) {
       emitError6(err, !!root.json);
     }
   });
-  data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller (required for time-series tables)", parseInt10).option("--limit <n>", "row limit", parseInt10, 10).action(
+  data.command("sample").description("Preview rows from a table").requiredOption("--table <name>", "table name").option(
+    "--seller-id <id>",
+    "scope to a single seller (required for time-series tables)",
+    integerOption("--seller-id", { warehouseSellerId: true })
+  ).option("--limit <n>", "row limit", integerOption("--limit"), 10).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
@@ -84111,7 +84917,11 @@ function registerDataCommands(program3) {
       }
     }
   );
-  data.command("export").description("Bulk export a table (or filtered subset) to CSV").requiredOption("--table <name>", "table name").option("--seller-id <id>", "scope to a single seller", parseInt10).option("--start <YYYY-MM-DD>", "inclusive start date (uses table date_column)").option("--end <YYYY-MM-DD>", "inclusive end date").option("--out <path>", "output CSV file path (default ~/.mixshift/output/<table>-<date>.csv)").option("--max-rows <n>", "cap row count", parseInt10).action(
+  data.command("export").description("Bulk export a table (or filtered subset) to CSV").requiredOption("--table <name>", "table name").option(
+    "--seller-id <id>",
+    "scope to a single seller",
+    integerOption("--seller-id", { warehouseSellerId: true })
+  ).option("--start <YYYY-MM-DD>", "inclusive start date (uses table date_column)").option("--end <YYYY-MM-DD>", "inclusive end date").option("--out <path>", "output CSV file path (default ~/.mixshift/output/<table>-<date>.csv)").option("--max-rows <n>", "cap row count", integerOption("--max-rows")).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
@@ -84184,7 +84994,7 @@ function registerDataCommands(program3) {
   ).option(
     "--rows <n>",
     `inline up to N rows before spilling a large result to a file (default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
-    parseInt10
+    integerOption("--rows")
   ).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
@@ -84204,7 +85014,11 @@ function registerDataCommands(program3) {
   );
   data.command("asin-titles").description(
     'Resolve ASINs to product Title + Brand from the Seller Central catalog. ASINs not listed in mws_items come back under "missing"; resolve those live via mx-amazon-retail catalog.search_items.'
-  ).requiredOption("--seller-id <id>", "seller to resolve against", parseInt10).requiredOption("--asins <list>", "comma-separated ASINs (e.g. B0ABC,B0XYZ)").action(
+  ).requiredOption(
+    "--seller-id <id>",
+    "seller to resolve against",
+    integerOption("--seller-id", { warehouseSellerId: true })
+  ).requiredOption("--asins <list>", "comma-separated ASINs (e.g. B0ABC,B0XYZ)").action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
@@ -84610,11 +85424,6 @@ function emitError6(err, json2) {
 `);
   }
   process.exitCode = 1;
-}
-function parseInt10(v) {
-  const n = parseInt(v, 10);
-  if (Number.isNaN(n)) throw new Error(`Expected integer, got "${v}"`);
-  return n;
 }
 function todayISO4() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -88707,7 +89516,7 @@ function registerFoepCommand(pricing) {
         );
         if (isReportFailure(result2)) {
           await trackFailure("foep_batch", "async", skus.length, result2, startedAt, root.dataDir);
-          return emitFailure(result2, !!root.json);
+          return emitFailure2(result2, !!root.json);
         }
         await recordPricingRun(
           {
@@ -88762,7 +89571,7 @@ Handle saved to pricing-runs.json; any later call can list it: mixshift amazon p
       );
       if (isReportFailure(result)) {
         await trackFailure("foep_batch", "sync", skus.length, result, startedAt, root.dataDir);
-        return emitFailure(result, !!root.json);
+        return emitFailure2(result, !!root.json);
       }
       await track(
         {
@@ -88829,7 +89638,7 @@ function registerCompetitiveSummaryCommand(pricing) {
             startedAt,
             root.dataDir
           );
-          return emitFailure(result2, !!root.json);
+          return emitFailure2(result2, !!root.json);
         }
         await recordPricingRun(
           {
@@ -88895,7 +89704,7 @@ Handle saved to pricing-runs.json; any later call can list it: mixshift amazon p
           startedAt,
           root.dataDir
         );
-        return emitFailure(result, !!root.json);
+        return emitFailure2(result, !!root.json);
       }
       await track(
         {
@@ -88953,7 +89762,7 @@ function registerPollRunCommand(pricing) {
           },
           root.dataDir
         );
-        return emitFailure(result, !!root.json);
+        return emitFailure2(result, !!root.json);
       }
       await track(
         {
@@ -89009,7 +89818,7 @@ function registerGetRunResultCommand(pricing) {
           },
           root.dataDir
         );
-        return emitFailure(result, !!root.json);
+        return emitFailure2(result, !!root.json);
       }
       await track(
         {
@@ -89130,7 +89939,7 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
     dataDir
   );
 }
-function emitFailure(failure, json2) {
+function emitFailure2(failure, json2) {
   if (json2) {
     writeJson({ status: "failed", ...failure });
   } else {
@@ -89245,7 +90054,7 @@ function registerOperations(amazon) {
         await trackSpApi(EventName.AmazonSpApiOperationsListed, "failed", startedAt, root.dataDir, {
           kind: result.kind
         });
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       await trackSpApi(EventName.AmazonSpApiOperationsListed, "ok", startedAt, root.dataDir, {
         count: result.operations.length,
@@ -89275,12 +90084,12 @@ function registerCall(amazon) {
   ).option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").option(
     "--query <k=v>",
     "query param per the operation notes (repeatable; csv values pass through)",
-    collectKv,
+    keyValueOption("--query", { bodyFlag: "--body" }),
     {}
   ).option(
     "--path <k=v>",
     "path placeholder, e.g. --path asin=B0CV4JLCVZ (repeatable)",
-    collectKv,
+    keyValueOption("--path", { bodyFlag: "--body" }),
     {}
   ).option("--body-file <file>", "JSON request body from a file (body-required operations)").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -89319,9 +90128,31 @@ function registerCall(amazon) {
           // Contract drift: the service sent a `kind` this build does not
           // know, so the class above came from the status, not the wire.
           // Recording the raw value keeps the drift visible (mx-ops#43).
-          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+          // Which parameters the caller SUPPLIED, by NAME only, never value
+          // (mx-ops#70). Same privacy reasoning already used above for
+          // amazon_error_code: names are low-cardinality and carry no
+          // seller/order/ASIN identifiers, while values are exactly the
+          // seller-level business data this file refuses to send.
+          //
+          // Earns its place because the most useful question about a repeated
+          // rejection is "was a required parameter missing", and nothing in
+          // this payload could answer it. On 2026-09-18 a caller sent 621
+          // identical rejected listings.get_listings_item calls over 2h35m and
+          // we could not tell whether our own operation catalog had led it to
+          // build them that way; by the time anyone looked, the gateway's
+          // Railway logs (which DO carry Amazon's detail) had aged out.
+          //
+          // Sorted so the same shape produces the same array, which makes
+          // (operation, query_keys) groupable as a signature.
+          //
+          // Body keys are deliberately NOT included: a body can carry dynamic
+          // keys that are themselves customer data (listing attribute names),
+          // which query and path parameters cannot.
+          ...input.query && Object.keys(input.query).length > 0 ? { query_keys: Object.keys(input.query).sort() } : {},
+          ...input.pathParams && Object.keys(input.pathParams).length > 0 ? { path_keys: Object.keys(input.pathParams).sort() } : {}
         });
-        return emitFailure2(result, !!root.json);
+        return emitFailure3(result, !!root.json);
       }
       await trackSpApi(EventName.AmazonSpApiCalled, "ok", startedAt, root.dataDir, {
         operation,
@@ -89353,14 +90184,6 @@ function registerCall(amazon) {
     }
   });
 }
-function collectKv(pair, acc) {
-  const idx = pair.indexOf("=");
-  if (idx <= 0) {
-    throw new Error(`Expected k=v, got '${pair}'.`);
-  }
-  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
-  return acc;
-}
 async function trackSpApi(eventName, outcome, startedAt, dataDir, payload) {
   await track(
     {
@@ -89376,7 +90199,7 @@ async function trackSpApi(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson2(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
-function emitFailure2(failure, json2) {
+function emitFailure3(failure, json2) {
   if (json2) {
     writeJson2({
       status: "error",
@@ -89465,7 +90288,7 @@ function registerMerchants(amazon) {
       const result = await listMerchants({ dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.AmazonMerchantsListed, result, startedAt, root.dataDir);
-        return emitFailure3(result, !!root.json);
+        return emitFailure4(result, !!root.json);
       }
       await track(
         {
@@ -89562,7 +90385,12 @@ function registerDescribeReport(amazon) {
 function registerReportStart(report) {
   report.command("start").description(
     "Kick off a report run. Returns a runId immediately (does not wait for the document). Poll it with `amazon report poll <runId>`."
-  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces; prevents the service re-resolving to the wrong marketplace.").requiredOption("--type <reportType>", "Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601).").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.").option("--option <key=value>", "reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK", collectKV, {}).action(async (opts, cmd) => {
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants` (NOT the numeric warehouse id). Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces; prevents the service re-resolving to the wrong marketplace.").requiredOption("--type <reportType>", "Amazon report type enum, e.g. GET_SALES_AND_TRAFFIC_REPORT").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601). Required by some report types; see describe-report.").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601).").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId. Defaults server-side to the merchant marketplace.").option(
+    "--option <key=value>",
+    "reportOptions knob (repeatable), e.g. --option reportPeriod=WEEK",
+    keyValueOption("--option", { example: "reportPeriod=WEEK" }),
+    {}
+  ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const reportType = opts.type ?? "";
@@ -89581,7 +90409,7 @@ function registerReportStart(report) {
       const result = await startReport(input, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, reportType);
-        return emitFailure3(result, !!root.json);
+        return emitFailure4(result, !!root.json);
       }
       await track(
         {
@@ -89637,7 +90465,7 @@ function registerReportPoll(report) {
       const result = await pollReport(runId, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, void 0, runId);
-        return emitFailure3(result, !!root.json);
+        return emitFailure4(result, !!root.json);
       }
       await track(
         {
@@ -89695,7 +90523,7 @@ function registerReportGet(report) {
         const meta3 = await getReportDocumentMeta(runId, clientOpts);
         if (isReportFailure(meta3)) {
           await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, void 0, runId);
-          return emitFailure3(meta3, !!root.json);
+          return emitFailure4(meta3, !!root.json);
         }
         if (!meta3.ready || !meta3.document) {
           return emitNotReady(meta3.status, startedAt, root.dataDir, !!root.json);
@@ -89704,7 +90532,7 @@ function registerReportGet(report) {
         const streamed = await streamReportDocumentToFile(meta3.document, outPath, clientOpts);
         if (isReportFailure(streamed)) {
           await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, void 0, runId);
-          return emitFailure3(streamed, !!root.json);
+          return emitFailure4(streamed, !!root.json);
         }
         await trackRetrieved(startedAt, streamed.bytes, root.dataDir);
         if (root.json) {
@@ -89719,7 +90547,7 @@ function registerReportGet(report) {
       const result = await getReportDocument(runId, clientOpts);
       if (isReportFailure(result)) {
         await trackFailure2(EventName.ReportFailed, result, startedAt, root.dataDir, void 0, runId);
-        return emitFailure3(result, !!root.json);
+        return emitFailure4(result, !!root.json);
       }
       if (!result.ready) {
         return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
@@ -89801,7 +90629,17 @@ function emitNotReady(status, startedAt, dataDir, json2) {
 function registerReportRun(report) {
   report.command("run").description(
     "Convenience: start + poll-until-ready + get, in one blocking call. TERMINAL-ONLY \u2014 it can run for minutes, which exceeds the ~45s Bash ceiling on chat surfaces. In chat, use start/poll/get separately."
-  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces.").requiredOption("--type <reportType>", "Amazon report type enum").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601)").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601)").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId").option("--option <key=value>", "reportOptions knob (repeatable)", collectKV, {}).option("--out <path>", "output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)").option("--interval-ms <ms>", "poll interval", parseIntOpt, 5e3).option("--max-wait-ms <ms>", "give up after this long", parseIntOpt, 3e5).action(async (opts, cmd) => {
+  ).option("--seller-id <amazonSellerId>", "Amazon seller/vendor ID from `amazon merchants`. Optional when the tenant has exactly one merchant.").option("--legacy-seller-id <id>", "exact per-marketplace warehouse record id from `amazon merchants` (the `legacySellerId` column). Pins attribution when one seller-id spans multiple marketplaces.").requiredOption("--type <reportType>", "Amazon report type enum").option("--start <date>", "data window start (YYYY-MM-DD or ISO 8601)").option("--end <date>", "data window end (YYYY-MM-DD or ISO 8601)").option("--marketplace <id>", "marketplace: country code (US/UK/DE/JP) or a raw marketplaceId").option(
+    "--option <key=value>",
+    "reportOptions knob (repeatable)",
+    keyValueOption("--option", { example: "reportPeriod=WEEK" }),
+    {}
+  ).option("--out <path>", "output file (default ~/.mixshift/reports/<sellerId>/<date>-<type>.<ext>)").option("--interval-ms <ms>", "poll interval", integerOption("--interval-ms", { min: 0 }), 5e3).option(
+    "--max-wait-ms <ms>",
+    "give up after this long",
+    integerOption("--max-wait-ms", { min: 0 }),
+    3e5
+  ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const reportType = opts.type ?? "";
@@ -89834,7 +90672,7 @@ function registerReportRun(report) {
           { root, clientOpts, stepStartedAt: startedAt, deadline, intervalMs: opts.intervalMs, reportType }
         );
         if (outcome.outcome === "start_failed" || outcome.outcome === "poll_failed") {
-          return emitFailure3(outcome.failure, !!root.json);
+          return emitFailure4(outcome.failure, !!root.json);
         }
         if (outcome.outcome === "timeout") {
           const msg2 = `Timed out after ${Math.round(opts.maxWaitMs / 1e3)}s waiting for the report (last status: ${outcome.lastStatus}). This is a wait, not a failure: the report is still queued at Amazon and the run handle is still valid. Do NOT request it again, which only queues a second copy behind this one. Resume this run with \`mixshift amazon report poll ${outcome.runId}\`.`;
@@ -89858,7 +90696,7 @@ function registerReportRun(report) {
         const meta3 = await getReportDocumentMeta(runId, clientOpts);
         if (isReportFailure(meta3)) {
           await trackFailure2(EventName.ReportFailed, meta3, startedAt, root.dataDir, reportType, runId);
-          return emitFailure3(meta3, !!root.json);
+          return emitFailure4(meta3, !!root.json);
         }
         if (!meta3.ready || !meta3.document) {
           await track(
@@ -89887,7 +90725,7 @@ function registerReportRun(report) {
         const streamed = await streamReportDocumentToFile(meta3.document, outPath2, clientOpts);
         if (isReportFailure(streamed)) {
           await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType, runId);
-          return emitFailure3(streamed, !!root.json);
+          return emitFailure4(streamed, !!root.json);
         }
         const bytes2 = streamed.bytes;
         await trackRetrieved(startedAt, bytes2, root.dataDir, reportType);
@@ -90229,7 +91067,7 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType,
 function writeJson3(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
-function emitFailure3(failure, json2) {
+function emitFailure4(failure, json2) {
   if (json2) {
     writeJson3({
       status: "error",
@@ -90463,21 +91301,6 @@ function requireAsinFitsSingleReport(asin) {
       `reportOptions.asin is ${asin.length} characters; Amazon caps this option at ${SQP_ASIN_OPTION_CHAR_LIMIT} characters per report (about 18 ASINs). \`amazon report start\` starts exactly one report and cannot split this list; use \`amazon report run\`, which auto-batches any-size ASIN lists into multiple pulls and merges the resulting JSON documents into one output file.`
     );
   }
-}
-function collectKV(value, prev) {
-  const eq = value.indexOf("=");
-  if (eq < 0) {
-    throw new Error(`--option must be key=value (got "${value}")`);
-  }
-  const key = value.slice(0, eq).trim();
-  const val = value.slice(eq + 1);
-  if (!key) throw new Error(`--option key is empty in "${value}"`);
-  return { ...prev, [key]: val };
-}
-function parseIntOpt(v) {
-  const n = Number.parseInt(v, 10);
-  if (!Number.isFinite(n) || n < 0) throw new Error(`Expected a non-negative integer, got "${v}"`);
-  return n;
 }
 async function defaultOutPath(sellerId, reportType, dataDir) {
   const entry = await findReportType(reportType);
@@ -90734,7 +91557,7 @@ function registerProfiles(ads) {
         await trackAds(EventName.AdsProfilesListed, "failed", startedAt, root.dataDir, {
           kind: result.kind
         });
-        return emitFailure4(result, !!root.json);
+        return emitFailure5(result, !!root.json);
       }
       await trackAds(EventName.AdsProfilesListed, "ok", startedAt, root.dataDir, {
         count: result.profiles.length,
@@ -90792,7 +91615,7 @@ function registerOperations2(ads) {
         await trackAds(EventName.AdsOperationsListed, "failed", startedAt, root.dataDir, {
           kind: result.kind
         });
-        return emitFailure4(result, !!root.json);
+        return emitFailure5(result, !!root.json);
       }
       await trackAds(EventName.AdsOperationsListed, "ok", startedAt, root.dataDir, {
         count: result.operations.length,
@@ -90822,9 +91645,14 @@ function registerCall2(ads) {
   ).option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").option(
     "--query <k=v>",
     "query param (SD lists, sb.list_keywords; repeatable)",
-    collectKv2,
+    keyValueOption("--query", { bodyFlag: "--body" }),
     {}
-  ).option("--path <k=v>", "path placeholder, e.g. --path reportId=... (repeatable)", collectKv2, {}).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option("--content-type <vnd>", "advanced: override the cataloged vnd media type").option(
+  ).option(
+    "--path <k=v>",
+    "path placeholder, e.g. --path reportId=... (repeatable)",
+    keyValueOption("--path", { bodyFlag: "--body" }),
+    {}
+  ).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option("--content-type <vnd>", "advanced: override the cataloged vnd media type").option(
     "--commit",
     "WRITE operations: actually apply the change set (default is a dry-run preview that mutates nothing). Use only after explicit user confirmation."
   ).option(
@@ -90898,7 +91726,7 @@ function registerCall2(ads) {
           // Recording the raw value keeps the drift visible (mx-ops#43).
           ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
         });
-        return emitFailure4(result, !!root.json);
+        return emitFailure5(result, !!root.json);
       }
       await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, {
         operation,
@@ -90973,14 +91801,6 @@ function registerCall2(ads) {
     }
   });
 }
-function collectKv2(pair, acc) {
-  const idx = pair.indexOf("=");
-  if (idx <= 0) {
-    throw new Error(`Expected k=v, got '${pair}'.`);
-  }
-  acc[pair.slice(0, idx)] = pair.slice(idx + 1);
-  return acc;
-}
 async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
   await track(
     {
@@ -90996,7 +91816,7 @@ async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson4(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
-function emitFailure4(failure, json2) {
+function emitFailure5(failure, json2) {
   if (json2) {
     writeJson4({
       status: "error",
@@ -91655,7 +92475,7 @@ function registerCatalogCommand(intelligence) {
       const result = await catalog({ dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("catalog", void 0, result, startedAt, root.dataDir);
-        return emitFailure5(result, !!root.json);
+        return emitFailure6(result, !!root.json);
       }
       await track(
         {
@@ -91695,7 +92515,7 @@ function registerRunCommand(intelligence) {
       const result = await run({ id, params }, { dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("run", id, result, startedAt, root.dataDir);
-        return emitFailure5(result, !!root.json);
+        return emitFailure6(result, !!root.json);
       }
       if (isAccepted(result)) {
         await recordIntelligenceRun(
@@ -91754,7 +92574,7 @@ function registerPollCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("poll", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure5(result, !!root.json);
+        return emitFailure6(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, result.status, root.dataDir);
       await track(
@@ -91792,7 +92612,7 @@ function registerGetCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("get", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure5(result, !!root.json);
+        return emitFailure6(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, "DONE", root.dataDir);
       const headlineForId = extractRunHeadline(result);
@@ -91978,7 +92798,7 @@ async function trackFailure3(op, insightId, failure, startedAt, dataDir, runId) 
     dataDir
   );
 }
-function emitFailure5(failure, json2) {
+function emitFailure6(failure, json2) {
   const hint = hintForKind(failure.kind);
   if (json2) {
     writeJson5({
@@ -92978,6 +93798,10 @@ function extractFiguresUnprefixed(response, selection) {
           })
         };
       }
+      const oneSided = key === "lost_sales" ? asRecord(m.lostSalesOneSided) ?? asRecord(t.lostSalesOneSided) : void 0;
+      const cmpComparison = oneSided?.comparableComparisonValue;
+      const cmpCurrent = oneSided?.comparableCurrentValue;
+      const comparablePair = typeof cmpComparison === "number" && Number.isFinite(cmpComparison) && typeof cmpCurrent === "number" && Number.isFinite(cmpCurrent) ? { comparable_comparison_value: cmpComparison, comparable_current_value: cmpCurrent } : void 0;
       figures2.push(
         // The CHANGE unit, not the LEVEL kept by p1/p2 above: a rate metric's
         // delta is in POINTS. On a served envelope that comes from the
@@ -92987,7 +93811,10 @@ function extractFiguresUnprefixed(response, selection) {
         fig(`${domain2}.${key}.delta`, key ?? "", delta, changeSpec, basis, `${base}.delta`, {
           caveats: deltaCaveats,
           population: pop,
-          extra: { pct_change: t.pctChange ?? null }
+          extra: {
+            pct_change: t.pctChange ?? null,
+            ...comparablePair
+          }
         })
       );
     }
@@ -93216,10 +94043,40 @@ function checkFigures(out) {
   }
   for (const f of out.figures) {
     if (f.id.endsWith(".delta") && !f.id.includes(".bridge.")) {
+      if (invalidIds.has(f.id)) continue;
+      const cmpComparison = f.comparable_comparison_value;
+      const cmpCurrent = f.comparable_current_value;
+      if (cmpComparison !== void 0 && cmpComparison !== null) {
+        const usable = typeof cmpComparison === "number" && Number.isFinite(cmpComparison) && typeof cmpCurrent === "number" && Number.isFinite(cmpCurrent);
+        if (!usable) {
+          findings.push({
+            rule: "DELTA-IDENTITY",
+            subject: f.id,
+            detail: `comparable pair present but unusable (comparison=${JSON.stringify(cmpComparison)}, current=${JSON.stringify(cmpCurrent)}); refusing to fall back to p2 - p1, which is not this delta's identity`
+          });
+          continue;
+        }
+        if (Math.abs(cmpCurrent - cmpComparison - f.value) > TOL) {
+          findings.push({
+            rule: "DELTA-IDENTITY",
+            subject: f.id,
+            detail: `delta != comparable_current - comparable_comparison (${cmpCurrent} - ${cmpComparison} != ${f.value})`
+          });
+        }
+        continue;
+      }
+      if (cmpCurrent !== void 0 && cmpCurrent !== null) {
+        findings.push({
+          rule: "DELTA-IDENTITY",
+          subject: f.id,
+          detail: `comparable_current_value present without comparable_comparison_value (current=${JSON.stringify(cmpCurrent)}); refusing to fall back to p2 - p1`
+        });
+        continue;
+      }
       const stem = f.id.slice(0, -".delta".length);
       const p1 = figs.get(`${stem}.p1`);
       const p2 = figs.get(`${stem}.p2`);
-      if (p1 && p2 && !invalidIds.has(f.id) && !invalidIds.has(p1.id) && !invalidIds.has(p2.id) && Math.abs(p2.value - p1.value - f.value) > TOL) {
+      if (p1 && p2 && !invalidIds.has(p1.id) && !invalidIds.has(p2.id) && Math.abs(p2.value - p1.value - f.value) > TOL) {
         findings.push({ rule: "DELTA-IDENTITY", subject: f.id, detail: "delta != p2 - p1" });
       }
     }
@@ -93749,6 +94606,7 @@ ${html}</section>`);
 
 // src/commands/report.ts
 init_errors3();
+init_query_runner();
 init_load2();
 init_local();
 init_clients();
@@ -94116,7 +94974,10 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
     "Vendor Central: ordered or shipped revenue and units (default: reporting.vc_revenue_basis from the brand context when --brand is given, else ordered)"
   ).option(
     "--oos-rate-threshold <rate>",
-    "Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.99 on the service)"
+    "Vendor Central: ProcurableProductOutOfStockRate (0 to 1) at or above which an ASIN-day counts as out of stock (default 0.25 on the service)"
+  ).option(
+    "--min-sellable-units <n>",
+    "Vendor Central: sellable units on hand at or above which an out-of-stock ASIN-day ALSO counts as an availability interruption, a listing or procurability problem rather than an empty shelf. Interruption days are a subset of the out-of-stock days and stay counted in oos_days, so the two figures overlap and never sum to a total. A fixed unit floor, not a share of run rate (default 40 on the service; 1 together with --oos-rate-threshold 0.99 restores the pre-2026-09 rule, and both flags are needed because the out-of-stock set the floor is applied to moved in the same change)"
   ).option(
     "--attribution <basis>",
     "ads attribution basis on every account: legacy_sales (Amazon's reported Sales and Orders per campaign, the figures Report Center prints; Sponsored Display includes view-attributed sales), all_14 (14 day click for every campaign type, Vendor Central rows only; a Seller Central row keeps its own rule), or sc_default (Sponsored Products 7 day, everything else 14 day click). Omit it to take the service default (legacy_sales); the document records the basis applied under thresholds_applied.attribution with its plain-language attribution_note"
@@ -94340,11 +95201,21 @@ function batteryParams(opts, ids, contextRevenueBasis) {
   if (opts.oosRateThreshold !== void 0) {
     params.oos_rate_threshold = batteryNumber(opts.oosRateThreshold, "--oos-rate-threshold", 1);
   }
+  if (opts.minSellableUnits !== void 0) {
+    params.min_sellable_units = batteryInt(opts.minSellableUnits, "--min-sellable-units", 1);
+  }
   if (opts.attribution !== void 0) params.attribution = opts.attribution;
   return params;
 }
 function batteryFailure(failure) {
-  if (failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3) {
+  if (failure.raw_code === CLIENT_BUDGET_DOWNLOAD_RAW_CODE) {
+    return new UserFacingError(
+      `The figure battery answered, but its document did not finish downloading in time. Check your connection and retry once, or retry with fewer accounts; if it repeats, report it with \`mixshift feedback\` and label the gap in the method notes. (${BATTERY_QUERY_ID}: timeout)`,
+      "report_battery_timeout"
+    );
+  }
+  const budgetExpired = failure.raw_code === CLIENT_BUDGET_RAW_CODE || failure.kind === "host_unreachable" && (failure.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3;
+  if (budgetExpired) {
     return new UserFacingError(
       `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once, or with fewer accounts; if it repeats, report it with \`mixshift feedback\` and label the gap in the method notes. (${BATTERY_QUERY_ID}: client_timeout)`,
       "report_battery_timeout"
@@ -95035,6 +95906,7 @@ var CATALOG = [
       { id: "mx-brand-context", say: "set up brand context for <brand>", what: "onboard a brand so the analytical skills know it" },
       { id: "mx-brand-context", say: "find the sub-brands in my account", what: "discover the brands hiding under one seller account" },
       { id: "mx-brand-context", say: "build a promotion plan", what: "plan which sub-brand labels become real brands" },
+      { id: "mx-brand-context", say: "retire <brand>", what: "stop showing a brand your team no longer works on (undo any time)" },
       { id: "mx-update", say: "update the plugin", what: "guide the update and walk post-update catch-up actions" }
     ]
   },
@@ -95680,7 +96552,7 @@ function registerContextCommands(program3) {
     try {
       const setup = await resolveBrandsAndManifest(opts.brand, root);
       if (!setup) return;
-      const { brands, engineOptions } = setup;
+      const { brands, engineOptions, retiredSkipped } = setup;
       const results = [];
       for (const brand of brands) {
         const r = await computeStatus(brand, engineOptions);
@@ -95709,7 +96581,8 @@ function registerContextCommands(program3) {
               status: "ok",
               brands: results.map((r) => ({ brand: r.brand, docs: r.docs })),
               conflicts,
-              unshared
+              unshared,
+              ...retiredSkipped.length > 0 ? { retired_skipped: retiredSkippedJson(retiredSkipped) } : {}
             },
             null,
             2
@@ -95755,6 +96628,10 @@ function registerContextCommands(program3) {
           );
           lines.push("");
         }
+      }
+      if (retiredSkipped.length > 0) {
+        lines.push(retiredSkipSummaryLine(retiredSkipped));
+        lines.push("");
       }
       process.stdout.write(lines.join("\n") + "\n");
       return;
@@ -95908,7 +96785,7 @@ function registerActionSubcommand(context, spec) {
       }
       const setup = await resolveBrandsAndManifest(opts.brand, root);
       if (!setup) return;
-      const { brands, engineOptions } = setup;
+      const { brands, engineOptions, retiredSkipped } = setup;
       const results = [];
       for (const brand of brands) {
         const r = await spec.run(brand, {
@@ -95946,7 +96823,8 @@ function registerActionSubcommand(context, spec) {
             brands: results.length,
             force: opts.force ?? false,
             ...counts,
-            ...spec.syncStakesAfter ? stakeCounts : {}
+            ...spec.syncStakesAfter ? stakeCounts : {},
+            ...retiredSkipped.length > 0 ? { retired_skipped: retiredSkipped.length } : {}
           }
         },
         root.dataDir
@@ -95960,7 +96838,8 @@ function registerActionSubcommand(context, spec) {
               force: opts.force ?? false,
               brands: results,
               counts,
-              ...spec.syncStakesAfter ? { stake_events: stakeRuns.map((s) => s.result) } : {}
+              ...spec.syncStakesAfter ? { stake_events: stakeRuns.map((s) => s.result) } : {},
+              ...retiredSkipped.length > 0 ? { retired_skipped: retiredSkippedJson(retiredSkipped) } : {}
             },
             null,
             2
@@ -95980,6 +96859,7 @@ function registerActionSubcommand(context, spec) {
         for (const line of stakeLines(stakeRuns)) lines.push(line);
         lines.push("");
         lines.push(summaryLine(counts));
+        if (retiredSkipped.length > 0) lines.push(retiredSkipSummaryLine(retiredSkipped));
         process.stdout.write(lines.join("\n") + "\n");
       }
       process.exitCode = counts.error > 0 ? 1 : 0;
@@ -96000,7 +96880,11 @@ function registerAutosyncSubcommand(context) {
       const result = await maybeAutoSync(brand, {
         dataDirOverride: root.dataDir,
         force: opts.force ?? false,
-        trigger: "manual"
+        trigger: "manual",
+        // The brand is named on the command line: an explicit action, so a
+        // retired brand may still be fetched here (brand retire only skips
+        // implicit seeding).
+        seedRetired: true
       });
       await track(
         {
@@ -96079,16 +96963,26 @@ function registerAutosyncSubcommand(context) {
   });
 }
 async function resolveBrandsAndManifest(brandOpt, root) {
-  const brands = brandOpt ? [brandOpt] : await listLocalBrands(root.dataDir);
-  if (brands.length === 0) {
+  const localOrExplicit = brandOpt ? [brandOpt] : await listLocalBrands(root.dataDir);
+  if (localOrExplicit.length === 0) {
     emitNoBrands(root);
     return null;
   }
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
-  const manifest = await client.fetchManifest();
+  const manifest = await client.fetchManifest({ lifecycle: "all" });
   if (!manifest.ok) {
     emitError13(manifest.friendly, root);
     return null;
+  }
+  let brands = localOrExplicit;
+  let retiredSkipped = [];
+  if (brandOpt) {
+    const lc = retiredLifecycleOf(findManifestBrand(manifest.brands, brandOpt));
+    if (lc) emitRetiredNotice(brandOpt, lc);
+  } else {
+    const split = partitionRetired(localOrExplicit, manifest.brands);
+    brands = split.active;
+    retiredSkipped = split.retired;
   }
   if (brandOpt) {
     const knownLocally = await brandDirExists(brandOpt, root.dataDir);
@@ -96106,7 +97000,15 @@ async function resolveBrandsAndManifest(brandOpt, root) {
     manifest: manifest.brands,
     ...root.dataDir !== void 0 ? { dataDirOverride: root.dataDir } : {}
   };
-  return { brands, engineOptions };
+  return { brands, engineOptions, retiredSkipped };
+}
+function retiredSkippedJson(retired) {
+  return retired.map((r) => ({
+    brand_slug: r.slug,
+    changed_by: r.lifecycle.changed_by ?? null,
+    changed_at: r.lifecycle.changed_at ?? null,
+    reason_code: r.lifecycle.reason_code ?? null
+  }));
 }
 function countActions(reports) {
   const counts = {
@@ -96854,6 +97756,8 @@ init_service_attribution_cache();
 init_telemetry();
 import { readdir as readdir6, stat as stat6 } from "node:fs/promises";
 import { basename as basename5, dirname as dirname40, join as join28 } from "node:path";
+init_deadline();
+var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
   credential_missing: 6,
   credential_invalid: 7,
@@ -97205,15 +98109,50 @@ async function runPreflight(brandSlugs, root) {
       }
     }
     const brands = [];
+    const brandLifecycle = [];
+    let manifestBrands;
+    if (brandSlugs.length > 0 && credentialSummary?.verified) {
+      try {
+        const manifestClient = createContextSyncClient({ dataDirOverride: dataDir });
+        const raced = await raceDeadline(
+          manifestClient.fetchManifest({ lifecycle: "all" }),
+          PREFLIGHT_MANIFEST_BUDGET_MS
+        );
+        if (raced !== DEADLINE && raced.ok) manifestBrands = raced.brands;
+      } catch {
+        manifestBrands = void 0;
+      }
+    }
     for (const slug of brandSlugs) {
+      const retiredLc = manifestBrands ? retiredLifecycleOf(findManifestBrand(manifestBrands, slug)) : null;
+      brandLifecycle.push(manifestBrands ? retiredLc ? "retired" : "active" : "unknown");
       const ctxPath = contextPath(slug, dataDir);
+      const lifecycle = retiredLc ? {
+        lifecycle: {
+          state: "retired",
+          changed_at: retiredLc.changed_at ?? null,
+          changed_by: retiredLc.changed_by ?? null,
+          reason_code: retiredLc.reason_code ?? null
+        }
+      } : {};
+      if (retiredLc) {
+        const by = retiredByClause(retiredLc);
+        warnings.push(
+          `brand ${slug} is retired for your team (${by}). This task still names it, so this run still includes it: say so in one line at the top of the output. To stop including it, remove it from the task; to bring it back for the team: \`${restoreCommand(slug)}\`.`
+        );
+        lines.push(statusLine("warn", `brand ${slug}: ${by} (still included in this run)`));
+      }
       if (await pathExists(ctxPath)) {
-        brands.push({ slug, status: "present" });
+        brands.push({ slug, status: "present", ...lifecycle });
         lines.push(statusLine("ok", `brand ${slug}: present`));
         continue;
       }
       const client = createContextSyncClient({ dataDirOverride: dataDir });
-      const result = await pull(slug, { client, dataDirOverride: dataDir });
+      const result = await pull(slug, {
+        client,
+        dataDirOverride: dataDir,
+        ...manifestBrands ? { manifest: manifestBrands } : {}
+      });
       if (!result.ok) {
         const message = `brand '${slug}': ${result.message}`;
         lines.push(statusLine("BLOCKED", message));
@@ -97222,11 +98161,11 @@ async function runPreflight(brandSlugs, root) {
           message,
           remediation: "Confirm the brand slug and that this credential has access to it (`mixshift context status` lists the known brands), or run `mixshift context pull --brand <slug>` directly to see the full error."
         });
-        brands.push({ slug, status: "unavailable" });
+        brands.push({ slug, status: "unavailable", ...lifecycle });
         continue;
       }
       if (await pathExists(ctxPath)) {
-        brands.push({ slug, status: "pulled" });
+        brands.push({ slug, status: "pulled", ...lifecycle });
         lines.push(statusLine("ok", `brand ${slug}: pulled`));
       } else {
         const message = `brand '${slug}': pull completed but context.yaml still does not exist locally; the org store may not hold a context doc for this brand yet`;
@@ -97236,7 +98175,7 @@ async function runPreflight(brandSlugs, root) {
           message,
           remediation: "Run brand-context setup for this brand (`mixshift brand discover` / the mx-brand-context skill), or confirm the slug with `mixshift context status`."
         });
-        brands.push({ slug, status: "unavailable" });
+        brands.push({ slug, status: "unavailable", ...lifecycle });
       }
     }
     const { exitCode, firstBlockerClass } = computeExitCode(blockers);
@@ -97269,7 +98208,13 @@ async function runPreflight(brandSlugs, root) {
           // a discovered credential was rejected at mint and alternates were
           // tried; fallback_used means one of them is what verified.
           mint_attempts: mintAttemptsTotal,
-          fallback_used: fallbackUsed
+          fallback_used: fallbackUsed,
+          // Brand retire: states only, never slugs (see events.ts). Present
+          // only when the run named brands.
+          ...brandSlugs.length > 0 ? {
+            brand_lifecycle: brandLifecycle,
+            brands_retired: brands.filter((b) => b.lifecycle !== void 0).length
+          } : {}
         }
       },
       // Deviation from the house `track(..., root.dataDir)` pattern,
@@ -97315,11 +98260,9 @@ function statusLine(status, message) {
   return `${status.padEnd(8)}${message}`;
 }
 
-// src/cli.ts
+// src/lib/cli/top-level-error.ts
 init_errors3();
 init_telemetry();
-init_load();
-init_save();
 
 // src/lib/telemetry/redact.ts
 var REDACTED = "<redacted>";
@@ -97363,7 +98306,76 @@ function isNumericLike(arg) {
   return /^-\d/.test(arg);
 }
 
+// src/lib/cli/top-level-error.ts
+var DISPLAY_CODES = /* @__PURE__ */ new Set(["commander.helpDisplayed", "commander.help", "commander.version"]);
+function applyExitOverride(cmd) {
+  cmd.exitOverride();
+  for (const sub of cmd.commands) applyExitOverride(sub);
+}
+var defaultIo = {
+  stdout: (text) => void process.stdout.write(text),
+  stderr: (text) => void process.stderr.write(text),
+  track
+};
+async function handleTopLevelError(err, ctx, io = defaultIo) {
+  if (err instanceof CommanderError && DISPLAY_CODES.has(err.code)) {
+    return err.exitCode;
+  }
+  let message;
+  let errorClass;
+  let telemetryMessage;
+  let extra = {};
+  let alreadyPrinted = false;
+  if (err instanceof CommanderError) {
+    message = err.message.replace(/^error: /, "");
+    errorClass = err.code === "commander.invalidArgument" ? "invalid_argument" : "usage_error";
+    telemetryMessage = scrubCommanderMessage(message);
+    extra = { user_facing: true, commander_code: err.code };
+    alreadyPrinted = true;
+  } else if (err instanceof InvalidOptionValueError) {
+    message = err.message;
+    errorClass = err.errorClass;
+    telemetryMessage = err.telemetryMessage;
+    extra = { user_facing: true, flag: err.flag, value_shape: err.valueShape };
+  } else if (err instanceof UserFacingError) {
+    message = err.message;
+    errorClass = err.errorClass;
+    telemetryMessage = err.message;
+    extra = { user_facing: true };
+  } else {
+    message = err instanceof Error ? err.message : String(err);
+    errorClass = "unhandled_exception";
+    telemetryMessage = message;
+  }
+  if (ctx.json) {
+    io.stdout(JSON.stringify({ status: "error", error_class: errorClass, message }, null, 2) + "\n");
+  } else if (!alreadyPrinted) {
+    io.stderr(`error: ${message}
+`);
+  }
+  await io.track({
+    event_name: EventName.PluginCrashed,
+    outcome: "failed",
+    error_class: errorClass,
+    payload: {
+      message: telemetryMessage,
+      argv: redactArgs(ctx.argv),
+      ...extra
+    }
+  });
+  return err instanceof CommanderError ? err.exitCode : 1;
+}
+function scrubCommanderMessage(message) {
+  return message.replace(/unknown option '(.*)'/, (_match, arg) => `unknown option '${flagName2(arg)}'`).replace(/unknown command '.*'/, "unknown command").replace(/argument '.*' is invalid/, "argument is invalid").replace(/value '.*' is invalid/, "value is invalid");
+}
+function flagName2(arg) {
+  return arg.startsWith("--") ? arg.split("=")[0] : arg.slice(0, 2);
+}
+
 // src/cli.ts
+init_telemetry();
+init_load();
+init_save();
 await loadDotenvIfPresent();
 installProxyDispatcherIfConfigured();
 var program2 = new Command();
@@ -97402,6 +98414,7 @@ registerShareSkillCommand(program2);
 registerContextCommands(program2);
 registerTimelineCommands(program2);
 registerTaskCommands(program2);
+applyExitOverride(program2);
 var isTelemetryCommand = process.argv[2] === "telemetry";
 if (!isTelemetryCommand) {
   await showFirstRunNoticeIfNeeded();
@@ -97461,21 +98474,10 @@ function printFirstRunNotice() {
 try {
   await program2.parseAsync(process.argv);
 } catch (err) {
-  const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`error: ${message}
-`);
-  const isUserFacing = err instanceof UserFacingError;
-  await track({
-    event_name: EventName.PluginCrashed,
-    outcome: "failed",
-    error_class: isUserFacing ? err.errorClass : "unhandled_exception",
-    payload: {
-      message,
-      argv: redactArgs(process.argv.slice(2)),
-      ...isUserFacing ? { user_facing: true } : {}
-    }
+  process.exitCode = await handleTopLevelError(err, {
+    json: program2.opts().json === true,
+    argv: process.argv.slice(2)
   });
-  process.exitCode = 1;
 } finally {
   const flushResult = await maybeFlush();
   const { appendFlushLog: appendFlushLog2 } = await Promise.resolve().then(() => (init_flush_log(), flush_log_exports));
