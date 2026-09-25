@@ -83,11 +83,15 @@ export function partitionRetired(
 /**
  * Server text printed to a terminal: strip control characters (an escape
  * sequence in a teammate's label must never reach the user's terminal) and
- * cap the length. Returns null for empty input.
+ * bidirectional-override marks (a self-attested label must not be able to
+ * reorder the text around it, e.g. to fake who retired a brand), and cap
+ * the length. Returns null for empty input.
  */
 export function safeDisplay(value: unknown, max = 120): string | null {
   if (typeof value !== 'string') return null;
-  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
+  const cleaned = value
+    .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+    .trim();
   if (cleaned === '') return null;
   return cleaned.length > max ? `${cleaned.slice(0, max - 3)}...` : cleaned;
 }

@@ -101,6 +101,11 @@ describe('copy', () => {
     expect(safeDisplay('x'.repeat(200), 20)).toBe(`${'x'.repeat(17)}...`);
   });
 
+  it('strips bidirectional-override marks, so a label cannot reorder the line around it', () => {
+    expect(safeDisplay('kim\u202e@example.com\u202c')).toBe('kim@example.com');
+    expect(safeDisplay('\u2066svc:\u2067nightly\u2069-sync\u200f\u200e\u061c')).toBe('svc:nightly-sync');
+  });
+
   it('formats dates as a calendar day and rejects junk', () => {
     expect(formatLifecycleDate('2026-09-24T23:59:00.000Z', 'UTC')).toBe('Sep 24, 2026');
     // The service renders timestamptz the PostgREST way: microseconds + offset.
