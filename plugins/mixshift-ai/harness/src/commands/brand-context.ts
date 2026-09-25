@@ -17,6 +17,7 @@ import {
   BRAND_FIELD_KEYS,
   type ResolvedField,
 } from '../lib/brain/read.js';
+import { noticeIfRetired } from '../lib/context-sync/lifecycle-notice.js';
 
 interface RootOptions {
   json?: boolean;
@@ -43,7 +44,13 @@ export function registerBrandContextCommands(brand: Command): void {
     )
     .action(async (slug: string, _opts: unknown, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
-      const fields = await resolveBrandFields(slug, root.dataDir);
+      // Explicit slug: a retired brand still resolves (and is fetched if this
+      // machine has no copy yet). Brand retire only skips IMPLICIT bulk work.
+      const fields = await resolveBrandFields(slug, root.dataDir, { explicit: true });
+      // Retired brand: one stderr line (who, when, how to undo). stdout below
+      // is untouched, so the --json document stays byte-identical. Fails
+      // open: an unknown lifecycle prints nothing.
+      await noticeIfRetired(slug, { dataDirOverride: root.dataDir });
 
       if (root.json) {
         process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + '\n');

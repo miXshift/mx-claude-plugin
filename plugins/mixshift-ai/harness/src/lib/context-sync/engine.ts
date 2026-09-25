@@ -100,6 +100,14 @@ export interface EngineOptions {
    */
   manifest?: WireManifestBrand[];
   /**
+   * Called with the manifest brands after a SUCCESSFUL live fetch made by the
+   * engine itself (never when `manifest` above was supplied). autosync uses
+   * it to keep the org-manifest cache warm, so the brand-lifecycle notice at
+   * Step 0 reads a fresh cache instead of paying a second round trip. Errors
+   * thrown by the callback are swallowed: it can never fail a sync.
+   */
+  onManifest?: (brands: WireManifestBrand[]) => void | Promise<void>;
+  /**
    * Ledger identity override (tests). Defaults to resolveLedgerIdentity()
    * over the stored credentials; explicit null = "no identity available"
    * (identity checks are skipped).
@@ -216,6 +224,13 @@ async function buildDocPairs(
     // reliably — pull/push/sync/computeStatus just pass it through unchanged.
     if (!manifest.ok) return { ok: false, message: manifest.friendly, kind: manifest.kind };
     manifestBrands = manifest.brands;
+    if (options.onManifest) {
+      try {
+        await options.onManifest(manifestBrands);
+      } catch {
+        // Advisory side channel (cache warm-up); never fails the sync.
+      }
+    }
   }
   const manifestBrand = manifestBrands.find((b) => b.brand_slug === brandSlug);
 

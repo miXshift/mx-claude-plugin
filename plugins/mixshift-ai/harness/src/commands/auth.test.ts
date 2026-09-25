@@ -381,6 +381,34 @@ describe('auth login — org awareness (D-032 sign-in line)', () => {
     expect(stdout).toContain('Your org has 3 brands set up. 2 not yet on this machine.');
   });
 
+  it('brand retire: a retired brand is counted apart, never as "set up"', async () => {
+    vi.mocked(runAuthLogin).mockResolvedValue(loginResult);
+    await mkdir(join(clientsDir(dataDir), 'acme'), { recursive: true });
+    const retired = {
+      state: 'retired' as const,
+      changed_at: '2026-09-24T15:30:00.000Z',
+      changed_by: 'pat@example.com',
+      surface: 'plugin',
+      reason_code: 'client_left',
+    };
+    mockedManifest.mockResolvedValue({
+      ok: true,
+      fromCache: false,
+      brands: [
+        { brand_slug: 'acme', docs: [] },
+        { brand_slug: 'other-brand', docs: [] },
+        { brand_slug: 'gone-brand', docs: [], lifecycle: retired },
+      ],
+    });
+
+    await runLogin();
+    expect(stdout).toContain('Your org has 2 brands set up (1 more retired). 1 not yet on this machine.');
+
+    stdout = '';
+    await runLogin(['--json']);
+    expect(emittedJson().org_brands).toEqual({ total: 2, not_local: 1, retired: 1 });
+  });
+
   it('--json merges org_brands into the SINGLE result document (no second document)', async () => {
     vi.mocked(runAuthLogin).mockResolvedValue(loginResult);
     mockedManifest.mockResolvedValue({

@@ -112,6 +112,13 @@ export const EventName = {
   // contents.
   BrandSubbrandPromoted: 'brand.subbrand_promoted',
   BrandSubbrandDemoted: 'brand.subbrand_demoted',
+  // Brand retire / restore (`mixshift brand retire|archive|restore`). One row
+  // per invocation. payload: {brand_slug, action: retire|restore,
+  // reason_code (retire only, else null), outcome: changed | unchanged |
+  // unknown_brand | unsupported | refused | failed, changed?}. The lifted
+  // `outcome` is the coarse ok/failed. Never the free-text note and never
+  // who it was recorded as (the service's timeline event is the audit record).
+  BrandLifecycleChanged: 'brand.lifecycle_changed',
   // Brand config editor (mixshift brand config <slug>)
   BrandConfigViewed: 'brand_config.viewed',
   BrandConfigEdited: 'brand_config.edited',
@@ -274,7 +281,9 @@ export const EventName = {
   // task's real work starts. Privacy: payload carries discovered_via (an
   // enum) and candidate/brand/pulled/warning COUNTS only — never a brand
   // slug and never a filesystem path (candidate paths and data_dir are
-  // print-only, in the command's stdout, not in telemetry).
+  // print-only, in the command's stdout, not in telemetry). Brand retire adds
+  // brand_lifecycle (one state per --brand, in order: active | retired |
+  // unknown; still no slug) + brands_retired, only when --brand was given.
   TaskPreflightCompleted: 'task.preflight_completed',
 } as const;
 

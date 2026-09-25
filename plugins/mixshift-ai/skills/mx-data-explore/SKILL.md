@@ -101,7 +101,7 @@ To read the registry, surface it to the user, run:
 
 ```bash
 mixshift brand list --format chat           # active brands only (default)
-mixshift brand list --all --format chat     # include dormant
+mixshift brand list --all --format chat     # include dormant and retired
 mixshift brand list --only-inactive --format chat   # just dormants ("what do I need to activate?")
 mixshift brand list --refresh --format chat   # force a fresh discovery query
 ```
@@ -109,6 +109,8 @@ mixshift brand list --refresh --format chat   # force a fresh discovery query
 **Always pass `--format chat` when you will surface the table in chat**, and pass the output through verbatim as markdown, NOT inside a code block. The flag renders a markdown pipe table that survives the chat relay; the default space-aligned terminal table collapses into an unreadable blur outside a code block (Cowork especially). Do not paraphrase, condense, or restructure the table: copy it through as-is, the same pass-through rule mx-welcome uses for `mixshift welcome --format chat`. The same flag exists on `mixshift brand discover`.
 
 The registry has a 24h TTL — `brand list` refreshes silently on read if stale.
+
+**Retired handling:** brands someone on the user's team retired are also hidden by default; the footer names who retired each one and when. `--all` shows them tagged `[retired]`, and `--json` always lists them (tagged, never hidden). Retired is never deleted: queries, reports and totals still include the brand, and `mixshift brand restore <slug>` brings it back for the team.
 
 **Dormant handling:** brands with no active ads + no active retail (SP-API) access are hidden by default. If the user asks "where is brand X?" and X isn't in the active list, check `mixshift brand list --all` for the dormant status, then explain (e.g. "X shows both ads and SP-API access disabled — ping MixShift ops or visit https://dash.mydashapplications.com/account-manager to reactivate").
 

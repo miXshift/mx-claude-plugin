@@ -144,6 +144,7 @@ import { DEADLINE, raceDeadline } from '../utils/deadline.js';
 import type { DocActionReport, WireManifestBrand } from './types.js';
 import { track, EventName } from '../telemetry/index.js';
 import { scrubDetail } from './telemetry-detail.js';
+import { findManifestBrand, isRetiredBrand, restoreCommand } from './lifecycle.js';
 
 /** Overall wall-clock budget for one autosync attempt (network inclusive). */
 export const AUTOSYNC_BUDGET_MS = 2_000;
@@ -182,6 +183,16 @@ export interface AutoSyncOptions {
    * always yields exactly one row.
    */
   trigger?: 'preflight' | 'manual';
+  /**
+   * Brand retire: may the SEED path create a local copy of a brand the org
+   * store lists as RETIRED? Default false: autosync never seeds a retired
+   * brand nobody asked for, which is what makes deleting a retired brand's
+   * local copy stick. Callers that act on a slug the user named explicitly
+   * (`mixshift brand context resolve <slug>`, `mixshift context autosync
+   * <brand>`) pass true, and the brand is seeded as any other. A brand whose
+   * directory already exists is unaffected either way.
+   */
+  seedRetired?: boolean;
 }
 
 export type AutoSyncResult =
@@ -451,6 +462,23 @@ export async function maybeAutoSync(
       if (!isSafeBrandSlug(brandSlug)) {
         return { ran: false, reason: 'skipped', detail: 'not a valid brand slug' };
       }
+      // Brand retire: a retired brand is never seeded implicitly. Same quiet
+      // early skip as an unlisted slug (no stamp, no mkdir, no telemetry), so
+      // a teammate who deleted the local copy of a retired brand does not get
+      // it back behind their back. An explicit caller opts in (seedRetired).
+      if (
+        !options.seedRetired &&
+        manifestResult.ok &&
+        isRetiredBrand(findManifestBrand(manifestResult.brands, brandSlug))
+      ) {
+        return {
+          ran: false,
+          reason: 'skipped',
+          detail:
+            'brand is retired for your team; not fetched. Ask for it by name, or run ' +
+            `\`${restoreCommand(brandSlug)}\` to bring it back`,
+        };
+      }
       seeded = true;
       // FIX C: remember the exact brands list this decision was made from —
       // op() below reuses it instead of buildDocPairs fetching its own (see
@@ -595,6 +623,20 @@ export async function maybeAutoSync(
           // (seedManifestBrands stays undefined there) is unaffected:
           // buildDocPairs fetches its own manifest exactly as before.
           ...(seedManifestBrands !== undefined ? { manifest: seedManifestBrands } : {}),
+          // Brand retire: on the dir-exists path buildDocPairs fetches the
+          // manifest itself. Persist that fresh copy as the org-manifest
+          // cache too (persistOrgManifestCache: bounded, identity-stamped,
+          // the same save getCachedOrgManifest makes), so the retired-brand notice the
+          // Step 0 resolve prints reads a warm cache instead of paying a
+          // second round trip. The seed path needs none: its manifest already
+          // came from (or was just written to) that cache.
+          ...(seedManifestBrands === undefined
+            ? {
+                onManifest: async (brands: WireManifestBrand[]) => {
+                  await persistOrgManifestCache(brands, identity, options.dataDirOverride);
+                },
+              }
+            : {}),
           // NEVER force: diverged docs stay untouched by design.
         }),
         raceMs,
@@ -772,6 +814,33 @@ export type OrgManifestResult =
 export const ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
 
 /**
+ * The ONE identity-stamped, bounded org-manifest cache save. Used by
+ * getCachedOrgManifest below, by maybeAutoSync's dir-exists path (it keeps
+ * the manifest buildDocPairs fetched) and by `brand retire|restore` (so the
+ * change shows in `brand list` right away). Waits at most
+ * ORG_MANIFEST_PERSIST_BUDGET_MS (FIX B); a rejected write propagates, and
+ * each caller decides whether that matters (none of them fail on it).
+ */
+export async function persistOrgManifestCache(
+  brands: WireManifestBrand[],
+  identity: string | null | undefined,
+  dataDirOverride: string | undefined,
+  fetchedAt: Date = new Date(),
+): Promise<void> {
+  await raceDeadline(
+    saveOrgManifestCache(
+      {
+        fetched_at: fetchedAt.toISOString(),
+        brands,
+        ...(typeof identity === 'string' && identity !== '' ? { identity } : {}),
+      },
+      dataDirOverride,
+    ),
+    ORG_MANIFEST_PERSIST_BUDGET_MS,
+  );
+}
+
+/**
  * Whether a cached org-manifest's recorded identity still matches the
  * current one (FIX A). Mirrors state.ts's per-brand ledger identity check
  * (see resolveLedgerIdentity), but STRICTER: the ledger tolerates a
@@ -884,17 +953,7 @@ export async function getCachedOrgManifest(
       // raceDeadline): on deadline we stop waiting, not the write — see
       // that constant's doc for why a small fixed bound beats computing
       // budget-remaining here.
-      await raceDeadline(
-        saveOrgManifestCache(
-          {
-            fetched_at: now.toISOString(),
-            brands: raced.brands,
-            ...(identity ? { identity } : {}),
-          },
-          options.dataDirOverride,
-        ),
-        ORG_MANIFEST_PERSIST_BUDGET_MS,
-      );
+      await persistOrgManifestCache(raced.brands, identity, options.dataDirOverride, now);
       return { ok: true, brands: raced.brands, fromCache: false };
     } finally {
       clearTimeout(abortTimer);

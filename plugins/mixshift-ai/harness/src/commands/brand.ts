@@ -41,6 +41,12 @@ import { registerBrandMigrateConfigCommand } from './brand-migrate-config.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
 import { runSubbrandDiscovery } from './brand-subbrand-discover.js';
 import { registerBrandPromoteCommands } from './brand-promote.js';
+import {
+  loadRetiredBrands,
+  registerBrandLifecycleCommands,
+  retiredHiddenFooter,
+} from './brand-lifecycle.js';
+import type { WireBrandLifecycle } from '../lib/context-sync/types.js';
 
 interface RootOptions {
   json?: boolean;
@@ -51,7 +57,7 @@ export function registerBrandCommands(program: Command): void {
   const brand = program
     .command('brand')
     .description(
-      'Brand portfolio management (list, add, edit, archive) and sub-brand ' +
+      'Brand portfolio management (list, add, edit, retire, restore) and sub-brand ' +
         'discovery (discover, promote, demote)',
     );
 
@@ -59,10 +65,11 @@ export function registerBrandCommands(program: Command): void {
     .command('list')
     .description(
       'List brands from the local registry (~/.mixshift/clients/index.yaml). ' +
-        'Default hides dormant brands; use --all to see everything or ' +
+        'Default hides dormant brands and brands your team retired; use --all ' +
+        'to see everything (retired brands carry a [retired] tag) or ' +
         '--only-inactive to see just dormants.',
     )
-    .option('--all', 'include dormant brands (no active ads or retail access)', false)
+    .option('--all', 'include dormant and retired brands', false)
     .option('--only-inactive', 'show ONLY dormant brands', false)
     .option('--key', 'show ONLY brands marked as key in your profile', false)
     .option('--refresh', 'force a fresh discovery query before listing', false)
@@ -133,6 +140,23 @@ export function registerBrandCommands(program: Command): void {
           }
           const counts = countByActivity(index);
 
+          // Brand retire: which brands a teammate retired, from the org
+          // manifest via the shared org-manifest cache. null = unavailable
+          // (offline, older service, signed out): fail open, list exactly as
+          // before. --json never HIDES a retired brand (consumers resolve
+          // accounts and totals from it; retire never filters reports or
+          // totals), it only tags it.
+          const retired = await loadRetiredBrands(root.dataDir);
+          const retiredOf = (slug: string): WireBrandLifecycle | undefined =>
+            retired?.get(slug);
+          // Registry brands a teammate retired, and how many of the
+          // "active" (not dormant) ones that is, so the text footer never
+          // counts a brand it just hid as one of your active brands.
+          const retiredInIndex = index.brands.filter((b) => retiredOf(b.slug)).length;
+          const activeNotRetired = index.brands.filter(
+            (b) => !b.is_dormant && !retiredOf(b.slug),
+          ).length;
+
           if (root.json) {
             process.stdout.write(
               JSON.stringify(
@@ -141,10 +165,15 @@ export function registerBrandCommands(program: Command): void {
                   mode,
                   discovered_at: index.discovered_at,
                   counts: { ...counts, key: keyBrandSlugs.size },
-                  brands: brands.map((b) => ({
-                    ...b,
-                    is_key: keyBrandSlugs.has(b.slug),
-                  })),
+                  ...(retired ? { retired_count: retired.size } : {}),
+                  brands: brands.map((b) => {
+                    const lc = retiredOf(b.slug);
+                    return {
+                      ...b,
+                      is_key: keyBrandSlugs.has(b.slug),
+                      ...(lc ? { retired: true, lifecycle: lc } : {}),
+                    };
+                  }),
                 },
                 null,
                 2,
@@ -199,7 +228,7 @@ export function registerBrandCommands(program: Command): void {
                 '\n' +
                 'Or in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".\n' +
                 '\n' +
-                `You have ${counts.active} active brand(s) available — say "show my brands" to see them.\n\n`,
+                `You have ${activeNotRetired} active brand(s) available — say "show my brands" to see them.\n\n`,
             );
             return;
           }
@@ -210,14 +239,27 @@ export function registerBrandCommands(program: Command): void {
           // doesn't care about the cold_started / is_dormant fields.)
           // Markers prepended to display_name: ⭐ for key brands,
           // ✓ for cold-started brands.
+          //
+          // Brand retire: the default (active) view hides retired brands and
+          // says so in the footer; every other view (--all, --only-inactive,
+          // --key) shows them with a [retired] tag.
+          const hiddenRetired: Array<{ slug: string; lifecycle: WireBrandLifecycle }> = [];
+          if (mode === 'active' && retired && retired.size > 0) {
+            brands = brands.filter((b) => {
+              const lc = retiredOf(b.slug);
+              if (lc) hiddenRetired.push({ slug: b.slug, lifecycle: lc });
+              return !lc;
+            });
+          }
           const renderable = brands.map((b) => {
             const markers: string[] = [];
             if (keyBrandSlugs.has(b.slug)) markers.push('⭐');
             if (b.cold_started) markers.push('✓');
             const prefix = markers.length > 0 ? markers.join('') + ' ' : '';
+            const retiredTag = retiredOf(b.slug) ? ' [retired]' : '';
             return {
               slug: b.slug,
-              display_name: `${prefix}${b.display_name}`,
+              display_name: `${prefix}${b.display_name}${retiredTag}`,
               ads_active: b.ads_active,
               retail_active: b.retail_active,
               accounts: b.accounts.map((a) => ({
@@ -252,7 +294,11 @@ export function registerBrandCommands(program: Command): void {
           // Footer with counts + dormancy / key hints + marker legend
           const footerLines: string[] = [];
           footerLines.push(
-            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key).`,
+            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key` +
+              (retiredInIndex > 0
+                ? `; ${retiredInIndex} of these retired by your team${mode === 'active' ? ', hidden here' : ''}`
+                : '') +
+              ').',
           );
           if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
             footerLines.push('Markers: ⭐ = key brand, ✓ = set up (brand context ready)');
@@ -263,9 +309,17 @@ export function registerBrandCommands(program: Command): void {
               `${counts.dormant} dormant brand(s) hidden. Use --all or --only-inactive to see them.`,
             );
           }
-          if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && counts.active > 5) {
+          if (hiddenRetired.length > 0) {
+            footerLines.push(retiredHiddenFooter(hiddenRetired));
+          }
+          if (mode !== 'active' && brands.some((b) => retiredOf(b.slug))) {
             footerLines.push(
-              `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
+              '[retired] = a teammate retired this brand for your team. `mixshift brand restore <slug>` brings it back.',
+            );
+          }
+          if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && activeNotRetired > 5) {
+            footerLines.push(
+              `No key brands set. With ${activeNotRetired} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
             );
           }
           if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {
@@ -458,12 +512,10 @@ export function registerBrandCommands(program: Command): void {
       notYetImplemented('brand refresh', { slug });
     });
 
-  brand
-    .command('archive <slug>')
-    .description('Move brand to archived state (data preserved)')
-    .action((slug: string) => {
-      notYetImplemented('brand archive', { slug });
-    });
+  // `mixshift brand retire <slug>` (alias `brand archive`, which this used to
+  // be a stub for) and `mixshift brand restore <slug>`: team-wide, reversible,
+  // nothing deleted. Lives in brand-lifecycle.ts.
+  registerBrandLifecycleCommands(brand);
 
   brand
     .command('rename <old> <new>')
