@@ -336,8 +336,10 @@ export function lifecycleResultFrom(
   if (isUnknownBrand) {
     return lifecycleFailure(
       'unknown_brand',
-      `Your team has no shared brand context for "${requestedSlug}". Check the slug with ` +
-        '`mixshift context status`, which lists the brands your team has.',
+      `Your team has no shared brand context for "${requestedSlug}". Check the slug: ` +
+        '`mixshift brand list --all` lists every brand you can access, and ' +
+        '`mixshift context status` lists the brands set up on this computer. A brand ' +
+        'has shared brand context once its brand setup has been run.',
       httpStatus,
     );
   }

@@ -625,25 +625,15 @@ export async function maybeAutoSync(
           ...(seedManifestBrands !== undefined ? { manifest: seedManifestBrands } : {}),
           // Brand retire: on the dir-exists path buildDocPairs fetches the
           // manifest itself. Persist that fresh copy as the org-manifest
-          // cache too (bounded, best-effort, identity-stamped exactly like
-          // getCachedOrgManifest's own save), so the retired-brand notice the
+          // cache too (persistOrgManifestCache: bounded, identity-stamped,
+          // the same save getCachedOrgManifest makes), so the retired-brand notice the
           // Step 0 resolve prints reads a warm cache instead of paying a
           // second round trip. The seed path needs none: its manifest already
           // came from (or was just written to) that cache.
           ...(seedManifestBrands === undefined
             ? {
                 onManifest: async (brands: WireManifestBrand[]) => {
-                  await raceDeadline(
-                    saveOrgManifestCache(
-                      {
-                        fetched_at: new Date().toISOString(),
-                        brands,
-                        ...(typeof identity === 'string' ? { identity } : {}),
-                      },
-                      options.dataDirOverride,
-                    ),
-                    ORG_MANIFEST_PERSIST_BUDGET_MS,
-                  );
+                  await persistOrgManifestCache(brands, identity, options.dataDirOverride);
                 },
               }
             : {}),
@@ -824,6 +814,33 @@ export type OrgManifestResult =
 export const ORG_MANIFEST_PERSIST_BUDGET_MS = 500;
 
 /**
+ * The ONE identity-stamped, bounded org-manifest cache save. Used by
+ * getCachedOrgManifest below, by maybeAutoSync's dir-exists path (it keeps
+ * the manifest buildDocPairs fetched) and by `brand retire|restore` (so the
+ * change shows in `brand list` right away). Waits at most
+ * ORG_MANIFEST_PERSIST_BUDGET_MS (FIX B); a rejected write propagates, and
+ * each caller decides whether that matters (none of them fail on it).
+ */
+export async function persistOrgManifestCache(
+  brands: WireManifestBrand[],
+  identity: string | null | undefined,
+  dataDirOverride: string | undefined,
+  fetchedAt: Date = new Date(),
+): Promise<void> {
+  await raceDeadline(
+    saveOrgManifestCache(
+      {
+        fetched_at: fetchedAt.toISOString(),
+        brands,
+        ...(typeof identity === 'string' && identity !== '' ? { identity } : {}),
+      },
+      dataDirOverride,
+    ),
+    ORG_MANIFEST_PERSIST_BUDGET_MS,
+  );
+}
+
+/**
  * Whether a cached org-manifest's recorded identity still matches the
  * current one (FIX A). Mirrors state.ts's per-brand ledger identity check
  * (see resolveLedgerIdentity), but STRICTER: the ledger tolerates a
@@ -936,17 +953,7 @@ export async function getCachedOrgManifest(
       // raceDeadline): on deadline we stop waiting, not the write — see
       // that constant's doc for why a small fixed bound beats computing
       // budget-remaining here.
-      await raceDeadline(
-        saveOrgManifestCache(
-          {
-            fetched_at: now.toISOString(),
-            brands: raced.brands,
-            ...(identity ? { identity } : {}),
-          },
-          options.dataDirOverride,
-        ),
-        ORG_MANIFEST_PERSIST_BUDGET_MS,
-      );
+      await persistOrgManifestCache(raced.brands, identity, options.dataDirOverride, now);
       return { ok: true, brands: raced.brands, fromCache: false };
     } finally {
       clearTimeout(abortTimer);

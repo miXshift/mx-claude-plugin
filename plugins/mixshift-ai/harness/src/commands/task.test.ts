@@ -470,9 +470,12 @@ describe('task preflight (command)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Brand retire (slice 1): a retired brand is READY + status 'retired' +
-  // one warnings[] line (who, when, how to undo); it never blocks the run.
-  // Lifecycle comes from the gateway's real manifest (wire fixture).
+  // Brand retire (slice 1): retire never filters a report or a total, so a
+  // retired brand goes through preflight exactly like an active one (present
+  // / pulled / unavailable, blocking exactly when an active brand would) and
+  // only gains a lifecycle record + one warnings[] line (who, when, how to
+  // stop including it, how to undo). Lifecycle comes from the gateway's real
+  // manifest (wire fixture).
   // -------------------------------------------------------------------------
 
   describe('brand retire', () => {
@@ -488,8 +491,15 @@ describe('task preflight (command)', () => {
     const RETIRED_MANIFEST = LIFECYCLE_FIXTURE.manifest_all!.body.brands;
     const WARNING =
       'brand acme-snacks is retired for your team (retired by am@example.com on Sep 25, 2026). ' +
-      'This task still names it: skip it in this run and say so at the top of the output, ' +
-      'remove it from the task, or bring it back with `mixshift brand restore acme-snacks`.';
+      'This task still names it, so this run still includes it: say so in one line at the top ' +
+      'of the output. To stop including it, remove it from the task; to bring it back for the ' +
+      'team: `mixshift brand restore acme-snacks`.';
+    const ACME_LIFECYCLE = {
+      state: 'retired',
+      changed_at: RETIRED_MANIFEST.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at,
+      changed_by: 'am@example.com',
+      reason_code: 'client_left',
+    };
 
     function manifestClient(result: Awaited<ReturnType<ContextSyncClient['fetchManifest']>>): ContextSyncClient {
       return { ...fakeClient(), fetchManifest: async () => result };
@@ -500,7 +510,7 @@ describe('task preflight (command)', () => {
       await writeFile(join(tmpDataDir, 'clients', slug, 'context.yaml'), `brand_slug: ${slug}\n`, 'utf8');
     }
 
-    it('retired + present: READY exit 0, status retired, a warning naming who and the undo', async () => {
+    it('retired + present: READY exit 0, still present and included, a warning naming who and the undo', async () => {
       await writeContext('acme-snacks');
       await writeContext('bravo-bottles');
       vi.mocked(createContextSyncClient).mockReturnValue(
@@ -525,16 +535,7 @@ describe('task preflight (command)', () => {
       expect(parsed.ready).toBe(true);
       expect(parsed.blockers).toEqual([]);
       expect(parsed.brands).toEqual([
-        {
-          slug: 'acme-snacks',
-          status: 'retired',
-          lifecycle: {
-            state: 'retired',
-            changed_at: RETIRED_MANIFEST.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at,
-            changed_by: 'am@example.com',
-            reason_code: 'client_left',
-          },
-        },
+        { slug: 'acme-snacks', status: 'present', lifecycle: ACME_LIFECYCLE },
         { slug: 'bravo-bottles', status: 'present' },
       ]);
       expect(parsed.warnings).toEqual([WARNING]);
@@ -551,7 +552,29 @@ describe('task preflight (command)', () => {
       expect(JSON.stringify(input.payload)).not.toContain('acme-snacks');
     });
 
-    it('retired + missing locally: still fetched (explicit), still READY, never BLOCKED', async () => {
+    it('retired + missing locally: pulled like any brand (explicit), READY, still included', async () => {
+      vi.mocked(createContextSyncClient).mockReturnValue(
+        manifestClient({ ok: true, brands: RETIRED_MANIFEST }),
+      );
+      vi.mocked(pull).mockImplementation(async (slug: string): Promise<BrandActionResult> => {
+        await writeContext(slug);
+        return { ok: true, brand: slug, reports: [] };
+      });
+
+      await runTask('preflight', '--brand', 'acme-snacks', '--json', '--data-dir', tmpDataDir);
+
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(pull).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(pull).mock.calls[0]![1]).toMatchObject({ manifest: RETIRED_MANIFEST });
+      const parsed = JSON.parse(stdoutText()) as { ready: boolean; brands: unknown[]; warnings: string[] };
+      expect(parsed.ready).toBe(true);
+      expect(parsed.brands).toEqual([
+        { slug: 'acme-snacks', status: 'pulled', lifecycle: ACME_LIFECYCLE },
+      ]);
+      expect(parsed.warnings).toEqual([WARNING]);
+    });
+
+    it('retired + a failed pull blocks exactly as it would for an active brand (the run includes it)', async () => {
       vi.mocked(createContextSyncClient).mockReturnValue(
         manifestClient({ ok: true, brands: RETIRED_MANIFEST }),
       );
@@ -563,13 +586,60 @@ describe('task preflight (command)', () => {
 
       await runTask('preflight', '--brand', 'acme-snacks', '--data-dir', tmpDataDir);
 
-      expect(process.exitCode ?? 0).toBe(0);
-      expect(pull).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(pull).mock.calls[0]![1]).toMatchObject({ manifest: RETIRED_MANIFEST });
+      expect(process.exitCode).toBe(9);
       const out = stdoutText();
-      expect(out).toContain('warn    brand acme-snacks: retired by am@example.com on Sep 25, 2026');
-      expect(out).toContain('\nREADY\n');
-      expect(out).not.toContain('BLOCKED');
+      expect(out).toContain(
+        'warn    brand acme-snacks: retired by am@example.com on Sep 25, 2026 (still included in this run)',
+      );
+      expect(out).toContain("BLOCKED: context_unavailable - brand 'acme-snacks': could not reach the org store");
+      expect(out).not.toContain('\nREADY\n');
+    });
+
+    it('never skips or drops a retired brand: the churn rule holds for multi-brand tasks', async () => {
+      await writeContext('acme-snacks');
+      await writeContext('bravo-bottles');
+      const after = LIFECYCLE_FIXTURE.manifest_after_svc_retire!.body.brands;
+      vi.mocked(createContextSyncClient).mockReturnValue(manifestClient({ ok: true, brands: after }));
+
+      await runTask(
+        'preflight',
+        '--brand', 'acme-snacks',
+        '--brand', 'bravo-bottles',
+        '--json',
+        '--data-dir', tmpDataDir,
+      );
+
+      const parsed = JSON.parse(stdoutText()) as {
+        ready: boolean;
+        brands: Array<{ slug: string; status: string; lifecycle?: { changed_by: string } }>;
+        warnings: string[];
+      };
+      expect(parsed.ready).toBe(true);
+      expect(parsed.brands.map((b) => [b.slug, b.status])).toEqual([
+        ['acme-snacks', 'present'],
+        ['bravo-bottles', 'present'],
+      ]);
+      expect(parsed.brands[1]!.lifecycle).toMatchObject({ changed_by: 'svc:nightly-sync' });
+      expect(parsed.warnings).toHaveLength(2);
+      for (const w of parsed.warnings) {
+        expect(w).toContain('this run still includes it');
+        expect(w).not.toMatch(/skip/i);
+      }
+    });
+
+    it('does not read the manifest when the credential did not verify', async () => {
+      await writeContext('acme-snacks');
+      vi.mocked(getValidAccessToken).mockRejectedValue(new Error(MINT_UNREACHABLE_MESSAGE));
+      const fetchManifest = vi.fn(async () => ({ ok: true as const, brands: RETIRED_MANIFEST }));
+      vi.mocked(createContextSyncClient).mockReturnValue({ ...fakeClient(), fetchManifest });
+
+      await runTask('preflight', '--brand', 'acme-snacks', '--json', '--data-dir', tmpDataDir);
+
+      expect(fetchManifest).not.toHaveBeenCalled();
+      const parsed = JSON.parse(stdoutText()) as { brands: unknown[]; warnings: string[] };
+      expect(parsed.brands).toEqual([{ slug: 'acme-snacks', status: 'present' }]);
+      const [input] = vi.mocked(track).mock.calls[0]!;
+      expect(input.payload).toMatchObject({ brand_lifecycle: ['unknown'], brands_retired: 0 });
     });
 
     it('fails open: an unreadable manifest leaves brands exactly as before (unknown lifecycle)', async () => {

@@ -149,6 +149,13 @@ export function registerBrandCommands(program: Command): void {
           const retired = await loadRetiredBrands(root.dataDir);
           const retiredOf = (slug: string): WireBrandLifecycle | undefined =>
             retired?.get(slug);
+          // Registry brands a teammate retired, and how many of the
+          // "active" (not dormant) ones that is, so the text footer never
+          // counts a brand it just hid as one of your active brands.
+          const retiredInIndex = index.brands.filter((b) => retiredOf(b.slug)).length;
+          const activeNotRetired = index.brands.filter(
+            (b) => !b.is_dormant && !retiredOf(b.slug),
+          ).length;
 
           if (root.json) {
             process.stdout.write(
@@ -221,7 +228,7 @@ export function registerBrandCommands(program: Command): void {
                 '\n' +
                 'Or in chat: "mark <brand> as key" / "I manage <X>, <Y>, <Z>".\n' +
                 '\n' +
-                `You have ${counts.active} active brand(s) available — say "show my brands" to see them.\n\n`,
+                `You have ${activeNotRetired} active brand(s) available — say "show my brands" to see them.\n\n`,
             );
             return;
           }
@@ -287,7 +294,11 @@ export function registerBrandCommands(program: Command): void {
           // Footer with counts + dormancy / key hints + marker legend
           const footerLines: string[] = [];
           footerLines.push(
-            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key).`,
+            `Mode: ${mode}.  Total: ${counts.total} (${counts.active} active, ${counts.dormant} dormant, ${counts.cold_started} set up, ${keyBrandSlugs.size} key` +
+              (retiredInIndex > 0
+                ? `; ${retiredInIndex} of these retired by your team${mode === 'active' ? ', hidden here' : ''}`
+                : '') +
+              ').',
           );
           if (keyBrandSlugs.size > 0 || counts.cold_started > 0) {
             footerLines.push('Markers: ⭐ = key brand, ✓ = set up (brand context ready)');
@@ -306,9 +317,9 @@ export function registerBrandCommands(program: Command): void {
               '[retired] = a teammate retired this brand for your team. `mixshift brand restore <slug>` brings it back.',
             );
           }
-          if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && counts.active > 5) {
+          if ((mode === 'active' || mode === 'all') && keyBrandSlugs.size === 0 && activeNotRetired > 5) {
             footerLines.push(
-              `No key brands set. With ${counts.active} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
+              `No key brands set. With ${activeNotRetired} active brand(s), consider marking the few you focus on: "mixshift brand key add <name>".`,
             );
           }
           if (keyBrandSlugs.size > 0 && counts.cold_started === 0) {

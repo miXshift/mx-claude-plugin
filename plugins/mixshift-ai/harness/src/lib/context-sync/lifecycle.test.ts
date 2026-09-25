@@ -101,13 +101,28 @@ describe('copy', () => {
     expect(safeDisplay('x'.repeat(200), 20)).toBe(`${'x'.repeat(17)}...`);
   });
 
-  it('formats dates as a UTC calendar day and rejects junk', () => {
-    expect(formatLifecycleDate('2026-09-24T23:59:00.000Z')).toBe('Sep 24, 2026');
+  it('formats dates as a calendar day and rejects junk', () => {
+    expect(formatLifecycleDate('2026-09-24T23:59:00.000Z', 'UTC')).toBe('Sep 24, 2026');
     // The service renders timestamptz the PostgREST way: microseconds + offset.
-    expect(formatLifecycleDate('2026-09-25T23:59:59.999999+00:00')).toBe('Sep 25, 2026');
-    expect(formatLifecycleDate(NEW_BRANDS.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at)).toBe('Sep 25, 2026');
+    expect(formatLifecycleDate('2026-09-25T23:59:59.999999+00:00', 'UTC')).toBe('Sep 25, 2026');
+    expect(
+      formatLifecycleDate(NEW_BRANDS.find((b) => b.brand_slug === 'acme-snacks')!.lifecycle!.changed_at, 'UTC'),
+    ).toBe('Sep 25, 2026');
     expect(formatLifecycleDate('not a date')).toBeNull();
     expect(formatLifecycleDate(null)).toBeNull();
+  });
+
+  it("uses the viewer's time zone, so a US-evening retire is not dated tomorrow", () => {
+    // 20:30 on Sep 24 in Denver is 02:30 on Sep 25 UTC.
+    const usEvening = '2026-09-25T02:30:00.000000+00:00';
+    expect(formatLifecycleDate(usEvening, 'America/Denver')).toBe('Sep 24, 2026');
+    expect(formatLifecycleDate(usEvening, 'UTC')).toBe('Sep 25, 2026');
+    expect(formatLifecycleDate(usEvening, 'Asia/Tokyo')).toBe('Sep 25, 2026');
+    // No zone given = the machine's own zone, whatever that is here.
+    const local = new Date(Date.parse(usEvening));
+    expect(formatLifecycleDate(usEvening)).toBe(
+      `${local.toLocaleString('en-US', { month: 'short' })} ${local.getDate()}, ${local.getFullYear()}`,
+    );
   });
 });
 

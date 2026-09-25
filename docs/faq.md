@@ -94,6 +94,8 @@ By default the listing hides **dormant** brands — those with no active ads acc
 - *"what brands are dormant?"* / *"who do I need to activate?"* / `mixshift brand list --only-inactive`
 - *"why don't I see brand X?"* — Claude looks up X in the registry, shows you whether ads + SP-API are flagged active and what to do if not
 
+The default listing also hides brands someone on your team **retired** (for example after a client left). The footer says who retired each one and when, `mixshift brand list --all` shows them tagged `[retired]`, and `mixshift brand restore <slug>` brings one back for the whole team. Retiring never deletes anything, and reports still include the brand.
+
 If you expected a brand to appear and it's not even in the dormant list, it likely hasn't been activated in MixShift yet. Head to the Account Manager view to begin: `https://dash.mydashapplications.com/account-manager`. Onboarding help doc: `https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift`.
 
 Just activated? Give it time: most accounts are fully populated within 24-48 hours of activation, large catalogs can take longer ([data timing details](https://know.mixshift.io/en/articles/9584153-how-long-will-it-take-for-my-data-to-populate-in-mixshift)). MixShift emails you when your data is ready.

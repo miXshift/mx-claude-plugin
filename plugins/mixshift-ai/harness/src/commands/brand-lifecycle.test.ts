@@ -27,6 +27,8 @@ import {
   type WireEnvelope,
 } from '../lib/context-sync/client.js';
 import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
+import { loadOrgManifestCache } from '../lib/context-sync/state.js';
+import { addKeyBrand } from '../lib/clients/key-brands.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import type {
   FetchManifestResult,
@@ -191,10 +193,15 @@ describe('brand retire', () => {
     // What changed
     expect(out).toContain("no longer shows as an active brand in your team's shared brand context");
     expect(out).toContain('Bulk syncs');
+    expect(out).toContain('skip it for teammates on the current MixShift plugin');
+    expect(out).toContain('Teammates on an older version keep syncing it as usual until they update.');
+    expect(out).not.toContain('for everyone on your team');
     // What did not change
     expect(out).toContain('docs and their revision history are all kept');
     expect(out).toContain('timeline history is kept');
     expect(out).toContain('Amazon accounts, billing, reports and totals are not affected');
+    // The churn rule: retire never filters a report, a scheduled task or a total.
+    expect(out).toContain('Reports and scheduled tasks still include its data.');
     expect(out).toContain('Run files (sidecars) stay on this computer only. They were never sent to MixShift.');
     // Local copy
     expect(out).toContain(`safe to delete ${join(tmpDataDir, 'clients', 'acme-snacks')}`);
@@ -272,8 +279,116 @@ describe('brand retire', () => {
       'acme-snacks was already retired for your team (retired by am@example.com on Sep 25, 2026). Nothing changed.',
     );
     expect(out).toContain('To undo: mixshift brand restore acme-snacks');
+    // A repeat recorded nothing for this caller, so it names nobody as
+    // "Recorded as" (the earlier retirer is named only as the one who retired it).
+    expect(out).not.toContain('Recorded as');
     const [input] = vi.mocked(track).mock.calls[0]!;
     expect(input.payload).toMatchObject({ outcome: 'unchanged', changed: false });
+  });
+
+  it('a repeat in --json has recorded_as null, never the earlier retirer', async () => {
+    await writeInteractiveCredentials('lee@example.com');
+    const { client } = fakeClient({ post: 'lifecycle_retire_unchanged' });
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runBrand('retire', 'acme-snacks', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as Record<string, unknown>;
+    expect(doc).toMatchObject({ state: 'retired', changed: false, recorded_as: null });
+    // The team's record (who retired it earlier) is still reported as such.
+    expect(doc.lifecycle).toMatchObject({ changed_by: 'am@example.com' });
+  });
+
+  it('a teammate change read back instead of this one is never shown as "Recorded as"', async () => {
+    // The POST recorded this caller's retire at `at`; by the time the read-back
+    // runs, the record shows a different moment and person (a near-simultaneous
+    // teammate retire, or any record that is not this change).
+    await writeInteractiveCredentials('lee@example.com');
+    const { client } = fakeClient({
+      post: 'lifecycle_retire_changed',
+      manifest: {
+        ok: true,
+        brands: withLifecycle(MANIFEST_BRANDS, 'acme-snacks', {
+          state: 'retired',
+          changed_at: '2026-09-25T14:55:19.001000+00:00',
+          changed_by: 'kim@example.com',
+          surface: 'mcp',
+          reason_code: null,
+        }),
+      },
+    });
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runBrand('retire', 'acme-snacks', '--data-dir', tmpDataDir);
+
+    const out = stdoutText();
+    expect(out).toContain(
+      'Recorded as: lee@example.com (the sign-in this computer used). Your teammates will see this name.',
+    );
+    expect(out).not.toContain('Recorded as: kim@example.com');
+  });
+
+  it('a read-back whose state does not match the change is never shown as "Recorded as"', async () => {
+    await writeInteractiveCredentials('lee@example.com');
+    const at = FIXTURE.lifecycle_retire_changed!.body.at as string;
+    const { client } = fakeClient({
+      post: 'lifecycle_retire_changed',
+      manifest: {
+        ok: true,
+        brands: withLifecycle(MANIFEST_BRANDS, 'acme-snacks', {
+          state: 'active',
+          changed_at: at,
+          changed_by: 'kim@example.com',
+          surface: 'mcp',
+          reason_code: null,
+        }),
+      },
+    });
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runBrand('retire', 'acme-snacks', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as { recorded_as: unknown };
+    expect(doc.recorded_as).toEqual({
+      label: 'lee@example.com',
+      source: 'this_sign_in',
+      service_credential: false,
+    });
+  });
+
+  it('refreshes the local org-manifest cache, so `brand list` shows the change right away', async () => {
+    const { client } = fakeClient({ post: 'lifecycle_retire_changed' });
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+    expect(await loadOrgManifestCache(tmpDataDir)).toBeNull();
+
+    await runBrand('retire', 'acme-snacks', '--data-dir', tmpDataDir);
+
+    const cache = await loadOrgManifestCache(tmpDataDir);
+    expect(cache).not.toBeNull();
+    expect(cache!.brands).toEqual(MANIFEST_BRANDS);
+    expect(Number.isFinite(Date.parse(cache!.fetched_at))).toBe(true);
+  });
+
+  it('a 2xx answer without `changed` is a failure, never a claimed success', async () => {
+    const posts: SetBrandLifecycleInput[] = [];
+    const client: ContextSyncClient = {
+      ...fakeClient({ post: 'lifecycle_retire_changed' }).client,
+      setBrandLifecycle: async (input) => {
+        posts.push(input);
+        const { changed: _changed, ...rest } = FIXTURE.lifecycle_retire_changed!.body;
+        return lifecycleResultFrom(rest, 200, input.brand_slug);
+      },
+    };
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+
+    await runBrand('retire', 'acme-snacks', '--data-dir', tmpDataDir);
+
+    expect(posts).toHaveLength(1);
+    expect(process.exitCode).toBe(1);
+    expect(stdoutText()).not.toContain('Retired acme-snacks');
+    expect(stderrText()).toContain('answered in a shape this plugin does not recognize');
+    const [input] = vi.mocked(track).mock.calls[0]!;
+    expect(input.payload).toMatchObject({ outcome: 'failed' });
   });
 
   it('a service credential is named as one, so nobody is surprised', async () => {
@@ -320,6 +435,9 @@ describe('brand retire', () => {
 
     expect(process.exitCode).toBe(1);
     expect(stderrText()).toContain('Your team has no shared brand context for "no-such-brand"');
+    expect(stderrText()).toContain('`mixshift brand list --all` lists every brand you can access');
+    expect(stderrText()).toContain('`mixshift context status` lists the brands set up on this computer');
+    expect(stderrText()).not.toContain('lists the brands your team has');
     expect(stdoutText()).toBe('');
     const [input] = vi.mocked(track).mock.calls[0]!;
     expect(input.outcome).toBe('failed');
@@ -417,9 +535,9 @@ describe('brand restore', () => {
     const out = stdoutText();
     expect(out).toContain('Restored bravo-bottles for your team.');
     expect(out).toContain('Recorded as: am@example.com.');
-    expect(out).toContain('bulk syncs include it again');
     expect(out).toContain('To get a local copy on this computer: mixshift context pull --brand bravo-bottles');
     expect(out).toContain('To undo: mixshift brand retire bravo-bottles');
+    expect(out).toContain('bulk syncs on the current MixShift plugin include it again');
     const [input] = vi.mocked(track).mock.calls[0]!;
     expect(input.payload).toEqual({
       brand_slug: 'bravo-bottles',
@@ -428,6 +546,39 @@ describe('brand restore', () => {
       outcome: 'changed',
       changed: true,
     });
+  });
+
+  it('--json never says the local copy is safe to delete after a restore', async () => {
+    const restored = FIXTURE.lifecycle_restore_changed!.body;
+    const { client } = fakeClient({
+      post: 'lifecycle_restore_changed',
+      manifest: {
+        ok: true,
+        brands: withLifecycle(FIXTURE.manifest_after_svc_retire!.body.brands!, 'bravo-bottles', {
+          state: 'active',
+          changed_at: restored.at as string,
+          changed_by: 'am@example.com',
+          surface: 'plugin',
+          reason_code: null,
+        }),
+      },
+    });
+    vi.mocked(createContextSyncClient).mockReturnValue(client);
+    await mkdir(join(tmpDataDir, 'clients', 'bravo-bottles'), { recursive: true });
+
+    await runBrand('restore', 'bravo-bottles', '--json', '--data-dir', tmpDataDir);
+
+    const doc = JSON.parse(stdoutText()) as {
+      state: string;
+      recorded_as: unknown;
+      local_copy: Record<string, unknown>;
+      undo: string;
+    };
+    expect(doc.state).toBe('active');
+    expect(doc.local_copy).toEqual({ path: join(tmpDataDir, 'clients', 'bravo-bottles'), exists: true });
+    expect(doc.local_copy).not.toHaveProperty('safe_to_delete');
+    expect(doc.recorded_as).toEqual({ label: 'am@example.com', source: 'service', service_credential: false });
+    expect(doc.undo).toBe('mixshift brand retire bravo-bottles');
   });
 });
 
@@ -502,6 +653,28 @@ describe('brand list with retired brands', () => {
       '1 retired brand hidden: acme-snacks (retired by am@example.com on Sep 25, 2026). ' +
         'Use --all to see them; `mixshift brand restore <slug>` brings one back.',
     );
+    // The counts line never passes a hidden retired brand off as just one of
+    // your active brands.
+    expect(out).toContain(
+      'Total: 2 (2 active, 0 dormant, 1 set up, 0 key; 1 of these retired by your team, hidden here).',
+    );
+  });
+
+  it('--key shows a retired key brand with a [retired] tag and never hides it', async () => {
+    expect((await addKeyBrand('acme-snacks', tmpDataDir)).status).toBe('added');
+    vi.mocked(getCachedOrgManifest).mockResolvedValue({
+      ok: true,
+      brands: MANIFEST_BRANDS,
+      fromCache: true,
+    });
+
+    await runBrand('list', '--key', '--format', 'chat', '--data-dir', tmpDataDir);
+
+    const out = stdoutText();
+    expect(out).toContain('Acme Snacks [retired]');
+    expect(out).not.toContain('retired brand hidden');
+    expect(out).toContain('[retired] = a teammate retired this brand for your team.');
+    expect(out).toContain('; 1 of these retired by your team).');
   });
 
   it('--all shows it with a [retired] tag', async () => {

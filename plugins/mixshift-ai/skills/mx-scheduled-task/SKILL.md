@@ -163,14 +163,17 @@ service, and pulls brand context for the brands this task uses:
 - READY (exit 0): run the export line from its output (export MIXSHIFT_DATA_DIR=...),
   then proceed. Invoke every MixShift command in this run as:
   node "$MIXSHIFT_CLI" [command], with MIXSHIFT_DATA_DIR exported.
-- READY, but a brand's status is "retired": someone on the team retired that
-  brand (its warnings line says who and when). Skip that brand in this run and
-  continue with the other brands. At the TOP of what this run delivers (the
+- READY, and a brand has a "lifecycle" entry with state "retired" (its
+  warnings line says who retired it and when): someone on the team retired
+  that brand. Still include it in this run, in its data and in every total,
+  exactly as if it were not retired. At the TOP of what this run delivers (the
   report, file, or message itself, not only this transcript), write one line
-  per skipped brand: "Skipped [brand-slug]: retired by [who] on [date]. Not
-  included in totals. To include it again: mixshift brand restore
-  [brand-slug]." If every brand of this task is retired, deliver only those
-  lines. Never retire or restore a brand from a scheduled run.
+  for each such brand, taking the slug, the name and the date from that
+  brand's warnings line in THIS run's preflight output (never write them in
+  ahead of time): "<slug> is retired for your team (retired by <name> on
+  <date>). This report still includes it. To stop including it, remove it from
+  this task. To bring it back: mixshift brand restore <slug>." Never retire or
+  restore a brand from a scheduled run.
 - BLOCKED credential_missing (exit 6): the persistent folder is not attached to
   this run, or it holds no credential yet. If a human is present: call the
   session's directory request tool (request_cowork_directory, or
@@ -233,7 +236,7 @@ which path worked when sending feedback; this differs by platform version.
 | Worked while building, dead on the first scheduled fire | Everything lived in the building session's sandbox | Same as above; nothing from the building session survives |
 | `mixshift: command not found` | Stored prompt calls bare `mixshift`; Cowork runs no session hooks | Replace every call with `node "$MIXSHIFT_CLI" ...` and resolve `MIXSHIFT_CLI` first (Step 3 preamble) |
 | "brand ... not found" / missing context.yaml | Fresh sandbox has no clients dir | Preflight with `--brand [slug]` pulls it from the org store; if the org store has never seen the brand, run `mx-brand-context` interactively first |
-| Preflight shows a brand as `retired`, or the output starts with "Skipped [brand]: retired" | Someone on the team retired that brand | If the brand is still worked on, `mixshift brand restore [brand-slug]` (ask the user first; it applies to the whole team). Otherwise remove it from the task instructions |
+| Preflight shows a brand as retired, or the output starts with "[brand] is retired for your team" | Someone on the team retired that brand. The run still includes it | If the brand is still worked on, `mixshift brand restore [brand-slug]` (ask the user first; it applies to the whole team). If it should no longer be in this task, remove it from the task instructions |
 | Hardcoded `MIXSHIFT_DATA_DIR` with a `local_[uuid]` path | Prompt froze a per-session path | Replace with the Step 3 preamble; the preflight discovers the live path each run |
 | "fetch failed" from feedback or telemetry only | Sandbox egress restriction | Expected today; not a task failure. Events queue locally |
 | `reauth_required` / lost Amazon access on a seller | Amazon authorization lapsed, not the task | The merchant re-authorizes in the MixShift platform; the task is fine |

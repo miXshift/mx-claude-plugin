@@ -24,23 +24,19 @@ import { loadCredentials } from '../lib/auth/credentials.js';
 import { createContextSyncClient } from '../lib/context-sync/client.js';
 import {
   getCachedOrgManifest,
-  ORG_MANIFEST_PERSIST_BUDGET_MS,
+  persistOrgManifestCache,
 } from '../lib/context-sync/autosync.js';
 import { brandDirExists, isSafeBrandSlug } from '../lib/context-sync/local.js';
 import {
   LIFECYCLE_NOTE_MAX,
   findManifestBrand,
-  formatLifecycleDate,
   retiredByClause,
   retiredLifecycleOf,
   restoreCommand,
   retireCommand,
   safeDisplay,
 } from '../lib/context-sync/lifecycle.js';
-import {
-  resolveLedgerIdentity,
-  saveOrgManifestCache,
-} from '../lib/context-sync/state.js';
+import { resolveLedgerIdentity } from '../lib/context-sync/state.js';
 import {
   RETIRE_REASON_CODES,
   type BrandLifecycleAction,
@@ -78,9 +74,10 @@ export function registerBrandLifecycleCommands(brand: Command): void {
     .alias('archive')
     .description(
       'Retire a brand your team no longer works on. It stops showing as active ' +
-        "in your team's shared brand context and bulk syncs skip it, for everyone " +
-        'on your team. Nothing is deleted: docs, revision history, timeline ' +
-        'history, Amazon accounts, reports and totals stay as they are. Undo with ' +
+        "in your team's shared brand context, and bulk syncs skip it for teammates " +
+        'on the current MixShift plugin (older versions keep syncing it until they ' +
+        'update). Nothing is deleted: docs, revision history, timeline history, ' +
+        'Amazon accounts, reports and totals stay as they are. Undo with ' +
         '`mixshift brand restore <slug>`. (`brand archive` is the same command.)',
     )
     .option(
@@ -96,8 +93,8 @@ export function registerBrandLifecycleCommands(brand: Command): void {
     .command('restore <slug>')
     .description(
       "Bring a retired brand back for your whole team. It shows as active in your team's " +
-        'shared brand context again and bulk syncs include it again, with its docs, ' +
-        'revision history and timeline exactly as they were.',
+        'shared brand context again and bulk syncs on the current MixShift plugin include ' +
+        'it again, with its docs, revision history and timeline exactly as they were.',
     )
     .action(async (slug: string, _opts: unknown, cmd: Command) => {
       await runLifecycleChange('restore', slug, {}, cmd.optsWithGlobals<RootOptions>());
@@ -203,9 +200,14 @@ async function runLifecycleChange(
   // The POST answer carries no actor. The manifest's lifecycle field is the
   // team's shared record, so read it back once (bounded) and refresh the
   // local org-manifest cache with it, so `brand list` reflects the change
-  // right away. Fall back to this computer's sign-in when it cannot be read.
+  // right away. Who it was recorded as is named only when THIS call changed
+  // something (a repeat recorded nothing for this caller), and the read-back
+  // counts only when it is this very change (same state AND same moment as
+  // the POST answer); otherwise it names the sign-in this computer used.
   const readback = await readBackLifecycle(client, slug, root.dataDir);
-  const recordedAs = await resolveRecordedAs(readback, result.state, root.dataDir);
+  const recordedAs = result.changed
+    ? await resolveRecordedAs(readback, result, root.dataDir)
+    : null;
   const localPath = brandDir(slug, root.dataDir);
   const localExists = await brandDirExists(slug, root.dataDir);
 
@@ -253,8 +255,8 @@ async function runLifecycleChange(
 
   const lines =
     result.state === 'retired'
-      ? retireLines(slug, result.changed, readback, recordedAs, reason, note, localPath, localExists)
-      : restoreLines(slug, result.changed, recordedAs, localExists);
+      ? retireLines(slug, readback, recordedAs, reason, note, localPath, localExists)
+      : restoreLines(slug, recordedAs, localExists);
   process.stdout.write(lines.join('\n') + '\n');
   process.exitCode = 0;
 }
@@ -278,18 +280,18 @@ function recordedAsLine(r: RecordedAs): string {
     : `  Recorded as: ${who}. Your teammates will see this name.`;
 }
 
+/** `recordedAs` is null exactly when this call changed nothing (a repeat). */
 export function retireLines(
   slug: string,
-  changed: boolean,
   readback: WireBrandLifecycle | null,
-  recordedAs: RecordedAs,
+  recordedAs: RecordedAs | null,
   reason: RetireReasonCode | undefined,
   note: string | undefined,
   localPath: string,
   localExists: boolean,
 ): string[] {
   const lines: string[] = [''];
-  if (!changed) {
+  if (recordedAs === null) {
     const by = readback ? ` (${retiredByClause(readback)})` : '';
     lines.push(`${slug} was already retired for your team${by}. Nothing changed.`);
   } else {
@@ -306,7 +308,8 @@ export function retireLines(
     lines.push(`  - ${slug} no longer shows as an active brand in your team's shared brand context.`);
     lines.push(
       '  - Bulk syncs (`mixshift context status`, `pull`, `push` and `sync` without --brand) ' +
-        'skip it, for everyone on your team.',
+        'skip it for teammates on the current MixShift plugin. Teammates on an older ' +
+        'version keep syncing it as usual until they update.',
     );
     lines.push(
       '  - Anyone who asks for it by name still gets it, with a short note that it is retired.',
@@ -316,7 +319,8 @@ export function retireLines(
     lines.push('  - Its brand context docs and their revision history are all kept.');
     lines.push('  - Its timeline history is kept.');
     lines.push(
-      '  - Its Amazon accounts, billing, reports and totals are not affected. Reports still include its data.',
+      '  - Its Amazon accounts, billing, reports and totals are not affected. Reports and ' +
+        'scheduled tasks still include its data.',
     );
     lines.push(
       '  - Run files (sidecars) stay on this computer only. They were never sent to MixShift.',
@@ -340,14 +344,14 @@ export function retireLines(
   return lines;
 }
 
+/** `recordedAs` is null exactly when this call changed nothing (a repeat). */
 export function restoreLines(
   slug: string,
-  changed: boolean,
-  recordedAs: RecordedAs,
+  recordedAs: RecordedAs | null,
   localExists: boolean,
 ): string[] {
   const lines: string[] = [''];
-  if (!changed) {
+  if (recordedAs === null) {
     lines.push(`${slug} is already active for your team. Nothing changed.`);
     return lines;
   }
@@ -355,7 +359,8 @@ export function restoreLines(
   lines.push(recordedAsLine(recordedAs));
   lines.push('');
   lines.push(
-    `  - ${slug} shows as an active brand again in your team's shared brand context, and bulk syncs include it again.`,
+    `  - ${slug} shows as an active brand again in your team's shared brand context, and bulk ` +
+      'syncs on the current MixShift plugin include it again.',
   );
   lines.push(
     '  - Its docs, revision history and timeline were kept while it was retired, so there is nothing to set up again.',
@@ -395,37 +400,42 @@ async function readBackLifecycle(
 
 /** Best-effort: replace the org-manifest cache with the fresh read so the
  *  change shows up in `brand list` immediately (the cache otherwise lives up
- *  to 15 minutes). Identity-stamped exactly like getCachedOrgManifest's own
- *  save. Never throws. */
+ *  to 15 minutes). The same save getCachedOrgManifest makes. Never throws. */
 async function refreshOrgManifestCache(
   brands: WireManifestBrand[],
   dataDirOverride: string | undefined,
 ): Promise<void> {
   try {
     const identity = await resolveLedgerIdentity(dataDirOverride);
-    await raceDeadline(
-      saveOrgManifestCache(
-        {
-          fetched_at: new Date().toISOString(),
-          brands,
-          ...(identity ? { identity } : {}),
-        },
-        dataDirOverride,
-      ),
-      ORG_MANIFEST_PERSIST_BUDGET_MS,
-    );
+    await persistOrgManifestCache(brands, identity, dataDirOverride);
   } catch {
     // Cache is an optimization only.
   }
 }
 
+/**
+ * True when the read-back record IS the change this call just made: the
+ * same state and the same moment as the POST answer's `at`. A teammate's
+ * change that landed in between, or an older record, never matches.
+ */
+export function readbackIsThisChange(
+  readback: WireBrandLifecycle | null,
+  result: { state: 'active' | 'retired'; at: string },
+): boolean {
+  if (!readback || readback.state !== result.state) return false;
+  if (typeof readback.changed_at !== 'string') return false;
+  const recorded = Date.parse(readback.changed_at);
+  const answered = Date.parse(result.at);
+  return Number.isFinite(recorded) && Number.isFinite(answered) && recorded === answered;
+}
+
 async function resolveRecordedAs(
   readback: WireBrandLifecycle | null,
-  state: 'active' | 'retired',
+  result: { state: 'active' | 'retired'; at: string },
   dataDirOverride: string | undefined,
 ): Promise<RecordedAs> {
   const fromService =
-    readback && readback.state === state ? safeDisplay(readback.changed_by) : null;
+    readback && readbackIsThisChange(readback, result) ? safeDisplay(readback.changed_by) : null;
   if (fromService) {
     return {
       label: fromService,
@@ -524,12 +534,7 @@ export async function loadRetiredBrands(
 /** Footer line for the brands `brand list` hid because they are retired. */
 export function retiredHiddenFooter(hidden: Array<{ slug: string; lifecycle: WireBrandLifecycle }>): string {
   const n = hidden.length;
-  const items = hidden
-    .map((h) => {
-      const date = formatLifecycleDate(h.lifecycle.changed_at);
-      return `${h.slug} (retired by ${safeDisplay(h.lifecycle.changed_by) ?? 'a teammate'}${date ? ` on ${date}` : ''})`;
-    })
-    .join(', ');
+  const items = hidden.map((h) => `${h.slug} (${retiredByClause(h.lifecycle)})`).join(', ');
   return (
     `${n} retired brand${n === 1 ? '' : 's'} hidden: ${items}. ` +
     'Use --all to see them; `mixshift brand restore <slug>` brings one back.'

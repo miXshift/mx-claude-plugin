@@ -94,13 +94,32 @@ export function safeDisplay(value: unknown, max = 120): string | null {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** "Sep 24, 2026" (UTC calendar date), or null when missing/unparseable. */
-export function formatLifecycleDate(iso: string | null | undefined): string | null {
+/**
+ * "Sep 24, 2026": the calendar date in the VIEWER's time zone (the machine's
+ * own, or `timeZone` when given; tests pin it), or null when missing or
+ * unparseable. Local on purpose: a retire made on a US evening lands after
+ * midnight UTC, and "retired on <tomorrow>" would read as wrong to everyone
+ * in that team. Falls back to the UTC date only if the runtime cannot format
+ * the zone at all.
+ */
+export function formatLifecycleDate(
+  iso: string | null | undefined,
+  timeZone?: string,
+): string | null {
   if (typeof iso !== 'string') return null;
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
   const d = new Date(t);
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      ...(timeZone !== undefined ? { timeZone } : {}),
+    }).format(d);
+  } catch {
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  }
 }
 
 /** Who a lifecycle change is attributed to, for display. */
