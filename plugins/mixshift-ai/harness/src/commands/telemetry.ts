@@ -22,7 +22,7 @@ import {
 import type { Outcome } from '../lib/telemetry/events.js';
 import { probeSurface } from '../lib/telemetry/surface.js';
 import { telemetryQueuePath } from '../lib/paths/resolve.js';
-import { queueSizeBytes } from '../lib/telemetry/queue.js';
+import { queueSizeBytes, deadLetterCount, deadLetterPath } from '../lib/telemetry/queue.js';
 import { tailFlushLog, flushLogPath } from '../lib/telemetry/flush-log.js';
 import { loadDotenvIfPresent, candidatePaths } from '../lib/env/load-dotenv.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
@@ -50,6 +50,7 @@ export function registerTelemetryCommands(program: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const status = await getTelemetryStatus(root.dataDir);
       const queueBytes = await queueSizeBytes(root.dataDir);
+      const setAside = await deadLetterCount(root.dataDir);
       const recentFlushes = await tailFlushLog(5, root.dataDir);
       // Re-run the loader so we know which .env.local (if any) was picked
       // up. The CLI ran it at startup already; this re-run is idempotent
@@ -64,6 +65,8 @@ export function registerTelemetryCommands(program: Command): void {
               ...status,
               queue_path: telemetryQueuePath(root.dataDir),
               queue_size_bytes: queueBytes,
+              set_aside_count: setAside,
+              set_aside_path: deadLetterPath(root.dataDir),
               flush_log_path: flushLogPath(root.dataDir),
               recent_flushes: recentFlushes.map((l) => {
                 const [ts, st, n, err] = l.split('\t');
@@ -113,6 +116,9 @@ export function registerTelemetryCommands(program: Command): void {
           `  - env_file:         ${envLine}\n` +
           `  - queue path:       ${telemetryQueuePath(root.dataDir)}\n` +
           `  - queue size:       ${queueBytes} bytes\n` +
+          (setAside
+            ? `  - set aside:        ${setAside} event(s) the server refused, kept in ${deadLetterPath(root.dataDir)} (retried after the next plugin update)\n`
+            : '') +
           flushSection +
           '\nSee docs/privacy.md for what we collect and why.\n',
       );
@@ -246,7 +252,12 @@ export function registerTelemetryCommands(program: Command): void {
       switch (result.status) {
         case 'sent':
           process.stdout.write(
-            `\n✓ Flushed ${result.events_sent} event(s) to telemetry endpoint.\n\n`,
+            `\n✓ Flushed ${result.events_sent} event(s) to telemetry endpoint.\n` +
+              (result.dead_lettered
+                ? `  ${result.dead_lettered} event(s) the server refused were set aside (see mixshift telemetry status).\n`
+                : '') +
+              (result.requeued ? `  ${result.requeued} refused event(s) stay queued: the set-aside file is full.\n` : '') +
+              '\n',
           );
           break;
         case 'no_events':

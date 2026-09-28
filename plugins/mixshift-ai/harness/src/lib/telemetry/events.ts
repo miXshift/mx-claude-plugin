@@ -266,6 +266,12 @@ export const EventName = {
   UpdateBannerShown: 'update.banner_shown',
   UpdateDismissed: 'update.dismissed',
 
+  // Telemetry self-report (lib/telemetry/client.ts + index.ts maybeFlush): the
+  // flush set events aside in deadletter.jsonl because the server refused them.
+  // Privacy: payload carries only a count, the HTTP statuses and the refused
+  // events' event_name values, never their contents.
+  TelemetryEventsSetAside: 'telemetry.events_set_aside',
+
   // Guided catch-up actions (P2, lib/update-actions.ts + lib/update-actions-
   // state.ts + `mixshift update-actions` + the mx-update skill). Privacy:
   // payloads carry only action ids (stable slugs from releases/actions.yaml,
