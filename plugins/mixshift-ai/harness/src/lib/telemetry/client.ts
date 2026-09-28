@@ -10,15 +10,57 @@
  */
 
 import { loadPluginDefaults } from '../defaults/load.js';
-import { readQueue, overwriteQueue } from './queue.js';
+import { getPluginVersion } from '../plugin-version.js';
+import { claimQueue, deadLetterEvents, replayDeadLetter } from './queue.js';
 import type { TelemetryEventRecord } from './events.js';
 
 const DEFAULT_TIMEOUT_MS = 5_000;
+/** One flush stops starting new batches after this long; the rest wait for the next run. */
+const FLUSH_BUDGET_MS = 5_000;
 
 export interface FlushResult {
   status: 'sent' | 'no_endpoint' | 'no_events' | 'failed';
   events_sent: number;
+  /** Events the server permanently rejected, kept in deadletter.jsonl. */
+  dead_lettered?: number;
+  /** Which events were set aside and why (status 0 = could not be serialized). */
+  set_aside?: SetAside[];
+  /** Refused events kept queued because deadletter.jsonl is full. */
+  requeued?: number;
   error?: string;
+}
+
+export interface SetAside {
+  event_name: string;
+  status: number;
+}
+
+function cap(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max);
+}
+
+/** A non-2xx answer from the telemetry endpoint. */
+export class TelemetryHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'TelemetryHttpError';
+  }
+}
+
+/**
+ * Statuses that mean "this payload will never be accepted": malformed or
+ * unstorable rows. Retrying them only blocks every event queued behind them.
+ * Deliberately NOT here: 401/403/404 (a key or endpoint problem on our side,
+ * which a later release or config fix clears), 408/425/429 and 5xx (transient).
+ */
+const PERMANENT_REJECTION = new Set([400, 409, 413, 422]);
+
+function isPermanentRejection(err: unknown): err is TelemetryHttpError {
+  return err instanceof TelemetryHttpError && PERMANENT_REJECTION.has(err.status);
+}
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -26,14 +68,19 @@ export interface FlushResult {
  * describing the outcome. Never throws.
  *
  * Flush strategy:
- *   - Read all queued events.
+ *   - CLAIM the queue (claimQueue: an atomic rename to a private in-flight
+ *     file). Events other processes append meanwhile go to a fresh queue.jsonl,
+ *     so nothing they write can be overwritten by this flush.
  *   - POST them in batches of `defaults.telemetry.batch_size`.
- *   - After EACH batch is accepted, rewrite the queue with only the events
- *     that haven't been sent yet, so an accepted batch is removed from disk
- *     immediately. A later batch failure then leaves only the un-sent events
- *     behind — the accepted ones are never resent on the next invocation.
- *   - If any batch fails, stop and return 'failed' (callers still learn the
- *     flush was incomplete); the queue already holds exactly the un-sent tail.
+ *   - After EACH batch is accepted, checkpoint the in-flight file with only the
+ *     events not yet sent, so an accepted batch is never resent even if this
+ *     process is killed later in the flush.
+ *   - A PERMANENT rejection (400/409/413/422: the row itself cannot be stored)
+ *     is isolated row by row. Rows that still fail alone go to deadletter.jsonl
+ *     with the reason and the flush continues, so one unstorable row can no
+ *     longer block every event behind it forever.
+ *   - Any other failure (network, timeout, 5xx, 429, auth/endpoint) stops the
+ *     flush and hands the unsent remainder back to queue.jsonl for next time.
  *
  * At-least-once caveat: a batch the server actually committed but whose
  * response we never saw (connection dropped after the DB write) is treated
@@ -55,43 +102,124 @@ export async function flushQueue(
     return { status: 'no_endpoint', events_sent: 0 };
   }
 
-  const events = await readQueue(dataDirOverride);
-  if (events.length === 0) {
+  // A release often fixes whatever made the server refuse a row, so once per
+  // plugin version the set-aside rows go back into the queue for another try.
+  await replayDeadLetter(getPluginVersion(), dataDirOverride).catch(() => 0);
+
+  const claim = await claimQueue(dataDirOverride);
+  if (claim === 'busy') {
+    return { status: 'failed', events_sent: 0, error: 'telemetry queue is busy (could not claim it); left in place for the next run' };
+  }
+  if (claim === null) {
     return { status: 'no_events', events_sent: 0 };
   }
 
+  // Rows kept queued because the dead-letter file could not take them (full, or
+  // unwritable). They go back to the END of queue.jsonl, behind newer events.
+  const requeue: TelemetryEventRecord[] = [];
+  const setAside: SetAside[] = [];
   let sentCount = 0;
-  for (let i = 0; i < events.length; i += batch_size) {
-    const batch = events.slice(i, i + batch_size);
+
+  const putAside = async (rec: TelemetryEventRecord, status: number, error: string): Promise<void> => {
+    let kept = false;
     try {
-      await postBatch(endpoint, apikey, batch, timeoutMs);
-      sentCount += batch.length;
-      // Batch accepted: persist only the not-yet-sent tail. If a later batch
-      // fails, the queue already excludes this (and every prior) accepted
-      // batch, so we won't resend it. overwriteQueue is best-effort and never
-      // throws; the on-disk rewrite is atomic (temp + rename), so a hard kill
-      // mid-write can't leave a torn/empty queue with the tail lost — if the
-      // rewrite itself fails the batch may be resent later (at-least-once),
-      // never lost. KNOWN LIMITATION (deferred): overwriteQueue rewrites the
-      // whole file from the readQueue() snapshot with no offset preservation,
-      // so an event appended by a *concurrent* mixshift process between that
-      // read and this rewrite is clobbered. Pre-existing accepted race; the
-      // offset-preserving-clear + lockfile fix is deferred. See
-      // overwriteQueue's doc comment in queue.ts.
-      await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
+      kept = await deadLetterEvents([rec], { status, error }, dataDirOverride);
+    } catch {
+      kept = false;
+    }
+    if (kept) setAside.push({ event_name: cap(String(rec.event_name ?? '?'), 128), status });
+    else requeue.push(rec);
+  };
+
+  const summary = (): Partial<FlushResult> => ({
+    ...(setAside.length ? { dead_lettered: setAside.length, set_aside: setAside } : {}),
+    ...(requeue.length ? { requeued: requeue.length } : {}),
+  });
+
+  const fail = async (unsent: TelemetryEventRecord[], err: unknown): Promise<FlushResult> => {
+    await claim.release([...unsent, ...requeue]);
+    return { status: 'failed', events_sent: sentCount, ...summary(), error: errText(err) };
+  };
+
+  // Prepare every row before any POST. A row that cannot even be serialized
+  // would otherwise throw inside the POST, read as a transient failure, and sit
+  // at the head of the queue forever.
+  const events: Array<{ rec: TelemetryEventRecord; wire: Record<string, unknown> }> = [];
+  for (const rec of claim.events) {
+    try {
+      const wire = normalizeRecord(rec);
+      JSON.stringify(wire);
+      events.push({ rec, wire });
     } catch (err) {
-      // Stop here. The queue holds exactly the un-sent tail (this batch plus
-      // everything after it), thanks to the per-batch rewrite above.
-      return {
-        status: 'failed',
-        events_sent: sentCount,
-        error: err instanceof Error ? err.message : String(err),
-      };
+      await putAside(rec, 0, `could not serialize: ${errText(err)}`);
     }
   }
+  const recs = (from: number) => events.slice(from).map((e) => e.rec);
 
-  // All batches accepted; the final overwriteQueue already emptied the queue.
-  return { status: 'sent', events_sent: sentCount };
+  // Bounds on one flush, which runs at the end of every command: a time budget,
+  // and a circuit breaker for when EVERY row is refused (a request-shape change
+  // on the server, say), where isolating row by row would only burn time.
+  const startedAt = Date.now();
+  let allRefusedStreak = 0;
+
+  for (let i = 0; i < events.length; i += batch_size) {
+    if (i > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
+      await claim.release([...recs(i), ...requeue]);
+      return {
+        status: 'sent',
+        events_sent: sentCount,
+        ...summary(),
+        error: `time budget reached; ${events.length - i} event(s) stay queued for the next run`,
+      };
+    }
+    if (allRefusedStreak >= 2) {
+      return fail(recs(i), new Error('the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued'));
+    }
+    const refusedBefore = setAside.length + requeue.length;
+    const batch = events.slice(i, i + batch_size);
+    try {
+      await postBatch(endpoint, apikey, batch.map((e) => e.wire), timeoutMs);
+      sentCount += batch.length;
+      allRefusedStreak = 0;
+    } catch (err) {
+      if (!isPermanentRejection(err)) return fail(recs(i), err);
+      // One unstorable row rejects the whole batch, so find it: resend each row
+      // alone. Rows that are fine go through; rows refused on their own are kept
+      // in deadletter.jsonl.
+      for (let j = 0; j < batch.length; j++) {
+        const one = batch[j]!;
+        if (j > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
+          await claim.release([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size), ...requeue]);
+          return {
+            status: 'sent',
+            events_sent: sentCount,
+            ...summary(),
+            error: `time budget reached; ${batch.length - j + Math.max(0, events.length - i - batch_size)} event(s) stay queued for the next run`,
+          };
+        }
+        try {
+          if (batch.length === 1) throw err;
+          await postBatch(endpoint, apikey, [one.wire], timeoutMs);
+          sentCount++;
+        } catch (rowErr) {
+          if (!isPermanentRejection(rowErr)) {
+            return fail([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
+          }
+          await putAside(one.rec, rowErr.status, rowErr.message);
+        }
+      }
+      const refusedHere = setAside.length + requeue.length - refusedBefore;
+      allRefusedStreak = refusedHere === batch.length ? allRefusedStreak + 1 : 0;
+    }
+    await claim.checkpoint([...recs(i + batch_size), ...requeue]);
+  }
+
+  await claim.release(requeue);
+  const note = [
+    setAside.length ? `${setAside.length} event(s) the server refused were set aside in deadletter.jsonl (retried after the next plugin update)` : '',
+    requeue.length ? `${requeue.length} refused event(s) stay queued because deadletter.jsonl is full` : '',
+  ].filter(Boolean).join('; ');
+  return { status: 'sent', events_sent: sentCount, ...summary(), ...(note ? { error: note } : {}) };
 }
 
 /**
@@ -115,13 +243,12 @@ export async function flushQueue(
 async function postBatch(
   endpoint: string,
   apikey: string,
-  batch: TelemetryEventRecord[],
+  normalized: Record<string, unknown>[],
   timeoutMs: number,
 ): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const normalized = batch.map(normalizeRecord);
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -135,8 +262,9 @@ async function postBatch(
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '<unreadable>');
-      throw new Error(
+      throw new TelemetryHttpError(
         `Supabase responded ${resp.status} ${resp.statusText}: ${body.slice(0, 200)}`,
+        resp.status,
       );
     }
   } finally {
@@ -154,11 +282,19 @@ async function postBatch(
  * We list every optional key explicitly rather than coercing in a loop so
  * adding a new lifted field to `TelemetryEventRecord` is an obvious diff
  * here too — keeps the contract surface visible.
+ *
+ * 2026-09-28: the result is also made STORABLE. Postgres rejects a whole
+ * batch for one NUL character or unpaired UTF-16 surrogate anywhere in a text
+ * or jsonb value (both reach payload from error messages and argv), and for a
+ * fractional or out-of-range number in an integer column. A rejected batch used
+ * to be retried forever at the head of the queue, so those values are repaired
+ * here: NUL removed, lone surrogates replaced with U+FFFD, integer columns
+ * rounded (or nulled when not a finite int4).
  */
 export function normalizeRecord(rec: TelemetryEventRecord): Record<string, unknown> {
-  return {
-    event_name: rec.event_name,
-    install_id: rec.install_id,
+  const row = storable({
+    event_name: capText(rec.event_name, 128),
+    install_id: capText(rec.install_id, 64),
     email: rec.email ?? null,
     // Null on pre-auth events and on queue entries written by harnesses
     // that didn't yet send the field.
@@ -177,12 +313,77 @@ export function normalizeRecord(rec: TelemetryEventRecord): Record<string, unkno
     ts: rec.ts,
     payload: rec.payload ?? {},
     skill_id: rec.skill_id ?? null,
-    duration_ms: rec.duration_ms ?? null,
+    duration_ms: toInt4(rec.duration_ms),
     outcome: rec.outcome ?? null,
     query_id: rec.query_id ?? null,
     query_table: rec.query_table ?? null,
-    row_count: rec.row_count ?? null,
+    row_count: toInt4(rec.row_count),
     error_class: rec.error_class ?? null,
     trigger_phrase: rec.trigger_phrase ?? null,
-  };
+  }) as Record<string, unknown>;
+  // The ingest endpoint refuses a request over 256 KB, so a single huge event
+  // could never be delivered. Keep the row, drop the oversized payload body, and
+  // say so in the payload itself.
+  const bytes = Buffer.byteLength(JSON.stringify(row), 'utf-8');
+  if (bytes > MAX_ROW_BYTES) {
+    const p = row.payload;
+    row.payload = {
+      payload_truncated: true,
+      original_row_bytes: bytes,
+      keys: p && typeof p === 'object' ? Object.keys(p as object).slice(0, 50).map((k) => k.slice(0, 100)) : [],
+    };
+    // Every other column is short by nature; if the row is somehow still too
+    // big, trim them too rather than send a row that can never be accepted.
+    if (Buffer.byteLength(JSON.stringify(row), 'utf-8') > MAX_ROW_BYTES) {
+      for (const [k, v] of Object.entries(row)) {
+        if (typeof v === 'string' && v.length > 1024) row[k] = v.slice(0, 1024);
+      }
+    }
+  }
+  return row;
+}
+
+/** Stay well under the ingest endpoint's 256 KB request cap. */
+const MAX_ROW_BYTES = 200_000;
+/** One string field never needs more than this; longer values are cut. */
+const MAX_STRING_CHARS = 32_768;
+
+function capText(v: unknown, max: number): unknown {
+  return typeof v === 'string' && v.length > max ? v.slice(0, max) : v;
+}
+
+const INT4_MAX = 2_147_483_647;
+
+/** An integer column value Postgres will accept, or null. */
+export function toInt4(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return null;
+  const r = Math.round(n);
+  return r > INT4_MAX || r < -INT4_MAX - 1 ? null : r;
+}
+
+// NUL, plus a high surrogate not followed by a low one, or a low surrogate not
+// preceded by a high one.
+const UNSTORABLE = /\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
+
+function storableString(s: string): string {
+  if (s.length > MAX_STRING_CHARS) s = s.slice(0, MAX_STRING_CHARS) + '...[truncated]';
+  return s.replace(UNSTORABLE, (m) => (m === '\u0000' ? '' : REPLACEMENT_CHAR));
+}
+
+/** Deep copy with every string (keys included) made storable in Postgres text/jsonb. */
+export function storable(v: unknown): unknown {
+  if (typeof v === 'string') return storableString(v);
+  if (Array.isArray(v)) return v.map(storable);
+  if (v && typeof v === 'object') {
+    // Keep what JSON.stringify would have sent (a Date becomes its ISO string).
+    const toJSON = (v as { toJSON?: unknown }).toJSON;
+    if (typeof toJSON === 'function') return storable(toJSON.call(v));
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) out[storableString(k)] = storable(val);
+    return out;
+  }
+  return v;
 }

@@ -148,7 +148,25 @@ export async function maybeFlush(
   try {
     const enabled = await isTelemetryEnabled(dataDirOverride);
     if (!enabled) return { status: 'no_endpoint', events_sent: 0 };
-    return await flushQueue(dataDirOverride);
+    const result = await flushQueue(dataDirOverride);
+    // A set-aside event is kept on this machine, so say so in telemetry too; the
+    // report itself is queued and goes out with the next flush.
+    // A refused self-report is not reported again, so this can never feed itself.
+    const refused = (result.set_aside ?? []).filter((s) => s.event_name !== EventName.TelemetryEventsSetAside);
+    if (refused.length) {
+      await track(
+        {
+          event_name: EventName.TelemetryEventsSetAside,
+          payload: {
+            count: refused.length,
+            statuses: [...new Set(refused.map((s) => s.status))].slice(0, 10),
+            event_names: [...new Set(refused.map((s) => s.event_name))].slice(0, 10),
+          },
+        },
+        dataDirOverride,
+      );
+    }
+    return result;
   } catch (err) {
     return {
       status: 'failed',
