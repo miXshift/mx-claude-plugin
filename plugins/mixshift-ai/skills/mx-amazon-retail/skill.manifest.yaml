@@ -115,9 +115,12 @@ notes: >
   All 17 catalog families are toured in SKILL.md. Fulfillment Inbound is v0
   (PascalCase; QueryType required; DATE_RANGE also needs ShipmentStatusList;
   result nested under payload.payload). Replenishment is POST with
-  marketplaceId in the BODY and offset paging on list_offers. Customer
-  Feedback needs a CHILD ASIN; HTTP 204 = no data. Product Type Definitions
-  returns schema download links, not inline JSON.
+  marketplaceId in the BODY and offset paging on list_offers; its metrics come
+  back as several rows, each with its OWN timeInterval that can differ from
+  the requested window, so report each metric with its row's interval.
+  Customer Feedback needs a CHILD ASIN; a success with an empty payload means
+  no review data. Product Type Definitions returns schema download links
+  (schema.link.resource), not inline JSON.
 
   Headline use: catalog.search_items is the title/brand/sales-rank source for
   ASINs missing from the warehouse's mws_items (which only holds listed SKUs).
