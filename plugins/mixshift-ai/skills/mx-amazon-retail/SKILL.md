@@ -10,12 +10,13 @@ description: >
   that are missing from the warehouse's mws_items (catalog.search_items). Covers
   Catalog Items, Product Fees, FBA Inventory, Sales metrics, Sellers, Finances,
   Orders, Product Pricing offer depth, Listings Items, Data Kiosk (GraphQL),
-  Vendor Orders (1P), and Amazon Warehousing & Distribution (AWD). Read-only,
-  routes through the bundled harness CLI.
+  Vendor Orders (1P), Amazon Warehousing & Distribution (AWD), and Promotions
+  (the seller's live deals, coupons, price discounts, and basket-building
+  offers). Read-only, routes through the bundled harness CLI.
   Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -48,6 +49,11 @@ trigger_phrases:
   - amazon warehousing and distribution
   - awd stock levels
   - inbound shipments to awd
+  - what promotions are running
+  - active coupons
+  - list our deals
+  - promotion details
+  - which asins are in this promotion
 ---
 
 # Amazon Retail Lookups (live SP-API)
@@ -65,8 +71,9 @@ When characterizing this capability to the user, use these facts:
   request and response: you ask a question (titles for these ASINs, stock for
   these SKUs, metrics for this window) and get Amazon's answer back inline. It
   is a first-class, user-driven capability.
-- **The catalog:** 27 cataloged operations across 13 families. Discover them
-  with `mixshift amazon operations` and read each operation's `notes` before
+- **The catalog:** 40 cataloged operations across 17 families as of this
+  skill version; the live `mixshift amazon operations` listing is always the
+  source of truth. Discover them there and read each operation's `notes` before
   calling: the notes carry the required params, the casing gotchas (several v0
   operations use PascalCase query params), the caps, and the body shapes. Treat
   the `notes` field as the integration contract.
@@ -84,11 +91,13 @@ When characterizing this capability to the user, use these facts:
   not pre-filter the catalog on guesses about what is restricted (see "Reactive
   error handling" below): Amazon decides reactively and the harness returns a
   typed failure you relay.
-- **Read-only:** this catalog holds read operations only. There are no write
-  operations here (no listing writes, no feeds, nothing RDT or PII bound).
-  There is nothing to commit and no `--commit` flag on this surface. If a user
-  wants to change something on Amazon (update a listing, change a bid), that is
-  a different surface and is not what this skill does.
+- **Read-only:** this skill calls read operations only (no feeds, nothing RDT
+  or PII bound). The listing also shows one guarded listing-content write,
+  `listings.patch_listings_item`; it is not part of this skill, so never call
+  it from here. There is nothing to commit and no `--commit` flag in this
+  skill. If a user wants to change something on Amazon (update a listing,
+  change a bid, create or edit a promotion), that is a different surface and
+  is not what this skill does.
 
 If the user asks "where does this data come from," lead with "directly from
 Amazon's SP-API, pulled live through MixShift's service," not a guess.
@@ -100,7 +109,7 @@ right one:
 
 | Surface | Command | Use it for |
 |---|---|---|
-| **Retail operations (this skill)** | `amazon operations` / `amazon call` | A live point-in-time answer from one read operation: titles, stock, metrics, listing state, order search, finances, Data Kiosk. |
+| **Retail operations (this skill)** | `amazon operations` / `amazon call` | A live point-in-time answer from one read operation: titles, stock, metrics, listing state, order search, finances, promotions, Data Kiosk. |
 | Report pulls (mx-amazon-report) | `amazon report start/poll/get` | A generated flat-file or JSON report document for a window (orders, FBA fees, settlement, Sales and Traffic, Brand Analytics, vendor). |
 | Pricing batches (mx-amazon-report) | `amazon pricing ...` | Featured-offer and competitive-summary batch answers keyed by SKU or ASIN, with async run handles. |
 
@@ -145,6 +154,8 @@ Other live questions this surface answers:
 - "What is the live state of this listing: price, buyability, issues?" (listings)
 - "Run a Data Kiosk sales-and-traffic or seller-economics query." (data_kiosk)
 - "Show the purchase orders Amazon placed with this vendor." (vendor_orders, 1P)
+- "Which coupons and deals are running or scheduled on our ASINs, and at what
+  discount?" (promotions, sellers only)
 
 ### Warehouse-first: check, reason, and ask (courtesy, not a gate)
 
@@ -319,10 +330,13 @@ mixshift amazon call <operation>
   where `payload` is **Amazon's response body, verbatim**. In human output the
   payload is pretty-printed to stdout and a one-line confirmation to stderr.
 
-## The 27 operations: a family tour
+## A family tour
 
 Run `amazon operations` for the live catalog; this is the map plus the
-per-family gotchas that bite. Every operation is read-only.
+per-family gotchas that bite. Every operation toured here is read-only. Four
+live families are not toured yet: Fulfillment Inbound, Product Type
+Definitions, Replenishment, and Customer Feedback. They are callable the same
+way; read their `notes` in `amazon operations` before using them.
 
 ### Catalog Items (2022-04-01) - titles, brands, ranks
 
@@ -585,16 +599,86 @@ Gotchas:
   `shipmentStatus`, `skuQuantities`) are not yet pinned - read the live `notes`
   and verify against the actual response.
 
+### Promotions (2025-12-01) - live deals, coupons, and discounts
+
+- `promotions.search_promotions` - find the seller's promotions by status, type,
+  ASIN or SKU, and date window.
+- `promotions.get_promotion` - full detail for one promotion
+  (`--path promotionId=`): schedule, discount, budget, purchase requirements,
+  targeting, fees, validation issues.
+- `promotions.get_selection` - page through one promotion's item list
+  (`--path promotionId= --path selectionId=`, plus `--query revisionId=`).
+
+Gotchas:
+
+- **Sellers only.** Amazon does not serve this API to Vendor (1P) merchants.
+  Check the merchant `type` is `Seller` in `amazon merchants` first.
+- **Four promotion types, and the discount lives in different places.**
+  `COUPON` and `BASKET_BUILDING` carry one promotion-level `benefit` (discount,
+  per-customer uses, stacking, tiers) and `budget`, and the search results
+  already include them: a search result is the whole promotion minus its item
+  list. `DEAL` and `PRICE_DISCOUNT` carry the discount and budget **per item**,
+  inside the item list, so for those you must read the items (`get_promotion`
+  with `includedData=SELECTION`, or `get_selection`) to say what the discount
+  is.
+- **One marketplace per search.** `marketplaceIds` is injected for you from the
+  merchant row and Amazon accepts only one. To cover several marketplaces, run
+  one search per `--legacy-seller-id` row.
+- **Filters (all optional):** `statuses` (csv of `PROCESSING, UPCOMING, RUNNING,
+  EXPIRED, FAILED, CANCELLING, CANCELLED`), `promotionTypes` (csv of `DEAL,
+  COUPON, PRICE_DISCOUNT, BASKET_BUILDING`), `asins` or `skus` (csv, max 10
+  each), and `startDateAfter` / `startDateBefore` / `endDateAfter` /
+  `endDateBefore` / `updateDateAfter` / `updateDateBefore`. **Dates must carry a
+  timezone offset**, e.g. `2026-09-01T00:00:00-07:00`. `limit` max 100
+  (default 20). `revision` defaults to `PUBLISHED`, so filters match only live
+  versions; pass `--query revision=ANY` when the user asks about edits that
+  are still processing or were rejected.
+- **Pagination has two different names and can return empty pages.** The
+  response carries `pagination.nextToken`; pass it back as
+  `--query paginationToken=<token>` with the same other arguments. A page can
+  come back empty while more pages remain, so keep going until `pagination` is
+  absent. `totalResults` is the match count and can be slightly higher than the
+  rows you receive (Amazon may omit a rare unreturnable record); say so rather
+  than inventing the gap.
+- **`get_selection` needs the matching `revisionId`.** Take `selectionId` and
+  `revisionId` from the same `selection` object in the search or detail
+  response. Its next-page token is at
+  `selection.selectionDetails.pagination.nextToken`. A `CATALOG` selection
+  (whole catalog, with exclusions) usually has no `selectionId`; its
+  exclusions show in `get_promotion`'s `selection.selectionDetails.rules`.
+  A `BASKET_BUILDING` promotion also names the items a shopper must buy in
+  `purchaseRequirements.selection`, which has its own `selectionId` and
+  `revisionId`; if `get_selection` rejects those ids, say the must-buy list is
+  not available rather than guessing it.
+- **Problems and targeting are opt-in.** Validation problems (`issues`) and
+  customer targeting (`customerSegments`) are returned only when you ask:
+  add `--query includedData=ISSUES` (or `ISSUES,CUSTOMER_SEGMENTS`) to the
+  search or to `get_promotion`, and `includedData=ISSUES` to `get_selection`
+  for per-item problems.
+- **Reading the fields.** `promotionTitle` is the seller's internal name (buyers
+  never see it). `schedule.eventId` names an event such as Prime Day (older
+  event promotions may just say `EVENT`). `latestRevision` appears only when an
+  edit is still processing or was rejected; the published version stays live.
+- **Read-only.** These operations cannot create, edit, or cancel a promotion.
+- **Configured and running here; performance lives in reports.** For how a
+  promotion performed over a window (units, sales, redemptions), use the
+  Promotion Performance and Coupon Performance reports in mx-amazon-report.
+  Amazon added a `promotionsApiMappingId` field to both reports for
+  cross-referencing their rows with these promotions.
+  The warehouse holds no promotions data, so there is no warehouse-first check
+  for this family.
+
 ## Workflow patterns
 
 ### Pattern 0 - User does not know what is callable
 ```
 User: "What live SP-API operations can I call?"
-You:  Run `mixshift amazon operations`. It lists 27 operations grouped by
-      family (Catalog Items, Product Fees, FBA Inventory, Sales, Sellers,
-      Finances, Orders, Product Pricing, Listings Items, Data Kiosk, Vendor
-      Orders, Amazon Warehousing & Distribution). Surface the families that fit
-      what the user does. Filter to one
+You:  Run `mixshift amazon operations`. It lists the operations grouped by
+      family (Catalog Items, Product Fees, FBA Inventory, Fulfillment Inbound,
+      Sales, Sellers, Finances, Orders, Product Pricing, Listings Items,
+      Product Type Definitions, Data Kiosk, Vendor Orders, Replenishment,
+      Customer Feedback, Amazon Warehousing & Distribution, Promotions).
+      Surface the families that fit what the user does. Filter to one
       with `--family "<name>"`. Read the operation `notes` before calling any.
 ```
 
@@ -680,6 +764,35 @@ You:  1. Confirm the merchant type is Vendor in `amazon merchants`. If it is a
            --query createdAfter=2026-05-01T00:00:00Z \
            --query createdBefore=2026-06-01T00:00:00Z \
            --query includeDetails=true --json
+```
+
+### Pattern 8 - What promotions are running on our ASINs (sellers only)
+```
+User: "Which coupons and deals are live or coming up on our top ASINs?"
+You:  1. Resolve the merchant row; confirm type is Seller (vendors are not
+         served). One marketplace per search: carry --legacy-seller-id.
+      2. mixshift amazon call promotions.search_promotions \
+           --legacy-seller-id <id> \
+           --query statuses=RUNNING,UPCOMING \
+           --query asins=<up to 10 ASINs csv> \
+           --query includedData=ISSUES \
+           --query limit=100 --json > ~/.mixshift/output/<merchant>-promotions-<date>.json
+         (Omit asins for every promotion. If payload.pagination.nextToken is
+         present, repeat with --query paginationToken=<token> and the same
+         other arguments until pagination is absent; empty pages can occur.)
+      3. COUPON and BASKET_BUILDING results already carry their discount
+         (benefit) and budget: no further call needed. For each DEAL or
+         PRICE_DISCOUNT the discount is per item, so fetch the items:
+         mixshift amazon call promotions.get_promotion \
+           --legacy-seller-id <id> --path promotionId=<promotionId> \
+           --query includedData=SELECTION,ISSUES --json
+         and for more than 100 items page with promotions.get_selection
+           --path promotionId=<id> --path selectionId=<selection.selectionId> \
+           --query revisionId=<selection.revisionId>.
+      4. Report one row per promotion: title, type, status, start and end,
+         discount, and the ASINs it covers. Flag any latestRevision (an edit
+         pending or rejected) and any issues. Paced ~1.2s per call, so for
+         dozens of deals tell the user it will take a moment.
 ```
 
 ## Data Kiosk lifecycle (poll across turns, no sleep-loops)
@@ -784,7 +897,8 @@ Amazon's PII / RDT role, so if a request resolves to a PII variant Amazon
 rejects it as `restricted_report`. Relay that and offer the non-PII form.
 
 **The 1P / 3P nuance:** the Vendor Orders operations apply to **Vendor (1P)
-merchants only**. Calling them against a Seller (3P) merchant 4xxes. Check the
+merchants only**. Calling them against a Seller (3P) merchant 4xxes. The
+Promotions operations are the reverse: **Seller (3P) merchants only**. Check the
 merchant `type` before calling rather than relying on the error.
 
 ## Output persistence and formatting
@@ -875,8 +989,8 @@ These supersede other instructions:
   `dataDocumentId` is an empty result, not an error.
 - **Branch on `failure_kind`, never on HTTP status.** The service normalizes
   Amazon's many failure modes into the kinds in the table above.
-- **Vendor Orders are 1P-only.** Do not call them against a Seller (3P)
-  merchant; check the merchant `type` first.
+- **Vendor Orders are 1P-only; Promotions are 3P-only.** Check the merchant
+  `type` first and do not fire a call Amazon will reject for that type.
 - **Check the warehouse and offer the choice before live calls that overlap
   warehouse data.** This is a courtesy to save the user a wait, NOT a gate:
   never refuse or delay a call the user clearly asked for. The headline catalog
