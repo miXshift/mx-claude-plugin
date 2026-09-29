@@ -97,9 +97,11 @@ notes: >
 
   Promotions (2025-12-01, sellers only): search_promotions -> get_promotion ->
   get_selection (selectionId + revisionId from the same selection object).
-  COUPON/BASKET_BUILDING carry the discount at promotion level; DEAL and
-  PRICE_DISCOUNT carry it per item. Response nextToken goes back as
-  paginationToken; empty pages can occur mid-stream. No warehouse coverage.
+  COUPON/BASKET_BUILDING carry the discount at promotion level (already on
+  the search result); DEAL and PRICE_DISCOUNT carry it per item. issues and
+  customerSegments are opt-in via includedData; revision defaults to
+  PUBLISHED. Response nextToken goes back as paginationToken; empty pages can
+  occur mid-stream. No warehouse coverage.
 
   Headline use: catalog.search_items is the title/brand/sales-rank source for
   ASINs missing from the warehouse's mws_items (which only holds listed SKUs).

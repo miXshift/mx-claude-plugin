@@ -615,10 +615,12 @@ Gotchas:
   Check the merchant `type` is `Seller` in `amazon merchants` first.
 - **Four promotion types, and the discount lives in different places.**
   `COUPON` and `BASKET_BUILDING` carry one promotion-level `benefit` (discount,
-  per-customer uses, stacking, tiers) and `budget`. `DEAL` and `PRICE_DISCOUNT`
-  carry the discount and budget **per item**, inside the item list, so for those
-  you must read the items (`get_promotion` with `includedData=SELECTION`, or
-  `get_selection`) to say what the discount is.
+  per-customer uses, stacking, tiers) and `budget`, and the search results
+  already include them: a search result is the whole promotion minus its item
+  list. `DEAL` and `PRICE_DISCOUNT` carry the discount and budget **per item**,
+  inside the item list, so for those you must read the items (`get_promotion`
+  with `includedData=SELECTION`, or `get_selection`) to say what the discount
+  is.
 - **One marketplace per search.** `marketplaceIds` is injected for you from the
   merchant row and Amazon accepts only one. To cover several marketplaces, run
   one search per `--legacy-seller-id` row.
@@ -628,7 +630,9 @@ Gotchas:
   each), and `startDateAfter` / `startDateBefore` / `endDateAfter` /
   `endDateBefore` / `updateDateAfter` / `updateDateBefore`. **Dates must carry a
   timezone offset**, e.g. `2026-09-01T00:00:00-07:00`. `limit` max 100
-  (default 20).
+  (default 20). `revision` defaults to `PUBLISHED`, so filters match only live
+  versions; pass `--query revision=ANY` when the user asks about edits that
+  are still processing or were rejected.
 - **Pagination has two different names and can return empty pages.** The
   response carries `pagination.nextToken`; pass it back as
   `--query paginationToken=<token>` with the same other arguments. A page can
@@ -639,15 +643,22 @@ Gotchas:
 - **`get_selection` needs the matching `revisionId`.** Take `selectionId` and
   `revisionId` from the same `selection` object in the search or detail
   response. Its next-page token is at
-  `selection.selectionDetails.pagination.nextToken`. It only serves `ITEMS`
-  selections; a `CATALOG` selection (whole catalog, with exclusions) has no
-  `selectionId`, and its exclusions show in `get_promotion`'s
-  `selection.selectionDetails.rules`.
+  `selection.selectionDetails.pagination.nextToken`. A `CATALOG` selection
+  (whole catalog, with exclusions) usually has no `selectionId`; its
+  exclusions show in `get_promotion`'s `selection.selectionDetails.rules`.
+  A `BASKET_BUILDING` promotion also names the items a shopper must buy in
+  `purchaseRequirements.selection`, which has its own `selectionId` and
+  `revisionId`; if `get_selection` rejects those ids, say the must-buy list is
+  not available rather than guessing it.
+- **Problems and targeting are opt-in.** Validation problems (`issues`) and
+  customer targeting (`customerSegments`) are returned only when you ask:
+  add `--query includedData=ISSUES` (or `ISSUES,CUSTOMER_SEGMENTS`) to the
+  search or to `get_promotion`, and `includedData=ISSUES` to `get_selection`
+  for per-item problems.
 - **Reading the fields.** `promotionTitle` is the seller's internal name (buyers
-  never see it). `schedule.eventId` names an event such as Prime Day.
-  `latestRevision` appears only when an edit is still processing or was
-  rejected; the published version stays live. Add `includedData=ISSUES` to see
-  validation problems (on the promotion, or per item on `get_selection`).
+  never see it). `schedule.eventId` names an event such as Prime Day (older
+  event promotions may just say `EVENT`). `latestRevision` appears only when an
+  edit is still processing or was rejected; the published version stays live.
 - **Read-only.** These operations cannot create, edit, or cancel a promotion.
 - **Configured and running here; performance lives in reports.** For how a
   promotion performed over a window (units, sales, redemptions), use the
@@ -764,22 +775,24 @@ You:  1. Resolve the merchant row; confirm type is Seller (vendors are not
            --legacy-seller-id <id> \
            --query statuses=RUNNING,UPCOMING \
            --query asins=<up to 10 ASINs csv> \
+           --query includedData=ISSUES \
            --query limit=100 --json > ~/.mixshift/output/<merchant>-promotions-<date>.json
          (Omit asins for every promotion. If payload.pagination.nextToken is
          present, repeat with --query paginationToken=<token> and the same
          other arguments until pagination is absent; empty pages can occur.)
-      3. For each COUPON or BASKET_BUILDING result the discount is on the
-         promotion itself: mixshift amazon call promotions.get_promotion \
-           --legacy-seller-id <id> --path promotionId=<promotionId> --json
-         For DEAL or PRICE_DISCOUNT the discount is per item: add
-         --query includedData=SELECTION, and for more than 100 items page
-         with promotions.get_selection --path promotionId=<id> \
-           --path selectionId=<selection.selectionId> \
+      3. COUPON and BASKET_BUILDING results already carry their discount
+         (benefit) and budget: no further call needed. For each DEAL or
+         PRICE_DISCOUNT the discount is per item, so fetch the items:
+         mixshift amazon call promotions.get_promotion \
+           --legacy-seller-id <id> --path promotionId=<promotionId> \
+           --query includedData=SELECTION,ISSUES --json
+         and for more than 100 items page with promotions.get_selection
+           --path promotionId=<id> --path selectionId=<selection.selectionId> \
            --query revisionId=<selection.revisionId>.
       4. Report one row per promotion: title, type, status, start and end,
          discount, and the ASINs it covers. Flag any latestRevision (an edit
          pending or rejected) and any issues. Paced ~1.2s per call, so for
-         dozens of promotions tell the user it will take a moment.
+         dozens of deals tell the user it will take a moment.
 ```
 
 ## Data Kiosk lifecycle (poll across turns, no sleep-loops)
